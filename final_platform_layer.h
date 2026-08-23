@@ -7665,6 +7665,7 @@ fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle);
 * @brief Asks the specified process to stop gracefully.
 * @param[in] handle Reference to the process handle @ref fplProcessHandle.
 * @return Returns true when the request was sent, false otherwise.
+* @note On POSIX this sends a SIGTERM. Windows has no equivalent, so a console control event is sent instead, which requires @ref fplProcessFlags_KillProcessTree to be set.
 */
 fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle);
 
@@ -17177,8 +17178,174 @@ typedef struct fpl__ProcessStreams {
 	fpl_b32 isTruncated;
 } fpl__ProcessStreams;
 
-fpl_internal void fpl__FillProcessResultFromHandle(const fplProcessHandle *handle, const bool hasExited, fplProcessResult *outResult) {
+// Number of bytes a capture buffer starts with, it doubles from there
+#define FPL__PROCESS_BUFFER_INITIAL_CAPACITY 4096
+// Number of bytes read from a stream in one go
+#define FPL__PROCESS_READ_CHUNK_SIZE 4096
+
+fpl_internal fpl__ProcessBufferHeader *fpl__GetProcessBufferHeader(const fplProcessBuffer *buffer) {
+	if (buffer->text == fpl_null) {
+		return(fpl_null);
+	}
+	uint8_t *headerBase = (uint8_t *)buffer->text - sizeof(fpl__ProcessBufferHeader);
+	fpl__ProcessBufferHeader *header = (fpl__ProcessBufferHeader *)headerBase;
+	if (header->magic != FPL__PROCESS_BUFFER_MAGIC) {
+		return(fpl_null);
+	}
+	return(header);
+}
+
+// Makes sure the buffer can hold the required number of characters. FPL has no reallocation,
+// so a bigger block is allocated and the old content is moved over.
+fpl_internal bool fpl__EnsureProcessBufferCapacity(fplProcessBuffer *buffer, const size_t requiredCapacity) {
+	fpl__ProcessBufferHeader *currentHeader = fpl__GetProcessBufferHeader(buffer);
+	size_t currentCapacity = (currentHeader != fpl_null) ? currentHeader->capacity : 0;
+	if (currentCapacity >= requiredCapacity) {
+		return(true);
+	}
+	size_t newCapacity = (currentCapacity > 0) ? currentCapacity : FPL__PROCESS_BUFFER_INITIAL_CAPACITY;
+	while (newCapacity < requiredCapacity) {
+		newCapacity *= 2;
+	}
+	// The extra byte is the null-terminator, so the captured text can be used as a normal string
+	size_t totalSize = sizeof(fpl__ProcessBufferHeader) + newCapacity + 1;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating %zu bytes for a process capture buffer", totalSize);
+		return(false);
+	}
+	fpl__ProcessBufferHeader *newHeader = (fpl__ProcessBufferHeader *)memory;
+	newHeader->magic = FPL__PROCESS_BUFFER_MAGIC;
+	newHeader->capacity = newCapacity;
+	newHeader->totalSize = totalSize;
+	char *newText = (char *)((uint8_t *)memory + sizeof(fpl__ProcessBufferHeader));
+	if (buffer->len > 0) {
+		fplMemoryCopy(buffer->text, buffer->len, newText);
+	}
+	newText[buffer->len] = 0;
+	if (currentHeader != fpl_null) {
+		currentHeader->magic = 0;
+		fpl__ReleaseDynamicMemory(currentHeader);
+	}
+	buffer->text = newText;
+	return(true);
+}
+
+// Takes the text that was read from a stream and moves it into the configured sinks
+fpl_internal void fpl__PushProcessStreamText(fpl__ProcessStreams *streams, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	if (textLen == 0) {
+		return;
+	}
+	bool useBuffer = (streams->captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
+	if (useBuffer) {
+		size_t writeLen = textLen;
+		if (streams->maxCaptureSize > 0) {
+			size_t remainingCapture = (stream->capture.len < streams->maxCaptureSize) ? (streams->maxCaptureSize - stream->capture.len) : 0;
+			if (writeLen > remainingCapture) {
+				writeLen = remainingCapture;
+				streams->isTruncated = true;
+			}
+		}
+		if (writeLen > 0) {
+			size_t requiredCapacity = stream->capture.len + writeLen;
+			if (fpl__EnsureProcessBufferCapacity(&stream->capture, requiredCapacity)) {
+				char *writeTarget = stream->capture.text + stream->capture.len;
+				fplMemoryCopy(text, writeLen, writeTarget);
+				stream->capture.len += writeLen;
+				stream->capture.text[stream->capture.len] = 0;
+			} else {
+				streams->isTruncated = true;
+			}
+		}
+	}
+	// @TODO(final): Push the text into the output callback (Phase 4)
+}
+
+// Hands the captured buffers over to the result. They are moved and not copied, so the result owns them from here on.
+fpl_internal void fpl__MoveProcessStreamBuffers(fpl__ProcessStreams *streams, fplProcessResult *outResult) {
+	outResult->output = streams->output.capture;
+	outResult->error = streams->error.capture;
+	fplClearStruct(&streams->output.capture);
+	fplClearStruct(&streams->error.capture);
+	outResult->isTruncated = streams->isTruncated;
+}
+
+// Releases every capture buffer that was never handed over to a result
+fpl_internal void fpl__ReleaseProcessStreamBuffers(fpl__ProcessStreams *streams) {
+	fplProcessBuffer *buffers[] = { &streams->output.capture, &streams->error.capture };
+	for (size_t bufferIndex = 0; bufferIndex < fplArrayCount(buffers); ++bufferIndex) {
+		fplProcessBuffer *buffer = buffers[bufferIndex];
+		fpl__ProcessBufferHeader *header = fpl__GetProcessBufferHeader(buffer);
+		if (header != fpl_null) {
+			header->magic = 0;
+			fpl__ReleaseDynamicMemory(header);
+		}
+		fplClearStruct(buffer);
+	}
+}
+
+// Checks the context for options that are either wrong or not implemented yet.
+// Returns fplProcessResultType_Success when the context can be used as is.
+// @TODO(final): Remove each not-implemented check below, as soon as the matching feature is done.
+fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessContext *context) {
+	if (context->shellMode != fplProcessShellMode_None) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d is not implemented yet", (int)context->shellMode);
+		return(fplProcessResultType_NotImplemented);
+	}
+	if (context->inputMode != fplProcessInputMode_Inherit) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d is not implemented yet", (int)context->inputMode);
+		return(fplProcessResultType_NotImplemented);
+	}
+	if ((context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The detached flag is not implemented yet");
+		return(fplProcessResultType_NotImplemented);
+	}
+	if ((context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The kill-on-parent-exit flag is not implemented yet");
+		return(fplProcessResultType_NotImplemented);
+	}
+	if ((context->flags & fplProcessFlags_LineBuffered) == fplProcessFlags_LineBuffered) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The line-buffered flag is not implemented yet");
+		return(fplProcessResultType_NotImplemented);
+	}
+
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	if (captureFlags == fplProcessCaptureFlags_None) {
+		return(fplProcessResultType_Success);
+	}
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool usesBuffer = (captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
+	bool usesCallback = (captureFlags & fplProcessCaptureFlags_ToCallback) == fplProcessCaptureFlags_ToCallback;
+	bool isMerged = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
+	if (!capturesOutput && !capturesError) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no stream at all", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if (!usesBuffer && !usesCallback) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no target at all", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if (usesCallback) {
+		if (context->outputCallback == fpl_null) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d require an output callback", (int)captureFlags);
+			return(fplProcessResultType_InvalidArguments);
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Redirecting a stream to a callback is not implemented yet");
+		return(fplProcessResultType_NotImplemented);
+	}
+	if (capturesOutput && capturesError && !isMerged) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Capturing the output and the error stream separately is not implemented yet");
+		return(fplProcessResultType_NotImplemented);
+	}
+	return(fplProcessResultType_Success);
+}
+
+fpl_internal void fpl__FillProcessResultFromHandle(fplProcessHandle *handle, const bool hasExited, fplProcessResult *outResult) {
 	fplClearStruct(outResult);
+	if (handle->streams != fpl_null) {
+		fpl__MoveProcessStreamBuffers(handle->streams, outResult);
+	}
 	outResult->exitCode = handle->exitCode;
 	outResult->terminationSignal = handle->terminationSignal;
 	outResult->hasExited = hasExited;
@@ -22059,84 +22226,698 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 // ############################################################################
 #if defined(FPL_PLATFORM_WINDOWS)
 
+// Exit code reported for a process that was stopped forcefully
+#define FPL__WIN32_PROCESS_STOP_EXIT_CODE 1
+
+typedef struct fpl__Win32ProcessStartArgs {
+	//! Single memory block holding the wide command line followed by the wide work directory.
+	void *memory;
+	//! Mutable wide command line, CreateProcessW is allowed to write into it.
+	wchar_t *commandLine;
+	//! Wide work directory or fpl_null when the current directory is used.
+	wchar_t *workDir;
+} fpl__Win32ProcessStartArgs;
+
+// Appends a single argument to the command line, using the quoting rules the Microsoft C runtime expects.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendCommandLineArgument(const char *argument, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	const char escapeChar = '\\';
+	size_t offset = targetOffset;
+	size_t argumentLen = fplGetStringLength(argument);
+
+	// An empty argument must be quoted, otherwise it would vanish completely
+	bool needsQuotes = (argumentLen == 0);
+	for (size_t charIndex = 0; (charIndex < argumentLen) && !needsQuotes; ++charIndex) {
+		char currentChar = argument[charIndex];
+		if ((currentChar == ' ') || (currentChar == '\t') || (currentChar == quoteChar)) {
+			needsQuotes = true;
+		}
+	}
+
+	if (!needsQuotes) {
+		for (size_t charIndex = 0; charIndex < argumentLen; ++charIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = argument[charIndex];
+			}
+			++offset;
+		}
+		return(offset);
+	}
+
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	size_t charIndex = 0;
+	while (charIndex < argumentLen) {
+		size_t backslashCount = 0;
+		while ((charIndex < argumentLen) && (argument[charIndex] == escapeChar)) {
+			++backslashCount;
+			++charIndex;
+		}
+		if (charIndex == argumentLen) {
+			// Backslashes in front of the closing quote must be doubled, so the quote stays a delimiter
+			backslashCount *= 2;
+		} else if (argument[charIndex] == quoteChar) {
+			// Backslashes in front of an inner quote must be doubled and the quote itself gets escaped
+			backslashCount = (backslashCount * 2) + 1;
+		}
+		for (size_t backslashIndex = 0; backslashIndex < backslashCount; ++backslashIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = escapeChar;
+			}
+			++offset;
+		}
+		if (charIndex < argumentLen) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = argument[charIndex];
+			}
+			++offset;
+			++charIndex;
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Appends the program name to the command line. It gets quoted as a whole when needed, but never escaped,
+// because CreateProcessW and the C runtime both read the very first entry with the simple
+// "everything up to the next quote" rule instead of the backslash rules used for the arguments.
+fpl_internal size_t fpl__Win32AppendCommandLineProgram(const char *programName, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	size_t offset = targetOffset;
+	size_t programNameLen = fplGetStringLength(programName);
+	bool needsQuotes = (programNameLen == 0);
+	for (size_t charIndex = 0; (charIndex < programNameLen) && !needsQuotes; ++charIndex) {
+		char currentChar = programName[charIndex];
+		if ((currentChar == ' ') || (currentChar == '\t')) {
+			needsQuotes = true;
+		}
+	}
+	if (needsQuotes) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = quoteChar;
+		}
+		++offset;
+	}
+	for (size_t charIndex = 0; charIndex < programNameLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = programName[charIndex];
+		}
+		++offset;
+	}
+	if (needsQuotes) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = quoteChar;
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Builds the full command line as UTF-8, because the quoting rules are much easier to apply on single bytes.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context, char *targetBuffer) {
+	// The program name is always the first entry, so CreateProcessW can search it in PATH
+	size_t offset = fpl__Win32AppendCommandLineProgram(context->name, targetBuffer, 0);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__Win32AppendCommandLineArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		// The argument line is passed through unchanged, its quoting is up to the caller
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			for (size_t charIndex = 0; charIndex < argumentLineLen; ++charIndex) {
+				if (targetBuffer != fpl_null) {
+					targetBuffer[offset] = context->argumentLine[charIndex];
+				}
+				++offset;
+			}
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = 0;
+	}
+	return(offset);
+}
+
+fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *context, fpl__Win32ProcessStartArgs *outArgs) {
+	fplClearStruct(outArgs);
+
+	size_t commandLineUtf8Len = fpl__Win32BuildCommandLine(context, fpl_null);
+	if (commandLineUtf8Len == 0) {
+		return(false);
+	}
+	size_t commandLineUtf8Size = (commandLineUtf8Len + 1) * sizeof(char);
+	char *commandLineUtf8 = (char *)fpl__AllocateTemporaryMemory(commandLineUtf8Size, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (commandLineUtf8 == fpl_null) {
+		return(false);
+	}
+	fpl__Win32BuildCommandLine(context, commandLineUtf8);
+
+	size_t commandLineWideLen = fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, fpl_null, 0);
+	if (commandLineWideLen == 0) {
+		fpl__ReleaseTemporaryMemory(commandLineUtf8);
+		return(false);
+	}
+	size_t workDirUtf8Len = (context->workDir != fpl_null) ? fplGetStringLength(context->workDir) : 0;
+	size_t workDirWideLen = 0;
+	if (workDirUtf8Len > 0) {
+		workDirWideLen = fplUTF8StringToWideString(context->workDir, workDirUtf8Len, fpl_null, 0);
+	}
+
+	size_t commandLineWideSize = (commandLineWideLen + 1) * sizeof(wchar_t);
+	size_t workDirWideSize = (workDirWideLen > 0) ? ((workDirWideLen + 1) * sizeof(wchar_t)) : 0;
+	void *memory = fpl__AllocateDynamicMemory(commandLineWideSize + workDirWideSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		fpl__ReleaseTemporaryMemory(commandLineUtf8);
+		return(false);
+	}
+
+	wchar_t *commandLineWide = (wchar_t *)memory;
+	fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, commandLineWide, commandLineWideLen + 1);
+	fpl__ReleaseTemporaryMemory(commandLineUtf8);
+
+	wchar_t *workDirWide = fpl_null;
+	if (workDirWideSize > 0) {
+		workDirWide = (wchar_t *)((uint8_t *)memory + commandLineWideSize);
+		fplUTF8StringToWideString(context->workDir, workDirUtf8Len, workDirWide, workDirWideLen + 1);
+	}
+
+	outArgs->memory = memory;
+	outArgs->commandLine = commandLineWide;
+	outArgs->workDir = workDirWide;
+	return(true);
+}
+
+fpl_internal void fpl__Win32ReleaseProcessStartArgs(fpl__Win32ProcessStartArgs *args) {
+	if (args->memory != fpl_null) {
+		fpl__ReleaseDynamicMemory(args->memory);
+	}
+	fplClearStruct(args);
+}
+
+fpl_internal fplProcessResultType fpl__Win32MapProcessStartError(const DWORD errorCode) {
+	switch (errorCode) {
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND:
+		case ERROR_INVALID_NAME:
+			return(fplProcessResultType_NotFound);
+		case ERROR_ACCESS_DENIED:
+		case ERROR_SHARING_VIOLATION:
+			return(fplProcessResultType_AccessDenied);
+		case ERROR_NOT_ENOUGH_MEMORY:
+		case ERROR_OUTOFMEMORY:
+			return(fplProcessResultType_OutOfMemory);
+		default:
+			return(fplProcessResultType_FailedToStart);
+	}
+}
+
+// Number of milliseconds a single wait slice takes while the streams are drained
+#define FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS 15
+
+// Creates the state that holds the capture pipes. It only exists when something is captured at all.
+fpl_internal fpl__ProcessStreams *fpl__Win32CreateProcessStreams(const fplProcessContext *context) {
+	fpl__ProcessStreams *streams = (fpl__ProcessStreams *)fpl__AllocateDynamicMemory(sizeof(fpl__ProcessStreams), FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (streams == fpl_null) {
+		return(fpl_null);
+	}
+	fplClearStruct(streams);
+	streams->captureFlags = context->captureFlags;
+	streams->flags = context->flags;
+	streams->outputCallback = context->outputCallback;
+	streams->inputCallback = context->inputCallback;
+	streams->userData = context->userData;
+	streams->maxCaptureSize = context->maxCaptureSize;
+	streams->output.type = fplProcessStreamType_Output;
+	streams->error.type = fplProcessStreamType_Error;
+	return(streams);
+}
+
+fpl_internal void fpl__Win32ReleaseProcessStreams(fpl__ProcessStreams *streams) {
+	if (streams == fpl_null) {
+		return;
+	}
+	if (streams->output.readHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->output.readHandle);
+	}
+	if (streams->error.readHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->error.readHandle);
+	}
+	if (streams->inputHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->inputHandle);
+	}
+	fpl__ReleaseProcessStreamBuffers(streams);
+	fpl__ReleaseDynamicMemory(streams);
+}
+
+// Reads everything that is available right now. Returns false when the stream has reached its end.
+// Anonymous pipes cannot do overlapped IO, so the amount of readable bytes is asked for first,
+// otherwise ReadFile would block until the child writes something.
+fpl_internal bool fpl__Win32PumpProcessStream(fpl__ProcessStreams *streams, fpl__ProcessStream *stream) {
+	if (stream->isEOF || (stream->readHandle == fpl_null)) {
+		return(false);
+	}
+	HANDLE readHandle = (HANDLE)stream->readHandle;
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE];
+	for (;;) {
+		DWORD availableBytes = 0;
+		if (!PeekNamedPipe(readHandle, fpl_null, 0, fpl_null, &availableBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if (errorCode != ERROR_BROKEN_PIPE) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed peeking a process stream with code %lu", errorCode);
+			}
+			stream->isEOF = true;
+			break;
+		}
+		if (availableBytes == 0) {
+			// Nothing available right now, the stream stays open
+			break;
+		}
+		DWORD bytesToRead = (availableBytes > (DWORD)sizeof(chunk)) ? (DWORD)sizeof(chunk) : availableBytes;
+		DWORD readBytes = 0;
+		if (!ReadFile(readHandle, chunk, bytesToRead, &readBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if (errorCode != ERROR_BROKEN_PIPE) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %lu", errorCode);
+			}
+			stream->isEOF = true;
+			break;
+		}
+		if (readBytes == 0) {
+			stream->isEOF = true;
+			break;
+		}
+		fpl__PushProcessStreamText(streams, stream, chunk, (size_t)readBytes);
+	}
+	return(!stream->isEOF);
+}
+
+// Returns the number of streams that are still open
+fpl_internal size_t fpl__Win32PumpProcessStreams(fpl__ProcessStreams *streams) {
+	size_t openStreamCount = 0;
+	if (fpl__Win32PumpProcessStream(streams, &streams->output)) {
+		++openStreamCount;
+	}
+	if (fpl__Win32PumpProcessStream(streams, &streams->error)) {
+		++openStreamCount;
+	}
+	return(openStreamCount);
+}
+
+// Returns a handle the child can use for a stream that is not redirected.
+// When the parent has no such standard handle, a handle to the null device is created instead,
+// because CreateProcessW needs all three handles to be valid as soon as STARTF_USESTDHANDLES is used.
+fpl_internal HANDLE fpl__Win32GetInheritableStdHandle(const DWORD stdHandleId, HANDLE *outCreatedNullHandle) {
+	HANDLE stdHandle = GetStdHandle(stdHandleId);
+	if ((stdHandle != fpl_null) && (stdHandle != INVALID_HANDLE_VALUE)) {
+		return(stdHandle);
+	}
+	if (*outCreatedNullHandle == fpl_null) {
+		SECURITY_ATTRIBUTES securityAttributes = fplZeroInit;
+		securityAttributes.nLength = sizeof(securityAttributes);
+		securityAttributes.bInheritHandle = TRUE;
+		*outCreatedNullHandle = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &securityAttributes, OPEN_EXISTING, 0, fpl_null);
+		if (*outCreatedNullHandle == INVALID_HANDLE_VALUE) {
+			*outCreatedNullHandle = fpl_null;
+		}
+	}
+	return(*outCreatedNullHandle);
+}
+
+// Collects the exit code of the process and caches it in the handle.
+// The state is decided by the wait and never by comparing the exit code against STILL_ACTIVE,
+// because a process that really exits with that value would be indistinguishable from a running one.
+fpl_internal bool fpl__Win32UpdateProcessExitState(fplProcessHandle *handle, const DWORD timeout) {
+	if (handle->hasExited) {
+		return(true);
+	}
+	HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+	DWORD waitResult = WaitForSingleObject(processHandle, timeout);
+	if (waitResult != WAIT_OBJECT_0) {
+		if (waitResult == WAIT_FAILED) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed waiting for process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		}
+		return(false);
+	}
+	DWORD exitCode = 0;
+	if (!GetExitCodeProcess(processHandle, &exitCode)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed getting the exit code of process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		exitCode = 0;
+	}
+	handle->exitCode = (int32_t)exitCode;
+	handle->terminationSignal = 0;
+	handle->hasExited = true;
+	return(true);
+}
+
 fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(context, false);
 	FPL__CheckArgumentNull(outHandle, false);
 	FPL__CheckArgumentNull(context->name, false);
-	// @TODO(final/Win32): Implement fplProcessStart()
+
 	fplClearStruct(outHandle);
-	if (outResult != fpl_null) {
-		fplClearStruct(outResult);
-		outResult->type = fplProcessResultType_NotImplemented;
+	fplProcessResult startResult = fplZeroInit;
+	startResult.type = fplProcessResultType_Success;
+
+	fplProcessResultType contextValidation = fpl__ValidateProcessContext(context);
+	if (contextValidation != fplProcessResultType_Success) {
+		startResult.type = contextValidation;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
 	}
-	FPL__ERROR(FPL__MODULE_PROCESS, "fplProcessStart() is not implemented yet");
-	return(false);
+
+	fpl__Win32ProcessStartArgs startArgs = fplZeroInit;
+	if (!fpl__Win32CreateProcessStartArgs(context, &startArgs)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed building the command line for the process '%s'", context->name);
+		startResult.type = fplProcessResultType_OutOfMemory;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	// A job object lets us stop the whole tree later, the process starts suspended so it cannot
+	// spawn any child before it is assigned to the job
+	bool useProcessTree = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	HANDLE jobHandle = fpl_null;
+	if (useProcessTree) {
+		jobHandle = CreateJobObjectW(fpl_null, fpl_null);
+		if (jobHandle == fpl_null) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed creating a job object with code %lu, the process tree cannot be stopped", GetLastError());
+		}
+	}
+
+	DWORD creationFlags = 0;
+	if ((context->flags & fplProcessFlags_NoWindow) == fplProcessFlags_NoWindow) {
+		creationFlags |= CREATE_NO_WINDOW;
+	}
+	if (useProcessTree) {
+		// The new process group is what a graceful stop can send its control event to
+		creationFlags |= CREATE_NEW_PROCESS_GROUP;
+	}
+	if (jobHandle != fpl_null) {
+		creationFlags |= CREATE_SUSPENDED;
+	}
+
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
+	bool hasCapture = capturesOutput || capturesError;
+
+	fpl__ProcessStreams *streams = fpl_null;
+	HANDLE captureReadHandle = fpl_null;
+	HANDLE captureWriteHandle = fpl_null;
+	HANDLE nullDeviceHandle = fpl_null;
+
+	STARTUPINFOW startupInfo = fplZeroInit;
+	startupInfo.cb = sizeof(startupInfo);
+
+	if (hasCapture) {
+		streams = fpl__Win32CreateProcessStreams(context);
+		if (streams == fpl_null) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the stream state for the process '%s'", context->name);
+			startResult.type = fplProcessResultType_OutOfMemory;
+			if (jobHandle != fpl_null) {
+				CloseHandle(jobHandle);
+			}
+			fpl__Win32ReleaseProcessStartArgs(&startArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		SECURITY_ATTRIBUTES pipeSecurity = fplZeroInit;
+		pipeSecurity.nLength = sizeof(pipeSecurity);
+		pipeSecurity.bInheritHandle = TRUE;
+		if (!CreatePipe(&captureReadHandle, &captureWriteHandle, &pipeSecurity, 0)) {
+			DWORD errorCode = GetLastError();
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %lu", context->name, errorCode);
+			startResult.type = fplProcessResultType_FailedToStart;
+			startResult.nativeErrorCode = (uint32_t)errorCode;
+			fpl__Win32ReleaseProcessStreams(streams);
+			if (jobHandle != fpl_null) {
+				CloseHandle(jobHandle);
+			}
+			fpl__Win32ReleaseProcessStartArgs(&startArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		// The read end must stay in the parent. If the child inherited it too, the parent would never see an end-of-file.
+		SetHandleInformation(captureReadHandle, HANDLE_FLAG_INHERIT, 0);
+
+		// As soon as STARTF_USESTDHANDLES is used, all three handles must be valid, otherwise a child
+		// that touches a stream we did not redirect fails with an obscure error
+		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+		startupInfo.hStdInput = fpl__Win32GetInheritableStdHandle(STD_INPUT_HANDLE, &nullDeviceHandle);
+		startupInfo.hStdOutput = capturesOutput ? captureWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
+		// A merged capture points the error stream at the very same pipe, which is what "2>&1" does
+		bool redirectErrorStream = capturesError || (capturesOutput && mergesStreams);
+		startupInfo.hStdError = redirectErrorStream ? captureWriteHandle : fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+	}
+
+	PROCESS_INFORMATION processInfo = fplZeroInit;
+
+	// Handles are only inherited when a stream is redirected. FPL itself never creates inheritable handles,
+	// so the pipe is the only thing the child receives.
+	// @TODO(final/Win32): Restrict the inheritance to exactly the pipe handles through PROC_THREAD_ATTRIBUTE_HANDLE_LIST
+	BOOL inheritHandles = hasCapture ? TRUE : FALSE;
+	BOOL createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, &startupInfo, &processInfo);
+
+	// The child owns its own duplicates from here on, so the parent must let go of the write end.
+	// Without this the read end would never reach its end-of-file.
+	if (captureWriteHandle != fpl_null) {
+		CloseHandle(captureWriteHandle);
+		captureWriteHandle = fpl_null;
+	}
+	if (nullDeviceHandle != fpl_null) {
+		CloseHandle(nullDeviceHandle);
+		nullDeviceHandle = fpl_null;
+	}
+
+	if (!createResult) {
+		DWORD errorCode = GetLastError();
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %lu", context->name, errorCode);
+		startResult.type = fpl__Win32MapProcessStartError(errorCode);
+		startResult.nativeErrorCode = (uint32_t)errorCode;
+		if (captureReadHandle != fpl_null) {
+			CloseHandle(captureReadHandle);
+		}
+		fpl__Win32ReleaseProcessStreams(streams);
+		if (jobHandle != fpl_null) {
+			CloseHandle(jobHandle);
+		}
+		fpl__Win32ReleaseProcessStartArgs(&startArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	if (jobHandle != fpl_null) {
+		if (!AssignProcessToJobObject(jobHandle, processInfo.hProcess)) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed assigning the process to the job object with code %lu", GetLastError());
+			CloseHandle(jobHandle);
+			jobHandle = fpl_null;
+		}
+		ResumeThread(processInfo.hThread);
+	}
+
+	fpl__Win32ReleaseProcessStartArgs(&startArgs);
+
+	if (streams != fpl_null) {
+		// A merged capture and a pure output capture both land in the output stream,
+		// only capturing the error stream alone uses the error slot
+		if (capturesOutput) {
+			streams->output.readHandle = (fpl__Win32Handle)captureReadHandle;
+		} else {
+			streams->error.readHandle = (fpl__Win32Handle)captureReadHandle;
+		}
+		captureReadHandle = fpl_null;
+	}
+
+	outHandle->streams = streams;
+	outHandle->internalHandle.win32.processHandle = (fpl__Win32Handle)processInfo.hProcess;
+	outHandle->internalHandle.win32.threadHandle = (fpl__Win32Handle)processInfo.hThread;
+	outHandle->internalHandle.win32.jobHandle = (fpl__Win32Handle)jobHandle;
+	outHandle->id = (uint64_t)processInfo.dwProcessId;
+	outHandle->flags = context->flags;
+	outHandle->isValid = true;
+
+	if ((context->flags & fplProcessFlags_AutoWait) == fplProcessFlags_AutoWait) {
+		fplProcessWait(outHandle, context->waitTimeout, outResult);
+		return(true);
+	}
+
+	if (outResult != fpl_null) {
+		*outResult = startResult;
+	}
+	return(true);
 }
 
 fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/Win32): Implement fplProcessUpdate()
-	return(false);
+	if (handle->streams == fpl_null) {
+		return(false);
+	}
+	size_t openStreamCount = fpl__Win32PumpProcessStreams(handle->streams);
+	return(openStreamCount > 0);
 }
 
 fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/Win32): Implement fplProcessWait()
-	if (outResult != fpl_null) {
-		fplClearStruct(outResult);
-		outResult->type = fplProcessResultType_NotImplemented;
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	bool waitInfinitely = (timeout == 0) || (timeout == FPL_TIMEOUT_INFINITE);
+	bool hasExited = false;
+	if (handle->streams != fpl_null) {
+		// The streams have to be drained while waiting. Waiting first and reading afterwards would
+		// deadlock as soon as the child fills the pipe buffer.
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			hasExited = fpl__Win32UpdateProcessExitState(handle, FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS);
+			size_t openStreamCount = fpl__Win32PumpProcessStreams(handle->streams);
+			if (hasExited && (openStreamCount == 0)) {
+				break;
+			}
+			if (!waitInfinitely) {
+				fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+				if (elapsedTime >= (fplMilliseconds)timeout) {
+					break;
+				}
+			}
+		}
+	} else {
+		DWORD waitTime = waitInfinitely ? INFINITE : (DWORD)timeout;
+		hasExited = fpl__Win32UpdateProcessExitState(handle, waitTime);
 	}
-	return(false);
+	if (outResult != fpl_null) {
+		fpl__FillProcessResultFromHandle(handle, hasExited, outResult);
+	}
+	return(hasExited);
 }
 
 fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/Win32): Implement fplProcessIsRunning()
-	return(false);
+	if (!handle->isValid) {
+		return(false);
+	}
+	bool hasExited = fpl__Win32UpdateProcessExitState(handle, 0);
+	return(!hasExited);
 }
 
 fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
 	FPL__CheckArgumentNull(handle, false);
 	FPL__CheckArgumentNull(outExitCode, false);
-	// @TODO(final/Win32): Implement fplProcessTryGetExitCode()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (!fpl__Win32UpdateProcessExitState(handle, 0)) {
+		return(false);
+	}
+	*outExitCode = handle->exitCode;
+	return(true);
 }
 
 fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(handle, 0);
 	FPL__CheckArgumentNull(text, 0);
-	// @TODO(final/Win32): Implement fplProcessWriteInput()
+	// @TODO(final/Win32): Implement fplProcessWriteInput() (Phase 5)
 	return(0);
 }
 
 fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
 	FPL__CheckArgumentNullNoRet(handle);
-	// @TODO(final/Win32): Implement fplProcessCloseInput()
+	// @TODO(final/Win32): Implement fplProcessCloseInput() (Phase 5)
 }
 
 fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/Win32): Implement fplProcessRequestStop()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	// Windows has no equivalent of SIGTERM. A control event is the closest thing, but it only reaches
+	// a process that was started in its own process group.
+	bool hasOwnProcessGroup = (handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	if (!hasOwnProcessGroup) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "The process '%llu' cannot be asked to stop, because it was not started with the kill-process-tree flag", (unsigned long long)handle->id);
+		return(false);
+	}
+	DWORD processGroupId = (DWORD)handle->id;
+	if (!GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, processGroupId)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed sending the control event to process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		return(false);
+	}
+	return(true);
 }
 
 fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
 	FPL__CheckArgumentNull(handle, false);
-	// @TODO(final/Win32): Implement fplProcessStop()
-	return(false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	HANDLE jobHandle = (HANDLE)handle->internalHandle.win32.jobHandle;
+	bool useProcessTree = (handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	if (useProcessTree && (jobHandle != fpl_null)) {
+		if (!TerminateJobObject(jobHandle, FPL__WIN32_PROCESS_STOP_EXIT_CODE)) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed terminating the job object of process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+			return(false);
+		}
+		return(true);
+	}
+	HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+	if (!TerminateProcess(processHandle, FPL__WIN32_PROCESS_STOP_EXIT_CODE)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed terminating the process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		return(false);
+	}
+	return(true);
 }
 
 fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
 	FPL__CheckArgumentNullNoRet(handle);
-	// @TODO(final/Win32): Implement fplProcessClose()
+	if (handle->isValid) {
+		fpl__Win32ReleaseProcessStreams(handle->streams);
+		HANDLE threadHandle = (HANDLE)handle->internalHandle.win32.threadHandle;
+		if (threadHandle != fpl_null) {
+			CloseHandle(threadHandle);
+		}
+		HANDLE jobHandle = (HANDLE)handle->internalHandle.win32.jobHandle;
+		if (jobHandle != fpl_null) {
+			CloseHandle(jobHandle);
+		}
+		HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+		if (processHandle != fpl_null) {
+			CloseHandle(processHandle);
+		}
+	}
 	fplClearStruct(handle);
 }
 
 fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
-	uint64_t result = (uint64_t)GetCurrentProcessId();
+	DWORD currentProcessId = GetCurrentProcessId();
+	uint64_t result = (uint64_t)currentProcessId;
 	return(result);
 }
-
 #endif // FPL_PLATFORM_WINDOWS
 
 // ############################################################################
@@ -24601,6 +25382,117 @@ fpl_internal bool fpl__PosixSendProcessSignal(const fplProcessHandle *handle, co
 	return(true);
 }
 
+// Number of milliseconds a single poll on the capture stream waits at most
+#define FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS 20
+
+// Creates the state that holds the capture pipes. It only exists when something is captured at all.
+fpl_internal fpl__ProcessStreams *fpl__PosixCreateProcessStreams(const fplProcessContext *context) {
+	fpl__ProcessStreams *streams = (fpl__ProcessStreams *)fpl__AllocateDynamicMemory(sizeof(fpl__ProcessStreams), FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (streams == fpl_null) {
+		return(fpl_null);
+	}
+	fplClearStruct(streams);
+	streams->captureFlags = context->captureFlags;
+	streams->flags = context->flags;
+	streams->outputCallback = context->outputCallback;
+	streams->inputCallback = context->inputCallback;
+	streams->userData = context->userData;
+	streams->maxCaptureSize = context->maxCaptureSize;
+	streams->output.type = fplProcessStreamType_Output;
+	streams->error.type = fplProcessStreamType_Error;
+	streams->output.readFd = -1;
+	streams->error.readFd = -1;
+	streams->inputFd = -1;
+	return(streams);
+}
+
+fpl_internal void fpl__PosixReleaseProcessStreams(fpl__ProcessStreams *streams) {
+	if (streams == fpl_null) {
+		return;
+	}
+	if (streams->output.readFd >= 0) {
+		close(streams->output.readFd);
+	}
+	if (streams->error.readFd >= 0) {
+		close(streams->error.readFd);
+	}
+	if (streams->inputFd >= 0) {
+		close(streams->inputFd);
+	}
+	fpl__ReleaseProcessStreamBuffers(streams);
+	fpl__ReleaseDynamicMemory(streams);
+}
+
+// Reads everything that is available right now. Returns false when the stream has reached its end.
+fpl_internal bool fpl__PosixPumpProcessStream(fpl__ProcessStreams *streams, fpl__ProcessStream *stream) {
+	if (stream->isEOF || (stream->readFd < 0)) {
+		return(false);
+	}
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE];
+	for (;;) {
+		ssize_t readBytes = read(stream->readFd, chunk, sizeof(chunk));
+		if (readBytes > 0) {
+			fpl__PushProcessStreamText(streams, stream, chunk, (size_t)readBytes);
+			continue;
+		}
+		if (readBytes == 0) {
+			// Every write end is closed, so the child and everything it started are done with this stream
+			stream->isEOF = true;
+			break;
+		}
+		if (errno == EINTR) {
+			continue;
+		}
+		if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+			// Nothing available right now, the stream stays open
+			break;
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %d", errno);
+		stream->isEOF = true;
+		break;
+	}
+	return(!stream->isEOF);
+}
+
+// Returns the number of streams that are still open
+fpl_internal size_t fpl__PosixPumpProcessStreams(fpl__ProcessStreams *streams) {
+	size_t openStreamCount = 0;
+	if (fpl__PosixPumpProcessStream(streams, &streams->output)) {
+		++openStreamCount;
+	}
+	if (fpl__PosixPumpProcessStream(streams, &streams->error)) {
+		++openStreamCount;
+	}
+	return(openStreamCount);
+}
+
+// Waits until any capture stream has data or the timeout is over. This is what keeps the pipes drained
+// while the parent waits, without it the child would block as soon as a pipe buffer is full.
+fpl_internal void fpl__PosixWaitForProcessStreams(fpl__ProcessStreams *streams, const int timeoutInMilliseconds) {
+	struct pollfd pollDescriptors[2];
+	nfds_t pollDescriptorCount = 0;
+	if (!streams->output.isEOF && (streams->output.readFd >= 0)) {
+		pollDescriptors[pollDescriptorCount].fd = streams->output.readFd;
+		pollDescriptors[pollDescriptorCount].events = POLLIN;
+		pollDescriptors[pollDescriptorCount].revents = 0;
+		++pollDescriptorCount;
+	}
+	if (!streams->error.isEOF && (streams->error.readFd >= 0)) {
+		pollDescriptors[pollDescriptorCount].fd = streams->error.readFd;
+		pollDescriptors[pollDescriptorCount].events = POLLIN;
+		pollDescriptors[pollDescriptorCount].revents = 0;
+		++pollDescriptorCount;
+	}
+	if (pollDescriptorCount == 0) {
+		fplThreadSleep((uint32_t)timeoutInMilliseconds);
+		return;
+	}
+	int pollResult = poll(pollDescriptors, pollDescriptorCount, timeoutInMilliseconds);
+	if ((pollResult < 0) && (errno != EINTR)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed polling the process streams with code %d", errno);
+	}
+}
+
 fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
 	FPL__CheckArgumentNull(context, false);
 	FPL__CheckArgumentNull(outHandle, false);
@@ -24610,22 +25502,9 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	fplProcessResult startResult = fplZeroInit;
 	startResult.type = fplProcessResultType_Success;
 
-	// @TODO(final/POSIX): Support fplProcessShellMode (Phase 6)
-	if (context->shellMode != fplProcessShellMode_None) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d is not implemented yet", (int)context->shellMode);
-		startResult.type = fplProcessResultType_NotImplemented;
-	}
-	// @TODO(final/POSIX): Support the capture/redirect modes (Phase 3/4)
-	if (context->captureFlags != fplProcessCaptureFlags_None) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d are not implemented yet", (int)context->captureFlags);
-		startResult.type = fplProcessResultType_NotImplemented;
-	}
-	// @TODO(final/POSIX): Support the standard-input modes (Phase 5)
-	if (context->inputMode != fplProcessInputMode_Inherit) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d is not implemented yet", (int)context->inputMode);
-		startResult.type = fplProcessResultType_NotImplemented;
-	}
-	if (startResult.type == fplProcessResultType_NotImplemented) {
+	fplProcessResultType contextValidation = fpl__ValidateProcessContext(context);
+	if (contextValidation != fplProcessResultType_Success) {
+		startResult.type = contextValidation;
 		if (outResult != fpl_null) {
 			*outResult = startResult;
 		}
@@ -24654,6 +25533,45 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		return(false);
 	}
 
+	// The capture pipe is created before the fork, so the child only has to dup2 the descriptors
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
+	bool hasCapture = capturesOutput || capturesError;
+	int capturePipe[2] = { -1, -1 };
+	fpl__ProcessStreams *streams = fpl_null;
+	if (hasCapture) {
+		streams = fpl__PosixCreateProcessStreams(context);
+		if (streams == fpl_null) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the stream state for the process '%s'", context->name);
+			startResult.type = fplProcessResultType_OutOfMemory;
+			close(execErrorPipe[0]);
+			close(execErrorPipe[1]);
+			fpl__PosixReleaseProcessExecArgs(&execArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		if (!fpl__PosixCreateCloseOnExecPipe(capturePipe)) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %d", context->name, errno);
+			startResult.type = fplProcessResultType_FailedToStart;
+			startResult.nativeErrorCode = (uint32_t)errno;
+			fpl__PosixReleaseProcessStreams(streams);
+			close(execErrorPipe[0]);
+			close(execErrorPipe[1]);
+			fpl__PosixReleaseProcessExecArgs(&execArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		// The parent never blocks on a read, it only takes what is there right now
+		int readFlags = fcntl(capturePipe[0], F_GETFL, 0);
+		fcntl(capturePipe[0], F_SETFL, readFlags | O_NONBLOCK);
+	}
+
 	// Everything the child needs is prepared here, because only async-signal-safe calls are allowed after the fork
 	const char *executablePath = execArgs.argv[0];
 	bool hasPathSeparator = false;
@@ -24673,6 +25591,11 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		startResult.nativeErrorCode = (uint32_t)errno;
 		close(execErrorPipe[0]);
 		close(execErrorPipe[1]);
+		if (capturePipe[0] >= 0) {
+			close(capturePipe[0]);
+			close(capturePipe[1]);
+		}
+		fpl__PosixReleaseProcessStreams(streams);
 		fpl__PosixReleaseProcessExecArgs(&execArgs);
 		if (outResult != fpl_null) {
 			*outResult = startResult;
@@ -24684,6 +25607,18 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		// Child process, only async-signal-safe calls are allowed from here on
 		close(execErrorPipe[0]);
 		int childErrorCode = 0;
+		if (capturePipe[0] >= 0) {
+			close(capturePipe[0]);
+			if (capturesOutput) {
+				dup2(capturePipe[1], STDOUT_FILENO);
+			}
+			// A merged capture points the error stream at the very same pipe, which is what "2>&1" does
+			if (capturesError || (capturesOutput && mergesStreams)) {
+				dup2(capturePipe[1], STDERR_FILENO);
+			}
+			// The original descriptor is not needed anymore, the duplicates carry the stream now
+			close(capturePipe[1]);
+		}
 		if (useOwnProcessGroup) {
 			setpgid(0, 0);
 		}
@@ -24709,6 +25644,11 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 	// Parent process
 	close(execErrorPipe[1]);
+	if (capturePipe[1] >= 0) {
+		// The write end must be closed here, otherwise the read end would never see an end-of-file
+		close(capturePipe[1]);
+		capturePipe[1] = -1;
+	}
 	if (useOwnProcessGroup) {
 		// Called in both processes on purpose, so the group exists no matter which process is scheduled first
 		setpgid(childProcessId, childProcessId);
@@ -24732,12 +25672,28 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %d", context->name, childErrorCode);
 		startResult.type = fpl__PosixMapProcessStartError(childErrorCode);
 		startResult.nativeErrorCode = (uint32_t)childErrorCode;
+		if (capturePipe[0] >= 0) {
+			close(capturePipe[0]);
+		}
+		fpl__PosixReleaseProcessStreams(streams);
 		if (outResult != fpl_null) {
 			*outResult = startResult;
 		}
 		return(false);
 	}
 
+	if (streams != fpl_null) {
+		// A merged capture and a pure output capture both land in the output stream,
+		// only capturing the error stream alone uses the error slot
+		if (capturesOutput) {
+			streams->output.readFd = capturePipe[0];
+		} else {
+			streams->error.readFd = capturePipe[0];
+		}
+		capturePipe[0] = -1;
+	}
+
+	outHandle->streams = streams;
 	outHandle->internalHandle.posix.pid = (int32_t)childProcessId;
 	outHandle->internalHandle.posix.pgid = useOwnProcessGroup ? (int32_t)childProcessId : 0;
 	outHandle->id = (uint64_t)childProcessId;
@@ -24760,8 +25716,8 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	if (handle->streams == fpl_null) {
 		return(false);
 	}
-	// @TODO(final/POSIX): Pump the redirected streams (Phase 3/4)
-	return(false);
+	size_t openStreamCount = fpl__PosixPumpProcessStreams(handle->streams);
+	return(openStreamCount > 0);
 }
 
 fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
@@ -24769,7 +25725,25 @@ fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutV
 	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
 	bool waitInfinitely = (timeout == 0) || (timeout == FPL_TIMEOUT_INFINITE);
 	bool hasExited = false;
-	if (waitInfinitely) {
+	if (handle->streams != fpl_null) {
+		// The streams have to be drained while waiting. Waiting first and reading afterwards would
+		// deadlock as soon as the child fills the pipe buffer.
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			fpl__PosixWaitForProcessStreams(handle->streams, FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS);
+			size_t openStreamCount = fpl__PosixPumpProcessStreams(handle->streams);
+			hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+			if (hasExited && (openStreamCount == 0)) {
+				break;
+			}
+			if (!waitInfinitely) {
+				fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+				if (elapsedTime >= (fplMilliseconds)timeout) {
+					break;
+				}
+			}
+		}
+	} else if (waitInfinitely) {
 		hasExited = fpl__PosixUpdateProcessExitState(handle, true);
 	} else {
 		fplMilliseconds waitStartTime = fplMillisecondsQuery();
@@ -24850,7 +25824,7 @@ fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
 		if (!handle->hasExited) {
 			fpl__PosixUpdateProcessExitState(handle, false);
 		}
-		// @TODO(final/POSIX): Release the stream state (Phase 3)
+		fpl__PosixReleaseProcessStreams(handle->streams);
 	}
 	fplClearStruct(handle);
 }

@@ -34,6 +34,8 @@ License:
 #define FPL_TEST_CHILD_ARGUMENT_SLEEP "--child-sleep"
 #define FPL_TEST_CHILD_ARGUMENT_CHECK_ARGS "--child-checkargs"
 #define FPL_TEST_CHILD_ARGUMENT_CHECK_FILE "--child-checkfile"
+#define FPL_TEST_CHILD_ARGUMENT_BOTH "--child-both"
+#define FPL_TEST_CHILD_ARGUMENT_SPAM "--child-spam"
 
 // Exit code a child reports when everything was as expected
 static const int32_t processTestChildSuccessExitCode = 0;
@@ -49,6 +51,16 @@ static const fplTimeoutValue processTestShortTimeout = 150;
 static const int processTestCycleCount = 25;
 // Name of the marker file used to prove that the work directory was applied
 static const char *processTestMarkerFileName = "fpl_test_workdir_marker.tmp";
+// Text the echo child writes to the standard-output
+static const char *processTestEchoText = "captured-output-line";
+// Text the error child writes to the standard-error
+static const char *processTestErrorText = "captured-error-line";
+// Number of characters written in one go by the spam child
+static const size_t processTestSpamChunkSize = 1024;
+// Number of characters the spam child writes in total, deliberately not a multiple of the chunk size
+static const int32_t processTestSpamTotalSize = 1000000;
+// Number of characters the capture is limited to in the truncation test
+static const size_t processTestCaptureLimit = 4096;
 
 // Arguments passed to the child, so it can verify that they arrived unchanged
 static const char *processTestArgumentValues[] = {
@@ -76,6 +88,10 @@ typedef enum ProcessTestChildMode {
 	ProcessTestChildMode_CheckArgs,
 	//! Check whether the relative file exists in the current work directory.
 	ProcessTestChildMode_CheckFile,
+	//! Write one line to the standard-output and one line to the standard-error.
+	ProcessTestChildMode_Both,
+	//! Write the requested number of characters to the standard-output.
+	ProcessTestChildMode_Spam,
 } ProcessTestChildMode;
 
 // Detects a child invocation without initializing anything, so a normal test run is left untouched
@@ -102,6 +118,12 @@ static ProcessTestChildMode ProcessTestsGetChildMode(const int argc, char *args[
 	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_CHECK_FILE)) {
 		return(ProcessTestChildMode_CheckFile);
 	}
+	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_BOTH)) {
+		return(ProcessTestChildMode_Both);
+	}
+	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_SPAM)) {
+		return(ProcessTestChildMode_Spam);
+	}
 	return(ProcessTestChildMode_None);
 }
 
@@ -125,6 +147,25 @@ static int ProcessTestsRunCheckArgs(const int argc, char *args[], const int firs
 		}
 	}
 	return(processTestChildSuccessExitCode);
+}
+
+// Writes the requested number of characters to the standard-output, so the parent can prove
+// that a lot more than one pipe buffer can be captured without deadlocking
+static void ProcessTestsWriteSpam(const int32_t totalSize) {
+	char chunk[1025];
+	for (size_t charIndex = 0; charIndex < processTestSpamChunkSize; ++charIndex) {
+		chunk[charIndex] = 'x';
+	}
+	chunk[processTestSpamChunkSize] = 0;
+	int32_t remainingSize = totalSize;
+	while (remainingSize >= (int32_t)processTestSpamChunkSize) {
+		fplConsoleOut(chunk);
+		remainingSize -= (int32_t)processTestSpamChunkSize;
+	}
+	if (remainingSize > 0) {
+		chunk[remainingSize] = 0;
+		fplConsoleOut(chunk);
+	}
 }
 
 // Runs the requested child behavior and returns the exit code the parent will see
@@ -181,6 +222,24 @@ static int ProcessTestsRunAsChild(const ProcessTestChildMode mode, const int arg
 				// The path is relative on purpose, so it only resolves when the work directory was applied
 				bool fileExists = fplFileExists(firstValue);
 				result = fileExists ? processTestChildSuccessExitCode : processTestChildFailureExitCode;
+			}
+		} break;
+
+		case ProcessTestChildMode_Both:
+		{
+			fplConsoleOut(processTestEchoText);
+			fplConsoleOut("\n");
+			fplConsoleError(processTestErrorText);
+			fplConsoleError("\n");
+			result = processTestChildSuccessExitCode;
+		} break;
+
+		case ProcessTestChildMode_Spam:
+		{
+			if (firstValue != fpl_null) {
+				int32_t totalSize = fplStringToS32(firstValue);
+				ProcessTestsWriteSpam(totalSize);
+				result = processTestChildSuccessExitCode;
 			}
 		} break;
 
@@ -585,6 +644,188 @@ static void ProcessTestsCurrentProcess(void) {
 	}
 }
 
+static void ProcessTestsCapture(const ProcessTestPaths *paths) {
+	ftMsg("Test Process capture\n");
+	char argumentLine[FPL_MAX_BUFFER_LENGTH];
+	{
+		// The standard-output must arrive in the output buffer, null-terminated and with the exact length
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %s", FPL_TEST_CHILD_ARGUMENT_ECHO, processTestEchoText);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsNotNull(result.output.text);
+		ftIsNull(result.error.text);
+		ftIsFalse(result.isTruncated);
+		size_t expectedLen = fplGetStringLength(processTestEchoText) + 1;
+		ftAssertSizeEquals(expectedLen, result.output.len);
+		ftAssertCharEquals(0, result.output.text[result.output.len]);
+		fplProcessFreeResult(&result);
+		ftIsNull(result.output.text);
+		fplProcessClose(&handle);
+	}
+	{
+		// Capturing only the error stream must leave the output buffer empty
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %s", FPL_TEST_CHILD_ARGUMENT_ERROR, processTestErrorText);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureError;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsNotNull(result.error.text);
+		ftIsNull(result.output.text);
+		size_t expectedLen = fplGetStringLength(processTestErrorText) + 1;
+		ftAssertSizeEquals(expectedLen, result.error.len);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// A merged capture puts both streams into the output buffer, the same way "2>&1" does
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_BOTH;
+		context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsNotNull(result.output.text);
+		ftIsNull(result.error.text);
+		size_t expectedLen = fplGetStringLength(processTestEchoText) + fplGetStringLength(processTestErrorText) + 2;
+		ftAssertSizeEquals(expectedLen, result.output.len);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// This is the deadlock regression test: the child writes far more than one pipe buffer holds.
+		// An implementation that waits first and reads afterwards hangs here forever.
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_SPAM, processTestSpamTotalSize);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsTrue(result.hasExited);
+		ftIsFalse(result.isTruncated);
+		ftAssertSizeEquals((size_t)processTestSpamTotalSize, result.output.len);
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// The capture limit must cut the text off, but the child still has to run to its end
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_SPAM, processTestSpamTotalSize);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+		context.maxCaptureSize = processTestCaptureLimit;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftIsTrue(result.isTruncated);
+		ftIsTrue(result.hasExited);
+		ftAssertSizeEquals(processTestCaptureLimit, result.output.len);
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+	{
+		// Pumping by hand must collect the very same text as waiting does
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_SPAM, processTestSpamTotalSize);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult startResult = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
+		while (fplProcessUpdate(&handle)) {
+		}
+		fplProcessResult waitResult = fplZeroInit;
+		ftIsTrue(fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &waitResult));
+		ftAssertSizeEquals((size_t)processTestSpamTotalSize, waitResult.output.len);
+		fplProcessFreeResult(&waitResult);
+		fplProcessClose(&handle);
+	}
+	{
+		// Closing without ever asking for a result must not leak the captured buffer
+		fplStringFormat(argumentLine, fplArrayCount(argumentLine), "%s %s", FPL_TEST_CHILD_ARGUMENT_ECHO, processTestEchoText);
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = argumentLine;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, fpl_null));
+		fplProcessClose(&handle);
+	}
+}
+
+static void ProcessTestsCaptureFailures(const ProcessTestPaths *paths) {
+	ftMsg("Test Process capture failures\n");
+	{
+		// Capture flags that select a stream but no target are wrong, not unimplemented
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_BOTH;
+		context.captureFlags = fplProcessCaptureFlags_Output;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+	{
+		// Capture flags that select a target but no stream are wrong as well
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_BOTH;
+		context.captureFlags = fplProcessCaptureFlags_ToBuffer;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+	{
+		// Asking for a callback without providing one is wrong
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_BOTH;
+		context.captureFlags = fplProcessCaptureFlags_RedirectOutput;
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+}
+
+// A callback that does nothing, used to prove that the redirect is rejected because it is not implemented
+// and not because the callback was missing
+static FPL_FUNC_PROCESS_OUTPUT(ProcessTestsOnOutput) {
+	(void)process;
+	(void)stream;
+	(void)text;
+	(void)textLen;
+	(void)userData;
+}
+
 // Every option that is not implemented yet must be reported instead of being ignored silently.
 // @TODO(final): Remove each block below, as soon as the matching phase is implemented.
 static void ProcessTestsNotImplemented(const ProcessTestPaths *paths) {
@@ -601,10 +842,34 @@ static void ProcessTestsNotImplemented(const ProcessTestPaths *paths) {
 		fplProcessClose(&handle);
 	}
 	{
-		// Capture and redirect (Phase 3 and 4)
+		// Capturing the output and the error stream into separate buffers (Phase 4)
 		fplProcessContext context = fplZeroInit;
 		context.name = paths->executableFilePath;
-		context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+		context.captureFlags = fplProcessCaptureFlags_CaptureSeparate;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_NotImplemented);
+		fplProcessClose(&handle);
+	}
+	{
+		// Redirecting a stream into a callback (Phase 4)
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.captureFlags = fplProcessCaptureFlags_RedirectBoth;
+		context.outputCallback = ProcessTestsOnOutput;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_NotImplemented);
+		fplProcessClose(&handle);
+	}
+	{
+		// Splitting the captured text into lines (Phase 4)
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.flags = fplProcessFlags_LineBuffered;
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult result = fplZeroInit;
 		ftIsFalse(fplProcessStart(&context, &handle, &result));
@@ -654,6 +919,8 @@ void FPLProcessTests_All(void) {
 	ProcessTestsArguments(&paths);
 	ProcessTestsWorkDir(&paths);
 	ProcessTestsAsyncAndStop(&paths);
+	ProcessTestsCapture(&paths);
+	ProcessTestsCaptureFailures(&paths);
 	ProcessTestsHandleLifetime(&paths);
 	ProcessTestsNotImplemented(&paths);
 }

@@ -834,6 +834,28 @@ Typen, Deklarationen und Doxygen-Doku im Header, Modul-Konstante `FPL__MODULE_PR
 
 **Verifiziert:** 12 Funktionstests grün (Start/AutoWait, PATH-Suche, argv-Array mit Leerzeichen, Quoting im Argument-String, `workDir`, NotFound, AccessDenied, Exit-Code-Semantik mit und ohne Opt-in, async + IsRunning + SIGKILL, SIGTERM, Wait-Timeout, TryGetExitCode, 50 Zyklen). Zombie-Check über `/proc/self/task/self/children` leer. ASan + UBSan sauber, keine Leaks. Kompiliert in C99/C17/C++11, mit `FPL_NO_RUNTIME_LINKING`, `FPL_NO_PLATFORM_INCLUDES` und ohne Window/Video/Audio, keine neue Warnung unter `-Wextra`.
 
+### Phase 2 — erledigt (Win32-Kern), **auf Windows noch nicht ausgeführt**
+- `fplProcessStart()` über `CreateProcessW` mit `lpApplicationName = fpl_null`, damit Windows den Namen in `PATH` sucht und `.exe` selbst ergänzt — das Gegenstück zu `execvp` auf POSIX.
+- Kommandozeilenbau in **zwei** Regeln, weil Windows zwei benutzt:
+  - Der **Programmname** wird nur bei Leerzeichen als Ganzes gequotet und **nie** escaped. `CreateProcessW` und die CRT lesen den ersten Eintrag mit der einfachen "bis zum nächsten Quote"-Regel. Hätte man hier die Argument-Regeln angewandt, würde ein Pfad mit abschließendem Backslash falsch geparst.
+  - Die **Argumente** folgen den CRT-Regeln: Quoten bei Leerzeichen/Tab/Quote, Backslashes vor einem Quote verdoppeln, Backslashes vor dem schließenden Quote verdoppeln, leeres Argument als `""`.
+  - Gebaut wird in UTF-8 (Byte-Regeln sind viel einfacher), danach **einmal** nach UTF-16 konvertiert. Die Kommandozeile liegt in einem beschreibbaren Puffer, weil `CreateProcessW` hineinschreiben darf.
+- `bInheritHandles = FALSE` und **kein** `STARTF_USESTDHANDLES`, solange nichts umgeleitet wird — das Kind teilt sich die Konsole des Parents, ohne dass irgendein Handle leckt.
+- `KillProcessTree` über ein **Job-Objekt**: Prozess startet mit `CREATE_SUSPENDED`, wird dem Job zugewiesen und erst dann per `ResumeThread` losgelassen — sonst könnte er vor der Zuweisung schon Enkelprozesse erzeugen. Bewusst **ohne** `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, weil `fplProcessClose()` sonst ein noch laufendes Kind töten würde. Gestoppt wird mit `TerminateJobObject`.
+- `NoWindow` über `CREATE_NO_WINDOW`.
+- Zustand **immer** über `WaitForSingleObject`, nie über einen `STILL_ACTIVE`-Vergleich — ein Prozess, der wirklich mit 259 endet, wäre sonst nicht von einem laufenden zu unterscheiden.
+- Fehler-Mapping: `ERROR_FILE_NOT_FOUND`/`ERROR_PATH_NOT_FOUND`/`ERROR_INVALID_NAME` → `_NotFound`, `ERROR_ACCESS_DENIED`/`ERROR_SHARING_VIOLATION` → `_AccessDenied`, Speicherfehler → `_OutOfMemory`, sonst `_FailedToStart` mit `nativeErrorCode`.
+- `fplProcessRequestStop()` verlangt auf Windows `KillProcessTree` (eigene Prozessgruppe für `GenerateConsoleCtrlEvent`), weil es kein SIGTERM gibt. Als `@note` im Header dokumentiert.
+- `fplProcessClose()` schließt Thread-, Job- und Prozess-Handle.
+
+**Was dabei verifiziert werden konnte** (es steht kein Windows und kein mingw zur Verfügung):
+1. **Quoting-Round-Trip:** Die Funktionen wurden aus dem Header extrahiert, auf Linux übersetzt und gegen einen Nachbau des CRT-Kommandozeilen-Parsers geprüft — 6/6 Fälle, darunter abschließender Backslash im gequoteten Argument, eingebettete Quotes, leeres Argument, Tab, UNC-Pfad und ein Programmpfad mit Leerzeichen.
+2. **Compile-Check:** Der komplette Win32-Abschnitt wurde gegen ein Windows-Stub (`HANDLE`, `STARTUPINFOW`, `CreateProcessW` …) mit `-Wall -Wextra` übersetzt — fehlerfrei, einzige Warnung ist der noch leere Phase-5-Stub, den POSIX genauso hat.
+
+**Offen bleibt** ein echter Lauf auf Windows. Mit `mingw-w64` ließe sich hier zumindest kreuzkompilieren und unter Wine testen.
+
+**Nebenbei vereinheitlicht:** Die Prüfung auf noch nicht implementierte Optionen liegt jetzt als `fpl__IsProcessContextSupported()` in COMMON statt doppelt in beiden Plattformen. Sie deckt zusätzlich `Detached` und `KillOnParentExit` ab — die waren vorher stillschweigend ignoriert worden.
+
 ### Demo — erledigt (aus Phase 7 vorgezogen)
 `demos/FPL_Process/` nach dem Vorbild von `demos/FPL_Console` (C99, `FPL_NO_WINDOW`/`NO_VIDEO`/`NO_AUDIO`), mit CMakeLists.txt, Makefile, premake5.lua und den drei Visual-Studio-Dateien (eigene Projekt-GUID), eingetragen in `demos_final_platform_layer_premake5.lua` (Gruppe "Console") und `demos_final_platform_layer.sln`.
 
@@ -861,14 +883,14 @@ Testgruppen: aktuelle Prozess-ID, ungültige Argumente (jeder Einstiegspunkt mit
 **Erweiterung pro Phase** (`@TODO(final)` steht an den betroffenen Stellen):
 | Phase | Was dazukommt |
 |---|---|
-| 2 (Win32) | Die `#if !defined(FPL_PLATFORM_WINDOWS)`-Blöcke bei Signal-Asserts und `RequestStop` aktivieren, `AccessDenied` auf Windows festnageln |
+| 2 (Win32) | Sobald ein Windows-Lauf möglich ist: `AccessDenied` festnageln, `RequestStop` mit `KillProcessTree` testen. Die Signal-Asserts bleiben POSIX-only, weil Windows keine Signale kennt |
 | 3 (Capture merged) | `--child-echo`/`--child-error` über den gecapturten Text prüfen; `--child-spam <bytes>` als Deadlock-Regressionstest; `maxCaptureSize` → `isTruncated`; den NotImplemented-Block für Capture entfernen |
 | 4 (Capture separat) | Getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered` |
 | 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
 | 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
 
 ### Offen
-Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
+Phase 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
 `fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
 
 ---
