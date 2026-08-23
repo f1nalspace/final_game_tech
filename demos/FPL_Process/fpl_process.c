@@ -36,7 +36,6 @@ License:
 #if defined(FPL_PLATFORM_WINDOWS)
 #	define DemoEchoProgram "cmd.exe"
 #	define DemoEchoArgumentLine "/c echo Hello from the child process"
-#	define DemoArgumentProgram "cmd.exe"
 #	define DemoWorkDirProgram "cmd.exe"
 #	define DemoWorkDirArgumentLine "/c cd"
 #	define DemoWorkDirPath "C:\\Windows"
@@ -47,7 +46,6 @@ License:
 #else
 #	define DemoEchoProgram "echo"
 #	define DemoEchoArgumentLine "Hello from the child process"
-#	define DemoArgumentProgram "echo"
 #	define DemoWorkDirProgram "pwd"
 #	define DemoWorkDirArgumentLine fpl_null
 #	define DemoWorkDirPath "/tmp"
@@ -61,6 +59,9 @@ License:
 
 // Argument that makes this demo write a lot of text, used to show that a big output is captured without deadlocking
 #define DemoSpamArgument "--spam"
+
+// Argument that makes this demo print every argument it received, used to show that an argument array arrives unchanged
+#define DemoPrintArgumentsArgument "--print-args"
 
 // Milliseconds we wait in the timeout scenario, the child runs a lot longer than that
 static const fplTimeoutValue demoShortWaitTimeout = 250;
@@ -165,11 +166,23 @@ static void RunSimpleScenario(void) {
 	RunAndWait("Start a program and capture what it writes", &context);
 }
 
+// Prints every argument the demo was started with, so the parent can see that each one arrived unchanged
+static void RunPrintArgumentsMode(const int argumentCount, char **arguments) {
+	fplConsoleFormatOut("got %d arguments\n", argumentCount);
+	for (int argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex) {
+		fplConsoleFormatOut("  [%d] '%s'\n", argumentIndex, arguments[argumentIndex]);
+	}
+}
+
 static void RunArgumentArrayScenario(void) {
-	// The argument array is the exact way to pass arguments, because nothing has to be quoted or parsed
-	const char *arguments[] = { "first argument with spaces", "second", "third" };
+	// The argument array is the exact way to pass arguments, because nothing has to be quoted or parsed.
+	// The demo starts itself here, because Windows has no standalone echo program and a shell started
+	// without a command would wait for user input forever instead of exiting.
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	const char *arguments[] = { DemoPrintArgumentsArgument, "first argument with spaces", "second", "third with \"quotes\"" };
 	fplProcessContext context = fplZeroInit;
-	context.name = DemoArgumentProgram;
+	context.name = executablePath;
 	context.arguments = arguments;
 	context.argumentCount = fplArrayCount(arguments);
 	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
@@ -353,6 +366,13 @@ int main(int argc, char *args[]) {
 	if ((argc > 2) && fplIsStringEqual(args[1], DemoSpamArgument)) {
 		int32_t spamSize = fplStringToS32(args[2]);
 		RunSpamMode(spamSize);
+		fplPlatformRelease();
+		return(0);
+	}
+
+	// The argument array scenario starts the demo with this mode, that mode replaces the whole run as well
+	if ((argc > 1) && fplIsStringEqual(args[1], DemoPrintArgumentsArgument)) {
+		RunPrintArgumentsMode(argc - 2, args + 2);
 		fplPlatformRelease();
 		return(0);
 	}
