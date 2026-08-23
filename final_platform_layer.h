@@ -188,6 +188,11 @@ SOFTWARE.
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 
+	#### Console
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError passed the UTF-8 byte count to WriteConsoleW instead of the converted wide character count, which read past the conversion buffer for any text longer than it
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError silently wrote nothing for a text of 2048 characters or more, the text is now converted and written in parts without ever splitting a UTF-8 sequence
+
 	#### Input
 	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
@@ -20687,22 +20692,57 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 //
 // Win32 Console
 //
+
+// Number of characters converted to wide characters in one go, when the stream is a real console
+#define FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE 1024
+
+// WriteConsoleW only works on a real console screen buffer. As soon as the stream is redirected into a pipe
+// or a file it fails and writes nothing at all, so the raw UTF-8 bytes go out through WriteFile instead.
+fpl_internal void fpl__Win32ConsoleWrite(const DWORD stdHandleId, const char *text) {
+	if (text == fpl_null) {
+		return;
+	}
+	HANDLE handle = GetStdHandle(stdHandleId);
+	if ((handle == fpl_null) || (handle == INVALID_HANDLE_VALUE)) {
+		return;
+	}
+	size_t textLen = fplGetStringLength(text);
+	if (textLen == 0) {
+		return;
+	}
+	DWORD consoleMode = 0;
+	bool isConsole = GetConsoleMode(handle, &consoleMode) != 0;
+	if (!isConsole) {
+		DWORD writtenBytes = 0;
+		WriteFile(handle, text, (DWORD)textLen, &writtenBytes, fpl_null);
+		return;
+	}
+	// A console needs wide characters and the conversion buffer is fixed, so a long text goes out in parts
+	wchar_t wideBuffer[FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE + 1];
+	size_t textOffset = 0;
+	while (textOffset < textLen) {
+		size_t remainingLen = textLen - textOffset;
+		size_t chunkLen = (remainingLen < FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE) ? remainingLen : FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE;
+		// The split must never land inside a UTF-8 sequence, so it stops in front of a continuation byte
+		while ((chunkLen > 1) && ((text[textOffset + chunkLen] & 0xC0) == 0x80)) {
+			--chunkLen;
+		}
+		size_t wideLen = fplUTF8StringToWideString(text + textOffset, chunkLen, wideBuffer, fplArrayCount(wideBuffer));
+		if (wideLen == 0) {
+			break;
+		}
+		DWORD writtenChars = 0;
+		WriteConsoleW(handle, wideBuffer, (DWORD)wideLen, &writtenChars, fpl_null);
+		textOffset += chunkLen;
+	}
+}
+
 fpl_platform_api void fplConsoleOut(const char *text) {
-	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
-	DWORD writtenChars = 0;
-	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, charsToWrite, wideBuffer, fplArrayCount(wideBuffer));
-	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
+	fpl__Win32ConsoleWrite(STD_OUTPUT_HANDLE, text);
 }
 
 fpl_platform_api void fplConsoleError(const char *text) {
-	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
-	DWORD writtenChars = 0;
-	HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
-	wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, charsToWrite, wideBuffer, fplArrayCount(wideBuffer));
-	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
+	fpl__Win32ConsoleWrite(STD_ERROR_HANDLE, text);
 }
 
 fpl_platform_api char fplConsoleWaitForCharInput(void) {

@@ -938,6 +938,14 @@ Für Phase 4 dasselbe zweimal: mit abgeschalteter `\r\n`-Normalisierung bricht `
 | 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
 | 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
 
+### Windows-Befunde (erster echter Lauf)
+1. **Demo-Haenger** im Argument-Array-Szenario — siehe Demo-Abschnitt oben.
+2. **`fplConsoleOut()`/`fplConsoleError()` schreiben unter Win32 gar nichts, sobald der Stream umgeleitet ist.** Beide benutzten `WriteConsoleW`, und das funktioniert ausschliesslich auf einem echten Console-Screen-Buffer — auf einer Pipe schlaegt es fehl, und der Rueckgabewert wurde nicht geprueft. Damit lieferte `ProcessTestsCapture` unter Windows ein leeres `output.text`, obwohl an der Prozess-API selbst nichts falsch war. Kurios: der Changelog von v0.7.1.0 sagt bereits "[Win32] fplConsole* uses ReadFile/WriteFile instead of ReadConsole/WriteConsole" — das ist irgendwann wieder zurueckgefallen.
+   Beim Fix kamen zwei weitere Fehler in derselben Funktion mit heraus: die **UTF-8-Byteanzahl** wurde als **Wide-Character-Anzahl** an `WriteConsoleW` gegeben (Lesen weit hinter den Konvertierungspuffer, bei 1 MB Text rund 2 MB Out-of-Bounds-Read), und ein Text ab 2048 Zeichen wurde still verworfen, weil `fplUTF8StringToWideString` bei zu kleinem Ziel 0 zurueckgibt.
+   Jetzt: umgeleitet → `WriteFile` mit den rohen UTF-8-Bytes, Konsole → stueckweise Konvertierung mit korrekter Wide-Laenge, wobei der Schnitt nie in einer UTF-8-Sequenz landet.
+   Verifiziert mit einem Stub-Harness (Win32-Konsolen-API nachgebaut, 11 Checks: umgeleitet exakt, 1 MB umgeleitet vollstaendig, Konsole in mehreren Teilen, Euro-Zeichen und Emoji ueber Chunk-Grenzen, leerer und Null-Text). Gegenprobe: der alte Code faellt bei den ersten drei Checks durch und stuerzt danach am Out-of-Bounds-Read ab.
+   Der eigentliche Regressionstest ist `ProcessTestsCapture` selbst — er muss nur unter Windows laufen.
+
 ### Offen
 Phase 5 (stdin), 6 (shellMode, Detached, KillOnParentExit), 7 (`.docs`, Changelog, README).
 `fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `inputMode`, `Detached`, `KillOnParentExit`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
