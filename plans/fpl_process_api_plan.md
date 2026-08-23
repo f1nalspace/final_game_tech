@@ -935,8 +935,25 @@ Für Phase 4 dasselbe zweimal: mit abgeschalteter `\r\n`-Normalisierung bricht `
 | 2 (Win32) | Sobald ein Windows-Lauf möglich ist: `AccessDenied` festnageln, `RequestStop` mit `KillProcessTree` testen. Die Signal-Asserts bleiben POSIX-only, weil Windows keine Signale kennt |
 | 3 (Capture merged) | **erledigt**: `--child-both` und `--child-spam <bytes>` ergänzt, Testgruppen `ProcessTestsCapture` (stdout, stderr, merged, 1 MB ohne Deadlock, Truncation, Pumpen von Hand, Close ohne Result) und `ProcessTestsCaptureFailures` (Stream ohne Ziel, Ziel ohne Stream, Callback-Flag ohne Callback) |
 | 4 (Capture separat) | **erledigt**: Kindmodus `--child-lines <n>` ergänzt, Testgruppen `ProcessTestsCaptureSeparate` und `ProcessTestsCallbacks` (getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered`, Stream-Typ pro Aufruf, Null-Terminator-Vertrag) |
-| 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
+| 5 (stdin) | **erledigt**: Kindmodus `--child-cat` ergänzt, Testgruppen `ProcessTestsInput` und `ProcessTestsInputFailures`, NotImplemented-Block für Input entfernt |
 | 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
+
+### Phase 5 — erledigt (Standard-Input)
+Alle vier Modi sind da: `None`, `Text`, `Callback` und `Stream`.
+
+**Gemeinsam (COMMON):** `fpl__GetProcessInputChunk()` liefert das naechste zu schreibende Stueck — beim Text-Modus aus `inputText` ab `inputOffset`, beim Callback-Modus aus einem 4-KB-Chunk im Stream-State, der nachgezogen wird sobald er leer ist. Gibt der Callback 0 zurueck, ist der Standard-Input zu Ende und wird geschlossen. `fpl__IsProcessInputPumped()` haelt den Stream-Modus bewusst aus dem Pump heraus, den treibt allein der Aufrufer.
+
+**Der Deadlock ist auch hier die eigentliche Arbeit.** Wer erst den ganzen Input schreibt und danach den Output liest, haengt: das Kind fuellt seine Output-Pipe, blockiert, liest deshalb keinen Input mehr, die Input-Pipe laeuft voll, und beide warten. `fplProcessWait()` und `fplProcessUpdate()` pumpen Input und Output deshalb in derselben Schleife. `fplProcessWriteInput()` (Stream-Modus) leert bei voller Pipe erst die Capture-Streams, bevor es erneut schreibt — aus demselben Grund.
+
+**POSIX:** Pipe vor dem Fork, Parent-Ende `FD_CLOEXEC` + `O_NONBLOCK`, im Kind `dup2` auf `STDIN_FILENO`. `fplProcessInputMode_None` bekommt `/dev/null` mit `O_RDONLY | O_CLOEXEC`, im Parent geoeffnet und im Kind ge-`dup2`t, damit ein Fehler noch ueber den normalen Fehlerweg gemeldet werden kann. `poll()` wartet jetzt zusaetzlich mit `POLLOUT` auf die Input-Pipe. `EPIPE` gilt als normales Ende, nicht als Fehler.
+**SIGPIPE** wie in 6.6 beschlossen: beim Anlegen der Input-Pipe wird die aktuelle Disposition abgefragt und **nur** wenn sie noch `SIG_DFL` ist auf `SIG_IGN` gesetzt, mit einer Warnung im Log. Eine vom Nutzer gesetzte Disposition wird nie ueberschrieben.
+
+**Win32:** `CreatePipe` mit 64 KB Puffer, hier ist das **Schreib**-Ende das nicht vererbbare — genau andersherum als bei einer Capture-Pipe. Dazu `SetNamedPipeHandleState(PIPE_NOWAIT)`: eine anonyme Pipe kann kein Overlapped-IO, ein `WriteFile` in eine volle Pipe wuerde also blockieren und damit denselben Deadlock erzeugen. Mit `PIPE_NOWAIT` liefert `WriteFile` stattdessen einen Kurzschreibvorgang (0 Bytes = Pipe voll). Der Modus ist alt und wird von Microsoft nicht mehr empfohlen, deshalb ist ein Fehlschlag nur eine Warnung. `fplProcessInputMode_None` bekommt ein Handle auf `NUL`, wofuer `fpl__Win32GetNullDeviceHandle()` aus `fpl__Win32GetInheritableStdHandle()` herausgeloest wurde. `ERROR_BROKEN_PIPE` und `ERROR_NO_DATA` gelten als normales Ende.
+`STARTF_USESTDHANDLES` und `bInheritHandles` haengen jetzt an `hasCapture || usesInputPipe || usesNullInput` statt nur am Capture.
+
+**Verifiziert (POSIX):** Neue Testgruppen `ProcessTestsInput` (Text-Modus, expliziter `inputTextLen` statt Stringlaenge, 256 KB durch Input **und** Output ohne Deadlock, Callback bis er 0 liefert, `None` mit sofortigem End-of-File, Stream-Modus mit `fplProcessWriteInput`/`fplProcessCloseInput`, Schreiben auf einen von FPL gefuetterten Input wird abgelehnt, Schreiben ohne Umleitung ist folgenlos) und `ProcessTestsInputFailures` (Text ohne Text, Callback ohne Callback → `InvalidArguments`). Kindmodus `--child-cat`. ASan + UBSan ohne Fehler und ohne Leak, keine neue Warnung, C99/C17/C++11/`FPL_NO_PLATFORM_INCLUDES`/`FPL_NO_RUNTIME_LINKING` bauen.
+**Gegenprobe:** Eine Kopie, die den Input erst vollstaendig schreibt und danach den Output leert, haengt exakt beim 256-KB-Test und laeuft ins Timeout — mit dem verschraenkten Pumpen ist derselbe Test in unter einer Sekunde durch.
+**Win32-Logik** mit einem Stub-Harness geprueft (WriteFile nachgebaut, 20 Checks: Text vollstaendig trotz 7-Byte-Kurzschreibvorgaengen, volle Pipe haelt den Input offen und der Rest geht beim naechsten Pump raus, Broken Pipe schliesst sauber, Callback bis 0, Stream-Modus wird nicht gepumpt, 256 KB ueber viele Kurzschreibvorgaenge). Die echten API-Aufrufe (`PIPE_NOWAIT`, Vererbungs-Flags) kann ein Stub nicht pruefen — die brauchen einen echten Windows-Lauf.
 
 ### Windows-Befunde (erster echter Lauf)
 1. **Demo-Haenger** im Argument-Array-Szenario — siehe Demo-Abschnitt oben.
@@ -947,8 +964,8 @@ Für Phase 4 dasselbe zweimal: mit abgeschalteter `\r\n`-Normalisierung bricht `
    Der eigentliche Regressionstest ist `ProcessTestsCapture` selbst — er muss nur unter Windows laufen.
 
 ### Offen
-Phase 5 (stdin), 6 (shellMode, Detached, KillOnParentExit), 7 (`.docs`, Changelog, README).
-`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `inputMode`, `Detached`, `KillOnParentExit`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
+Phase 6 (shellMode, Detached, KillOnParentExit), 7 (`.docs`, Changelog, README).
+`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `Detached`, `KillOnParentExit`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
 Ein echter Windows-Lauf steht weiterhin für alles ab Phase 2 aus; der Demo-Hänger oben war der erste Befund daraus.
 
 ---

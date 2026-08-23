@@ -37,6 +37,7 @@ License:
 #define FPL_TEST_CHILD_ARGUMENT_BOTH "--child-both"
 #define FPL_TEST_CHILD_ARGUMENT_SPAM "--child-spam"
 #define FPL_TEST_CHILD_ARGUMENT_LINES "--child-lines"
+#define FPL_TEST_CHILD_ARGUMENT_CAT "--child-cat"
 
 // Exit code a child reports when everything was as expected
 static const int32_t processTestChildSuccessExitCode = 0;
@@ -68,6 +69,14 @@ static const char *processTestLineTextPrefix = "line-";
 static const char *processTestLineTailText = "tail";
 // Number of complete lines the line child writes before the incomplete one
 static const int32_t processTestLineCount = 5;
+// Text written into the standard-input of the cat child
+static const char *processTestInputText = "first input line\nsecond input line\n";
+// Number of characters the cat child reads in one go
+#define PROCESS_TEST_CAT_BUFFER_SIZE 4096
+// Number of characters written into the standard-input in the big input test, far more than one pipe buffer
+static const int32_t processTestBigInputSize = 262144;
+// Number of chunks the input callback provides before it ends the standard-input
+static const int32_t processTestInputChunkCount = 4;
 
 // Arguments passed to the child, so it can verify that they arrived unchanged
 static const char *processTestArgumentValues[] = {
@@ -101,6 +110,8 @@ typedef enum ProcessTestChildMode {
 	ProcessTestChildMode_Spam,
 	//! Write complete lines and one incomplete line to the standard-output.
 	ProcessTestChildMode_Lines,
+	//! Read the standard-input to its end and write it back to the standard-output.
+	ProcessTestChildMode_Cat,
 } ProcessTestChildMode;
 
 // Detects a child invocation without initializing anything, so a normal test run is left untouched
@@ -135,6 +146,9 @@ static ProcessTestChildMode ProcessTestsGetChildMode(const int argc, char *args[
 	}
 	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_LINES)) {
 		return(ProcessTestChildMode_Lines);
+	}
+	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_CAT)) {
+		return(ProcessTestChildMode_Cat);
 	}
 	return(ProcessTestChildMode_None);
 }
@@ -191,6 +205,21 @@ static void ProcessTestsWriteLines(const int32_t lineCount) {
 		fplConsoleOut(lineText);
 	}
 	fplConsoleOut(processTestLineTailText);
+}
+
+// Reads the standard-input to its end and writes everything back to the standard-output, so the parent
+// can verify exactly what arrived. The test input never contains a carriage return, so the text mode
+// translation of the Windows runtime cannot change anything.
+static void ProcessTestsEchoStandardInput(void) {
+	char buffer[PROCESS_TEST_CAT_BUFFER_SIZE];
+	for (;;) {
+		size_t readBytes = fread(buffer, 1, fplArrayCount(buffer) - 1, stdin);
+		if (readBytes == 0) {
+			break;
+		}
+		buffer[readBytes] = 0;
+		fplConsoleOut(buffer);
+	}
 }
 
 // Runs the requested child behavior and returns the exit code the parent will see
@@ -286,6 +315,12 @@ static int ProcessTestsRunAsChild(const ProcessTestChildMode mode, const int arg
 				ProcessTestsWriteLines(lineCount);
 				result = processTestChildSuccessExitCode;
 			}
+		} break;
+
+		case ProcessTestChildMode_Cat:
+		{
+			ProcessTestsEchoStandardInput();
+			result = processTestChildSuccessExitCode;
 		} break;
 
 		default:
@@ -1079,6 +1114,194 @@ static void ProcessTestsCallbacks(const ProcessTestPaths *paths) {
 	}
 }
 
+// Provides a fixed number of chunks and then ends the standard-input by returning zero
+typedef struct ProcessTestInputProvider {
+	char chunkText[64];
+	int32_t remainingChunkCount;
+} ProcessTestInputProvider;
+
+static FPL_FUNC_PROCESS_INPUT(ProcessTestsProvideInput) {
+	(void)process;
+	ProcessTestInputProvider *provider = (ProcessTestInputProvider *)userData;
+	if ((provider == fpl_null) || (provider->remainingChunkCount <= 0)) {
+		return(0);
+	}
+	int32_t chunkIndex = processTestInputChunkCount - provider->remainingChunkCount;
+	--provider->remainingChunkCount;
+	size_t chunkLen = fplStringFormat(provider->chunkText, fplArrayCount(provider->chunkText), "chunk-%d\n", chunkIndex);
+	if (chunkLen > maxTargetBufferLen) {
+		chunkLen = maxTargetBufferLen;
+	}
+	fplMemoryCopy(provider->chunkText, chunkLen, targetBuffer);
+	return(chunkLen);
+}
+
+// Starts the cat child and returns what it wrote back, so every input mode can be checked the same way
+static bool ProcessTestsRunCatChild(const ProcessTestPaths *paths, const fplProcessInputMode inputMode, const char *inputText, const size_t inputTextLen, fpl_process_input_callback *inputCallback, void *userData, fplProcessResult *outResult) {
+	fplProcessContext context = fplZeroInit;
+	context.name = paths->executableFilePath;
+	context.argumentLine = FPL_TEST_CHILD_ARGUMENT_CAT;
+	context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+	context.inputMode = inputMode;
+	context.inputText = inputText;
+	context.inputTextLen = inputTextLen;
+	context.inputCallback = inputCallback;
+	context.userData = userData;
+	context.flags = fplProcessFlags_AutoWait;
+	fplProcessHandle handle = fplZeroInit;
+	bool started = fplProcessStart(&context, &handle, outResult);
+	fplProcessClose(&handle);
+	return(started);
+}
+
+static void ProcessTestsInput(const ProcessTestPaths *paths) {
+	ftMsg("Test Process standard-input\n");
+	{
+		// The text mode writes the whole text and closes the standard-input, so the child sees an end-of-file
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(ProcessTestsRunCatChild(paths, fplProcessInputMode_Text, processTestInputText, 0, fpl_null, fpl_null, &result));
+		ftIsTrue(result.hasExited);
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		ftAssertStringEquals(processTestInputText, result.output.text);
+		fplProcessFreeResult(&result);
+	}
+	{
+		// An explicit length must be used instead of the string length, so only a part arrives
+		size_t partialLen = fplGetStringLength("first input line\n");
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(ProcessTestsRunCatChild(paths, fplProcessInputMode_Text, processTestInputText, partialLen, fpl_null, fpl_null, &result));
+		ftAssertSizeEquals(partialLen, result.output.len);
+		fplProcessFreeResult(&result);
+	}
+	{
+		// This is the input deadlock regression test: far more than one pipe buffer goes in and comes back out.
+		// An implementation that writes the input first and reads the output afterwards hangs here forever.
+		size_t bigInputLen = (size_t)processTestBigInputSize;
+		char *bigInputText = (char *)fplMemoryAllocate(bigInputLen + 1);
+		ftIsNotNull(bigInputText);
+		for (size_t charIndex = 0; charIndex < bigInputLen; ++charIndex) {
+			bigInputText[charIndex] = 'a' + (char)(charIndex % 26);
+		}
+		bigInputText[bigInputLen] = 0;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(ProcessTestsRunCatChild(paths, fplProcessInputMode_Text, bigInputText, bigInputLen, fpl_null, fpl_null, &result));
+		ftIsTrue(result.hasExited);
+		ftAssertSizeEquals(bigInputLen, result.output.len);
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		fplProcessFreeResult(&result);
+		fplMemoryFree(bigInputText);
+	}
+	{
+		// The callback is pulled until it returns zero, which is what closes the standard-input
+		ProcessTestInputProvider provider = fplZeroInit;
+		provider.remainingChunkCount = processTestInputChunkCount;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(ProcessTestsRunCatChild(paths, fplProcessInputMode_Callback, fpl_null, 0, ProcessTestsProvideInput, &provider, &result));
+		ftAssertS32Equals(0, provider.remainingChunkCount);
+		char expectedText[FPL_MAX_BUFFER_LENGTH];
+		size_t expectedTextLen = 0;
+		for (int32_t chunkIndex = 0; chunkIndex < processTestInputChunkCount; ++chunkIndex) {
+			char chunkText[64];
+			size_t chunkTextLen = fplStringFormat(chunkText, fplArrayCount(chunkText), "chunk-%d\n", chunkIndex);
+			ProcessTestsAppendCollectedText(expectedText, &expectedTextLen, fplArrayCount(expectedText), chunkText, chunkTextLen);
+		}
+		ftAssertStringEquals(expectedText, result.output.text);
+		fplProcessFreeResult(&result);
+	}
+	{
+		// The none mode gives the child an immediate end-of-file, so nothing at all comes back
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(ProcessTestsRunCatChild(paths, fplProcessInputMode_None, fpl_null, 0, fpl_null, fpl_null, &result));
+		ftIsTrue(result.hasExited);
+		ftAssertS32Equals(processTestChildSuccessExitCode, result.exitCode);
+		ftAssertSizeEquals(0, result.output.len);
+		fplProcessFreeResult(&result);
+	}
+	{
+		// The stream mode leaves the standard-input open, the caller writes into it and closes it
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_CAT;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.inputMode = fplProcessInputMode_Stream;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult startResult = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
+		size_t firstLen = fplGetStringLength("first input line\n");
+		size_t writtenFirst = fplProcessWriteInput(&handle, "first input line\n", 0);
+		size_t writtenSecond = fplProcessWriteInput(&handle, "second input line\n", 0);
+		ftAssertSizeEquals(firstLen, writtenFirst);
+		ftAssertSizeEquals(fplGetStringLength("second input line\n"), writtenSecond);
+		// Without the close the child would wait for more input and never reach its end
+		fplProcessCloseInput(&handle);
+		fplProcessResult waitResult = fplZeroInit;
+		ftIsTrue(fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &waitResult));
+		ftAssertStringEquals(processTestInputText, waitResult.output.text);
+		fplProcessFreeResult(&waitResult);
+		fplProcessClose(&handle);
+	}
+	{
+		// Writing into a standard-input that FPL feeds itself must be refused instead of interleaving
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_CAT;
+		context.captureFlags = fplProcessCaptureFlags_CaptureOutput;
+		context.inputMode = fplProcessInputMode_Text;
+		context.inputText = processTestInputText;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult startResult = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
+		ftAssertSizeEquals(0, fplProcessWriteInput(&handle, "ignored", 0));
+		fplProcessResult waitResult = fplZeroInit;
+		fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &waitResult);
+		fplProcessFreeResult(&waitResult);
+		fplProcessFreeResult(&startResult);
+		fplProcessClose(&handle);
+	}
+	{
+		// A process without any standard-input redirect has nothing to write to and nothing to close
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_EXIT " 0";
+		context.flags = fplProcessFlags_AutoWait;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsTrue(fplProcessStart(&context, &handle, &result));
+		ftAssertSizeEquals(0, fplProcessWriteInput(&handle, "ignored", 0));
+		fplProcessCloseInput(&handle);
+		fplProcessFreeResult(&result);
+		fplProcessClose(&handle);
+	}
+}
+
+static void ProcessTestsInputFailures(const ProcessTestPaths *paths) {
+	ftMsg("Test Process standard-input failures\n");
+	{
+		// The text mode without a text is wrong, not unimplemented
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_CAT;
+		context.inputMode = fplProcessInputMode_Text;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+	{
+		// The callback mode without a callback is wrong as well
+		fplProcessContext context = fplZeroInit;
+		context.name = paths->executableFilePath;
+		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_CAT;
+		context.inputMode = fplProcessInputMode_Callback;
+		fplProcessHandle handle = fplZeroInit;
+		fplProcessResult result = fplZeroInit;
+		ftIsFalse(fplProcessStart(&context, &handle, &result));
+		ftAssert(result.type == fplProcessResultType_InvalidArguments);
+		fplProcessClose(&handle);
+	}
+}
+
 static void ProcessTestsCaptureFailures(const ProcessTestPaths *paths) {
 	ftMsg("Test Process capture failures\n");
 	{
@@ -1138,18 +1361,6 @@ static void ProcessTestsNotImplemented(const ProcessTestPaths *paths) {
 		fplProcessClose(&handle);
 	}
 	{
-		// Standard-input (Phase 5)
-		fplProcessContext context = fplZeroInit;
-		context.name = paths->executableFilePath;
-		context.inputMode = fplProcessInputMode_Text;
-		context.inputText = "hello";
-		fplProcessHandle handle = fplZeroInit;
-		fplProcessResult result = fplZeroInit;
-		ftIsFalse(fplProcessStart(&context, &handle, &result));
-		ftAssert(result.type == fplProcessResultType_NotImplemented);
-		fplProcessClose(&handle);
-	}
-	{
 		// Pumping a process without any redirected stream reports that there is nothing to pump
 		fplProcessResult result = fplZeroInit;
 		fplProcessContext context = fplZeroInit;
@@ -1184,6 +1395,8 @@ void FPLProcessTests_All(void) {
 	ProcessTestsCaptureSeparate(&paths);
 	ProcessTestsCallbacks(&paths);
 	ProcessTestsCaptureFailures(&paths);
+	ProcessTestsInput(&paths);
+	ProcessTestsInputFailures(&paths);
 	ProcessTestsHandleLifetime(&paths);
 	ProcessTestsNotImplemented(&paths);
 }

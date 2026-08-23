@@ -15,6 +15,7 @@ Author:
 
 Changelog:
 	## 2026-08-23
+	- Added the standard-input scenarios
 	- Added the separate capture and the output callback scenarios
 	- Fixed the argument array scenario, it started an interactive cmd.exe on Windows and hung there
 	- Added the capture scenarios
@@ -31,6 +32,8 @@ License:
 #define FPL_NO_VIDEO
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
+
+#include <stdio.h> // fread, stdin - FPL has no reader for the standard-input of the own process
 
 //
 // The demo runs the same scenarios on every platform, only the programs differ
@@ -67,6 +70,12 @@ License:
 
 // Argument that makes this demo write a few lines to both standard streams, used for the separate capture and the callback
 #define DemoWriteStreamsArgument "--write-streams"
+
+// Argument that makes this demo read its standard-input, used for the input scenarios
+#define DemoReadInputArgument "--read-input"
+
+// Text the input scenarios write into the standard-input of the child
+#define DemoInputText "first input line\nsecond input line\n"
 
 // Milliseconds we wait in the timeout scenario, the child runs a lot longer than that
 static const fplTimeoutValue demoShortWaitTimeout = 250;
@@ -407,6 +416,80 @@ static void RunOutputCallbackScenario(void) {
 	fplProcessClose(&handle);
 }
 
+// Reads the standard-input to its end and reports what arrived, so the input scenarios have something to show
+static void RunReadInputMode(void) {
+	char buffer[1024];
+	size_t totalLen = 0;
+	for (;;) {
+		size_t readBytes = fread(buffer, 1, fplArrayCount(buffer) - 1, stdin);
+		if (readBytes == 0) {
+			break;
+		}
+		buffer[readBytes] = 0;
+		totalLen += readBytes;
+		fplConsoleOut(buffer);
+	}
+	fplConsoleFormatOut("(%zu characters arrived on the standard-input)\n", totalLen);
+}
+
+static void RunInputTextScenario(void) {
+	// The text goes into the standard-input and the standard-input is closed afterwards,
+	// and that close is what gives the child its end-of-file
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	fplProcessContext context = fplZeroInit;
+	context.name = executablePath;
+	context.argumentLine = DemoReadInputArgument;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.inputMode = fplProcessInputMode_Text;
+	context.inputText = DemoInputText;
+	context.flags = fplProcessFlags_AutoWait;
+	RunAndWait("Feed the standard-input from a text", &context);
+}
+
+static void RunInputNoneScenario(void) {
+	// Without this the child would inherit the standard-input of this demo. A child that asks something
+	// would then wait forever, and nobody would ever see the question - this is the recommendation for a GUI app
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	fplProcessContext context = fplZeroInit;
+	context.name = executablePath;
+	context.argumentLine = DemoReadInputArgument;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.inputMode = fplProcessInputMode_None;
+	context.flags = fplProcessFlags_AutoWait;
+	RunAndWait("Give the child an empty standard-input", &context);
+}
+
+static void RunInputStreamScenario(void) {
+	PrintScenarioHeader("Write into the standard-input while the process runs");
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	fplProcessContext context = fplZeroInit;
+	context.name = executablePath;
+	context.argumentLine = DemoReadInputArgument;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.inputMode = fplProcessInputMode_Stream;
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult startResult = fplZeroInit;
+	if (!fplProcessStart(&context, &handle, &startResult)) {
+		PrintProcessResult(&startResult);
+		fplProcessFreeResult(&startResult);
+		fplProcessClose(&handle);
+		return;
+	}
+	size_t writtenLen = fplProcessWriteInput(&handle, DemoInputText, 0);
+	fplConsoleFormatOut("  wrote %zu characters into the standard-input\n", writtenLen);
+	// The child reads until the end-of-file, so without this close it would wait forever
+	fplProcessCloseInput(&handle);
+	fplProcessResult waitResult = fplZeroInit;
+	fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &waitResult);
+	PrintProcessResult(&waitResult);
+	fplProcessFreeResult(&waitResult);
+	fplProcessFreeResult(&startResult);
+	fplProcessClose(&handle);
+}
+
 // Runs the program the user passed on the command line, so the demo can start anything
 static void RunUserProgram(const int argumentCount, char **arguments) {
 	const char *programName = arguments[0];
@@ -448,6 +531,13 @@ int main(int argc, char *args[]) {
 		return(0);
 	}
 
+	// The three standard-input scenarios start the demo with this mode
+	if ((argc > 1) && fplIsStringEqual(args[1], DemoReadInputArgument)) {
+		RunReadInputMode();
+		fplPlatformRelease();
+		return(0);
+	}
+
 	uint64_t currentProcessId = fplProcessGetCurrentId();
 	fplConsoleFormatOut("FPL process demo, running as process id %llu\n", (unsigned long long)currentProcessId);
 
@@ -463,6 +553,9 @@ int main(int argc, char *args[]) {
 		RunCaptureLimitScenario();
 		RunSeparateCaptureScenario();
 		RunOutputCallbackScenario();
+		RunInputTextScenario();
+		RunInputNoneScenario();
+		RunInputStreamScenario();
 		RunTimeoutScenario();
 		RunAsyncScenario();
 		fplConsoleOut("\nPass a program and its arguments to this demo, to run it directly\n");
