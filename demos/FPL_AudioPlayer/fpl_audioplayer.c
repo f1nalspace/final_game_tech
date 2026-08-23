@@ -84,6 +84,9 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-08-23
+	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
+
 	## 2026-08-07
 	- Changed: Reflect for API change final_audiosystem.h (AudioSystemPlaySource takes a pitch, passing AudioSystemDefaultPitch)
 
@@ -1356,9 +1359,15 @@ int main(int argc, char **args) {
 	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
 	bool forceSineWave = false;
 
+    // Log everything into the standard console. Adding the error console would write every line a second
+    // time, and the debug output is a real one on Windows only - anywhere else it is that same console again.
     fplLogSettings logSettings = fplZeroInit;
     logSettings.maxLevel = fplLogLevel_All;
-    logSettings.writers[0].flags = fplLogWriterFlags_DebugOut | fplLogWriterFlags_StandardConsole | fplLogWriterFlags_ErrorConsole;
+#if defined(FPL_PLATFORM_WINDOWS)
+    logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+#else
+    logSettings.writers[0].flags = fplLogWriterFlags_StandardConsole;
+#endif
     fplSetLogSettings(&logSettings);
 
 	// Always sine-wave
