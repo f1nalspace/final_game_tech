@@ -7301,6 +7301,399 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 // ----------------------------------------------------------------------------
 /**
+* @defgroup Process Process functions
+* @brief This category contains functions for starting and controlling child processes.
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+// Forward declaration; the documented definition lives a few lines below.
+typedef struct fplProcessHandle fplProcessHandle;
+
+// Forward declaration of the internal stream state, do not use this in any way.
+typedef struct fpl__ProcessStreams fpl__ProcessStreams;
+
+/**
+* @enum fplProcessStreamType
+* @brief An enumeration of process stream types.
+*/
+typedef enum fplProcessStreamType {
+	//! No stream.
+	fplProcessStreamType_None = 0,
+	//! The standard-output stream.
+	fplProcessStreamType_Output,
+	//! The standard-error stream.
+	fplProcessStreamType_Error,
+} fplProcessStreamType;
+
+/**
+* @def FPL_FUNC_PROCESS_OUTPUT
+* @brief A function definition for a callback that receives redirected output/error text from a process.
+* @param[in] process Reference to the process handle @ref fplProcessHandle.
+* @param[in] stream The @ref fplProcessStreamType the text was read from.
+* @param[in] text The null-terminated text that was read.
+* @param[in] textLen The number of characters, without the null-terminator.
+* @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
+* @note The text is only valid for the duration of the call, copy it when you need to keep it.
+*/
+#define FPL_FUNC_PROCESS_OUTPUT(name) void name(const fplProcessHandle *process, const fplProcessStreamType stream, const char *text, const size_t textLen, void *userData)
+//! A callback that receives redirected output/error text, see @ref FPL_FUNC_PROCESS_OUTPUT.
+typedef FPL_FUNC_PROCESS_OUTPUT(fpl_process_output_callback);
+
+/**
+* @def FPL_FUNC_PROCESS_INPUT
+* @brief A function definition for a callback that provides the standard-input text for a process.
+* @param[in] process Reference to the process handle @ref fplProcessHandle.
+* @param[out] targetBuffer The target buffer to write the next input chunk into.
+* @param[in] maxTargetBufferLen The maximum number of characters the target buffer can hold.
+* @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
+* @return Returns the number of characters written into the target buffer or zero for closing the standard-input.
+*/
+#define FPL_FUNC_PROCESS_INPUT(name) size_t name(const fplProcessHandle *process, char *targetBuffer, const size_t maxTargetBufferLen, void *userData)
+//! A callback that provides the standard-input text, see @ref FPL_FUNC_PROCESS_INPUT.
+typedef FPL_FUNC_PROCESS_INPUT(fpl_process_input_callback);
+
+/**
+* @enum fplProcessCaptureFlags
+* @brief An enumeration of capture/redirect flags for the output/error streams.
+*/
+typedef enum fplProcessCaptureFlags {
+	//! Do not capture anything, the child process inherits the streams of the parent process.
+	fplProcessCaptureFlags_None = 0,
+	//! Capture the standard-output stream.
+	fplProcessCaptureFlags_Output = 1 << 0,
+	//! Capture the standard-error stream.
+	fplProcessCaptureFlags_Error = 1 << 1,
+	//! Store the captured text in the buffers of @ref fplProcessResult.
+	fplProcessCaptureFlags_ToBuffer = 1 << 2,
+	//! Push the captured text into the @ref fpl_process_output_callback.
+	fplProcessCaptureFlags_ToCallback = 1 << 3,
+	//! Merge the error stream into the output stream, the same as "2>&1".
+	fplProcessCaptureFlags_Merged = 1 << 4,
+
+	//! Both the output and the error stream.
+	fplProcessCaptureFlags_Both = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_Error,
+	//! Capture only the output stream into the output buffer of the result.
+	fplProcessCaptureFlags_CaptureOutput = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_ToBuffer,
+	//! Capture only the error stream into the error buffer of the result.
+	fplProcessCaptureFlags_CaptureError = fplProcessCaptureFlags_Error | fplProcessCaptureFlags_ToBuffer,
+	//! Capture the output stream into the output buffer and the error stream into the error buffer of the result.
+	fplProcessCaptureFlags_CaptureSeparate = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer,
+	//! Capture both streams merged into the output buffer of the result.
+	fplProcessCaptureFlags_CaptureBoth = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer | fplProcessCaptureFlags_Merged,
+	//! Redirect only the output stream to the output callback.
+	fplProcessCaptureFlags_RedirectOutput = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_ToCallback,
+	//! Redirect only the error stream to the output callback.
+	fplProcessCaptureFlags_RedirectError = fplProcessCaptureFlags_Error | fplProcessCaptureFlags_ToCallback,
+	//! Redirect both streams merged to the output callback.
+	fplProcessCaptureFlags_RedirectBoth = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToCallback | fplProcessCaptureFlags_Merged,
+} fplProcessCaptureFlags;
+//! fplProcessCaptureFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessCaptureFlags);
+
+/**
+* @enum fplProcessInputMode
+* @brief An enumeration of standard-input modes.
+*/
+typedef enum fplProcessInputMode {
+	//! The child process inherits the standard-input of the parent process.
+	fplProcessInputMode_Inherit = 0,
+	//! The child process gets an immediate end-of-file on the standard-input.
+	fplProcessInputMode_None,
+	//! Write the text from @ref fplProcessContext.inputText into the standard-input and close it afterwards.
+	fplProcessInputMode_Text,
+	//! Pull the standard-input in chunks from the @ref fpl_process_input_callback, until it returns zero.
+	fplProcessInputMode_Callback,
+	//! Keep the standard-input open, so the caller can write into it with @ref fplProcessWriteInput().
+	fplProcessInputMode_Stream,
+} fplProcessInputMode;
+
+/**
+* @enum fplProcessShellMode
+* @brief An enumeration of shell execution modes.
+*/
+typedef enum fplProcessShellMode {
+	//! Execute the process directly, without any shell.
+	fplProcessShellMode_None = 0,
+	//! Execute the command line through the default system shell (cmd.exe on Windows, /bin/sh on POSIX).
+	fplProcessShellMode_Default,
+	//! Execute the command line through the shell or interpreter from @ref fplProcessContext.shellPath.
+	fplProcessShellMode_Custom,
+} fplProcessShellMode;
+
+/**
+* @enum fplProcessFlags
+* @brief An enumeration of process creation/control flags.
+*/
+typedef enum fplProcessFlags {
+	//! No flags.
+	fplProcessFlags_None = 0,
+	//! Wait for the process to be terminated, before returning from @ref fplProcessStart().
+	fplProcessFlags_AutoWait = 1 << 0,
+	//! Do not create a console window for the child process (Windows only).
+	fplProcessFlags_NoWindow = 1 << 1,
+	//! Detach the child process, so it survives the exit of the parent process.
+	fplProcessFlags_Detached = 1 << 2,
+	//! Stop the entire process tree instead of the direct child process only.
+	fplProcessFlags_KillProcessTree = 1 << 3,
+	//! Kill the child process automatically, when the parent process exits.
+	fplProcessFlags_KillOnParentExit = 1 << 4,
+	//! Split the captured/redirected text into complete lines.
+	fplProcessFlags_LineBuffered = 1 << 5,
+	//! Report a non-zero exit code as @ref fplProcessResultType_FailedWithExitCode.
+	fplProcessFlags_TreatNonZeroExitAsError = 1 << 6,
+} fplProcessFlags;
+//! fplProcessFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessFlags);
+
+/**
+* @struct fplProcessContext
+* @brief Stores the start parameters for @ref fplProcessStart().
+*/
+typedef struct fplProcessContext {
+	//! The filename or the path of the executable or script to run.
+	const char *name;
+	//! The full argument line, ignored when @ref fplProcessContext.arguments is set.
+	const char *argumentLine;
+	//! The arguments, without the executable itself.
+	const char **arguments;
+	//! The work directory path or fpl_null for using the current directory.
+	const char *workDir;
+	//! The path of the shell or interpreter, used for @ref fplProcessShellMode_Custom.
+	const char *shellPath;
+	//! The argument that tells the custom shell to execute the command line or fpl_null for using the default argument.
+	const char *shellArgument;
+	//! The text written into the standard-input, used for @ref fplProcessInputMode_Text.
+	const char *inputText;
+	//! The @ref fpl_process_output_callback that receives the redirected output/error text.
+	fpl_process_output_callback *outputCallback;
+	//! The @ref fpl_process_input_callback that provides the standard-input text, used for @ref fplProcessInputMode_Callback.
+	fpl_process_input_callback *inputCallback;
+	//! The user data passed through the callbacks.
+	void *userData;
+	//! The number of arguments.
+	size_t argumentCount;
+	//! The number of characters in @ref fplProcessContext.inputText or zero for computing the length automatically.
+	size_t inputTextLen;
+	//! The maximum number of bytes captured per buffer or zero for no limit.
+	size_t maxCaptureSize;
+	//! The @ref fplProcessCaptureFlags used for capturing/redirecting the output/error streams.
+	fplProcessCaptureFlags captureFlags;
+	//! The @ref fplProcessInputMode used for the standard-input.
+	fplProcessInputMode inputMode;
+	//! The @ref fplProcessShellMode used for executing the command line.
+	fplProcessShellMode shellMode;
+	//! The @ref fplProcessFlags used for creating/controlling the process.
+	fplProcessFlags flags;
+	//! The timeout in milliseconds for @ref fplProcessFlags_AutoWait or zero for waiting infinitely.
+	uint32_t waitTimeout;
+} fplProcessContext;
+
+/**
+* @enum fplProcessResultType
+* @brief An enumeration of process result types.
+*/
+typedef enum fplProcessResultType {
+	//! Unknown result or error.
+	fplProcessResultType_Unknown = -1,
+	//! The process was started and has exited normally, regardless of the exit code.
+	fplProcessResultType_Success = 0,
+	//! Any argument passed to a fplProcess* function is invalid (not the arguments of the process!).
+	fplProcessResultType_InvalidArguments,
+	//! The executable or script was not found.
+	fplProcessResultType_NotFound,
+	//! The executable or script is not allowed to be executed.
+	fplProcessResultType_AccessDenied,
+	//! The process failed to start.
+	fplProcessResultType_FailedToStart,
+	//! The process exited with a non-zero exit code and @ref fplProcessFlags_TreatNonZeroExitAsError was set.
+	fplProcessResultType_FailedWithExitCode,
+	//! The process was terminated by a signal (POSIX only).
+	fplProcessResultType_Terminated,
+	//! The process did not exit within the timeout.
+	fplProcessResultType_Timeout,
+	//! Not enough memory available.
+	fplProcessResultType_OutOfMemory,
+	//! The function is not implemented on this platform.
+	fplProcessResultType_NotImplemented,
+} fplProcessResultType;
+
+/**
+* @struct fplProcessBuffer
+* @brief Stores a captured text block, allocated by FPL and released by @ref fplProcessFreeResult().
+*/
+typedef struct fplProcessBuffer {
+	//! The null-terminated text or fpl_null when nothing was captured.
+	char *text;
+	//! The number of characters, without the null-terminator.
+	size_t len;
+} fplProcessBuffer;
+
+/**
+* @struct fplProcessResult
+* @brief Stores the result of a process start/wait.
+*/
+typedef struct fplProcessResult {
+	//! The captured standard-output, see @ref fplProcessBuffer.
+	fplProcessBuffer output;
+	//! The captured standard-error, see @ref fplProcessBuffer.
+	fplProcessBuffer error;
+	//! The raw exit code from the process.
+	int32_t exitCode;
+	//! The signal number that has terminated the process or zero (POSIX only).
+	int32_t terminationSignal;
+	//! The raw error code from the operating system (errno or GetLastError).
+	uint32_t nativeErrorCode;
+	//! The @ref fplProcessResultType.
+	fplProcessResultType type;
+	//! The process has exited normally.
+	fpl_b32 hasExited;
+	//! The captured text was truncated, because @ref fplProcessContext.maxCaptureSize was exceeded.
+	fpl_b32 isTruncated;
+} fplProcessResult;
+
+/**
+* @union fplInternalProcessHandle
+* @brief A union containing the internal process handle for any platform.
+*/
+typedef union fplInternalProcessHandle {
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! Win32 specifics.
+	struct {
+		//! The process handle.
+		fpl__Win32Handle processHandle;
+		//! The handle of the primary thread.
+		fpl__Win32Handle threadHandle;
+		//! The job object handle, used for controlling the process tree.
+		fpl__Win32Handle jobHandle;
+	} win32;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! POSIX specifics.
+	struct {
+		//! The process id.
+		int32_t pid;
+		//! The process group id.
+		int32_t pgid;
+	} posix;
+#endif
+} fplInternalProcessHandle;
+
+/**
+* @struct fplProcessHandle
+* @brief The process handle structure.
+*/
+typedef struct fplProcessHandle {
+	//! The internal process handle.
+	fplInternalProcessHandle internalHandle;
+	//! The internal stream state, do not touch.
+	fpl__ProcessStreams *streams;
+	//! The id of the process.
+	uint64_t id;
+	//! The cached exit code, valid when the process has exited.
+	int32_t exitCode;
+	//! The cached signal number that has terminated the process or zero (POSIX only).
+	int32_t terminationSignal;
+	//! The process handle is valid.
+	fpl_b32 isValid;
+	//! The process has exited and the exit code is cached.
+	fpl_b32 hasExited;
+} fplProcessHandle;
+
+/**
+* @brief Starts a process with the specified context.
+* @param[in] context Reference to the process context @ref fplProcessContext.
+* @param[out] outHandle Reference to the process handle @ref fplProcessHandle.
+* @param[out] outResult Reference to the process result @ref fplProcessResult or fpl_null when the result is not needed.
+* @return Returns true when the process was started, false otherwise.
+* @note The handle must be released with @ref fplProcessClose(), even when the process has exited already.
+* @note The captured buffers in the result must be released with @ref fplProcessFreeResult().
+*/
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult);
+
+/**
+* @brief Pumps the redirected streams of the specified process, without blocking.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when at least one stream is still open, false otherwise.
+* @note Any @ref fpl_process_output_callback is called from the thread that calls this function.
+*/
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle);
+
+/**
+* @brief Waits for the specified process to be terminated, while pumping the redirected streams.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[in] timeout The timeout in milliseconds or zero for waiting infinitely.
+* @param[out] outResult Reference to the process result @ref fplProcessResult or fpl_null when the result is not needed.
+* @return Returns true when the process has exited, false when the timeout was exceeded or the wait has failed.
+*/
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult);
+
+/**
+* @brief Is the specified process still running?
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the process is still running, false otherwise.
+*/
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle);
+
+/**
+* @brief Gets the exit code from the specified process, when it has exited already.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[out] outExitCode Reference to the exit code.
+* @return Returns true when the process has exited and the exit code was written, false otherwise.
+*/
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode);
+
+/**
+* @brief Writes the specified text into the standard-input of the process.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[in] text The text to write into the standard-input.
+* @param[in] textLen The number of characters or zero for computing the length automatically.
+* @return Returns the number of characters written.
+* @note This requires @ref fplProcessInputMode_Stream.
+*/
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen);
+
+/**
+* @brief Closes the standard-input of the process, so the process gets an end-of-file.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+*/
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle);
+
+/**
+* @brief Asks the specified process to stop gracefully.
+* @param[in] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the request was sent, false otherwise.
+*/
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle);
+
+/**
+* @brief Tries to forcefully stop the process from the specified handle.
+* @param[in] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the process was stopped, false otherwise.
+*/
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle);
+
+/**
+* @brief Releases all resources of the specified process handle and resets it to zero.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @note This does not stop the process, it just releases the resources of the handle.
+*/
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle);
+
+/**
+* @brief Releases the captured buffers from the specified result and resets it to zero.
+* @param[in, out] result Reference to the process result @ref fplProcessResult.
+*/
+fpl_common_api void fplProcessFreeResult(fplProcessResult *result);
+
+/**
+* @brief Gets the id of the current process.
+* @return Returns the id of the current process.
+*/
+fpl_platform_api uint64_t fplProcessGetCurrentId(void);
+
+/** @} */
+// ----------------------------------------------------------------------------
+/**
 * @defgroup Debug Debug
 * @{
 */
@@ -10879,7 +11272,9 @@ fpl_main int main(int argc, char **args);
 // > WIN32_XINPUT
 // > WIN32_DINPUT
 // > WIN32_INPUT_KBM
+// > WIN32_PROCESS
 // > POSIX_SUBPLATFORM (Linux, Unix)
+// > POSIX_PROCESS
 // > STD_STRINGS_SUBPLATFORM
 // > STD_CONSOLE_SUBPLATFORM
 // > X11_SUBPLATFORM
@@ -10990,6 +11385,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_STRINGS "Strings"
 #define FPL__MODULE_PATHS "Paths"
 #define FPL__MODULE_ARGS "Arguments"
+#define FPL__MODULE_PROCESS "Process"
 
 #define FPL__MODULE_AUDIO "Audio"
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
@@ -12116,6 +12512,8 @@ typedef struct fpl__Win32WindowState {
 #	include <ctype.h> // isspace
 #	include <pwd.h> // getpwuid
 #	include <dirent.h> // DIR, dirent
+#	include <sys/wait.h> // waitpid, WIFEXITED
+#	include <poll.h> // poll, struct pollfd
 
 // Map st_atime/st_mtime/st_ctime to the POSIX.1-2008 nanosecond fields (st_atim.tv_sec, ...)
 // when available. On older POSIX or platforms without timespec stat fields, fall back to the
@@ -16699,6 +17097,100 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 		va_end(argList);
 		fplDebugOut(buffer);
 	}
+}
+
+
+//
+// Process
+//
+
+// Layout of a capture buffer allocation:
+//   [fpl__ProcessBufferHeader][text ... '\0']
+//    ^ the pointer returned by fpl__AllocateDynamicMemory()
+//                              ^ fplProcessBuffer.text
+// The header must live ON that pointer and never before it, because the allocator owns everything in front of it.
+#define FPL__PROCESS_BUFFER_MAGIC 0x50524F4342554653ULL
+#define FPL__PROCESS_BUFFER_ALIGNMENT 16
+
+typedef struct fpl__ProcessBufferHeader {
+	//! Magic value, used to detect a foreign or already released buffer.
+	uint64_t magic;
+	//! Number of bytes usable for the text, without the null-terminator.
+	size_t capacity;
+	//! Total number of bytes of the entire allocation.
+	size_t totalSize;
+} fpl__ProcessBufferHeader;
+
+typedef struct fpl__ProcessStream {
+	//! The captured text, moved into the result when the process is waited for.
+	fplProcessBuffer capture;
+	//! The pending text of the current line, used for fplProcessFlags_LineBuffered.
+	char *lineBuffer;
+	//! Number of characters in the line buffer.
+	size_t lineBufferLen;
+	//! Number of characters the line buffer can hold.
+	size_t lineBufferCapacity;
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! The read end of the pipe.
+	fpl__Win32Handle readHandle;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! The read end of the pipe.
+	int readFd;
+#endif
+	//! The type of the stream.
+	fplProcessStreamType type;
+	//! The stream has reached the end.
+	fpl_b32 isEOF;
+} fpl__ProcessStream;
+
+typedef struct fpl__ProcessStreams {
+	//! The standard-output stream.
+	fpl__ProcessStream output;
+	//! The standard-error stream.
+	fpl__ProcessStream error;
+	//! The callback that receives the redirected output/error text.
+	fpl_process_output_callback *outputCallback;
+	//! The callback that provides the standard-input text.
+	fpl_process_input_callback *inputCallback;
+	//! The user data passed through the callbacks.
+	void *userData;
+	//! The maximum number of bytes captured per buffer or zero for no limit.
+	size_t maxCaptureSize;
+	//! Number of characters already written from fplProcessContext.inputText.
+	size_t inputOffset;
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! The write end of the standard-input pipe.
+	fpl__Win32Handle inputHandle;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! The write end of the standard-input pipe.
+	int inputFd;
+#endif
+	//! The capture/redirect flags.
+	fplProcessCaptureFlags captureFlags;
+	//! The process flags.
+	fplProcessFlags flags;
+	//! The capture was truncated.
+	fpl_b32 isTruncated;
+} fpl__ProcessStreams;
+
+fpl_common_api void fplProcessFreeResult(fplProcessResult *result) {
+	FPL__CheckArgumentNullNoRet(result);
+	fplProcessBuffer *buffers[] = { &result->output, &result->error };
+	for (size_t bufferIndex = 0; bufferIndex < fplArrayCount(buffers); ++bufferIndex) {
+		fplProcessBuffer *buffer = buffers[bufferIndex];
+		if (buffer->text == fpl_null) {
+			continue;
+		}
+		uint8_t *headerBase = (uint8_t *)buffer->text - sizeof(fpl__ProcessBufferHeader);
+		fpl__ProcessBufferHeader *header = (fpl__ProcessBufferHeader *)headerBase;
+		if (header->magic != FPL__PROCESS_BUFFER_MAGIC) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "The process buffer '%p' was not allocated by FPL or was released already", buffer->text);
+			continue;
+		}
+		header->magic = 0;
+		fpl__ReleaseDynamicMemory(header);
+	}
+	fplClearStruct(result);
 }
 
 //
@@ -21534,6 +22026,95 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // ############################################################################
 //
+// > WIN32_PROCESS
+//
+// Process implementation using CreateProcessW and anonymous pipes
+//
+// ############################################################################
+#if defined(FPL_PLATFORM_WINDOWS)
+
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(context, false);
+	FPL__CheckArgumentNull(outHandle, false);
+	FPL__CheckArgumentNull(context->name, false);
+	// @TODO(final/Win32): Implement fplProcessStart()
+	fplClearStruct(outHandle);
+	if (outResult != fpl_null) {
+		fplClearStruct(outResult);
+		outResult->type = fplProcessResultType_NotImplemented;
+	}
+	FPL__ERROR(FPL__MODULE_PROCESS, "fplProcessStart() is not implemented yet");
+	return(false);
+}
+
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/Win32): Implement fplProcessUpdate()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/Win32): Implement fplProcessWait()
+	if (outResult != fpl_null) {
+		fplClearStruct(outResult);
+		outResult->type = fplProcessResultType_NotImplemented;
+	}
+	return(false);
+}
+
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/Win32): Implement fplProcessIsRunning()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentNull(outExitCode, false);
+	// @TODO(final/Win32): Implement fplProcessTryGetExitCode()
+	return(false);
+}
+
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(handle, 0);
+	FPL__CheckArgumentNull(text, 0);
+	// @TODO(final/Win32): Implement fplProcessWriteInput()
+	return(0);
+}
+
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	// @TODO(final/Win32): Implement fplProcessCloseInput()
+}
+
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/Win32): Implement fplProcessRequestStop()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/Win32): Implement fplProcessStop()
+	return(false);
+}
+
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	// @TODO(final/Win32): Implement fplProcessClose()
+	fplClearStruct(handle);
+}
+
+fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
+	uint64_t result = (uint64_t)GetCurrentProcessId();
+	return(result);
+}
+
+#endif // FPL_PLATFORM_WINDOWS
+
+// ############################################################################
+//
 // > POSIX_SUBPLATFORM (Linux, Unix)
 //
 // ############################################################################
@@ -23754,6 +24335,96 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 			++p;
 		}
 	}
+	return(result);
+}
+
+#endif // FPL_SUBPLATFORM_POSIX
+
+// ############################################################################
+//
+// > POSIX_PROCESS
+//
+// Process implementation using fork/exec and pipes
+//
+// ############################################################################
+#if defined(FPL_SUBPLATFORM_POSIX)
+
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(context, false);
+	FPL__CheckArgumentNull(outHandle, false);
+	FPL__CheckArgumentNull(context->name, false);
+	// @TODO(final/POSIX): Implement fplProcessStart()
+	fplClearStruct(outHandle);
+	if (outResult != fpl_null) {
+		fplClearStruct(outResult);
+		outResult->type = fplProcessResultType_NotImplemented;
+	}
+	FPL__ERROR(FPL__MODULE_PROCESS, "fplProcessStart() is not implemented yet");
+	return(false);
+}
+
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/POSIX): Implement fplProcessUpdate()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const uint32_t timeout, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/POSIX): Implement fplProcessWait()
+	if (outResult != fpl_null) {
+		fplClearStruct(outResult);
+		outResult->type = fplProcessResultType_NotImplemented;
+	}
+	return(false);
+}
+
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/POSIX): Implement fplProcessIsRunning()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentNull(outExitCode, false);
+	// @TODO(final/POSIX): Implement fplProcessTryGetExitCode()
+	return(false);
+}
+
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(handle, 0);
+	FPL__CheckArgumentNull(text, 0);
+	// @TODO(final/POSIX): Implement fplProcessWriteInput()
+	return(0);
+}
+
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	// @TODO(final/POSIX): Implement fplProcessCloseInput()
+}
+
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/POSIX): Implement fplProcessRequestStop()
+	return(false);
+}
+
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	// @TODO(final/POSIX): Implement fplProcessStop()
+	return(false);
+}
+
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	// @TODO(final/POSIX): Implement fplProcessClose()
+	fplClearStruct(handle);
+}
+
+fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
+	pid_t currentPid = getpid();
+	uint64_t result = (uint64_t)currentPid;
 	return(result);
 }
 

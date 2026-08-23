@@ -55,9 +55,9 @@ Ein `bool` kann nur "die eine" Shell ausdrücken. Genau das reicht in der Praxis
 
 Das Enum bleibt für den einfachen Fall trotzdem eine einzige Zuweisung (`context.shellMode = fplProcessShellMode_Default;`), deckt aber den Custom-Interpreter mit ab. Deshalb liegt es als **Feld** im Context und nicht als Flag in `fplProcessFlags`: Doppelzustand (Flag *und* Pfadfeld) wäre mehrdeutig, sobald nur eins von beidem gesetzt ist.
 
-### 1.8 Es fehlen Environment-Variablen
-Werkzeug-Aufrufe brauchen fast immer ein modifiziertes Environment (`PATH`, `LANG`, `LC_ALL`, `CC`). Der einzige Workaround ohne API wäre `setenv()` im Parent — nicht thread-safe und verseucht den eigenen Prozess dauerhaft.
-→ `environment[]` (`"KEY=VALUE"`) + `environmentCount` + `fplProcessFlags_InheritEnvironment` (Parent-Env als Basis, custom Einträge überschreiben).
+### 1.8 Environment-Variablen — zurückgestellt
+Werkzeug-Aufrufe brauchen oft ein modifiziertes Environment (`PATH`, `LANG`, `LC_ALL`, `CC`). Das wäre `environment[]` (`"KEY=VALUE"`) + `environmentCount` + ein Inherit-Flag gewesen.
+→ **Bewusst auf später verschoben** (siehe 12). Das Kind erbt vorerst immer das Environment des Parents. Die Erweiterung ist additiv: zwei Felder im Context plus ein Flag, ohne Bruch an der bestehenden Signatur. Bis dahin ist der Workaround `setenv()`/`SetEnvironmentVariable()` im Parent — mit dem Nachteil, dass es nicht thread-safe ist und den eigenen Prozess dauerhaft verändert.
 
 ### 1.9 Es fehlt "kein Konsolenfenster"
 Eine GUI-App, die ein Konsolen-Tool startet, lässt auf Windows ein schwarzes Fenster aufblitzen. Das ist der sichtbarste Bug einer Prozess-API überhaupt.
@@ -241,8 +241,6 @@ typedef enum fplProcessFlags {
 	fplProcessFlags_LineBuffered = 1 << 5,
 	//! Report a non-zero exit code as @ref fplProcessResultType_FailedWithExitCode.
 	fplProcessFlags_TreatNonZeroExitAsError = 1 << 6,
-	//! Use the environment of the parent as the base for the custom environment.
-	fplProcessFlags_InheritEnvironment = 1 << 7,
 } fplProcessFlags;
 FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessFlags);
 
@@ -257,8 +255,6 @@ typedef struct fplProcessContext {
 	const char *argumentLine;
 	//! The arguments, without the executable itself.
 	const char **arguments;
-	//! Environment variables in the form of "KEY=VALUE" or fpl_null for inheriting the environment of the parent.
-	const char **environment;
 	//! The work directory path or fpl_null for using the current directory.
 	const char *workDir;
 	//! The path of the shell or interpreter, used for @ref fplProcessShellMode_Custom (for example "/bin/bash" or "powershell.exe").
@@ -275,8 +271,6 @@ typedef struct fplProcessContext {
 	void *userData;
 	//! Number of arguments.
 	size_t argumentCount;
-	//! Number of environment variables.
-	size_t environmentCount;
 	//! Number of characters in @ref fplProcessContext.inputText or zero for computing the length automatically.
 	size_t inputTextLen;
 	//! Maximum number of bytes captured per buffer or zero for no limit.
@@ -569,7 +563,7 @@ Abschnitt `// > WIN32_PROCESS` in der Win32-Plattform-Sektion. **Kein neues Runt
 
 ### 5.3 STARTUPINFO
 - `STARTF_USESTDHANDLES` setzen und **alle drei** Handles füllen. Setzt man nur `hStdOutput` und lässt die anderen auf NULL, bekommt das Kind ungültige Handles — Tools, die stdin/stderr anfassen, brechen dann mit obskuren Fehlern ab. Für nicht umgeleitete Streams: `GetStdHandle(...)` bzw. bei `fplProcessInputMode_None` ein Handle auf `NUL` (`CreateFileW(L"NUL", ...)`).
-- `dwCreationFlags`: `CREATE_NO_WINDOW` (NoWindow), `CREATE_NEW_PROCESS_GROUP` (für CTRL_BREAK bei RequestStop), `DETACHED_PROCESS` (Detached), `CREATE_UNICODE_ENVIRONMENT` (immer, da wir den Env-Block in UTF-16 bauen), `EXTENDED_STARTUPINFO_PRESENT` (siehe 5.5).
+- `dwCreationFlags`: `CREATE_NO_WINDOW` (NoWindow), `CREATE_NEW_PROCESS_GROUP` (für CTRL_BREAK bei RequestStop), `DETACHED_PROCESS` (Detached), `EXTENDED_STARTUPINFO_PRESENT` (siehe 5.5).
 - `lpCurrentDirectory` = `workDir` (wide).
 
 ### 5.4 Nicht-blockierendes Lesen
@@ -591,7 +585,7 @@ EOF-Erkennung: `ReadFile` liefert `FALSE` mit `ERROR_BROKEN_PIPE`, oder `PeekNam
 - `fplProcessClose`: Pipes schließen, `CloseHandle` auf Prozess-/Thread-/Job-Handle, Struct nullen.
 
 ### 5.7 Environment
-Env-Block ist eine doppelt-null-terminierte UTF-16-Liste (`KEY=VALUE\0KEY=VALUE\0\0`). Mit `InheritEnvironment`: `GetEnvironmentStringsW()` holen, custom Einträge mergen (case-insensitive Key-Vergleich, wie Windows es macht), `FreeEnvironmentStringsW`. Sortierung: Windows will den Block **sortiert**; in der Praxis funktioniert unsortiert auch, wir sortieren trotzdem defensiv.
+Zurückgestellt (1.8). `CreateProcessW` bekommt `lpEnvironment = fpl_null`, das Kind erbt damit das Environment des Parents. `CREATE_UNICODE_ENVIRONMENT` wird erst gesetzt, wenn wir einen eigenen Block bauen.
 
 ---
 
@@ -645,7 +639,7 @@ Schreiben in stdin eines toten Kindes → SIGPIPE → Parent stirbt (Default-Dis
 - `KillOnParentExit`: im Kind `prctl(PR_SET_PDEATHSIG, SIGKILL)` (Linux). Auf anderen Unixen nicht portabel → dokumentieren, dass das Flag dort ignoriert wird (mit `FPL__WARNING`).
 
 ### 6.9 Environment
-`environ` ist über `extern char **environ` erreichbar. Mit `InheritEnvironment` mergen wir `environ` + custom (Key vor `=` vergleichen, custom gewinnt) in ein neues `char*[]`, **vor** dem Fork. Ohne Inherit nur die custom-Liste. `execve` statt `execv`, wenn eine Env-Liste gesetzt ist.
+Zurückgestellt (1.8). Es wird `execv`/`execvp` benutzt (kein `execve`), das Kind erbt damit `environ` des Parents unverändert.
 
 ---
 
@@ -674,7 +668,7 @@ typedef struct fpl__ProcessBufferHeader {
 Regeln:
 - Allokation: `allocPtr = fpl__AllocateDynamicMemory(sizeof(fpl__ProcessBufferHeader) + capacity + 1, FPL__PROCESS_BUFFER_ALIGNMENT)`, danach `text = (char *)allocPtr + sizeof(fpl__ProcessBufferHeader)`.
 - Freigabe: `header = (fpl__ProcessBufferHeader *)((uint8_t *)buffer->text - sizeof(fpl__ProcessBufferHeader))`, Magic prüfen, dann `fpl__ReleaseDynamicMemory(header)` und `buffer` nullen. Doppelter Aufruf ist damit erkennbar und wird ignoriert (idempotent, wie `fplFileClose`).
-- **Allokator-Regel:** Es wird ausschließlich `fpl__AllocateDynamicMemory()` / `fpl__ReleaseDynamicMemory()` benutzt, nie `fplMemoryAlignedAllocate()`/`fplMemoryAlignedFree()` oder `fplMemoryAllocate()` direkt. Nur so greifen die `fplMemorySettings.dynamic`-Callbacks des Nutzers, und der eigene Allocator bekommt jede Prozess-Allokation zu sehen. Das gilt für die Capture-Buffer, die Zeilen-Buffer, `fpl__ProcessStreams` und die vor dem Fork gebauten argv/envp-Blöcke.
+- **Allokator-Regel:** Es wird ausschließlich `fpl__AllocateDynamicMemory()` / `fpl__ReleaseDynamicMemory()` benutzt, nie `fplMemoryAlignedAllocate()`/`fplMemoryAlignedFree()` oder `fplMemoryAllocate()` direkt. Nur so greifen die `fplMemorySettings.dynamic`-Callbacks des Nutzers, und der eigene Allocator bekommt jede Prozess-Allokation zu sehen. Das gilt für die Capture-Buffer, die Zeilen-Buffer, `fpl__ProcessStreams` und die vor dem Fork gebauten argv-Blöcke.
 - **Deshalb ist der zurückgegebene Zeiger opak:** Wo der Speicher wirklich beginnt, weiß nur der jeweilige Allokator. Der Default-Pfad landet in `fplMemoryAlignedAllocate()`, das intern *bereits* denselben Prefix-Trick benutzt (Basiszeiger vor dem ausgerichteten Zeiger), und ein benutzerdefinierter Callback kann beliebige eigene Buchhaltung davor legen. Unser Header muss deshalb **auf** dem gelieferten Zeiger liegen — niemals davor gerechnet werden — und freigegeben wird immer exakt der Zeiger, den der Allokator zurückgegeben hat.
 - Wachstum: FPL hat kein `realloc`. Beim Vergrößern wird ein neuer Block alloziert, `header + text` per `fplMemoryCopy` übernommen und der alte Block freigegeben. Startkapazität 4 KB, danach Verdopplung, gedeckelt durch `maxCaptureSize`.
 - `text` ist immer null-terminiert (deshalb das `+ 1`), auch wenn `len == 0`. `text` ist nur dann `fpl_null`, wenn der Stream gar nicht gecaptured wurde.
@@ -782,7 +776,6 @@ Testfälle:
 9. `--child-sleep 10000` + `fplProcessWait(handle, 100, ...)` → `_Timeout`; danach `fplProcessStop` → beendet.
 10. Async: Start ohne AutoWait, `fplProcessIsRunning` pollen, danach Wait + Exit-Code.
 11. `workDir` wirkt (Kind gibt CWD aus).
-12. Environment: custom Variable ist im Kind sichtbar; `InheritEnvironment` an/aus.
 13. Skript: temporäres `.sh` bzw. `.bat` schreiben, mit `fplProcessShellMode_Default` starten, Ausgabe prüfen.
 13b. Custom-Shell: dasselbe Skript mit `fplProcessShellMode_Custom` + `/bin/bash` (POSIX) bzw. `cmd.exe` mit explizitem `shellPath` (Windows) starten.
 14. Argumente mit Leerzeichen und Anführungszeichen kommen unverfälscht an (argv-Array-Pfad!).
@@ -800,7 +793,7 @@ Testfälle:
 | **3** | Capture merged (eine Pipe) auf beiden Plattformen + Pump/AutoWait-Schleife | `CaptureBoth` funktioniert, Deadlock-Test grün |
 | **4** | Capture separat (poll / PeekNamedPipe), Callbacks, LineBuffered, maxCaptureSize | volle Capture/Redirect-Matrix |
 | **5** | stdin: None/Text/Callback/Stream, SIGPIPE-Behandlung | Input komplett |
-| **6** | Environment, shellMode (Default+Custom), NoWindow, Detached, KillProcessTree, KillOnParentExit, Timeouts, Handle-Liste (Win32) | Flags komplett |
+| **6** | shellMode (Default+Custom), NoWindow, Detached, KillProcessTree, KillOnParentExit, Timeouts, Handle-Liste (Win32) | Flags komplett |
 | **7** | Demo, Tests, `.docs`, Changelog, Build-Dateien, NoCRT/NoRuntimeLinking/NoPlatformIncludes verifizieren | Release-fertig |
 
 Phasen 1 und 2 sind unabhängig, 3–6 sollten pro Feature immer beide Plattformen zusammen abschließen — sonst driften die Semantiken auseinander.
@@ -813,6 +806,7 @@ Phasen 1 und 2 sind unabhängig, 3–6 sollten pro Feature immer beide Plattform
 - **Interner Reader-Thread** — Pump-Modell reicht, kann später additiv kommen.
 - **`ShellExecuteEx` / Datei mit Standard-Anwendung öffnen / URLs** — anderes Feature (`fplOpenURL`), andere Semantik (kein Handle, kein Exit-Code). Wäre ein sinnvoller separater Nachschlag.
 - **PTY / Terminal-Emulation** (`forkpty`, ConPTY) — für Tools, die bei einer Pipe ihr Verhalten ändern (Farben, Interaktivität). Großes eigenes Thema.
+- **Environment-Variablen** — das Kind erbt das Environment des Parents. Nachrüstbar als `environment[]` + `environmentCount` + Inherit-Flag, ohne Bruch der Signatur (Windows: `lpEnvironment`-Block in UTF-16, doppelt null-terminiert und sortiert; POSIX: `execve` mit gemergtem `environ`).
 - **Prozess-Enumeration** (laufende Prozesse auflisten, nach Namen suchen) — eigenes Feature.
 - **Prioritäten/Affinity** — leicht nachrüstbar über ein zusätzliches Feld im Context.
 
