@@ -188,6 +188,15 @@ SOFTWARE.
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 
+	#### Threading
+	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
+	- Fixed: [POSIX] Two threads could join the very same pthread and hang forever, because a thread slot was marked free before its pthread was joined and the waiter read the handle out of the slot after that
+	- Fixed: [POSIX] Threads were created joinable but never joined once the slot was recycled, which leaked the thread descriptor and let pthread identifiers be reused - threads are created detached now
+	- Fixed: [Win32] fplThreadWaitForOne could wait on an already closed thread handle, or on a completely different thread when the slot was handed out again
+	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
+	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
+	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
+
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError passed the UTF-8 byte count to WriteConsoleW instead of the converted wide character count, which read past the conversion buffer for any text longer than it
@@ -14681,6 +14690,9 @@ fpl_internal fplThreadHandle *fpl__GetFreeThread(void) {
 		}
 	}
 	if (result != fpl_null) {
+		// The identifier is cleared before the slot is reserved, so a waiter on the previous thread sees
+		// right away that the slot does not belong to its thread anymore
+		fplAtomicStoreU64((volatile uint64_t *)&result->id, 0);
 		fplAtomicStoreU32((volatile uint32_t *)&result->currentState, (uint32_t)fplThreadState_Starting);
 	}
 	fpl__UnlockThreadState(state);
@@ -15841,6 +15853,95 @@ fpl_common_api size_t fplGetUsedThreadCount(void) {
 	}
 	fpl__UnlockThreadState(threadState);
 	return(result);
+}
+
+// Number of state checks a thread wait spins before it starts sleeping, so a short wait stays fast
+#define FPL__THREAD_WAIT_SPIN_COUNT 100
+// Number of milliseconds a thread wait sleeps between two state checks, after the spinning is over
+#define FPL__THREAD_WAIT_SLICE_MILLISECONDS 1
+
+// Waits until the specified thread has stopped. The wait is done on the state in the thread slot and never on the
+// native handle: a thread closes/releases its own handle when it ends and the slot may be handed to a new thread
+// right after that, so a waiter that touches the handle can hit a released handle or a completely different thread.
+// Returns false only when the timeout was exceeded.
+fpl_internal bool fpl__WaitForThreadStopped(fplThreadHandle *thread, const fplTimeoutValue timeout) {
+	if (thread == fpl_null) {
+		return(false);
+	}
+	// A slot that was handed to a new thread carries a new identifier, which is how the waiter notices
+	// that the thread it was waiting for is gone already
+	uint64_t waitedThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	size_t spinCount = 0;
+	for (;;) {
+		fplThreadState state = fplGetThreadState(thread);
+		if (state == fplThreadState_Stopped) {
+			return(true);
+		}
+		uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+		if (currentThreadId != waitedThreadId) {
+			return(true);
+		}
+		if (timeout != FPL_TIMEOUT_INFINITE) {
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - startTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				return(false);
+			}
+		}
+		if (spinCount < FPL__THREAD_WAIT_SPIN_COUNT) {
+			++spinCount;
+			fplThreadYield();
+		} else {
+			fplThreadSleep(FPL__THREAD_WAIT_SLICE_MILLISECONDS);
+		}
+	}
+}
+
+// Waits until at least the requested number of threads has stopped
+fpl_internal bool fpl__WaitForThreadsStopped(fplThreadHandle **threads, const size_t minCount, const size_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
+	FPL__CheckArgumentNull(threads, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
+	const size_t actualStride = (stride > 0) ? stride : sizeof(fplThreadHandle *);
+	for (size_t index = 0; index < maxCount; ++index) {
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		if (thread == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%zu' are not allowed to be null", index);
+			return(false);
+		}
+	}
+	uint64_t waitedThreadIds[FPL_MAX_THREAD_WAIT_COUNT];
+	for (size_t index = 0; index < maxCount; ++index) {
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		waitedThreadIds[index] = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+	}
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	size_t spinCount = 0;
+	for (;;) {
+		size_t stoppedCount = 0;
+		for (size_t index = 0; index < maxCount; ++index) {
+			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+			fplThreadState state = fplGetThreadState(thread);
+			uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+			if ((state == fplThreadState_Stopped) || (currentThreadId != waitedThreadIds[index])) {
+				++stoppedCount;
+			}
+		}
+		if (stoppedCount >= minCount) {
+			return(true);
+		}
+		if (timeout != FPL_TIMEOUT_INFINITE) {
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - startTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				return(false);
+			}
+		}
+		if (spinCount < FPL__THREAD_WAIT_SPIN_COUNT) {
+			++spinCount;
+			fplThreadYield();
+		} else {
+			fplThreadSleep(FPL__THREAD_WAIT_SLICE_MILLISECONDS);
+		}
+	}
 }
 
 //
@@ -19757,49 +19858,12 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 
 #endif // FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
+// WaitForMultipleObjects does not work for us here, because each thread closes its handle when it ends,
+// so the wait runs on the thread states instead
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
-	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_WAIT_COUNT, false);
 	fplStaticAssert(FPL_MAX_THREAD_WAIT_COUNT >= MAXIMUM_WAIT_OBJECTS);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
-	for (size_t index = 0; index < count; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		if (thread == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		if (fplGetThreadState(thread) != fplThreadState_Stopped) {
-			if (thread->internalHandle.win32ThreadHandle == fpl_null) {
-				FPL__ERROR(FPL__MODULE_THREADING, "Thread handle for index '%d' are not allowed to be null", index);
-				return false;
-			}
-		}
-	}
-
-	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
-	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
-	fplMilliseconds startTime = fplMillisecondsQuery();
-	size_t minThreads = waitForAll ? count : 1;
-	size_t stoppedThreads = 0;
-	while (stoppedThreads < minThreads) {
-		stoppedThreads = 0;
-		for (size_t index = 0; index < count; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
-				++stoppedThreads;
-			}
-		}
-		if (stoppedThreads >= minThreads) {
-			break;
-		}
-		if (timeout != FPL_TIMEOUT_INFINITE) {
-			if ((fplMillisecondsQuery() - startTime) >= timeout) {
-				break;
-			}
-		}
-		fplThreadYield();
-	}
-	bool result = stoppedThreads >= minThreads;
+	size_t minCount = waitForAll ? count : 1;
+	bool result = fpl__WaitForThreadsStopped(threads, minCount, count, stride, timeout);
 	return(result);
 }
 
@@ -20457,18 +20521,9 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(thread, false);
-	bool result;
-	if (fplGetThreadState(thread) != fplThreadState_Stopped) {
-		if (thread->internalHandle.win32ThreadHandle == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Win32 thread handle are not allowed to be null");
-			return false;
-		}
-		HANDLE handle = thread->internalHandle.win32ThreadHandle;
-		DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
-		result = (WaitForSingleObject(handle, t) == WAIT_OBJECT_0);
-	} else {
-		result = true;
-	}
+	// WaitForSingleObject cannot be used here, for the same reason it cannot be used for several threads:
+	// the thread closes its own handle when it ends, so a waiter can end up waiting on a closed handle
+	bool result = fpl__WaitForThreadStopped(thread, timeout);
 	return(result);
 }
 
@@ -23417,9 +23472,8 @@ void *fpl__PosixThreadProc(void *data) {
 
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	thread->isValid = false;
+	// This store frees the slot, so nothing in here may touch the handle afterwards - a new thread can own it already
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
-
-	pthreadApi->pthread_exit(data);
 	return 0;
 }
 
@@ -23459,50 +23513,7 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 }
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
-	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
-	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		if (thread == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
-			return false;
-		}
-	}
-
-	uint32_t completeCount = 0;
-	bool isRunning[FPL_MAX_THREAD_WAIT_COUNT];
-	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
-		if (!isRunning[index]) {
-			++completeCount;
-		}
-	}
-
-	fplMilliseconds startTime = fplMillisecondsQuery();
-	bool result = false;
-	while (completeCount < minCount) {
-		for (uint32_t index = 0; index < maxCount; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			if (isRunning[index]) {
-				fplThreadState state = fplGetThreadState(thread);
-				if (state == fplThreadState_Stopped) {
-					isRunning[index] = false;
-					++completeCount;
-					if (completeCount >= minCount) {
-						result = true;
-						break;
-					}
-				}
-			}
-			fplThreadSleep(10);
-		}
-		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplMillisecondsQuery() - startTime) >= timeout) {
-			result = false;
-			break;
-		}
-	}
+	bool result = fpl__WaitForThreadsStopped(threads, minCount, maxCount, stride, timeout);
 	return(result);
 }
 
@@ -23721,15 +23732,10 @@ fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	FPL__CheckArgumentNull(thread, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if (thread->isValid && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
-		pthread_t threadHandle = thread->internalHandle.posixThread;
-		if (pthreadApi->pthread_kill(threadHandle, 0) == 0) {
-			pthreadApi->pthread_join(threadHandle, fpl_null);
-		}
-		thread->isValid = false;
-		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+		// POSIX has no safe way to kill a single thread, so this waits for it to end. Joining is not possible
+		// either, because the threads are detached - see fplThreadWaitForOne for the reason.
+		fpl__WaitForThreadStopped(thread, FPL_TIMEOUT_INFINITE);
 		return true;
 	} else {
 		return false;
@@ -23797,6 +23803,10 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			if (parameters->stackSize > 0) {
 				pthreadApi->pthread_attr_setstacksize(&attr, parameters->stackSize);
 			}
+
+			// The thread frees itself when it ends and is never joined, because its slot can be handed to a
+			// new thread the moment it stops - a join would then hit the wrong thread. See fplThreadWaitForOne.
+			pthreadApi->pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 			// Priority
 			if (scheduler != -1) {
@@ -23984,25 +23994,11 @@ fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThr
 
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	bool result = false;
-	if ((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
-		pthread_t threadHandle = thread->internalHandle.posixThread;
-
-		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
-		int joinRes;
-		if ((pthreadApi->pthread_timedjoin_np != fpl_null) && (timeout != FPL_TIMEOUT_INFINITE)) {
-			struct timespec t;
-			fpl__InitWaitTimeSpec(timeout, &t);
-			joinRes = pthreadApi->pthread_timedjoin_np(threadHandle, fpl_null, &t);
-		} else {
-			joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
-		}
-
-		result = (joinRes == 0);
-	}
-	return (result);
+	// The thread cannot be joined here. A thread frees its slot when it ends, the slot can be handed to a new
+	// thread immediately, and the join would then hit that new thread instead of the one that was waited for.
+	// Threads are created detached for exactly that reason, so the wait runs on the thread state.
+	bool result = fpl__WaitForThreadStopped(thread, timeout);
+	return(result);
 }
 
 fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
