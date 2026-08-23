@@ -742,9 +742,9 @@ Gecaptured wird in `fpl__ProcessStream.capture`. Sobald `fplProcessStart` (bei `
 |---|---|
 | `final_platform_layer.h` | Neue `@defgroup Process` nach `DynamicLibrary`; opake Handle-Typen; `FPL__MODULE_PROCESS`; Sektionsmarker `// > WIN32_PROCESS` und `// > POSIX_PROCESS` in der Marker-Liste oben ergänzen; Common-Teil (`fplProcessFreeResult`, argv↔cmdline-Helper) im `// > COMMON`-Block; Changelog-Eintrag unter v1.0.1 |
 | `final_platform_layer.docs` | Neue `@section section_category_process_*` (Overview, Start, Capture, Redirect, Input, Wait/Stop, Notes) mit Beispielen; in die Kategorie-Übersicht oben eintragen |
-| `demos/FPL_Process/` (neu) | `fpl_process.c`, `CMakeLists.txt`, `Makefile`, `premake5.lua`, `.vcxproj(+.filters/.user)` — analog zu `demos/FPL_Console` |
+| `demos/FPL_Process/` (neu, **erledigt**) | `fpl_process.c`, `CMakeLists.txt`, `Makefile`, `premake5.lua`, `.vcxproj(+.filters/.user)` — analog zu `demos/FPL_Console` |
 | `demos/FPL_Test/fpl_test.c` | Neue Testgruppe `TestProcess()` |
-| `demos/demos_final_platform_layer_premake5.lua`, `.sln` | Neues Projekt eintragen |
+| `demos/demos_final_platform_layer_premake5.lua`, `.sln` (**erledigt**) | Neues Projekt eingetragen |
 | `README.md` / `final_game_tech.md` | Feature-Liste ergänzen |
 
 CMake ist maßgeblich (`MY_COMPILER`, `MY_TRANSLATION_UNITS`, `MY_HEADER_FILES`), `.vcxproj` wird nachgezogen.
@@ -834,8 +834,17 @@ Typen, Deklarationen und Doxygen-Doku im Header, Modul-Konstante `FPL__MODULE_PR
 
 **Verifiziert:** 12 Funktionstests grün (Start/AutoWait, PATH-Suche, argv-Array mit Leerzeichen, Quoting im Argument-String, `workDir`, NotFound, AccessDenied, Exit-Code-Semantik mit und ohne Opt-in, async + IsRunning + SIGKILL, SIGTERM, Wait-Timeout, TryGetExitCode, 50 Zyklen). Zombie-Check über `/proc/self/task/self/children` leer. ASan + UBSan sauber, keine Leaks. Kompiliert in C99/C17/C++11, mit `FPL_NO_RUNTIME_LINKING`, `FPL_NO_PLATFORM_INCLUDES` und ohne Window/Video/Audio, keine neue Warnung unter `-Wextra`.
 
+### Demo — erledigt (aus Phase 7 vorgezogen)
+`demos/FPL_Process/` nach dem Vorbild von `demos/FPL_Console` (C99, `FPL_NO_WINDOW`/`NO_VIDEO`/`NO_AUDIO`), mit CMakeLists.txt, Makefile, premake5.lua und den drei Visual-Studio-Dateien (eigene Projekt-GUID), eingetragen in `demos_final_platform_layer_premake5.lua` (Gruppe "Console") und `demos_final_platform_layer.sln`.
+
+Die Demo zeigt sieben Szenarien, die auf beiden Plattformen dasselbe tun und nur unterschiedliche Programme starten (`echo`/`pwd`/`sleep` gegen `cmd.exe /c ...`):
+Start mit Warten, Argument-Array mit Leerzeichen, eigenes Arbeitsverzeichnis, Exit-Code als Normalfall und als Fehler, nicht gefundenes Programm, Wait mit Timeout und anschließendem Stop, asynchroner Start mit `fplProcessIsRunning()`-Polling und `fplProcessRequestStop()`.
+Ohne Argumente läuft die Szenario-Tour, mit Argumenten startet die Demo genau das übergebene Programm — praktisch zum Ausprobieren.
+
+Sobald Capture/Redirect (Phase 3/4) steht, kommen die entsprechenden Szenarien dazu; bis dahin erbt das Kind die Konsole des Parents.
+
 ### Offen
-Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (Demo, Tests, .docs, Changelog).
+Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (Tests, .docs, Changelog, Capture-Szenarien in der Demo).
 `fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
 
 ---
