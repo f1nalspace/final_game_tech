@@ -103,6 +103,7 @@ License:
 #include <math.h> // sqrt
 
 #include "security_tests.c"
+#include "process_tests.c"
 
 static void TestColdInit(void) {
 	ftMsg("Test Cold-Initialize of InitPlatform\n");
@@ -2078,6 +2079,16 @@ static void TestGamepadPollMerge() {
 	fplPlatformRelease();
 }
 
+static void TestProcess(void) {
+	ftMsg("Process tests\n");
+	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
+		ftFail("Failed to initialize platform");
+		return;
+	}
+	FPLProcessTests_All();
+	fplPlatformRelease();
+}
+
 static void TestSecurity(void) {
 	ftMsg("Security & stability tests\n");
 	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
@@ -2094,8 +2105,12 @@ static void TestSecurity(void) {
 }
 
 int main(int argc, char *args[]) {
-	(void)argc;
-	(void)args;
+	// The process tests start this executable again in one of the child modes, that mode replaces the whole test run
+	ProcessTestChildMode childMode = ProcessTestsGetChildMode(argc, args);
+	if (childMode != ProcessTestChildMode_None) {
+		int childExitCode = ProcessTestsRunAsChild(childMode, argc, args);
+		return childExitCode;
+	}
 	TestColdInit();
 	TestInit();
 	TestSizes();
@@ -2113,6 +2128,7 @@ int main(int argc, char *args[]) {
 	TestFiles();
 	TestAtomics();
 	TestThreading();
+	TestProcess();
 	TestGamepadPollMerge();
 	return 0;
 }

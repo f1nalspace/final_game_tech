@@ -743,7 +743,7 @@ Gecaptured wird in `fpl__ProcessStream.capture`. Sobald `fplProcessStart` (bei `
 | `final_platform_layer.h` | Neue `@defgroup Process` nach `DynamicLibrary`; opake Handle-Typen; `FPL__MODULE_PROCESS`; Sektionsmarker `// > WIN32_PROCESS` und `// > POSIX_PROCESS` in der Marker-Liste oben ergänzen; Common-Teil (`fplProcessFreeResult`, argv↔cmdline-Helper) im `// > COMMON`-Block; Changelog-Eintrag unter v1.0.1 |
 | `final_platform_layer.docs` | Neue `@section section_category_process_*` (Overview, Start, Capture, Redirect, Input, Wait/Stop, Notes) mit Beispielen; in die Kategorie-Übersicht oben eintragen |
 | `demos/FPL_Process/` (neu, **erledigt**) | `fpl_process.c`, `CMakeLists.txt`, `Makefile`, `premake5.lua`, `.vcxproj(+.filters/.user)` — analog zu `demos/FPL_Console` |
-| `demos/FPL_Test/fpl_test.c` | Neue Testgruppe `TestProcess()` |
+| `demos/FPL_Test/fpl_test.c`, `process_tests.c` (**erledigt**) | Neue Testgruppe `TestProcess()` plus die Kindmodi im `main()` |
 | `demos/demos_final_platform_layer_premake5.lua`, `.sln` (**erledigt**) | Neues Projekt eingetragen |
 | `README.md` / `final_game_tech.md` | Feature-Liste ergänzen |
 
@@ -843,8 +843,32 @@ Ohne Argumente läuft die Szenario-Tour, mit Argumenten startet die Demo genau d
 
 Sobald Capture/Redirect (Phase 3/4) steht, kommen die entsprechenden Szenarien dazu; bis dahin erbt das Kind die Konsole des Parents.
 
+### Tests — erledigt (aus Phase 7 vorgezogen)
+`demos/FPL_Test/process_tests.c`, eingebunden wie `security_tests.c` (per `#include` in `fpl_test.c`), Einstiegspunkt `FPLProcessTests_All()` über die Testgruppe `TestProcess()`.
+
+Das Kernstück ist der **Selbststart**: `fpl_test.c` erkennt in `main()` vor allem anderen einen `--child-*`-Aufruf und läuft dann als Kindprozess statt als Testlauf. Damit braucht kein einziger Test ein externes Programm und verhält sich auf allen Plattformen gleich. Die Erkennung passiert ohne `fplPlatformInit`, damit `TestColdInit()` unberührt bleibt.
+
+Kindmodi: `--child-echo`, `--child-error`, `--child-exit <code>`, `--child-sleep <ms>`, `--child-checkargs <n> <werte...>`, `--child-checkfile <relativer pfad>`.
+
+Weil Capture noch fehlt, antwortet das Kind über seinen **Exit-Code**:
+- Argumentübergabe: das Kind vergleicht die angekommenen Argumente mit den erwarteten und endet mit 0 oder 1. Der bewusst falsche Fall (3 angekündigt, 1 übergeben) muss 1 liefern — sonst wäre der Test wertlos.
+- Arbeitsverzeichnis: der Parent legt eine Markierungsdatei neben die Test-Exe, das Kind sucht sie über einen **relativen** Pfad. Lauf A mit `workDir` = Exe-Verzeichnis muss sie finden, Lauf B mit `workDir` = Wurzelverzeichnis darf sie nicht finden.
+
+Testgruppen: aktuelle Prozess-ID, ungültige Argumente (jeder Einstiegspunkt mit `fpl_null` und mit ungültigem Handle), Startfehler (nicht gefunden, nicht ausführbar), Arbeitsverzeichnis-Fehler, Exit-Codes (inkl. `TreatNonZeroExitAsError`), Argument-Array und Argument-Zeile, Arbeitsverzeichnis, asynchroner Start mit Polling/Timeout/SIGKILL/SIGTERM, Handle- und Result-Lebensdauer (doppeltes Close/Free, 25 Zyklen, Close eines noch laufenden Prozesses) sowie die Meldung noch nicht implementierter Optionen.
+
+**Gegenprobe:** Mit einer absichtlich kaputten Header-Kopie (`ENOENT` → `FailedToStart` statt `NotFound`) bricht die Suite mit SIGABRT an genau der erwarteten Assert-Zeile ab. Die Tests greifen also wirklich.
+
+**Erweiterung pro Phase** (`@TODO(final)` steht an den betroffenen Stellen):
+| Phase | Was dazukommt |
+|---|---|
+| 2 (Win32) | Die `#if !defined(FPL_PLATFORM_WINDOWS)`-Blöcke bei Signal-Asserts und `RequestStop` aktivieren, `AccessDenied` auf Windows festnageln |
+| 3 (Capture merged) | `--child-echo`/`--child-error` über den gecapturten Text prüfen; `--child-spam <bytes>` als Deadlock-Regressionstest; `maxCaptureSize` → `isTruncated`; den NotImplemented-Block für Capture entfernen |
+| 4 (Capture separat) | Getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered` |
+| 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
+| 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
+
 ### Offen
-Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (Tests, .docs, Changelog, Capture-Szenarien in der Demo).
+Phase 2 (Win32-Kern), 3 (Capture merged), 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
 `fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
 
 ---
