@@ -7377,7 +7377,7 @@ typedef enum fplProcessCaptureFlags {
 	fplProcessCaptureFlags_CaptureOutput = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_ToBuffer,
 	//! Capture only the error stream into the error buffer of the result.
 	fplProcessCaptureFlags_CaptureError = fplProcessCaptureFlags_Error | fplProcessCaptureFlags_ToBuffer,
-	//! Capture the output stream into the output buffer and the error stream into the error buffer of the result.
+	//! Capture the output stream into the output buffer and the error stream into the error buffer of the result. Only the order inside one stream is kept, not the order between the two.
 	fplProcessCaptureFlags_CaptureSeparate = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer,
 	//! Capture both streams merged into the output buffer of the result.
 	fplProcessCaptureFlags_CaptureBoth = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer | fplProcessCaptureFlags_Merged,
@@ -7438,7 +7438,7 @@ typedef enum fplProcessFlags {
 	fplProcessFlags_KillProcessTree = 1 << 3,
 	//! Kill the child process automatically, when the parent process exits.
 	fplProcessFlags_KillOnParentExit = 1 << 4,
-	//! Split the captured/redirected text into complete lines.
+	//! Push the redirected text into the @ref fpl_process_output_callback as complete lines only. Has no effect on the captured buffers.
 	fplProcessFlags_LineBuffered = 1 << 5,
 	//! Report a non-zero exit code as @ref fplProcessResultType_FailedWithExitCode.
 	fplProcessFlags_TreatNonZeroExitAsError = 1 << 6,
@@ -17183,6 +17183,10 @@ typedef struct fpl__ProcessStreams {
 #define FPL__PROCESS_BUFFER_INITIAL_CAPACITY 4096
 // Number of bytes read from a stream in one go
 #define FPL__PROCESS_READ_CHUNK_SIZE 4096
+// Number of bytes a line buffer starts with, it doubles from there
+#define FPL__PROCESS_LINE_BUFFER_INITIAL_CAPACITY 256
+// Number of characters a single line can hold, a longer line is split hard at this length
+#define FPL__PROCESS_MAX_LINE_LENGTH 65536
 
 fpl_internal fpl__ProcessBufferHeader *fpl__GetProcessBufferHeader(const fplProcessBuffer *buffer) {
 	if (buffer->text == fpl_null) {
@@ -17232,11 +17236,103 @@ fpl_internal bool fpl__EnsureProcessBufferCapacity(fplProcessBuffer *buffer, con
 	return(true);
 }
 
-// Takes the text that was read from a stream and moves it into the configured sinks
-fpl_internal void fpl__PushProcessStreamText(fpl__ProcessStreams *streams, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+// Makes sure the line buffer can hold the required number of characters. It grows the same way the capture buffer does.
+fpl_internal bool fpl__EnsureProcessLineBufferCapacity(fpl__ProcessStream *stream, const size_t requiredCapacity) {
+	if (stream->lineBufferCapacity >= requiredCapacity) {
+		return(true);
+	}
+	size_t newCapacity = (stream->lineBufferCapacity > 0) ? stream->lineBufferCapacity : FPL__PROCESS_LINE_BUFFER_INITIAL_CAPACITY;
+	while (newCapacity < requiredCapacity) {
+		newCapacity *= 2;
+	}
+	// The extra byte is the null-terminator, so the callback always gets a usable string
+	size_t totalSize = newCapacity + 1;
+	char *newLineBuffer = (char *)fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (newLineBuffer == fpl_null) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating %zu bytes for a process line buffer", totalSize);
+		return(false);
+	}
+	if (stream->lineBufferLen > 0) {
+		fplMemoryCopy(stream->lineBuffer, stream->lineBufferLen, newLineBuffer);
+	}
+	newLineBuffer[stream->lineBufferLen] = 0;
+	if (stream->lineBuffer != fpl_null) {
+		fpl__ReleaseDynamicMemory(stream->lineBuffer);
+	}
+	stream->lineBuffer = newLineBuffer;
+	stream->lineBufferCapacity = newCapacity;
+	return(true);
+}
+
+// Hands the pending line over to the output callback and starts a new one.
+// The line ending is never part of the text, a "\r\n" is normalized to "\n" the same way a text mode file read would.
+fpl_internal void fpl__EmitProcessStreamLine(fplProcessHandle *handle, fpl__ProcessStream *stream, const bool endsWithNewLine) {
+	fpl__ProcessStreams *streams = handle->streams;
+	size_t lineLen = stream->lineBufferLen;
+	if (endsWithNewLine && (lineLen > 0) && (stream->lineBuffer[lineLen - 1] == '\r')) {
+		--lineLen;
+	}
+	stream->lineBufferLen = 0;
+	// An empty line never allocated a buffer, the callback still has to get a usable empty string
+	const char *lineText = "";
+	if (stream->lineBuffer != fpl_null) {
+		stream->lineBuffer[lineLen] = 0;
+		lineText = stream->lineBuffer;
+	}
+	streams->outputCallback(handle, stream->type, lineText, lineLen, streams->userData);
+}
+
+// Appends text to the pending line. A child that never writes a line ending would grow the buffer without a limit,
+// so an overlong line is split hard and delivered as if it had ended there.
+fpl_internal bool fpl__AppendProcessStreamLineText(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	const char *cursor = text;
+	size_t remainingLen = textLen;
+	while (remainingLen > 0) {
+		size_t freeLen = FPL__PROCESS_MAX_LINE_LENGTH - stream->lineBufferLen;
+		size_t appendLen = (remainingLen < freeLen) ? remainingLen : freeLen;
+		if (!fpl__EnsureProcessLineBufferCapacity(stream, stream->lineBufferLen + appendLen)) {
+			return(false);
+		}
+		char *appendTarget = stream->lineBuffer + stream->lineBufferLen;
+		fplMemoryCopy(cursor, appendLen, appendTarget);
+		stream->lineBufferLen += appendLen;
+		cursor += appendLen;
+		remainingLen -= appendLen;
+		if (stream->lineBufferLen >= FPL__PROCESS_MAX_LINE_LENGTH) {
+			fpl__EmitProcessStreamLine(handle, stream, false);
+		}
+	}
+	return(true);
+}
+
+// Splits the text into complete lines and pushes every one of them into the output callback
+fpl_internal void fpl__PushProcessStreamTextAsLines(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	size_t segmentStart = 0;
+	while (segmentStart < textLen) {
+		size_t newLineIndex = segmentStart;
+		while ((newLineIndex < textLen) && (text[newLineIndex] != '\n')) {
+			++newLineIndex;
+		}
+		size_t segmentLen = newLineIndex - segmentStart;
+		if (!fpl__AppendProcessStreamLineText(handle, stream, text + segmentStart, segmentLen)) {
+			return;
+		}
+		if (newLineIndex < textLen) {
+			fpl__EmitProcessStreamLine(handle, stream, true);
+			segmentStart = newLineIndex + 1;
+		} else {
+			segmentStart = newLineIndex;
+		}
+	}
+}
+
+// Takes the text that was read from a stream and moves it into the configured sinks.
+// The text must be null-terminated, because the callback is documented to receive a usable string.
+fpl_internal void fpl__PushProcessStreamText(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
 	if (textLen == 0) {
 		return;
 	}
+	fpl__ProcessStreams *streams = handle->streams;
 	bool useBuffer = (streams->captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
 	if (useBuffer) {
 		size_t writeLen = textLen;
@@ -17259,7 +17355,24 @@ fpl_internal void fpl__PushProcessStreamText(fpl__ProcessStreams *streams, fpl__
 			}
 		}
 	}
-	// @TODO(final): Push the text into the output callback (Phase 4)
+	bool useCallback = (streams->captureFlags & fplProcessCaptureFlags_ToCallback) == fplProcessCaptureFlags_ToCallback;
+	if (useCallback && (streams->outputCallback != fpl_null)) {
+		// The callback never gets a truncated text, maxCaptureSize only limits the buffer
+		bool useLineBuffer = (streams->flags & fplProcessFlags_LineBuffered) == fplProcessFlags_LineBuffered;
+		if (useLineBuffer) {
+			fpl__PushProcessStreamTextAsLines(handle, stream, text, textLen);
+		} else {
+			streams->outputCallback(handle, stream->type, text, textLen, streams->userData);
+		}
+	}
+}
+
+// Marks the stream as finished. A last line without a line ending is delivered here, so nothing is lost at the end.
+fpl_internal void fpl__MarkProcessStreamEndOfFile(fplProcessHandle *handle, fpl__ProcessStream *stream) {
+	stream->isEOF = true;
+	if (stream->lineBufferLen > 0) {
+		fpl__EmitProcessStreamLine(handle, stream, false);
+	}
 }
 
 // Hands the captured buffers over to the result. They are moved and not copied, so the result owns them from here on.
@@ -17271,17 +17384,23 @@ fpl_internal void fpl__MoveProcessStreamBuffers(fpl__ProcessStreams *streams, fp
 	outResult->isTruncated = streams->isTruncated;
 }
 
-// Releases every capture buffer that was never handed over to a result
+// Releases every capture buffer that was never handed over to a result, plus the line buffers
 fpl_internal void fpl__ReleaseProcessStreamBuffers(fpl__ProcessStreams *streams) {
-	fplProcessBuffer *buffers[] = { &streams->output.capture, &streams->error.capture };
-	for (size_t bufferIndex = 0; bufferIndex < fplArrayCount(buffers); ++bufferIndex) {
-		fplProcessBuffer *buffer = buffers[bufferIndex];
-		fpl__ProcessBufferHeader *header = fpl__GetProcessBufferHeader(buffer);
+	fpl__ProcessStream *streamList[] = { &streams->output, &streams->error };
+	for (size_t streamIndex = 0; streamIndex < fplArrayCount(streamList); ++streamIndex) {
+		fpl__ProcessStream *stream = streamList[streamIndex];
+		fpl__ProcessBufferHeader *header = fpl__GetProcessBufferHeader(&stream->capture);
 		if (header != fpl_null) {
 			header->magic = 0;
 			fpl__ReleaseDynamicMemory(header);
 		}
-		fplClearStruct(buffer);
+		fplClearStruct(&stream->capture);
+		if (stream->lineBuffer != fpl_null) {
+			fpl__ReleaseDynamicMemory(stream->lineBuffer);
+			stream->lineBuffer = fpl_null;
+		}
+		stream->lineBufferLen = 0;
+		stream->lineBufferCapacity = 0;
 	}
 }
 
@@ -17305,10 +17424,6 @@ fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessCo
 		FPL__ERROR(FPL__MODULE_PROCESS, "The kill-on-parent-exit flag is not implemented yet");
 		return(fplProcessResultType_NotImplemented);
 	}
-	if ((context->flags & fplProcessFlags_LineBuffered) == fplProcessFlags_LineBuffered) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "The line-buffered flag is not implemented yet");
-		return(fplProcessResultType_NotImplemented);
-	}
 
 	fplProcessCaptureFlags captureFlags = context->captureFlags;
 	if (captureFlags == fplProcessCaptureFlags_None) {
@@ -17318,7 +17433,6 @@ fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessCo
 	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
 	bool usesBuffer = (captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
 	bool usesCallback = (captureFlags & fplProcessCaptureFlags_ToCallback) == fplProcessCaptureFlags_ToCallback;
-	bool isMerged = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
 	if (!capturesOutput && !capturesError) {
 		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no stream at all", (int)captureFlags);
 		return(fplProcessResultType_InvalidArguments);
@@ -17327,17 +17441,9 @@ fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessCo
 		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no target at all", (int)captureFlags);
 		return(fplProcessResultType_InvalidArguments);
 	}
-	if (usesCallback) {
-		if (context->outputCallback == fpl_null) {
-			FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d require an output callback", (int)captureFlags);
-			return(fplProcessResultType_InvalidArguments);
-		}
-		FPL__ERROR(FPL__MODULE_PROCESS, "Redirecting a stream to a callback is not implemented yet");
-		return(fplProcessResultType_NotImplemented);
-	}
-	if (capturesOutput && capturesError && !isMerged) {
-		FPL__ERROR(FPL__MODULE_PROCESS, "Capturing the output and the error stream separately is not implemented yet");
-		return(fplProcessResultType_NotImplemented);
+	if (usesCallback && (context->outputCallback == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d require an output callback", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
 	}
 	return(fplProcessResultType_Success);
 }
@@ -22491,12 +22597,13 @@ fpl_internal void fpl__Win32ReleaseProcessStreams(fpl__ProcessStreams *streams) 
 // Reads everything that is available right now. Returns false when the stream has reached its end.
 // Anonymous pipes cannot do overlapped IO, so the amount of readable bytes is asked for first,
 // otherwise ReadFile would block until the child writes something.
-fpl_internal bool fpl__Win32PumpProcessStream(fpl__ProcessStreams *streams, fpl__ProcessStream *stream) {
+fpl_internal bool fpl__Win32PumpProcessStream(fplProcessHandle *handle, fpl__ProcessStream *stream) {
 	if (stream->isEOF || (stream->readHandle == fpl_null)) {
 		return(false);
 	}
 	HANDLE readHandle = (HANDLE)stream->readHandle;
-	char chunk[FPL__PROCESS_READ_CHUNK_SIZE];
+	// The extra byte is the null-terminator the output callback is documented to get
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE + 1];
 	for (;;) {
 		DWORD availableBytes = 0;
 		if (!PeekNamedPipe(readHandle, fpl_null, 0, fpl_null, &availableBytes, fpl_null)) {
@@ -22504,42 +22611,68 @@ fpl_internal bool fpl__Win32PumpProcessStream(fpl__ProcessStreams *streams, fpl_
 			if (errorCode != ERROR_BROKEN_PIPE) {
 				FPL__ERROR(FPL__MODULE_PROCESS, "Failed peeking a process stream with code %lu", errorCode);
 			}
-			stream->isEOF = true;
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
 			break;
 		}
 		if (availableBytes == 0) {
 			// Nothing available right now, the stream stays open
 			break;
 		}
-		DWORD bytesToRead = (availableBytes > (DWORD)sizeof(chunk)) ? (DWORD)sizeof(chunk) : availableBytes;
+		DWORD bytesToRead = (availableBytes > (DWORD)FPL__PROCESS_READ_CHUNK_SIZE) ? (DWORD)FPL__PROCESS_READ_CHUNK_SIZE : availableBytes;
 		DWORD readBytes = 0;
 		if (!ReadFile(readHandle, chunk, bytesToRead, &readBytes, fpl_null)) {
 			DWORD errorCode = GetLastError();
 			if (errorCode != ERROR_BROKEN_PIPE) {
 				FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %lu", errorCode);
 			}
-			stream->isEOF = true;
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
 			break;
 		}
 		if (readBytes == 0) {
-			stream->isEOF = true;
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
 			break;
 		}
-		fpl__PushProcessStreamText(streams, stream, chunk, (size_t)readBytes);
+		chunk[readBytes] = 0;
+		fpl__PushProcessStreamText(handle, stream, chunk, (size_t)readBytes);
 	}
 	return(!stream->isEOF);
 }
 
 // Returns the number of streams that are still open
-fpl_internal size_t fpl__Win32PumpProcessStreams(fpl__ProcessStreams *streams) {
+fpl_internal size_t fpl__Win32PumpProcessStreams(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
 	size_t openStreamCount = 0;
-	if (fpl__Win32PumpProcessStream(streams, &streams->output)) {
+	if (fpl__Win32PumpProcessStream(handle, &streams->output)) {
 		++openStreamCount;
 	}
-	if (fpl__Win32PumpProcessStream(streams, &streams->error)) {
+	if (fpl__Win32PumpProcessStream(handle, &streams->error)) {
 		++openStreamCount;
 	}
 	return(openStreamCount);
+}
+
+// Creates one capture pipe. The read end stays in the parent, so the child must never inherit it,
+// otherwise the parent would never see an end-of-file.
+fpl_internal bool fpl__Win32CreateProcessPipe(HANDLE *outReadHandle, HANDLE *outWriteHandle) {
+	SECURITY_ATTRIBUTES pipeSecurity = fplZeroInit;
+	pipeSecurity.nLength = sizeof(pipeSecurity);
+	pipeSecurity.bInheritHandle = TRUE;
+	if (!CreatePipe(outReadHandle, outWriteHandle, &pipeSecurity, 0)) {
+		return(false);
+	}
+	SetHandleInformation(*outReadHandle, HANDLE_FLAG_INHERIT, 0);
+	return(true);
+}
+
+fpl_internal void fpl__Win32CloseProcessPipe(HANDLE *readHandle, HANDLE *writeHandle) {
+	if (*readHandle != fpl_null) {
+		CloseHandle(*readHandle);
+		*readHandle = fpl_null;
+	}
+	if (*writeHandle != fpl_null) {
+		CloseHandle(*writeHandle);
+		*writeHandle = fpl_null;
+	}
 }
 
 // Returns a handle the child can use for a stream that is not redirected.
@@ -22644,10 +22777,17 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
 	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
 	bool hasCapture = capturesOutput || capturesError;
+	// A merged capture sends the error stream into the output pipe, which is what "2>&1" does,
+	// so a second pipe is only needed when the error stream is captured on its own
+	bool mergesErrorIntoOutput = capturesOutput && mergesStreams;
+	bool usesOutputPipe = capturesOutput;
+	bool usesErrorPipe = capturesError && !mergesErrorIntoOutput;
 
 	fpl__ProcessStreams *streams = fpl_null;
-	HANDLE captureReadHandle = fpl_null;
-	HANDLE captureWriteHandle = fpl_null;
+	HANDLE outputReadHandle = fpl_null;
+	HANDLE outputWriteHandle = fpl_null;
+	HANDLE errorReadHandle = fpl_null;
+	HANDLE errorWriteHandle = fpl_null;
 	HANDLE nullDeviceHandle = fpl_null;
 
 	STARTUPINFOW startupInfo = fplZeroInit;
@@ -22667,14 +22807,20 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			}
 			return(false);
 		}
-		SECURITY_ATTRIBUTES pipeSecurity = fplZeroInit;
-		pipeSecurity.nLength = sizeof(pipeSecurity);
-		pipeSecurity.bInheritHandle = TRUE;
-		if (!CreatePipe(&captureReadHandle, &captureWriteHandle, &pipeSecurity, 0)) {
+		bool pipesCreated = true;
+		if (usesOutputPipe) {
+			pipesCreated = fpl__Win32CreateProcessPipe(&outputReadHandle, &outputWriteHandle);
+		}
+		if (pipesCreated && usesErrorPipe) {
+			pipesCreated = fpl__Win32CreateProcessPipe(&errorReadHandle, &errorWriteHandle);
+		}
+		if (!pipesCreated) {
 			DWORD errorCode = GetLastError();
 			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %lu", context->name, errorCode);
 			startResult.type = fplProcessResultType_FailedToStart;
 			startResult.nativeErrorCode = (uint32_t)errorCode;
+			fpl__Win32CloseProcessPipe(&outputReadHandle, &outputWriteHandle);
+			fpl__Win32CloseProcessPipe(&errorReadHandle, &errorWriteHandle);
 			fpl__Win32ReleaseProcessStreams(streams);
 			if (jobHandle != fpl_null) {
 				CloseHandle(jobHandle);
@@ -22685,17 +22831,19 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			}
 			return(false);
 		}
-		// The read end must stay in the parent. If the child inherited it too, the parent would never see an end-of-file.
-		SetHandleInformation(captureReadHandle, HANDLE_FLAG_INHERIT, 0);
 
 		// As soon as STARTF_USESTDHANDLES is used, all three handles must be valid, otherwise a child
 		// that touches a stream we did not redirect fails with an obscure error
 		startupInfo.dwFlags |= STARTF_USESTDHANDLES;
 		startupInfo.hStdInput = fpl__Win32GetInheritableStdHandle(STD_INPUT_HANDLE, &nullDeviceHandle);
-		startupInfo.hStdOutput = capturesOutput ? captureWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
-		// A merged capture points the error stream at the very same pipe, which is what "2>&1" does
-		bool redirectErrorStream = capturesError || (capturesOutput && mergesStreams);
-		startupInfo.hStdError = redirectErrorStream ? captureWriteHandle : fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+		startupInfo.hStdOutput = usesOutputPipe ? outputWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
+		if (mergesErrorIntoOutput) {
+			startupInfo.hStdError = outputWriteHandle;
+		} else if (usesErrorPipe) {
+			startupInfo.hStdError = errorWriteHandle;
+		} else {
+			startupInfo.hStdError = fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+		}
 	}
 
 	PROCESS_INFORMATION processInfo = fplZeroInit;
@@ -22706,11 +22854,15 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	BOOL inheritHandles = hasCapture ? TRUE : FALSE;
 	BOOL createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, &startupInfo, &processInfo);
 
-	// The child owns its own duplicates from here on, so the parent must let go of the write end.
-	// Without this the read end would never reach its end-of-file.
-	if (captureWriteHandle != fpl_null) {
-		CloseHandle(captureWriteHandle);
-		captureWriteHandle = fpl_null;
+	// The child owns its own duplicates from here on, so the parent must let go of the write ends.
+	// Without this the read ends would never reach their end-of-file.
+	if (outputWriteHandle != fpl_null) {
+		CloseHandle(outputWriteHandle);
+		outputWriteHandle = fpl_null;
+	}
+	if (errorWriteHandle != fpl_null) {
+		CloseHandle(errorWriteHandle);
+		errorWriteHandle = fpl_null;
 	}
 	if (nullDeviceHandle != fpl_null) {
 		CloseHandle(nullDeviceHandle);
@@ -22722,9 +22874,8 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %lu", context->name, errorCode);
 		startResult.type = fpl__Win32MapProcessStartError(errorCode);
 		startResult.nativeErrorCode = (uint32_t)errorCode;
-		if (captureReadHandle != fpl_null) {
-			CloseHandle(captureReadHandle);
-		}
+		fpl__Win32CloseProcessPipe(&outputReadHandle, &outputWriteHandle);
+		fpl__Win32CloseProcessPipe(&errorReadHandle, &errorWriteHandle);
 		fpl__Win32ReleaseProcessStreams(streams);
 		if (jobHandle != fpl_null) {
 			CloseHandle(jobHandle);
@@ -22748,14 +22899,12 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	fpl__Win32ReleaseProcessStartArgs(&startArgs);
 
 	if (streams != fpl_null) {
-		// A merged capture and a pure output capture both land in the output stream,
-		// only capturing the error stream alone uses the error slot
-		if (capturesOutput) {
-			streams->output.readHandle = (fpl__Win32Handle)captureReadHandle;
-		} else {
-			streams->error.readHandle = (fpl__Win32Handle)captureReadHandle;
-		}
-		captureReadHandle = fpl_null;
+		// A merged capture lands entirely in the output stream, the error stream only gets its own
+		// buffer when it was captured separately
+		streams->output.readHandle = (fpl__Win32Handle)outputReadHandle;
+		streams->error.readHandle = (fpl__Win32Handle)errorReadHandle;
+		outputReadHandle = fpl_null;
+		errorReadHandle = fpl_null;
 	}
 
 	outHandle->streams = streams;
@@ -22782,7 +22931,7 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	if (handle->streams == fpl_null) {
 		return(false);
 	}
-	size_t openStreamCount = fpl__Win32PumpProcessStreams(handle->streams);
+	size_t openStreamCount = fpl__Win32PumpProcessStreams(handle);
 	return(openStreamCount > 0);
 }
 
@@ -22797,7 +22946,7 @@ fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutV
 		fplMilliseconds waitStartTime = fplMillisecondsQuery();
 		for (;;) {
 			hasExited = fpl__Win32UpdateProcessExitState(handle, FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS);
-			size_t openStreamCount = fpl__Win32PumpProcessStreams(handle->streams);
+			size_t openStreamCount = fpl__Win32PumpProcessStreams(handle);
 			if (hasExited && (openStreamCount == 0)) {
 				break;
 			}
@@ -25425,20 +25574,22 @@ fpl_internal void fpl__PosixReleaseProcessStreams(fpl__ProcessStreams *streams) 
 }
 
 // Reads everything that is available right now. Returns false when the stream has reached its end.
-fpl_internal bool fpl__PosixPumpProcessStream(fpl__ProcessStreams *streams, fpl__ProcessStream *stream) {
+fpl_internal bool fpl__PosixPumpProcessStream(fplProcessHandle *handle, fpl__ProcessStream *stream) {
 	if (stream->isEOF || (stream->readFd < 0)) {
 		return(false);
 	}
-	char chunk[FPL__PROCESS_READ_CHUNK_SIZE];
+	// The extra byte is the null-terminator the output callback is documented to get
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE + 1];
 	for (;;) {
-		ssize_t readBytes = read(stream->readFd, chunk, sizeof(chunk));
+		ssize_t readBytes = read(stream->readFd, chunk, FPL__PROCESS_READ_CHUNK_SIZE);
 		if (readBytes > 0) {
-			fpl__PushProcessStreamText(streams, stream, chunk, (size_t)readBytes);
+			chunk[readBytes] = 0;
+			fpl__PushProcessStreamText(handle, stream, chunk, (size_t)readBytes);
 			continue;
 		}
 		if (readBytes == 0) {
 			// Every write end is closed, so the child and everything it started are done with this stream
-			stream->isEOF = true;
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
 			break;
 		}
 		if (errno == EINTR) {
@@ -25449,22 +25600,35 @@ fpl_internal bool fpl__PosixPumpProcessStream(fpl__ProcessStreams *streams, fpl_
 			break;
 		}
 		FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %d", errno);
-		stream->isEOF = true;
+		fpl__MarkProcessStreamEndOfFile(handle, stream);
 		break;
 	}
 	return(!stream->isEOF);
 }
 
 // Returns the number of streams that are still open
-fpl_internal size_t fpl__PosixPumpProcessStreams(fpl__ProcessStreams *streams) {
+fpl_internal size_t fpl__PosixPumpProcessStreams(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
 	size_t openStreamCount = 0;
-	if (fpl__PosixPumpProcessStream(streams, &streams->output)) {
+	if (fpl__PosixPumpProcessStream(handle, &streams->output)) {
 		++openStreamCount;
 	}
-	if (fpl__PosixPumpProcessStream(streams, &streams->error)) {
+	if (fpl__PosixPumpProcessStream(handle, &streams->error)) {
 		++openStreamCount;
 	}
 	return(openStreamCount);
+}
+
+// Closes both ends of a pipe and marks them as unused
+fpl_internal void fpl__PosixCloseProcessPipe(int *pipeFileDescriptors) {
+	if (pipeFileDescriptors[0] >= 0) {
+		close(pipeFileDescriptors[0]);
+		pipeFileDescriptors[0] = -1;
+	}
+	if (pipeFileDescriptors[1] >= 0) {
+		close(pipeFileDescriptors[1]);
+		pipeFileDescriptors[1] = -1;
+	}
 }
 
 // Waits until any capture stream has data or the timeout is over. This is what keeps the pipes drained
@@ -25534,13 +25698,19 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		return(false);
 	}
 
-	// The capture pipe is created before the fork, so the child only has to dup2 the descriptors
+	// The capture pipes are created before the fork, so the child only has to dup2 the descriptors
 	fplProcessCaptureFlags captureFlags = context->captureFlags;
 	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
 	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
 	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
 	bool hasCapture = capturesOutput || capturesError;
-	int capturePipe[2] = { -1, -1 };
+	// A merged capture sends the error stream into the output pipe, which is what "2>&1" does,
+	// so a second pipe is only needed when the error stream is captured on its own
+	bool mergesErrorIntoOutput = capturesOutput && mergesStreams;
+	bool usesOutputPipe = capturesOutput;
+	bool usesErrorPipe = capturesError && !mergesErrorIntoOutput;
+	int outputPipe[2] = { -1, -1 };
+	int errorPipe[2] = { -1, -1 };
 	fpl__ProcessStreams *streams = fpl_null;
 	if (hasCapture) {
 		streams = fpl__PosixCreateProcessStreams(context);
@@ -25555,10 +25725,19 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			}
 			return(false);
 		}
-		if (!fpl__PosixCreateCloseOnExecPipe(capturePipe)) {
+		bool pipesCreated = true;
+		if (usesOutputPipe) {
+			pipesCreated = fpl__PosixCreateCloseOnExecPipe(outputPipe);
+		}
+		if (pipesCreated && usesErrorPipe) {
+			pipesCreated = fpl__PosixCreateCloseOnExecPipe(errorPipe);
+		}
+		if (!pipesCreated) {
 			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %d", context->name, errno);
 			startResult.type = fplProcessResultType_FailedToStart;
 			startResult.nativeErrorCode = (uint32_t)errno;
+			fpl__PosixCloseProcessPipe(outputPipe);
+			fpl__PosixCloseProcessPipe(errorPipe);
 			fpl__PosixReleaseProcessStreams(streams);
 			close(execErrorPipe[0]);
 			close(execErrorPipe[1]);
@@ -25569,8 +25748,14 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			return(false);
 		}
 		// The parent never blocks on a read, it only takes what is there right now
-		int readFlags = fcntl(capturePipe[0], F_GETFL, 0);
-		fcntl(capturePipe[0], F_SETFL, readFlags | O_NONBLOCK);
+		int readPipeFileDescriptors[] = { outputPipe[0], errorPipe[0] };
+		for (size_t pipeIndex = 0; pipeIndex < fplArrayCount(readPipeFileDescriptors); ++pipeIndex) {
+			int readFileDescriptor = readPipeFileDescriptors[pipeIndex];
+			if (readFileDescriptor >= 0) {
+				int readFlags = fcntl(readFileDescriptor, F_GETFL, 0);
+				fcntl(readFileDescriptor, F_SETFL, readFlags | O_NONBLOCK);
+			}
+		}
 	}
 
 	// Everything the child needs is prepared here, because only async-signal-safe calls are allowed after the fork
@@ -25592,10 +25777,8 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		startResult.nativeErrorCode = (uint32_t)errno;
 		close(execErrorPipe[0]);
 		close(execErrorPipe[1]);
-		if (capturePipe[0] >= 0) {
-			close(capturePipe[0]);
-			close(capturePipe[1]);
-		}
+		fpl__PosixCloseProcessPipe(outputPipe);
+		fpl__PosixCloseProcessPipe(errorPipe);
 		fpl__PosixReleaseProcessStreams(streams);
 		fpl__PosixReleaseProcessExecArgs(&execArgs);
 		if (outResult != fpl_null) {
@@ -25608,17 +25791,23 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		// Child process, only async-signal-safe calls are allowed from here on
 		close(execErrorPipe[0]);
 		int childErrorCode = 0;
-		if (capturePipe[0] >= 0) {
-			close(capturePipe[0]);
-			if (capturesOutput) {
-				dup2(capturePipe[1], STDOUT_FILENO);
-			}
-			// A merged capture points the error stream at the very same pipe, which is what "2>&1" does
-			if (capturesError || (capturesOutput && mergesStreams)) {
-				dup2(capturePipe[1], STDERR_FILENO);
+		if (outputPipe[0] >= 0) {
+			close(outputPipe[0]);
+		}
+		if (errorPipe[0] >= 0) {
+			close(errorPipe[0]);
+		}
+		if (outputPipe[1] >= 0) {
+			dup2(outputPipe[1], STDOUT_FILENO);
+			if (mergesErrorIntoOutput) {
+				dup2(outputPipe[1], STDERR_FILENO);
 			}
 			// The original descriptor is not needed anymore, the duplicates carry the stream now
-			close(capturePipe[1]);
+			close(outputPipe[1]);
+		}
+		if (errorPipe[1] >= 0) {
+			dup2(errorPipe[1], STDERR_FILENO);
+			close(errorPipe[1]);
 		}
 		if (useOwnProcessGroup) {
 			setpgid(0, 0);
@@ -25645,10 +25834,14 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 	// Parent process
 	close(execErrorPipe[1]);
-	if (capturePipe[1] >= 0) {
-		// The write end must be closed here, otherwise the read end would never see an end-of-file
-		close(capturePipe[1]);
-		capturePipe[1] = -1;
+	// The write ends must be closed here, otherwise the read ends would never see an end-of-file
+	if (outputPipe[1] >= 0) {
+		close(outputPipe[1]);
+		outputPipe[1] = -1;
+	}
+	if (errorPipe[1] >= 0) {
+		close(errorPipe[1]);
+		errorPipe[1] = -1;
 	}
 	if (useOwnProcessGroup) {
 		// Called in both processes on purpose, so the group exists no matter which process is scheduled first
@@ -25673,9 +25866,8 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %d", context->name, childErrorCode);
 		startResult.type = fpl__PosixMapProcessStartError(childErrorCode);
 		startResult.nativeErrorCode = (uint32_t)childErrorCode;
-		if (capturePipe[0] >= 0) {
-			close(capturePipe[0]);
-		}
+		fpl__PosixCloseProcessPipe(outputPipe);
+		fpl__PosixCloseProcessPipe(errorPipe);
 		fpl__PosixReleaseProcessStreams(streams);
 		if (outResult != fpl_null) {
 			*outResult = startResult;
@@ -25684,14 +25876,12 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	}
 
 	if (streams != fpl_null) {
-		// A merged capture and a pure output capture both land in the output stream,
-		// only capturing the error stream alone uses the error slot
-		if (capturesOutput) {
-			streams->output.readFd = capturePipe[0];
-		} else {
-			streams->error.readFd = capturePipe[0];
-		}
-		capturePipe[0] = -1;
+		// A merged capture lands entirely in the output stream, the error stream only gets its own
+		// buffer when it was captured separately
+		streams->output.readFd = outputPipe[0];
+		streams->error.readFd = errorPipe[0];
+		outputPipe[0] = -1;
+		errorPipe[0] = -1;
 	}
 
 	outHandle->streams = streams;
@@ -25717,7 +25907,7 @@ fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
 	if (handle->streams == fpl_null) {
 		return(false);
 	}
-	size_t openStreamCount = fpl__PosixPumpProcessStreams(handle->streams);
+	size_t openStreamCount = fpl__PosixPumpProcessStreams(handle);
 	return(openStreamCount > 0);
 }
 
@@ -25732,7 +25922,7 @@ fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutV
 		fplMilliseconds waitStartTime = fplMillisecondsQuery();
 		for (;;) {
 			fpl__PosixWaitForProcessStreams(handle->streams, FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS);
-			size_t openStreamCount = fpl__PosixPumpProcessStreams(handle->streams);
+			size_t openStreamCount = fpl__PosixPumpProcessStreams(handle);
 			hasExited = fpl__PosixUpdateProcessExitState(handle, false);
 			if (hasExited && (openStreamCount == 0)) {
 				break;

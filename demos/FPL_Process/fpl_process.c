@@ -15,6 +15,8 @@ Author:
 
 Changelog:
 	## 2026-08-23
+	- Added the separate capture and the output callback scenarios
+	- Fixed the argument array scenario, it started an interactive cmd.exe on Windows and hung there
 	- Added the capture scenarios
 	- Initial creation of this demo
 
@@ -63,6 +65,9 @@ License:
 // Argument that makes this demo print every argument it received, used to show that an argument array arrives unchanged
 #define DemoPrintArgumentsArgument "--print-args"
 
+// Argument that makes this demo write a few lines to both standard streams, used for the separate capture and the callback
+#define DemoWriteStreamsArgument "--write-streams"
+
 // Milliseconds we wait in the timeout scenario, the child runs a lot longer than that
 static const fplTimeoutValue demoShortWaitTimeout = 250;
 // Milliseconds slept between two polls of fplProcessIsRunning()
@@ -77,6 +82,8 @@ static const int32_t demoSpamTotalSize = 1000000;
 static const size_t demoCaptureLimit = 256;
 // Number of characters of the captured text the demo prints at most
 static const size_t demoMaxPrintedCaptureSize = 400;
+// Number of lines the child writes to each standard stream
+static const int demoStreamLineCount = 3;
 
 static const char *GetProcessResultTypeName(const fplProcessResultType type) {
 	switch (type) {
@@ -343,6 +350,63 @@ static void RunCaptureLimitScenario(void) {
 	fplProcessClose(&handle);
 }
 
+// Writes a few lines to both standard streams, so the separate capture and the callback have something to show
+static void RunWriteStreamsMode(void) {
+	char lineText[128];
+	for (int lineIndex = 0; lineIndex < demoStreamLineCount; ++lineIndex) {
+		fplStringFormat(lineText, fplArrayCount(lineText), "output line %d\n", lineIndex);
+		fplConsoleOut(lineText);
+		fplStringFormat(lineText, fplArrayCount(lineText), "error line %d\n", lineIndex);
+		fplConsoleError(lineText);
+	}
+}
+
+static void RunSeparateCaptureScenario(void) {
+	// Without the merge flag each stream gets its own pipe and its own buffer in the result
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	fplProcessContext context = fplZeroInit;
+	context.name = executablePath;
+	context.argumentLine = DemoWriteStreamsArgument;
+	context.captureFlags = fplProcessCaptureFlags_CaptureSeparate;
+	context.flags = fplProcessFlags_AutoWait;
+	RunAndWait("Capture the output and the error stream separately", &context);
+}
+
+// Receives one complete line at a time, because the scenario asks for fplProcessFlags_LineBuffered
+static FPL_FUNC_PROCESS_OUTPUT(OnProcessOutputLine) {
+	(void)process;
+	(void)textLen;
+	int *receivedLineCount = (int *)userData;
+	++(*receivedLineCount);
+	const char *streamName = (stream == fplProcessStreamType_Error) ? "error" : "output";
+	fplConsoleFormatOut("  [%s] %s\n", streamName, text);
+}
+
+static void RunOutputCallbackScenario(void) {
+	PrintScenarioHeader("Redirect both streams into a callback, line by line");
+	char executablePath[FPL_MAX_PATH_LENGTH];
+	fplGetExecutableFilePath(executablePath, fplArrayCount(executablePath));
+	int receivedLineCount = 0;
+	fplProcessContext context = fplZeroInit;
+	context.name = executablePath;
+	context.argumentLine = DemoWriteStreamsArgument;
+	// The two redirect presets together keep the streams apart, so the callback can tell them apart as well.
+	// Only the order inside one stream is kept, the order between them is not - a merged capture is the way to get one interleaved text.
+	context.captureFlags = fplProcessCaptureFlags_RedirectOutput | fplProcessCaptureFlags_RedirectError;
+	context.outputCallback = OnProcessOutputLine;
+	context.userData = &receivedLineCount;
+	context.flags = fplProcessFlags_AutoWait | fplProcessFlags_LineBuffered;
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &result)) {
+		fplConsoleFormatOut("  the callback received %d lines, nothing was stored in the result\n", receivedLineCount);
+	}
+	PrintProcessResult(&result);
+	fplProcessFreeResult(&result);
+	fplProcessClose(&handle);
+}
+
 // Runs the program the user passed on the command line, so the demo can start anything
 static void RunUserProgram(const int argumentCount, char **arguments) {
 	const char *programName = arguments[0];
@@ -377,6 +441,13 @@ int main(int argc, char *args[]) {
 		return(0);
 	}
 
+	// The separate capture and the callback scenario both start the demo with this mode
+	if ((argc > 1) && fplIsStringEqual(args[1], DemoWriteStreamsArgument)) {
+		RunWriteStreamsMode();
+		fplPlatformRelease();
+		return(0);
+	}
+
 	uint64_t currentProcessId = fplProcessGetCurrentId();
 	fplConsoleFormatOut("FPL process demo, running as process id %llu\n", (unsigned long long)currentProcessId);
 
@@ -390,6 +461,8 @@ int main(int argc, char *args[]) {
 		RunMissingProgramScenario();
 		RunLargeCaptureScenario();
 		RunCaptureLimitScenario();
+		RunSeparateCaptureScenario();
+		RunOutputCallbackScenario();
 		RunTimeoutScenario();
 		RunAsyncScenario();
 		fplConsoleOut("\nPass a program and its arguments to this demo, to run it directly\n");

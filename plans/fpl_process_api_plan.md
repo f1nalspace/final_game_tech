@@ -875,6 +875,31 @@ Unterstützt sind jetzt alle Kombinationen, die mit **einer** Pipe auskommen: `C
 
 **Nebenbefund für die Doku:** Wird ein FPL-Programm gecaptured, landet dessen **eigene Log-Ausgabe** im gecaptureten Text — der Standard-Log-Writer schreibt auf stdout. Die Testkinder schalten ihr Logging deshalb ab. Gehört als Hinweis in die `.docs`.
 
+### Phase 4 — erledigt (Capture getrennt, Callbacks, LineBuffered)
+Damit ist die Capture/Redirect-Matrix vollstaendig: getrennte Streams, Callback statt oder zusaetzlich zum Buffer, und Zeilenpufferung.
+
+**Gemeinsam (COMMON):**
+- `fpl__PushProcessStreamText()` bekommt jetzt das `fplProcessHandle` statt nur den Stream-State, weil der Callback laut `FPL_FUNC_PROCESS_OUTPUT` den Prozess mitgeliefert bekommt. Die Pump-Funktionen beider Plattformen reichen es durch.
+- Der gelesene Chunk ist **immer null-terminiert** (`FPL__PROCESS_READ_CHUNK_SIZE + 1` im Puffer, gelesen wird nur `FPL__PROCESS_READ_CHUNK_SIZE`). Der Callback ist als "usable string" dokumentiert, und ohne das haette jeder Nutzer selbst umkopieren muessen.
+- Zeilenpufferung wie in 4.4: `fpl__PushProcessStreamTextAsLines()` schneidet an `\n`, `fpl__EmitProcessStreamLine()` liefert die Zeile **ohne** Zeilenende und normalisiert `\r\n` auf `\n`. Der Line-Buffer waechst geometrisch (`fpl__EnsureProcessLineBufferCapacity`) und wird bei `FPL__PROCESS_MAX_LINE_LENGTH` (64 KB) hart gesplittet, damit ein Kind ohne Zeilenende den Speicher nicht unbegrenzt wachsen laesst.
+- `fpl__MarkProcessStreamEndOfFile()` ersetzt das direkte `stream->isEOF = true` in beiden Plattformen. Es liefert eine letzte Zeile ohne Zeilenende noch aus — sonst wuerde der Rest am Stream-Ende verschwinden.
+- `fpl__ReleaseProcessStreamBuffers()` gibt jetzt auch die Line-Buffer frei.
+- `fpl__ValidateProcessContext()` meldet fuer Callback, getrennte Streams und `LineBuffered` kein `NotImplemented` mehr. Geblieben ist nur die echte Fehlerpruefung "Callback-Flag ohne Callback".
+
+**Entscheidung dabei:** `fplProcessFlags_LineBuffered` wirkt **nur** auf den Callback, nie auf die Buffer im Result. Ein Buffer ist angesammelter Text, "in Zeilen aufteilen" hat dort keine Bedeutung. Die Doxygen-Doku des Flags sagt das jetzt ausdruecklich.
+Ebenso: `maxCaptureSize` begrenzt nur den Buffer, der Callback bekommt immer alles — sonst waere ein Redirect ohne Buffer stillschweigend beschnitten.
+
+**Beide Plattformen:** Statt einer Capture-Pipe gibt es jetzt bis zu zwei. Die Regel steht an einer Stelle:
+`mergesErrorIntoOutput = capturesOutput && merged`, `usesOutputPipe = capturesOutput`, `usesErrorPipe = capturesError && !mergesErrorIntoOutput`.
+Damit bleibt der bisherige Merged-Fall exakt wie er war (eine Pipe, alles im Output-Buffer), und nur der wirklich getrennte Fall kostet eine zweite.
+POSIX: `fpl__PosixCloseProcessPipe()` fasst das Aufraeumen zusammen, im Kind wird pro Pipe ge-`dup2`t und der Rest geschlossen. Win32: `fpl__Win32CreateProcessPipe()` erzeugt die Pipe samt nicht-vererbbarem Lese-Ende, `hStdError` zeigt je nach Fall auf das Output-Write-Ende, das eigene Error-Write-Ende oder den Standard-Handle.
+
+**Beim Review gefunden und gefixt:** Eine **leere erste Zeile** (ein blankes `\n` als erste Ausgabe) hat den Line-Buffer nie alloziert, `fpl__EmitProcessStreamLine()` schrieb den Null-Terminator dann in einen Nullzeiger. Der Emit gibt jetzt in dem Fall einen leeren String weiter, ohne den Buffer anzufassen. Der Kindmodus `--child-lines` schreibt seitdem bewusst zuerst eine leere Zeile.
+
+**Verifiziert (POSIX):** Testsuite gruen, `-Wall -Wextra` ohne neue Warnung, ASan + UBSan ohne Fehler und ohne Leak (identische 7 UBSan-Meldungen wie vor der Phase, alle in `fplMemoryCopy`/`fplMemoryFree` und damit vorbestehend). Neue Testgruppen `ProcessTestsCaptureSeparate` (getrennte Buffer, 1 MB getrennt ohne Deadlock) und `ProcessTestsCallbacks` (reiner Redirect, Buffer **und** Callback gleichzeitig, getrennte Streams mit korrektem `fplProcessStreamType`, `LineBuffered` inklusive `\r\n`-Normalisierung und unvollstaendiger letzter Zeile, roher Chunk-Modus ohne das Flag, 1 MB durch den Callback). Dazu der Kindmodus `--child-lines <n>`.
+
+**Nebenbefund fuer die Doku:** Bei getrennten Streams ist nur die Reihenfolge *innerhalb* eines Streams garantiert, nicht die zwischen beiden. Wer einen einzigen zeitlich korrekten Text will, nimmt den Merged-Modus. Steht als Kommentar im Demo-Szenario und gehoert in die `.docs`.
+
 ### Demo — erledigt (aus Phase 7 vorgezogen)
 `demos/FPL_Process/` nach dem Vorbild von `demos/FPL_Console` (C99, `FPL_NO_WINDOW`/`NO_VIDEO`/`NO_AUDIO`), mit CMakeLists.txt, Makefile, premake5.lua und den drei Visual-Studio-Dateien (eigene Projekt-GUID), eingetragen in `demos_final_platform_layer_premake5.lua` (Gruppe "Console") und `demos_final_platform_layer.sln`.
 
@@ -883,6 +908,10 @@ Start mit Warten, Argument-Array mit Leerzeichen, eigenes Arbeitsverzeichnis, Ex
 Ohne Argumente läuft die Szenario-Tour, mit Argumenten startet die Demo genau das übergebene Programm — praktisch zum Ausprobieren.
 
 Mit Phase 3 sammeln die Warte-Szenarien die Kindausgabe selbst ein und geben sie eingerückt unter dem jeweiligen Kopf aus — das frühere Vermischen durch Puffern ist damit weg. Dazu kamen zwei Capture-Szenarien: 1 MB Ausgabe ohne Deadlock und `maxCaptureSize`. Für beide startet die Demo sich selbst mit `--spam <bytes>`, damit das auf jeder Plattform gleich funktioniert.
+
+Mit Phase 4 kamen zwei weitere Szenarien dazu: getrenntes Capture beider Streams und ein Redirect beider Streams in einen Callback mit `LineBuffered`. Beide starten die Demo mit `--write-streams`.
+
+**Bugfix beim ersten Windows-Lauf:** Das Argument-Array-Szenario startete auf Windows `cmd.exe` **ohne** `/c`. Das ist eine interaktive Shell, die auf dem geerbten stdin auf Eingabe wartet — die Demo hing in `WaitForSingleObject`, bis jemand `exit` tippte. Windows hat kein eigenstaendiges `echo`-Programm, deshalb startet das Szenario jetzt die Demo selbst mit `--print-args` und beweist damit gleich, dass jedes Argument unveraendert ankommt (inklusive eingebetteter Quotes).
 
 ### Tests — erledigt (aus Phase 7 vorgezogen)
 `demos/FPL_Test/process_tests.c`, eingebunden wie `security_tests.c` (per `#include` in `fpl_test.c`), Einstiegspunkt `FPLProcessTests_All()` über die Testgruppe `TestProcess()`.
@@ -898,19 +927,21 @@ Weil Capture noch fehlt, antwortet das Kind über seinen **Exit-Code**:
 Testgruppen: aktuelle Prozess-ID, ungültige Argumente (jeder Einstiegspunkt mit `fpl_null` und mit ungültigem Handle), Startfehler (nicht gefunden, nicht ausführbar), Arbeitsverzeichnis-Fehler, Exit-Codes (inkl. `TreatNonZeroExitAsError`), Argument-Array und Argument-Zeile, Arbeitsverzeichnis, asynchroner Start mit Polling/Timeout/SIGKILL/SIGTERM, Handle- und Result-Lebensdauer (doppeltes Close/Free, 25 Zyklen, Close eines noch laufenden Prozesses) sowie die Meldung noch nicht implementierter Optionen.
 
 **Gegenprobe:** Mit einer absichtlich kaputten Header-Kopie (`ENOENT` → `FailedToStart` statt `NotFound`) bricht die Suite mit SIGABRT an genau der erwarteten Assert-Zeile ab. Die Tests greifen also wirklich.
+Für Phase 4 dasselbe zweimal: mit abgeschalteter `\r\n`-Normalisierung bricht `ProcessTestsCallbacks` an der Zeilen-Assert ab, und mit zurückgedrehtem Leerzeilen-Fix stürzt der Lauf im Callback ab.
 
 **Erweiterung pro Phase** (`@TODO(final)` steht an den betroffenen Stellen):
 | Phase | Was dazukommt |
 |---|---|
 | 2 (Win32) | Sobald ein Windows-Lauf möglich ist: `AccessDenied` festnageln, `RequestStop` mit `KillProcessTree` testen. Die Signal-Asserts bleiben POSIX-only, weil Windows keine Signale kennt |
 | 3 (Capture merged) | **erledigt**: `--child-both` und `--child-spam <bytes>` ergänzt, Testgruppen `ProcessTestsCapture` (stdout, stderr, merged, 1 MB ohne Deadlock, Truncation, Pumpen von Hand, Close ohne Result) und `ProcessTestsCaptureFailures` (Stream ohne Ziel, Ziel ohne Stream, Callback-Flag ohne Callback) |
-| 4 (Capture separat) | Getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered` |
+| 4 (Capture separat) | **erledigt**: Kindmodus `--child-lines <n>` ergänzt, Testgruppen `ProcessTestsCaptureSeparate` und `ProcessTestsCallbacks` (getrennte Buffer, Callback-Modus, Buffer+Callback gleichzeitig, `LineBuffered`, Stream-Typ pro Aufruf, Null-Terminator-Vertrag) |
 | 5 (stdin) | `--child-cat` gegen Text-, Callback- und Stream-Modus; NotImplemented-Block für Input entfernen |
 | 6 (Shell/Flags) | Temporäres `.sh`/`.bat` mit `shellMode`, Custom-Interpreter, `NoWindow`, `KillProcessTree`; NotImplemented-Block für Shell entfernen |
 
 ### Offen
-Phase 4 (Capture separat + Callbacks), 5 (stdin), 6 (shellMode, NoWindow, Detached, KillOnParentExit), 7 (`.docs`, Changelog, Capture-Szenarien in Demo und Tests).
-`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `captureFlags`, `inputMode`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
+Phase 5 (stdin), 6 (shellMode, Detached, KillOnParentExit), 7 (`.docs`, Changelog, README).
+`fplProcessStart()` meldet für noch nicht implementierte Optionen (`shellMode`, `inputMode`, `Detached`, `KillOnParentExit`) ausdrücklich `fplProcessResultType_NotImplemented`, statt sie still zu ignorieren.
+Ein echter Windows-Lauf steht weiterhin für alles ab Phase 2 aus; der Demo-Hänger oben war der erste Befund daraus.
 
 ---
 
