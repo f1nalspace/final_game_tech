@@ -45,6 +45,9 @@ static const int32_t processTestChildSuccessExitCode = 0;
 static const int32_t processTestChildFailureExitCode = 1;
 // Exit code the exit-code tests ask the child for, a value no runtime uses on its own
 static const int32_t processTestCustomExitCode = 42;
+// Argument line for a child that does nothing but exit successfully. Every test that does not care about
+// the text of the child uses it, because a child without a redirected stream writes into the test console.
+static const char *processTestSilentChildArgumentLine = FPL_TEST_CHILD_ARGUMENT_EXIT " 0";
 // Number of milliseconds a long running child sleeps, long enough to poll and stop it
 static const int32_t processTestLongSleepInMilliseconds = 30000;
 // Number of milliseconds we wait for a child that is expected to keep running
@@ -406,7 +409,7 @@ static bool ProcessTestsRunChild(const ProcessTestPaths *paths, const char *argu
 }
 
 static void ProcessTestsInvalidArguments(const ProcessTestPaths *paths) {
-	ftMsg("Test Process invalid arguments\n");
+	ftMsg("Test Process invalid arguments (the logged errors are expected)\n");
 	{
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult result = fplZeroInit;
@@ -454,7 +457,7 @@ static void ProcessTestsInvalidArguments(const ProcessTestPaths *paths) {
 }
 
 static void ProcessTestsStartFailures(void) {
-	ftMsg("Test Process start failures\n");
+	ftMsg("Test Process start failures (the logged errors are expected)\n");
 	{
 		// A program that does not exist must be reported as not found
 		fplProcessContext context = fplZeroInit;
@@ -492,7 +495,7 @@ static void ProcessTestsStartFailures(void) {
 }
 
 static void ProcessTestsWorkDirFailure(const ProcessTestPaths *paths) {
-	ftMsg("Test Process work directory failure\n");
+	ftMsg("Test Process work directory failure (the logged errors are expected)\n");
 	{
 		// A work directory that does not exist must fail the start, even though the program itself is fine
 		fplProcessContext context = fplZeroInit;
@@ -517,7 +520,7 @@ static void ProcessTestsExitCodes(const ProcessTestPaths *paths) {
 	{
 		// A child that finishes normally reports success with a zero exit code
 		fplProcessResult result = fplZeroInit;
-		bool started = ProcessTestsRunChild(paths, FPL_TEST_CHILD_ARGUMENT_ECHO " hello", fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
+		bool started = ProcessTestsRunChild(paths, processTestSilentChildArgumentLine, fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
 		ftIsTrue(started);
 		ftIsTrue(result.hasExited);
 		ftAssert(result.type == fplProcessResultType_Success);
@@ -685,7 +688,7 @@ static void ProcessTestsHandleLifetime(const ProcessTestPaths *paths) {
 	{
 		// Closing and freeing twice must be harmless
 		fplProcessResult result = fplZeroInit;
-		bool started = ProcessTestsRunChild(paths, FPL_TEST_CHILD_ARGUMENT_ECHO " twice", fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
+		bool started = ProcessTestsRunChild(paths, processTestSilentChildArgumentLine, fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
 		ftIsTrue(started);
 		fplProcessFreeResult(&result);
 		fplProcessFreeResult(&result);
@@ -702,7 +705,7 @@ static void ProcessTestsHandleLifetime(const ProcessTestPaths *paths) {
 		bool allCyclesSucceeded = true;
 		for (int cycleIndex = 0; cycleIndex < processTestCycleCount; ++cycleIndex) {
 			fplProcessResult result = fplZeroInit;
-			bool started = ProcessTestsRunChild(paths, FPL_TEST_CHILD_ARGUMENT_ECHO " cycle", fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
+			bool started = ProcessTestsRunChild(paths, processTestSilentChildArgumentLine, fpl_null, 0, fpl_null, fplProcessFlags_None, &result);
 			if (!started || (result.exitCode != processTestChildSuccessExitCode)) {
 				allCyclesSucceeded = false;
 			}
@@ -915,7 +918,15 @@ static FPL_FUNC_PROCESS_OUTPUT(ProcessTestsCollectOutput) {
 	}
 	if (collector->callCount < fplArrayCount(collector->callTexts)) {
 		size_t callIndex = collector->callCount;
-		fplCopyStringLen(text, textLen, collector->callTexts[callIndex], fplArrayCount(collector->callTexts[callIndex]));
+		char *callText = collector->callTexts[callIndex];
+		// A raw chunk is far longer than one slot, so only its beginning is kept. The full length is
+		// remembered separately, and every assert on the text itself uses short lines anyway.
+		size_t maxCallTextLen = fplArrayCount(collector->callTexts[callIndex]) - 1;
+		size_t keptTextLen = (textLen < maxCallTextLen) ? textLen : maxCallTextLen;
+		if (keptTextLen > 0) {
+			fplMemoryCopy(text, keptTextLen, callText);
+		}
+		callText[keptTextLen] = 0;
 		collector->callTextLengths[callIndex] = textLen;
 		collector->callStreams[callIndex] = stream;
 	}
@@ -1287,7 +1298,7 @@ static void ProcessTestsInput(const ProcessTestPaths *paths) {
 }
 
 static void ProcessTestsInputFailures(const ProcessTestPaths *paths) {
-	ftMsg("Test Process standard-input failures\n");
+	ftMsg("Test Process standard-input failures (the logged errors are expected)\n");
 	{
 		// The text mode without a text is wrong, not unimplemented
 		fplProcessContext context = fplZeroInit;
@@ -1315,7 +1326,7 @@ static void ProcessTestsInputFailures(const ProcessTestPaths *paths) {
 }
 
 static void ProcessTestsCaptureFailures(const ProcessTestPaths *paths) {
-	ftMsg("Test Process capture failures\n");
+	ftMsg("Test Process capture failures (the logged errors are expected)\n");
 	{
 		// Capture flags that select a stream but no target are wrong, not unimplemented
 		fplProcessContext context = fplZeroInit;
@@ -1569,7 +1580,7 @@ static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 
 // Options that contradict each other or miss something they need must be rejected instead of being guessed
 static void ProcessTestsFlagFailures(const ProcessTestPaths *paths) {
-	ftMsg("Test Process shell and flag failures\n");
+	ftMsg("Test Process shell and flag failures (the logged errors are expected)\n");
 	{
 		// A custom shell without a shell path cannot be started
 		fplProcessContext context = fplZeroInit;
@@ -1597,7 +1608,7 @@ static void ProcessTestsFlagFailures(const ProcessTestPaths *paths) {
 		fplProcessResult result = fplZeroInit;
 		fplProcessContext context = fplZeroInit;
 		context.name = paths->executableFilePath;
-		context.argumentLine = FPL_TEST_CHILD_ARGUMENT_ECHO " update";
+		context.argumentLine = processTestSilentChildArgumentLine;
 		fplProcessHandle handle = fplZeroInit;
 		if (fplProcessStart(&context, &handle, &result)) {
 			ftIsFalse(fplProcessUpdate(&handle));

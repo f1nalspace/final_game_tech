@@ -798,6 +798,8 @@ Testfälle:
 | **6** | shellMode (Default+Custom), NoWindow, Detached, KillProcessTree, KillOnParentExit, Timeouts, Handle-Liste (Win32) | Flags komplett |
 | **7** | Demo, Tests, `.docs`, Changelog, Build-Dateien, NoCRT/NoRuntimeLinking/NoPlatformIncludes verifizieren | Release-fertig |
 
+Alle Phasen sind erledigt, der Umsetzungsstand steht in Abschnitt 13.
+
 Phasen 1 und 2 sind unabhängig, 3–6 sollten pro Feature immer beide Plattformen zusammen abschließen — sonst driften die Semantiken auseinander.
 
 ---
@@ -977,6 +979,20 @@ Damit ist die Feature-Liste aus Abschnitt 2 vollständig, offen bleibt nur noch 
 **Gegenprobe zweimal:** Ohne das Quoting der Array-Argumente bricht `ProcessTestsShell` an der `--child-checkargs`-Assert ab, ohne die Detached/KillOnParentExit-Prüfung bricht `ProcessTestsFlagFailures` ab. Dass `PR_SET_PDEATHSIG` wirklich wirkt, zeigt ein eigener Handlauf: derselbe Testparent lässt `sleep 30` ohne das Flag weiterlaufen und mit dem Flag sofort sterben.
 **Win32-Seite** wie in den Phasen davor: der komplette Abschnitt übersetzt gegen ein Windows-Stub mit `-Wall -Wextra` ohne Warnung, und die Kommandozeilen-Erzeugung ist mit einem Harness geprüft (13 Checks: die sechs Quoting-Round-Trips von Phase 2 plus ComSpec, ComSpec mit Leerzeichen im Pfad, fehlendes ComSpec, Custom-Shell mit Default-Argument, Interpreter mit eigenem Argument und zwei Round-Trips, die den `cmd /s`-Schnitt nachbauen und das Ergebnis wieder mit dem CRT-Parser zerlegen). Job-Objekte, `DETACHED_PROCESS` und die Handle-Liste kann ein Stub nicht prüfen, die brauchen einen echten Windows-Lauf.
 
+### Phase 7 — erledigt (Dokumentation, Changelog, Build-Dateien)
+
+**`.docs`:** Drei neue Kategorie-Seiten — `page_category_process_basics` (Starten, Argumente, Arbeitsverzeichnis, Exit-Codes, asynchron, Stoppen, die Flags), `page_category_process_streams` (Capture, Callback, das Pumpen und der Deadlock, Standard-Input in allen vier Modi) und `page_category_process_shell` (Default-Shell, benannter Interpreter). Dazu eine vollständige Beispiel-Seite `page_example_process_capture` unter den Konsolen-Beispielen und ein neuer Punkt "Processes" in der Feature-Liste. Alle Nebenbefunde der Phasen 3 bis 6 stehen jetzt als `@note` in der Doku: das eigene Log eines gecaptureten FPL-Programms landet im Text, bei getrennten Streams gilt die Reihenfolge nur innerhalb eines Streams, `LineBuffered` und `maxCaptureSize` wirken jeweils nur auf eine Seite, SIGPIPE, und im Shell-Modus muss ein Programmpfad mit Leerzeichen vom Aufrufer gequotet werden.
+
+**Doxygen sauber:** `FPL_FUNC_PROCESS_OUTPUT`/`FPL_FUNC_PROCESS_INPUT` waren nach dem alten Muster dokumentiert (die `@param` standen am Makro, das nur `name` hat) und die Typedefs waren für `@ref` unauflösbar. Beides folgt jetzt dem Muster von `FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK`: das Makro dokumentiert nur `name`, die Parameter stehen am Typedef, und beide Makros sind in `EXPAND_AS_DEFINED` der Doxygen-Konfiguration eingetragen. Damit sind die 15 prozessbezogenen Doxygen-Warnungen weg, übrig bleibt nur die vorbestehende "More #if's than #endif's".
+
+**Changelog:** Neuer Block `#### Process` unter v1.0.1 mit allen Funktionen, Typen und Fähigkeiten, dazu eine Zeile in der Overview.
+
+**Projekt-Doku:** `final_game_tech.md` kennt die Demo `FPL_Process` jetzt im Verzeichnisbaum und mit einem eigenen Abschnitt, die Feature-Liste der Bibliothek und die Liste der Testbereiche wurden ergänzt.
+
+**Build-Dateien:** `demos/FPL_Process/` hat CMakeLists.txt, Makefile, premake5.lua und die drei Visual-Studio-Dateien und ist in `demos_final_platform_layer_premake5.lua` und `demos_final_platform_layer.sln` eingetragen. `process_tests.c` steht in der CMakeLists und den vcxproj-Filtern von `FPL_Test`, genau wie `security_tests.c` (kompiliert wird es über den `#include` in `fpl_test.c`, deshalb steht es nicht als `ClCompile` drin). Beide CMake-Builds laufen durch.
+
+**Verifiziert:** Die zwölf Code-Ausschnitte der neuen Doku-Seiten wurden herausgezogen und übersetzt, das vollständige Beispielprogramm zusätzlich ausgeführt. `FPL_NO_RUNTIME_LINKING` und `FPL_NO_PLATFORM_INCLUDES` übersetzen weiterhin, ebenso C99, C17 und C++11. `FPL_NO_CRT` ist MSVC/Windows-only und war hier nicht baubar — der Prozess-Code benutzt allerdings in beiden Plattformen keine einzige CRT-Funktion, nur Plattform-API und FPL-Helfer (nachgeprüft).
+
 ### Windows-Befunde (erster echter Lauf)
 1. **Demo-Haenger** im Argument-Array-Szenario — siehe Demo-Abschnitt oben.
 2. **`fplConsoleOut()`/`fplConsoleError()` schreiben unter Win32 gar nichts, sobald der Stream umgeleitet ist.** Beide benutzten `WriteConsoleW`, und das funktioniert ausschliesslich auf einem echten Console-Screen-Buffer — auf einer Pipe schlaegt es fehl, und der Rueckgabewert wurde nicht geprueft. Damit lieferte `ProcessTestsCapture` unter Windows ein leeres `output.text`, obwohl an der Prozess-API selbst nichts falsch war. Kurios: der Changelog von v0.7.1.0 sagt bereits "[Win32] fplConsole* uses ReadFile/WriteFile instead of ReadConsole/WriteConsole" — das ist irgendwann wieder zurueckgefallen.
@@ -986,8 +1002,14 @@ Damit ist die Feature-Liste aus Abschnitt 2 vollständig, offen bleibt nur noch 
    Der eigentliche Regressionstest ist `ProcessTestsCapture` selbst — er muss nur unter Windows laufen.
 
 ### Offen
-Phase 7 (`.docs`, Changelog, README). `fplProcessResultType_NotImplemented` wird von `fplProcessStart()` jetzt nirgends mehr gemeldet, die Option-Prüfung kennt nur noch echte Fehler (`InvalidArguments`).
-Ein echter Windows-Lauf steht weiterhin für alles ab Phase 2 aus; der Demo-Hänger oben war der erste Befund daraus. Neu dazugekommen sind dort die Job-Objekte, `DETACHED_PROCESS` und die Handle-Liste samt ihrem Rückfall.
+Alle Phasen sind umgesetzt. `fplProcessResultType_NotImplemented` wird von `fplProcessStart()` nirgends mehr gemeldet, die Option-Prüfung kennt nur noch echte Fehler (`InvalidArguments`).
+
+Offen bleibt allein der **echte Windows-Lauf** für alles ab Phase 2; der Demo-Hänger oben war der erste Befund daraus. Zu prüfen sind dort vor allem:
+- `ProcessTestsCapture` als Regressionstest für den `fplConsoleOut`-Fix
+- `AccessDenied` festnageln und `RequestStop` mit `KillProcessTree` (jetzt in `ProcessTestsCreationFlags`)
+- Die Shell-Gruppen mit `cmd.exe` und die `.bat`-Datei
+- Job-Objekte (`KillProcessTree`, `KillOnParentExit`), `DETACHED_PROCESS` und die Handle-Liste samt ihrem Rückfall
+- `FPL_NO_CRT`, das nur unter MSVC gebaut werden kann
 
 ---
 

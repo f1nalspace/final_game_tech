@@ -46,6 +46,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FPL_NoPlatformIncludes/     # FPL without platform headers
 │   ├── FPL_NoRuntimeLinking/       # FPL with static linking
 │   ├── FPL_OpenGL/                 # OpenGL rendering demo
+│   ├── FPL_Process/                # Starting and controlling child processes
 │   ├── FPL_Raytracer/              # Multi-threaded software raytracer
 │   ├── FPL_SimpleAudio/            # Basic sine wave audio demo
 │   ├── FPL_Software/               # Software rendering demo
@@ -93,6 +94,7 @@ The main platform abstraction layer that provides:
 - File I/O and path operations
 - Memory management utilities
 - Threading and synchronization primitives
+- Starting and controlling child processes and scripts
 - Hardware info retrieval
 - Logging and debugging utilities
 - Error handling and assertions
@@ -260,6 +262,12 @@ Hello-World console application demonstrating basic FPL console I/O
 #### FPL_Window
 Minimal demo showing window initialization and event handling
 
+#### FPL_Process
+Console demo that starts and controls child processes:
+- Waiting, exit codes, work directory, argument arrays and timeouts
+- Capturing and redirecting the standard-output/error
+- Feeding the standard-input, running command lines through a shell
+
 #### FPL_NoCRT
 Demonstrates compiling FPL without the C Runtime Library (Windows/MSVC only):
 - Bare-metal console application
@@ -295,6 +303,7 @@ Unit tests for FPL functionality:
 - File/Path IO
 - Atomics
 - Threading, synchronization primitives (mutexes, semaphores, condition variables)
+- Processes (start, wait, stop, capture/redirect, standard-input, shell execution)
 - Gamepad Poll Merge
 
 #### Final_Testbed

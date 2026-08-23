@@ -186,6 +186,12 @@
 		- Signals
 		- Condition-Variables
 		- Semaphores
+	- Processes
+		- Starting programs and scripts, with an argument array or an argument line
+		- Waiting with a timeout, polling, graceful and forceful stopping
+		- Capturing or redirecting the standard-output/error, merged or separated
+		- Feeding the standard-input from a text, a callback or the caller itself
+		- Running command lines through the default shell or a named interpreter
 
 	@subsection section_intro_getstarted Getting started with FPL
 	- You download the latest <a href="https://github.com/f1nalspace/final_game_tech/blob/master/final_platform_layer.h">"final_platform_layer.h"</a> file.
@@ -332,6 +338,11 @@
 
 	@section section_category_dll Dynamic Library Loading
 	@subpage page_category_dll <br>
+
+	@section section_category_process Processes
+	@subpage page_category_process_basics <br>
+	@subpage page_category_process_streams <br>
+	@subpage page_category_process_shell <br>
 
 	@section section_category_io File IO
 	@subpage page_category_io_binaryfiles <br>
@@ -680,6 +691,8 @@
 	- Console error output
 	- Debug console output
 	- Custom callback
+
+	@note Only Windows has a real debug console (OutputDebugString). On every other platform @ref fplDebugOut() writes into the standard-console, so the default writers there do not use that target at all - otherwise every log line would show up twice.
 
 	See @ref fplLogWriterFlags and @ref fplLogSettings for more details.
 
@@ -2920,6 +2933,297 @@
 */
 
 /*!
+	@page page_category_process_basics Starting Processes
+	@tableofcontents
+
+	FPL can start other programs and scripts, wait for them, ask them to stop and read their exit code - on every supported platform with the same API.<br>
+	Everything is controlled by one @ref fplProcessContext, which is passed to @ref fplProcessStart().<br>
+
+	@section section_category_process_basics_start Start a program and wait for it
+
+	The simplest case is starting a program and waiting until it is finished. The flag @ref fplProcessFlags_AutoWait does the waiting inside @ref fplProcessStart(), so the result is complete when the call returns.<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.argumentLine = "--verbose input.txt";
+	context.flags = fplProcessFlags_AutoWait;
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &result)) {
+		fplConsoleFormatOut("the program has exited with %d\n", result.exitCode);
+	}
+	fplProcessFreeResult(&result);
+	fplProcessClose(&handle);
+	@endcode
+
+	@note The handle must always be released with @ref fplProcessClose(), even when the process has exited already. On POSIX an unreleased child stays in the process table as a zombie.
+	@note The captured buffers in the result must always be released with @ref fplProcessFreeResult().
+
+	@section section_category_process_basics_arguments Passing arguments
+
+	There are two ways to pass arguments and they exclude each other:<br>
+	- @ref fplProcessContext.arguments is an array of single arguments and @ref fplProcessContext.argumentCount is its length. FPL quotes every entry, so an argument with spaces or quotes arrives at the child exactly as it was written. This is the safe way.
+	- @ref fplProcessContext.argumentLine is one line that is passed on unchanged, its quoting is up to the caller. This is the convenient way for a fixed command.
+
+	The array wins when both are set.<br>
+
+	@code{.c}
+	const char *arguments[] = { "--input", "a file with spaces.txt", "--title", "He said \"hello\"" };
+
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.arguments = arguments;
+	context.argumentCount = fplArrayCount(arguments);
+	context.flags = fplProcessFlags_AutoWait;
+	@endcode
+
+	@note The program itself is never part of the argument array, FPL puts it in front on its own.
+	@note A @ref fplProcessContext.name without any path separator is searched in the PATH of the environment, exactly like a shell does it. A name with a separator is used as the path it is.
+
+	@section section_category_process_basics_workdir Using a different work directory
+
+	@ref fplProcessContext.workDir is applied to the child only, the work directory of the own process is never touched.<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.workDir = "/tmp";
+	context.flags = fplProcessFlags_AutoWait;
+	@endcode
+
+	@section section_category_process_basics_exitcode Exit codes and results
+
+	@ref fplProcessResult.type tells what has happened, @ref fplProcessResult.exitCode is the raw exit code of the child.<br>
+	A non-zero exit code is <b>not</b> an error by default, because many programs use it to report a state. Only with @ref fplProcessFlags_TreatNonZeroExitAsError does it become @ref fplProcessResultType_FailedWithExitCode.<br>
+	<br>
+	A process that was terminated by a signal is reported as @ref fplProcessResultType_Terminated, with the signal number in @ref fplProcessResult.terminationSignal and 128 plus the signal as the exit code (POSIX only, Windows has no signals).<br>
+	When the process could not be started at all, the type says why - @ref fplProcessResultType_NotFound, @ref fplProcessResultType_AccessDenied or @ref fplProcessResultType_FailedToStart - and @ref fplProcessResult.nativeErrorCode holds the raw errno or the raw GetLastError code.<br>
+
+	@section section_category_process_basics_async Starting without waiting
+
+	Without @ref fplProcessFlags_AutoWait the call returns as soon as the child runs, so the own program can keep working.<br>
+	@ref fplProcessIsRunning() checks the state without blocking, @ref fplProcessWait() waits with a timeout and @ref fplProcessTryGetExitCode() fetches the exit code once the child is done.<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult startResult = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &startResult)) {
+		while (fplProcessIsRunning(&handle)) {
+			// ... do something else here
+			fplThreadSleep(100);
+		}
+		int32_t exitCode = 0;
+		fplProcessTryGetExitCode(&handle, &exitCode);
+	}
+	fplProcessFreeResult(&startResult);
+	fplProcessClose(&handle);
+	@endcode
+
+	@note A wait without a timeout blocks until the child is done. Use @ref FPL_TIMEOUT_INFINITE or zero for that on purpose only - a hanging child would block the own program forever.
+
+	@section section_category_process_basics_stop Stopping a process
+
+	@ref fplProcessRequestStop() asks the child to stop and lets it clean up, @ref fplProcessStop() ends it forcefully.<br>
+
+	@code{.c}
+	if (!fplProcessRequestStop(&handle)) {
+		fplProcessStop(&handle);
+	}
+	fplProcessResult stopResult = fplZeroInit;
+	fplProcessWait(&handle, 2000, &stopResult);
+	fplProcessFreeResult(&stopResult);
+	fplProcessClose(&handle);
+	@endcode
+
+	@note On POSIX a graceful stop is a SIGTERM. Windows has no equivalent, so a console control event is sent instead - and that requires the child to have been started with @ref fplProcessFlags_KillProcessTree, otherwise it has no process group of its own to send the event to.
+	@note Stopping is not the same as releasing: @ref fplProcessClose() has to be called in any case.
+
+	@section section_category_process_basics_flags Creation flags
+
+	@ref fplProcessContext.flags controls how the child is created:<br>
+	- @ref fplProcessFlags_AutoWait waits inside @ref fplProcessStart().
+	- @ref fplProcessFlags_TreatNonZeroExitAsError makes a non-zero exit code a failure.
+	- @ref fplProcessFlags_NoWindow starts a console program without a console window (Windows only).
+	- @ref fplProcessFlags_KillProcessTree puts the child into a group/job of its own, so @ref fplProcessStop() ends the whole tree instead of the direct child only.
+	- @ref fplProcessFlags_Detached detaches the child, so it survives the exit of the own process. On POSIX it gets its own session and is detached from the terminal, on Windows it gets no console.
+	- @ref fplProcessFlags_KillOnParentExit kills the child automatically when the own process exits. This works on Windows and Linux, on any other POSIX system it is not available and gets ignored with a warning.
+
+	@note @ref fplProcessFlags_Detached and @ref fplProcessFlags_KillOnParentExit contradict each other and are rejected as @ref fplProcessResultType_InvalidArguments.
+*/
+
+/*!
+	@page page_category_process_streams Capturing & Redirecting
+
+	@tableofcontents
+
+	The standard streams of a child can be captured into a buffer, pushed into a callback, or both. The same context also feeds the standard-input of the child.<br>
+
+	@section section_category_process_streams_capture Capturing the output
+
+	@ref fplProcessContext.captureFlags decides which stream goes where. The preset values cover the usual cases:<br>
+	- @ref fplProcessCaptureFlags_CaptureOutput captures the standard-output into @ref fplProcessResult.output.
+	- @ref fplProcessCaptureFlags_CaptureError captures the standard-error into @ref fplProcessResult.error.
+	- @ref fplProcessCaptureFlags_CaptureSeparate captures both streams into their own buffer.
+	- @ref fplProcessCaptureFlags_CaptureBoth captures both streams merged into @ref fplProcessResult.output, exactly the way "2>&1" does it.
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.flags = fplProcessFlags_AutoWait;
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult result = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &result)) {
+		fplConsoleFormatOut("the program has written %zu characters:\n%s", result.output.len, result.output.text);
+	}
+	fplProcessFreeResult(&result);
+	fplProcessClose(&handle);
+	@endcode
+
+	The captured text is always null-terminated and @ref fplProcessBuffer.len is its length without that terminator.<br>
+	@ref fplProcessContext.maxCaptureSize limits how much is kept per buffer. Everything beyond it is read and thrown away - the child never blocks because of it - and @ref fplProcessResult.isTruncated says that it happened.<br>
+
+	@note With separate streams only the order <b>inside</b> one stream is guaranteed, not the order between both. When one text in the correct chronological order is needed, use the merged mode.
+	@note When the child is an FPL program itself, its own log output is part of the captured text, because the default log writer writes to the standard-output.
+
+	@section section_category_process_streams_callback Redirecting into a callback
+
+	A callback receives the text while the child is still running, which is what a live log view needs. It can be used instead of the buffers or in addition to them.<br>
+
+	@code{.c}
+	// The macro writes the whole prototype, so a change of the signature never breaks the callback
+	static FPL_FUNC_PROCESS_OUTPUT(OnProcessOutput) {
+		const char *streamName = (stream == fplProcessStreamType_Error) ? "error" : "output";
+		fplConsoleFormatOut("[%s] %s\n", streamName, text);
+	}
+
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.captureFlags = fplProcessCaptureFlags_RedirectBoth;
+	context.outputCallback = OnProcessOutput;
+	context.flags = fplProcessFlags_AutoWait | fplProcessFlags_LineBuffered;
+	@endcode
+
+	The text passed to the callback is always null-terminated, so it can be used as a string directly.<br>
+	With @ref fplProcessFlags_LineBuffered the callback gets complete lines without their line ending, and a "\r\n" is normalized to a "\n". Without the flag it gets the raw chunks as they arrive.<br>
+
+	@note @ref fplProcessFlags_LineBuffered affects the callback only. A captured buffer is collected text, splitting it into lines has no meaning there.
+	@note @ref fplProcessContext.maxCaptureSize limits the buffers only, the callback always gets everything.
+	@note The callback is called from the thread that waits or pumps, never from a thread of its own.
+
+	@section section_category_process_streams_pump Pumping while the child runs
+
+	A redirected stream has to be drained while the child is running. A program that waits first and reads afterwards deadlocks as soon as the child has filled the pipe buffer of the operating system.<br>
+	@ref fplProcessWait() does this on its own. When the own program does not want to block, @ref fplProcessUpdate() moves whatever is there right now and returns without blocking.<br>
+
+	@code{.c}
+	while (fplProcessIsRunning(&handle)) {
+		fplProcessUpdate(&handle);
+		// ... do something else here
+	}
+	// The last chunks arrive with the final wait
+	fplProcessResult result = fplZeroInit;
+	fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &result);
+	@endcode
+
+	@section section_category_process_streams_input Feeding the standard-input
+
+	@ref fplProcessContext.inputMode says where the standard-input of the child comes from:<br>
+	- @ref fplProcessInputMode_Inherit is the default, the child reads the standard-input of the own process.
+	- @ref fplProcessInputMode_None gives the child an immediate end-of-file, so an interactive child cannot block waiting for input that never comes.
+	- @ref fplProcessInputMode_Text writes @ref fplProcessContext.inputText and closes the standard-input afterwards.
+	- @ref fplProcessInputMode_Callback pulls the text in chunks from @ref fplProcessContext.inputCallback until it returns zero.
+	- @ref fplProcessInputMode_Stream keeps the standard-input open for @ref fplProcessWriteInput().
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.inputMode = fplProcessInputMode_Text;
+	context.inputText = "first line\nsecond line\n";
+	context.flags = fplProcessFlags_AutoWait;
+	@endcode
+
+	The stream mode is the interactive one. Here the own program decides when something is written and when the child sees the end of the input:<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "myprogram";
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.inputMode = fplProcessInputMode_Stream;
+
+	fplProcessHandle handle = fplZeroInit;
+	fplProcessResult startResult = fplZeroInit;
+	if (fplProcessStart(&context, &handle, &startResult)) {
+		fplProcessWriteInput(&handle, "some text\n", 0);
+		// Without this close a child that reads until the end-of-file would wait forever
+		fplProcessCloseInput(&handle);
+
+		fplProcessResult waitResult = fplZeroInit;
+		fplProcessWait(&handle, FPL_TIMEOUT_INFINITE, &waitResult);
+		fplProcessFreeResult(&waitResult);
+	}
+	fplProcessFreeResult(&startResult);
+	fplProcessClose(&handle);
+	@endcode
+
+	@note Writing into the standard-input of a child that has exited already is a normal end, not an error. On POSIX, FPL sets SIGPIPE to be ignored for that when the disposition is still the default one, so such a write cannot kill the own process. A disposition that was set by the application itself is never overwritten.
+*/
+
+/*!
+	@page page_category_process_shell Running Scripts & Shell Commands
+
+	@tableofcontents
+
+	A script is not an executable, it needs an interpreter. @ref fplProcessContext.shellMode lets FPL put one in front, so a script or a whole command line can be started the same way a program is.<br>
+
+	@section section_category_process_shell_default Using the default shell
+
+	@ref fplProcessShellMode_Default runs the command line through the shell of the platform - the command processor from the ComSpec environment variable (usually cmd.exe) on Windows and /bin/sh on POSIX.<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "\"/home/me/scripts/backup.sh\" --full";
+	context.shellMode = fplProcessShellMode_Default;
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.flags = fplProcessFlags_AutoWait;
+	@endcode
+
+	A shell mode composes exactly <b>one</b> command line out of the context:<br>
+	- @ref fplProcessContext.name is taken over unchanged, so it may use shell syntax - a pipe, a redirection or a chain of commands - or be the source code of an interpreter.
+	- @ref fplProcessContext.argumentLine is taken over unchanged as well.
+	- The entries of @ref fplProcessContext.arguments are quoted, because those are data and have to arrive at the program unchanged.
+
+	@note Because the name is taken over unchanged, a program path that contains spaces has to be quoted by the caller - exactly like it would have to be on a command line.
+	@note The exit code of the result is the exit code of the shell, and every shell hands the exit code of the command through.
+
+	@section section_category_process_shell_custom Using a specific interpreter
+
+	@ref fplProcessShellMode_Custom starts the interpreter from @ref fplProcessContext.shellPath instead. That can be another shell (bash instead of sh, PowerShell instead of cmd.exe) or a language interpreter.<br>
+	@ref fplProcessContext.shellArgument is the argument that tells it to execute the command line. Without it FPL uses "-c" on POSIX and "/c" on Windows.<br>
+
+	@code{.c}
+	fplProcessContext context = fplZeroInit;
+	context.name = "print('hello from python')";
+	context.shellMode = fplProcessShellMode_Custom;
+	context.shellPath = "/usr/bin/python3";
+	context.shellArgument = "-c";
+	context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+	context.flags = fplProcessFlags_AutoWait;
+	@endcode
+
+	@note @ref fplProcessShellMode_Custom without a @ref fplProcessContext.shellPath is rejected as @ref fplProcessResultType_InvalidArguments.
+	@note The default shell of Windows is started with "/s /c", because only with the /s does cmd.exe remove exactly the outer pair of quotes and leave everything else alone.
+	@note A POSIX shell only executes a script file that is marked as executable. A shell mode does not change that.
+*/
+
+/*!
 	@page page_category_io_binaryfiles Using Binary Files
 	@tableofcontents
 
@@ -4310,6 +4614,7 @@
 	@section section_console_examples Console examples
 
 	- @subpage page_example_helloworld_console
+	- @subpage page_example_process_capture
 	- @subpage page_example_simple_audio
 
 	@section section_windowed_examples Window examples
@@ -4741,6 +5046,55 @@
 			result = 0;
 		} else {
 			result = -1;
+		}
+		return(result);
+	}
+	@endcode
+
+*/
+
+/*!
+	@page page_example_process_capture Start a program and capture its output
+	@tableofcontents
+
+	@section section_maincprocess main.c
+
+	@code{.c}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.h"
+
+	int main(int argc, char **argv) {
+		int result = -1;
+		if (fplPlatformInit(fplInitFlags_Console, fpl_null)) {
+			fplProcessContext context = fplZeroInit;
+	#if defined(FPL_PLATFORM_WINDOWS)
+			context.name = "cmd.exe";
+			context.argumentLine = "/c ver";
+	#else
+			context.name = "uname";
+			context.argumentLine = "-a";
+	#endif
+			// Both streams end up merged in the output buffer and the start waits for the program
+			context.captureFlags = fplProcessCaptureFlags_CaptureBoth;
+			context.flags = fplProcessFlags_AutoWait;
+
+			fplProcessHandle handle = fplZeroInit;
+			fplProcessResult processResult = fplZeroInit;
+			if (fplProcessStart(&context, &handle, &processResult)) {
+				fplConsoleFormatOut("'%s' has exited with %d and has written:\n", context.name, processResult.exitCode);
+				if (processResult.output.text != fpl_null) {
+					fplConsoleOut(processResult.output.text);
+				}
+				result = 0;
+			} else {
+				fplConsoleFormatOut("could not start '%s'\n", context.name);
+			}
+
+			// The captured buffers and the handle are released in any case
+			fplProcessFreeResult(&processResult);
+			fplProcessClose(&handle);
+
+			fplPlatformRelease();
 		}
 		return(result);
 	}

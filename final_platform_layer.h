@@ -175,6 +175,7 @@ SOFTWARE.
 	## v1.0.1
 
 	### Overview
+	- New process API for starting and controlling child processes and scripts (fplProcess*)
 	- Proper X11 input handling
 	- UTF8 decode and encode is now culture-invariant
 	- Several bugfixes
@@ -183,10 +184,33 @@ SOFTWARE.
 
 	#### Core
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
+	- Fixed: [POSIX] Every log line was written twice, because the default log writers use the debug output in addition to the console and fplDebugOut() writes into the console on every platform but Windows - the default writers only use the debug output on Windows now
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
+
+	#### Process
+	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
+	- New: Added function fplProcessWait() that waits for a process with a timeout, while the redirected streams are pumped
+	- New: Added function fplProcessUpdate() that pumps the redirected streams of a process without blocking
+	- New: Added function fplProcessIsRunning() that checks the state of a process without blocking
+	- New: Added function fplProcessTryGetExitCode() that gets the exit code of an already exited process
+	- New: Added function fplProcessWriteInput() that writes into the standard-input of a running process
+	- New: Added function fplProcessCloseInput() that gives a running process the end-of-file on its standard-input
+	- New: Added function fplProcessRequestStop() that asks a process to stop gracefully
+	- New: Added function fplProcessStop() that stops a process forcefully
+	- New: Added function fplProcessClose() that releases a process handle and all its resources
+	- New: Added function fplProcessFreeResult() that releases the captured buffers of a fplProcessResult
+	- New: Added function fplProcessGetCurrentId() that returns the id of the own process
+	- New: Added struct fplProcessContext that stores every start parameter for fplProcessStart()
+	- New: Added struct fplProcessHandle, struct fplProcessResult and struct fplProcessBuffer
+	- New: Added enum fplProcessResultType, fplProcessFlags, fplProcessCaptureFlags, fplProcessInputMode, fplProcessShellMode and fplProcessStreamType
+	- New: Added typedef fpl_process_output_callback and fpl_process_input_callback with the macros FPL_FUNC_PROCESS_OUTPUT and FPL_FUNC_PROCESS_INPUT
+	- New: The standard-output/error of a child can be captured into buffers, pushed into a callback or both, separated or merged, with an optional capture limit and optional line buffering
+	- New: The standard-input of a child can be inherited, closed immediately, filled from a text, pulled from a callback or written by the caller while the process runs
+	- New: Scripts and whole command lines can be started through the default shell (ComSpec/cmd.exe or /bin/sh) or through a named interpreter
+	- New: Process creation flags for waiting, treating a non-zero exit code as an error, hiding the console window, detaching the child, stopping the whole process tree and killing the child when the own process exits
 
 	#### Threading
 	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
@@ -7102,7 +7126,7 @@ typedef enum fplLogWriterFlags {
 	fplLogWriterFlags_StandardConsole = 1 << 0,
 	//! Error-Console output.
 	fplLogWriterFlags_ErrorConsole = 1 << 1,
-	//! Debug output.
+	//! Debug output. Only Windows has a real one (OutputDebugString), on any other platform @ref fplDebugOut() writes into the standard-console instead.
 	fplLogWriterFlags_DebugOut = 1 << 2,
 	//! Custom output.
 	fplLogWriterFlags_Custom = 1 << 3,
@@ -7342,29 +7366,40 @@ typedef enum fplProcessStreamType {
 
 /**
 * @def FPL_FUNC_PROCESS_OUTPUT
-* @brief A function definition for a callback that receives redirected output/error text from a process.
+* @brief Defines a prototype for a function that receives redirected output/error text from a process.
+* @param[in] name The name of the function.
+*/
+#define FPL_FUNC_PROCESS_OUTPUT(name) void name(const fplProcessHandle *process, const fplProcessStreamType stream, const char *text, const size_t textLen, void *userData)
+
+/**
+* @typedef fpl_process_output_callback
+* @brief A callback that receives the redirected output/error text of a process, see @ref fplProcessContext.outputCallback.
 * @param[in] process Reference to the process handle @ref fplProcessHandle.
 * @param[in] stream The @ref fplProcessStreamType the text was read from.
 * @param[in] text The null-terminated text that was read.
 * @param[in] textLen The number of characters, without the null-terminator.
 * @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
 * @note The text is only valid for the duration of the call, copy it when you need to keep it.
+* @note The callback is called from the thread that calls @ref fplProcessWait() or @ref fplProcessUpdate(), never from a thread of its own.
 */
-#define FPL_FUNC_PROCESS_OUTPUT(name) void name(const fplProcessHandle *process, const fplProcessStreamType stream, const char *text, const size_t textLen, void *userData)
-//! A callback that receives redirected output/error text, see @ref FPL_FUNC_PROCESS_OUTPUT.
 typedef FPL_FUNC_PROCESS_OUTPUT(fpl_process_output_callback);
 
 /**
 * @def FPL_FUNC_PROCESS_INPUT
-* @brief A function definition for a callback that provides the standard-input text for a process.
+* @brief Defines a prototype for a function that provides the standard-input text for a process.
+* @param[in] name The name of the function.
+*/
+#define FPL_FUNC_PROCESS_INPUT(name) size_t name(const fplProcessHandle *process, char *targetBuffer, const size_t maxTargetBufferLen, void *userData)
+
+/**
+* @typedef fpl_process_input_callback
+* @brief A callback that provides the standard-input text of a process, see @ref fplProcessContext.inputCallback.
 * @param[in] process Reference to the process handle @ref fplProcessHandle.
 * @param[out] targetBuffer The target buffer to write the next input chunk into.
 * @param[in] maxTargetBufferLen The maximum number of characters the target buffer can hold.
 * @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
 * @return Returns the number of characters written into the target buffer or zero for closing the standard-input.
 */
-#define FPL_FUNC_PROCESS_INPUT(name) size_t name(const fplProcessHandle *process, char *targetBuffer, const size_t maxTargetBufferLen, void *userData)
-//! A callback that provides the standard-input text, see @ref FPL_FUNC_PROCESS_INPUT.
 typedef FPL_FUNC_PROCESS_INPUT(fpl_process_input_callback);
 
 /**
@@ -11489,19 +11524,33 @@ fpl_internal const char *fpl__LogLevelToString(const fplLogLevel level) {
 	return(result);
 }
 
+// Only Windows has a real debug output, everywhere else fplDebugOut() writes into the standard-console.
+// Adding the flag by default would therefore print every single log line twice on those platforms.
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! Target the default writers use in addition to the console.
+#	define FPL__LOG_DEFAULT_ADDITIONAL_FLAGS fplLogWriterFlags_DebugOut
+	//! Target the default writer for debug messages uses.
+#	define FPL__LOG_DEFAULT_DEBUG_FLAGS fplLogWriterFlags_DebugOut
+#else
+	//! Target the default writers use in addition to the console.
+#	define FPL__LOG_DEFAULT_ADDITIONAL_FLAGS fplLogWriterFlags_None
+	//! Target the default writer for debug messages uses.
+#	define FPL__LOG_DEFAULT_DEBUG_FLAGS fplLogWriterFlags_StandardConsole
+#endif
+
 fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message) {
 	fplLogSettings *settings = &fpl__global__LogSettings;
 	if (!settings->isInitialized) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
 		settings->criticalWriter.console.logToError = true;
-		settings->criticalWriter.flags = fplLogWriterFlags_ErrorConsole | fplLogWriterFlags_DebugOut;
+		settings->criticalWriter.flags = fplLogWriterFlags_ErrorConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->errorWriter = settings->criticalWriter;
 		settings->warningWriter = settings->criticalWriter;
-		settings->infoWriter.flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+		settings->infoWriter.flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->verboseWriter = settings->infoWriter;
-		settings->debugWriter.flags = fplLogWriterFlags_DebugOut;
+		settings->debugWriter.flags = FPL__LOG_DEFAULT_DEBUG_FLAGS;
 #else
-		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 #endif
 		settings->maxLevel = fplLogLevel_Warning;
 		settings->isInitialized = true;

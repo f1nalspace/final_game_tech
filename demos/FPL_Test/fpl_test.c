@@ -14,6 +14,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-23
+	- Added the process tests from process_tests.c, wired in through TestProcess()
+	- Added the child mode detection in main(), so the test executable can start itself as the child program for the process tests
+
 	## 2026-06-17
 	- Adjusted tests to match feature that unlimited threads can be created
 
