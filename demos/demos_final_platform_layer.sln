@@ -79,11 +79,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FPL_Window", "FPL_Window\FP
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|WinX64 = Debug|WinX64
+		Release|WinX64 = Release|WinX64
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|WinX64 = Debug|WinX64
 		Debug|WinX86 = Debug|WinX86
-		Release|WinX64 = Release|WinX64
 		Release|WinX86 = Release|WinX86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
