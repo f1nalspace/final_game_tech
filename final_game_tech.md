@@ -14,6 +14,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── final_xml.h                     # Single-header-file simple XML parser library (C99)
 ├── final_memory.h                  # Single-header-file custom memory allocator (C99)
 ├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
+├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
 ├── apps/
 │   ├── EnumToSwitchConverter/      # C# GUI tool to convert enums to switch statements
 │   ├── FontRendering/              # C++ font rendering tool using stb_truetype
@@ -27,6 +28,8 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FMEM_Test/                  # Tests for final_memory.h
 │   ├── FOGL_Test/                  # Tests for final_dynamic_opengl.h
 │   ├── FTT_TileTracingDemo/        # Demo for final_tiletrace.hpp
+│   ├── FUI_Adapter_FPL/            # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
+│   ├── FUI_Test/                   # Demo for final_ui.h on FPL and legacy OpenGL
 │   ├── FXML_Test/                  # Tests for final_xml.h
 │   ├── Final_AudioTest/            # Audio format conversion testing
 │   ├── FPL_AudioPlayer/            # Full-featured audio playback demo
@@ -331,6 +334,16 @@ Tests for final_dynamic_opengl.h:
 Demonstrates final_tiletrace.hpp:
 - Converts solid tilemaps into line segments for physics engines (e.g. Box2D)
 
+#### FUI_Test
+Demonstrates final_ui.h on FPL and legacy OpenGL:
+- Menus, tool strips, panels, dialogs, every widget, a colour picker, tooltips and a status bar
+- Hand-rolled bridges: an input bridge, a font baked with stb_truetype (fui_font_stbtt.h) and a fixed function backend (fui_backend_gl1.h)
+
+#### FUI_Adapter_FPL
+The same interface as FUI_Test, built on the Final Framework:
+- Everything goes through final_ui_adapter.h - input, font, clipboard, allocator and the render backend
+- Uses final_gameplatform.h, final_render.h, final_assets.h and the game memory block
+
 ## Additional Libraries
 
 ### Top-level Single-Header Libraries
@@ -341,6 +354,7 @@ Demonstrates final_tiletrace.hpp:
 - **final_xml.h**: Simple XML parser library
 - **final_memory.h**: Custom memory allocator with debugging features
 - **final_tiletrace.hpp**: C++/11 contour tile tracing for solid tilemaps
+- **final_ui.h**: Immediate mode user interface library, renderer agnostic
 
 ### demos/additions/
 
@@ -360,6 +374,10 @@ Rendering:
 - **final_graphics.h**: Graphics utilities
 - **final_fonts.h**: Embedded font data
 - **final_fontloader.h**: Font file loader
+
+User Interface:
+- **final_ui_adapter.h**: Bridges final_ui.h into the Final Framework (input, font, clipboard, allocator, render backend)
+- **fui_font_stbtt.h**: Bakes a TrueType face with stb_truetype into a fuiFont, for a caller without the framework
 
 Game Framework:
 - **final_game.h**: Game framework API

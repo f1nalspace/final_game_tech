@@ -18,6 +18,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 | [final_memory.h](final_memory.h)                 | Single file heap memory handling library    | Independent      | C99      | 1.0.1          | Finished    | 24 KB   |
 | [final_xml.h](final_xml.h)                       | Single file xml parser library              | Independent      | C99      | 0.3.1-alpha    | Finished    | 28 KB   |
 | [final_tiletrace.hpp](final_tiletrace.hpp)       | Single file tilemap contour tracing library | Independent      | C++/11   | 1.02           | Finished    | 36 KB   |
+| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.0-beta     | Beta        | 460 KB  |
 
 * All libraries written in C99/C17 are fully C++ compatible.
 * Few libraries are still in beta/alpha, even though they are finished.
@@ -34,6 +35,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── final_xml.h                     # Single-header-file simple XML parser library (C99)
 ├── final_memory.h                  # Single-header-file custom memory allocator (C99)
 ├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
+├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
 ├── LICENSE.md                      # MIT License-file
 ├── CLAUDE.md                       # General overview of the repository for AI agents such as claude
 ├── assets/                         # Assets for the repo itself, like the logo
