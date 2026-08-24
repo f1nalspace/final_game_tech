@@ -181,7 +181,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.1
+	@version v0.9.2
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -195,6 +195,29 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.2:
+	- Changed: A button is drawn as a BUTTON - a vertically shaded face between a lit top-left edge and a shaded
+	  bottom-right one, inside the frame every box already carried. Holding it turns the shading around so the
+	  face reads as pushed into the panel, and its caption moves with it.
+	- Changed: The same bevel is what a tab header, a tool strip button, a checkbox box and a radio marker are
+	  drawn from, so one look covers everything that can be clicked. A lit tool strip toggle stays pushed in for
+	  as long as it is on, and a checkbox box is a WELL its mark sits in rather than a face that could be pushed.
+	- Changed: A box stands in one of THREE reliefs rather than two. Sunken is the shape of a widget that has
+	  been pushed, so a widget nobody is pushing no longer borrows it to mean something else: the tab whose page
+	  is showing is raised, the ones behind it are FLAT, and only a tab actually being held sinks.
+	- Changed: Every tab caption takes fuiTheme.textColor. The muted color is what a DISABLED widget takes, and
+	  a tab that is merely not showing is not disabled - wearing that color made the captions on the rest of the
+	  strip the hardest thing on it to read. Which page is showing is carried by the relief, the fill and the
+	  accent line under it, which is three cues without spending the caption on a fourth.
+	- Changed: A DISABLED button lies flush in the panel instead of standing out of it, so what cannot be
+	  clicked says so by its shape and not only by its muted caption.
+	- New: fuiDrawRectVerticalGradient, a rectangle filled from a top color to a bottom one. Two identical stops
+	  still go out as a plain FUI_DRAW_RECT, so a flat theme keeps the payload a backend can shortcut.
+	- New: fuiColorShade, moving a color toward white or toward black and leaving its alpha alone.
+	- New: fuiTheme.widgetBevelLightColor, fuiTheme.widgetBevelShadowColor, fuiTheme.widgetBevelThickness,
+	  fuiTheme.widgetFaceShadingStrength and fuiTheme.widgetPressOffset. Zeroing the thickness and the shading
+	  strength gives back exactly the flat widgets of v0.9.1.
 
 	# v0.9.1:
 	- Changed: ONE frame width for every box the interface draws. fuiTheme.panelBorderThickness is the thin
@@ -747,6 +770,23 @@ fui_inline fuiColor fuiColorRGBA(const float r, const float g, const float b, co
 */
 fui_inline fuiColor fuiColorWithAlpha(const fuiColor color, const float alpha) {
 	fuiColor result = fuiColorRGBA(color.r, color.g, color.b, alpha);
+	return(result);
+}
+
+/**
+* @brief Shades a color toward white or toward black, leaving its alpha component alone.
+* @param[in] color The source color.
+* @param[in] amount How far to move, from -1 for fully black through 0 for unchanged to 1 for fully white.
+* @return Returns the shaded color.
+* @note This is what gives a widget its lit top and its shaded bottom without a second color per state in the theme.
+*/
+fui_inline fuiColor fuiColorShade(const fuiColor color, const float amount) {
+	float shadeTarget = (amount >= 0.0f) ? 1.0f : 0.0f;
+	float shadeWeight = (amount >= 0.0f) ? amount : -amount;
+	float r = fuiLerpF(color.r, shadeTarget, shadeWeight);
+	float g = fuiLerpF(color.g, shadeTarget, shadeWeight);
+	float b = fuiLerpF(color.b, shadeTarget, shadeWeight);
+	fuiColor result = fuiColorRGBA(r, g, b, color.a);
 	return(result);
 }
 
@@ -1507,6 +1547,10 @@ typedef struct fuiTheme {
 	fuiColor widgetActiveColor;
 	//! Recessed backing, such as a slider track, a checkbox box or a text field
 	fuiColor widgetTrackColor;
+	//! Lit edge along the top and left of a raised widget, and along the bottom and right of a sunken one. Translucent, so it brightens whatever face it lies on instead of painting one fixed color over all of them
+	fuiColor widgetBevelLightColor;
+	//! Shaded edge opposite the lit one. Translucent for the same reason the lit edge is
+	fuiColor widgetBevelShadowColor;
 	//! Wash drawn behind selected text, translucent so the glyphs on top of it stay readable
 	fuiColor textSelectionColor;
 	//! Slider knob and checkbox check mark
@@ -1539,6 +1583,12 @@ typedef struct fuiTheme {
 	float panelBorderThickness;
 	//! Outline stroke width of a widget
 	float widgetBorderThickness;
+	//! Width of the lit and the shaded edge that make a widget read as raised out of the panel or pushed into it. Set to zero for a flat interface
+	float widgetBevelThickness;
+	//! How much lighter the top of a widget face is drawn than its bottom, as a 0 to 1 fraction of the way to white and to black. Set to zero for a flat face
+	float widgetFaceShadingStrength;
+	//! How far a pressed widget nudges its caption down and to the right, so a click is felt as well as seen
+	float widgetPressOffset;
 	//! Content inset from a panel's left and right edges
 	float panelPaddingX;
 	//! Content inset from a panel's top and bottom edges
@@ -2355,6 +2405,18 @@ fui_api const uint32_t *fuiGetTextInput(const fuiContext *context, int32_t *outC
 * @param[in] color The fill color.
 */
 fui_api void fuiDrawRect(fuiContext *context, const fuiRect rect, const fuiColor color);
+
+/**
+* @brief Draws a rectangle filled with a vertical gradient, running from its top edge to its bottom one.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The rectangle to fill, in pixels.
+* @param[in] topColor The color along the top edge.
+* @param[in] bottomColor The color along the bottom edge.
+* @note Two identical stops are drawn as a plain @ref FUI_DRAW_RECT, so a flat theme keeps the fast path a
+*       backend can shortcut. A real gradient goes out as @ref FUI_DRAW_TRIANGLES, because a per-corner color
+*       is something no rectangle payload can carry.
+*/
+fui_api void fuiDrawRectVerticalGradient(fuiContext *context, const fuiRect rect, const fuiColor topColor, const fuiColor bottomColor);
 
 /**
 * @brief Draws a rectangle outline, with the stroke lying inside the given bounds.
@@ -4336,6 +4398,10 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.widgetHoveredColor = fuiColorRGBA(0.28f, 0.32f, 0.40f, 1.0f);
 	result.widgetActiveColor = fuiColorRGBA(0.36f, 0.44f, 0.58f, 1.0f);
 	result.widgetTrackColor = fuiColorRGBA(0.06f, 0.07f, 0.09f, 1.0f);
+	// Translucent white and translucent black rather than two fixed greys, so ONE pair of edges lifts the idle
+	// face, the hovered face and the accented face of a toggle alike.
+	result.widgetBevelLightColor = fuiColorRGBA(1.0f, 1.0f, 1.0f, 0.22f);
+	result.widgetBevelShadowColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.38f);
 	result.textSelectionColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 0.75f);
 	result.knobColor = fuiColorRGBA(0.85f, 0.88f, 0.92f, 1.0f);
 	result.menuHighlightColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 1.0f);
@@ -4355,6 +4421,11 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	// heavily as the widgets inside it reads as a different design language on the same screen.
 	result.panelBorderThickness = 1.0f;
 	result.widgetBorderThickness = 1.0f;
+	// Two pixels of bevel is what reads as a chamfer at the sizes the widgets are drawn at. One pixel almost
+	// disappears against the outline beside it, and three starts to eat the face it is supposed to frame.
+	result.widgetBevelThickness = 2.0f;
+	result.widgetFaceShadingStrength = 0.16f;
+	result.widgetPressOffset = 1.0f;
 	result.panelPaddingX = 10.0f;
 	result.panelPaddingY = 8.0f;
 	result.widgetPaddingX = 8.0f;
@@ -4700,6 +4771,40 @@ fui_inline void fui__WriteQuad(fui__GeometryWriter *writer, const uint32_t verte
 fui_inline fuiVec2 fui__ZeroUv(void) {
 	fuiVec2 result = fuiV2(0.0f, 0.0f);
 	return(result);
+}
+
+//! Writes one untextured quad whose two top corners carry one color and whose two bottom corners carry another,
+//! which is a vertical gradient once the rasterizer interpolates between them
+fui_inline void fui__WriteQuadVerticalGradient(fui__GeometryWriter *writer, const uint32_t vertexAt, const uint32_t indexAt, const fuiRect rect, const uint32_t packedTopColor, const uint32_t packedBottomColor) {
+	FUI_ASSERT(writer != fui_null && writer->isValid);
+	float left = rect.x;
+	float top = rect.y;
+	float right = rect.x + rect.w;
+	float bottom = rect.y + rect.h;
+	fuiVec2 zeroUv = fui__ZeroUv();
+
+	fuiVertex *vertices = &writer->vertices[vertexAt];
+	vertices[0].position = fuiV2(left, top);
+	vertices[0].uv = zeroUv;
+	vertices[0].color = packedTopColor;
+	vertices[1].position = fuiV2(right, top);
+	vertices[1].uv = zeroUv;
+	vertices[1].color = packedTopColor;
+	vertices[2].position = fuiV2(right, bottom);
+	vertices[2].uv = zeroUv;
+	vertices[2].color = packedBottomColor;
+	vertices[3].position = fuiV2(left, bottom);
+	vertices[3].uv = zeroUv;
+	vertices[3].color = packedBottomColor;
+
+	fuiDrawIndex base = (fuiDrawIndex)(writer->baseVertex + vertexAt);
+	fuiDrawIndex *indices = &writer->indices[indexAt];
+	indices[0] = base;
+	indices[1] = (fuiDrawIndex)(base + 1u);
+	indices[2] = (fuiDrawIndex)(base + 2u);
+	indices[3] = base;
+	indices[4] = (fuiDrawIndex)(base + 2u);
+	indices[5] = (fuiDrawIndex)(base + 3u);
 }
 
 //! True when a primitive's bounds cannot show up inside the active clip, so it can be dropped outright
@@ -5382,6 +5487,31 @@ fui_api void fuiDrawRect(fuiContext *context, const fuiRect rect, const fuiColor
 	fui__WriteQuad(&writer, 0u, 0u, rect, zeroUv, zeroUv, packedColor);
 	writer.command->payload.rect.rect = rect;
 	writer.command->payload.rect.color = color;
+}
+
+fui_api void fuiDrawRectVerticalGradient(fuiContext *context, const fuiRect rect, const fuiColor topColor, const fuiColor bottomColor) {
+	bool bothStopsAreInvisible = (topColor.a <= 0.0f) && (bottomColor.a <= 0.0f);
+	if(fuiRectIsEmpty(rect) || bothStopsAreInvisible) {
+		return;
+	}
+	if(fui__IsClippedAway(context, rect)) {
+		return;
+	}
+
+	uint32_t packedTopColor = fuiPackColor(topColor);
+	uint32_t packedBottomColor = fuiPackColor(bottomColor);
+	// Two stops that round to the same bytes are a flat fill, and a flat fill is worth handing over as one:
+	// a FUI_DRAW_RECT carries a payload a backend can take a shortcut on, where a gradient never can.
+	if(packedTopColor == packedBottomColor) {
+		fuiDrawRect(context, rect, topColor);
+		return;
+	}
+
+	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TRIANGLES, FUI_TEXTURE_ID_NONE, 4u, 6u);
+	if(!writer.isValid) {
+		return;
+	}
+	fui__WriteQuadVerticalGradient(&writer, 0u, 0u, rect, packedTopColor, packedBottomColor);
 }
 
 fui_api void fuiDrawRectOutline(fuiContext *context, const fuiRect rect, const fuiColor color, const float thickness) {
@@ -6149,8 +6279,10 @@ fui_api void fuiDrawTextBlock(fuiContext *context, const char *text, const size_
 #define FUI__GROUP_BOX_TITLE_PADDING 3.0f
 //! Inset of the first row from the top edge of a multi-line widget
 #define FUI__MULTILINE_TOP_PADDING 4.0f
-//! Inset of the check mark inside a checkbox box, and of the dot inside a radio marker
+//! Smallest inset of the check mark inside a checkbox box, and of the dot inside a radio marker
 #define FUI__CHECK_MARK_INSET 4.0f
+//! How much bare well is left showing between the bevel of a checkbox box and the mark inside it
+#define FUI__CHECK_MARK_WELL_GAP 2.0f
 //! Gap between a checkbox or radio marker and the caption beside it
 #define FUI__WIDGET_LABEL_GAP 6.0f
 //! Width of the knob a slider marks its value with
@@ -6223,6 +6355,95 @@ fui_inline fuiColor fui__WidgetFillColor(const fuiContext *context, const fuiInt
 		return(context->theme.widgetHoveredColor);
 	}
 	return(context->theme.widgetColor);
+}
+
+//! Draws the lit and the shaded edge INSIDE a box: two strips along the top and the left, two along the bottom
+//! and the right. The corners are butted rather than mitred, because at one or two pixels a diagonal seam is a
+//! staircase rather than a corner - and nothing the library draws is anti-aliased yet
+fui_inline void fui__DrawBevelEdges(fuiContext *context, const fuiRect box, const float thickness, const fuiColor topLeftColor, const fuiColor bottomRightColor) {
+	float smallestSide = fuiMinF(box.w, box.h);
+	float maximumThickness = smallestSide * 0.5f;
+	float edgeThickness = fuiMinF(thickness, maximumThickness);
+	if(edgeThickness <= 0.0f) {
+		return;
+	}
+
+	float innerHeight = box.h - edgeThickness * 2.0f;
+	fuiRect topEdge = fuiRectMake(box.x, box.y, box.w, edgeThickness);
+	fuiRect leftEdge = fuiRectMake(box.x, box.y + edgeThickness, edgeThickness, innerHeight);
+	fuiRect bottomEdge = fuiRectMake(box.x, box.y + box.h - edgeThickness, box.w, edgeThickness);
+	fuiRect rightEdge = fuiRectMake(box.x + box.w - edgeThickness, box.y + edgeThickness, edgeThickness, innerHeight);
+
+	fuiDrawRect(context, topEdge, topLeftColor);
+	fuiDrawRect(context, leftEdge, topLeftColor);
+	fuiDrawRect(context, bottomEdge, bottomRightColor);
+	fuiDrawRect(context, rightEdge, bottomRightColor);
+}
+
+//! How a widget box stands relative to the surface around it. A box says what can be done to it by its SHAPE,
+//! so the three are not interchangeable: sunken is what a widget looks like once it has been pushed, and a
+//! widget nobody has pushed must not borrow that shape to mean something else
+typedef enum fui__Relief {
+	//! Standing out of the panel. What a button at rest looks like, and the tab whose page is showing
+	FUI__RELIEF_RAISED = 0,
+	//! Pushed into the panel. A button being held, a lit toggle, and the well a checkbox puts its mark in
+	FUI__RELIEF_SUNKEN,
+	//! Neither pushed nor standing out, just a filled box. What sits BEHIND the front surface rather than on it,
+	//! such as a tab whose page is not showing
+	FUI__RELIEF_FLAT,
+} fui__Relief;
+
+//! One widget box in its relief: a vertically shaded face between a lit and a shaded edge, framed by the same
+//! outline every box in the interface carries. The light is overhead, so a raised face catches it along its top
+//! and a sunken one lies in its own shadow there. A flat box takes neither and is drawn as the plain fill it is
+fui_inline void fui__DrawBevelBox(fuiContext *context, const fuiRect rect, const fuiColor faceColor, const fui__Relief relief) {
+	const fuiTheme *theme = &context->theme;
+
+	if(relief == FUI__RELIEF_FLAT) {
+		fuiDrawRect(context, rect, faceColor);
+		fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+		return;
+	}
+
+	bool isSunken = (relief == FUI__RELIEF_SUNKEN);
+	float shadingStrength = theme->widgetFaceShadingStrength;
+	fuiColor litFace = fuiColorShade(faceColor, shadingStrength);
+	fuiColor shadedFace = fuiColorShade(faceColor, -shadingStrength);
+	fuiColor topFace = isSunken ? shadedFace : litFace;
+	fuiColor bottomFace = isSunken ? litFace : shadedFace;
+	fuiDrawRectVerticalGradient(context, rect, topFace, bottomFace);
+
+	// Inside the outline rather than under it, so the frame stays the outermost thing on the box and the
+	// bevel reads as the chamfer it is meant to be.
+	fuiRect bevelBox = fuiRectInflate(rect, -theme->widgetBorderThickness);
+	fuiColor topLeftEdgeColor = isSunken ? theme->widgetBevelShadowColor : theme->widgetBevelLightColor;
+	fuiColor bottomRightEdgeColor = isSunken ? theme->widgetBevelLightColor : theme->widgetBevelShadowColor;
+	fui__DrawBevelEdges(context, bevelBox, theme->widgetBevelThickness, topLeftEdgeColor, bottomRightEdgeColor);
+
+	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+}
+
+//! The box the mark inside a checkbox well or a radio marker is drawn in. Inset far enough to clear the well's
+//! frame AND its bevel, so a theme with a thicker bevel grows the well around the mark rather than over it
+fui_inline fuiRect fui__CheckMarkRect(const fuiContext *context, const fuiRect well) {
+	const fuiTheme *theme = &context->theme;
+	float wellChromeThickness = theme->widgetBorderThickness + theme->widgetBevelThickness;
+	float clearingInset = wellChromeThickness + FUI__CHECK_MARK_WELL_GAP;
+	float markInset = fuiMaxF(FUI__CHECK_MARK_INSET, clearingInset);
+	fuiRect result = fuiRectInflate(well, -markInset);
+	return(result);
+}
+
+//! Where the content of a widget goes: level with its box, or nudged down and to the right while the box is
+//! pressed in, which is the other half of what makes a click feel like one
+fui_inline fuiRect fui__PressedContentRect(const fuiContext *context, const fuiRect rect, const bool isPressed) {
+	if(!isPressed) {
+		return(rect);
+	}
+	float pressOffset = context->theme.widgetPressOffset;
+	fuiVec2 pressShift = fuiV2(pressOffset, pressOffset);
+	fuiRect result = fuiRectOffset(rect, pressShift);
+	return(result);
 }
 
 //! Draws one line of text at an explicit x, vertically centered on a rectangle and clipped to it
@@ -7290,9 +7511,13 @@ fui_inline void fui__DrawButton(fuiContext *context, const fuiRect rect, const c
 	const fuiTheme *theme = &context->theme;
 	fuiColor fill = enabled ? fui__WidgetFillColor(context, interaction) : theme->widgetTrackColor;
 	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
-	fuiDrawRect(context, rect, fill);
-	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
-	fui__DrawTextCenteredInRect(context, rect, label, labelColor);
+	// A disabled button is not a button that can be pushed, so it lies flush in the panel rather than standing
+	// out of it - the shape says as much as the muted caption does.
+	bool buttonIsPushed = interaction.isHeld || !enabled;
+	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
+	fui__DrawBevelBox(context, rect, fill, relief);
+	fuiRect labelRect = fui__PressedContentRect(context, rect, interaction.isHeld);
+	fui__DrawTextCenteredInRect(context, labelRect, label, labelColor);
 }
 
 fui_api bool fuiButtonEx(fuiContext *context, const fuiRect rect, const char *label, const bool enabled) {
@@ -7380,10 +7605,11 @@ fui_api bool fuiCheckbox(fuiContext *context, const fuiRect rect, const char *la
 	float boxSide = theme->fontHeight;
 	fuiRect box = fuiRectMake(rect.x + theme->widgetPaddingX, rect.y + (rect.h - boxSide) * 0.5f, boxSide, boxSide);
 	fuiColor boxFill = interaction.isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
-	fuiDrawRect(context, box, boxFill);
-	fuiDrawRectOutline(context, box, theme->panelBorderColor, theme->widgetBorderThickness);
+	// A checkbox box is a WELL the mark sits in rather than a face that can be pushed, so it is bevelled the
+	// other way round from a button and stays that way whether it is ticked or not.
+	fui__DrawBevelBox(context, box, boxFill, FUI__RELIEF_SUNKEN);
 	if(*value) {
-		fuiRect checkMark = fuiRectInflate(box, -FUI__CHECK_MARK_INSET);
+		fuiRect checkMark = fui__CheckMarkRect(context, box);
 		fuiDrawRect(context, checkMark, theme->accentColor);
 	}
 
@@ -7410,10 +7636,10 @@ fui_api bool fuiRadio(fuiContext *context, const fuiRect rect, const char *label
 	float markerSide = theme->fontHeight;
 	fuiRect marker = fuiRectMake(rect.x + theme->widgetPaddingX, rect.y + (rect.h - markerSide) * 0.5f, markerSide, markerSide);
 	fuiColor markerFill = interaction.isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
-	fuiDrawRect(context, marker, markerFill);
-	fuiDrawRectOutline(context, marker, theme->panelBorderColor, theme->widgetBorderThickness);
+	// The same well a checkbox puts its tick in, so the two read as one family of widget.
+	fui__DrawBevelBox(context, marker, markerFill, FUI__RELIEF_SUNKEN);
 	if(*selected == option) {
-		fuiRect dot = fuiRectInflate(marker, -FUI__CHECK_MARK_INSET);
+		fuiRect dot = fui__CheckMarkRect(context, marker);
 		fuiDrawRect(context, dot, theme->accentColor);
 	}
 
@@ -8954,10 +9180,9 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 		float boxTop = rowRect.y + (rowRect.h - checkBoxSide) * 0.5f;
 		fuiRect box = fuiRectMake(rowRect.x + contentInsetX, boxTop, checkBoxSide, checkBoxSide);
 		fuiColor boxFill = isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
-		fuiDrawRect(context, box, boxFill);
-		fuiDrawRectOutline(context, box, theme->panelBorderColor, theme->widgetBorderThickness);
+		fui__DrawBevelBox(context, box, boxFill, FUI__RELIEF_SUNKEN);
 		if(isChecked) {
-			fuiRect checkMark = fuiRectInflate(box, -FUI__CHECK_MARK_INSET);
+			fuiRect checkMark = fui__CheckMarkRect(context, box);
 			fuiDrawRect(context, checkMark, theme->accentColor);
 		}
 		labelX = box.x + box.w + FUI__WIDGET_LABEL_GAP;
@@ -9415,9 +9640,14 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 		fill = fui__WidgetFillColor(context, interaction);
 	}
 	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
-	fuiDrawRect(context, slot, fill);
-	fuiDrawRectOutline(context, slot, theme->panelBorderColor, theme->widgetBorderThickness);
-	fui__DrawTextInRect(context, slot, label, labelColor);
+	// A lit toggle stays pushed IN for as long as it is on, which is what tells a toggle apart from a button
+	// that happens to be under the cursor.
+	bool buttonIsPushed = isActive || interaction.isHeld || !enabled;
+	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
+	fui__DrawBevelBox(context, slot, fill, relief);
+	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
+	fuiRect labelRect = fui__PressedContentRect(context, slot, labelIsPressed);
+	fui__DrawTextInRect(context, labelRect, label, labelColor);
 	return(interaction.wasClicked);
 }
 
@@ -10668,9 +10898,23 @@ fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const cha
 
 		bool isShowing = (tabIndex == activeTab);
 		fuiColor fill = isShowing ? theme->widgetActiveColor : fui__WidgetFillColor(context, interaction);
-		fuiDrawRect(context, headerRect, fill);
-		fuiDrawRectOutline(context, headerRect, theme->panelBorderColor, theme->widgetBorderThickness);
-		fui__DrawTextInRect(context, headerRect, tabs[tabIndex], isShowing ? theme->textColor : theme->textMutedColor);
+		// The tab in front stands out of the strip and the ones behind it lie FLAT in it. Flat rather than
+		// sunken: sunken is the shape of a widget that has been pushed, and a tab nobody is pushing must not
+		// wear it - a whole row of them reads as a row of dead buttons. Pushing one really does sink it.
+		fui__Relief relief = FUI__RELIEF_FLAT;
+		if(isShowing) {
+			relief = FUI__RELIEF_RAISED;
+		} else if(interaction.isHeld) {
+			relief = FUI__RELIEF_SUNKEN;
+		}
+		fui__DrawBevelBox(context, headerRect, fill, relief);
+		// Every caption in the strip is drawn in the FULL text color. The muted one is what a disabled widget
+		// takes, and a tab that is merely not showing is not disabled - it was the hardest thing on the strip
+		// to read while it wore that color. Which page is showing is carried by the relief, the fill and the
+		// accent line under it, which is three cues without spending the caption on a fourth.
+		// The captions are NOT nudged with the headers they sit on either. They stand in a row, and a row of
+		// labels stepping up and down as the selection moves is a jitter rather than a depth cue.
+		fui__DrawTextInRect(context, headerRect, tabs[tabIndex], theme->textColor);
 		if(isShowing) {
 			// Under the header rather than over it, which is where an underline goes now that down is down.
 			fuiRect underline = fuiRectMake(headerRect.x, headerRect.y + headerRect.h - FUI__TAB_ACCENT_THICKNESS, headerRect.w, FUI__TAB_ACCENT_THICKNESS);
