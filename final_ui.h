@@ -9554,6 +9554,15 @@ fui_api void fuiOpenDialog(fuiContext *context, const char *id) {
 	}
 	context->modalStack[context->modalDepth] = dialogId;
 	context->modalDepth += 1u;
+
+	// Opening is the moment a dialog is PLACED, so it comes up centred however far the last one of its kind
+	// was dragged. A desktop dialog is a new window every time it is shown and lands wherever its template
+	// says; a prompt that reappears in the corner somebody parked the last one in is a prompt nobody sees.
+	// The SIZE a resizable dialog was left at survives, since that is a preference rather than a placement.
+	fuiWidgetState *state = fui__WidgetStateGet(context, dialogId);
+	if(state != fui_null) {
+		state->moveOffset = fuiV2(0.0f, 0.0f);
+	}
 }
 
 fui_api void fuiCloseDialog(fuiContext *context, const char *id) {
@@ -9667,52 +9676,58 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 	const fuiTheme *theme = &context->theme;
 	float titleBarHeight = fui__PanelTitleBarHeight(context);
 
-	// What the user dragged, kept in the same retained slot a floating panel's is and keyed by the dialog,
-	// so a resizable dialog reopens at the size it was left at. A fixed one remembers nothing on purpose.
-	fuiWidgetState *state = isResizable ? fui__WidgetStateGet(context, modalId) : fui_null;
+	// What the user dragged, kept in the same retained slot a floating panel's is and keyed by the dialog.
+	// EVERY dialog has one, because every dialog is dragged by its caption the way a desktop dialog is. Only
+	// the SIZE half of it belongs to a resizable one; a fixed dialog keeps the size its caller asked for.
+	fuiWidgetState *state = fui__WidgetStateGet(context, modalId);
 
+	// Centred at its DEFAULT size and then pinned by its top left corner, which the title bar drags around.
+	// Every desktop dialog behaves this way: dragging a corner moves that corner and nothing else. Re-centring
+	// each frame instead grew the box in all four directions at once. A dialog nobody has dragged keeps a zero
+	// offset, so it stays centred as the window is resized under it.
 	fuiRect rect = fui__DialogCenteredRect(context, width, height);
-	if(isResizable) {
-		// Centred at its DEFAULT size and then pinned by its top left corner, which the title bar drags
-		// around. Every desktop dialog behaves this way: dragging the corner moves that corner and nothing
-		// else. Re-centring each frame instead grew the box in all four directions at once.
-		float defaultAnchorX = rect.x;
-		float defaultAnchorY = rect.y;
-		float effectiveWidth = width;
-		float effectiveHeight = height;
-		float anchorX = defaultAnchorX;
-		float anchorY = defaultAnchorY;
-		if(state != fui_null) {
+	float defaultAnchorX = rect.x;
+	float defaultAnchorY = rect.y;
+	float effectiveWidth = width;
+	float effectiveHeight = height;
+	float anchorX = defaultAnchorX;
+	float anchorY = defaultAnchorY;
+	if(state != fui_null) {
+		if(isResizable) {
 			effectiveWidth += state->sizeOffset.x;
 			effectiveHeight += state->sizeOffset.y;
-			anchorX += state->moveOffset.x;
-			anchorY += state->moveOffset.y;
 		}
+		anchorX += state->moveOffset.x;
+		anchorY += state->moveOffset.y;
+	}
 
-		// SIZE is bounded by the window itself and not by where the dialog sits, since growing must never
-		// shove the box sideways away from the cursor holding its corner. In practice the cursor is the real
-		// bound; this only catches a window made smaller under an already large dialog.
+	// SIZE is bounded by the window itself and not by where the dialog sits, since growing must never shove
+	// the box sideways away from the cursor holding its corner. In practice the cursor is the real bound;
+	// this only catches a window made smaller under an already large dialog.
+	if(isResizable) {
 		float widestAllowed = fuiMaxF((float)context->windowSize.x - FUI__MODAL_WINDOW_MARGIN * 2.0f, FUI__PANEL_MIN_WIDTH);
 		float tallestAllowed = fuiMaxF((float)context->windowSize.y - FUI__MODAL_WINDOW_MARGIN * 2.0f, FUI__PANEL_MIN_HEIGHT);
 		effectiveWidth = fuiClampF(effectiveWidth, FUI__PANEL_MIN_WIDTH, widestAllowed);
 		effectiveHeight = fuiClampF(effectiveHeight, FUI__PANEL_MIN_HEIGHT, tallestAllowed);
-
-		// POSITION is bounded so the TITLE BAR is always fully on screen, since that is the handle everything
-		// else is recovered by - a dialog dragged so far right that its grip left the window included. The
-		// body may hang off the right or the bottom, exactly as a desktop window may.
-		float furthestRight = fuiMaxF((float)context->windowSize.x - FUI__MODAL_WINDOW_MARGIN - FUI__MODAL_MIN_VISIBLE_WIDTH, FUI__MODAL_WINDOW_MARGIN);
-		float furthestDown = fuiMaxF((float)context->windowSize.y - FUI__MODAL_WINDOW_MARGIN - titleBarHeight, FUI__MODAL_WINDOW_MARGIN);
-		anchorX = fuiClampF(anchorX, FUI__MODAL_WINDOW_MARGIN, furthestRight);
-		anchorY = fuiClampF(anchorY, FUI__MODAL_WINDOW_MARGIN, furthestDown);
-
-		if(state != fui_null) {
-			// Both offsets go back CLAMPED, so a drag that ran past an edge banks no overshoot that has to be
-			// unwound before the dialog answers the cursor again.
-			state->sizeOffset = fuiV2(effectiveWidth - width, effectiveHeight - height);
-			state->moveOffset = fuiV2(anchorX - defaultAnchorX, anchorY - defaultAnchorY);
-		}
-		rect = fuiRectMake(anchorX, anchorY, effectiveWidth, effectiveHeight);
 	}
+
+	// POSITION is bounded so the TITLE BAR is always fully on screen, since that is the handle everything
+	// else is recovered by - a dialog dragged so far right that its grip left the window included. The
+	// body may hang off the right or the bottom, exactly as a desktop window may.
+	float furthestRight = fuiMaxF((float)context->windowSize.x - FUI__MODAL_WINDOW_MARGIN - FUI__MODAL_MIN_VISIBLE_WIDTH, FUI__MODAL_WINDOW_MARGIN);
+	float furthestDown = fuiMaxF((float)context->windowSize.y - FUI__MODAL_WINDOW_MARGIN - titleBarHeight, FUI__MODAL_WINDOW_MARGIN);
+	anchorX = fuiClampF(anchorX, FUI__MODAL_WINDOW_MARGIN, furthestRight);
+	anchorY = fuiClampF(anchorY, FUI__MODAL_WINDOW_MARGIN, furthestDown);
+
+	if(state != fui_null) {
+		// Both offsets go back CLAMPED, so a drag that ran past an edge banks no overshoot that has to be
+		// unwound before the dialog answers the cursor again.
+		if(isResizable) {
+			state->sizeOffset = fuiV2(effectiveWidth - width, effectiveHeight - height);
+		}
+		state->moveOffset = fuiV2(anchorX - defaultAnchorX, anchorY - defaultAnchorY);
+	}
+	rect = fuiRectMake(anchorX, anchorY, effectiveWidth, effectiveHeight);
 
 	// The chrome is drawn against the WHOLE WINDOW rather than against whatever was clipping the code that
 	// opened the dialog. A dialog opened from inside a panel is still a dialog.
@@ -9734,9 +9749,9 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 
 	fuiRect titleBar = fuiRectMake(rect.x, rect.y, rect.w, titleBarHeight);
 	bool titleBarIsLit = false;
-	if(isResizable && state != fui_null) {
-		// Only a resizable dialog moves. A prompt is centred on purpose, and a message box that can be shoved
-		// into a corner is a message box somebody loses.
+	if(state != fui_null) {
+		// Every dialog moves, resizable or not. A message box the user cannot shove aside is a message box
+		// that hides whatever it is asking about, and there is nothing behind a caption bar to click anyway.
 		fuiInteraction moveInteraction = fuiInteract(context, moveId, titleBar);
 		if(moveInteraction.isHeld) {
 			state->moveOffset = fuiV2Add(state->moveOffset, context->mouseDelta);
