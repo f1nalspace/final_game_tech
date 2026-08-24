@@ -6246,6 +6246,23 @@ fui_inline void fui__DrawTextInRect(fuiContext *context, const fuiRect rect, con
 	fui__DrawTextLeftAligned(context, rect, textX, text, color);
 }
 
+//! Draws a caption centred across a widget rather than inset from its left edge. What a BUTTON wants: its
+//! caption names the whole box and reads as belonging to it, where a left inset one reads as a list row.
+fui_inline void fui__DrawTextCenteredInRect(fuiContext *context, const fuiRect rect, const char *text, const fuiColor color) {
+	if(context->font == fui_null || text == fui_null) {
+		return;
+	}
+	float pixelHeight = context->theme.fontHeight;
+	fuiVec2 textSize = fuiMeasureText(context, text, 0, pixelHeight);
+	// A caption too wide for its box falls back to the left inset, so it is cropped at the far edge rather
+	// than losing the same amount off BOTH ends and becoming unreadable from either side.
+	float textX = rect.x + context->theme.widgetPaddingX;
+	if(textSize.x < (rect.w - context->theme.widgetPaddingX * 2.0f)) {
+		textX = rect.x + (rect.w - textSize.x) * 0.5f;
+	}
+	fui__DrawTextLeftAligned(context, rect, textX, text, color);
+}
+
 //! Draws a caption as top anchored rows inside a widget, clipped to it
 fui_inline void fui__DrawTextBlockInRect(fuiContext *context, const fuiRect rect, const char *text, const bool wordWrap, const fuiColor color) {
 	if(context->font == fui_null || text == fui_null) {
@@ -7275,7 +7292,7 @@ fui_inline void fui__DrawButton(fuiContext *context, const fuiRect rect, const c
 	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
 	fuiDrawRect(context, rect, fill);
 	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
-	fui__DrawTextInRect(context, rect, label, labelColor);
+	fui__DrawTextCenteredInRect(context, rect, label, labelColor);
 }
 
 fui_api bool fuiButtonEx(fuiContext *context, const fuiRect rect, const char *label, const bool enabled) {
