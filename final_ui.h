@@ -213,6 +213,15 @@ SOFTWARE.
 	- Changed: fuiTheme.widgetSpacing defaults to the panel's side padding, so the gaps between widgets and the
 	  gaps around them are one measure.
 	- New: FUI_SPACING_FROM_THEME, passed as a stack's spacing to take fuiTheme.widgetSpacing.
+	- New: The bars measure themselves - fuiMenuBarHeight, fuiToolStripThickness and fuiStatusBarHeight. A bar
+	  is one row of what it holds plus the inset above and below it, so none of the three is a number a caller
+	  has to pick, and a restyled theme moves all of them at once.
+	- New: fuiLayoutDock, which bites a strip off one edge of the container that is open and hands it back. A
+	  bar takes its WIDTH from whatever encloses it and its thickness from the theme, so a caller names no
+	  pixels at all, and what is left over is what fuiLayoutRemaining answers with.
+	- Changed: A tool strip insets its items across the flow axis instead of letting them fill the bar, so a
+	  button never runs into the edge of the strip around it. A strip separator spans its slot end to end, the
+	  way fuiSeparator does, and so stands exactly as tall as the buttons it divides.
 
 	# v0.9.0:
 	- New: The api is documented in full - a doxygen block on all 200 public declarations and a note on every type, field, enum value and constant
@@ -2722,6 +2731,17 @@ fui_api void fuiEndStack(fuiContext *context);
 fui_api fuiRect fuiLayoutSlot(fuiContext *context, const float thickness);
 
 /**
+* @brief Bites a strip off ONE EDGE of the container that is open and hands it back.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] dock Which edge to take the strip off, see @ref fuiDock.
+* @param[in] thickness How deep to cut into the container, in pixels.
+* @return Returns the strip, spanning the container across the other axis. Empty when there is no container or no room left.
+* @note This is how a bar gets its rectangle without knowing the window: the WIDTH comes from whatever encloses it and the thickness from the theme, so @ref fuiMenuBarHeight, @ref fuiToolStripThickness and @ref fuiStatusBarHeight are all a caller ever has to name.
+* @note The strip leaves the container's flow alone, unlike @ref fuiLayoutSlot: what is docked is chrome around the content rather than one more row of it, and @ref fuiLayoutRemaining answers with the region that is left.
+*/
+fui_api fuiRect fuiLayoutDock(fuiContext *context, const fuiDock dock, const float thickness);
+
+/**
 * @brief Returns what the container that is open has left, in pixels.
 * @param[in] context Reference to the context @ref fuiContext.
 * @return Returns the remaining content box, or the whole window when no container is open.
@@ -3202,9 +3222,18 @@ fui_api bool fuiCommandButton(fuiContext *context, const fuiRect rect, const fui
 * @param[in] id Identifies the bar, and scopes the identifiers of the menus in it.
 * @param[in] rect The strip the titles flow across, in pixels.
 * @note Popups float ABOVE everything else, so build the bar AFTER the panels it covers.
+* @note Ask @ref fuiMenuBarHeight for the height rather than picking one, and @ref fuiLayoutDock for the strip itself.
 * @note Always pair with @ref fuiEndMenuBar.
 */
 fui_api void fuiBeginMenuBar(fuiContext *context, const char *id, const fuiRect rect);
+
+/**
+* @brief Returns how tall a menu bar needs to be, in pixels.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns one menu row: the title's text plus the inset above and below it.
+* @note The same row an open popup hands its items, so a title and the rows under it are the same size. There is nothing in a menu bar that a taller strip would show more of.
+*/
+fui_api float fuiMenuBarHeight(const fuiContext *context);
 
 /**
 * @brief Ends a menu bar.
@@ -3316,9 +3345,18 @@ fui_api void fuiCloseMenus(fuiContext *context);
 * @param[in] rect The area the items flow across, in pixels.
 * @param[in] axis Which way the items flow.
 * @note A horizontal strip sizes each item to its label; a vertical one gives every item the theme's row height.
+* @note The items are inset ACROSS the flow axis by the same measure that separates them along it, so they never run into the edge of the strip. Ask @ref fuiToolStripThickness for the strip's own thickness and @ref fuiLayoutDock for the strip itself.
 * @note Always pair with @ref fuiEndToolStrip.
 */
 fui_api void fuiBeginToolStrip(fuiContext *context, const char *id, const fuiRect rect, const fuiAxis axis);
+
+/**
+* @brief Returns how thick a tool strip needs to be ACROSS its flow axis, in pixels.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns one strip item plus the inset above and below it.
+* @note For a horizontal strip that thickness is its HEIGHT, which is all a strip along the top of a window needs. A vertical one is as wide as the caller makes it, since only the caller knows how long the labels are, and this is the least it may be.
+*/
+fui_api float fuiToolStripThickness(const fuiContext *context);
 
 /**
 * @brief Ends a tool strip.
@@ -3373,9 +3411,18 @@ fui_api void fuiToolStripSeparator(fuiContext *context);
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the bar.
 * @param[in] rect The strip the items sit in, in pixels.
+* @note Ask @ref fuiStatusBarHeight for the height rather than picking one, and @ref fuiLayoutDock for the strip itself.
 * @note Always pair with @ref fuiEndStatusBar.
 */
 fui_api void fuiBeginStatusBar(fuiContext *context, const char *id, const fuiRect rect);
+
+/**
+* @brief Returns how tall a status bar needs to be, in pixels.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns one line of text plus the inset above and below it.
+* @note A status bar holds text and nothing else, so this is as tall as it can usefully get.
+*/
+fui_api float fuiStatusBarHeight(const fuiContext *context);
 
 /**
 * @brief Ends a status bar.
@@ -6463,6 +6510,15 @@ fui_inline void fui__DrawChromeFrame(fuiContext *context, const fuiRect rect) {
 	fuiDrawRectOutline(context, snapped, theme->panelBorderColor, theme->panelBorderThickness);
 }
 
+//! How thick a strip of chrome is that holds ONE row of something: the row plus the inset it keeps above and
+//! below itself. Every bar in the interface is this shape - a menu bar over its titles, a tool strip over its
+//! buttons, a status bar over its text - so they are all measured the same way and none of them needs a
+//! number picked by hand
+fui_inline float fui__BarThickness(const fuiContext *context, const float rowThickness) {
+	float result = rowThickness + context->theme.menuItemPaddingY * 2.0f;
+	return(result);
+}
+
 //! Shrinks a rectangle by an inset on each axis, never past empty
 fui_inline fuiRect fui__RectInset(const fuiRect rect, const float insetX, const float insetY) {
 	float width = fuiMaxF(0.0f, rect.w - insetX * 2.0f);
@@ -6544,6 +6600,28 @@ fui_api fuiRect fuiLayoutSlot(fuiContext *context, const float thickness) {
 		(void)fui__ConsumeLeading(node, node->spacing);
 	}
 	return(slot);
+}
+
+fui_api fuiRect fuiLayoutDock(fuiContext *context, const fuiDock dock, const float thickness) {
+	FUI_ASSERT(context != fui_null);
+	fuiRect empty = fuiRectMake(0.0f, 0.0f, 0.0f, 0.0f);
+	if(context == fui_null) {
+		return(empty);
+	}
+	fuiLayoutNode *node = fui__CurrentLayout(context);
+	if(node == fui_null || node->isHidden) {
+		return(empty);
+	}
+
+	// A dock cuts into the box the same way for either axis, so one call covers all four edges.
+	fuiRect box = node->remaining;
+	fuiRect strip = fui__TakeDockRegion(&box, dock, thickness, thickness);
+	node->remaining = box;
+
+	// The flow is deliberately left alone: hasFlowStarted and usedExtent describe the rows a container holds,
+	// and a bar docked around them is not one of those rows. A panel that opens a slot after docking its own
+	// tool strip still gets a first slot with no margin in front of it.
+	return(strip);
 }
 
 fui_api fuiRect fuiLayoutRemaining(const fuiContext *context) {
@@ -8730,7 +8808,18 @@ fui_inline void fui__PushClipAbsolute(fuiContext *context, const fuiRect rect) {
 
 //! The height of one menu row, which the popup's whole geometry is derived from
 fui_inline float fui__MenuRowHeight(const fuiContext *context) {
-	float result = context->theme.menuItemFontHeight + context->theme.menuItemPaddingY * 2.0f;
+	float result = fui__BarThickness(context, context->theme.menuItemFontHeight);
+	return(result);
+}
+
+fui_api float fuiMenuBarHeight(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(0.0f);
+	}
+	// A title in the bar and a row in the popup it drops are the same row, so the bar is exactly one of them
+	// tall. Anything more is empty strip, and anything less crops the caption it was made for.
+	float result = fui__MenuRowHeight(context);
 	return(result);
 }
 
@@ -9185,20 +9274,45 @@ fui_inline float fui__StripItemThickness(const fuiContext *context, const char *
 	return(context->theme.menuItemHeight);
 }
 
+fui_api float fuiToolStripThickness(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(0.0f);
+	}
+	// One strip item plus the inset it keeps to either edge of the bar. A strip is only ever as thick as the
+	// buttons in it, and the theme already says how tall a strip button is.
+	float result = fui__BarThickness(context, context->theme.menuItemHeight);
+	return(result);
+}
+
 fui_api void fuiBeginToolStrip(fuiContext *context, const char *id, const fuiRect rect, const fuiAxis axis) {
 	FUI_ASSERT(context != fui_null && id != fui_null);
 	if(context == fui_null || id == fui_null) {
 		return;
 	}
+	const fuiTheme *theme = &context->theme;
 	fuiPushId(context, id);
-	fuiDrawRect(context, rect, context->theme.panelBackgroundColor);
+	fuiDrawRect(context, rect, theme->panelBackgroundColor);
 	fuiBlockMouse(context, rect);
 
+	// The items sit in an INSET of the strip rather than filling it, so a button never runs into the edge of
+	// the bar around it. Across the flow axis that is the inset fuiToolStripThickness reserved; along it, it
+	// is the same gap that separates two items. A strip made taller than it needs to be simply centres its
+	// items in what it was given.
+	float crossInset = theme->menuItemPaddingY;
+	fuiRect itemBox = (axis == FUI_AXIS_HORIZONTAL) ? fui__RectInset(rect, 0.0f, crossInset) : fui__RectInset(rect, crossInset, 0.0f);
+	float naturalItemThickness = theme->menuItemHeight;
+	if(axis == FUI_AXIS_HORIZONTAL && itemBox.h > naturalItemThickness) {
+		itemBox = fuiRectMake(itemBox.x, itemBox.y + (itemBox.h - naturalItemThickness) * 0.5f, itemBox.w, naturalItemThickness);
+	} else if(axis == FUI_AXIS_VERTICAL && itemBox.w > naturalItemThickness) {
+		itemBox = fuiRectMake(itemBox.x + (itemBox.w - naturalItemThickness) * 0.5f, itemBox.y, naturalItemThickness, itemBox.h);
+	}
+
 	context->stripIsActive = true;
-	context->stripRect = rect;
+	context->stripRect = itemBox;
 	context->stripAxis = axis;
-	float leadingInset = context->theme.widgetSpacing;
-	context->stripCursor = (axis == FUI_AXIS_HORIZONTAL) ? (rect.x + leadingInset) : (rect.y + leadingInset);
+	float leadingInset = theme->widgetSpacing;
+	context->stripCursor = (axis == FUI_AXIS_HORIZONTAL) ? (itemBox.x + leadingInset) : (itemBox.y + leadingInset);
 }
 
 fui_api void fuiEndToolStrip(fuiContext *context) {
@@ -9294,14 +9408,17 @@ fui_api void fuiToolStripSeparator(fuiContext *context) {
 	fuiRect slot = fui__StripNextSlot(context, thickness);
 	fuiVec2 lineStart;
 	fuiVec2 lineEnd;
+	// The rule spans its slot end to end, the way fuiSeparator does in a flow container, so it stands exactly
+	// as tall as the buttons it divides. The strip is already inset from the bar around it, so there is
+	// nothing left here to trim.
 	if(context->stripAxis == FUI_AXIS_HORIZONTAL) {
 		float lineX = slot.x + slot.w * 0.5f;
-		lineStart = fuiV2(lineX, slot.y + theme->widgetPaddingX);
-		lineEnd = fuiV2(lineX, slot.y + slot.h - theme->widgetPaddingX);
+		lineStart = fuiV2(lineX, slot.y);
+		lineEnd = fuiV2(lineX, slot.y + slot.h);
 	} else {
 		float lineY = slot.y + slot.h * 0.5f;
-		lineStart = fuiV2(slot.x + theme->widgetPaddingX, lineY);
-		lineEnd = fuiV2(slot.x + slot.w - theme->widgetPaddingX, lineY);
+		lineStart = fuiV2(slot.x, lineY);
+		lineEnd = fuiV2(slot.x + slot.w, lineY);
 	}
 	fuiDrawLine(context, lineStart, lineEnd, theme->panelBorderColor, theme->widgetBorderThickness);
 }
@@ -9309,6 +9426,16 @@ fui_api void fuiToolStripSeparator(fuiContext *context) {
 // ----------------------------------------------------------------------------
 // > Status bar
 // ----------------------------------------------------------------------------
+
+fui_api float fuiStatusBarHeight(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(0.0f);
+	}
+	// One line of text plus the inset above and below it. A status bar carries nothing taller than its text.
+	float result = fui__BarThickness(context, context->theme.fontHeight);
+	return(result);
+}
 
 fui_api void fuiBeginStatusBar(fuiContext *context, const char *id, const fuiRect rect) {
 	FUI_ASSERT(context != fui_null && id != fui_null);
@@ -9363,9 +9490,10 @@ fui_api void fuiStatusSeparator(fuiContext *context) {
 		return;
 	}
 	const fuiTheme *theme = &context->theme;
+	// Trimmed by the bar's own inset, so the rule is exactly as tall as the text on either side of it.
 	float lineX = context->statusLeftCursor;
-	fuiVec2 lineStart = fuiV2(lineX, context->statusRect.y + theme->widgetPaddingX);
-	fuiVec2 lineEnd = fuiV2(lineX, context->statusRect.y + context->statusRect.h - theme->widgetPaddingX);
+	fuiVec2 lineStart = fuiV2(lineX, context->statusRect.y + theme->menuItemPaddingY);
+	fuiVec2 lineEnd = fuiV2(lineX, context->statusRect.y + context->statusRect.h - theme->menuItemPaddingY);
 	fuiDrawLine(context, lineStart, lineEnd, theme->panelBorderColor, theme->widgetBorderThickness);
 	context->statusLeftCursor += theme->widgetPaddingX * 2.0f;
 }

@@ -74,9 +74,6 @@ License:
 #define DEMO_FONT_PIXEL_HEIGHT 34.0f
 #define DEMO_FONT_ATLAS_SIDE 512u
 
-#define DEMO_MENU_BAR_HEIGHT 28.0f
-#define DEMO_TOOL_STRIP_HEIGHT 34.0f
-#define DEMO_STATUS_BAR_HEIGHT 24.0f
 #define DEMO_ROW_HEIGHT 26.0f
 #define DEMO_STATUS_MESSAGE_MAX 160
 #define DEMO_NAME_FIELD_MAX 64
@@ -974,8 +971,13 @@ static void BuildStatusBar(fuiContext *ui, DemoState *demo, const fuiRect status
 }
 
 static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool rightWasPressed) {
-	float windowWidth = (float)ui->windowSize.x;
-	float windowHeight = (float)ui->windowSize.y;
+	// The three bars are cut off the root container BEFORE anything else, so their width comes from whatever
+	// encloses them and their thickness from the theme. Nothing here names a pixel: a menu bar is one menu
+	// row tall, a tool strip one strip button, a status bar one line of text - and a restyled theme moves all
+	// three without a constant to chase.
+	fuiRect menuBarRect = fuiLayoutDock(ui, FUI_DOCK_TOP, fuiMenuBarHeight(ui));
+	fuiRect toolStripRect = fuiLayoutDock(ui, FUI_DOCK_TOP, fuiToolStripThickness(ui));
+	fuiRect statusBarRect = fuiLayoutDock(ui, FUI_DOCK_BOTTOM, fuiStatusBarHeight(ui));
 
 	// The shortcuts first, so a Ctrl+Q is answered even while the pointer is somewhere harmless. Nothing
 	// is dispatched while a text field has the keyboard, which is why typing an S into the name field
@@ -989,18 +991,18 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 		fuiOpenContextMenu(ui, "canvasmenu");
 	}
 
-	BuildToolStrip(ui, demo, fuiRectMake(0.0f, DEMO_MENU_BAR_HEIGHT, windowWidth, DEMO_TOOL_STRIP_HEIGHT));
+	BuildToolStrip(ui, demo, toolStripRect);
 
 	BuildWidgetsPanel(ui, demo);
 	BuildPickerPanel(ui, demo);
 	BuildListPanel(ui, demo);
 	BuildTablePanel(ui, demo);
 
-	BuildStatusBar(ui, demo, fuiRectMake(0.0f, windowHeight - DEMO_STATUS_BAR_HEIGHT, windowWidth, DEMO_STATUS_BAR_HEIGHT));
+	BuildStatusBar(ui, demo, statusBarRect);
 
 	// Popups float ABOVE the docked layout but are BUILT last, which is what lets a later call take the
 	// cursor from an earlier one with no z ordering anywhere.
-	BuildMenuBar(ui, demo, fuiRectMake(0.0f, 0.0f, windowWidth, DEMO_MENU_BAR_HEIGHT));
+	BuildMenuBar(ui, demo, menuBarRect);
 
 	if(fuiBeginContextMenu(ui, "canvasmenu")) {
 		if(fuiMenuItem(ui, "Bring the panels back", fpl_null, true)) {
