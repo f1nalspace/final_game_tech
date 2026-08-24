@@ -22,9 +22,6 @@ Description:
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#define FINAL_FONTLOADER_IMPLEMENTATION
-#include "final_fontloader.h"
-
 #include "utils.h"
 
 typedef struct {
@@ -35,14 +32,9 @@ const APITextureFormat InvalidAPITextureFormat = fplZeroInit;
 
 const Texture InvalidTexture = fplZeroInit;
 
-const Color4f Color4fWhite = { 1.0f, 1.0f, 1.0f, 1.0f };
-const Color4f Color4fBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
-const Color4f Color4fRed = { 1.0f, 0.0f, 0.0f, 1.0f };
-const Color4f Color4fGreen = { 0.0f, 1.0f, 0.0f, 1.0f };
-const Color4f Color4fBlue = { 0.0f, 0.0f, 1.0f, 1.0f };
-const Color4f Color4fYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-const Color4f Color4fGray = { 0.5f, 0.5f, 0.5f, 1.0f };
-const Color4f Color4fDarkGray = { 0.25f, 0.25f, 0.25f, 1.0f };
+const Color4f ColorBlack = { 0.0f, 0.0f, 0.0f, 1.0f };
+const Color4f ColorYellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+const Color4f ColorGray = { 0.5f, 0.5f, 0.5f, 1.0f };
 
 static char glErrorCodeBuffer[16];
 static const char *GetGLErrorString(const GLenum err) {
@@ -341,18 +333,8 @@ extern void RendererSetViewport(const int x, const int y, const int w, const int
 	glViewport(x, y, w, h);
 }
 
-extern void RendererEnableClipping() {
-	glEnable(GL_SCISSOR_TEST);	
-}
 
-extern void RendererSetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h) {
-	// TODO(final): Not correct, we need to convert the world coordinates to screen coordinates
-	glScissor((int)x, (int)y, (int)w, (int)h);
-}
 
-extern void RendererDisableClipping() {
-	glDisable(GL_SCISSOR_TEST);
-}
 
 extern void RendererClear(const float r, const float g, const float b, const float a) {
 	glClearColor(r, g, b, a);
@@ -364,20 +346,6 @@ extern void RendererSetModelViewProjectionMatrix(const float *mvp) {
 	glLoadMatrixf(mvp);
 }
 
-extern void RendererDrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color) {
-	glEnable(GL_BLEND);
-	glColor4fv(&color.r);
-	glLineWidth(lineWidth);
-	glBegin(GL_LINE_LOOP);
-	glVertex2f(x + w, y);
-	glVertex2f(x, y);
-	glVertex2f(x, y + h);
-	glVertex2f(x + w, y + h);
-	glEnd();
-	glLineWidth(1.0f);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glDisable(GL_BLEND);
-}
 
 extern void RendererDrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color) {
 	glEnable(GL_BLEND);
@@ -392,103 +360,8 @@ extern void RendererDrawFilledQuad(const float x, const float y, const float w, 
 	glDisable(GL_BLEND);
 }
 
-extern void RendererDrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color) {
-	glEnable(GL_BLEND);
-	glColor4fv(&color.r);
-	glLineWidth(lineWidth);
-	glBegin(GL_LINES);
-	glVertex2f(x0, y0);
-	glVertex2f(x1, y1);
-	glEnd();
-	glLineWidth(1.0f);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glDisable(GL_BLEND);
-}
 
-extern void RendererDrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown) {
-	bool drawLeft = (flags & ControlBorderFlags_Left) == ControlBorderFlags_Left;
-	bool drawRight = (flags & ControlBorderFlags_Right) == ControlBorderFlags_Right;
-	bool drawTop = (flags & ControlBorderFlags_Top) == ControlBorderFlags_Top;
-	bool drawBottom = (flags & ControlBorderFlags_Bottom) == ControlBorderFlags_Bottom;
 
-	const Color4f *leftColor, *rightColor, *topColor, *bottomColor;
-	if (isDown) {
-		leftColor = color2;
-		topColor = color2;
-		rightColor = color0;
-		bottomColor = color0;
-	} else {
-		leftColor = color0;
-		topColor = color0;
-		rightColor = color2;
-		bottomColor = color2;
-	}
-
-	float lwh = lineWidth * 0.5f;
-
-	float left = x + lwh;
-	float right = x + w - lwh;
-	float top = y + h - lwh;
-	float bottom = y + lwh;
-
-	float topLeft = left;
-	float topRight = right;
-
-	float bottomLeft = left;
-	float bottomRight = right;
-
-	float leftTop = top;
-	float leftBottom = bottom;
-
-	float rightTop = top;
-	float rightBottom = bottom;
-
-	if (!drawBottom || !drawTop) {
-		leftTop += lineWidth;
-		rightTop += lineWidth;
-		leftBottom -= lineWidth;
-		rightBottom -= lineWidth;
-	} else if (!drawTop || !drawBottom) {
-		topLeft -= lineWidth;
-		bottomLeft -= lineWidth;
-		topRight += lineWidth;
-		bottomRight += lineWidth;
-	}
-
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-	glLineWidth(lineWidth);
-	glBegin(GL_LINES);
-
-	if (drawTop) {
-		glColor4fv(&topColor->r); glVertex2f(topRight, top);
-		glColor4fv(&topColor->r); glVertex2f(topLeft, top);
-	}
-
-	if (drawLeft) {
-		glColor4fv(&leftColor->r); glVertex2f(left, leftTop);
-		glColor4fv(&leftColor->r); glVertex2f(left, leftBottom);
-	}
-
-	if (drawBottom) {
-		glColor4fv(&bottomColor->r); glVertex2f(bottomLeft, bottom);
-		glColor4fv(&bottomColor->r); glVertex2f(bottomRight, bottom);
-	}
-
-	if (drawRight) {
-		glColor4fv(&rightColor->r); glVertex2f(right, rightBottom);
-		glColor4fv(&rightColor->r); glVertex2f(right, rightTop);
-	}
-
-	glEnd();
-	glLineWidth(1.0f);
-
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);	
-}
-
-extern void RendererDrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown) {
-	RendererDrawControlBorders(x, y, w, h, lineWidth, color0, color1, color2, ControlBorderFlags_All, isDown);
-}
 
 
 extern void RendererDrawTexturedQuad(
@@ -523,60 +396,6 @@ extern void RendererDrawTexturedQuad(
 	glDisable(GL_BLEND);
 }
 
-extern void RendererDrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color) {
-	glEnable(GL_BLEND);
-
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture(GL_TEXTURE_2D, textureId);
-
-	glColor4fv(&color.r);
-
-	if (font != fpl_null && font->charCount > 0 && textureId > 0) {
-		float xpos = x;
-		float ypos = y;
-		uint32_t lastChar = font->firstChar + (font->charCount - 1);
-		for (size_t textPos = 0; textPos < textLen; ++textPos) {
-			uint32_t at = text[textPos];
-			uint32_t atNext = textPos < (textLen - 1) ? (text[textPos + 1]) : 0;
-
-			float xadvance;
-			if (at >= font->firstChar && at <= lastChar) {
-				FontQuad quad = FontGetQuad(font, at, scale);
-
-				Vec2f offset = quad.offset;
-				offset.x += xpos;
-				offset.y += ypos;
-
-				Vec2f size = quad.size;
-				Vec2f uvMin = quad.uvMin;
-				Vec2f uvMax = quad.uvMax;
-
-				float rx = size.w * 0.5f;
-				float ry = size.h * 0.5f;
-
-				glBegin(GL_QUADS);
-				glTexCoord2f(uvMax.x, uvMax.y); glVertex2f(offset.x + rx, offset.y + ry);
-				glTexCoord2f(uvMin.x, uvMax.y); glVertex2f(offset.x - rx, offset.y + ry);
-				glTexCoord2f(uvMin.x, uvMin.y); glVertex2f(offset.x - rx, offset.y - ry);
-				glTexCoord2f(uvMax.x, uvMin.y); glVertex2f(offset.x + rx, offset.y - ry);
-				glEnd();
-
-				xadvance = FontGetCharacterAdvance(font, (uint32_t)at, (uint32_t)atNext);
-			} else {
-				xadvance = font->info.spaceAdvance;
-			}
-
-			xpos += xadvance * scale;
-		}
-	}
-
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glDisable(GL_TEXTURE_2D);
-
-	glDisable(GL_BLEND);
-}
 
 extern bool RendererShaderIsValid(const ShaderProgram *program) {
 	return (program != fpl_null && program->id != 0);
@@ -827,4 +646,83 @@ extern void RendererShaderUniformMat4f(const ShaderProgram *program, const int32
 		return;
 	}
 	glUniformMatrix4fv(location, 1, GL_FALSE, (const GLfloat *)m.m);
+}
+
+//
+// Final UI draw data
+//
+
+#if FUI_USE_16BIT_INDICES
+#	define RENDERER_UI_INDEX_TYPE GL_UNSIGNED_SHORT
+#else
+#	define RENDERER_UI_INDEX_TYPE GL_UNSIGNED_INT
+#endif
+
+extern void RendererDrawUIDrawData(const fuiDrawData *drawData) {
+	if (drawData == fpl_null || drawData->commandCount == 0 || drawData->vertices == fpl_null || drawData->indices == fpl_null) {
+		return;
+	}
+
+	const int windowHeight = drawData->windowSize.y;
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_SCISSOR_TEST);
+
+	// The vertex color has to reach the fragment untouched, or every glyph and every panel comes out tinted by whatever the last draw left behind
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	const fuiVertex *vertices = drawData->vertices;
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glEnableClientState(GL_COLOR_ARRAY);
+
+	glVertexPointer(2, GL_FLOAT, sizeof(fuiVertex), &vertices->position);
+	glTexCoordPointer(2, GL_FLOAT, sizeof(fuiVertex), &vertices->uv);
+	// Packed in RGBA byte order, which is exactly how four unsigned bytes are read back
+	glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(fuiVertex), &vertices->color);
+
+	for (uint32_t commandIndex = 0; commandIndex < drawData->commandCount; ++commandIndex) {
+		const fuiDrawCommand *command = drawData->commands + commandIndex;
+		if (command->indexCount == 0) {
+			continue;
+		}
+
+		// The clip rectangle is y-down from the top-left corner, while the scissor box is y-up from the bottom-left one
+		const fuiRect clipRect = command->clipRect;
+		const int scissorX = (int)clipRect.x;
+		const int scissorY = windowHeight - (int)(clipRect.y + clipRect.h);
+		const int scissorWidth = (int)clipRect.w;
+		const int scissorHeight = (int)clipRect.h;
+		if (scissorWidth <= 0 || scissorHeight <= 0) {
+			continue;
+		}
+		glScissor(scissorX, scissorY, scissorWidth, scissorHeight);
+
+		if (command->texture != FUI_TEXTURE_ID_NONE) {
+			// An alpha atlas modulates only the alpha and leaves the vertex color as the text color, a color texture modulates all four components
+			glEnable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, (GLuint)command->texture);
+		} else {
+			glDisable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
+		const fuiDrawIndex *indices = drawData->indices + command->indexOffset;
+		glDrawElements(GL_TRIANGLES, (GLsizei)command->indexCount, RENDERER_UI_INDEX_TYPE, indices);
+	}
+
+	glDisableClientState(GL_COLOR_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glDisableClientState(GL_VERTEX_ARRAY);
+
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_BLEND);
+
+	// Back to the state RendererCreate left the context in, so the raw draws around this one behave as they always did
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	CheckGLError();
 }

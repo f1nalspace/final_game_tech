@@ -9,320 +9,131 @@ Author:
 
 Description:
 	This file is part of the frontend of the Final Gamebox project.
+
+	It is the glue between final_ui.h and this application: the font it draws with, the theme it
+	draws in, the translation of platform input into a fuiInput, and the handful of composite
+	widgets the library has no equivalent for.
+
+	The geometry final_ui.h produces is drawn by RendererDrawUIDrawData in render.h, because that
+	is where the OpenGL loader and every other draw call lives.
 */
 
 #pragma once
 
 #include <final_platform_layer.h>
 
-#include <final_fontloader.h>
-
 #include <final_memory.h>
 
 #include <final_math.h>
+
+#include <final_ui.h>
+
+#include <fui_font_stbtt.h>
 
 #include "utils.h"
 
 #include "render.h"
 
 //
-// Style
+// Font
+//
+// The atlas carries no oversampling, so how crisp text looks is decided by how far the size it is drawn
+// at sits from the size it was baked at. One atlas covers the body text and one covers the oversized panel
+// watermarks, rather than stretching a single bake across a four times size range and blurring both ends.
 //
 
+// One baked size plus the atlas texture it was uploaded into
 typedef struct {
-	Color4f normal;
-	Color4f hover;
-	Color4f down;
-	Color4f disabled;
-} UIColorStates;
+	fuiStbttFont baked;
+	Texture atlasTexture;
+	// The context keeps a POINTER to this, so it lives here and not on a caller's stack
+	fuiFont font;
+} UIFontAtlas;
 
 typedef struct {
-	Color4f bright;
-	Color4f dark;
-	Color4f darkest;
-	uint8_t padding[16];
-} UIBorderStyle;
+	UIFontAtlas body;
+	UIFontAtlas large;
+} UIFont;
 
-typedef struct {
-	UIColorStates background;
-	UIColorStates foreground;
-} UIControlStyle;
+extern bool UIFontCreate(UIFont *font, const void *trueTypeData);
+extern void UIFontRelease(UIFont *font);
 
-typedef struct {
-	Color4f background;
-	Color4f foreground;
-} UILineStyle;
+//
+// Theme
+//
 
-typedef struct {
-	UIColorStates background;
-	UIColorStates foreground;
-	UILineStyle highlight;
-} UIListboxStyle;
+extern void UIApplyDarkTheme(fuiContext *ui, const float fontHeight, const float lineHeight);
 
-typedef struct {
-	Color4f changing;
-	Color4f checked;
-	Color4f notChecked;
-} UICheckboxStyle;
+//
+// Platform services (clipboard and mouse cursor)
+//
 
-typedef struct {
-	UIControlStyle face;
-	UIListboxStyle listbox;
-	UICheckboxStyle checkbox;
-	UIBorderStyle buttonBorder;
-} UIThemeStyle;
-
-typedef enum {
-	UITheme_Light = 0,
-	UITheme_Dark,
-} UITheme;
+extern void UIInstallPlatform(fuiContext *ui);
 
 //
 // Input
 //
 
-typedef struct {
-	int32_t halfTransitionCount;
-	uint32_t endedDown;
-} UIButtonState;
+// Clears everything that is only true for one frame, while leaving held buttons and keys down
+extern void UIInputBeginFrame(fuiInput *input);
 
-fpl_extern_inline bool UIWasPressed(const UIButtonState *state) {
-	bool result = ((state->halfTransitionCount > 1) || ((state->halfTransitionCount == 1) && (!state->endedDown)));
-	return(result);
-}
+extern void UIInputSetButton(fuiButtonState *button, const bool isDown);
 
-fpl_extern_inline bool UIIsDown(const UIButtonState *state) {
-	bool result = state->endedDown != 0;
-	return(result);
-}
+extern fuiKey UIKeyFromPlatformKey(const fplKey key);
 
-typedef struct {
-	Mat4f projectionMat;
-	Mat4f viewMat;
-	Viewport4i viewport;
-	Vec2f mousePos;
-	UIButtonState leftMouse;
-	UIButtonState middleMouse;
-	UIButtonState rightMouse;
-	UIButtonState escapeButton;
-	float mouseWheelDelta;
-	uint32_t padding;
-} UIInputState;
+extern void UIInputAddText(fuiInput *input, const uint32_t codePoint);
 
 //
-// Base
+// Immediate drawing
+//
+// Thin adapters over the final_ui.h drawing calls, so the state panels can keep expressing
+// themselves as "put this text at this spot" instead of being rebuilt around a layout container.
+// Positions are top-left corners, in pixels, like everything else the library takes.
 //
 
-typedef uintptr_t UIIdentifier;
+extern fuiColor UIColorFrom4f(const Color4f color);
 
-extern UIIdentifier UIPtrToID(const void *ptr);
+extern void UIPanel(fuiContext *ui, const fuiRect rect, const bool isSunken);
 
-typedef struct {
-	UIIdentifier id;
-	UIIdentifier parentId;
-	const char *name;
-} UIBase;
+extern void UIText(fuiContext *ui, const float x, const float y, const fuiColor color, const char *text, const size_t textLen);
+
+extern fuiVec2 UITextSize(fuiContext *ui, const char *text, const size_t textLen);
+
+// The oversized grey caption a state panel carries in its middle, such as "CPU" or "PPU". It swaps to the
+// large atlas for the duration, the way the hand rolled UI swapped to its own large font
+extern void UIWatermark(fuiContext *ui, const UIFont *font, const fuiRect rect, const char *text);
 
 //
-// Common
+// Source list
+//
+// A scrolling list of text rows with a highlighted row that is independent of the selected one, and
+// the ability to be scrolled to a row on request. That request is what lets the disassembly follow
+// the program counter, which is the reason this is not a fuiListBox.
 //
 
 typedef struct {
-	float x;
-	float y;
-	float w;
-	float h;
-} UIRectangle;
+	float scroll;
+	int32_t selectedIndex;
+} UISourceListState;
 
-typedef struct {
-	const LoadedFont *currentFont;
-	TextureID currentFontTextureID;
-	uint32_t padding;
-	float fontHeight;
-	float lineHeight;
-} UIFont;
+// highlightIndex marks a row without selecting it, minus one for none. scrollToIndex is a ONE SHOT request
+// to bring a row into view, minus one when there is none - a standing request would fight the user's own drag.
+extern void UISourceList(fuiContext *ui, const fuiRect rect, const char *id, const StringList *lines, UISourceListState *state, const int32_t highlightIndex, const int32_t scrollToIndex);
 
 //
-// Interaction
+// Checkbox and radio with an enabled state
+//
+// fuiCheckbox and fuiRadio are always live and always take the rectangle they are given. These add
+// the disabled state and the measured width that a row of them packed left to right needs.
 //
 
-typedef struct {
-	Vec2f startPos;
-	bool isActive;
-	uint8_t padding1[3];
-	uint32_t padding2;
-} UIDraggingState;
+extern float UICheckboxWidth(fuiContext *ui, const char *label);
 
-typedef struct {
-	bool isInteractable;
-	bool isHover;
-	bool isPressed;
-	uint8_t padding;
-} UIMouseInteraction;
+// Where a checkbox or radio rect has to start for its BOX to sit on the same column as plain text drawn at
+// contentX. The widget insets its own box by the theme's widget padding, which would otherwise make every
+// checkbox row look indented against the text lines above it.
+extern float UICheckboxRowX(fuiContext *ui, const float contentX);
 
-//
-// Window
-//
+extern bool UICheckboxEx(fuiContext *ui, const fuiRect rect, const char *label, bool *value, const bool enabled);
 
-typedef struct {
-	UIBase base;
-	Vec2f pos;
-	Vec2f size;
-} UIWindowData;
-
-typedef struct UIWindowNode {
-	UIWindowData data;
-	struct UIWindowNode *prev;
-	struct UIWindowNode *next;
-} UIWindowNode;
-
-typedef struct {
-	UIWindowNode buffer[32];
-	UIWindowNode *firstFree;
-	UIWindowNode *head;
-	UIWindowNode *tail;
-	size_t used;
-} UIWindowNodeList;
-
-//
-// Context
-//
-
-typedef struct {
-	UIInputState input;
-	UIFont font;
-	const UIThemeStyle *style;
-	UITheme theme;
-
-	UIWindowNodeList windowList;
-	UIWindowData rootWindow;
-	UIIdentifier activeWindowId;
-	bool isActive;
-} UIContext;
-
-extern void UIBegin(UIContext *ctx);
-extern void UIEnd(UIContext *ctx);
-
-extern void UIInitContext(UIContext *ctx, const UITheme initialTheme);
-
-extern void UIContextSetInput(UIContext *ctx, const UIInputState *newState);
-
-extern void UISetTheme(UIContext *ctx, const UITheme theme);
-extern void UISetFont(UIContext *ctx, const LoadedFont *font, const TextureID texture, const float fontHeight, const float lineHeight);
-extern void UIResetFont(UIContext *ctx, const UIFont *font);
-extern UIFont UIGetFont(const UIContext *ctx);
-
-extern float UIGetFontHeight(const UIContext *ctx);
-extern float UIGetLineHeight(const UIContext *ctx);
-
-extern Color4f UIGetForegroundColor(const UIContext *ctx);
-
-//
-// Panel
-//
-
-extern void UIPanel(const UIContext *ctx, const float x, const float y, const float w, const float h, const bool isDown);
-
-//
-// Panel
-//
-
-extern void UIPanel(const UIContext *ctx, const float x, const float y, const float w, const float h, const bool isDown);
-
-//
-// String
-//
-
-extern void UIString(const UIContext *ctx, const float x, const float y, const Color4f color, const char *text, const size_t textLen);
-extern Vec2f UIGetStringSize(const UIContext *ctx, const char *text, const size_t textLen);
-
-//
-// Listbox
-//
-
-typedef struct {
-	size_t index;
-	bool hasRequest;
-	uint8_t padding[7];
-} UIListboxScrollRequest;
-
-typedef struct {
-	UIBase base;
-	StringList values;
-	UIListboxScrollRequest scrollRequest;
-	UIDraggingState dragging;
-	size_t highlightLineNum;
-	uint64_t padding;
-	float verticalScrollOffset;
-	float lastVerticalScrollOffset;
-} UIListboxData;
-
-extern void UIListboxScrollTo(UIListboxData *listbox, const size_t index);
-extern void UIListboxHighlight(UIListboxData *listbox, const size_t lineNum);
-extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, const float y, const float w, const float h, const char *name);
-
-//
-// Button
-//
-
-typedef struct {
-	UIBase base;
-	UIMouseInteraction mouseInteraction;
-} UIButtonData;
-
-extern bool UIButton(UIContext *ctx, UIButtonData *button, const float x, const float y, const float w, const float h, const char *label, const size_t labelLen, const bool isEnabled);
-
-typedef struct {
-	UIBase base;
-	const char *label;
-} UITab;
-
-extern UITab UICreateTab(const UIIdentifier id, const char *label);
-
-typedef struct {
-	UIBase base;
-	const UITab *activeTab;
-	const UITab *tabToSwitch;
-	uint32_t tabCount;
-	bool isInteractable;
-} UITabControlData;
-
-typedef struct {
-	const UITab *activeTab;
-	UIRectangle area;
-} UITabContent;
-
-extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, const float x, const float y, const float w, const float h, const char *name, const UITab **tabs, const uint8_t tabCount);
-
-//
-// Checkbox
-//
-
-typedef struct {
-	UIBase base;
-	UIMouseInteraction mouseInteraction;
-	float currentWidth;
-} UICheckboxData;
-
-extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, const float y, const char *label, const bool showLabel, const bool isChecked, const bool isEnabled);
-
-//
-// Dialog
-//
-
-typedef enum {
-	UIDialogModalResult_None = 0,
-	UIDialogModalResult_Cancel,
-	UIDialogModalResult_OK,
-} UIDialogModalResult;
-
-typedef struct {
-	UIBase base;
-	UIWindowData window;
-	UIDialogModalResult result;
-	bool isShown;
-	bool isActive;
-} UIDialogData;
-
-extern bool UIBeginDialog(UIContext *ctx, UIDialogData *dialog, const float w, const float h, const char *name);
-extern void UIEndDialog(UIContext *ctx, UIDialogData *dialog);
+extern bool UIRadioEx(fuiContext *ui, const fuiRect rect, const char *label, int32_t *selected, const int32_t option, const bool enabled);

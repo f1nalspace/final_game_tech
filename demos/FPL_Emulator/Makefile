@@ -29,6 +29,7 @@ ifeq ($(origin AR), default)
 endif
 RESCOMP = windres
 INCLUDES += -I../.. -I../additions -I../dependencies
+DEFINES += -DNO_BOOTROM
 FORCE_INCLUDE +=
 ALL_CPPFLAGS += $(CPPFLAGS) -MD -MP $(DEFINES) $(INCLUDES)
 ALL_RESFLAGS += $(RESFLAGS) $(DEFINES) $(INCLUDES)

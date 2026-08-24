@@ -8,7 +8,7 @@ Description:
 	
 Features:
 
-	- OpenGL Application with a custom immediate based UI
+	- OpenGL Application with an immediate mode UI built on final_ui.h
 	- Loading GamePak roms from either raw or zip files with drag & drop support
 	- Emulator controls (Play, Pause, Stepping, etc.)
 	- Visual Debugger with disassembly, breakpoints, various stepping modes
@@ -37,7 +37,8 @@ Requirements:
 	- Final Platform Layer
 	- Final Dynamic OpenGL
 	- Final Memory
-	- Final Additions (Math, Fontloader)
+	- Final Additions (Math)
+	- Final UI
 	- Final Game Box
 	- STB Image
 	- STB TrueType
@@ -47,6 +48,12 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-24
+	- Migrated the entire frontend UI to final_ui.h, replacing the hand rolled widget set in ui.c/ui.h
+	- Switched the whole frontend to a top-left origin with y pointing down, matching final_ui.h
+	- Text is baked by fui_font_stbtt.h into a body and a watermark atlas, replacing final_fontloader.h
+	- Removed the widget era drawing helpers from the renderer, which now draws final_ui.h draw data
+
 	## 2026-05-09
 	- Shader support for gameboy display (Bilinear, HQ2x, HQ4x, Cat-Mull-Rom, Bicubic)
 
@@ -131,8 +138,27 @@ License:
 #define FGB_IMPLEMENTATION
 #include <final_game_box.h>
 
+#define FGB_INPUT_SIMULATOR_IMPLEMENTATION
+#include "fgb_input_simulator.h"
+
 // Final Additions
 #include <final_math.h>
+
+// stb_truetype, emitted here because fui_font_stbtt.h deliberately includes only its interface
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb/stb_truetype.h>
+
+// Final UI
+#define FUI_TEXTURE_ID_TYPE uint32_t
+#define FUI_ASSERT(exp) fplAssert(exp)
+#define FUI_MALLOC(size) fplMemoryAllocate(size)
+#define FUI_FREE(ptr) fplMemoryFree(ptr)
+#define FUI_IMPLEMENTATION
+#include <final_ui.h>
+
+// Reference font provider for Final UI, baking the very same TrueType bytes fontdata.h already carries
+#define FUI_STBTT_IMPLEMENTATION
+#include <fui_font_stbtt.h>
 
 // Local
 #include "fontdata.h"
@@ -153,7 +179,7 @@ License:
 fplStaticAssert(MAX_STATE_SLOT_COUNT % 2 == 0);
 
 // Boot ROM
-#define NO_BOOTROM
+//#define NO_BOOTROM
 #if !defined(NO_BOOTROM)
 #include "bootrom.h"
 #endif
@@ -607,12 +633,18 @@ typedef struct {
 
 	float masterVolume;
 
-	uint16_t currentROMBank;
-} Emulator;
+	// Frontend mute. The emulated APU's own power bit is driven by the game and cannot be written from
+	// outside, so switching sound off happens on the way to the audio device rather than in the hardware
+	volatile uint32_t isSoundEnabled;
 
-typedef struct {
-	UICheckboxData checkboxes[FGB_BREAKPOINT_TYPE_COUNT];
-} Breakpoints;
+	uint16_t currentROMBank;
+
+	// Scripted joypad input for automated testing (see INPUT_SIMULATOR.md).
+	// While a script is loaded and still has pending events, it owns the joypad and real input is ignored.
+	fgbInputSimulator inputSim;
+	// The emulated frame index the input simulator has been applied up to (only touched by the emulator thread)
+	uint32_t inputSimFrameIndex;
+} Emulator;
 
 typedef enum {
 	DialogType_None = 0,
@@ -626,14 +658,14 @@ typedef struct {
 } StatesDialogCellPos;
 
 typedef struct {
-	UIDialogData dialog;
-	UIButtonData closeButton;
 	StatesDialogCellPos selectedSlotPos;
 	DialogType type;
+	bool isShown;
 } StatesDialog;
 
 typedef struct {
 	const char *romFilePath;
+	const char *inputScriptFilePath;
 	bool isTraceEnabled;
 } EmulatorParameters;
 
@@ -657,13 +689,12 @@ typedef enum {
 } AppShaderType;
 
 typedef struct {
-	UIContext uiCtx;
+	fuiContext ui;
+	fuiInput uiInput;
+	UIFont uiFont;
 
 	char romsPath[1024];
 	char defaultGameRomFilePath[1024];
-	
-	LoadedFont fontData;
-	LoadedFont fontDataLarge;
 
 	Mat4f projectionMat;
 	Mat4f viewMat;
@@ -673,8 +704,6 @@ typedef struct {
 	Texture displayTexture;
 	Texture backgroundMapTexture;
 	Texture tileMapTexture;
-	Texture fontTexture;
-	Texture fontTextureLarge;
 	Texture gbTexture;
 
 	Viewport4i viewport;
@@ -689,54 +718,23 @@ typedef struct {
 
 	Vec2i windowSize;
 
-	UIListboxData console;
+	StringList console;
 	fmemMemoryBlock consoleMemory;
+	UISourceListState consoleList;
 
-	UIListboxData disassemblyList;
+	StringList disassembly;
 	IndexHashtable disassemblyHashTable;
 	fmemMemoryBlock disassemblyMemory;
+	UISourceListState disassemblyList;
+	int32_t disassemblyHighlightIndex;
+	bool disassemblyScrollRequested;
+	bool consoleScrollPending;
 
-	UIButtonData pauseOrResumeButton;
-	UIButtonData frameStepButton;
-	UIButtonData singleStepButton;
-	UIButtonData microStepButton;
-	UIButtonData resetButton;
-	UIButtonData saveStateButton;
-	UIButtonData restoreStateButton;
-
-	UICheckboxData logEnabledCheckbox;
-	UICheckboxData traceEnabledCheckbox;
-	UICheckboxData bootEnabledCheckbox;
-	UICheckboxData initPauseCheckbox;
-
-	UICheckboxData dmgPaletteCheckbox;
-	UICheckboxData mgbPaletteCheckbox;
-	UICheckboxData sgbPaletteCheckbox;
-	UICheckboxData bluePaletteCheckbox;
-
-	UICheckboxData voice1MuteCheckbox;
-	UICheckboxData voice2MuteCheckbox;
-	UICheckboxData voice3MuteCheckbox;
-	UICheckboxData voice4MuteCheckbox;
-
-	UICheckboxData ppuBackgroundCheckbox;
-	UICheckboxData ppuWindowCheckbox;
-	UICheckboxData ppuSpritesCheckbox;
-
-	UICheckboxData shaderNearestCheckbox;
-	UICheckboxData shaderBilinearCheckbox;
-	UICheckboxData shaderCatmullRom4Checkbox;
-	UICheckboxData shaderHQ2XCheckbox;
-	UICheckboxData shaderHQ4XCheckbox;
-	UICheckboxData shaderBicubicLagrangeCheckbox;
-	UICheckboxData shaderBicubicHermiteCheckbox;
-
-	UITabControlData leftTabControl;
-	UITabControlData rightTabControl;
+	// Width of the two side columns, owned by their splitters. Zero until the first layout seeds them
+	float leftPanelWidth;
+	float rightPanelWidth;
 
 	StatesDialog statesDialog;
-
-	Breakpoints breakpoints;
 
 	Emulator emulator;
 
@@ -750,6 +748,28 @@ typedef struct {
 	fplTimestamp lastDisassemblyScrollTime;
 	uint64_t lastDisassemblyScrollPC;
 } Application;
+
+//
+// Emulator input buttons
+//
+// These track the joypad and the debug keys rather than the interface, which is why they stay here
+// and are not the fuiButtonState the user interface is fed.
+//
+
+typedef struct {
+	int32_t halfTransitionCount;
+	uint32_t endedDown;
+} UIButtonState;
+
+fpl_extern_inline bool UIWasPressed(const UIButtonState *state) {
+	bool result = ((state->halfTransitionCount > 1) || ((state->halfTransitionCount == 1) && (!state->endedDown)));
+	return(result);
+}
+
+fpl_extern_inline bool UIIsDown(const UIButtonState *state) {
+	bool result = state->endedDown != 0;
+	return(result);
+}
 
 static inline void UpdateKeyboardButtonState(UIButtonState *newState, const bool isDown) {
 	newState->endedDown = isDown;
@@ -871,6 +891,7 @@ static bool InitEmulator(fmemMemoryBlock *mem, Emulator *emulator) {
 	emulator->isShutdown = false;
 	emulator->isActive = false;
 	emulator->masterVolume = 0.25f;
+	emulator->isSoundEnabled = true;
 
 	emulator->thread = fplThreadCreate(EmulatorThreadProc, emulator);
 	if (emulator->thread == fpl_null) {
@@ -936,37 +957,31 @@ static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParame
 		return fpl_null;
 	}
 
-	// TODO: Proper memory allocator
-	MemoryAllocator *allocator = fpl_null;
-
 	// Roms path
 	fplGetExecutableFilePath(app->romsPath, fplArrayCount(app->romsPath));
 	fplExtractFilePath(app->romsPath, app->romsPath, fplArrayCount(app->romsPath));
 	fplPathCombine(app->romsPath, fplArrayCount(app->romsPath), 2, app->romsPath, "roms");
 
-	// Load fonts
-	float fontSizeSmall = 40.0f;
-	float fontSizeLarge = 160.0f;
-	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeSmall, 32, 126, 256, 256, true, &app->fontData)) {
+	// Bake the body and the watermark atlases the interface draws with
+	if (!UIFontCreate(&app->uiFont, ptr_fireCodeFont)) {
 		return fpl_null;
 	}
-	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeLarge, 32, 126, 1024, 1024, true, &app->fontDataLarge)) {
-		return fpl_null;
-	}	
 
 	// Init console/disassembly/string memory
 	size_t consoleBlockSize = fplMegaBytes(128);
 	app->consoleMemory = CreatePersistentMemory(consoleBlockSize);
-	app->console.values = StringListInit(&app->consoleMemory);
+	app->console = StringListInit(&app->consoleMemory);
 
 	size_t disassemblyBlockSize = fplMegaBytes(128);
 	app->disassemblyMemory = CreatePersistentMemory(disassemblyBlockSize);
-	app->disassemblyList.values = StringListInit(&app->disassemblyMemory);
+	app->disassembly = StringListInit(&app->disassemblyMemory);
 	app->disassemblyHashTable = IndexHashtableInit(&app->disassemblyMemory);
 
+	app->consoleList.selectedIndex = -1;
+	app->disassemblyList.selectedIndex = -1;
+	app->disassemblyHighlightIndex = -1;
+
 	// Load/Allocate textures
-	app->fontTexture = RendererTextureUpload(app->fontData.atlasWidth, app->fontData.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontData.atlasAlphaBitmap);
-	app->fontTextureLarge = RendererTextureUpload(app->fontDataLarge.atlasWidth, app->fontDataLarge.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, app->fontDataLarge.atlasAlphaBitmap);
 	app->displayTexture = RendererTextureAllocate(mem, FGB_DISPLAY_WIDTH, FGB_DISPLAY_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->tileMapTexture = RendererTextureAllocate(mem, FGB_TILEMAP_WIDTH, FGB_TILEMAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->backgroundMapTexture = RendererTextureAllocate(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
@@ -990,7 +1005,14 @@ static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParame
 	}
 
 	// Init UI
-	UIInitContext(&app->uiCtx, UITheme_Dark);
+	if (!fuiInit(&app->ui, &app->uiFont.body.font, fui_null)) {
+		return fpl_null;
+	}
+	const float uiFontHeight = 20.0f;
+	const float uiLineScale = 1.15f;
+	UIApplyDarkTheme(&app->ui, uiFontHeight, uiFontHeight * uiLineScale);
+	UIInstallPlatform(&app->ui);
+	app->uiInput = fuiZeroInput();
 
 	// Init emulator
 	if (!InitEmulator(mem, &app->emulator)) {
@@ -1011,9 +1033,6 @@ static void ReleaseApplication(Application **appRef) {
 		return;
 	}
 
-	// TODO: Proper memory allocator
-	MemoryAllocator *allocator = fpl_null;
-
 	Application *app = *appRef;
 
 	ReleaseEmulator(&app->emulator);
@@ -1030,15 +1049,13 @@ static void ReleaseApplication(Application **appRef) {
 	RendererTextureRelease(&app->tileMapTexture);
 	RendererTextureRelease(&app->displayTexture);
 	RendererTextureRelease(&app->backgroundMapTexture);
-	RendererTextureRelease(&app->fontTexture);
-	RendererTextureRelease(&app->fontTextureLarge);
 	RendererTextureRelease(&app->gbTexture);
 
 	fmemFree(&app->disassemblyMemory);
 	fmemFree(&app->consoleMemory);
 
-	FontFree(allocator, &app->fontData);
-	FontFree(allocator, &app->fontDataLarge);
+	fuiRelease(&app->ui);
+	UIFontRelease(&app->uiFont);
 
 	fplClearStruct(app);
 
@@ -1051,8 +1068,8 @@ static void HighlightScrollDisassembly(Application *app) {
 	uint64_t key = system->cpu.registers.pc;
 	size_t index = 0;
 	if (IndexHashtableGet(&app->disassemblyHashTable, key, &index)) {
-		UIListboxHighlight(&app->disassemblyList, index + 1);
-		UIListboxScrollTo(&app->disassemblyList, index);
+		app->disassemblyHighlightIndex = (int32_t)index;
+		app->disassemblyScrollRequested = true;
 	}
 }
 
@@ -1065,67 +1082,107 @@ static Color4f FGBColorToLinearColor(const fgbColor color) {
 	return result;
 }
 	
-static void DrawPanelLabel(const Application *app, UIContext *uiCtx, const float x, const float y, const float w, const float h, const char *text) {
-	UIFont lastFont = UIGetFont(uiCtx);
-	float largeFontHeight = lastFont.fontHeight * 4;
-	float largeLineHeight = lastFont.lineHeight * 4;
-	UISetFont(uiCtx, &app->fontDataLarge, app->fontTextureLarge.id, largeFontHeight, largeLineHeight);
-	size_t labelLen = fplGetStringLength(text);
-	Vec2f labelSize = UIGetStringSize(uiCtx, text, labelLen);
-	float centerLabelX = x + (w - labelSize.w) * 0.5f;
-	float centerLabelY = y + (h - labelSize.h) * 0.5f;
-	UIString(uiCtx, centerLabelX, centerLabelY, Color4fDarkGray, text, labelLen);
-	UISetFont(uiCtx, lastFont.currentFont, lastFont.currentFontTextureID, lastFont.fontHeight, lastFont.lineHeight);
+// One inset for every panel in the debugger. Sharing a single value is what puts the text of one panel and
+// the checkboxes of the next on the same column instead of each starting wherever its own padding landed
+static const float DebugPanelPadding = 8.0f;
+
+//
+// Panel content metrics
+//
+// The PPU and APU panels are sized from what they actually draw rather than from a guessed line count, so
+// neither ends in a band of empty space. Each height function counts the same rows its draw code walks.
+//
+
+// Nine rows reach the pixel FIFO: four readouts, a blank, three more readouts, then a double gap
+static const float DisplayStateTextRowCount = 9.0f;
+
+// How many rows tall the pixel FIFO strip is drawn
+static const float DisplayStateFifoRowCount = 1.5f;
+
+static float DisplayStatePanelHeight(const float lineHeight) {
+	const float layerSwitchRowCount = 1.0f;
+	const float contentRowCount = DisplayStateTextRowCount + DisplayStateFifoRowCount + layerSwitchRowCount;
+	// Three insets: above the text, between the FIFO strip and the switches, and below them
+	const float result = contentRowCount * lineHeight + DebugPanelPadding * 3.0f;
+	return result;
 }
 
-static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x, const float y, const float w, const float h, const float padding) {
-	UIContext *uiCtx = &app->uiCtx;
+// Shown in place of the emulated APU's own power state while the user has muted the output themselves
+static const fuiColor SoundStateMutedTextColor = { 1.0f, 0.55f, 0.1f, 1.0f };
 
-	const float lineHeight = UIGetFontHeight(uiCtx);
+// How wide the master volume slider is drawn. A slider only has to be wide enough to aim at, and the row
+// it shares with the stereo readout reads better when it does not stretch across the whole panel
+static const float SoundStateVolumeSliderWidth = 90.0f;
 
-	const Color4f foregroundColor = UIGetForegroundColor(uiCtx);
+// Gap between the master volume slider and the stereo readout beside it
+static const float SoundStateVolumeRowSpacing = 10.0f;
 
-	size_t maxLen = fplArrayCount(TextBuffer);
+// How much air is left above the first voice, so it does not sit against the master volume slider
+static const float SoundStateVoiceGapRowCount = 0.5f;
 
-	float border = 1.0f;
-	UIPanel(uiCtx, x, y, w, h, false);
-	DrawPanelLabel(app, uiCtx, x, y, w, h, "PPU");
+// How much air is left between two voice rows, ON TOP of the full row each one already occupies. A hair is
+// all it takes to keep them from reading as one block - a third of a row on top of a whole one had the four
+// of them drifting apart into four separate things
+static const float SoundStateVoiceSpacingRowCount = 0.1f;
 
-	float paddingX = padding;
-	float paddingY = padding;
+static float SoundStatePanelHeight(const float lineHeight) {
+	const float soundToggleRowCount = 1.0f;
+	const float masterVolumeRowCount = 1.0f;
+	const float voiceCount = 4.0f;
+	const float voiceGapCount = voiceCount - 1.0f;
+	const float contentRowCount = soundToggleRowCount + masterVolumeRowCount + SoundStateVoiceGapRowCount + voiceCount + voiceGapCount * SoundStateVoiceSpacingRowCount;
+	const float result = contentRowCount * lineHeight + DebugPanelPadding * 2.0f;
+	return result;
+}
 
-	float textX = x + paddingX;
-	float textY = y + h - lineHeight - paddingY;
+static void DrawDisplayState(Application *app, const fgbPPU *ppu, const fuiRect area, const float padding) {
+	fuiContext *ui = &app->ui;
+
+	const fuiTheme *theme = fuiGetTheme(ui);
+	// The same row height the layout sized this panel with, or the content and its box disagree
+	const float lineHeight = theme->menuItemHeight;
+	const fuiColor foregroundColor = theme->textColor;
+
+	UIPanel(ui, area, false);
+	UIWatermark(ui, &app->uiFont, area, "PPU");
+
+	// Clipped to itself, so a line too long for the panel is cut at its border rather than run into the next one
+	fuiPushClip(ui, area);
+
+	const float paddingX = padding;
+	const float paddingY = padding;
+
+	float textX = area.x + paddingX;
+	float textY = area.y + paddingY;
 
 	const char *separator = ", ";
 
 	const char *text;
-	Vec2f textSize;
-	Color4f bitColor;
+	fuiVec2 textSize;
+	fuiColor bitColor;
 
-	textX = x + paddingX;
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "LCDC: ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textX += textSize.w;
+	textSize = UITextSize(ui, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textX += textSize.x;
 
 	// 7 = LCD Off/On
 	text = (ppu->lcd.lcdc.lcdEnabled ? "On " : "Off");
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
 	if (ppu->lcd.lcdc.lcdEnabled)
-		bitColor = Color4fGreen;
+		bitColor = UIColorFrom4f(ColorGreen);
 	else
-		bitColor = Color4fRed;
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
+		bitColor = UIColorFrom4f(ColorRed);
+	UIText(ui, textX, textY, bitColor, TextBuffer, 0);
+	textX += textSize.x;
 
 	// Separator
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), separator, text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textX += textSize.w;
-#
+	textSize = UITextSize(ui, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textX += textSize.x;
+
 	// Mode
 	switch (ppu->lcd.stat.lcdMode) {
 		case fgbPPUMode_OAMSearch:
@@ -1147,30 +1204,25 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 	}
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Mode: %s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textX += textSize.w;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
-	textX = x + paddingX;
+	textX = area.x + paddingX;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Sprites: %02u, Ticks: %04u", ppu->pipeline.sprites.count, ppu->state.lineTicks);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "LY: %02u, LYC: %02u, SCX: %02u, SCY: %02u", ppu->lcd.ly, ppu->lcd.lyc, ppu->lcd.scx, ppu->lcd.scy);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "WinX: %02u, WinY: %02u", ppu->lcd.wx, ppu->lcd.wy);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
 	switch (ppu->pipeline.fetch.state) {
 		case fgbPPUFetchState_Tile:
@@ -1194,77 +1246,77 @@ static void DrawDisplayState(Application *app, const fgbPPU *ppu, const float x,
 	}
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Pipeline: %-7s, Fifo: %02u/%02u, I/O: %02u/%02u", text, ppu->pipeline.fifo.len, FGB_ARRAYCOUNT(ppu->pipeline.fifo.pixels), ppu->pipeline.fifo.in, ppu->pipeline.fifo.out);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "X Line/Fetch/Push/FIFO: %02u/%02u/%02u/%02u", ppu->pipeline.state.lineX, ppu->pipeline.fetch.currentX, ppu->pipeline.state.pushX, ppu->pipeline.state.fifoX);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "BG-Tile: %02u x %02u, ID: $%02X, Y-Offset: %02u", ppu->pipeline.tilePos.x, ppu->pipeline.tilePos.y, ppu->pipeline.fetch.tileID, ppu->pipeline.state.offsetY);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
-	textY -= lineHeight * 2.0f;
+	textY += lineHeight * 2.0f;
 
 	const uint8_t fifoCapacity = FGB_ARRAYCOUNT(ppu->pipeline.fifo.pixels);
 
-	float fifoWidth = w - paddingX * 2.0f;
-	float fifoHeight = lineHeight * 1.5f;
-	float fifoCellWidth = fifoWidth / (float)fifoCapacity;
+	const float fifoWidth = area.w - paddingX * 2.0f;
+	const float fifoHeight = lineHeight * 1.5f;
+	const float fifoCellWidth = fifoWidth / (float)fifoCapacity;
 
-	float tmpX = x + paddingX;
+	float tmpX = area.x + paddingX;
 	float tmpY = textY;
 
 	for (int i = 0; i < ppu->pipeline.fifo.len; ++i) {
 		int p = (ppu->pipeline.fifo.out + i) % fifoCapacity;
 		fgbPixel fifoPixel = ppu->pipeline.fifo.pixels[p];
-		Color4f color = FGBColorToLinearColor(fifoPixel.color);
-		RendererDrawFilledQuad(tmpX + (float)i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight, color);
+		fuiColor color = UIColorFrom4f(FGBColorToLinearColor(fifoPixel.color));
+		fuiDrawRect(ui, fuiRectMake(tmpX + (float)i * fifoCellWidth, tmpY, fifoCellWidth, fifoHeight), color);
 	}
 
-	RendererDrawStrokedQuad(tmpX, tmpY, fifoWidth, fifoHeight, 2.0f, Color4fGray);
+	const fuiColor fifoFrameColor = UIColorFrom4f(ColorGray);
+	fuiDrawRectOutline(ui, fuiRectMake(tmpX, tmpY, fifoWidth, fifoHeight), fifoFrameColor, 2.0f);
 	for (int i = 1; i < fifoCapacity; ++i) {
-		RendererDrawLine(tmpX + (float)i * fifoCellWidth, tmpY, tmpX + (float)i * fifoCellWidth, tmpY + fifoHeight, 1.0f, Color4fGray);
+		float cellX = tmpX + (float)i * fifoCellWidth;
+		fuiDrawLine(ui, fuiV2(cellX, tmpY), fuiV2(cellX, tmpY + fifoHeight), fifoFrameColor, 1.0f);
 	}
 
-	textY -= fifoHeight;
+	textY += fifoHeight;
 
-	const float switchesPanelPadding = 8.0f;
+	const float switchRowHeight = lineHeight;
 
-	float switchesPanelButtonY = textY - paddingY;
+	float switchesRowY = textY + paddingY;
 
-	tmpX = x + paddingX;
+	tmpX = UICheckboxRowX(ui, area.x + paddingX);
 
 	Emulator *emu = &app->emulator;
 
 	fgbSystem *system = &emu->system;
 
-	bool isBackgroundChecked = system->ppu.state.isBackgroundEnabled;
-	bool isBackgroundEnabled = emu->isActive;
-	if (UICheckbox(uiCtx, &app->ppuBackgroundCheckbox, tmpX, switchesPanelButtonY, "Background", true, isBackgroundChecked, isBackgroundEnabled)) {
-		system->ppu.state.isBackgroundEnabled = !system->ppu.state.isBackgroundEnabled;
+	const bool areLayerSwitchesEnabled = emu->isActive;
+
+	bool isBackgroundEnabled = system->ppu.state.isBackgroundEnabled;
+	float backgroundWidth = UICheckboxWidth(ui, "Background");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchesRowY, backgroundWidth, switchRowHeight), "Background", &isBackgroundEnabled, areLayerSwitchesEnabled)) {
+		system->ppu.state.isBackgroundEnabled = isBackgroundEnabled;
+	}
+	tmpX += backgroundWidth;
+
+	bool isWindowEnabled = system->ppu.state.isWindowEnabled;
+	float windowWidth = UICheckboxWidth(ui, "Window");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchesRowY, windowWidth, switchRowHeight), "Window", &isWindowEnabled, areLayerSwitchesEnabled)) {
+		system->ppu.state.isWindowEnabled = isWindowEnabled;
+	}
+	tmpX += windowWidth;
+
+	bool isSpritesEnabled = system->ppu.state.isSpritesEnabled;
+	float spritesWidth = UICheckboxWidth(ui, "Sprites");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchesRowY, spritesWidth, switchRowHeight), "Sprites", &isSpritesEnabled, areLayerSwitchesEnabled)) {
+		system->ppu.state.isSpritesEnabled = isSpritesEnabled;
 	}
 
-	tmpX += app->ppuBackgroundCheckbox.currentWidth + switchesPanelPadding;
-
-	bool isWindowChecked = system->ppu.state.isWindowEnabled;
-	bool isWindowEnabled = emu->isActive;
-	if (UICheckbox(uiCtx, &app->ppuWindowCheckbox, tmpX, switchesPanelButtonY, "Window", true, isWindowChecked, isWindowEnabled)) {
-		system->ppu.state.isWindowEnabled = !system->ppu.state.isWindowEnabled;
-	}
-
-	tmpX += app->ppuWindowCheckbox.currentWidth + switchesPanelPadding;
-
-	bool isSpritesChecked = system->ppu.state.isSpritesEnabled;
-	bool isSpritesEnabled = emu->isActive;
-	if (UICheckbox(uiCtx, &app->ppuSpritesCheckbox, tmpX, switchesPanelButtonY, "Sprites", true, isSpritesChecked, isSpritesEnabled)) {
-		system->ppu.state.isSpritesEnabled = !system->ppu.state.isSpritesEnabled;
-	}
+	fuiPopClip(ui);
 }
-
 const char *voiceStateLabelMap[] = {
 	[fgbVoiceState_Off] = "Off",
 	[fgbVoiceState_Powered] = "Pow",
@@ -1278,172 +1330,140 @@ const Color4f voiceStateColorMap[] = {
 	[fgbVoiceState_Active] = {.r = 0.0f, .g = 1.0f, .b = 0.0f, .a = 1.0f},
 	[fgbVoiceState_Muted] = {.r = 1.0f, .g = 1.0f, .b = 0.0f, .a = 1.0f},
 };
+static void DrawSoundVoice(fuiContext *ui, fgbSystem *system, const bool isActive, const float x, const float y, const float rowHeight, const char *label, const fgbVoiceType voiceType) {
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const fuiColor foregroundColor = theme->textColor;
 
-static void DrawSoundState(Application *app, fgbSystem *system, const float x, const float y, const float w, const float h, const float padding) {
-	const fgbAPU *apu = &system->apu;
+	const fgbVoiceState voiceState = fgbGetAudioVoiceState(system, voiceType);
+	const uint8_t voiceVolume = (uint8_t)(fgbGetAudioVoiceVolume(system, voiceType) * 100.0f);
 
-	UIContext *uiCtx = &app->uiCtx;
+	bool isVoiceAudible = !fgbIsAudioVoiceMuted(system, voiceType);
+	const float checkboxWidth = UICheckboxWidth(ui, label);
+	if (UICheckboxEx(ui, fuiRectMake(x, y, checkboxWidth, rowHeight), label, &isVoiceAudible, isActive)) {
+		fgbSetAudioVoiceMute(system, voiceType, !isVoiceAudible);
+	}
+
+	// The state word and the volume sit on the checkbox's own baseline, which is the middle of its row
+	fuiVec2 stateSize = UITextSize(ui, voiceStateLabelMap[voiceState], 0);
+	float textY = y + (rowHeight - stateSize.y) * 0.5f;
+	float textX = x + checkboxWidth;
+
+
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", voiceStateLabelMap[voiceState]);
+	UIText(ui, textX, textY, UIColorFrom4f(voiceStateColorMap[voiceState]), TextBuffer, 0);
+	textX += stateSize.x;
+
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), ", Vol: %u", voiceVolume);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+}
+
+static void DrawSoundState(Application *app, fgbSystem *system, const fuiRect area, const float padding) {
+	fuiContext *ui = &app->ui;
 
 	Emulator *emulator = &app->emulator;
 
-	const float lineHeight = UIGetFontHeight(uiCtx);
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
+	const fuiColor foregroundColor = theme->textColor;
 
-	const Color4f foregroundColor = UIGetForegroundColor(uiCtx);
+	UIPanel(ui, area, false);
+	UIWatermark(ui, &app->uiFont, area, "APU");
 
-	size_t maxLen = fplArrayCount(TextBuffer);
+	fuiPushClip(ui, area);
 
-	float border = 1.0f;
-	UIPanel(uiCtx, x, y, w, h, false);
-	DrawPanelLabel(app, uiCtx, x, y, w, h, "APU");
+	const float paddingX = padding;
+	const float paddingY = padding;
 
-	float paddingX = padding;
-	float paddingY = padding;
+	const float contentX = area.x + paddingX;
+	const float contentWidth = area.w - paddingX * 2.0f;
+	const float rowX = UICheckboxRowX(ui, contentX);
 
-	float textX = x + paddingX;
-	float textY = y + h - lineHeight - paddingY;
+	float rowY = area.y + paddingY;
 
-	const char *text;
-	Vec2f textSize;
-	Color4f bitColor;
-	float checkboxWidth;
+	// Sound toggle. The label reports what the emulated APU powered up as, the checkbox owns whether any of
+	// it reaches the speakers, which are two different things and are shown as such
+	const bool isAudioPoweredByTheGame = fgbIsAudioPowered(system);
 
-	// Sound Control
-	bool soundOn = fgbIsAudioPowered(system);
-
-	textX = x + paddingX;
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Sound: ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textX += textSize.w;
-
-	text = soundOn ? "On " : "Off";
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	if (soundOn)
-		bitColor = Color4fGreen;
-	else
-		bitColor = Color4fRed;
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
-
-	textY -= lineHeight;
-
-	// Volume
-	float masterVolume = app->emulator.masterVolume;
-	uint8_t masterVolumePercentage = (uint8_t)(masterVolume * 100.0);
-	uint8_t leftVolumePercentage = (uint8_t)(fgbGetAudioSpeakerVolume(system, fgbSpeakerType_Left) * 100.0);
-	uint8_t rightVolumePercentage = (uint8_t)(fgbGetAudioSpeakerVolume(system, fgbSpeakerType_Right) * 100.0);
-
-	textX = x + paddingX;
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Master Volume: %u, LR: %u %u", masterVolumePercentage, leftVolumePercentage, rightVolumePercentage);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textX += textSize.w;
-
-	textY -= lineHeight;
-
-	// Channel 1: Sweep
-	fgbVoiceState channel1State = fgbGetAudioVoiceState(system, fgbVoiceType_Sweep);
-	uint8_t channel1Volume = (uint8_t)(fgbGetAudioVoiceVolume(system, fgbVoiceType_Sweep) * 100.0f);
-	bool isVoice1Enabled = !fgbIsAudioVoiceMuted(system, fgbVoiceType_Sweep);
-	
-	textX = x + paddingX;
-	if (UICheckbox(uiCtx, &app->voice1MuteCheckbox, textX, textY, "Voice 1 (Sweep): ", true, isVoice1Enabled, emulator->isActive)) {
-		fgbSetAudioVoiceMute(system, fgbVoiceType_Sweep, !fgbIsAudioVoiceMuted(system, fgbVoiceType_Sweep));
+	bool isSoundEnabled = emulator->isSoundEnabled != 0;
+	const char *soundToggleLabel = "Sound";
+	const float soundToggleWidth = UICheckboxWidth(ui, soundToggleLabel);
+	if (UICheckboxEx(ui, fuiRectMake(rowX, rowY, soundToggleWidth, lineHeight), soundToggleLabel, &isSoundEnabled, true)) {
+		emulator->isSoundEnabled = isSoundEnabled;
 	}
-	checkboxWidth = app->voice1MuteCheckbox.currentWidth;
-	textX += checkboxWidth;
 
-	text = voiceStateLabelMap[channel1State];
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	bitColor = voiceStateColorMap[channel1State];
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
-
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), ", Vol: %u", channel1Volume);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-
-	textY -= lineHeight;
-
-	// Channel 2: Tone
-	fgbVoiceState channel2State = fgbGetAudioVoiceState(system, fgbVoiceType_Tone);
-	uint8_t channel2Volume = (uint8_t)(fgbGetAudioVoiceVolume(system, fgbVoiceType_Tone) * 100.0f);
-	bool isVoice2Enabled = !fgbIsAudioVoiceMuted(system, fgbVoiceType_Tone);
-
-	textX = x + paddingX;
-	if (UICheckbox(uiCtx, &app->voice2MuteCheckbox, textX, textY, "Voice 2 (Tone):  ", true, isVoice2Enabled, emulator->isActive)) {
-		fgbSetAudioVoiceMute(system, fgbVoiceType_Tone, !fgbIsAudioVoiceMuted(system, fgbVoiceType_Tone));
+	// A mute the user asked for outranks whatever the emulated APU is doing, because that is the state they
+	// are looking for an explanation of. The hardware's own power state comes back the moment they unmute
+	const char *soundStateText = isAudioPoweredByTheGame ? "On " : "Off";
+	fuiColor soundStateColor = isAudioPoweredByTheGame ? UIColorFrom4f(ColorGreen) : UIColorFrom4f(ColorRed);
+	if (!isSoundEnabled) {
+		soundStateText = "Mute";
+		soundStateColor = SoundStateMutedTextColor;
 	}
-	checkboxWidth = app->voice2MuteCheckbox.currentWidth;
-	textX += checkboxWidth;
 
-	text = voiceStateLabelMap[channel2State];
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	bitColor = voiceStateColorMap[channel2State];
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", soundStateText);
+	fuiVec2 soundStateTextSize = UITextSize(ui, TextBuffer, 0);
+	UIText(ui, contentX + soundToggleWidth, rowY + (lineHeight - soundStateTextSize.y) * 0.5f, soundStateColor, TextBuffer, 0);
 
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), ", Vol: %u", channel2Volume);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	rowY += lineHeight;
 
-	textY -= lineHeight;
+	// Master volume, which is the frontend's own output gain rather than anything the emulated APU holds.
+	// The slider is only as wide as it needs to be to aim at, and the stereo readout follows it on the row
+	const uint8_t masterVolumePercentage = (uint8_t)(emulator->masterVolume * 100.0f);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%u%%", masterVolumePercentage);
 
-	// Channel 3: Wave
-	fgbVoiceState channel3State = fgbGetAudioVoiceState(system, fgbVoiceType_Wave);
-	uint8_t channel3Volume = (uint8_t)(fgbGetAudioVoiceVolume(system, fgbVoiceType_Wave) * 100.0f);
-	bool isVoice3Enabled = !fgbIsAudioVoiceMuted(system, fgbVoiceType_Wave);
+	const fuiRect masterVolumeRow = fuiRectMake(contentX, rowY, contentWidth, lineHeight);
+	fuiBeginStackAt(ui, "Master-Volume-Row", FUI_AXIS_HORIZONTAL, masterVolumeRow, SoundStateVolumeRowSpacing);
 
-	textX = x + paddingX;
-	if (UICheckbox(uiCtx, &app->voice3MuteCheckbox, textX, textY, "Voice 3 (Wave):  ", true, isVoice3Enabled, emulator->isActive)) {
-		fgbSetAudioVoiceMute(system, fgbVoiceType_Wave, !fgbIsAudioVoiceMuted(system, fgbVoiceType_Wave));
+	const char *masterVolumeCaption = "Master Volume:";
+	const fuiVec2 masterVolumeCaptionSize = UITextSize(ui, masterVolumeCaption, 0);
+	const fuiRect masterVolumeCaptionRect = fuiLayoutSlot(ui, masterVolumeCaptionSize.x);
+	UIText(ui, masterVolumeCaptionRect.x, masterVolumeCaptionRect.y + (masterVolumeCaptionRect.h - masterVolumeCaptionSize.y) * 0.5f, foregroundColor, masterVolumeCaption, 0);
+
+	const fuiRect masterVolumeSliderRect = fuiLayoutSlot(ui, SoundStateVolumeSliderWidth);
+
+	const float masterVolumeMinimum = 0.0f;
+	const float masterVolumeMaximum = 1.0f;
+	const float masterVolumeStep = 0.01f;
+	const bool masterVolumeUpdatesLive = true;
+	bool *noBeginReport = fpl_null;
+	bool *noEndReport = fpl_null;
+	float masterVolume = emulator->masterVolume;
+	if (fuiSliderFloatEx(ui, masterVolumeSliderRect, "Master-Volume", &masterVolume, masterVolumeMinimum, masterVolumeMaximum, masterVolumeStep, masterVolumeUpdatesLive, true, TextBuffer, noBeginReport, noEndReport)) {
+		emulator->masterVolume = masterVolume;
 	}
-	checkboxWidth = app->voice3MuteCheckbox.currentWidth;
-	textX += checkboxWidth;
 
-	text = voiceStateLabelMap[channel3State];
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	bitColor = voiceStateColorMap[channel3State];
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
+	const uint8_t leftVolumePercentage = (uint8_t)(fgbGetAudioSpeakerVolume(system, fgbSpeakerType_Left) * 100.0);
+	const uint8_t rightVolumePercentage = (uint8_t)(fgbGetAudioSpeakerVolume(system, fgbSpeakerType_Right) * 100.0);
+	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "LR: %u %u", leftVolumePercentage, rightVolumePercentage);
 
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), ", Vol: %u", channel3Volume);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	const fuiVec2 stereoTextSize = UITextSize(ui, TextBuffer, 0);
+	const fuiRect stereoTextRect = fuiLayoutRemaining(ui);
+	UIText(ui, stereoTextRect.x, stereoTextRect.y + (stereoTextRect.h - stereoTextSize.y) * 0.5f, foregroundColor, TextBuffer, 0);
 
-	textY -= lineHeight;
+	fuiEndStack(ui);
 
-	// Channel 4: Noise
-	fgbVoiceState channel4State = fgbGetAudioVoiceState(system, fgbVoiceType_Noise);
-	uint8_t channel4Volume = (uint8_t)(fgbGetAudioVoiceVolume(system, fgbVoiceType_Noise) * 100.0f);
-	bool isVoice4Enabled = !fgbIsAudioVoiceMuted(system, fgbVoiceType_Noise);
+	rowY += lineHeight;
 
-	textX = x + paddingX;
-	if (UICheckbox(uiCtx, &app->voice4MuteCheckbox, textX, textY, "Voice 4 (Noise): ", true, isVoice4Enabled, emulator->isActive)) {
-		fgbSetAudioVoiceMute(system, fgbVoiceType_Noise, !fgbIsAudioVoiceMuted(system, fgbVoiceType_Noise));
-	}
-	checkboxWidth = app->voice4MuteCheckbox.currentWidth;
-	textX += checkboxWidth;
+	// Air between the slider and the voices, so the first one does not read as part of the row above it
+	rowY += lineHeight * SoundStateVoiceGapRowCount;
 
-	text = voiceStateLabelMap[channel4State];
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", text);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	bitColor = voiceStateColorMap[channel4State];
-	UIString(uiCtx, textX, textY, bitColor, TextBuffer, 0);
-	textX += textSize.w;
+	const float voiceRowSpacing = lineHeight * SoundStateVoiceSpacingRowCount;
 
-	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), ", Vol: %u", channel4Volume);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	DrawSoundVoice(ui, system, emulator->isActive, rowX, rowY, lineHeight, "Voice 1 (Sweep): ", fgbVoiceType_Sweep);
+	rowY += lineHeight + voiceRowSpacing;
 
-	textY -= lineHeight;
+	DrawSoundVoice(ui, system, emulator->isActive, rowX, rowY, lineHeight, "Voice 2 (Tone):  ", fgbVoiceType_Tone);
+	rowY += lineHeight + voiceRowSpacing;
+
+	DrawSoundVoice(ui, system, emulator->isActive, rowX, rowY, lineHeight, "Voice 3 (Wave):  ", fgbVoiceType_Wave);
+	rowY += lineHeight + voiceRowSpacing;
+
+	DrawSoundVoice(ui, system, emulator->isActive, rowX, rowY, lineHeight, "Voice 4 (Noise): ", fgbVoiceType_Noise);
+
+	fuiPopClip(ui);
 }
 
-static void DrawCPUState(Application *app, fgbSystem *system, const float x, const float y, const float w, const float h, const float padding) {
+static void DrawCPUState(Application *app, fgbSystem *system, const fuiRect area, const float padding) {
 	Emulator *emulator = &app->emulator;
 
 	const fgbCPU *cpu = &system->cpu;
@@ -1451,24 +1471,19 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	const fgbPPU *ppu = &system->ppu;
 	const fgbEmulationState state = system->state;
 
-	UIContext *uiCtx = &app->uiCtx;
+	fuiContext *ui = &app->ui;
 
-	const float lineHeight = UIGetLineHeight(uiCtx);
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
+	const fuiColor foregroundColor = theme->textColor;
 
-	UIFont lastFont = UIGetFont(uiCtx);
+	UIPanel(ui, area, false);
+	UIWatermark(ui, &app->uiFont, area, "CPU");
 
-	UISetFont(uiCtx, &app->fontData, app->fontTexture.id, 24.0f, 1.0f);
+	fuiPushClip(ui, area);
 
-	size_t maxLen = fplArrayCount(TextBuffer);
-
-	const Color4f foregroundColor = UIGetForegroundColor(uiCtx);
-
-	float border = 1.0f;
-	UIPanel(uiCtx, x, y, w, h, false);
-	DrawPanelLabel(app, uiCtx, x, y, w, h, "CPU");
-
-	float paddingX = padding;
-	float paddingY = padding;
+	const float paddingX = padding;
+	const float paddingY = padding;
 
 	const char *stateText;
 	if (state == fgbEmulationState_Step)
@@ -1486,132 +1501,121 @@ static void DrawCPUState(Application *app, fgbSystem *system, const float x, con
 	else
 		stateText = "Unknown";
 
-	float textX = x + paddingX;
-	float textY = y + h - lineHeight - paddingY;
+	float textX = area.x + paddingX;
+	float textY = area.y + paddingY;
 
 	float tmpX;
 
-	Vec2f textSize;
-	Color4f flagColor;
+	fuiVec2 textSize;
+	fuiColor flagColor;
 
 	if (state == fgbEmulationState_Breakpoint) {
 		fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "State: %s, %s", stateText, fgbGetBreakpointTypeLabel(emulator->lastBreakpointType));
 	} else {
 		fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "State: %s", stateText);
 	}
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
 	const char *gameboyTypeName = fgbGetCoreTypeName(emulator->system.coreType);
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%s", gameboyTypeName);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	float gbtX = x + w - textSize.w - paddingX;
-	UIString(uiCtx, gbtX, textY, foregroundColor, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
+	float gbtX = area.x + area.w - textSize.x - paddingX;
+	UIText(ui, gbtX, textY, foregroundColor, TextBuffer, 0);
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "M-Cycles: %03llu, T-Cycles: %llu, Frames: %llu", cpu->state.currentMemoryCycles, cpu->state.totalTickCycles, ppu->state.frameCount);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
-	textY -= lineHeight;
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
+	textY += lineHeight;
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
 	// Flags Label
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Flags: ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
 	// Z Flag
-	tmpX = x + textSize.w;
+	tmpX = textX + textSize.x;
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "Z ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
 	if (!r->f.zeroFlag)
-		flagColor = Color4fRed;
+		flagColor = UIColorFrom4f(ColorRed);
 	else
-		flagColor = Color4fGreen;
-	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
-	tmpX += textSize.w;
+		flagColor = UIColorFrom4f(ColorGreen);
+	UIText(ui, tmpX, textY, flagColor, TextBuffer, 0);
+	tmpX += textSize.x;
 
 	// N Flag
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "N ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
 	if (!r->f.negativeFlag)
-		flagColor = Color4fRed;
+		flagColor = UIColorFrom4f(ColorRed);
 	else
-		flagColor = Color4fGreen;
-	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
-	tmpX += textSize.w;
+		flagColor = UIColorFrom4f(ColorGreen);
+	UIText(ui, tmpX, textY, flagColor, TextBuffer, 0);
+	tmpX += textSize.x;
 
 	// H Flag
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "H ");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
 	if (!r->f.halfCarryFlag)
-		flagColor = Color4fRed;
+		flagColor = UIColorFrom4f(ColorRed);
 	else
-		flagColor = Color4fGreen;
-	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
-	tmpX += textSize.w;
+		flagColor = UIColorFrom4f(ColorGreen);
+	UIText(ui, tmpX, textY, flagColor, TextBuffer, 0);
+	tmpX += textSize.x;
 
 	// C Flag
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "C");
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
+	textSize = UITextSize(ui, TextBuffer, 0);
 	if (!r->f.fullCarryFlag)
-		flagColor = Color4fRed;
+		flagColor = UIColorFrom4f(ColorRed);
 	else
-		flagColor = Color4fGreen;
-	UIString(uiCtx, tmpX, textY, flagColor, TextBuffer, 0);
-	tmpX += textSize.w;
+		flagColor = UIColorFrom4f(ColorGreen);
+	UIText(ui, tmpX, textY, flagColor, TextBuffer, 0);
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
-	textY -= lineHeight;
+	textY += lineHeight;
 
 	// Registers
 
 	const char *spaceForNextRegisterLabel = "AF: $%02X $%02X";
-	textSize = UIGetStringSize(uiCtx, spaceForNextRegisterLabel, 0);
-	float spaceToNextRegister = textSize.w;
+	textSize = UITextSize(ui, spaceForNextRegisterLabel, 0);
+	const float spaceToNextRegister = textSize.x;
 
-	float startTextX = textX;
+	const float startTextX = textX;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "AF: $%02X $%02X", r->a, r->f.flags);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 	textX += spaceToNextRegister;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "BC: $%02X $%02X", r->b, r->c);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
 	textX = startTextX;
-	textY -= lineHeight;
+	textY += lineHeight;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "DE: $%02X $%02X", r->d, r->e);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 	textX += spaceToNextRegister;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "HL: $%02X $%02X", r->h, r->l);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
 	textX = startTextX;
-	textY -= lineHeight;
-	
+	textY += lineHeight;
+
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "SP: $%04X", r->sp);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 	textX += spaceToNextRegister;
 
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "PC: $%04X", r->pc);
-	textSize = UIGetStringSize(uiCtx, TextBuffer, 0);
-	UIString(uiCtx, textX, textY, foregroundColor, TextBuffer, 0);
+	UIText(ui, textX, textY, foregroundColor, TextBuffer, 0);
 
-	textX = startTextX;
-	textY -= lineHeight;
-
-	UIResetFont(uiCtx, &lastFont);
+	fuiPopClip(ui);
 }
-
 typedef union {
 	struct {
 		uint8_t r;
@@ -1673,197 +1677,199 @@ static const AppShader* GetActiveAppShader(const Application *app) {
 			return &app->nearestShader;
 	}
 }
+// The frame around the emulator display. It deliberately draws NO fill while a game is running, because
+// the display itself was already rendered straight to the framebuffer before the interface was built and
+// a panel background would paint straight over it.
+static void DrawDisplayFrame(Application *app, const fuiRect area) {
+	fuiContext *ui = &app->ui;
 
-static void DrawDisplay(const Application *app, const float x, const float y, const float w, const float h, const float aspect) {
-	const UIContext *uiCtx = &app->uiCtx;
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float border = 1.0f;
+
+	if (app->emulator.isActive) {
+		if (app->isDebugEnabled) {
+			fuiDrawRectOutline(ui, area, theme->panelBorderColor, theme->panelBorderThickness);
+		}
+		return;
+	}
+
+	if (app->isDebugEnabled) {
+		UIPanel(ui, area, false);
+	}
+
+	fuiRect inner = fuiRectMake(area.x + border * 2.0f, area.y + border * 2.0f, area.w - border * 4.0f, area.h - border * 4.0f);
+	fuiDrawRect(ui, inner, UIColorFrom4f(ColorBlack));
+
+	const char *insertGameText = "No Game Pak loaded";
+	const float placeholderHeight = theme->fontHeight * 2.0f;
+	fuiVec2 textSize = fuiMeasureText(ui, insertGameText, 0, placeholderHeight);
+	float textX = area.x + (area.w - textSize.x) * 0.5f;
+	float textY = area.y + (area.h - textSize.y) * 0.5f;
+	fuiDrawText(ui, insertGameText, 0, fuiV2(textX, textY), placeholderHeight, UIColorFrom4f(ColorWhite));
+}
+
+// The emulator display is drawn by a shader and therefore cannot go through the user interface geometry.
+// It is rendered straight to the framebuffer BEFORE the interface is, so the panel around it draws no fill
+// and anything the interface puts on top of it - a modal backdrop above all - still covers it.
+static void RenderDisplayTexture(const Application *app, const fuiRect area, const float aspect) {
+	if (!app->emulator.isActive) {
+		return;
+	}
 
 	const Texture *tex = &app->displayTexture;
 	const float uMin = 0.0f;
 	const float uMax = tex->uScale;
-	const float vMin = tex->vScale;
-	const float vMax = 0.0f;
+	const float vMin = 0.0f;
+	const float vMax = tex->vScale;
 	const float border = 1.0f;
 
-	const float fontHeight = UIGetFontHeight(uiCtx);
+	// The letterbox bars would otherwise show the window clear colour straight through
+	RendererDrawFilledQuad(area.x, area.y, area.w, area.h, ColorBlack);
 
-	const Vec2f screenSize = V2fInit(w, h);
-
+	const Vec2f screenSize = V2fInit(area.w, area.h);
 	const Viewport4f displayView = VP4fComputeByAspect(screenSize, aspect);
 
 	float boyWidth = displayView.w;
 	float boyHeight = displayView.h;
-	float boyX = x + displayView.x;
-	float boyY = y + displayView.y;
+	float boyX = area.x + displayView.x;
+	float boyY = area.y + displayView.y;
 
 	if (app->isDebugEnabled) {
-		UIPanel(uiCtx, x, y, w, h, false);
 		boyX += border * 2.0f;
 		boyY += border * 2.0f;
 		boyWidth -= border * 4.0f;
 		boyHeight -= border * 4.0f;
 	}
 
-	if (app->emulator.isActive) {
-		const AppShader *appShader;
-		if (app->isShaderSupported && app->activeShaderType != AppShaderType_None && (appShader = GetActiveAppShader(app)) != fpl_null) {
-			const ShaderProgram *shaderProgram = &appShader->program;
+	const AppShader *appShader;
+	if (app->isShaderSupported && app->activeShaderType != AppShaderType_None && (appShader = GetActiveAppShader(app)) != fpl_null) {
+		const ShaderProgram *shaderProgram = &appShader->program;
 
-			const int textureSamplerLocation = appShader->textureSamplerLocation;
-			const int textureSizeLocation = appShader->textureSizeLocation;
-			const int imageSizeLocation = appShader->imageSizeLocation;
+		const int textureSamplerLocation = appShader->textureSamplerLocation;
+		const int textureSizeLocation = appShader->textureSizeLocation;
+		const int imageSizeLocation = appShader->imageSizeLocation;
 
-			const Vec2f textureSize = V2fInit((float)tex->width, (float)tex->height);
-			const Vec2f imageSize = V2fInit((float)FGB_DISPLAY_WIDTH, (float)FGB_DISPLAY_HEIGHT);
+		const Vec2f textureSize = V2fInit((float)tex->width, (float)tex->height);
+		const Vec2f imageSize = V2fInit((float)FGB_DISPLAY_WIDTH, (float)FGB_DISPLAY_HEIGHT);
 
-			RendererShaderBind(shaderProgram);
+		RendererShaderBind(shaderProgram);
 
-			RendererShaderUniform1i(shaderProgram, textureSamplerLocation, 0);
-			RendererShaderUniformVec2f(shaderProgram, textureSizeLocation, textureSize);
-			RendererShaderUniformVec2f(shaderProgram, imageSizeLocation, imageSize);
+		RendererShaderUniform1i(shaderProgram, textureSamplerLocation, 0);
+		RendererShaderUniformVec2f(shaderProgram, textureSizeLocation, textureSize);
+		RendererShaderUniformVec2f(shaderProgram, imageSizeLocation, imageSize);
 
-			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, Color4fWhite, 0.0f, 1.0f, 1.0f, 0.0f);
+		// The shaders take the image relative UV in 0..1 and rescale it into the padded atlas themselves, so the top of the quad is v 0 and the bottom is v 1
+		const float shaderImageUMin = 0.0f;
+		const float shaderImageVMin = 0.0f;
+		const float shaderImageUMax = 1.0f;
+		const float shaderImageVMax = 1.0f;
+		RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, shaderImageUMin, shaderImageVMin, shaderImageUMax, shaderImageVMax);
 
-			RendererShaderUnbind(shaderProgram);
-
-		} else {
-			RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, Color4fWhite, uMin, vMin, uMax, vMax);
-		}
+		RendererShaderUnbind(shaderProgram);
 	} else {
-		RendererDrawFilledQuad(x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, Color4fBlack);
-
-		const char *insertGameText = "No Game Pak loaded";
-		size_t textLen = fplGetStringLength(insertGameText);
-		Vec2f textSize = FontGetTextSize(&app->fontData, insertGameText, textLen, fontHeight * 2.0f);
-
-		RendererDrawString(&app->fontData, app->fontTexture.id, insertGameText, textLen, x + (w - textSize.w) * 0.5f, y + (h - textSize.h) * 0.5f - fontHeight, fontHeight * 2.0f, Color4fWhite);
+		RendererDrawTexturedQuad(tex->id, boyX, boyY, boyWidth, boyHeight, ColorWhite, uMin, vMin, uMax, vMax);
 	}
 }
 
-static void DrawBackgroundMap(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
+static void DrawBackgroundMap(fuiContext *ui, const Application *app, const fuiRect area) {
 	const Emulator *emulator = &app->emulator;
 
 	const Texture *tex = &app->backgroundMapTexture;
-	float uMin = 0.0f;
-	float uMax = tex->uScale;
-	float vMin = tex->vScale;
-	float vMax = 0.0f;
 
-	UIPanel(uiCtx, x, y, w, h, true);
+	UIPanel(ui, area, true);
 
 	const uint8_t gridCountX = 32;
 	const uint8_t gridCountY = 32;
 
-	float insideMargin = 4;
-	float insideX = x + insideMargin;
-	float insideY = y + insideMargin;
-	float insideWidth = w - insideMargin * 2.0f;
-	float insideHeight = h - insideMargin * 2.0f;
+	const float insideMargin = 4.0f;
+	const float insideX = area.x + insideMargin;
+	const float insideY = area.y + insideMargin;
+	const float insideWidth = area.w - insideMargin * 2.0f;
 
-	//DrawFilledQuad(insideX, insideY, insideWidth, insideHeight, Color4fWhite);
+	const float tileSize = insideWidth / (float)gridCountX;
 
-	float tileSize = insideWidth / (float)gridCountX;
+	const float totalTilesWidth = (float)gridCountX * tileSize;
+	const float totalTilesHeight = (float)gridCountY * tileSize;
 
-	float totalTilesWidth = (float)gridCountX * tileSize;
-	float totalTilesHeight = (float)gridCountY * tileSize;
+	const float tilesX = insideX;
+	const float tilesY = insideY;
 
-	float tilesX = insideX;
-	float tilesY = insideY + insideHeight;
+	fuiImageDesc mapImage = fplZeroInit;
+	mapImage.texture = (fuiTextureId)tex->id;
+	mapImage.textureSize = fuiV2((float)tex->width, (float)tex->height);
+	mapImage.uvMin = fuiV2(0.0f, 0.0f);
+	mapImage.uvMax = fuiV2(tex->uScale, tex->vScale);
+	mapImage.scaleMode = FUI_IMAGE_SCALE_STRETCH;
+	fuiImage(ui, fuiRectMake(tilesX, tilesY, totalTilesWidth, totalTilesHeight), &mapImage);
 
-	float texY = insideY + insideHeight - totalTilesHeight;
-	RendererDrawTexturedQuad(tex->id, insideX, texY, insideWidth, totalTilesHeight, Color4fWhite, uMin, vMin, uMax, vMax);
-
-	Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
+	const fuiColor gridLineColor = fuiColorRGBA(0.1f, 0.1f, 0.1f, 0.25f);
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		float gridLineX0 = tilesX + (float)i * tileSize;
-		float gridLineY0 = tilesY;
-		float gridLineX1 = tilesX + (float)i * tileSize;
-		float gridLineY1 = tilesY - totalTilesHeight;
-		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		float gridLineX = tilesX + (float)i * tileSize;
+		fuiDrawLine(ui, fuiV2(gridLineX, tilesY), fuiV2(gridLineX, tilesY + totalTilesHeight), gridLineColor, 1.0f);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
-		float gridLineX0 = tilesX;
-		float gridLineY0 = tilesY - (float)i * tileSize;
-		float gridLineX1 = tilesX + totalTilesWidth;
-		float gridLineY1 = tilesY - (float)i * tileSize;
-		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		float gridLineY = tilesY + (float)i * tileSize;
+		fuiDrawLine(ui, fuiV2(tilesX, gridLineY), fuiV2(tilesX + totalTilesWidth, gridLineY), gridLineColor, 1.0f);
 	}
 
-	float pixelsPerTile = tileSize / (float)8.0f;
+	const float pixelsPerTile = tileSize / 8.0f;
 
-	uint8_t scx = emulator->system.ppu.backgroundMap.scrollX;
-	uint8_t scy = emulator->system.ppu.backgroundMap.scrollY;
+	const uint8_t scx = emulator->system.ppu.backgroundMap.scrollX;
+	const uint8_t scy = emulator->system.ppu.backgroundMap.scrollY;
 
-	float scrollWidth = pixelsPerTile * (float)FGB_DISPLAY_WIDTH;
-	float scrollHeight = pixelsPerTile * (float)FGB_DISPLAY_HEIGHT;
-	float scrollOffsetX = (float)scx * pixelsPerTile;
-	float scrollOffsetY = (float)scy * pixelsPerTile;
-	float scrollX = scrollOffsetX;
-	float scrollY = scrollOffsetY;
+	const float scrollWidth = pixelsPerTile * (float)FGB_DISPLAY_WIDTH;
+	const float scrollHeight = pixelsPerTile * (float)FGB_DISPLAY_HEIGHT;
+	const float scrollX = (float)scx * pixelsPerTile;
+	const float scrollY = (float)scy * pixelsPerTile;
 
-	const float minX = 0.0f;
-	const float minY = 0.0f;
 	const float maxX = totalTilesWidth;
 	const float maxY = totalTilesHeight;
 
-	bool isHorizontalWrap = (scrollX + scrollWidth) > maxX;
-	bool isVerticalWrap = (scrollY + scrollHeight) > maxY;
+	const bool isHorizontalWrap = (scrollX + scrollWidth) > maxX;
+	const bool isVerticalWrap = (scrollY + scrollHeight) > maxY;
 
-	float xDepth = (scrollX + scrollWidth) - maxX;
-	float yDepth = (scrollY + scrollHeight) - maxY;
-	float xRemaining = scrollWidth - xDepth;
-	float yRemaining = scrollHeight - yDepth;
+	const float xDepth = (scrollX + scrollWidth) - maxX;
+	const float yDepth = (scrollY + scrollHeight) - maxY;
+	const float xRemaining = scrollWidth - xDepth;
+	const float yRemaining = scrollHeight - yDepth;
+
+	const fuiColor scrollBoxColor = UIColorFrom4f(ColorRed);
+	const float scrollBoxThickness = 2.0f;
 
 	if (isHorizontalWrap && isVerticalWrap) {
 		// Bottom Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, xRemaining, yRemaining, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY + scrollY, xRemaining, yRemaining), scrollBoxColor, scrollBoxThickness);
 		// Bottom Left
-		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - yRemaining, xDepth, yRemaining, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX, tilesY + scrollY, xDepth, yRemaining), scrollBoxColor, scrollBoxThickness);
 		// Top Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, xRemaining, yDepth, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY, xRemaining, yDepth), scrollBoxColor, scrollBoxThickness);
 		// Top Left
-		RendererDrawStrokedQuad(tilesX, tilesY - yDepth, xDepth, yDepth, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX, tilesY, xDepth, yDepth), scrollBoxColor, scrollBoxThickness);
 	} else if (isHorizontalWrap && !isVerticalWrap) {
 		// Right
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, xRemaining, scrollHeight, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY + scrollY, xRemaining, scrollHeight), scrollBoxColor, scrollBoxThickness);
 		// Left
-		RendererDrawStrokedQuad(tilesX, tilesY - scrollY - scrollHeight, xDepth, scrollHeight, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX, tilesY + scrollY, xDepth, scrollHeight), scrollBoxColor, scrollBoxThickness);
 	} else if (isVerticalWrap && !isHorizontalWrap) {
 		// Bottom
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - yRemaining, scrollWidth, yRemaining, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY + scrollY, scrollWidth, yRemaining), scrollBoxColor, scrollBoxThickness);
 		// Top
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - yDepth, scrollWidth, yDepth, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY, scrollWidth, yDepth), scrollBoxColor, scrollBoxThickness);
 	} else {
-		RendererDrawStrokedQuad(tilesX + scrollX, tilesY - scrollY - scrollHeight, scrollWidth, scrollHeight, 2.0f, Color4fRed);
+		fuiDrawRectOutline(ui, fuiRectMake(tilesX + scrollX, tilesY + scrollY, scrollWidth, scrollHeight), scrollBoxColor, scrollBoxThickness);
 	}
 }
 
-static void DrawBackground(const Application *app, const float x, const float y, const float w, const float h) {
-	const Texture *tex = &app->gbTexture;
-	float uMin = 0.0f;
-	float uMax = tex->uScale;
-	float vMin = tex->vScale;
-	float vMax = 0.0f;
-	float border = 1.0f;
-	RendererDrawFilledQuad(x, y, w, h, Color4fBlack);
-	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, w - border, h - border, border, Color4fWhite);
-	RendererDrawTexturedQuad(tex->id, x + border * 2.0f, y + border * 2.0f, w - border * 4.0f, h - border * 4.0f, Color4fWhite, uMin, vMin, uMax, vMax);
-}
-
-static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x, const float y, const float w, const float h, const float aspect) {
-	const float uMin = 0.0f;
-	const float uMax = tex->uScale;
-	const float vMin = tex->vScale;
-	const float vMax = 0.0f;
+static void DrawTiles(fuiContext *ui, const Texture *tex, const fuiRect area, const float aspect) {
 	const float border = 1.0f;
 
-	const Vec2f size = V2fInit(w - border * 4.0f, h - border * 4.0f);
+	const Vec2f size = V2fInit(area.w - border * 4.0f, area.h - border * 4.0f);
 
 	const Viewport4f vp = VP4fComputeByAspect(size, aspect);
 
-	const float rx = x + border * 2.0f + vp.x;
-	const float ry = y + border * 2.0f + vp.y;
+	const float rx = area.x + border * 2.0f + vp.x;
+	const float ry = area.y + border * 2.0f + vp.y;
 	const float rw = vp.w;
-	const float rh = vp.h;
 
 	const uint8_t gridCountX = 16;
 	const uint8_t gridCountY = 24;
@@ -1872,113 +1878,111 @@ static void DrawTiles(const UIContext *uiCtx, const Texture *tex, const float x,
 	const float totalTilesWidth = (float)gridCountX * tileSize;
 	const float totalTilesHeight = (float)gridCountY * tileSize;
 
-	const Color4f gridLineColor = { 0.1f, 0.1f, 0.1f, 0.25f };
+	const fuiColor gridLineColor = fuiColorRGBA(0.1f, 0.1f, 0.1f, 0.25f);
 
-	UIPanel(uiCtx, x, y, w, h, true);
+	UIPanel(ui, area, true);
 
-	RendererDrawTexturedQuad(tex->id, rx, ry, rw, rh, Color4fWhite, uMin, vMin, uMax, vMax);
+	fuiImageDesc tileImage = fplZeroInit;
+	tileImage.texture = (fuiTextureId)tex->id;
+	tileImage.textureSize = fuiV2((float)tex->width, (float)tex->height);
+	tileImage.uvMin = fuiV2(0.0f, 0.0f);
+	tileImage.uvMax = fuiV2(tex->uScale, tex->vScale);
+	tileImage.scaleMode = FUI_IMAGE_SCALE_STRETCH;
+	fuiImage(ui, fuiRectMake(rx, ry, totalTilesWidth, totalTilesHeight), &tileImage);
 
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
-		const float gridLineX0 = rx + (float)i * tileSize;
-		const float gridLineY0 = ry;
-		const float gridLineX1 = rx + (float)i * tileSize;
-		const float gridLineY1 = ry + totalTilesHeight;
-		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		float gridLineX = rx + (float)i * tileSize;
+		fuiDrawLine(ui, fuiV2(gridLineX, ry), fuiV2(gridLineX, ry + totalTilesHeight), gridLineColor, 1.0f);
 	}
 	for (uint8_t i = 0; i <= gridCountY; ++i) {
-		const float gridLineX0 = rx;
-		const float gridLineY0 = ry + (float)i * tileSize;
-		const float gridLineX1 = rx + totalTilesWidth;
-		const float gridLineY1 = ry + (float)i * tileSize;
-		RendererDrawLine(gridLineX0, gridLineY0, gridLineX1, gridLineY1, 1.0f, gridLineColor);
+		float gridLineY = ry + (float)i * tileSize;
+		fuiDrawLine(ui, fuiV2(rx, gridLineY), fuiV2(rx + totalTilesWidth, gridLineY), gridLineColor, 1.0f);
 	}
 }
 
-static void DrawBreakpoints(Application *app, const float x, const float y, const float w, const float h) {
-	UIContext *uiCtx = &app->uiCtx;
+static void DrawBreakpoints(Application *app, const fuiRect area) {
+	fuiContext *ui = &app->ui;
 
 	Emulator *emulator = &app->emulator;
 
 	fgbSystem *system = &emulator->system;
 
-	const float charHeight = UIGetFontHeight(uiCtx);
-	const float lineHeight = UIGetLineHeight(uiCtx);
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
+	const float checkboxHeight = lineHeight;
 
-	const float checkboxHeight = lineHeight * 1.4f;
+	fuiPushClip(ui, area);
 
-	Breakpoints *bp = &app->breakpoints;
-
-	float currentX = x;
-	float currentY = y + h - lineHeight;
+	const float checkboxX = UICheckboxRowX(ui, area.x + DebugPanelPadding);
+	float currentY = area.y + DebugPanelPadding;
 
 	const uint32_t checkboxCount = fplArrayCount(emulator->config.debug.breakpoints.filter);
 
-	// Struct sizes and field alignment is very important!!!
-	const size_t checkboxDataSize = sizeof(UICheckboxData);
-
-	fplAssert(fplArrayCount(bp->checkboxes) == checkboxCount);
-
 	for (uint32_t checkboxIndex = 0; checkboxIndex < checkboxCount; ++checkboxIndex) {
 		fgbBreakpointType type = fgbBreakpointType_First + checkboxIndex;
-		bool isChecked = emulator->config.debug.breakpoints.filter[type];
 		const char *label = fgbGetBreakpointTypeLabel(type);
-		UICheckboxData *checkbox = &bp->checkboxes[checkboxIndex];
-		if (UICheckbox(uiCtx, checkbox, currentX, currentY, label, true, isChecked, emulator->isActive)) {
-			bool isEnabled = (emulator->config.debug.breakpoints.filter[type] = !emulator->config.debug.breakpoints.filter[type]);
-			fgbBreakpointEnable(system, type, isEnabled);
+		bool isChecked = emulator->config.debug.breakpoints.filter[type];
+		float checkboxWidth = UICheckboxWidth(ui, label);
+		if (UICheckboxEx(ui, fuiRectMake(checkboxX, currentY, checkboxWidth, checkboxHeight), label, &isChecked, emulator->isActive)) {
+			emulator->config.debug.breakpoints.filter[type] = isChecked;
+			fgbBreakpointEnable(system, type, isChecked);
 		}
-		currentY -= checkboxHeight;
+		currentY += checkboxHeight;
 	}
+
+	fuiPopClip(ui);
 }
 
-static void DrawPalette(const float x, const float y, const float cellWidth, const float cellHeight, const Color4f *colors, const uint8_t colorCount) {
-	float totalWidth = cellWidth * (float)colorCount;
-	float totalHeight = cellHeight;
+static void DrawPalette(fuiContext *ui, const float x, const float y, const float cellWidth, const float cellHeight, const Color4f *colors, const uint8_t colorCount) {
+	const float totalWidth = cellWidth * (float)colorCount;
+	const float totalHeight = cellHeight;
 
-	float border = 1.0f;
+	const float border = 1.0f;
 
-	float colW = cellWidth - border * 2.0f;
-	float colH = cellHeight - border * 2.0f;
+	const float colW = cellWidth - border * 2.0f;
+	const float colH = cellHeight - border * 2.0f;
 
-	RendererDrawStrokedQuad(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border, 1.0f, Color4fGray);
+	const fuiColor frameColor = UIColorFrom4f(ColorGray);
+
+	fuiDrawRectOutline(ui, fuiRectMake(x + border * 0.5f, y + border * 0.5f, totalWidth - border, totalHeight - border), frameColor, 1.0f);
 
 	for (uint8_t colorIndex = 1; colorIndex < colorCount; ++colorIndex) {
-		RendererDrawLine(x + (float)colorIndex * cellWidth, y, x + (float)colorIndex * cellWidth, y + cellHeight, 1.0f, Color4fGray);
+		float lineX = x + (float)colorIndex * cellWidth;
+		fuiDrawLine(ui, fuiV2(lineX, y), fuiV2(lineX, y + cellHeight), frameColor, 1.0f);
 	}
 	for (uint8_t colorIndex = 0; colorIndex < colorCount; ++colorIndex) {
 		float colX = x + (float)colorIndex * cellWidth + border;
 		float colY = y + border;
-		RendererDrawFilledQuad(colX, colY, colW, colH, colors[colorIndex]);
+		fuiDrawRect(ui, fuiRectMake(colX, colY, colW, colH), UIColorFrom4f(colors[colorIndex]));
 	}
 }
-
-static void DrawPalettes(Application *app, const float x, const float y, const float w, const float h) {
-	UIContext *uiCtx = &app->uiCtx;
+static void DrawPalettes(Application *app, const fuiRect area) {
+	fuiContext *ui = &app->ui;
 
 	Emulator *emulator = &app->emulator;
 
 	fgbSystem *system = &emulator->system;
 
-	const float charHeight = UIGetFontHeight(uiCtx);
-	const float lineHeight = UIGetLineHeight(uiCtx);
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
 
-	Color4f foregroundColor = UIGetForegroundColor(uiCtx);
+	const fuiColor foregroundColor = theme->textColor;
 
-	float paletteHeight = lineHeight * 1.5f;
+	const float paletteHeight = lineHeight * 1.5f;
 
-	float cellWidth = w / 18.0f;
-	float cellHeight = paletteHeight;
+	const float cellWidth = area.w / 18.0f;
+	const float cellHeight = paletteHeight;
 
-	float checkboxSpacing = 10.0f;
+	const float paletteTypeSpacing = 10.0f;
 
-	float paletteTypeSpacing = 10.0f;
+	const float spacing = lineHeight * 0.5f;
 
-	float spacing = lineHeight * 0.5f;
+	const float px = area.x;
+	float py = area.y;
 
-	float px = x;
-	float py = y + h - lineHeight * 2.0f;
+	fuiPushClip(ui, area);
 
-	Vec2f maxLabelSize = UIGetStringSize(uiCtx, "Palette: ", 5);
+	const fuiVec2 maxLabelSize = UITextSize(ui, "Palette: ", 5);
 
 	size_t textLen;
 	const char *text;
@@ -2025,155 +2029,153 @@ static void DrawPalettes(Application *app, const float x, const float y, const f
 	text = "Palette: ";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = py + (cellHeight - maxLabelSize.h) * 0.5f - lineHeight * 0.25f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	textY = py + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
 
-	// Checkboxes
-	float checkboxX = px + maxLabelSize.w;
-	float checkboxY = py;
+	// The four monochrome palettes are one choice out of four, which is what a radio group is
+	const float checkboxHeight = lineHeight;
+	const bool isPaletteChoiceEnabled = emulator->isActive;
+	float checkboxX = UICheckboxRowX(ui, px + maxLabelSize.x);
+	const float checkboxY = py;
+	int32_t paletteChoice = (int32_t)emulator->paletteType;
 
-	bool isDMGPaletteEnabled = emulator->isActive;
-	bool isDMGPaletteChecked = emulator->paletteType == ColorPaletteType_DMG;
-	if (UICheckbox(uiCtx, &app->dmgPaletteCheckbox, checkboxX, checkboxY, "DMG", true, isDMGPaletteChecked, isDMGPaletteEnabled)) {
+	float dmgWidth = UICheckboxWidth(ui, "DMG");
+	if (UIRadioEx(ui, fuiRectMake(checkboxX, checkboxY, dmgWidth, checkboxHeight), "DMG", &paletteChoice, ColorPaletteType_DMG, isPaletteChoiceEnabled)) {
 		emulator->paletteType = ColorPaletteType_DMG;
 		fgbSetColorPalette(system, &FGB_DEFAULT_DMG_COLORS);
 	}
-	checkboxX += app->dmgPaletteCheckbox.currentWidth + checkboxSpacing;
+	checkboxX += dmgWidth;
 
-	bool isMGBPaletteEnabled = emulator->isActive;
-	bool isMGBPaletteChecked = emulator->paletteType == ColorPaletteType_MGB;
-	if (UICheckbox(uiCtx, &app->mgbPaletteCheckbox, checkboxX, checkboxY, "MGB", true, isMGBPaletteChecked, isMGBPaletteEnabled)) {
+	float mgbWidth = UICheckboxWidth(ui, "MGB");
+	if (UIRadioEx(ui, fuiRectMake(checkboxX, checkboxY, mgbWidth, checkboxHeight), "MGB", &paletteChoice, ColorPaletteType_MGB, isPaletteChoiceEnabled)) {
 		emulator->paletteType = ColorPaletteType_MGB;
 		fgbSetColorPalette(system, &FGB_DEFAULT_MGB_COLORS);
 	}
-	checkboxX += app->mgbPaletteCheckbox.currentWidth + checkboxSpacing;
+	checkboxX += mgbWidth;
 
-	bool isSGBPaletteEnabled = emulator->isActive;
-	bool isSGBPaletteChecked = emulator->paletteType == ColorPaletteType_SGB;
-	if (UICheckbox(uiCtx, &app->sgbPaletteCheckbox, checkboxX, checkboxY, "SGB", true, isSGBPaletteChecked, isSGBPaletteEnabled)) {
+	float sgbWidth = UICheckboxWidth(ui, "SGB");
+	if (UIRadioEx(ui, fuiRectMake(checkboxX, checkboxY, sgbWidth, checkboxHeight), "SGB", &paletteChoice, ColorPaletteType_SGB, isPaletteChoiceEnabled)) {
 		emulator->paletteType = ColorPaletteType_SGB;
 		fgbSetColorPalette(system, &FGB_DEFAULT_SGB_COLORS);
 	}
-	checkboxX += app->sgbPaletteCheckbox.currentWidth + checkboxSpacing;
+	checkboxX += sgbWidth;
 
-	bool isBluePaletteEnabled = emulator->isActive;
-	bool isBluePaletteChecked = emulator->paletteType == ColorPaletteType_Blue;
-	if (UICheckbox(uiCtx, &app->bluePaletteCheckbox, checkboxX, checkboxY, "Blue", true, isBluePaletteChecked, isBluePaletteEnabled)) {
+	float blueWidth = UICheckboxWidth(ui, "Blue");
+	if (UIRadioEx(ui, fuiRectMake(checkboxX, checkboxY, blueWidth, checkboxHeight), "Blue", &paletteChoice, ColorPaletteType_Blue, isPaletteChoiceEnabled)) {
 		emulator->paletteType = ColorPaletteType_Blue;
 		fgbSetColorPalette(system, &BlueMonochromeColors);
 	}
-	checkboxX += app->bluePaletteCheckbox.currentWidth + checkboxSpacing;
 
-	py -= (paletteHeight + spacing);
+	py += (paletteHeight + spacing);
 
 	// Active Palette
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	palWidth = cellWidth * 2;
-	DrawPalette(palX, palY, cellWidth, cellHeight, paletteColorsSys, 2);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, paletteColorsSys, 2);
 	palX += palWidth + paletteTypeSpacing;
 
 	palWidth = cellWidth * 4;
-	DrawPalette(palX, palY, cellWidth, cellHeight, paletteColorsBg, 4);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, paletteColorsBg, 4);
 	palX += palWidth + paletteTypeSpacing;
 
 	palWidth = cellWidth * 4;
-	DrawPalette(palX, palY, cellWidth, cellHeight, paletteColorsObj0, 4);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, paletteColorsObj0, 4);
 	palX += palWidth + paletteTypeSpacing;
 
 	palWidth = cellWidth * 4;
-	DrawPalette(palX, palY, cellWidth, cellHeight, paletteColorsObj1, 4);
-	palX += palWidth + paletteTypeSpacing;
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, paletteColorsObj1, 4);
 
-	py -= paletteHeight + spacing;
-	py -= paletteHeight + spacing;
+	py += paletteHeight + spacing;
+	py += paletteHeight + spacing;
 
 	// System Palette
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	text = "Sys";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
-	DrawPalette(palX, palY, cellWidth, cellHeight, sysColors, 2);
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, sysColors, 2);
 
-	py -= (paletteHeight + spacing);
+	py += (paletteHeight + spacing);
 
 	// Background Palette
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	text = "BG";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
-	DrawPalette(palX, palY, cellWidth, cellHeight, bgColors, 4);
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, bgColors, 4);
 
-	py -= (paletteHeight + spacing);
+	py += (paletteHeight + spacing);
 
 	// Obj0 Palette
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	text = "OBJ-0";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
-	DrawPalette(palX, palY, cellWidth, cellHeight, obj0Colors, 4);
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, obj0Colors, 4);
 
-	py -= (paletteHeight + spacing);
+	py += (paletteHeight + spacing);
 
 	// Obj1 Palette
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	text = "OBJ-1";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
-	DrawPalette(palX, palY, cellWidth, cellHeight, obj1Colors, 4);
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
+	DrawPalette(ui, palX, palY, cellWidth, cellHeight, obj1Colors, 4);
 
-	py -= (paletteHeight + spacing);
+	py += (paletteHeight + spacing);
 
 	// CGB Lines/Colums Palettes
-	palX = px + maxLabelSize.w;
+	palX = px + maxLabelSize.x;
 	palY = py;
 	text = "CGB-BG";
 	textLen = fplGetStringLength(text);
 	textX = px;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
 	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
-		DrawPalette(palX, palY, cellWidth, cellHeight, cgbBGColors[lineIndex], 4);
-		palY -= (paletteHeight + spacing);
+		DrawPalette(ui, palX, palY, cellWidth, cellHeight, cgbBGColors[lineIndex], 4);
+		palY += (paletteHeight + spacing);
 	}
 
 	const float blockWidth = cellWidth * 4 + paletteTypeSpacing;
 
-	palX = px + maxLabelSize.w + blockWidth + maxLabelSize.w;
+	palX = px + maxLabelSize.x + blockWidth + maxLabelSize.x;
 	palY = py;
 	text = "CGB-OBJ";
 	textLen = fplGetStringLength(text);
-	textX = px + maxLabelSize.w + blockWidth;
-	textY = palY + (cellHeight - maxLabelSize.h) * 0.5f;
-	UIString(uiCtx, textX, textY, foregroundColor, text, textLen);
+	textX = px + maxLabelSize.x + blockWidth;
+	textY = palY + (cellHeight - maxLabelSize.y) * 0.5f;
+	UIText(ui, textX, textY, foregroundColor, text, textLen);
 	for (uint8_t lineIndex = 0; lineIndex < 8; ++lineIndex) {
-		DrawPalette(palX, palY, cellWidth, cellHeight, cgbObjColors[lineIndex], 4);
-		palY -= (paletteHeight + spacing);
+		DrawPalette(ui, palX, palY, cellWidth, cellHeight, cgbObjColors[lineIndex], 4);
+		palY += (paletteHeight + spacing);
 	}
+
+	fuiPopClip(ui);
 }
 
 static char performanceLabelBuffer[1024] = { 0 };
 
-static void DrawPerformanceCounter(const UIContext *uiCtx, const float x, const float y, const char *name, const Color4f foregroundColor, const PerformanceCounter *counter) {
+static void DrawPerformanceCounter(fuiContext *ui, const float x, const float y, const char *name, const fuiColor foregroundColor, const PerformanceCounter *counter) {
 	double avgTimeMs = GetPerformanceCounterAvg(counter) * 1000.0;
 	fplStringFormat(performanceLabelBuffer, fplArrayCount(performanceLabelBuffer), "%s: %.5f / %.5f / %.5f ms [%zu]", name, counter->minSecs * 1000.0, counter->maxSecs * 1000.0, avgTimeMs, counter->count);
 
 	size_t textLen = fplGetStringLength(performanceLabelBuffer);
-	UIString(uiCtx, x, y, foregroundColor, performanceLabelBuffer, textLen);
+	UIText(ui, x, y, foregroundColor, performanceLabelBuffer, textLen);
 }
-
 static void ResumeGameboy(Application *app, fgbSystem *system) {
 	Emulator *emulator = &app->emulator;
 	fgbResume(system);
@@ -2182,143 +2184,421 @@ static void ResumeGameboy(Application *app, fgbSystem *system) {
 	HighlightScrollDisassembly(app);
 	WakeupEmulatorThread(emulator);
 }
-
-static void DrawPerformanceMetrics(const UIContext *uiCtx, const Application *app, const float x, const float y, const float w, const float h) {
-	const float charHeight = UIGetFontHeight(uiCtx);
-	const float lineHeight = UIGetLineHeight(uiCtx);
+static void DrawPerformanceMetrics(fuiContext *ui, const Application *app, const fuiRect area) {
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
 
 	const PerformanceMetrics *metrics = &app->emulator.performanceMetrics;
 
-	Color4f foregroundColor = UIGetForegroundColor(uiCtx);
+	const fuiColor foregroundColor = theme->textColor;
 
-	UIPanel(uiCtx, x, y, w, h, false);
+	UIPanel(ui, area, false);
+	fuiPushClip(ui, area);
 
-	float padding = 8.0f;
+	const float padding = 8.0f;
 
-	float textX = x + padding;
-	float textY = y + h - lineHeight - padding;
+	const float textX = area.x + padding;
+	float textY = area.y + padding;
 
-	DrawPerformanceCounter(uiCtx, textX, textY, "Frame", foregroundColor, &metrics->frameTime);
-	textY -= lineHeight;
-	DrawPerformanceCounter(uiCtx, textX, textY, "Textures Upload", foregroundColor, &metrics->texturesUpload);
-	textY -= lineHeight;
-	DrawPerformanceCounter(uiCtx, textX, textY, "Audio Thread", foregroundColor, &metrics->audioThread);
-	textY -= lineHeight;
-	DrawPerformanceCounter(uiCtx, textX, textY, "Audio Read", foregroundColor, &metrics->audioReadSamples);
-	textY -= lineHeight;
-	DrawPerformanceCounter(uiCtx, textX, textY, "Audio Output", foregroundColor, &metrics->audioOutputSamples);
-	textY -= lineHeight;
-	DrawPerformanceCounter(uiCtx, textX, textY, "Emulator Tick", foregroundColor, &metrics->emulatorTick);
-	textY -= lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Frame", foregroundColor, &metrics->frameTime);
+	textY += lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Textures Upload", foregroundColor, &metrics->texturesUpload);
+	textY += lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Audio Thread", foregroundColor, &metrics->audioThread);
+	textY += lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Audio Read", foregroundColor, &metrics->audioReadSamples);
+	textY += lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Audio Output", foregroundColor, &metrics->audioOutputSamples);
+	textY += lineHeight;
+	DrawPerformanceCounter(ui, textX, textY, "Emulator Tick", foregroundColor, &metrics->emulatorTick);
+
+	fuiPopClip(ui);
 }
 
 static char dateTimeFormatBuffer[32];
 
+//
+// Debug layout
+//
+// Every rectangle of the debugger, worked out before anything is drawn. The emulator display has to be
+// rendered before the interface is built, so where it goes cannot be a by-product of building it.
+//
+
+typedef struct {
+	fuiRect leftTabHeader;
+	fuiRect leftTabContent;
+
+	fuiRect cartInfo;
+	fuiRect displayState;
+	fuiRect soundState;
+	fuiRect shaderControl;
+	fuiRect display;
+	fuiRect userButtons;
+
+	fuiRect actions;
+	fuiRect cpuState;
+	fuiRect switches;
+	fuiRect rightTabHeader;
+	fuiRect rightTabContent;
+
+	fuiRect leftSplitterGrip;
+	fuiRect rightSplitterGrip;
+
+	float actionButtonWidth;
+	float actionButtonHeight;
+	float actionsPadding;
+	float actionsSpacing;
+
+	float userButtonWidth;
+	float userButtonHeight;
+	float userButtonsPadding;
+	float userButtonSpacing;
+
+	bool isShaderControlVisible;
+} DebugLayout;
+
+// Narrowest either side column may be dragged to
+static const float DebugSideColumnMinWidth = 260.0f;
+
+// Narrowest the middle column may become, so the display and its readouts keep room
+static const float DebugMiddleColumnMinWidth = 320.0f;
+
+// How wide the grabbable strip on a column boundary is
+static const float DebugSplitterGripWidth = 6.0f;
+
+// How thick the accent line drawn on a hovered or dragged grip is
+static const float DebugSplitterHighlightThickness = 2.0f;
+
+// Seeds the column widths the first time round and keeps them inside what the window can hold, which is
+// what stops a window dragged narrow from collapsing the middle column or overlapping the two sides
+static void ClampDebugColumnWidths(Application *app, const float w) {
+	if (app->leftPanelWidth <= 0.0f) {
+		app->leftPanelWidth = fplMax(w * 0.325f, 300.0f);
+	}
+	if (app->rightPanelWidth <= 0.0f) {
+		app->rightPanelWidth = fplMax(w * 0.35f, 300.0f);
+	}
+
+	// A window too narrow to honour both minimums AND the middle cannot be satisfied, so the sides keep
+	// their minimum and the middle is the one that gives, rather than the columns overlapping each other
+	float availableForSides = w - DebugMiddleColumnMinWidth;
+	const float smallestBothSidesFitIn = DebugSideColumnMinWidth * 2.0f;
+	if (availableForSides < smallestBothSidesFitIn) {
+		availableForSides = smallestBothSidesFitIn;
+	}
+
+	const float widestLeftMayBe = availableForSides - DebugSideColumnMinWidth;
+	app->leftPanelWidth = fuiClampF(app->leftPanelWidth, DebugSideColumnMinWidth, widestLeftMayBe);
+
+	const float widestRightMayBe = availableForSides - app->leftPanelWidth;
+	app->rightPanelWidth = fuiClampF(app->rightPanelWidth, DebugSideColumnMinWidth, widestRightMayBe);
+}
+
+static DebugLayout ComputeDebugLayout(const Application *app, const float w, const float h, const float lineHeight) {
+	DebugLayout layout = fplZeroInit;
+
+	const float borderThickness = 1.5f;
+
+	const float leftSideWidth = app->leftPanelWidth;
+	const float rightSideWidth = app->rightPanelWidth;
+	const float middleWidth = w - (leftSideWidth + rightSideWidth);
+
+	const float leftSideX = 0.0f;
+	const float middleX = leftSideWidth;
+	const float rightSideX = w - rightSideWidth;
+
+	const float tabHeaderHeight = lineHeight * 1.5f;
+
+	// Left column, one tab control over the full window height
+	layout.leftTabHeader = fuiRectMake(leftSideX, 0.0f, leftSideWidth, tabHeaderHeight);
+	layout.leftTabContent = fuiRectMake(leftSideX, tabHeaderHeight, leftSideWidth, h - tabHeaderHeight);
+
+	// Right column, stacked from the top down
+	const uint8_t actionAreaButtonCount = 5;
+	layout.actionsPadding = 1.0f;
+	layout.actionsSpacing = 2.0f;
+	const float actionsHeight = 1.5f * lineHeight;
+	layout.actions = fuiRectMake(rightSideX, 0.0f, rightSideWidth, actionsHeight);
+	layout.actionButtonWidth = ((rightSideWidth - (layout.actionsPadding * 2.0f) - layout.actionsSpacing * (float)(actionAreaButtonCount - 1)) / (float)actionAreaButtonCount);
+	layout.actionButtonHeight = actionsHeight - (layout.actionsPadding * 2.0f);
+
+	const float cpuStateLineCount = 8.0f;
+	const float cpuStateHeight = cpuStateLineCount * lineHeight + DebugPanelPadding * 2.0f;
+	layout.cpuState = fuiRectMake(rightSideX, actionsHeight, rightSideWidth, cpuStateHeight);
+
+	const float switchesHeight = lineHeight + DebugPanelPadding * 2.0f + borderThickness * 2.0f;
+	layout.switches = fuiRectMake(rightSideX, actionsHeight + cpuStateHeight, rightSideWidth, switchesHeight);
+
+	const float rightTabY = actionsHeight + cpuStateHeight + switchesHeight;
+	const float rightTabHeight = h - rightTabY;
+	layout.rightTabHeader = fuiRectMake(rightSideX, rightTabY, rightSideWidth, tabHeaderHeight);
+	layout.rightTabContent = fuiRectMake(rightSideX, rightTabY + tabHeaderHeight, rightSideWidth, rightTabHeight - tabHeaderHeight);
+
+	// Middle column, stacked from the top down
+	const int cartInfoLineCount = 3;
+	const float cartInfoHeight = (float)cartInfoLineCount * lineHeight + DebugPanelPadding * 2.0f;
+	layout.cartInfo = fuiRectMake(middleX, 0.0f, middleWidth, cartInfoHeight);
+
+	const float displayStateHeight = DisplayStatePanelHeight(lineHeight);
+	layout.displayState = fuiRectMake(middleX, cartInfoHeight, middleWidth, displayStateHeight);
+
+	const float soundStateHeight = SoundStatePanelHeight(lineHeight);
+	layout.soundState = fuiRectMake(middleX, cartInfoHeight + displayStateHeight, middleWidth, soundStateHeight);
+
+	layout.isShaderControlVisible = app->isShaderSupported;
+	const float shaderControlHeight = layout.isShaderControlVisible ? 1.5f * lineHeight : 0.0f;
+	const float shaderControlY = cartInfoHeight + displayStateHeight + soundStateHeight;
+	layout.shaderControl = fuiRectMake(middleX, shaderControlY, middleWidth, shaderControlHeight);
+
+	const uint8_t userButtonCount = 2;
+	layout.userButtonSpacing = 2.0f;
+	layout.userButtonsPadding = 4.0f;
+	const float userButtonsHeight = 1.5f * lineHeight;
+	layout.userButtons = fuiRectMake(middleX, h - userButtonsHeight, middleWidth, userButtonsHeight);
+	layout.userButtonWidth = ((middleWidth - (layout.userButtonsPadding * 2.0f) - layout.userButtonSpacing * (float)(userButtonCount - 1)) / (float)userButtonCount);
+	layout.userButtonHeight = userButtonsHeight - (layout.userButtonsPadding * 2.0f);
+
+	const float displayY = shaderControlY + shaderControlHeight;
+	const float displayHeight = h - displayY - userButtonsHeight;
+	layout.display = fuiRectMake(middleX, displayY, middleWidth, displayHeight);
+
+	// Straddling the boundary rather than sitting beside it, so the grab target is the seam the eye reads
+	const float gripHalfWidth = DebugSplitterGripWidth * 0.5f;
+	layout.leftSplitterGrip = fuiRectMake(middleX - gripHalfWidth, 0.0f, DebugSplitterGripWidth, h);
+	layout.rightSplitterGrip = fuiRectMake(rightSideX - gripHalfWidth, 0.0f, DebugSplitterGripWidth, h);
+
+	return layout;
+}
+
+// Identifies the states dialog to the library, and is what fuiOpenDialog and fuiBeginModal agree on
+static const char *StatesDialogId = "States-Dialog";
+
+static void BuildStatesDialog(Application *app, const InputState *input) {
+	fuiContext *ui = &app->ui;
+
+	Emulator *emulator = &app->emulator;
+	fgbSystem *system = &emulator->system;
+	StatesDialog *statesDlg = &app->statesDialog;
+
+	const uint32_t statesDialogNumSlots = MAX_STATE_SLOT_COUNT;
+	const uint32_t statesDialogGridNumRows = 2;
+	const uint32_t statesDialogGridNumColumns = statesDialogNumSlots / statesDialogGridNumRows;
+
+	const float statesDialogGridColumnSpacing = 20.0f;
+	const float statesDialogGridRowSpacing = 20.0f;
+	const float statesDialogGridLabelMargin = 5.0f;
+
+	const float windowWidth = (float)app->windowSize.w;
+	const float windowHeight = (float)app->windowSize.h;
+	const float statesDialogWidth = windowWidth * 0.75f;
+	const float statesDialogHeight = windowHeight * 0.75f;
+
+	const char *title = "";
+	switch (statesDlg->type) {
+		case DialogType_SaveState:
+			title = "Save State";
+			break;
+		case DialogType_RestoreState:
+			title = "Restore State";
+			break;
+		default:
+			break;
+	}
+
+	if (!fuiBeginModal(ui, StatesDialogId, title, statesDialogWidth, statesDialogHeight)) {
+		fuiEndModal(ui);
+		return;
+	}
+
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float lineHeight = theme->menuItemHeight;
+
+	const fuiRect content = fuiLayoutRemaining(ui);
+
+	const float closeButtonHeight = lineHeight * 1.5f;
+	const float closeButtonWidth = 120.0f;
+
+	const float gridHeight = content.h - closeButtonHeight - theme->widgetSpacing;
+
+	const float statesGridCellWidth = (content.w - statesDialogGridColumnSpacing * (float)(statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
+	const float statesGridCellHeight = (gridHeight - statesDialogGridRowSpacing * (float)(statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
+
+	const fuiColor gameLabelBackground = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.5f);
+	const fuiColor labelShadowColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 1.0f);
+	const fuiColor labelColor = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+
+	float gridY = content.y;
+	for (uint32_t row = 0; row < statesDialogGridNumRows; ++row) {
+		float gridX = content.x;
+		for (uint32_t column = 0; column < statesDialogGridNumColumns; ++column) {
+			uint32_t slotIndex = row * statesDialogGridNumColumns + column;
+
+			bool isSlotSelected = (statesDlg->selectedSlotPos.row == row) && (statesDlg->selectedSlotPos.column == column);
+
+			const Texture *texture = emulator->states.textures + slotIndex;
+
+			if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
+				texture = &app->displayTexture;
+			}
+
+			const fgbSnapshot *snapshot = emulator->states.snapshots + slotIndex;
+
+			char *labelBuffer = (char *)&emulator->states.labels[slotIndex];
+			size_t labelBufferCapacity = fplArrayCount(emulator->states.labels[slotIndex]);
+
+			fuiRect cellRect = fuiRectMake(gridX, gridY, statesGridCellWidth, statesGridCellHeight);
+
+			UIPanel(ui, cellRect, isSlotSelected);
+
+			float textureAlpha = isSlotSelected ? 1.0f : 0.5f;
+
+			fuiImageDesc slotImage = fplZeroInit;
+			slotImage.texture = (fuiTextureId)texture->id;
+			slotImage.textureSize = fuiV2((float)texture->width, (float)texture->height);
+			slotImage.uvMin = fuiV2(0.0f, 0.0f);
+			slotImage.uvMax = fuiV2(texture->uScale, texture->vScale);
+			slotImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, textureAlpha);
+			slotImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+			fuiImage(ui, cellRect, &slotImage);
+
+			if (isSlotSelected) {
+				fuiDrawRectOutline(ui, cellRect, theme->accentColor, 2.0f);
+			}
+
+			// Date time + Game title
+			const char *gameTitle = snapshot->gameInfo.title.text;
+			if (fplGetStringLength(gameTitle) == 0) {
+				if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
+					gameTitle = system->gamePak.info.title.text;
+					fplStringFormat(labelBuffer, labelBufferCapacity, "%s *", gameTitle);
+				} else {
+					fplCopyString("None", labelBuffer, labelBufferCapacity);
+				}
+			} else {
+				fplDateTime dt = fplZeroInit;
+				dt.epoch = snapshot->dateTime.epoch;
+				dt.milliseconds = snapshot->dateTime.milliseconds & 0xFFFF;
+				fplDateTimeResult dtRes = fplFormatDateTime(dt, fplDateTimeType_Local);
+				fplStringFormat(dateTimeFormatBuffer, fplArrayCount(dateTimeFormatBuffer), "%.4u-%.2u-%.2u %.2u:%.2u:%.2u", dtRes.year, dtRes.month, dtRes.day, dtRes.hour, dtRes.minute, dtRes.second);
+				if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
+					fplStringFormat(labelBuffer, labelBufferCapacity, "%s - %s *", dateTimeFormatBuffer, gameTitle);
+				} else {
+					fplStringFormat(labelBuffer, labelBufferCapacity, "%s - %s", dateTimeFormatBuffer, gameTitle);
+				}
+			}
+
+			float labelHeight = lineHeight + statesDialogGridLabelMargin + 4.0f;
+			fuiDrawRect(ui, fuiRectMake(gridX + 2.0f, gridY + 2.0f, statesGridCellWidth - 4.0f, labelHeight), gameLabelBackground);
+
+			const char *label = labelBuffer;
+			size_t labelLen = fplGetStringLength(label);
+			UIText(ui, gridX + statesDialogGridLabelMargin, gridY + statesDialogGridLabelMargin, labelShadowColor, label, labelLen);
+			UIText(ui, gridX + statesDialogGridLabelMargin + 2, gridY + statesDialogGridLabelMargin + 2, labelColor, label, labelLen);
+
+			gridX += statesGridCellWidth + statesDialogGridColumnSpacing;
+		}
+		gridY += statesGridCellHeight + statesDialogGridRowSpacing;
+	}
+
+	bool shouldClose = false;
+
+	// Handle keyboard/controller input
+	if (input->activeControllerIndex >= 0) {
+		// "Start" was pressed?
+		const ControllerInput *controller = &input->controllers[input->activeControllerIndex];
+		if (UIWasPressed(&controller->start)) {
+			const uint32_t slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
+
+			FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.snapshots));
+			FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.textures));
+
+			fgbSnapshot *snapshot = emulator->states.snapshots + slotIndex;
+
+			Texture *stateTexture = emulator->states.textures + slotIndex;
+
+			switch (statesDlg->type) {
+				case DialogType_SaveState:
+					if (fgbSnapshotExport(system, snapshot)) {
+						if (fgbSnapshotSaveToFile(system, system->gamePak.filePath, slotIndex, snapshot)) {
+							stateTexture->state = TextureState_Update;
+						}
+					}
+					break;
+				case DialogType_RestoreState:
+					if (fgbSnapshotLoadFromFile(system, system->gamePak.filePath, slotIndex, snapshot)) {
+						if (fgbSnapshotImport(system, snapshot)) {
+							stateTexture->state = TextureState_Update;
+						}
+					}
+					break;
+				default:
+					break;
+			}
+
+			shouldClose = true;
+		} else if (UIWasPressed(&controller->dpadLeft)) {
+			if (statesDlg->selectedSlotPos.column > 0) {
+				--statesDlg->selectedSlotPos.column;
+			}
+		} else if (UIWasPressed(&controller->dpadRight)) {
+			if (statesDlg->selectedSlotPos.column < statesDialogGridNumColumns - 1) {
+				statesDlg->selectedSlotPos.column++;
+			}
+		} else if (UIWasPressed(&controller->dpadUp)) {
+			if (statesDlg->selectedSlotPos.row > 0) {
+				--statesDlg->selectedSlotPos.row;
+			}
+		} else if (UIWasPressed(&controller->dpadDown)) {
+			if (statesDlg->selectedSlotPos.row < statesDialogGridNumRows - 1) {
+				statesDlg->selectedSlotPos.row++;
+			}
+		}
+	}
+
+	// Close button
+	float closeButtonX = content.x + (content.w - closeButtonWidth) * 0.5f;
+	float closeButtonY = content.y + content.h - closeButtonHeight;
+	if (fuiButton(ui, fuiRectMake(closeButtonX, closeButtonY, closeButtonWidth, closeButtonHeight), "Close")) {
+		shouldClose = true;
+	}
+
+	// Escape is taken through the library, so a dialog stacked on another one does not close both on one press
+	if (fuiDialogTakeKey(ui, FUI_KEY_ESCAPE)) {
+		shouldClose = true;
+	}
+
+	fuiEndModal(ui);
+
+	if (shouldClose) {
+		statesDlg->type = DialogType_None;
+		statesDlg->isShown = false;
+		fuiCloseDialog(ui, StatesDialogId);
+		ResumeGameboy(app, system);
+	}
+}
+
 static void RenderDebugFrame(Application *app, const InputState *input) {
-	const LoadedFont *font = &app->fontData;
+	fuiContext *ui = &app->ui;
 
-	TextureID fontTextureId = app->fontTexture.id;
+	fuiTheme *theme = fuiGetTheme(ui);
 
-	UIContext *uiCtx = &app->uiCtx;
-
-	const float charHeight = UIGetFontHeight(uiCtx);
-	const float lineHeight = UIGetLineHeight(uiCtx);
+	const float lineHeight = theme->menuItemHeight;
 
 	static char tmpText[256];
 
 	const float w = (float)app->viewport.w;
 	const float h = (float)app->viewport.h;
 
-	const float borderThickness = 1.5f;
-
-	const float leftSideWidth = fplMax(w * 0.325f, 300);
-	const float leftSideHeight = h;
-
-	const float rightSideWidth = fplMax(w * 0.35f, 300);
-	const float rightSideHeight = h;
-
-	const uint8_t actionAreaButtonCount = 5;
-	const float actionsAreaPadding = 1.0f;
-	const float actionsAreaButtonSpacing = 2.0f;
-	const float actionsAreaHeight = 1.5f * lineHeight;
-	const float actionsAreaWidth = rightSideWidth;
-	const float actionsAreaX = w - rightSideWidth;
-	const float actionsAreaY = h - actionsAreaHeight;
-	const float actionButtonWidth = ((actionsAreaWidth - (actionsAreaPadding * 2.0f) - actionsAreaButtonSpacing * (float)(actionAreaButtonCount - 1)) / (float)actionAreaButtonCount);
-	const float actionButtonHeight = actionsAreaHeight - (actionsAreaPadding * 2.0f);
-
-	const float cpuStatePadding = 4.0f;
-	const float cpuStateLineCount = 8.0f;
-	const float cpuStateWidth = rightSideWidth;
-	const float cpuStateHeight = cpuStateLineCount * lineHeight + cpuStatePadding * 2.0f;
-	const float cpuStateX = w - cpuStateWidth;
-	const float cpuStateY = h - actionsAreaHeight - cpuStateHeight;
-
-	const float switchesPanelPadding = 8.0f;
-	const float switchesPanelWidth = rightSideWidth;
-	const float switchesPanelHeight = lineHeight + switchesPanelPadding * 2.0f + borderThickness * 2.0f;
-	const float switchesPanelX = w - switchesPanelWidth;
-	const float switchesPanelY = h - actionsAreaHeight - cpuStateHeight - switchesPanelHeight;
-
-	const float switchesPanelButtonY = switchesPanelY + switchesPanelPadding;
-
 	const float vramAspect = FGB_TILEMAP_WIDTH / (float)FGB_TILEMAP_HEIGHT;
-
-	const float leftTabControlWidth = leftSideWidth;
-	const float leftTabControlHeight = h;
-	const float leftTabControlX = 0;
-	const float leftTabControlY = 0;
-
-	const float rightTabControlWidth = rightSideWidth;
-	const float rightTabControlHeight = h - (actionsAreaHeight + cpuStateHeight + switchesPanelHeight);
-	const float rightTabControlX = w - rightSideWidth;
-	const float rightTabControlY = 0;
-
-	const float middleWidth = w - (leftSideWidth + rightSideWidth);
-
-	const int cartInfoLineCount = 3;
-	const float cartInfoPadding = 6.0f;
-	const float cartInfoWidth = middleWidth;
-	const float cartInfoHeight = (float)cartInfoLineCount * lineHeight + cartInfoPadding * 2.0f;
-	const float cartInfoX = leftSideWidth;
-	const float cartInfoY = h - cartInfoHeight;
-
-	const float displayStatePadding = 4.0f;
-	const float displayStateLineCount = 12.0f;
-	const float displayStateWidth = middleWidth;
-	const float displayStateHeight = displayStateLineCount * lineHeight + displayStatePadding * 2.0f;
-	const float displayStateX = leftSideWidth;
-	const float displayStateY = h - cartInfoHeight - displayStateHeight;
-
-	const float soundStatePadding = 4.0f;
-	const float soundStateLineCount = 6.0f;
-	const float soundStateWidth = middleWidth;
-	const float soundStateHeight = soundStateLineCount * lineHeight + soundStatePadding * 2.0f;
-	const float soundStateX = leftSideWidth;
-	const float soundStateY = h - cartInfoHeight - displayStateHeight - soundStateHeight;
-
-	const uint8_t userButtonCount = 2;
-	const float userButtonSpacing = 2.0f;
-	const float userButtonsPadding = 4.0f;
-	const float userButtonsWidth = middleWidth;
-	const float userButtonsHeight = 1.5f * lineHeight;
-	const float userButtonsX = leftSideWidth;
-	const float userButtonsY = 0;
-	const float userButtonWidth = ((userButtonsWidth - (userButtonsPadding * 2.0f) - userButtonSpacing * (float)(userButtonCount - 1)) / (float)userButtonCount);
-	const float userButtonHeight = userButtonsHeight - (userButtonsPadding * 2.0f);
-
-	const float shaderControlHeight = app->isShaderSupported ? 1.5f * lineHeight : 0;
-	const float shaderControlWidth = middleWidth;
-	const float shaderControlX = leftSideWidth;
-	const float shaderControlY = h - cartInfoHeight - displayStateHeight - soundStateHeight - shaderControlHeight;
-	const float shaderControlPanelPadding = 8.0f;
-	const bool isShaderControlVisible = app->isShaderSupported;
-
 	const float boyAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
-	const float boyWidth = middleWidth;
-	const float boyHeight = h - (cartInfoHeight + displayStateHeight + soundStateHeight + userButtonsHeight + shaderControlHeight);
-	const float boyX = leftSideWidth;
-	const float boyY = userButtonsHeight;
+
+	ClampDebugColumnWidths(app, w);
+
+	const DebugLayout layout = ComputeDebugLayout(app, w, h, lineHeight);
+
+	Emulator *emulator = &app->emulator;
+	fgbSystem *system = &emulator->system;
+	fgbGamePak *gamePak = &system->gamePak;
 
 	RendererSetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
 
@@ -2326,130 +2606,103 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 	RendererSetModelViewProjectionMatrix(&app->viewProjectionMat.m[0]);
 
-	Emulator *emulator = &app->emulator;
-	fgbSystem *system = &emulator->system;
-	fgbGamePak *gamePak = &system->gamePak;
+	// The shader filtered display goes down FIRST, so everything the interface draws lands on top of it
+	RenderDisplayTexture(app, layout.display, boyAspect);
 
-	float tmpX;
-	float tmpY;
+	const fuiColor foregroundColor = theme->textColor;
 
-	Color4f foregroundColor = UIGetForegroundColor(uiCtx);
-
-	UIBegin(uiCtx);
+	fuiBeginFrame(ui, &app->uiInput, FUI_PASS_BOTH);
 
 	//
 	// GamePak info
 	//
-	UIPanel(uiCtx, cartInfoX, cartInfoY, cartInfoWidth, cartInfoHeight, false);
-	DrawPanelLabel(app, uiCtx, cartInfoX, cartInfoY, cartInfoWidth, cartInfoHeight, "Game Pak");
+	UIPanel(ui, layout.cartInfo, false);
+	UIWatermark(ui, &app->uiFont, layout.cartInfo, "Game Pak");
+	fuiPushClip(ui, layout.cartInfo);
 
 	const char *gamePakTitle = gamePak->isValid ? gamePak->info.title.text : "[Unloaded]";
 	const char *gamePakTypeName = fgbGetGamePakTypeName(gamePak->info.gamePakType);
 	const char *coreName = fgbGetCoreTypeName(gamePak->info.coreType);
 
-	tmpX = cartInfoX + cartInfoPadding;
-	tmpY = cartInfoY + cartInfoHeight - lineHeight - cartInfoPadding;
+	float tmpX = layout.cartInfo.x + DebugPanelPadding;
+	float tmpY = layout.cartInfo.y + DebugPanelPadding;
 
 	fplStringFormat(tmpText, fplArrayCount(tmpText), "GamePak: %s", gamePakTitle);
-	UIString(uiCtx, tmpX, tmpY, foregroundColor, tmpText, 0);
-	tmpY -= lineHeight;
+	UIText(ui, tmpX, tmpY, foregroundColor, tmpText, 0);
+	tmpY += lineHeight;
 
 	fplStringFormat(tmpText, fplArrayCount(tmpText), "Core: %s Type: %s", coreName, gamePakTypeName);
-	UIString(uiCtx, tmpX, tmpY, foregroundColor, tmpText, 0);
-	tmpY -= lineHeight;
+	UIText(ui, tmpX, tmpY, foregroundColor, tmpText, 0);
+	tmpY += lineHeight;
 
 	fplStringFormat(tmpText, fplArrayCount(tmpText), "ROM/RAM Banks: %u/%u [%zu bytes]", gamePak->info.romBankCount, gamePak->info.ramBankCount, gamePak->rom.length);
-	UIString(uiCtx, tmpX, tmpY, foregroundColor, tmpText, 0);
-	tmpY -= lineHeight;
+	UIText(ui, tmpX, tmpY, foregroundColor, tmpText, 0);
+
+	fuiPopClip(ui);
 
 	//
 	// CPU
 	//
-	DrawCPUState(app, system, cpuStateX, cpuStateY, cpuStateWidth, cpuStateHeight, cpuStatePadding);
+	DrawCPUState(app, system, layout.cpuState, DebugPanelPadding);
 
 	//
 	// Display Registers
 	//
-	DrawDisplayState(app, &system->ppu, displayStateX, displayStateY, displayStateWidth, displayStateHeight, displayStatePadding);
+	DrawDisplayState(app, &system->ppu, layout.displayState, DebugPanelPadding);
 
 	//
 	// Sound Registers
 	//
-	DrawSoundState(app, system, soundStateX, soundStateY, soundStateWidth, soundStateHeight, soundStatePadding);
+	DrawSoundState(app, system, layout.soundState, DebugPanelPadding);
 
 	//
 	// Shader Control
 	//
-	if (isShaderControlVisible) {
-		UIPanel(uiCtx, shaderControlX, shaderControlY, shaderControlWidth, shaderControlHeight, false);
+	if (layout.isShaderControlVisible) {
+		UIPanel(ui, layout.shaderControl, false);
 
-		tmpX = shaderControlX + shaderControlPanelPadding;
-		tmpY = shaderControlY + lineHeight * 0.25f;
+		const float shaderRowHeight = lineHeight;
+		const float shaderRowY = layout.shaderControl.y + (layout.shaderControl.h - shaderRowHeight) * 0.5f;
+		float shaderX = UICheckboxRowX(ui, layout.shaderControl.x + DebugPanelPadding);
 
-		const bool nearestSupported = app->nearestShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderNearestCheckbox, tmpX, tmpY, "Nearest", true, app->activeShaderType == AppShaderType_None, nearestSupported)) {
-			app->activeShaderType = AppShaderType_None;
+		int32_t shaderChoice = (int32_t)app->activeShaderType;
+
+		const struct {
+			const char *label;
+			AppShaderType type;
+			bool isSupported;
+		} shaderChoices[] = {
+			{ "Nearest", AppShaderType_None, app->nearestShader.isValid },
+			{ "Bilinear", AppShaderType_Bilinear, app->bilinearShader.isValid },
+			{ "HQ2x", AppShaderType_HQ2X, app->hq2xShader.isValid },
+			{ "HQ4x", AppShaderType_HQ4X, app->hq4xShader.isValid },
+			{ "Bicubic-H", AppShaderType_BicubicHermite, app->bicubicHermiteShader.isValid },
+			{ "Bicubic-L", AppShaderType_BicubicLagrange, app->bicubicLagrangeShader.isValid },
+			{ "CatMullRom", AppShaderType_CatmullRom4, app->catmullRom4Shader.isValid },
+		};
+
+		for (uint32_t choiceIndex = 0; choiceIndex < fplArrayCount(shaderChoices); ++choiceIndex) {
+			const char *label = shaderChoices[choiceIndex].label;
+			float choiceWidth = UICheckboxWidth(ui, label);
+			if (UIRadioEx(ui, fuiRectMake(shaderX, shaderRowY, choiceWidth, shaderRowHeight), label, &shaderChoice, (int32_t)shaderChoices[choiceIndex].type, shaderChoices[choiceIndex].isSupported)) {
+				app->activeShaderType = shaderChoices[choiceIndex].type;
+			}
+			shaderX += choiceWidth;
 		}
-		tmpX += app->shaderNearestCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool bilinearSupported = app->bilinearShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderBilinearCheckbox, tmpX, tmpY, "Bilinear", true, app->activeShaderType == AppShaderType_Bilinear, bilinearSupported)) {
-			app->activeShaderType = AppShaderType_Bilinear;
-		}
-		tmpX += app->shaderBilinearCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool hq2xSupported = app->hq2xShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderHQ2XCheckbox, tmpX, tmpY, "HQ2x", true, app->activeShaderType == AppShaderType_HQ2X, hq2xSupported)) {
-			app->activeShaderType = AppShaderType_HQ2X;
-		}
-		tmpX += app->shaderHQ4XCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool hq4xSupported = app->hq4xShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderHQ4XCheckbox, tmpX, tmpY, "HQ4x", true, app->activeShaderType == AppShaderType_HQ4X, hq4xSupported)) {
-			app->activeShaderType = AppShaderType_HQ4X;
-		}
-		tmpX += app->shaderHQ4XCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool bicubicHermiteSupported = app->bicubicHermiteShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderBicubicHermiteCheckbox, tmpX, tmpY, "Bicubic-H", true, app->activeShaderType == AppShaderType_BicubicHermite, bicubicHermiteSupported)) {
-			app->activeShaderType = AppShaderType_BicubicHermite;
-		}
-		tmpX += app->shaderBicubicHermiteCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool bicubicLagrangeSupported = app->bicubicLagrangeShader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderBicubicLagrangeCheckbox, tmpX, tmpY, "Bicubic-L", true, app->activeShaderType == AppShaderType_BicubicLagrange, bicubicLagrangeSupported)) {
-			app->activeShaderType = AppShaderType_BicubicLagrange;
-		}
-		tmpX += app->shaderBicubicLagrangeCheckbox.currentWidth + shaderControlPanelPadding;
-
-		const bool catmullRom4Supported = app->catmullRom4Shader.isValid;
-		if (UICheckbox(uiCtx, &app->shaderCatmullRom4Checkbox, tmpX, tmpY, "CatMullRom", true, app->activeShaderType == AppShaderType_CatmullRom4, catmullRom4Supported)) {
-			app->activeShaderType = AppShaderType_CatmullRom4;
-		}
-		tmpX += app->shaderCatmullRom4Checkbox.currentWidth + shaderControlPanelPadding;
 	}
 
 	//
 	// Actions
 	//
-	UIPanel(uiCtx, actionsAreaX, actionsAreaY, actionsAreaWidth, actionsAreaHeight, false);
+	UIPanel(ui, layout.actions, false);
 
 	const char *pauseOrResumeButtonName = system->state == fgbEmulationState_Running ? "Pause" : "Resume";
-	const char *frameStepButtonName = "Frame Step";
-	const char *singleStepButtonName = "Single Step";
-	const char *microStepButtonName = "Micro Step";
-	const char *resetButtonName = "Reset";
 
-	size_t pauseOrResumeButtonNameLen = fplGetStringLength(pauseOrResumeButtonName);
-	size_t frameStepButtonNameLen = fplGetStringLength(frameStepButtonName);
-	size_t singleStepButtonNameLen = fplGetStringLength(singleStepButtonName);
-	size_t microStepButtonNameLen = fplGetStringLength(microStepButtonName);
-	size_t resetButtonNameLen = fplGetStringLength(resetButtonName);
-
-	tmpX = actionsAreaX + actionsAreaPadding;
+	tmpX = layout.actions.x + layout.actionsPadding;
+	const float actionButtonY = layout.actions.y + layout.actionsPadding;
 
 	bool pauseOrResumeEnabled = emulator->isActive && system->state != fgbEmulationState_Error;
-	if (UIButton(uiCtx, &app->pauseOrResumeButton, tmpX, actionsAreaY + actionsAreaPadding, actionButtonWidth, actionButtonHeight, pauseOrResumeButtonName, pauseOrResumeButtonNameLen, pauseOrResumeEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), pauseOrResumeButtonName, pauseOrResumeEnabled)) {
 		if (system->state == fgbEmulationState_Running) {
 			fgbPause(system);
 		} else {
@@ -2460,437 +2713,214 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 		HighlightScrollDisassembly(app);
 		WakeupEmulatorThread(emulator);
 	}
-	tmpX += actionButtonWidth + actionsAreaButtonSpacing;
+	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool frameStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error && !emulator->isFrameStepActive;
-	if (UIButton(uiCtx, &app->frameStepButton, tmpX, actionsAreaY + actionsAreaPadding, actionButtonWidth, actionButtonHeight, frameStepButtonName, frameStepButtonNameLen, frameStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Frame Step", frameStepEnabled)) {
 		emulator->isFrameStepActive = true;
 		emulator->isMicroStepActive = false;
 		fgbResume(system);
 		HighlightScrollDisassembly(app);
 		WakeupEmulatorThread(emulator);
 	}
-	tmpX += actionButtonWidth + actionsAreaButtonSpacing;
+	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool singleStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error;
-	if (UIButton(uiCtx, &app->singleStepButton, tmpX, actionsAreaY + actionsAreaPadding, actionButtonWidth, actionButtonHeight, singleStepButtonName, singleStepButtonNameLen, singleStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Single Step", singleStepEnabled)) {
 		emulator->isFrameStepActive = false;
 		emulator->isMicroStepActive = false;
 		fgbStep(system);
 		HighlightScrollDisassembly(app);
 		WakeupEmulatorThread(emulator);
 	}
-	tmpX += actionButtonWidth + actionsAreaButtonSpacing;
+	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool microStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error;
-	if (UIButton(uiCtx, &app->microStepButton, tmpX, actionsAreaY + actionsAreaPadding, actionButtonWidth, actionButtonHeight, microStepButtonName, microStepButtonNameLen, microStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Micro Step", microStepEnabled)) {
 		emulator->isFrameStepActive = false;
 		emulator->isMicroStepActive = true;
 		fgbMicroStep(system);
 		HighlightScrollDisassembly(app);
 		WakeupEmulatorThread(emulator);
 	}
-	tmpX += actionButtonWidth + actionsAreaButtonSpacing;
+	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool resetEnabled = emulator->isActive;
-	if (UIButton(uiCtx, &app->resetButton, tmpX, actionsAreaY + actionsAreaPadding, actionButtonWidth, actionButtonHeight, resetButtonName, resetButtonNameLen, resetEnabled)) {
-		StringListClear(&app->console.values);
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Reset", resetEnabled)) {
+		StringListClear(&app->console);
+		app->consoleList.selectedIndex = -1;
 		emulator->isFrameStepActive = false;
 		emulator->isMicroStepActive = false;
 		fgbReset(system, app->emulator.config.paused);
 		HighlightScrollDisassembly(app);
 		WakeupEmulatorThread(emulator);
 	}
-	tmpX += actionButtonWidth + actionsAreaButtonSpacing;
 
 	//
 	// Switches
 	//
-	UIPanel(uiCtx, switchesPanelX, switchesPanelY, switchesPanelWidth, switchesPanelHeight, false);
+	UIPanel(ui, layout.switches, false);
 
-	tmpX = switchesPanelX + switchesPanelPadding;
+	const float switchRowHeight = lineHeight;
+	const float switchRowY = layout.switches.y + (layout.switches.h - switchRowHeight) * 0.5f;
+
+	tmpX = UICheckboxRowX(ui, layout.switches.x + DebugPanelPadding);
 
 	bool isLoggingChecked = system->log.isEnabled;
-	bool isLoggingEnabled = true;
-	if (UICheckbox(uiCtx, &app->logEnabledCheckbox, tmpX, switchesPanelButtonY, "Log", true, isLoggingChecked, isLoggingEnabled)) {
-		emulator->config.log.isEnabled = !emulator->config.log.isEnabled;
+	float logWidth = UICheckboxWidth(ui, "Log");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchRowY, logWidth, switchRowHeight), "Log", &isLoggingChecked, true)) {
+		emulator->config.log.isEnabled = isLoggingChecked;
 		if (emulator->isActive) {
 			system->log.isEnabled = emulator->config.log.isEnabled;
 		}
 	}
-
-	tmpX += app->logEnabledCheckbox.currentWidth + switchesPanelPadding;
+	tmpX += logWidth;
 
 	bool isTraceChecked = system->debug.isInstructionTraceEnabled;
-	bool isTraceEnabled = true;
-	if (UICheckbox(uiCtx, &app->traceEnabledCheckbox, tmpX, switchesPanelButtonY, "Trace", true, isTraceChecked, isTraceEnabled)) {
-		emulator->config.debug.isInstructionTraceEnabled = !emulator->config.debug.isInstructionTraceEnabled;
+	float traceWidth = UICheckboxWidth(ui, "Trace");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchRowY, traceWidth, switchRowHeight), "Trace", &isTraceChecked, true)) {
+		emulator->config.debug.isInstructionTraceEnabled = isTraceChecked;
 		if (emulator->isActive) {
 			system->debug.isInstructionTraceEnabled = emulator->config.debug.isInstructionTraceEnabled;
 		}
 	}
-
-	tmpX += app->logEnabledCheckbox.currentWidth + switchesPanelPadding;
+	tmpX += traceWidth;
 
 	bool isBootChecked = system->boot.rom.isEnabled;
-	bool isBootEnabled = true;
-	if (UICheckbox(uiCtx, &app->bootEnabledCheckbox, tmpX, switchesPanelButtonY, "Boot", true, isBootChecked, isBootEnabled)) {
-		emulator->config.bootROM.isEnabled = !emulator->config.bootROM.isEnabled;
+	float bootWidth = UICheckboxWidth(ui, "Boot");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchRowY, bootWidth, switchRowHeight), "Boot", &isBootChecked, true)) {
+		emulator->config.bootROM.isEnabled = isBootChecked;
 		if (emulator->isActive) {
 			system->boot.rom.isEnabled = emulator->config.bootROM.isEnabled;
 		}
 	}
-
-	tmpX += app->bootEnabledCheckbox.currentWidth + switchesPanelPadding;
+	tmpX += bootWidth;
 
 	bool isInitPauseChecked = app->emulator.config.paused;
-	bool isInitPauseEnabled = true;
-	if (UICheckbox(uiCtx, &app->initPauseCheckbox, tmpX, switchesPanelButtonY, "IR-Pause", true, isInitPauseChecked, isInitPauseEnabled)) {
-		app->emulator.config.paused = !app->emulator.config.paused;
+	float initPauseWidth = UICheckboxWidth(ui, "IR-Pause");
+	if (UICheckboxEx(ui, fuiRectMake(tmpX, switchRowY, initPauseWidth, switchRowHeight), "IR-Pause", &isInitPauseChecked, true)) {
+		app->emulator.config.paused = isInitPauseChecked;
 	}
 
-	DrawDisplay(app, boyX, boyY, boyWidth, boyHeight, boyAspect);
+	//
+	// Display frame
+	//
+	DrawDisplayFrame(app, layout.display);
 
 	//
 	// Right Tab Control
 	//
-	const char *tabTilesId = "Tiles";
-	const char *tabPalettesId = "Palettes";
-	const char *tabBreakpointsId = "Breakpoints";
+	static const char *rightTabs[] = { "Tiles", "Palettes", "Breakpoints" };
 
-	UITab tabTiles = UICreateTab(UIPtrToID(tabTilesId), tabTilesId);
-	UITab tabPalettes = UICreateTab(UIPtrToID(tabPalettesId), tabPalettesId);
-	UITab tabBreakpoints = UICreateTab(UIPtrToID(tabBreakpointsId), tabBreakpointsId);
-
-	const UITab *rightTabs[] = {
-		&tabTiles,
-		&tabPalettes,
-		&tabBreakpoints,
-	};
-	uint8_t rightTabCount = fplArrayCount(rightTabs);
-	if (app->rightTabControl.activeTab == NULL) {
-		app->rightTabControl.activeTab = &tabTiles;
-	}
-	UITabContent rightTabContent = UITabControl(uiCtx, &app->rightTabControl, rightTabControlX, rightTabControlY, rightTabControlWidth, rightTabControlHeight, "Right-TabControl", rightTabs, rightTabCount);
-	if (rightTabContent.activeTab == &tabTiles) {
-		DrawTiles(uiCtx, &app->tileMapTexture, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h, vramAspect);
-	} else if (rightTabContent.activeTab == &tabPalettes) {
-		DrawPalettes(app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h);
-	} else if (rightTabContent.activeTab == &tabBreakpoints) {
-		DrawBreakpoints(app, rightTabContent.area.x, rightTabContent.area.y, rightTabContent.area.w, rightTabContent.area.h);
+	// The tab control draws its headers and nothing behind them, so the strip they sit on is filled first
+	fuiDrawRect(ui, layout.rightTabHeader, theme->panelBackgroundColor);
+	UIPanel(ui, layout.rightTabContent, false);
+	// Clipped to the strip, so headers wider than a narrowed column are cut at its edge and cannot be clicked there either
+	fuiPushClip(ui, layout.rightTabHeader);
+	int32_t rightTabIndex = fuiTabControl(ui, layout.rightTabHeader, "Right-TabControl", rightTabs, (int32_t)fplArrayCount(rightTabs));
+	fuiPopClip(ui);
+	if (rightTabIndex == 0) {
+		DrawTiles(ui, &app->tileMapTexture, layout.rightTabContent, vramAspect);
+	} else if (rightTabIndex == 1) {
+		DrawPalettes(app, layout.rightTabContent);
+	} else if (rightTabIndex == 2) {
+		DrawBreakpoints(app, layout.rightTabContent);
 	}
 
 	//
 	// Main Tab Control
 	//
-	const char *logTabID = "Log";
-	const char *performanceTabID = "Performance";
-	const char *disassemblyTabID = "Disassembly";
-	const char *backgroundMapTabID = "BG-Map";
+	static const char *leftTabs[] = { "Log", "Performance", "Disassembly", "BG-Map" };
 
-	UITab logTab = UICreateTab(UIPtrToID(logTabID), logTabID);
-	UITab performanceTab = UICreateTab(UIPtrToID(performanceTabID), performanceTabID);
-	UITab disassemblyTab = UICreateTab(UIPtrToID(disassemblyTabID), disassemblyTabID);
-	UITab backgroundMapTab = UICreateTab(UIPtrToID(backgroundMapTabID), backgroundMapTabID);
-
-	const UITab *leftTabs[] = {
-		&logTab,
-		&performanceTab,
-		&disassemblyTab,
-		&backgroundMapTab,
-	};
-	uint8_t leftTabCount = fplArrayCount(leftTabs);
+	// Disassembly and the background map need a running emulator, so without one the list stops at two tabs
+	int32_t leftTabCount = (int32_t)fplArrayCount(leftTabs);
 	if (!app->emulator.isActive) {
 		leftTabCount = 2;
 	}
 
-	//
-	// Tab Control
-	//
-	if (app->leftTabControl.activeTab != NULL && !emulator->isActive) {
-		if (!(app->leftTabControl.activeTab == &logTab || app->leftTabControl.activeTab == &performanceTab)) {
-			app->leftTabControl.activeTab = NULL;
+	fuiDrawRect(ui, layout.leftTabHeader, theme->panelBackgroundColor);
+	UIPanel(ui, layout.leftTabContent, false);
+	fuiPushClip(ui, layout.leftTabHeader);
+	int32_t leftTabIndex = fuiTabControl(ui, layout.leftTabHeader, "Left-TabControl", leftTabs, leftTabCount);
+	fuiPopClip(ui);
+	if (leftTabIndex == 0) {
+		// The log follows its own tail, the way it did when every new line scrolled the list down
+		int32_t consoleScrollTo = -1;
+		if (app->consoleScrollPending) {
+			consoleScrollTo = (int32_t)app->console.count - 1;
+			app->consoleScrollPending = false;
 		}
-	}
-	if (app->leftTabControl.activeTab == NULL) {
-		app->leftTabControl.activeTab = &logTab;
-	}
-	UITabContent mainTabContent = UITabControl(uiCtx, &app->leftTabControl, leftTabControlX, leftTabControlY, leftTabControlWidth, leftTabControlHeight, "Left-TabControl", leftTabs, leftTabCount);
-
-	//
-	// Console
-	//
-	const float tabContentWidth = mainTabContent.area.w;
-	const float tabContentHeight = mainTabContent.area.h;
-	const float tabContentX = mainTabContent.area.x;
-	const float tabContentY = mainTabContent.area.y;
-	if (mainTabContent.activeTab == &logTab) {
-		UIListbox(uiCtx, &app->console, tabContentX, tabContentY, tabContentWidth, tabContentHeight, "Console");
-	} else if (mainTabContent.activeTab == &performanceTab) {
-		DrawPerformanceMetrics(uiCtx, app, tabContentX, tabContentY, tabContentWidth, tabContentHeight);
-	} else if (mainTabContent.activeTab == &disassemblyTab) {
-		UIListbox(uiCtx, &app->disassemblyList, tabContentX, tabContentY, tabContentWidth, tabContentHeight, "Disassembly");
-	} else if (mainTabContent.activeTab == &backgroundMapTab) {
-		DrawBackgroundMap(uiCtx, app, tabContentX, tabContentY, tabContentWidth, tabContentHeight);
+		UISourceList(ui, layout.leftTabContent, "Console", &app->console, &app->consoleList, -1, consoleScrollTo);
+	} else if (leftTabIndex == 1) {
+		DrawPerformanceMetrics(ui, app, layout.leftTabContent);
+	} else if (leftTabIndex == 2) {
+		int32_t disassemblyScrollTo = app->disassemblyScrollRequested ? app->disassemblyHighlightIndex : -1;
+		app->disassemblyScrollRequested = false;
+		UISourceList(ui, layout.leftTabContent, "Disassembly", &app->disassembly, &app->disassemblyList, app->disassemblyHighlightIndex, disassemblyScrollTo);
+	} else if (leftTabIndex == 3) {
+		DrawBackgroundMap(ui, app, layout.leftTabContent);
 	}
 
 	//
 	// User Buttons
 	//
-	UIPanel(uiCtx, userButtonsX, userButtonsY, userButtonsWidth, userButtonsHeight, false);
+	UIPanel(ui, layout.userButtons, false);
 
-	//
-	// States Dialog
-	//
 	StatesDialog *statesDlg = &app->statesDialog;
-	const char *saveStateButtonName = "Save State";
-	const char *restoreStateButtonName = "Restore State";
 
-	size_t saveStateButtonNameLen = fplGetStringLength(saveStateButtonName);
-	size_t restoreStateButtonNameLen = fplGetStringLength(restoreStateButtonName);
-
-	tmpX = userButtonsX + userButtonsPadding;
+	tmpX = layout.userButtons.x + layout.userButtonsPadding;
+	const float userButtonY = layout.userButtons.y + layout.userButtonsPadding;
 
 	bool saveStateButtonEnabled = emulator->isActive && fgbAreSnapshotsSupported(system);
-	if (UIButton(uiCtx, &app->saveStateButton, tmpX, userButtonsY + userButtonsPadding, userButtonWidth, userButtonHeight, saveStateButtonName, saveStateButtonNameLen, saveStateButtonEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, userButtonY, layout.userButtonWidth, layout.userButtonHeight), "Save State", saveStateButtonEnabled)) {
 		fgbPause(system);
 		statesDlg->type = DialogType_SaveState;
-		statesDlg->dialog.isShown = true;
+		statesDlg->isShown = true;
+		fuiOpenDialog(ui, StatesDialogId);
 	}
-	tmpX += userButtonWidth + userButtonSpacing;
+	tmpX += layout.userButtonWidth + layout.userButtonSpacing;
 
 	bool restoreStateButtonEnabled = emulator->isActive && fgbAreSnapshotsSupported(system);
-	if (UIButton(uiCtx, &app->restoreStateButton, tmpX, userButtonsY + userButtonsPadding, userButtonWidth, userButtonHeight, restoreStateButtonName, restoreStateButtonNameLen, restoreStateButtonEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, userButtonY, layout.userButtonWidth, layout.userButtonHeight), "Restore State", restoreStateButtonEnabled)) {
 		fgbPause(system);
 		statesDlg->type = DialogType_RestoreState;
-		statesDlg->dialog.isShown = true;
+		statesDlg->isShown = true;
+		fuiOpenDialog(ui, StatesDialogId);
 	}
-	tmpX += userButtonWidth + userButtonSpacing;
+
+	//
+	// Column splitters
+	//
+	// Built last so they take the cursor from whatever panel lies under the seam. They resize for the NEXT
+	// frame, which is the ordinary immediate mode bargain and is what lets the layout be settled up front.
+	const float widestLeftMayBe = (w - app->rightPanelWidth) - DebugMiddleColumnMinWidth;
+	if (widestLeftMayBe > DebugSideColumnMinWidth) {
+		fuiVerticalSplitter(ui, "Left-Splitter", layout.leftSplitterGrip, &app->leftPanelWidth, DebugSideColumnMinWidth, widestLeftMayBe, DebugSplitterHighlightThickness);
+	}
+
+	// Driven by where its LEFT edge sits rather than by its width, because the splitter grows what it is
+	// given as the cursor moves right and this column has to shrink instead
+	const float leftmostRightEdgeMayBe = app->leftPanelWidth + DebugMiddleColumnMinWidth;
+	const float rightmostRightEdgeMayBe = w - DebugSideColumnMinWidth;
+	if (rightmostRightEdgeMayBe > leftmostRightEdgeMayBe) {
+		float rightColumnEdge = w - app->rightPanelWidth;
+		if (fuiVerticalSplitter(ui, "Right-Splitter", layout.rightSplitterGrip, &rightColumnEdge, leftmostRightEdgeMayBe, rightmostRightEdgeMayBe, DebugSplitterHighlightThickness)) {
+			app->rightPanelWidth = w - rightColumnEdge;
+		}
+	}
 
 	//
 	// States Dialog
 	//
-	const uint32_t statesDialogNumSlots = MAX_STATE_SLOT_COUNT;
+	BuildStatesDialog(app, input);
 
-	const float statesDialogWidth = w * 0.75f;
-	const float statesDialogHeight = h * 0.75f;
-	const float statesDialogMargin = 40.0f;
+	fuiEndFrame(ui);
 
-	const float statesDialogGridLabelHeight = 40;
-	const float statesDialogGridLabelMargin = 5;
-
-	const float statesDialogGridColumnSpacing = 20.0f;
-	const float statesDialogGridRowSpacing = 20.0f;
-	const uint32_t statesDialogGridNumRows = 2;
-	const uint32_t statesDialogGridNumColumns = statesDialogNumSlots / statesDialogGridNumRows;
-
-	const float statesDialogCloseButtonPadding = 5;
-	const float statesDialogCloseButtonWidth = 30;
-	const float statesDialogCloseButtonHeight = 30;
-
-	const float statesDialogTitleMargin = 10;
-
-	UIFont lastFont = UIGetFont(uiCtx);
-	float lastFontHeight = UIGetFontHeight(uiCtx);
-
-	const Color4f gameLabelBackground = { 0.0f, 0.0f, 0.0f, 0.5f };
-
-	if (UIBeginDialog(uiCtx, &app->statesDialog.dialog, statesDialogWidth, statesDialogHeight, "States-Dialog")) {
-
-		const float statesDialogContentWidth = statesDlg->dialog.window.size.w - statesDialogMargin * 2.0f;
-		const float statesDialogContentHeight = statesDlg->dialog.window.size.h - statesDialogMargin * 2.0f;
-		const float statesDialogContentX = statesDlg->dialog.window.pos.x + statesDialogMargin;
-		const float statesDialogContentY = statesDlg->dialog.window.pos.y + statesDialogMargin;
-
-		const float statesGridCellWidth = (statesDialogContentWidth - statesDialogGridColumnSpacing * (float)(statesDialogGridNumColumns - 1)) / (float)statesDialogGridNumColumns;
-		const float statesGridCellHeight = (statesDialogContentHeight - statesDialogGridRowSpacing * (float)(statesDialogGridNumRows - 1)) / (float)statesDialogGridNumRows;
-
-		Color4f labelColor0 = { 0.0f, 0.0f, 0.0f, 1.0f };
-		Color4f labelColor1 = { 1.0f, 1.0f, 1.0f, 1.0f };
-		Color4f titleColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-		Vec2f screenSize = V2fInit(statesGridCellWidth, statesGridCellHeight);
-
-		const Texture *firstTexture = &app->displayTexture;
-
-		float stateTextureAspect = (float)firstTexture->width / (float)firstTexture->height;
-
-		Viewport4f stateTextureView = VP4fComputeByAspect(screenSize, stateTextureAspect);
-
-		// Draw grid
-		float gridY = statesDialogContentY + statesDialogContentHeight - statesGridCellHeight;
-		for (uint32_t row = 0; row < statesDialogGridNumRows; ++row) {
-			float gridX = statesDialogContentX;
-			for (uint32_t column = 0; column < statesDialogGridNumColumns; ++column) {
-				uint32_t slotIndex = row * statesDialogGridNumColumns + column;
-
-				bool isSlotSelected = (statesDlg->selectedSlotPos.row == row) && (statesDlg->selectedSlotPos.column == column);
-
-				const Texture *texture = emulator->states.textures + slotIndex;
-
-				if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
-					texture = &app->displayTexture;
-				}
-
-				const fgbSnapshot *snapshot = emulator->states.snapshots + slotIndex;
-
-				char *labelBuffer = (char *)&emulator->states.labels[slotIndex];
-				size_t labelBufferCapacity = fplArrayCount(emulator->states.labels[slotIndex]);
-
-				float uMin = 0.0f;
-				float uMax = texture->uScale;
-				float vMin = texture->vScale;
-				float vMax = 0.0f;
-
-				float textureX = gridX + stateTextureView.x;
-				float textureY = gridY + stateTextureView.y;
-				float textureW = stateTextureView.w;
-				float textureH = stateTextureView.h;
-
-				UIPanel(uiCtx, gridX, gridY, statesGridCellWidth, statesGridCellHeight, isSlotSelected);
-
-				float textureAlpha = isSlotSelected ? 1.0f : 0.5f;
-				Color4f textureColor = { 1.0f, 1.0f, 1.0f, textureAlpha };
-				RendererDrawTexturedQuad(texture->id, textureX, textureY, textureW, textureH, textureColor, uMin, vMin, uMax, vMax);
-
-				// Date time + Game title
-				const char *gameTitle = snapshot->gameInfo.title.text;
-				if (fplGetStringLength(gameTitle) == 0) {
-					if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
-						gameTitle = system->gamePak.info.title.text;
-						fplStringFormat(labelBuffer, labelBufferCapacity, "%s *", gameTitle);
-					} else {
-						fplCopyString("None", labelBuffer, labelBufferCapacity);
-					}
-				} else {
-					fplDateTime dt = fplZeroInit;
-					dt.epoch = snapshot->dateTime.epoch;
-					dt.milliseconds = snapshot->dateTime.milliseconds & 0xFFFF;
-					fplDateTimeResult dtRes = fplFormatDateTime(dt, fplDateTimeType_Local);
-					fplStringFormat(dateTimeFormatBuffer, fplArrayCount(dateTimeFormatBuffer), "%.4u-%.2u-%.2u %.2u:%.2u:%.2u", dtRes.year, dtRes.month, dtRes.day, dtRes.hour, dtRes.minute, dtRes.second);
-					if (isSlotSelected && statesDlg->type == DialogType_SaveState) {
-						fplStringFormat(labelBuffer, labelBufferCapacity, "%s - %s *", dateTimeFormatBuffer, gameTitle);
-					} else {
-						fplStringFormat(labelBuffer, labelBufferCapacity, "%s - %s", dateTimeFormatBuffer, gameTitle);
-					}
-				}
-
-				float labelHeight = lineHeight + statesDialogGridLabelMargin + 4.0f;
-				RendererDrawFilledQuad(gridX + 2.0f, gridY + 2.0f, statesGridCellWidth - 4.0f, labelHeight, gameLabelBackground);
-
-				const char *label = labelBuffer;
-				size_t labelLen = fplGetStringLength(label);
-				UIString(uiCtx, gridX + statesDialogGridLabelMargin, gridY + statesDialogGridLabelMargin, labelColor0, label, labelLen);
-				UIString(uiCtx, gridX + statesDialogGridLabelMargin + 2, gridY + statesDialogGridLabelMargin + 2, labelColor1, label, labelLen);
-
-				gridX += statesGridCellWidth + statesDialogGridColumnSpacing;
-			}
-			gridY -= statesGridCellHeight;
-			gridY -= statesDialogGridRowSpacing;
-		}
-
-		// Handle keyboard/controller input
-		if (statesDlg->dialog.isShown && input->activeControllerIndex >= 0) {
-			// "Start" was pressed?
-			const ControllerInput *controller = &input->controllers[input->activeControllerIndex];
-			if (UIWasPressed(&controller->start)) {
-				const uint32_t slotIndex = statesDlg->selectedSlotPos.row * statesDialogGridNumColumns + statesDlg->selectedSlotPos.column;
-
-				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.snapshots));
-				FGB_ASSERT(slotIndex < fplArrayCount(emulator->states.textures));
-
-				fgbSnapshot *snapshot = emulator->states.snapshots + slotIndex;
-
-				Texture *stateTexture = emulator->states.textures + slotIndex;
-
-				switch (statesDlg->type) {
-					case DialogType_SaveState:
-						if (fgbSnapshotExport(system, snapshot)) {
-							if (fgbSnapshotSaveToFile(system, system->gamePak.filePath, slotIndex, snapshot)) {
-								stateTexture->state = TextureState_Update;
-							}
-						}
-						break;
-					case DialogType_RestoreState:
-						if (fgbSnapshotLoadFromFile(system, system->gamePak.filePath, slotIndex, snapshot)) {
-							if (fgbSnapshotImport(system, snapshot)) {
-								stateTexture->state = TextureState_Update;
-							}
-						}
-						break;
-					default:
-						break;
-				}
-
-				// Close dialog
-				statesDlg->type = DialogType_None;
-				statesDlg->dialog.isShown = false;
-				ResumeGameboy(app, system);
-			} else if (UIWasPressed(&controller->dpadLeft)) {
-				if (statesDlg->selectedSlotPos.column > 0) {
-					--statesDlg->selectedSlotPos.column;
-				}
-			} else if (UIWasPressed(&controller->dpadRight)) {
-				if (statesDlg->selectedSlotPos.column < statesDialogGridNumColumns - 1) {
-					statesDlg->selectedSlotPos.column++;
-				}
-			} else if (UIWasPressed(&controller->dpadUp)) {
-				if (statesDlg->selectedSlotPos.row > 0) {
-					--statesDlg->selectedSlotPos.row;
-				}
-			} else if (UIWasPressed(&controller->dpadDown)) {
-				if (statesDlg->selectedSlotPos.row < statesDialogGridNumRows - 1) {
-					statesDlg->selectedSlotPos.row++;
-				}
-			}
-		}
-
-		// Title
-		const char *title = "";
-		switch (statesDlg->type) {
-			case DialogType_SaveState:
-				title = "Save State";
-				break;
-			case DialogType_RestoreState:
-				title = "Restore State";
-				break;
-			default:
-				break;
-		}
-		size_t titleLen = fplGetStringLength(title);
-		UISetFont(uiCtx, &app->fontData, app->fontTexture.id, 24.0f, 1.0f);
-		Vec2f titleSize = UIGetStringSize(uiCtx, title, titleLen);
-		float tempX = statesDlg->dialog.window.pos.x + (statesDlg->dialog.window.size.w - titleSize.w) * 0.5f;
-		float tempY = statesDlg->dialog.window.pos.y + statesDlg->dialog.window.size.h - titleSize.h - statesDialogTitleMargin;
-		UIString(uiCtx, tempX, tempY, titleColor, title, titleLen);
-		UIResetFont(uiCtx, &lastFont);
-
-		// Close button
-		tempX = statesDlg->dialog.window.pos.x + statesDlg->dialog.window.size.w - statesDialogCloseButtonWidth - statesDialogCloseButtonPadding;
-		tempY = statesDlg->dialog.window.pos.y + statesDlg->dialog.window.size.h - statesDialogCloseButtonHeight - statesDialogCloseButtonPadding;
-		if (UIButton(uiCtx, &statesDlg->closeButton, tempX, tempY, statesDialogCloseButtonWidth, statesDialogCloseButtonHeight, "x", 1, true)) {
-			statesDlg->type = DialogType_None;
-			statesDlg->dialog.isShown = false;
-			ResumeGameboy(app, system);
-		}
-
-		UIEndDialog(uiCtx, &app->statesDialog.dialog);
-	}
-
-	UIEnd(uiCtx);
-
-#if !NO_CURSOR
-	//
-	// Button
-	//
-	float mouseCursorWidth = 32.0f;
-	float mouseCursorHeight = 32.0f;
-	Vec2f mousePos = input->mouse.worldPos;
-	RendererDrawTexturedQuad(app->cursorTexture.id, mousePos.x, mousePos.y - mouseCursorHeight, mouseCursorWidth, mouseCursorHeight, Color4fWhite, 0.0f, 0.0f, 1.0f, 1.0f);
-#endif
+	const fuiDrawData *uiDrawData = fuiGetDrawData(ui);
+	RendererDrawUIDrawData(uiDrawData);
 }
 
-static void RenderGameFrame(const Application *app, const InputState *input) {
+static void RenderGameFrame(Application *app, const InputState *input) {
 	RendererSetViewport(app->viewport.x, app->viewport.y, app->viewport.w, app->viewport.h);
 
 	RendererClear(0.1f, 0.3f, 0.7f, 1.0f);
@@ -2902,9 +2932,20 @@ static void RenderGameFrame(const Application *app, const InputState *input) {
 
 	const float displayAspect = FGB_DISPLAY_WIDTH / (float)FGB_DISPLAY_HEIGHT;
 
-	RendererDrawFilledQuad(0, 0, w, h, Color4fBlack);
+	const fuiRect displayArea = fuiRectMake(0.0f, 0.0f, w, h);
 
-	DrawDisplay(app, 0, 0, w, h, displayAspect);
+	RendererDrawFilledQuad(0, 0, w, h, ColorBlack);
+
+	RenderDisplayTexture(app, displayArea, displayAspect);
+
+	// Nothing but the placeholder is built here, and only while no game is loaded, but it goes through the
+	// same path the debugger does so the display is covered by exactly one convention
+	fuiBeginFrame(&app->ui, &app->uiInput, FUI_PASS_BOTH);
+	DrawDisplayFrame(app, displayArea);
+	fuiEndFrame(&app->ui);
+
+	const fuiDrawData *uiDrawData = fuiGetDrawData(&app->ui);
+	RendererDrawUIDrawData(uiDrawData);
 }
 
 static void RenderFrame(Application *app, const InputState *input) {
@@ -2926,9 +2967,9 @@ static void GameboxLog(void *userData, const fgbLogLevel level, const char *syst
 	fplDebugFormatOut("%s\n", message);
 
 	if (level < fgbLogLevel_Trace) {
-		UIListboxData *list = (UIListboxData *)userData;
-		StringListAdd(&list->values, logText);
-		UIListboxScrollTo(list, list->values.count - 1);
+		Application *app = (Application *)userData;
+		StringListAdd(&app->console, logText);
+		app->consoleScrollPending = true;
 	}
 }
 
@@ -3051,6 +3092,9 @@ static void EmulatorThreadProc(const fplThreadHandle *thread, void *data) {
 			continue;
 		}
 
+		// Scripted input: apply all events scheduled up to the frame that is about to run
+		fgbInputSimApply(&emulator->inputSim, system, emulator->inputSimFrameIndex);
+
 		// Run one full PPU frame (or until a halt point is hit).
 		BeginPerformanceCounter(&metrics->emulatorTick, fplTimestampQuery());
 		bool frameDone = false;
@@ -3117,6 +3161,7 @@ static void EmulatorThreadProc(const fplThreadHandle *thread, void *data) {
 		// schedule by exactly EMULATOR_FRAME_TIME_NS so the CPU clock averages exactly
 		// 4.194304 MHz over the long run, regardless of per-iteration jitter.
 		++framesDone;
+		++emulator->inputSimFrameIndex;
 
 		// Audio-rescue hysteresis: once ring drops below LOW_WATER, stay in
 		// rescue mode (run flat-out, no wallclock wait) until ring refills
@@ -3212,16 +3257,24 @@ static void ProcessControllerButton(const InputState *oldInput, InputState *newI
 static void ProcessEvents(Application *app, const InputState *oldInput, InputState *newInput) {
 	Emulator *emulator = &app->emulator;
 
-	const Mat4f mvp = app->viewProjectionMat;
-	const Viewport4i viewport = app->viewport;
-
 	fplEvent ev;
 	while (fplPollEvent(&ev)) {
 		switch (ev.type) {
 			case fplEventType_Keyboard:
 			{
+				if (ev.keyboard.type == fplKeyboardEventType_Input) {
+					UIInputAddText(&app->uiInput, ev.keyboard.keyCode);
+				}
+
 				if (ev.keyboard.type == fplKeyboardEventType_Button) {
 					bool isDown = ev.keyboard.buttonState >= fplButtonState_Press;
+
+					// The very same press also reaches the interface, which is what makes its own keyboard navigation work
+					fuiKey uiKey = UIKeyFromPlatformKey(ev.keyboard.mappedKey);
+					if (uiKey != FUI_KEY_NONE) {
+						UIInputSetButton(&app->uiInput.keys[uiKey], isDown);
+					}
+
 					switch (ev.keyboard.mappedKey) {
 						case fplKey_Up:
 							ProcessControllerButton(oldInput, newInput, CONTROLLER_BUTTON_DPAD_UP, KEYBOARD_CONTROLLER_INDEX, isDown);
@@ -3334,8 +3387,9 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 				switch (ev.mouse.type) {
 					case fplMouseEventType_Move:
 					{
-						Vec2i screenMousePos = V2iInit(ev.mouse.mouseX, app->windowSize.h - 1 - ev.mouse.mouseY);
-						Vec2f worldMousePos = V2fUnproject(screenMousePos, mvp, viewport);
+						// The window is rendered with a top-left origin and y pointing down, which is exactly what the platform reports, so the position needs no unprojection at all
+						Vec2i screenMousePos = V2iInit(ev.mouse.mouseX, ev.mouse.mouseY);
+						Vec2f worldMousePos = V2fInit((float)ev.mouse.mouseX, (float)ev.mouse.mouseY);
 						newInput->mouse.screenPos = screenMousePos;
 						newInput->mouse.worldPos = worldMousePos;
 					} break;
@@ -3346,12 +3400,15 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 						switch (ev.mouse.mouseButton) {
 							case fplMouseButtonType_Left:
 								UpdateKeyboardButtonState(&newInput->mouse.left, isDown);
+								UIInputSetButton(&app->uiInput.mouseButtons[FUI_MOUSE_LEFT], isDown);
 								break;
 							case fplMouseButtonType_Right:
 								UpdateKeyboardButtonState(&newInput->mouse.right, isDown);
+								UIInputSetButton(&app->uiInput.mouseButtons[FUI_MOUSE_RIGHT], isDown);
 								break;
 							case fplMouseButtonType_Middle:
 								UpdateKeyboardButtonState(&newInput->mouse.middle, isDown);
+								UIInputSetButton(&app->uiInput.mouseButtons[FUI_MOUSE_MIDDLE], isDown);
 								break;
 							default:
 								break;
@@ -3582,11 +3639,14 @@ static uint32_t AudioThreadCallback(const fplAudioFormat *deviceFormat, const ui
 		result = frameCount;
 
 		BeginPerformanceCounter(&metrics->audioOutputSamples, fplTimestampQuery());
+		// Muting is a gain of zero rather than an early out, so the device still receives the silence it
+		// expects for this callback and never replays the previous buffer
+		const float outputGain = emulator->isSoundEnabled ? emulator->masterVolume : 0.0f;
 		for (uint32_t frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 			for (uint8_t channelIndex = 0; channelIndex < 2; ++channelIndex) {
 				uint8_t rawSample = AudioTempSampels[frameIndex * 2 + channelIndex];
 				float sampleF32 = (float)rawSample / 255.0f;
-				uint8_t sampleU8 = (uint8_t)((sampleF32 * emulator->masterVolume) * 255.0f);
+				uint8_t sampleU8 = (uint8_t)((sampleF32 * outputGain) * 255.0f);
 				int16_t sampleS16 = (int16_t)((sampleU8 << 8) - INT16_MIN);
 				out16[frameIndex * 2 + channelIndex] = sampleS16;
 			}
@@ -3630,13 +3690,13 @@ static uint8_t disassemblyVisited[65536] = { 0 };
 static uint8_t disassemblyQueued[65536] = { 0 };
 static uint16_t disassemblyBFSQueue[65536] = { 0 };
 
-static void ClearDisassembly(UIListboxData *listbox, IndexHashtable *hashtable) {
-	StringListClear(&listbox->values);
+static void ClearDisassembly(StringList *lines, IndexHashtable *hashtable) {
+	StringListClear(lines);
 	IndexHashtableClear(hashtable);
 }
 
-static void LoadDisassembly(fgbSystem *system, UIListboxData *listbox, IndexHashtable *hashtable) {
-	StringListClear(&listbox->values);
+static void LoadDisassembly(fgbSystem *system, StringList *lines, IndexHashtable *hashtable) {
+	StringListClear(lines);
 	IndexHashtableClear(hashtable);
 
 	// TODO(final): Address not correct for GBC when GBC boot rom is active!
@@ -3800,7 +3860,7 @@ static void LoadDisassembly(fgbSystem *system, UIListboxData *listbox, IndexHash
 			fplStringAppend(disassemblyTempBuffer, disassemblyLineBuffer, fplArrayCount(disassemblyLineBuffer));
 		}
 
-		const size_t listIndex = StringListAdd(&listbox->values, disassemblyLineBuffer);
+		const size_t listIndex = StringListAdd(lines, disassemblyLineBuffer);
 		IndexHashtableAdd(hashtable, pos, listIndex);
 
 		pos += instrLen;
@@ -3853,6 +3913,10 @@ static bool EmulatorLoadGame(Emulator *emulator, const char *filePath) {
 	}
 
 	ResetPerformanceMetrics(&emulator->performanceMetrics);
+
+	// Replay any loaded input script from the beginning for the freshly loaded game
+	fgbInputSimRestart(&emulator->inputSim);
+	emulator->inputSimFrameIndex = 0;
 
 	fgbInitResult initRes = fgbInit(&emulator->system, &emulator->config, gamepak);
 
@@ -3929,7 +3993,7 @@ static void SetupGamebox(fgbConfiguration *config, Application *app, const uint3
 	config->callbacks = globalCallbacks;
 
 	// Logging
-	config->log.userData = &app->console;
+	config->log.userData = app;
 	config->log.callback = GameboxLog;
 	config->log.isEnabled = true;
 	config->debug.isInstructionTraceEnabled = parameters->isTraceEnabled;
@@ -4009,6 +4073,11 @@ static void SwapInput(InputState **oldInput, InputState **newInput) {
 	*oldInput = tmp;
 }
 
+// True while a loaded input script still has pending events -> the simulator owns the joypad
+static bool EmulatorInputSimIsActive(const Emulator *emulator) {
+	return emulator->inputSim.isEnabled && emulator->inputSim.appliedCount < emulator->inputSim.eventCount;
+}
+
 static void SetupGameboxInput(const InputState *newInput, fgbSystem *system) {
 	// Translate controller states to game boy buttons
 	if (newInput->activeControllerIndex > -1) {
@@ -4044,12 +4113,15 @@ static void LoadRequestedROMFile(Application *app, String *romFilePath) {
 
 	if (IsEmulatorGameLoaded(emulator)) {
 		EmulatorUnloadGame(emulator);
-		ClearDisassembly(&app->disassemblyList, &app->disassemblyHashTable);
-		StringListClear(&app->console.values);
+		ClearDisassembly(&app->disassembly, &app->disassemblyHashTable);
+		StringListClear(&app->console);
+		app->consoleList.selectedIndex = -1;
+		app->disassemblyList.selectedIndex = -1;
+		app->disassemblyHighlightIndex = -1;
 	}
 
 	if (EmulatorLoadGame(emulator, romFilePath->text)) {
-		LoadDisassembly(system, &app->disassemblyList, &app->disassemblyHashTable);
+		LoadDisassembly(system, &app->disassembly, &app->disassemblyHashTable);
 	}
 
 	if (globalTransientMemory.temporary.type == fmemType_Temporary) {
@@ -4063,28 +4135,16 @@ static void LoadRequestedROMFile(Application *app, String *romFilePath) {
 	emulator->isROMFileRequested = false;
 }
 
-static void InitializeUI(Application *app) {
-	UIContext *uiCtx = &app->uiCtx;
-	const float charHeight = 20.0f;
-	const float lineScale = 1.15f;
-	const float lineHeight = charHeight * lineScale;
-	UISetFont(uiCtx, &app->fontData, app->fontTexture.id, charHeight, lineHeight);
-}
+static void PrepareInputUI(Application *app, const InputState *newInput, const float deltaTime) {
+	// The keys and the typed text were already accumulated into app->uiInput by ProcessEvents, so only
+	// what is sampled once per frame is filled in here
+	fuiInput *uiInput = &app->uiInput;
 
-static void PrepareInputUI(Application *app, const InputState *newInput) {
-	UIContext *uiCtx = &app->uiCtx;
-
-	UIInputState uiInputState = fplZeroInit;
-	uiInputState.leftMouse = newInput->mouse.left;
-	uiInputState.rightMouse = newInput->mouse.right;
-	uiInputState.middleMouse = newInput->mouse.middle;
-	uiInputState.escapeButton = newInput->keyboardController.select;
-	uiInputState.mousePos = newInput->mouse.worldPos;
-	uiInputState.projectionMat = app->projectionMat;
-	uiInputState.viewMat = app->viewMat;
-	uiInputState.viewport = app->viewport;
-	uiInputState.mouseWheelDelta = newInput->mouse.wheelDelta;
-	UIContextSetInput(uiCtx, &uiInputState);
+	uiInput->mousePosition = fuiV2(newInput->mouse.worldPos.x, newInput->mouse.worldPos.y);
+	uiInput->mouseWheelDelta = newInput->mouse.wheelDelta;
+	uiInput->windowSize = fuiV2i(app->windowSize.w, app->windowSize.h);
+	uiInput->deltaTime = deltaTime;
+	uiInput->isActive = true;
 }
 
 static void HandleDefaultInput(Application *app, const InputState *newInput) {
@@ -4226,7 +4286,8 @@ static void PrepareFrame(Application *app, const fplWindowSize size) {
 
 	app->windowSize = V2iInit((int)size.width, (int)size.height);
 	app->viewMat = M4fMult(M4fScaleScalar(scale), M4fTranslationV2(V2fInit(translationX, translationY)));
-	app->projectionMat = M4fOrthoRH(0.0f, (float)size.width, 0.0f, (float)size.height, 0.0f, 1.0f);
+	// Top-left origin with y pointing down, which is the convention final_ui.h emits its geometry in
+	app->projectionMat = M4fOrthoRH(0.0f, (float)size.width, (float)size.height, 0.0f, 0.0f, 1.0f);
 	app->viewProjectionMat = M4fMult(app->projectionMat, app->viewMat);
 	app->viewport = VP4iInit(0, 0, (int)size.width, (int)size.height);
 }
@@ -4267,6 +4328,9 @@ static EmulatorParameters ParseEmulatorParameters(const int argc, char **argv) {
 						const char *key = arg + 2;
 						if (StringCompareIgnoreCase("trace", key) == 0) {
 							result.isTraceEnabled = true;
+						} else if (StringCompareIgnoreCase("input", key) == 0 && (argIndex + 1) < argc) {
+							result.inputScriptFilePath = argv[argIndex + 1];
+							argIndex++;
 						} else {
 							// Not supported argument
 						}
@@ -4350,6 +4414,13 @@ int main(int argc, char **argv) {
 	audioThreadState.emulator = emulator;
 	fplSetAudioClientReadCallback(AudioThreadCallback, &audioThreadState);
 
+	// Load an input script for automated testing, if requested (see INPUT_SIMULATOR.md)
+	if (fplGetStringLength(parameters.inputScriptFilePath) > 0) {
+		if (!fgbInputSimLoadFromFile(&emulator->inputSim, parameters.inputScriptFilePath)) {
+			fplConsoleFormatError("Failed loading input script '%s'!\n", parameters.inputScriptFilePath);
+		}
+	}
+
 	// Default game rom (Retroid from Jonas Fischbach)
 	fplPathCombine(app->defaultGameRomFilePath, fplArrayCount(app->defaultGameRomFilePath), 2, app->romsPath, "Retroid.zip");
 	if (fplGetStringLength(romFilePath) == 0) {
@@ -4359,13 +4430,11 @@ int main(int argc, char **argv) {
 	// Auto load initial rom file from arguments
 	if (fplGetStringLength(romFilePath) > 0) {
 		if (EmulatorLoadGame(emulator, romFilePath)) {
-			LoadDisassembly(&emulator->system, &app->disassemblyList, &app->disassemblyHashTable);
+			LoadDisassembly(&emulator->system, &app->disassembly, &app->disassemblyHashTable);
 		}
 	}
 
-	// Initialize UI and Input
-	InitializeUI(app);
-
+	// Initialize Input
 	InputState inputs[2] = fplZeroInit;
 	InputState *newInput = &inputs[0];
 	InputState *oldInput = &inputs[1];
@@ -4394,11 +4463,16 @@ int main(int argc, char **argv) {
 		// Setup input for this frame, but ensure that previous button states are preserved
 		SetupInput(oldInput, newInput, timing.frameRate, app->isDebugEnabled);
 
+		// Half transitions and typed text are only true for one frame, while held keys carry over
+		UIInputBeginFrame(&app->uiInput);
+
 		// Process events and handle events from the window (Keyboard, Mouse, Gamepad, etc.)
 		ProcessEvents(app, oldInput, newInput);
 
-		// Setup gamebox input from new input
-		SetupGameboxInput(newInput, system);
+		// Setup gamebox input from new input, unless a scripted input replay currently owns the joypad
+		if (!EmulatorInputSimIsActive(emulator)) {
+			SetupGameboxInput(newInput, system);
+		}
 
 		// Show various informations in the window title bar
 		UpdateWindowTitle(emulator, timing.frameRate);
@@ -4409,7 +4483,7 @@ int main(int argc, char **argv) {
 		}
 
 		// Setup input for UI
-		PrepareInputUI(app, newInput);
+		PrepareInputUI(app, newInput, (float)TARGET_FRAME_TIME);
 
 		// Default input handling, like switching to debug / play mode
 		HandleDefaultInput(app, newInput);

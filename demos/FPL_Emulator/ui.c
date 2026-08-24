@@ -14,1149 +14,450 @@ Description:
 #include "ui.h"
 
 //
-// Style
+// Font
 //
 
-#define DEBUG_RENDER_FONT_LINES 0
-
-#define INV_COLOR_BYTE (1.0f / 255.0f)
-
-#define RGB4F(r, g, b) { INV_COLOR_BYTE * (float)(r), INV_COLOR_BYTE * (float)(g), INV_COLOR_BYTE * (float)(b), 1.0f }
-
-static const UIThemeStyle LightThemeStyle = {
-	.face = {
-		.background = {
-			.normal = { 0.83f, 0.82f, 0.78f, 1.0f },
-			.hover = { 0.93f, 0.93f, 0.93f, 1.0f },
-			.down = { 0.83f, 0.82f, 0.78f, 1.0f },
-			.disabled = { 0.33f, 0.32f, 0.38f, 1.0f },
-		},
-		.foreground = {
-			.normal = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.hover = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.down = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.disabled = { 0.25f, 0.25f, 0.25f, 1.0f },
-		},
-	},
-	.listbox = {
-		.background = {
-			.normal = { 1.0f, 1.0f, 1.0f, 1.0f },
-			.hover = { 1.0f, 1.0f, 1.0f, 1.0f },
-			.down = { 1.0f, 1.0f, 1.0f, 1.0f },
-			.disabled = { 0.5f, 0.5f, 0.5f, 1.0f },
-		},
-		.foreground = {
-			.normal = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.hover = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.down = { 0.0f, 0.0f, 0.0f, 1.0f },
-			.disabled = { 0.25f, 0.25f, 0.25f, 1.0f },
-		},
-		.highlight = {
-			.background = { 0.25f, 0.25f, 0.75f, 1.0f },
-			.foreground = { 1.0f, 1.0f, 1.0f, 1.0f },
-		},
-	},
-	.checkbox = {
-		.changing = { 0.75f, 0.75f, 0.75f, 1.0f },
-		.checked = { 0.0f, 0.0f, 0.0f, 1.0f },
-		.notChecked = { 0.73f, 0.72f, 0.68f, 1.0f },
-	},
-	.buttonBorder = {
-		.bright = { 1.0f, 1.0f, 1.0f, 1.0f },
-		.dark = { 0.5f, 0.5f, 0.5f, 1.0f },
-		.darkest = { 0.25f, 0.25f, 0.25f, 1.0f },
-	}
-};
-
-static const UIThemeStyle DarkThemeStyle = {
-	.face = {
-		.background = {
-			.normal = RGB4F(31, 31, 31),
-			.hover = RGB4F(51, 51, 51),
-			.down = RGB4F(31, 31, 31),
-			.disabled = RGB4F(31, 31, 31),
-		},
-		.foreground = {
-			.normal = RGB4F(220, 220, 204),
-			.hover = RGB4F(220, 220, 204),
-			.down = RGB4F(220, 220, 204),
-			.disabled = RGB4F(120, 120, 104),
-		},
-	},
-	.listbox = {
-		.background = {
-			.normal = RGB4F(37, 37, 38),
-			.hover = RGB4F(37, 37, 38),
-			.down = RGB4F(37, 37, 38),
-			.disabled = RGB4F(37, 37, 38),
-		},
-		.foreground = {
-			.normal = RGB4F(220, 220, 204),
-			.hover = RGB4F(220, 220, 204),
-			.down = RGB4F(220, 220, 204),
-			.disabled = RGB4F(120, 120, 104),
-		},
-		.highlight = {
-			.background = { 0.25f, 0.25f, 0.75f, 1.0f },
-			.foreground = { 1.0f, 1.0f, 1.0f, 1.0f },
-		},
-	},
-	.checkbox = {
-		.changing = { 0.25f, 0.25f, 0.25f, 1.0f },
-		.checked = { 1.0f, 1.0f, 1.0f, 1.0f },
-		.notChecked = RGB4F(51, 51, 51),
-	},
-	.buttonBorder = {
-		.bright = { 0.75f, 0.75f, 0.75f, 0.75f },
-		.dark = { 0.4f, 0.4f, 0.4f, 1.0f },
-		.darkest = { 0.05f, 0.05f, 0.05f, 1.0f },
-	}
-};
-
-//
-// Helper
-//
-
-static UIRectangle MakeRectangle(const float x, const float y, const float w, const float h) {
-	UIRectangle result = fplZeroInit;
-	result.x = x;
-	result.y = y;
-	result.w = w;
-	result.h = h;
-	return result;
-}
-
-static bool IsPointInsideRectangle(const UIRectangle *rect, const float x, const float y) {
-	bool result =
-		(x >= rect->x && x <= (rect->x + rect->w)) &&
-		(y >= rect->y && y <= (rect->y + rect->h));
-	return result;
-}
-
-extern UIIdentifier UIPtrToID(const void *ptr) {
-	return (UIIdentifier)ptr;
-}
-
-//
-// Interaction
-//
-
-static bool UpdateDragging(const Vec2f mousePos, UIDraggingState *dragging, Vec2f *offset) {
-	if (dragging->isActive) {
-		*offset = V2fSub(mousePos, dragging->startPos);
-		dragging->startPos = mousePos;
-		return true;
-	}
-	return false;
-}
-
-static bool BeginDragging(const Vec2f mousePos, UIDraggingState *dragging) {
-	if (!dragging->isActive) {
-		dragging->startPos = mousePos;
-		dragging->isActive = true;
-		return true;
-	}
-	return false;
-}
-
-static bool StopDragging(UIDraggingState *dragging) {
-	if (dragging->isActive) {
-		dragging->isActive = false;
-		return true;
-	}
-	return false;
-}
-
-static bool UI__MouseInteraction(UIContext *ctx, UIMouseInteraction *interaction, const UIRectangle *rect, const bool isEnabled) {
-	bool wasPressed = false;
-
-	bool isPressing = UIIsDown(&ctx->input.leftMouse);
-
-	bool isMouseInside = IsPointInsideRectangle(rect, ctx->input.mousePos.x, ctx->input.mousePos.y);
-
-	if (isEnabled) {
-		if (isMouseInside) {
-			interaction->isHover = true;
-
-			if (!interaction->isInteractable) {
-				interaction->isInteractable = true;
-				interaction->isPressed = false;
-			} else {
-				if (!interaction->isPressed) {
-					if (isPressing) {
-						interaction->isPressed = true;
-					}
-				} else {
-					if (!isPressing) {
-						interaction->isPressed = false;
-						wasPressed = true;
-					}
-				}
-			}
-		} else {
-			if (interaction->isPressed) {
-				if (!isPressing) {
-					interaction->isPressed = false;
-					interaction->isInteractable = false;
-					interaction->isHover = false;
-				}
-			} else if (interaction->isInteractable) {
-				interaction->isInteractable = false;
-				interaction->isPressed = false;
-			}
-		}
-	}
-
-	return wasPressed;
-}
-
-//
-// Window
-//
-
-static void UI__ResetWindowNodeList(UIWindowNodeList *list) {
-	size_t capacity = fplArrayCount(list->buffer);
-	fplAssert(capacity > 1);
-	fplClearStruct(list);
-	for (size_t i = 0; i < capacity - 1; ++i) {
-		UIWindowNode *node = &list->buffer[i];
-		UIWindowNode *nextNode = &list->buffer[i + 1];
-		node->next = (struct UIWindowNode *)nextNode;
-	}
-	list->firstFree = &list->buffer[0];
-	list->head = list->tail = fpl_null;
-	list->used = 0;
-}
-
-static void UI__InitializeWindowNodeList(UIWindowNodeList *list) {
-	UI__ResetWindowNodeList(list);
-}
-
-static UIWindowNode *UI__AddWindowNodeToFront(UIWindowNodeList *list) {
-	UIWindowNode *node = list->firstFree;
-	if (node == fpl_null) {
-		return fpl_null;
-	}
-	fplAssert(list->used < fplArrayCount(list->buffer));
-	list->firstFree = node->next;
-
-	fplClearStruct(node);
-	node->next = list->head;
-
-	if (list->head != fpl_null) {
-		list->head->prev = node;
-	} else {
-		list->tail = node;
-	}
-
-	list->head = node;
-
-	++list->used;
-
-	return node;
-}
-
-static UIWindowNode *UI__AddWindowNodeToBack(UIWindowNodeList *list) {
-	UIWindowNode *node = list->firstFree;
-	if (node == fpl_null) {
-		return fpl_null;
-	}
-	fplAssert(list->used < fplArrayCount(list->buffer));
-	list->firstFree = node->next;
-
-	fplClearStruct(node);
-
-	if (list->head == fpl_null) {
-		list->head = list->tail = node;
-	} else {
-		list->tail->next = node;
-		node->prev = list->tail;
-		list->tail = node;
-	}
-
-	++list->used;
-
-	return node;
-}
-
-static void UI__RemoveWindowNode(UIWindowNodeList *list, UIWindowNode *node) {
-	fplAssert(list != fpl_null && node != fpl_null);
-	fplAssert(list->used > 0);
-	if (list->head == node) {
-		list->head = node->next;
-	}
-	if (list->tail == node) {
-		list->tail = node->prev;
-	}
-	if (node->prev != fpl_null) {
-		node->prev->next = node->next;
-	}
-	if (node->next != fpl_null) {
-		node->next->prev = node->prev;
-	}
-
-	fplClearStruct(node);
-	node->next = list->firstFree;
-	list->firstFree = node;
-
-	--list->used;
-}
-
-static UIWindowNode *UI__FindWindowNode(UIContext *ctx, const UIIdentifier id) {
-	UIWindowNode *node = ctx->windowList.head;
-	while (node != fpl_null) {
-		UIWindowNode *next = node->next;
-		if (node->data.base.id == id) {
-			return node;
-		}
-		node = next;
-	}	
-	return fpl_null;
-}
-
-static bool UI__ContainsWindow(UIContext *ctx, const UIIdentifier id) {
-	UIWindowNode *node = UI__FindWindowNode(ctx, id);
-	return node != fpl_null;
-}
-
-#define UI__WINDOW_ID_CONCAT(a, id, b) a # id # b
-
-static UIWindowNode *UI__PushWindow(UIContext *ctx, const UIIdentifier id, const float w, const float h) {
-	bool alreadyExists = UI__ContainsWindow(ctx, id);
-	if (alreadyExists) {
-		fplAssert(!UI__WINDOW_ID_CONCAT("Window by id ", id, " already exists!"));
-		return fpl_null;
-	}
-
-	UIWindowNode *windowNode = UI__AddWindowNodeToFront(&ctx->windowList);
-	fplAssert(windowNode != fpl_null);
-
-	UIWindowNode *parentNode = windowNode->next;
-	fplAssert(parentNode != fpl_null);
-	
-	UIWindowData parentWindow = parentNode->data;
-
-	windowNode->data.base.id = id;
-	windowNode->data.base.parentId = parentWindow.base.id;
-	windowNode->data.pos.x = parentWindow.pos.x + (parentWindow.size.w - w) * 0.5f;
-	windowNode->data.pos.y = parentWindow.pos.y + (parentWindow.size.h - h) * 0.5f;
-	windowNode->data.size.w = w;
-	windowNode->data.size.h = h;
-
-	return windowNode;
-}
-
-//
-// Common
-//
-
-extern void UIInitContext(UIContext *ctx, const UITheme initialTheme) {
-	if (ctx == fpl_null) {
-		return;
-	}
-	fplClearStruct(ctx);
-	if (initialTheme == UITheme_Dark)
-		ctx->style = &DarkThemeStyle;
-	else
-		ctx->style = &LightThemeStyle;
-	ctx->theme = initialTheme;
-
-	if (initialTheme == UITheme_Dark)
-		ctx->style = &DarkThemeStyle;
-	else
-		ctx->style = &LightThemeStyle;
-
-	ctx->theme = initialTheme;
-
-	UI__InitializeWindowNodeList(&ctx->windowList);
-
-	ctx->rootWindow.base.id = UIPtrToID(&ctx->rootWindow);
-	ctx->rootWindow.base.name = "ROOT";
-
-	ctx->activeWindowId = ctx->rootWindow.base.id;
-}
-
-extern void UISetTheme(UIContext *ctx, const UITheme theme) {
-	if (ctx == fpl_null) {
-		return;
-	}
-	if (theme == UITheme_Dark)
-		ctx->style = &DarkThemeStyle;
-	else
-		ctx->style = &LightThemeStyle;
-	ctx->theme = theme;
-}
-
-extern void UIContextSetInput(UIContext *ctx, const UIInputState *newState) {
-	if (ctx == fpl_null || newState == fpl_null) {
-		return;
-	}
-	ctx->input = *newState;
-}
-
-extern void UISetFont(UIContext *ctx, const LoadedFont *font, const TextureID texture, const float fontHeight, const float lineHeight) {
-	if (ctx == fpl_null) {
-		return;
-	}
-
-	UIFont ufont = fplZeroInit;
-	ufont.currentFont = font;
-	ufont.currentFontTextureID = texture;
-	ufont.fontHeight = fontHeight;
-	ufont.lineHeight = lineHeight;
-
-	ctx->font = ufont;
-}
-
-extern void UIResetFont(UIContext *ctx, const UIFont *font) {
-	if (ctx == fpl_null || font == fpl_null) {
-		return;
-	}
-	ctx->font = *font;
-}
-
-static UIFont UIEmptyFont = fplZeroInit;
-
-extern UIFont UIGetFont(const UIContext *ctx) {
-	if (ctx == fpl_null) {
-		return UIEmptyFont;
-	}
-	return ctx->font;
-}
-
-extern float UIGetFontHeight(const UIContext *ctx) {
-	if (ctx == fpl_null)
-		return 0;
-	return ctx->font.fontHeight;
-}
-
-extern float UIGetLineHeight(const UIContext *ctx) {
-	if (ctx == fpl_null)
-		return 0;
-	return ctx->font.lineHeight;
-}
-
-extern Color4f UIGetForegroundColor(const UIContext *ctx) {
-	fplAssert(ctx->style != fpl_null);
-	return ctx->style->face.foreground.normal;
-}
-
-static bool UI__InitializeControl(UIContext *ctx, UIBase *base, const void *ptr, const char *name) {
-	if (base->id == 0) {
-		base->id = UIPtrToID(ptr);
-		base->name = name;
-	}
-
-	UIWindowNode *parent = ctx->windowList.head;
-	fplAssert(parent != fpl_null);
-
-	base->parentId = parent->data.base.id;
-
-	bool result = base->parentId == ctx->activeWindowId;
-	return result;
-}
-
-extern void UIBegin(UIContext *ctx) {
-	fplAssert(!ctx->isActive);
-
-	ctx->rootWindow.pos = V2fInit(0, 0);
-	ctx->rootWindow.size = V2fInit((float)ctx->input.viewport.w, (float)ctx->input.viewport.h);
-
-	UI__ResetWindowNodeList(&ctx->windowList);
-
-	UIWindowNode *node = UI__AddWindowNodeToFront(&ctx->windowList);
-	fplAssert(node != fpl_null);
-	node->data = ctx->rootWindow;
-
-	ctx->isActive = true;
-
-}
-
-extern void UIEnd(UIContext *ctx) {
-	fplAssert(ctx->isActive);
-
-	fplAssert(ctx->windowList.used == 1);
-	fplAssert(ctx->windowList.head->data.base.id == ctx->rootWindow.base.id);
-	UI__RemoveWindowNode(&ctx->windowList, ctx->windowList.head);
-
-	ctx->isActive = false;
-}
-
-//
-// Panel
-//
-
-extern void UIPanel(const UIContext *ctx, const float x, const float y, const float w, const float h, const bool isDown) {
-	fplAssert(ctx->style != fpl_null);
-	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
-	const UIControlStyle *controlStyle = &ctx->style->face;
-
-	const float borderThickness = 1.5f;
-
-	RendererDrawFilledQuad(x, y, w, h, controlStyle->background.normal);
-	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, isDown);
-}
-
-//
-// String
-//
-
-extern void UIString(const UIContext *ctx, const float x, const float y, const Color4f color, const char *text, const size_t textLen) {
-	const TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const UIFont *font = &ctx->font;
-
-	const LoadedFont *loadedFont = font->currentFont;
-	fplAssert(loadedFont != fpl_null);
-
-	const float fontHeight = UIGetFontHeight(ctx);
-
-	const size_t actualLen = textLen > 0 ? textLen : fplGetStringLength(text);
-
-	RendererDrawString(loadedFont, fontTextureId, text, actualLen, x, y, fontHeight, color);
-
-#if DEBUG_RENDER_FONT_LINES
-	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
-	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
-	const float descent = loadedFont->info.descent * fontHeight;
-	const float ascent = loadedFont->info.ascent * fontHeight;
-	const Vec2f s = FontGetTextSize(loadedFont, text, actualLen, fontHeight);
-	RendererDrawLine(x, y - descent, x + s.w, y - descent, 1.0f, lineColorDescent);
-	RendererDrawLine(x, y + ascent, x + s.w, y + ascent, 1.0f, lineColorAscent);
-#endif
-}
-
-extern Vec2f UIGetStringSize(const UIContext *ctx, const char *text, const size_t textLen) {
-	const TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const UIFont *font = &ctx->font;
-
-	const LoadedFont *loadedFont = font->currentFont;
-	fplAssert(loadedFont != fpl_null);
-
-	const float fontHeight = UIGetFontHeight(ctx);
-
-	const size_t actualLen = textLen > 0 ? textLen : fplGetStringLength(text);
-
-	const Vec2f s = FontGetTextSize(loadedFont, text, actualLen, fontHeight);
-
-	return fplStructInit(Vec2f, s.x, s.y);
-}
-
-//
-// Listbox
-//
-
-extern void UIListboxScrollTo(UIListboxData *listbox, const size_t index) {
-	listbox->scrollRequest.hasRequest = true;
-	listbox->scrollRequest.index = index;
-}
-
-extern void UIListboxHighlight(UIListboxData *listbox, const size_t lineNum) {
-	listbox->highlightLineNum = lineNum;
-}
-
-extern void UIListbox(UIContext *ctx, UIListboxData *listbox, const float x, const float y, const float w, const float h, const char *name) {
-	bool allowInput = UI__InitializeControl(ctx, &listbox->base, listbox, name);
-
-	fplAssert(ctx->style != fpl_null);
-	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
-	const UIControlStyle *controlStyle = &ctx->style->face;
-	const UIListboxStyle *listboxStyle = &ctx->style->listbox;
-
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
-
-	const float lineHeight = UIGetLineHeight(ctx);
-	const float fontHeight = UIGetFontHeight(ctx);
-	const float descent = font->info.descent * fontHeight;
-	const float ascent = font->info.ascent * fontHeight;
-
-	const float borderThickness = 1.5f;
-
-	size_t maxVisibleLineCount = (size_t)(h / lineHeight);
-	size_t visibleLineCount = fplMin(listbox->values.count, maxVisibleLineCount);
-
-	UIRectangle listboxRect = MakeRectangle(x, y, w, h);
-
-	RendererDrawFilledQuad(x, y, w, h, listboxStyle->background.normal);
-	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
-
-	RendererEnableClipping();
-	RendererSetViewClipRect(&ctx->input.projectionMat, &ctx->input.viewMat, &ctx->input.viewport, x, y, w, h);
-
-	float availableWidth = w;
-
-	float verticalScrollHeight = 0;
-	float verticalScrollWidth = 40.0f;
-	float smallestVerticalScrollbarHeight = h * 0.05f;
-	float verticalScrollBarHeight = 0;
-
-	size_t lineOffset = 0;
-
-	// verticalScrollOffset stores first-visible-line index as float [0, missingLineCount].
-	// Resize-stable: line index is independent of pixel height.
-	float pixelScrollOffset = 0;
-
-	bool scrollbarIsVisible = false;
-
-	if (listbox->values.count > maxVisibleLineCount) {
-		float overflowFactor = maxVisibleLineCount / (float)listbox->values.count;
-
-		availableWidth = w - verticalScrollWidth;
-
-		verticalScrollBarHeight = fplMax(h * overflowFactor, smallestVerticalScrollbarHeight);
-
-		verticalScrollHeight = h - verticalScrollBarHeight;
-
-		size_t missingLineCount = listbox->values.count - maxVisibleLineCount;
-		size_t halfVisibleLineCount = maxVisibleLineCount / 2;
-
-		listbox->lastVerticalScrollOffset = listbox->verticalScrollOffset;
-
-		if (listbox->scrollRequest.hasRequest) {
-			size_t targetIndex = listbox->scrollRequest.index;
-			size_t currentFirst = (size_t)listbox->verticalScrollOffset;
-			size_t currentLast = currentFirst + maxVisibleLineCount - 1;
-			// Only scroll if target is outside the current visible range
-			if (targetIndex < currentFirst || targetIndex > currentLast) {
-				// Center the target; clamp to valid range
-				size_t targetFirst = (targetIndex > halfVisibleLineCount)
-					? (targetIndex - halfVisibleLineCount) : 0;
-				if (targetFirst > missingLineCount)
-					targetFirst = missingLineCount;
-				listbox->verticalScrollOffset = (float)targetFirst;
-			}
-			listbox->scrollRequest.hasRequest = false;
-			listbox->scrollRequest.index = 0;
-		}
-
-		// Clamp first-visible-line to [0, missingLineCount]
-		listbox->verticalScrollOffset = fplMax(0.0f, fplMin(listbox->verticalScrollOffset, (float)missingLineCount));
-
-		lineOffset = (size_t)listbox->verticalScrollOffset;
-
-		// Derive pixel offset for thumb from line position
-		pixelScrollOffset = (missingLineCount > 0)
-			? ((float)lineOffset / (float)missingLineCount) * verticalScrollHeight
-			: 0.0f;
-
-		scrollbarIsVisible = true;
-	} else {
-		listbox->lastVerticalScrollOffset = listbox->verticalScrollOffset = 0.0f;
-	}
-
-	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
-	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
-
-	for (size_t visibleLineIndex = 0; visibleLineIndex < visibleLineCount; ++visibleLineIndex) {
-		String *entry = listbox->values.entries + visibleLineIndex + lineOffset;
-		size_t len = entry->len;
-		const char *text = entry->text;
-
-		Vec2f textSize = FontGetTextSize(font, text, len, fontHeight);
-
-		bool isHighlight = (listbox->highlightLineNum > 0) && (visibleLineIndex + lineOffset) == (listbox->highlightLineNum - 1);
-
-		float lineWidth = availableWidth;
-		float lineX = x;
-		float lineY = y + h - lineHeight - visibleLineIndex * lineHeight;
-		float blockY = lineY - descent;
-		float textY = lineY;
-
-		if (isHighlight) {
-			RendererDrawFilledQuad(lineX, blockY, lineWidth, lineHeight, listboxStyle->highlight.background);
-			RendererDrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->highlight.foreground);
-		} else {
-			RendererDrawString(font, fontTextureId, text, len, x, textY, fontHeight, listboxStyle->foreground.normal);
-		}
-
-#if DEBUG_RENDER_FONT_LINES
-		RendererDrawLine(x, textY + ascent, x + textSize.w, textY + ascent, 1.0f, lineColorAscent);
-		RendererDrawLine(x, textY - descent, x + textSize.w, textY - descent, 1.0f, lineColorDescent);
-#endif
-	}
-
-	Color4f scrollbarBackground = fplStructInit(Color4f, 0.25f, 0.25f, 0.25f, 1.0f);
-
-	if (scrollbarIsVisible) {
-		float vertScrollHeight = h;
-		float vertScrollCenterX = x + w - verticalScrollWidth * 0.5f;
-		float vertScrollCenterY = y + h * 0.5f;
-		float vertScrollbarWidth = verticalScrollWidth * 1.0f;
-
-		UIRectangle background = MakeRectangle(
-			vertScrollCenterX - verticalScrollWidth * 0.5f,
-			vertScrollCenterY - vertScrollHeight * 0.5f,
-			verticalScrollWidth, vertScrollHeight);
-		RendererDrawFilledQuad(background.x, background.y, background.w, background.h, scrollbarBackground);
-
-		//float tempBarWidth = verticalScrollWidth * 0.5f;
-		//DrawFilledQuad(vertScrollCenterX - tempBarWidth * 0.5f, vertScrollCenterY - verticalScrollHeight * 0.5f, tempBarWidth, verticalScrollHeight, 0.25f, 0.5f, 0.25f);
-
-		UIRectangle scrollbar = MakeRectangle(
-			vertScrollCenterX - vertScrollbarWidth * 0.5f,
-			vertScrollCenterY - verticalScrollBarHeight * 0.5f + verticalScrollHeight * 0.5f - pixelScrollOffset,
-			vertScrollbarWidth, verticalScrollBarHeight);
-
-		bool isMouseInsideScrollbar = IsPointInsideRectangle(&scrollbar, ctx->input.mousePos.x, ctx->input.mousePos.y);
-
-		if (allowInput) {
-			if (listbox->dragging.isActive) {
-				if (!UIIsDown(&ctx->input.leftMouse)) {
-					StopDragging(&listbox->dragging);
-				} else {
-					Vec2f dragOffset;
-					if (UpdateDragging(ctx->input.mousePos, &listbox->dragging, &dragOffset)) {
-						size_t missingLineCount = listbox->values.count - maxVisibleLineCount;
-						listbox->verticalScrollOffset -= dragOffset.y * (float)missingLineCount / verticalScrollHeight;
-					}
-				}
-			}
-
-			if (isMouseInsideScrollbar) {
-				if (UIIsDown(&ctx->input.leftMouse)) {
-					BeginDragging(ctx->input.mousePos, &listbox->dragging);
-				}
-			}
-
-			bool isMouseInsideListbox = IsPointInsideRectangle(&listboxRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
-
-			if (isMouseInsideListbox && !listbox->dragging.isActive && ctx->input.mouseWheelDelta != 0.0f) {
-				listbox->verticalScrollOffset -= 3.0f * ctx->input.mouseWheelDelta;
-			}
-		}
-
-		// Scrollbar button
-		const float scrollbarBorder = 2.0f;
-		if (isMouseInsideScrollbar) {
-			RendererDrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.hover);
-		} else {
-			RendererDrawFilledQuad(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, controlStyle->background.normal);
-		}
-		RendererDrawControlBorder(scrollbar.x, scrollbar.y, scrollbar.w, scrollbar.h, scrollbarBorder, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, listbox->dragging.isActive);
-	} else {
-		if (allowInput) {
-			StopDragging(&listbox->dragging);
-		}
-	}
-
-	RendererDisableClipping();
-}
-
-//
-// Button
-//
-
-extern bool UIButton(UIContext *ctx, UIButtonData *button, const float x, const float y, const float w, const float h, const char *label, const size_t labelLen, const bool isEnabled) {
-	bool allowInput = UI__InitializeControl(ctx, &button->base, button, label);
-
-	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
-	const UIControlStyle *controlStyle = &ctx->style->face;
-
-	const float fontHeight = UIGetFontHeight(ctx);
-
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
-
-	const float descent = font->info.descent * fontHeight;
-	const float ascent = font->info.ascent * fontHeight;
-
-	const float borderThickness = 1.5f;
-
-	const TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const UIRectangle rect = MakeRectangle(x, y, w, h);
-
-	bool wasPressed = allowInput && UI__MouseInteraction(ctx, &button->mouseInteraction, &rect, isEnabled);
-
-	bool isDisabled = !isEnabled;
-	bool isDown = button->mouseInteraction.isPressed;
-	bool isHover = button->mouseInteraction.isHover;
-
-	Color4f backgroundColor;
-	Color4f foregroundColor;
-	if (isDisabled) {
-		backgroundColor = controlStyle->background.disabled;
-		foregroundColor = controlStyle->foreground.disabled;
-	} else {
-		if (isHover) {
-			if (isDown) {
-				backgroundColor = controlStyle->background.down;
-				foregroundColor = controlStyle->foreground.down;
-			} else {
-				backgroundColor = controlStyle->background.hover;
-				foregroundColor = controlStyle->foreground.hover;
-			}
-		} else {
-			backgroundColor = controlStyle->background.normal;
-			foregroundColor = controlStyle->foreground.normal;
-		}
-	}
-
-	RendererDrawFilledQuad(x, y, w, h, backgroundColor);
-	RendererDrawControlBorder(x, y, w, h, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, !isDisabled && isDown);
-
-	const Vec2f size = FontGetTextSize(font, label, labelLen, fontHeight);
-
-	const float labelX = x + (w - size.w) * 0.5f;
-	const float labelY = y + (h - size.h) * 0.5f;
-
-	RendererDrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
-
-#if DEBUG_RENDER_FONT_LINES
-	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
-	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
-	RendererDrawLine(labelX, labelY + ascent, labelX + size.w, labelY + ascent, 1.0f, lineColorAscent);
-	RendererDrawLine(labelX, labelY - descent, labelX + size.w, labelY - descent, 1.0f, lineColorDescent);
-#endif
-
-	return wasPressed;
-}
-
-//
-// TabControl
-//
-
-extern UITab UICreateTab(const UIIdentifier id, const char *label) {
-	return (UITab) { .base.id = id, .label = label };
-}
-
-extern UITabContent UITabControl(UIContext *ctx, UITabControlData *tabControl, const float x, const float y, const float w, const float h, const char *name, const UITab **tabs, const uint8_t tabCount) {
-	if (ctx == fpl_null || tabs == fpl_null || tabCount == 0) {
-		return fplStructInit(UITabContent, 0);
-	}
-
-	bool allowInput = UI__InitializeControl(ctx, &tabControl->base, tabControl, name);
-
-	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
-	const UIControlStyle *controlStyle = &ctx->style->face;
-
-	if (tabControl->activeTab == fpl_null) {
-		tabControl->activeTab = tabs[0];
-	}
-
-	const float contentPadding = 20.0f;
-
-	const float margin = 0.0f;
-
-	const float borderThickness = 1.5f;
-
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const float lineHeight = UIGetLineHeight(ctx);
-	const float fontHeight = UIGetFontHeight(ctx);
-
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
-
-	const float descent = font->info.descent * fontHeight;
-	const float ascent = font->info.ascent * fontHeight;
-
-	const float controlWidth = w - margin * 2.0f;
-	const float controlHeight = h - margin * 2.0f;
-	const float controlX = x + margin;
-	const float controlY = y + margin;
-
-	UIRectangle controlRect = MakeRectangle(controlX, controlY, controlWidth, controlHeight);
-
-	bool isMouseInside = IsPointInsideRectangle(&controlRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
-	if (allowInput) {
-		if (isMouseInside) {
-			if (!tabControl->isInteractable) {
-				tabControl->isInteractable = true;
-				tabControl->tabToSwitch = fpl_null;
-			} else {
-				if (tabControl->tabToSwitch != fpl_null) {
-					tabControl->activeTab = tabControl->tabToSwitch;
-					tabControl->tabToSwitch = fpl_null;
-				}
-			}
-		} else {
-			tabControl->isInteractable = false;
-			tabControl->tabToSwitch = fpl_null;
-		}
-	}
-
-	const float headerWidth = controlWidth;
-	const float headerHeight = lineHeight * 1.5f;
-	const float headerX = controlX;
-	const float headerY = controlY + controlHeight - headerHeight;
-
-	const float tabItemPadding = 10.0f;
-
-	const float controlHeightWithoutHeader = controlHeight - headerHeight;
-
-	RendererDrawFilledQuad(controlX, controlY, controlWidth, controlHeightWithoutHeader, controlStyle->background.normal);
-
-	RendererDrawControlBorders(controlX, controlY, controlWidth, controlHeightWithoutHeader, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
-
-	static UIRectangle tabAreas[8];
-	fplClearStruct(tabAreas);
-
-	// Compute tab area
-	float tabHeaderItemX = headerX;
-	float tabHeaderItemY = headerY;
-	UIRectangle activeTabArea = fplZeroInit;
-	for (uint8_t tabIndex = 0; tabIndex < tabCount; ++tabIndex) {
-		const UITab *tab = tabs[tabIndex];
-
-		UIRectangle *tabArea = tabAreas + tabIndex;
-
-		size_t labelLen = fplGetStringLength(tab->label);
-
-		Vec2f labelSize = FontGetTextSize(font, tab->label, labelLen, fontHeight);
-
-		float tabHeaderItemWidth = labelSize.w + tabItemPadding * 2.0f;
-		float tabHeaderItemHeight = headerHeight + 0.5f;
-
-		fplClearStruct(tabArea);
-		tabArea->x = tabHeaderItemX;
-		tabArea->y = tabHeaderItemY;
-		tabArea->w = tabHeaderItemWidth;
-		tabArea->h = tabHeaderItemHeight;
-
-		UIRectangle tabRect = MakeRectangle(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight);
-
-		bool allowHover = tab != tabControl->activeTab;
-
-		bool isTabHover = IsPointInsideRectangle(&tabRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
-
-		if (allowInput && tabControl->isInteractable && isTabHover && allowHover) {
-			if (UIIsDown(&ctx->input.leftMouse)) {
-				tabControl->tabToSwitch = tab;
-			}
-		}
-
-		if (isTabHover && allowHover) {
-			RendererDrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.hover);
-		} else {
-			RendererDrawFilledQuad(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, controlStyle->background.normal);
-		}
-
-		RendererDrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Top | ControlBorderFlags_Left | ControlBorderFlags_Right, false);
-
-		if (tabControl->activeTab == tab) {
-			activeTabArea = *tabArea;
-		} else {
-			RendererDrawControlBorders(tabHeaderItemX, tabHeaderItemY, tabHeaderItemWidth, tabHeaderItemHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
-		}
-
-		tabHeaderItemX += tabHeaderItemWidth;
-	}
-
-	const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
-	const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
-
-	for (uint8_t tabIndex = 0; tabIndex < tabCount; ++tabIndex) {
-		const UITab *tab = tabs[tabIndex];
-		UIRectangle *tabArea = tabAreas + tabIndex;
-
-		size_t labelLen = fplGetStringLength(tab->label);
-
-		Vec2f labelSize = FontGetTextSize(font, tab->label, labelLen, fontHeight);
-
-		float tabHeaderLabelX = tabArea->x + tabItemPadding;
-		float tabHeaderLabelY = tabArea->y + (tabArea->h - labelSize.h) * 0.5f;
-
-		UIRectangle tabRect = MakeRectangle(tabArea->x, tabArea->y, tabArea->w, tabArea->h);
-
-		bool allowHover = tab != tabControl->activeTab;
-
-		bool isTabHover = IsPointInsideRectangle(&tabRect, ctx->input.mousePos.x, ctx->input.mousePos.y);
-
-		Color4f foregroundColor;
-		if (isTabHover && allowHover) {
-			foregroundColor = controlStyle->foreground.hover;
-		} else {
-			foregroundColor = controlStyle->foreground.normal;
-		}
-
-		RendererDrawString(font, fontTextureId, tab->label, labelLen, tabHeaderLabelX, tabHeaderLabelY, fontHeight, foregroundColor);
-
-#if DEBUG_RENDER_FONT_LINES
-		RendererDrawLine(tabHeaderLabelX, tabHeaderLabelY + ascent, tabHeaderLabelX + labelSize.w, tabHeaderLabelY + ascent, 1.0f, lineColorAscent);
-		RendererDrawLine(tabHeaderLabelX, tabHeaderLabelY - descent, tabHeaderLabelX + labelSize.w, tabHeaderLabelY - descent, 1.0f, lineColorDescent);
-#endif
-	}
-
-	fplAssert(tabCount > 0);
-	UIRectangle lastArea = tabAreas[tabCount - 1];
-
-	const float hiddenBorderTabX = lastArea.x + lastArea.w;
-	const float hiddenBorderTabWidth = (headerX + headerWidth) - (lastArea.x + lastArea.w);
-	RendererDrawControlBorders(hiddenBorderTabX, tabHeaderItemY, hiddenBorderTabWidth, headerHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, ControlBorderFlags_Bottom, true);
-
-	const float contentHeight = controlHeight - headerHeight - contentPadding * 2.0f;
-	const float contentWidth = controlWidth - contentPadding * 2.0f;
-
-	UITabContent result = fplZeroInit;
-	result.area.x = controlX + contentPadding;
-	result.area.y = controlY + contentPadding;
-	result.area.w = contentWidth;
-	result.area.h = contentHeight;
-	result.activeTab = tabControl->activeTab;
-
-	return result;
-}
-
-//
-// Checkbox
-//
-
-extern bool UICheckbox(UIContext *ctx, UICheckboxData *checkbox, const float x, const float y, const char *label, const bool showLabel, const bool isChecked, const bool isEnabled) {
-	bool allowInput = UI__InitializeControl(ctx, &checkbox->base, checkbox, label);
-
-	const UIBorderStyle *buttonBorderStyle = &ctx->style->buttonBorder;
-	const UIControlStyle *controlStyle = &ctx->style->face;
-	const UICheckboxStyle *checkboxStyle = &ctx->style->checkbox;
-
-	const float lineHeight = UIGetLineHeight(ctx);
-	const float fontHeight = UIGetFontHeight(ctx);
-
-	TextureID fontTextureId = ctx->font.currentFontTextureID;
-	fplAssert(fontTextureId != 0);
-
-	const LoadedFont *font = ctx->font.currentFont;
-	fplAssert(font != fpl_null);
-
-	const float borderThickness = 1.5f;
-
-	const float boxHeight = ctx->font.lineHeight;
-	const float boxWidth = boxHeight;
-
-	const float checkScale = 0.6f;
-	const float checkWidth = boxWidth * checkScale;
-	const float checkHeight = boxHeight * checkScale;
-	const float checkX = x + (boxWidth - checkWidth) * 0.5f;
-	const float checkY = y + (boxHeight - checkHeight) * 0.5f;
-	
-	const float labelSpacing = 4.0f;
-	const float labelX = x + boxWidth + labelSpacing;
-
-	float totalWidth = boxWidth;
-
-	UIRectangle rect = MakeRectangle(x, y, boxWidth, boxHeight);
-
-	bool wasPressed = allowInput && UI__MouseInteraction(ctx, &checkbox->mouseInteraction, &rect, isEnabled);
-
-	bool isHover = checkbox->mouseInteraction.isHover;
-
-	Color4f foregroundColor;
-	if (isHover && isEnabled) {
-		foregroundColor = controlStyle->foreground.hover;
-	} else {
-		if (isEnabled) {
-			foregroundColor = controlStyle->foreground.normal;
-		} else {
-			foregroundColor = controlStyle->foreground.disabled;
-		}
-	}
-
-	if (isEnabled) {
-		if (isHover) {
-			RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.hover);
-		} else {
-			RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.normal);
-		}
-	} else {
-		RendererDrawFilledQuad(x, y, boxWidth, boxHeight, controlStyle->background.disabled);
-	}
-
-	RendererDrawControlBorder(x, y, boxWidth, boxHeight, borderThickness, &buttonBorderStyle->bright, &buttonBorderStyle->dark, &buttonBorderStyle->darkest, true);
-
-	if (isChecked) {
-		RendererDrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->checked);
-	} else {
-		RendererDrawFilledQuad(checkX, checkY, checkWidth, checkHeight, checkboxStyle->notChecked);
-	}
-
-	if (showLabel) {
-		size_t labelLen = fplGetStringLength(label);
-		if (labelLen > 0) {
-			Vec2f labelSize = FontGetTextSize(font, label, labelLen, fontHeight);
-			const float labelY = y + (boxHeight - labelSize.h) * 0.5f;
-
-			RendererDrawString(font, fontTextureId, label, labelLen, labelX, labelY, fontHeight, foregroundColor);
-
-#if DEBUG_RENDER_FONT_LINES
-			const float descent = font->info.descent * fontHeight;
-			const float ascent = font->info.ascent * fontHeight;
-			const Color4f lineColorDescent = fplStructInit(Color4f, 1.0f, 0.0f, 0.0f, 1.0f);
-			const Color4f lineColorAscent = fplStructInit(Color4f, 0.0f, 1.0f, 0.0f, 1.0f);
-			RendererDrawLine(labelX, labelY + ascent, labelX + labelSize.w, labelY + ascent, 1.0f, lineColorAscent);
-			RendererDrawLine(labelX, labelY - descent, labelX + labelSize.w, labelY - descent, 1.0f, lineColorDescent);
-#endif
-
-			totalWidth += labelSpacing + labelSize.w;
-		}
-	}
-
-	checkbox->currentWidth = totalWidth;
-
-	return wasPressed;
-}
-
-//
-// Dialog
-//
-
-extern void UIEndDialog(UIContext *ctx, UIDialogData *dialog) {
-	fplAssert(ctx != fpl_null && dialog != fpl_null);
-
-	UIWindowNode *node = UI__FindWindowNode(ctx, dialog->window.base.id);
-	fplAssert(node != fpl_null);
-	UI__RemoveWindowNode(&ctx->windowList, node);
-}
-
-extern bool UIBeginDialog(UIContext *ctx, UIDialogData *dialog, const float w, const float h, const char *name) {
-	fplAssert(ctx != fpl_null && dialog != fpl_null);
-
-	bool allowInput = UI__InitializeControl(ctx, &dialog->base, dialog, name);
-
-	if (!dialog->isShown) {
-		if (dialog->isActive) {
-			ctx->activeWindowId = dialog->base.parentId;
-			dialog->isActive = false;
-		}
+// Body text is drawn at the theme's font height and baked at twice it, which is the ratio the previous
+// renderer used and the one that reads cleanly through a linear filter
+static const float UIBodyFontBakeHeight = 40.0f;
+static const uint32_t UIBodyFontAtlasSize = 512;
+
+// Watermarks are drawn at four times the body height and baked just above it, so they scale DOWN slightly
+// rather than being stretched up out of the body atlas
+static const float UILargeFontBakeHeight = 96.0f;
+static const uint32_t UILargeFontAtlasSize = 1024;
+
+static bool UIFontAtlasCreate(UIFontAtlas *atlas, const void *trueTypeData, const float bakePixelHeight, const uint32_t atlasSize) {
+	fplMemoryClear(atlas, sizeof(*atlas));
+
+	fuiStbttBakeSettings settings = fuiStbttDefaultBakeSettings();
+	settings.pixelHeight = bakePixelHeight;
+	settings.atlasWidth = atlasSize;
+	settings.atlasHeight = atlasSize;
+
+	// An atlas too small for the whole range is a failure rather than a partial bake, so this cannot
+	// silently lose half the alphabet
+	if (!fuiStbttFontBake(&atlas->baked, trueTypeData, &settings)) {
 		return false;
 	}
 
-	const UIIdentifier id = dialog->base.id;
-
-	UIWindowNode *node = UI__PushWindow(ctx, id, w, h);
-	if (node == fpl_null) {
+	// One byte of coverage per texel, which is what an alpha texture modulated by the vertex color draws text with
+	atlas->atlasTexture = RendererTextureUpload(atlas->baked.atlasWidth, atlas->baked.atlasHeight, TextureFormat_Alpha, TextureFilter_Linear, atlas->baked.atlasPixels);
+	if (!atlas->atlasTexture.isValid) {
+		fuiStbttFontRelease(&atlas->baked);
 		return false;
 	}
 
-	UIWindowNode *parent = node->next;
-	fplAssert(parent != fpl_null);
-
-	UIWindowData parentWindow = parent->data;
-
-	dialog->window = node->data;
-
-	float x = dialog->window.pos.x;
-	float y = dialog->window.pos.y;
-
-	if (!dialog->isActive) {
-		ctx->activeWindowId = dialog->base.id;
-		dialog->isActive = true;
-	}
-
-	// Draw full gray over parent
-	Color4f backColor = { 0.0f, 0.0f, 0.0f, 0.5f };
-	RendererDrawFilledQuad(parentWindow.pos.x, parentWindow.pos.y, parentWindow.pos.w, parentWindow.pos.h, backColor);
-
-	// Draw panel
-	UIPanel(ctx, x, y, w, h, false);
+	atlas->font = fuiStbttFontToFuiFont(&atlas->baked, (fuiTextureId)atlas->atlasTexture.id);
 
 	return true;
+}
+
+static void UIFontAtlasRelease(UIFontAtlas *atlas) {
+	RendererTextureRelease(&atlas->atlasTexture);
+	fuiStbttFontRelease(&atlas->baked);
+}
+
+bool UIFontCreate(UIFont *font, const void *trueTypeData) {
+	if (font == fpl_null || trueTypeData == fpl_null) {
+		return false;
+	}
+
+	if (!UIFontAtlasCreate(&font->body, trueTypeData, UIBodyFontBakeHeight, UIBodyFontAtlasSize)) {
+		return false;
+	}
+
+	if (!UIFontAtlasCreate(&font->large, trueTypeData, UILargeFontBakeHeight, UILargeFontAtlasSize)) {
+		UIFontAtlasRelease(&font->body);
+		return false;
+	}
+
+	return true;
+}
+
+void UIFontRelease(UIFont *font) {
+	if (font == fpl_null) {
+		return;
+	}
+	UIFontAtlasRelease(&font->large);
+	UIFontAtlasRelease(&font->body);
+}
+
+//
+// Theme
+//
+
+// Turns the 0..255 components the old theme was written in into the 0..1 the library takes
+static fuiColor UIColorFromBytes(const uint8_t r, const uint8_t g, const uint8_t b, const float a) {
+	const float inverse255 = 1.0f / 255.0f;
+	fuiColor result = fuiColorRGBA((float)r * inverse255, (float)g * inverse255, (float)b * inverse255, a);
+	return result;
+}
+
+void UIApplyDarkTheme(fuiContext *ui, const float fontHeight, const float lineHeight) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	if (theme == fpl_null) {
+		return;
+	}
+
+	// The palette the hand rolled UI used, so the port does not change how the debugger looks
+	theme->panelBackgroundColor = UIColorFromBytes(31, 31, 31, 1.0f);
+	theme->panelBorderColor = UIColorFromBytes(102, 102, 102, 1.0f);
+	theme->textColor = UIColorFromBytes(220, 220, 204, 1.0f);
+	theme->textMutedColor = UIColorFromBytes(120, 120, 104, 1.0f);
+	theme->accentColor = UIColorFromBytes(240, 240, 240, 1.0f);
+
+	theme->widgetColor = UIColorFromBytes(51, 51, 51, 1.0f);
+	theme->widgetHoveredColor = UIColorFromBytes(71, 71, 71, 1.0f);
+	theme->widgetActiveColor = UIColorFromBytes(90, 90, 90, 1.0f);
+	theme->widgetTrackColor = UIColorFromBytes(37, 37, 38, 1.0f);
+	theme->textSelectionColor = fuiColorRGBA(0.25f, 0.25f, 0.75f, 0.75f);
+	// A slider draws its caption straight over the knob, so the knob has to stay dark enough for light text
+	// to read across it. The near-white knob of the stock theme swallows whichever glyph it happens to cover
+	theme->knobColor = UIColorFromBytes(110, 110, 110, 1.0f);
+	theme->menuHighlightColor = fuiColorRGBA(0.25f, 0.25f, 0.75f, 1.0f);
+	theme->modalBackdropColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.55f);
+
+	theme->tooltipBackgroundColor = UIColorFromBytes(37, 37, 38, 0.97f);
+	theme->tooltipBorderColor = UIColorFromBytes(102, 102, 102, 1.0f);
+	theme->tooltipTextColor = UIColorFromBytes(220, 220, 204, 1.0f);
+
+	theme->fontHeight = fontHeight;
+	theme->menuItemHeight = lineHeight;
+	theme->menuItemFontHeight = fontHeight;
+}
+
+//
+// Platform services
+//
+
+static bool UIPlatformGetClipboardText(void *userData, char *destination, uint32_t maxDestinationLength) {
+	(void)userData;
+	bool result = fplGetClipboardText(destination, maxDestinationLength);
+	return result;
+}
+
+static bool UIPlatformSetClipboardText(void *userData, const char *text) {
+	(void)userData;
+	bool result = fplSetClipboardText(text);
+	return result;
+}
+
+void UIInstallPlatform(fuiContext *ui) {
+	fuiPlatform platform = fplZeroInit;
+	platform.getClipboardText = UIPlatformGetClipboardText;
+	platform.setClipboardText = UIPlatformSetClipboardText;
+	fuiSetPlatform(ui, &platform);
+}
+
+//
+// Input
+//
+
+void UIInputBeginFrame(fuiInput *input) {
+	if (input == fpl_null) {
+		return;
+	}
+
+	// A half transition is only true for the frame it happened in, while endedDown carries over
+	for (uint32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
+		input->mouseButtons[buttonIndex].halfTransitionCount = 0;
+	}
+	for (uint32_t keyIndex = 0; keyIndex < FUI_KEY_COUNT; ++keyIndex) {
+		input->keys[keyIndex].halfTransitionCount = 0;
+	}
+
+	input->textInputLength = 0;
+	input->mouseWheelDelta = 0.0f;
+}
+
+void UIInputSetButton(fuiButtonState *button, const bool isDown) {
+	if (button == fpl_null) {
+		return;
+	}
+	if (button->endedDown != isDown) {
+		button->halfTransitionCount++;
+	}
+	button->endedDown = isDown;
+}
+
+fuiKey UIKeyFromPlatformKey(const fplKey key) {
+	// The digits, the letters and the function keys are contiguous in both enumerations, so each of the three ranges maps with one offset
+	if (key >= fplKey_0 && key <= fplKey_9) {
+		return (fuiKey)(FUI_KEY_0 + (key - fplKey_0));
+	}
+	if (key >= fplKey_A && key <= fplKey_Z) {
+		return (fuiKey)(FUI_KEY_A + (key - fplKey_A));
+	}
+	if (key >= fplKey_F1 && key <= fplKey_F12) {
+		return (fuiKey)(FUI_KEY_F1 + (key - fplKey_F1));
+	}
+
+	switch (key) {
+		case fplKey_Backspace:
+			return FUI_KEY_BACKSPACE;
+		case fplKey_Tab:
+			return FUI_KEY_TAB;
+		case fplKey_Return:
+			return FUI_KEY_RETURN;
+		case fplKey_Escape:
+			return FUI_KEY_ESCAPE;
+		case fplKey_Space:
+			return FUI_KEY_SPACE;
+		case fplKey_PageUp:
+			return FUI_KEY_PAGE_UP;
+		case fplKey_PageDown:
+			return FUI_KEY_PAGE_DOWN;
+		case fplKey_End:
+			return FUI_KEY_END;
+		case fplKey_Home:
+			return FUI_KEY_HOME;
+		case fplKey_Left:
+			return FUI_KEY_LEFT;
+		case fplKey_Up:
+			return FUI_KEY_UP;
+		case fplKey_Right:
+			return FUI_KEY_RIGHT;
+		case fplKey_Down:
+			return FUI_KEY_DOWN;
+		case fplKey_Insert:
+			return FUI_KEY_INSERT;
+		case fplKey_Delete:
+			return FUI_KEY_DELETE;
+		case fplKey_LeftControl:
+			return FUI_KEY_LEFT_CONTROL;
+		case fplKey_RightControl:
+			return FUI_KEY_RIGHT_CONTROL;
+		case fplKey_LeftShift:
+			return FUI_KEY_LEFT_SHIFT;
+		case fplKey_RightShift:
+			return FUI_KEY_RIGHT_SHIFT;
+		case fplKey_LeftAlt:
+			return FUI_KEY_LEFT_ALT;
+		case fplKey_RightAlt:
+			return FUI_KEY_RIGHT_ALT;
+		default:
+			return FUI_KEY_NONE;
+	}
+}
+
+void UIInputAddText(fuiInput *input, const uint32_t codePoint) {
+	if (input == fpl_null) {
+		return;
+	}
+	if (input->textInputLength >= (int32_t)FUI_MAX_TEXT_INPUT) {
+		return;
+	}
+	input->textInput[input->textInputLength] = codePoint;
+	input->textInputLength++;
+}
+
+//
+// Immediate drawing
+//
+
+// How much larger than the body text a panel watermark is drawn
+static const float UIWatermarkFontScale = 4.0f;
+
+// How much of the panel background colour is left in the watermark, so it reads as a backdrop and not as content
+static const float UIWatermarkLightness = 0.35f;
+
+fuiColor UIColorFrom4f(const Color4f color) {
+	fuiColor result = fuiColorRGBA(color.r, color.g, color.b, color.a);
+	return result;
+}
+
+void UIPanel(fuiContext *ui, const fuiRect rect, const bool isSunken) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	fuiColor fill = isSunken ? theme->widgetTrackColor : theme->panelBackgroundColor;
+	fuiDrawRect(ui, rect, fill);
+	fuiDrawRectOutline(ui, rect, theme->panelBorderColor, theme->panelBorderThickness);
+}
+
+void UIText(fuiContext *ui, const float x, const float y, const fuiColor color, const char *text, const size_t textLen) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	fuiDrawText(ui, text, textLen, fuiV2(x, y), theme->fontHeight, color);
+}
+
+fuiVec2 UITextSize(fuiContext *ui, const char *text, const size_t textLen) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	fuiVec2 result = fuiMeasureText(ui, text, textLen, theme->fontHeight);
+	return result;
+}
+
+void UIWatermark(fuiContext *ui, const UIFont *font, const fuiRect rect, const char *text) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	float watermarkHeight = theme->fontHeight * UIWatermarkFontScale;
+	fuiColor watermarkColor = fuiColorLerp(theme->panelBackgroundColor, theme->textMutedColor, UIWatermarkLightness);
+
+	// Measuring and drawing both read the context's font, so the swap has to wrap the pair of them
+	fuiSetFont(ui, &font->large.font);
+
+	fuiVec2 watermarkSize = fuiMeasureText(ui, text, 0, watermarkHeight);
+	float watermarkX = rect.x + (rect.w - watermarkSize.x) * 0.5f;
+	float watermarkY = rect.y + (rect.h - watermarkSize.y) * 0.5f;
+	fuiPushClip(ui, rect);
+	fuiDrawText(ui, text, 0, fuiV2(watermarkX, watermarkY), watermarkHeight, watermarkColor);
+	fuiPopClip(ui);
+
+	fuiSetFont(ui, &font->body.font);
+}
+
+//
+// Source list
+//
+
+// How many rows one notch of the mouse wheel travels
+static const float UISourceListWheelRows = 3.0f;
+
+static bool UIPointIsInsideRect(const fuiVec2 point, const fuiRect rect) {
+	bool result = (point.x >= rect.x) && (point.x < (rect.x + rect.w)) && (point.y >= rect.y) && (point.y < (rect.y + rect.h));
+	return result;
+}
+
+void UISourceList(fuiContext *ui, const fuiRect rect, const char *id, const StringList *lines, UISourceListState *state, const int32_t highlightIndex, const int32_t scrollToIndex) {
+	if (ui == fpl_null || id == fpl_null || state == fpl_null) {
+		return;
+	}
+
+	fuiTheme *theme = fuiGetTheme(ui);
+
+	const int32_t rowCount = (lines != fpl_null) ? (int32_t)lines->count : 0;
+	const float rowHeight = theme->menuItemHeight;
+	const float contentLength = (float)rowCount * rowHeight;
+
+	fuiDrawRect(ui, rect, theme->widgetTrackColor);
+	fuiDrawRectOutline(ui, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	// The gutter is always reserved so the rows do not shift the moment the list grows past its box
+	const float gutterWidth = fuiScrollGutterWidth();
+	const float rowWidth = rect.w - gutterWidth;
+
+	// Text stops one padding short of the gutter, so a long line never runs up against the scrollbar
+	const float textClipWidth = fuiMaxF(0.0f, rowWidth - theme->widgetPaddingX);
+
+	const float maximumScroll = fuiMaxF(0.0f, contentLength - rect.h);
+
+	float scroll = state->scroll;
+
+	fuiVec2 mousePosition = fuiGetMousePosition(ui);
+	if (UIPointIsInsideRect(mousePosition, rect)) {
+		float wheelDelta = fuiGetMouseWheelDelta(ui);
+		if (wheelDelta != 0.0f) {
+			scroll -= wheelDelta * rowHeight * UISourceListWheelRows;
+		}
+	}
+
+	// A scroll request wins over where the user left the list, but only on the frame it is made, so
+	// dragging the thumb is not fought over on every following frame
+	if (scrollToIndex >= 0 && scrollToIndex < rowCount) {
+		float centeredScroll = ((float)scrollToIndex * rowHeight) - (rect.h - rowHeight) * 0.5f;
+		scroll = fuiClampF(centeredScroll, 0.0f, maximumScroll);
+	}
+
+	fuiPushId(ui, id);
+
+	// Resolved before the rows, so they are laid out from the offset the scrollbar settled on
+	fuiRect scrollTrack = fuiRectMake(rect.x + rect.w - gutterWidth, rect.y, gutterWidth, rect.h);
+	scroll = fuiScrollbarVertical(ui, scrollTrack, "__sourceListScrollbar", scroll, rect.h, contentLength);
+	scroll = fuiClampF(scroll, 0.0f, maximumScroll);
+	state->scroll = scroll;
+
+	fuiPushClip(ui, rect);
+	for (int32_t rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+		float rowTop = rect.y - scroll + (float)rowIndex * rowHeight;
+		bool isAboveTheBox = (rowTop + rowHeight) < rect.y;
+		bool isBelowTheBox = rowTop > (rect.y + rect.h);
+		if (isAboveTheBox || isBelowTheBox) {
+			continue;
+		}
+
+		fuiRect rowRect = fuiRectMake(rect.x, rowTop, rowWidth, rowHeight);
+
+		bool rowIsHighlighted = (rowIndex == highlightIndex);
+		bool rowIsSelected = (rowIndex == state->selectedIndex);
+		if (rowIsHighlighted) {
+			fuiDrawRect(ui, rowRect, theme->menuHighlightColor);
+		} else if (rowIsSelected) {
+			fuiDrawRect(ui, rowRect, theme->widgetActiveColor);
+		}
+
+		const String *line = lines->entries + rowIndex;
+		if (line->text != fpl_null && line->len > 0) {
+			float textX = rowRect.x + theme->widgetPaddingX;
+			fuiVec2 textSize = fuiMeasureText(ui, line->text, line->len, theme->fontHeight);
+			float textY = rowRect.y + (rowRect.h - textSize.y) * 0.5f;
+			// A line longer than the row is cut short of the gutter rather than drawn across the scrollbar
+			fuiRect textClip = fuiRectMake(rowRect.x, rowRect.y, textClipWidth, rowRect.h);
+			fuiPushClip(ui, textClip);
+			fuiDrawText(ui, line->text, line->len, fuiV2(textX, textY), theme->fontHeight, theme->textColor);
+			fuiPopClip(ui);
+		}
+
+		fuiPushIdInt(ui, rowIndex);
+		bool rowIsHovered = false;
+		if (fuiCell(ui, rowRect, "__sourceListRow", &rowIsHovered)) {
+			state->selectedIndex = rowIndex;
+		}
+		fuiPopId(ui);
+	}
+	fuiPopClip(ui);
+
+	fuiPopId(ui);
+}
+
+//
+// Checkbox and radio with an enabled state
+//
+
+// Matches the gap final_ui.h puts between a widget's box and its label
+static const float UIWidgetLabelGap = 6.0f;
+
+// How much of the panel background is washed over a disabled widget
+static const float UIDisabledWashAlpha = 0.55f;
+
+float UICheckboxWidth(fuiContext *ui, const char *label) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	float boxSide = theme->fontHeight;
+	fuiVec2 textSize = fuiMeasureText(ui, label, 0, theme->fontHeight);
+	float result = theme->widgetPaddingX + boxSide + UIWidgetLabelGap + textSize.x + theme->widgetPaddingX;
+	return result;
+}
+
+float UICheckboxRowX(fuiContext *ui, const float contentX) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	float result = contentX - theme->widgetPaddingX;
+	return result;
+}
+
+static void UIDrawDisabledWash(fuiContext *ui, const fuiRect rect) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	fuiColor wash = fuiColorWithAlpha(theme->panelBackgroundColor, UIDisabledWashAlpha);
+	fuiDrawRect(ui, rect, wash);
+}
+
+bool UICheckboxEx(fuiContext *ui, const fuiRect rect, const char *label, bool *value, const bool enabled) {
+	if (enabled) {
+		bool result = fuiCheckbox(ui, rect, label, value);
+		return result;
+	}
+
+	// Built against a copy so a click cannot change anything, and washed over so it reads as disabled.
+	// The widget still swallows the press, which is what keeps a disabled control from acting as a hole.
+	bool scratchValue = *value;
+	fuiCheckbox(ui, rect, label, &scratchValue);
+	UIDrawDisabledWash(ui, rect);
+	return false;
+}
+
+bool UIRadioEx(fuiContext *ui, const fuiRect rect, const char *label, int32_t *selected, const int32_t option, const bool enabled) {
+	if (enabled) {
+		bool result = fuiRadio(ui, rect, label, selected, option);
+		return result;
+	}
+
+	int32_t scratchSelected = *selected;
+	fuiRadio(ui, rect, label, &scratchSelected, option);
+	UIDrawDisabledWash(ui, rect);
+	return false;
 }

@@ -32,7 +32,9 @@ set(MY_TRANSLATION_UNITS
 	"fpl_emulator.c"
 	)
 
-set(MY_DEFINES "")
+# The boot ROM dump is not ours to hand on, so this demo builds without it. fpl_emulator.c leaves the whole
+# block out when this is set, and bootrom.h is not shipped here at all
+set(MY_DEFINES "NO_BOOTROM")
 
 set(MY_RESOURCE_FOLDER "roms")
 
