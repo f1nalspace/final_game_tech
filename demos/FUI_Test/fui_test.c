@@ -778,14 +778,14 @@ static void BuildPreviewTab(fuiContext *ui, DemoState *demo, const fuiRect conte
 	static const char *const scaleModeNames[] = { "Origin", "Stretch", "Center", "Letterbox" };
 
 	fuiRect controlsRect = fuiRectMake(contentRect.x, contentRect.y, contentRect.w, DEMO_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "previewcontrols", FUI_AXIS_HORIZONTAL, controlsRect, 8.0f);
+	fuiBeginStackAt(ui, "previewcontrols", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
 	for(int32_t modeIndex = 0; modeIndex < (int32_t)fplArrayCount(scaleModeNames); ++modeIndex) {
 		(void)fuiRadio(ui, fuiLayoutSlot(ui, 110.0f), scaleModeNames[modeIndex], &demo->previewScaleMode, modeIndex);
 	}
 	fuiEndStack(ui);
 
 	fuiRect flagsRect = fuiRectMake(contentRect.x, contentRect.y + DEMO_ROW_HEIGHT + 4.0f, contentRect.w, DEMO_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "previewflags", FUI_AXIS_HORIZONTAL, flagsRect, 8.0f);
+	fuiBeginStackAt(ui, "previewflags", FUI_AXIS_HORIZONTAL, flagsRect, FUI_SPACING_FROM_THEME);
 	(void)fuiCheckbox(ui, fuiLayoutSlot(ui, 140.0f), "Mirror", &demo->previewIsMirrored);
 	(void)fuiCheckbox(ui, fuiLayoutSlot(ui, 190.0f), "Quarter turn", &demo->previewIsTurned);
 	fuiEndStack(ui);

@@ -181,7 +181,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.0
+	@version v0.9.1
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -195,6 +195,24 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.1:
+	- Changed: ONE frame width for every box the interface draws. fuiTheme.panelBorderThickness is the thin
+	  stroke the widgets already used, so a panel, a dialog, a menu popup and a group box are outlined alike.
+	- Fixed: A panel, a dialog and a group box were framed everywhere but along their title bar, whose fill was
+	  drawn over the outline. The frame now goes on AFTER the title bar and runs unbroken around the whole box.
+	- Fixed: A menu popup lost its right hand stroke. Its box is measured from text and landed on fractions of
+	  a pixel, and a backend that truncates its scissor - glScissor takes integers - cut the one edge every
+	  such rounding cuts. Menu bar titles and popups are snapped onto the pixel grid, so the frame survives
+	  whatever the backend rounds to. The frame is also counted into what a row asks for in width.
+	- Fixed: A menu row's hover wash painted over the popup's own frame, which is now drawn after the rows.
+	- Fixed: A scroll panel's content ran flush into its scrollbar. The gutter keeps a fuiTheme.panelPaddingX
+	  gap to its left, the same measure the panel keeps to its left and right edges.
+	- Changed: A flow container's spacing is a TRAILING margin - under a slot in a vertical flow, right of one
+	  in a horizontal flow - rather than a gap inserted in front of every slot but the first.
+	- Changed: fuiTheme.widgetSpacing defaults to the panel's side padding, so the gaps between widgets and the
+	  gaps around them are one measure.
+	- New: FUI_SPACING_FROM_THEME, passed as a stack's spacing to take fuiTheme.widgetSpacing.
 
 	# v0.9.0:
 	- New: The api is documented in full - a doxygen block on all 200 public declarations and a note on every type, field, enum value and constant
@@ -1502,7 +1520,7 @@ typedef struct fuiTheme {
 	float menuItemPaddingY;
 	//! Starting width of a menu popup until its rows are measured
 	float menuPopupMinWidth;
-	//! Outline stroke width of a panel
+	//! Outline stroke width of the chrome: a panel, a dialog, a menu popup and a group box all carry this ONE frame width, so nothing in the interface reads as more heavily boxed than its neighbour
 	float panelBorderThickness;
 	//! Outline stroke width of a widget
 	float widgetBorderThickness;
@@ -1512,7 +1530,7 @@ typedef struct fuiTheme {
 	float panelPaddingY;
 	//! Text inset inside a widget
 	float widgetPaddingX;
-	//! Gap between stacked widgets
+	//! Margin a widget in a flow container carries on its TRAILING side, below it in a vertical flow and right of it in a horizontal one. Sized like the panel's side padding, so the gaps between the widgets and the gaps around them read as one measure
 	float widgetSpacing;
 	//! Slot height a group separator occupies in a flow container
 	float groupSeparatorHeight;
@@ -2650,6 +2668,9 @@ fui_api bool fuiBeginScrollPanelClosable(fuiContext *context, const char *id, co
 */
 fui_api void fuiEndPanel(fuiContext *context);
 
+//! Pass this as a flow container's spacing to take the theme's @ref fuiTheme.widgetSpacing, which is what keeps one stack looking like the panel it sits in. Any value of zero or more is used as given, a hard zero included
+#define FUI_SPACING_FROM_THEME (-1.0f)
+
 /**
 * @brief Begins a plain flow container, with no background, border or clip of its own.
 * @param[in,out] context Reference to the context @ref fuiContext.
@@ -2657,7 +2678,7 @@ fui_api void fuiEndPanel(fuiContext *context);
 * @param[in] axis Direction its slot children flow in, see @ref fuiAxis.
 * @param[in] dock Which edge of the enclosing container to bite a strip off, see @ref fuiDock.
 * @param[in] sizeAcross Thickness of that strip in pixels, ignored for @ref FUI_DOCK_FILL.
-* @param[in] spacing Gap between two consecutive slots, in pixels.
+* @param[in] spacing Trailing margin every slot carries, in pixels, or @ref FUI_SPACING_FROM_THEME for the theme's.
 * @note This is how a row of buttons is built inside a column of rows. ALWAYS pair with @ref fuiEndStack.
 * @see @ref fuiEndStack
 */
@@ -2669,7 +2690,7 @@ fui_api void fuiBeginStack(fuiContext *context, const char *id, const fuiAxis ax
 * @param[in] id Identifies the container and scopes the identifiers of everything inside it.
 * @param[in] axis Direction its slot children flow in, see @ref fuiAxis.
 * @param[in] rect The region to lay out in, in pixels.
-* @param[in] spacing Gap between two consecutive slots, in pixels.
+* @param[in] spacing Trailing margin every slot carries, in pixels, or @ref FUI_SPACING_FROM_THEME for the theme's.
 * @note For a region the caller places itself and still wants slot flow inside. Closed by @ref fuiEndStack.
 */
 fui_api void fuiBeginStackAt(fuiContext *context, const char *id, const fuiAxis axis, const fuiRect rect, const float spacing);
@@ -2679,7 +2700,7 @@ fui_api void fuiBeginStackAt(fuiContext *context, const char *id, const fuiAxis 
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the container and scopes the identifiers of everything inside it.
 * @param[in] rect The region to lay out in, in pixels.
-* @param[in] spacing Gap between two consecutive slots, in pixels.
+* @param[in] spacing Trailing margin every slot carries, in pixels, or @ref FUI_SPACING_FROM_THEME for the theme's.
 * @note Vertical flow only, since there is nothing to scroll along the other axis. Closed by @ref fuiEndStack.
 */
 fui_api void fuiBeginScrollStackAt(fuiContext *context, const char *id, const fuiRect rect, const float spacing);
@@ -2696,7 +2717,7 @@ fui_api void fuiEndStack(fuiContext *context);
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] thickness Length of the slot along the flow axis, in pixels.
 * @return Returns the slot rectangle, spanning the container across the other axis. Empty when there is no room left.
-* @note Feed the result straight to a widget. The gap between slots is inserted in front of every slot but the first.
+* @note Feed the result straight to a widget. The container's spacing is a TRAILING margin, taken under a slot in a vertical flow and right of one in a horizontal flow, so the first slot still starts flush against the container's leading edge.
 */
 fui_api fuiRect fuiLayoutSlot(fuiContext *context, const float thickness);
 
@@ -2835,6 +2856,7 @@ fui_api float fuiScrollbarVertical(fuiContext *context, const fuiRect track, con
 * @brief Returns how wide a gutter every scrolling container reserves for its scrollbar, in pixels.
 * @return Returns the gutter width.
 * @note Public so a caller laying a fixed header over a scrolling table insets it by exactly what the rows below lose.
+* @note A scroll panel and a scroll stack take a further @ref fuiTheme.panelPaddingX beside the gutter, so their content never runs flush into the bar.
 */
 fui_api float fuiScrollGutterWidth(void);
 
@@ -4276,12 +4298,15 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.menuItemPaddingX = 12.0f;
 	result.menuItemPaddingY = 6.0f;
 	result.menuPopupMinWidth = 160.0f;
-	result.panelBorderThickness = 2.0f;
+	// One frame width for every box the interface draws, and it is the THIN one: a panel outlined twice as
+	// heavily as the widgets inside it reads as a different design language on the same screen.
+	result.panelBorderThickness = 1.0f;
 	result.widgetBorderThickness = 1.0f;
 	result.panelPaddingX = 10.0f;
 	result.panelPaddingY = 8.0f;
 	result.widgetPaddingX = 8.0f;
-	result.widgetSpacing = 6.0f;
+	// The gap between two widgets is the same measure as the gap between a widget and the panel edge beside it.
+	result.widgetSpacing = 10.0f;
 	result.groupSeparatorHeight = 10.0f;
 	result.caretBlinkHz = 2.0f;
 
@@ -6397,6 +6422,47 @@ fui_inline fuiRect fui__TakeDockRegion(fuiRect *box, const fuiDock dock, const f
 	return(region);
 }
 
+//! Rounds a coordinate DOWN to a whole pixel. Cast based rather than floorf, since interface coordinates never leave the range an int32 holds
+fui_inline float fui__FloorToPixel(const float value) {
+	int32_t truncated = (int32_t)value;
+	if((float)truncated > value) {
+		truncated -= 1;
+	}
+	return((float)truncated);
+}
+
+//! Rounds a coordinate UP to a whole pixel
+fui_inline float fui__CeilToPixel(const float value) {
+	int32_t truncated = (int32_t)value;
+	if((float)truncated < value) {
+		truncated += 1;
+	}
+	return((float)truncated);
+}
+
+//! Snaps a box onto the pixel grid, growing it outwards so nothing it holds is lost to the rounding. A box
+//! whose edges land BETWEEN two pixels loses part of its outline to whatever the backend rounds its scissor
+//! to - a truncated glScissor cuts the right and bottom stroke off - and there is no thickness a caller can
+//! pick that hides that. Snapping the box is the fix that holds for every backend.
+fui_inline fuiRect fui__SnapRectToPixels(const fuiRect rect) {
+	float left = fui__FloorToPixel(rect.x);
+	float top = fui__FloorToPixel(rect.y);
+	float right = fui__CeilToPixel(rect.x + rect.w);
+	float bottom = fui__CeilToPixel(rect.y + rect.h);
+	fuiRect result = fuiRectMake(left, top, right - left, bottom - top);
+	return(result);
+}
+
+//! The ONE frame every box of chrome carries - a panel, a dialog, a menu popup, a group box. Snapped onto
+//! the pixel grid first, because a one pixel stroke sitting on a half pixel boundary is a stroke the
+//! rasterizer is free to drop entirely, and a frame that comes and goes with where a box happens to land is
+//! worse than no frame at all
+fui_inline void fui__DrawChromeFrame(fuiContext *context, const fuiRect rect) {
+	const fuiTheme *theme = &context->theme;
+	fuiRect snapped = fui__SnapRectToPixels(rect);
+	fuiDrawRectOutline(context, snapped, theme->panelBorderColor, theme->panelBorderThickness);
+}
+
 //! Shrinks a rectangle by an inset on each axis, never past empty
 fui_inline fuiRect fui__RectInset(const fuiRect rect, const float insetX, const float insetY) {
 	float width = fuiMaxF(0.0f, rect.w - insetX * 2.0f);
@@ -6461,15 +6527,22 @@ fui_api fuiRect fuiLayoutSlot(fuiContext *context, const float thickness) {
 		return(empty);
 	}
 
-	// The gap goes in FRONT of every slot but the first, so a container never starts with one.
+	// The gap is a TRAILING margin - under a slot in a vertical flow, right of one in a horizontal flow - so
+	// a container never opens with one and every widget carries its own separation from the next. The box was
+	// already advanced past it when the previous slot was handed out; all that is left here is to COUNT it,
+	// and only once another slot actually follows, so the margin hanging off the last widget never inflates
+	// what the container reports as measured.
 	if(node->hasFlowStarted && node->spacing > 0.0f) {
-		(void)fui__ConsumeLeading(node, node->spacing);
 		node->usedExtent += node->spacing;
 	}
 
 	fuiRect slot = fui__ConsumeLeading(node, thickness);
 	node->hasFlowStarted = true;
 	node->usedExtent += thickness;
+
+	if(node->spacing > 0.0f) {
+		(void)fui__ConsumeLeading(node, node->spacing);
+	}
 	return(slot);
 }
 
@@ -6506,11 +6579,15 @@ fui_api float fuiPanelChromeHeight(const fuiContext *context) {
 	return(result);
 }
 
-//! Turns a content box into the viewport, gutter and tall flow box a scrolling container needs
-fui_inline void fui__ResolveScrollBoxes(const fuiRect contentBox, const float scroll, fuiRect *outViewport, fuiRect *outTrack, fuiRect *outLayoutBox) {
+//! Turns a content box into the viewport, gutter and tall flow box a scrolling container needs. The gutter
+//! keeps a padding to its LEFT so the bar never sits flush against the widgets it scrolls: a button ending
+//! exactly where the scrollbar starts reads as one control cut in half, and the gap is the same measure the
+//! panel already keeps to its left and right edges
+fui_inline void fui__ResolveScrollBoxes(const fuiRect contentBox, const float scroll, const float gutterPadding, fuiRect *outViewport, fuiRect *outTrack, fuiRect *outLayoutBox) {
 	float gutter = fuiScrollGutterWidth();
+	float viewportWidth = fuiMaxF(0.0f, contentBox.w - gutter - gutterPadding);
 	*outTrack = fuiRectMake(contentBox.x + contentBox.w - gutter, contentBox.y, gutter, contentBox.h);
-	*outViewport = fuiRectMake(contentBox.x, contentBox.y, contentBox.w - gutter, contentBox.h);
+	*outViewport = fuiRectMake(contentBox.x, contentBox.y, viewportWidth, contentBox.h);
 	// The content flows inside a box far taller than the viewport and lifted by the scroll, so rows past
 	// the bottom are CLIPPED rather than squeezed into whatever height was left.
 	*outLayoutBox = fuiRectMake(outViewport->x, outViewport->y - scroll, outViewport->w, FUI__SCROLL_LAYOUT_HEIGHT);
@@ -6519,7 +6596,11 @@ fui_inline void fui__ResolveScrollBoxes(const fuiRect contentBox, const float sc
 //! Wheel over the viewport plus the gutter scrollbar, resolved into the new scroll offset
 fui_inline float fui__ResolveScroll(fuiContext *context, const char *scrollbarId, const fuiRect viewport, const fuiRect track, const float scroll, const float contentLength) {
 	float scrolled = scroll;
-	if(context->mouseWheelDelta != 0.0f && fui__CursorIsOver(context, viewport)) {
+	// The wheel answers over the padding between the two as well, which is neither the viewport nor the track
+	// but is still plainly inside the scrolling area.
+	float wheelRegionWidth = fuiMaxF(track.x + track.w, viewport.x + viewport.w) - viewport.x;
+	fuiRect wheelRegion = fuiRectMake(viewport.x, viewport.y, wheelRegionWidth, viewport.h);
+	if(context->mouseWheelDelta != 0.0f && fui__CursorIsOver(context, wheelRegion)) {
 		scrolled -= context->mouseWheelDelta * context->theme.menuItemHeight * FUI__SCROLL_WHEEL_ROWS;
 	}
 	float result = fuiScrollbarVertical(context, track, scrollbarId, scrolled, viewport.h, contentLength);
@@ -6583,7 +6664,6 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 	}
 
 	fuiDrawRect(context, rect, theme->panelBackgroundColor);
-	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->panelBorderThickness);
 	// Claim the whole panel, so it takes the cursor from a panel underneath it and swallows clicks even
 	// where it holds no widget at all.
 	(void)fui__ClaimCursor(context, panelId, rect);
@@ -6632,6 +6712,11 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 			state->moveOffset = fuiV2Add(state->moveOffset, context->mouseDelta);
 		}
 	}
+
+	// The frame goes on LAST of the chrome, so it runs unbroken around the whole panel. Drawn before the
+	// title bar it would be painted over along the top and down either side of the caption, leaving a box
+	// that is framed everywhere but where the eye starts reading it.
+	fui__DrawChromeFrame(context, rect);
 
 	// The resize affordance: the bottom-right corner of a floating panel, and the free EDGE of a docked one -
 	// a left dock is resized by its right edge, a top dock by its bottom edge, and so on.
@@ -6714,7 +6799,7 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 	fuiRect scrollTrack = fuiRectMake(0.0f, 0.0f, 0.0f, 0.0f);
 	if(doesScroll) {
 		float scroll = (state != fui_null) ? state->scroll : 0.0f;
-		fui__ResolveScrollBoxes(contentBox, scroll, &clipBox, &scrollTrack, &layoutBox);
+		fui__ResolveScrollBoxes(contentBox, scroll, theme->panelPaddingX, &clipBox, &scrollTrack, &layoutBox);
 	}
 
 	fuiLayoutNode *node = fui__PushLayout(context, panelId, state, true, FUI_AXIS_VERTICAL, theme->widgetSpacing, layoutBox);
@@ -6800,6 +6885,14 @@ fui_api void fuiEndPanel(fuiContext *context) {
 // > Stacks
 // ----------------------------------------------------------------------------
 
+//! Resolves what a flow container was asked for into the gap it actually lays out with
+fui_inline float fui__ResolveSpacing(const fuiContext *context, const float spacing) {
+	if(spacing < 0.0f) {
+		return(context->theme.widgetSpacing);
+	}
+	return(spacing);
+}
+
 fui_api void fuiBeginStack(fuiContext *context, const char *id, const fuiAxis axis, const fuiDock dock, const float sizeAcross, const float spacing) {
 	FUI_ASSERT(context != fui_null && id != fui_null);
 	if(context == fui_null || id == fui_null) {
@@ -6818,14 +6911,16 @@ fui_api void fuiBeginStack(fuiContext *context, const char *id, const fuiAxis ax
 	}
 
 	fuiWidgetState *noState = fui_null;
-	(void)fui__PushLayout(context, stackId, noState, false, axis, spacing, region);
+	float resolvedSpacing = fui__ResolveSpacing(context, spacing);
+	(void)fui__PushLayout(context, stackId, noState, false, axis, resolvedSpacing, region);
 }
 
 //! Shared body of both explicit-rectangle stacks. Unlike fuiBeginStack this takes nothing from the parent
 fui_inline void fui__PushStackAt(fuiContext *context, const char *id, const fuiAxis axis, const fuiRect rect, const float spacing, fuiWidgetState *state) {
 	fuiId stackId = fuiGetId(context, id);
 	fuiPushId(context, id);
-	(void)fui__PushLayout(context, stackId, state, false, axis, spacing, rect);
+	float resolvedSpacing = fui__ResolveSpacing(context, spacing);
+	(void)fui__PushLayout(context, stackId, state, false, axis, resolvedSpacing, rect);
 }
 
 fui_api void fuiBeginStackAt(fuiContext *context, const char *id, const fuiAxis axis, const fuiRect rect, const float spacing) {
@@ -6851,9 +6946,10 @@ fui_api void fuiBeginScrollStackAt(fuiContext *context, const char *id, const fu
 	fuiRect viewport;
 	fuiRect track;
 	fuiRect layoutBox;
-	fui__ResolveScrollBoxes(rect, scroll, &viewport, &track, &layoutBox);
+	fui__ResolveScrollBoxes(rect, scroll, context->theme.panelPaddingX, &viewport, &track, &layoutBox);
 
-	fuiLayoutNode *node = fui__PushLayout(context, stackId, state, false, FUI_AXIS_VERTICAL, spacing, layoutBox);
+	float resolvedSpacing = fui__ResolveSpacing(context, spacing);
+	fuiLayoutNode *node = fui__PushLayout(context, stackId, state, false, FUI_AXIS_VERTICAL, resolvedSpacing, layoutBox);
 	if(node != fui_null) {
 		node->isScrollable = (state != fui_null);
 		node->scrollViewport = viewport;
@@ -7003,13 +7099,15 @@ fui_inline void fui__PushGroupBox(fuiContext *context, const char *label, const 
 	float boxHeight = titleHeight + contentHeight + theme->panelPaddingY * 2.0f;
 	fuiRect box = fuiLayoutSlot(context, boxHeight);
 
-	fuiDrawRectOutline(context, box, theme->panelBorderColor, theme->widgetBorderThickness);
-
 	// A FILLED title bar captioned in the accent color. There is no bold face to reach for, so the fill is
 	// what makes a heading read as a heading rather than as one more label row.
 	fuiRect titleBar = fuiRectMake(box.x, box.y, box.w, titleHeight);
 	fuiDrawRect(context, titleBar, theme->widgetTrackColor);
 	fui__DrawTextInRect(context, titleBar, label, theme->accentColor);
+
+	// The same frame a panel and a dialog carry, drawn AFTER the title bar so it runs unbroken around the
+	// whole box: a group box is a panel that happens to sit inside another one, and it should read as one.
+	fui__DrawChromeFrame(context, box);
 
 	float contentX = box.x + theme->panelPaddingX;
 	float contentY = box.y + titleHeight + theme->panelPaddingY;
@@ -8656,15 +8754,18 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 	float placedX = fuiClampF(leftX, 0.0f, fuiMaxF(windowWidth - width, 0.0f));
 	float placedY = fuiClampF(topY, 0.0f, fuiMaxF(windowHeight - height, 0.0f));
 
-	frame->popupRect = fuiRectMake(placedX, placedY, width, height);
-	frame->cursorY = placedY;
+	// A popup is measured from text, so its box lands on fractions of a pixel: the title it drops from is as
+	// wide as its caption, and the widest row it opens at is as wide as ITS caption. Snapped onto the pixel
+	// grid the frame survives whatever the backend rounds its clip to - without this the right hand stroke
+	// is the one that goes, since it is the edge every truncating scissor cuts.
+	frame->popupRect = fui__SnapRectToPixels(fuiRectMake(placedX, placedY, width, height));
+	frame->cursorY = frame->popupRect.y;
 	frame->widestItem = 0.0f;
 
 	// The clip ignores the enclosing one on purpose: a submenu's box sits OUTSIDE its parent popup, and
 	// clipping it to the parent would leave nothing of it but the text.
 	fui__PushClipAbsolute(context, frame->popupRect);
 	fuiDrawRect(context, frame->popupRect, theme->panelBackgroundColor);
-	fuiDrawRectOutline(context, frame->popupRect, theme->panelBorderColor, theme->panelBorderThickness);
 
 	// Anywhere inside the box belongs to the menu, including the empty space under the last row.
 	if(fui__MenuCursorIsOver(context, frame->popupRect)) {
@@ -8674,10 +8775,13 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 
 //! Closes an open popup and remembers what its rows measured, which is the size it opens at next build
 static void fui__MenuEndPopup(fuiContext *context, const fuiMenuFrame *frame, const fuiId id) {
+	// The frame goes on after the rows, or the hover wash on the top and bottom row - which runs the full
+	// width of the popup - would paint over the stroke it sits against.
+	fui__DrawChromeFrame(context, frame->popupRect);
 	fuiPopClip(context);
 	fuiWidgetState *state = fui__WidgetStateGet(context, id);
 	if(state != fui_null) {
-		state->menuSize.y = frame->cursorY - frame->popupRect.y;
+		state->menuSize.y = fui__CeilToPixel(frame->cursorY - frame->popupRect.y);
 		if(frame->widestItem > 0.0f) {
 			state->menuSize.x = frame->widestItem;
 		}
@@ -8694,6 +8798,9 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 	const float columnGap = paddingX * 2.0f;
 	const float markWidth = rowFontHeight;
 	const float checkBoxSide = rowFontHeight;
+	// A row's content is inset from the INSIDE of the popup's frame, so the padding it keeps is clearance
+	// from the stroke rather than a measure the stroke eats a pixel out of.
+	const float contentInsetX = theme->panelBorderThickness + paddingX;
 	float checkColumnWidth = hasCheck ? (checkBoxSide + FUI__WIDGET_LABEL_GAP) : 0.0f;
 
 	fuiRect rowRect = fuiRectMake(frame->popupRect.x, frame->cursorY, frame->popupRect.w, rowHeight);
@@ -8710,7 +8817,8 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 	if(hasSubmenuMark) {
 		extrasWidth += columnGap + markWidth;
 	}
-	float desiredWidth = paddingX * 2.0f + checkColumnWidth + labelSize.x + extrasWidth;
+	// Whole pixels, since this is the width the popup opens at on the next build.
+	float desiredWidth = fui__CeilToPixel(contentInsetX * 2.0f + checkColumnWidth + labelSize.x + extrasWidth);
 	frame->widestItem = fuiMaxF(frame->widestItem, desiredWidth);
 
 	fuiRect popupClip = fuiGetClipRect(context);
@@ -8728,11 +8836,11 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 
 	fuiColor textColor = enabled ? theme->textColor : theme->textMutedColor;
 	float centerY = rowRect.y + rowRect.h * 0.5f;
-	float labelX = rowRect.x + paddingX;
+	float labelX = rowRect.x + contentInsetX;
 	if(hasCheck) {
 		// The same box a checkbox draws, so a checked menu row and a checked widget mean the same thing.
 		float boxTop = rowRect.y + (rowRect.h - checkBoxSide) * 0.5f;
-		fuiRect box = fuiRectMake(rowRect.x + paddingX, boxTop, checkBoxSide, checkBoxSide);
+		fuiRect box = fuiRectMake(rowRect.x + contentInsetX, boxTop, checkBoxSide, checkBoxSide);
 		fuiColor boxFill = isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
 		fuiDrawRect(context, box, boxFill);
 		fuiDrawRectOutline(context, box, theme->panelBorderColor, theme->widgetBorderThickness);
@@ -8744,7 +8852,7 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 	}
 	fui__DrawTextVCentered(context, label, labelX, centerY, rowFontHeight, textColor);
 
-	float rightEdgeX = rowRect.x + rowRect.w - paddingX;
+	float rightEdgeX = rowRect.x + rowRect.w - contentInsetX;
 	if(hasSubmenuMark) {
 		fui__DrawTextVCenteredRight(context, FUI__MENU_SUBMENU_MARK, rightEdgeX, centerY, rowFontHeight, textColor);
 	} else if(shortcutText != fui_null && shortcutText[0] != '\0') {
@@ -8787,7 +8895,9 @@ fui_api void fuiBeginMenuBar(fuiContext *context, const char *id, const fuiRect 
 	}
 	frame->isBar = true;
 	frame->barRect = rect;
-	frame->barCursorX = rect.x;
+	// Whole pixels from here on, because every popup in the bar is placed against this cursor and inherits
+	// whatever fraction it carries.
+	frame->barCursorX = fui__FloorToPixel(rect.x);
 }
 
 fui_api void fuiEndMenuBar(fuiContext *context) {
@@ -8815,7 +8925,7 @@ fui_api bool fuiBeginMenu(fuiContext *context, const char *label) {
 
 	if(parentIsTheBar) {
 		fuiVec2 labelSize = fuiMeasureText(context, label, 0, theme->menuItemFontHeight);
-		float titleWidth = labelSize.x + theme->menuItemPaddingX * 2.0f;
+		float titleWidth = fui__CeilToPixel(labelSize.x + theme->menuItemPaddingX * 2.0f);
 		triggerRect = fuiRectMake(parent->barCursorX, parent->barRect.y, titleWidth, parent->barRect.h);
 		parent->barCursorX += titleWidth;
 
@@ -8969,8 +9079,10 @@ fui_api void fuiMenuSeparator(fuiContext *context) {
 	const fuiTheme *theme = &context->theme;
 	float separatorHeight = fui__MenuRowHeight(context) * FUI__MENU_SEPARATOR_FRACTION;
 	float lineY = frame->cursorY + separatorHeight * 0.5f;
-	fuiVec2 lineStart = fuiV2(frame->popupRect.x + theme->menuItemPaddingX, lineY);
-	fuiVec2 lineEnd = fuiV2(frame->popupRect.x + frame->popupRect.w - theme->menuItemPaddingX, lineY);
+	// Inset like a row is, so the rule lines up with the labels above and below it.
+	float contentInsetX = theme->panelBorderThickness + theme->menuItemPaddingX;
+	fuiVec2 lineStart = fuiV2(frame->popupRect.x + contentInsetX, lineY);
+	fuiVec2 lineEnd = fuiV2(frame->popupRect.x + frame->popupRect.w - contentInsetX, lineY);
 	fuiDrawLine(context, lineStart, lineEnd, theme->panelBorderColor, theme->widgetBorderThickness);
 	frame->cursorY += separatorHeight;
 }
@@ -9490,7 +9602,6 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 	fuiId resizeId = fuiGetId(context, "__modalResize");
 
 	fuiDrawRect(context, rect, theme->panelBackgroundColor);
-	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->panelBorderThickness);
 	(void)fui__ClaimCursor(context, modalId, rect);
 
 	fuiRect titleBar = fuiRectMake(rect.x, rect.y, rect.w, titleBarHeight);
@@ -9508,6 +9619,9 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 	fuiColor titleBarColor = titleBarIsLit ? theme->widgetHoveredColor : theme->widgetTrackColor;
 	fuiDrawRect(context, titleBar, titleBarColor);
 	fui__DrawTextInRect(context, titleBar, title, theme->textColor);
+
+	// After the title bar, the same way a panel does it, so the dialog is framed all the way round.
+	fui__DrawChromeFrame(context, rect);
 
 	fuiRect belowTitleBar = fuiRectMake(rect.x, rect.y + titleBarHeight, rect.w, rect.h - titleBarHeight);
 	fuiRect contentBox = fui__RectInset(belowTitleBar, theme->panelPaddingX, theme->panelPaddingY);
