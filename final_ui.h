@@ -222,6 +222,12 @@ SOFTWARE.
 	- Changed: A tool strip insets its items across the flow axis instead of letting them fill the bar, so a
 	  button never runs into the edge of the strip around it. A strip separator spans its slot end to end, the
 	  way fuiSeparator does, and so stands exactly as tall as the buttons it divides.
+	- Changed: EVERY dialog is dragged by its title bar now, not just a resizable one, and the bar lights up
+	  under the cursor to say so. The position is bounded so the caption always stays on screen, and a dialog
+	  nobody has dragged keeps its zero offset and stays centred as the window is resized under it.
+	- Changed: fuiOpenDialog places the dialog, so one comes up CENTRED however far the last of its kind was
+	  dragged - a desktop dialog is a new window every time it is shown. The size a resizable dialog was left
+	  at still survives, being a preference rather than a placement.
 
 	# v0.9.0:
 	- New: The api is documented in full - a doxygen block on all 200 public declarations and a note on every type, field, enum value and constant
