@@ -68,7 +68,7 @@ static bool Init(GameState &state) {
 	state.debugFont.type = AssetType::Font;
 	state.debugFont.loadState = AssetLoadState::Unloaded;
 	size_t fontDataSize = fplArrayCount(fontDataArray);
-	if (FontLoadFromMemory(fpl_null, fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, false, &state.debugFont.font.data)) {
+	if (FontLoadFromMemory(fpl_null, fontDataArray, fontDataSize, 0, 36.0f, 32, 128, 512, 512, true, &state.debugFont.font.data)) {
 		state.debugFont.loadState = AssetLoadState::ToUpload;
 	}
 	state.angle = 0.0f;

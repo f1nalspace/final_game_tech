@@ -1981,7 +1981,7 @@ static bool InitApp(AppState &state) {
 	// Font Info
 	uint32_t firstChar = ' ';
 	uint32_t charCount = '~' - firstChar;
-	if (!FontLoadFromMemoryEx(fpl_null, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 32.0f, firstChar, firstChar + charCount - 1, 1024, 1024, false, FontQuality_Packed2x, &state.fontInfo)) {
+	if (!FontLoadFromMemoryEx(fpl_null, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 32.0f, firstChar, firstChar + charCount - 1, 1024, 1024, true, FontQuality_Packed2x, &state.fontInfo)) {
 		ReleaseApp(state, state.mainThreadId);
 		return(false);
 	}

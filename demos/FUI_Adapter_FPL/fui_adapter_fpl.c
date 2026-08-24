@@ -892,10 +892,9 @@ static bool LoadDemoFont(RenderState *renderState, FontAsset *outFontAsset) {
 	MemoryAllocator *allocator = fpl_null;
 
 	const uint32_t firstFontInTheFile = 0;
-	// Off, the way every other demo in this family loads a font. The loaded font's kerning entries are not in
-	// the font units the adapter's kerning bridge adds them as, so a kerned pair collapses onto itself; the
-	// interface lays text out on the glyph advances alone, which is what it does on a font with no kerning.
-	const bool loadKerning = false;
+	// On, so the demo exercises the adapter's kerning bridge as well as its glyphs. Without it the interface
+	// lays text out on the plain advances, which is what it does on a font that carries no kerning at all.
+	const bool loadKerning = true;
 	if(!FontLoadFromMemory(allocator, ptr_fontBitstreamVeraRegular, sizeOf_fontBitstreamVeraRegular, firstFontInTheFile, DEMO_FONT_PIXEL_HEIGHT, DEMO_FONT_FIRST_CODEPOINT, DEMO_FONT_LAST_CODEPOINT, DEMO_FONT_ATLAS_SIDE, DEMO_FONT_ATLAS_SIDE, loadKerning, &outFontAsset->desc)) {
 		return(false);
 	}

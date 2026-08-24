@@ -843,11 +843,11 @@ static void InitApp(AppState* appState) {
 	fplExtractFilePath(dataPath, dataPath, fplArrayCount(dataPath));
 	fplPathCombine(dataPath, fplArrayCount(dataPath), 2, dataPath, "data");
 
-	if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->osdFontData)) {
+	if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, 48.0f, 32, 255, 512, 512, true, &appState->osdFontData)) {
 		appState->osdFontTexture = AllocateTexture(appState->osdFontData.atlasWidth, appState->osdFontData.atlasHeight, appState->osdFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
-	if (FontLoadFromMemory(fpl_null, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 48.0f, 32, 255, 512, 512, false, &appState->consoleFontData)) {
+	if (FontLoadFromMemory(fpl_null, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 48.0f, 32, 255, 512, 512, true, &appState->consoleFontData)) {
 		appState->consoleFontTexture = AllocateTexture(appState->consoleFontData.atlasWidth, appState->consoleFontData.atlasHeight, appState->consoleFontData.atlasAlphaBitmap, false, GL_LINEAR, true);
 	}
 
@@ -857,7 +857,7 @@ static void InitApp(AppState* appState) {
 	for (int i = 0; i < FontCount; ++i) {
 		int cpStart = i * CodePointsPerAtlas;
 		int cpEnd = cpStart + (CodePointsPerAtlas - 1);
-		if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, false, &appState->letterFontData[i])) {
+		if (FontLoadFromMemory(fpl_null, ptr_fontNotoSansRegular, sizeOf_fontNotoSansRegular, 0, letterFontSize, cpStart, cpEnd, letterAtlasWidth, letterAtlasHeight, true, &appState->letterFontData[i])) {
 			appState->letterFontTextures[i] = AllocateTexture(appState->letterFontData[i].atlasWidth, appState->letterFontData[i].atlasHeight, appState->letterFontData[i].atlasAlphaBitmap, false, GL_LINEAR, true);
 		}
 	}

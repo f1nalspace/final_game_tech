@@ -1651,11 +1651,11 @@ namespace game {
 
 			// Fonts
 			FontAsset &hudFont = assets.hudFont;
-			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, false, &hudFont.desc)) {
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 36.0f, 32, 128, 512, 512, true, &hudFont.desc)) {
 				RenderPushTexture(&renderState, &hudFont.texture, hudFont.desc.atlasAlphaBitmap, hudFont.desc.atlasWidth, hudFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 			FontAsset &overlayFont = assets.overlayFont;
-			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, false, &overlayFont.desc)) {
+			if (FontLoadFromMemory(allocator, ptr_fontSulphurPointRegular, sizeOf_fontSulphurPointRegular, 0, 240.0f, 32, 128, 4096, 4096, true, &overlayFont.desc)) {
 				RenderPushTexture(&renderState, &overlayFont.texture, overlayFont.desc.atlasAlphaBitmap, overlayFont.desc.atlasWidth, overlayFont.desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 			}
 

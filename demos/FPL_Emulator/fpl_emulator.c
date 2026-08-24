@@ -947,10 +947,10 @@ static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParame
 	// Load fonts
 	float fontSizeSmall = 40.0f;
 	float fontSizeLarge = 160.0f;
-	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeSmall, 32, 126, 256, 256, false, &app->fontData)) {
+	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeSmall, 32, 126, 256, 256, true, &app->fontData)) {
 		return fpl_null;
 	}
-	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeLarge, 32, 126, 1024, 1024, false, &app->fontDataLarge)) {
+	if (!FontLoadFromMemory(allocator, ptr_fireCodeFont, sizeOf_fireCodeFont, 0, fontSizeLarge, 32, 126, 1024, 1024, true, &app->fontDataLarge)) {
 		return fpl_null;
 	}	
 
