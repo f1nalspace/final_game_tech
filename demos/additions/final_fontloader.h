@@ -15,6 +15,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-08-24
+	- Fixed the kerning table held a ratio instead of an advance: the raw value was scaled by 1/fontSize instead of by the font's raw-to-pixel scale, and then divided by the left glyph's ATLAS width. FontGetCharacterAdvance adds the entry to defaultAdvance, which is in font units, so a kerned pair collapsed onto itself
+	- Fixed kerning pairs whose left glyph carries no ink (the space, for one) were dropped, because the entry was only written when the glyph had a non-zero atlas width
+	- Fixed the kerning table was left uninitialized: only the pairs a font actually kerns are written, and a custom MemoryAllocator makes no promise to hand back zeroed memory
+
 	## 2026-05-28
 	- Replaced compile-time FINAL_FONTLOADER_BETTERQUALITY with a runtime FontQuality enum
 	- Added FontLoadFromMemoryEx / FontLoadFromFileEx accepting FontQuality
@@ -460,6 +465,9 @@ fpl_extern bool FontLoadFromMemoryEx(MemoryAllocator *allocator, const void *dat
 			InternalFontLoadFromMemoryShutdown(allocator, packedChars, atlasAlphaBitmap, glyphs, kerningTable, defaultAdvance);
 			return false;
 		}
+		// Only the pairs the font actually kerns are written below, so the rest has to be zero already. The
+		// default allocator hands back cleared pages, a custom MemoryAllocator promises nothing.
+		fplMemoryClear(kerningTable, kerningTableSize);
 	}
 
 	glyphs = (FontGlyph *)MemoryAllocatorAlloc(allocator, glyphsSize);
@@ -567,28 +575,25 @@ fpl_extern bool FontLoadFromMemoryEx(MemoryAllocator *allocator, const void *dat
 	}
 
 	if (loadKerning) {
+		// One entry per ordered pair, in the same FONT UNITS as defaultAdvance above - FontGetCharacterAdvance
+		// adds the two together, so anything else here does not even have a meaning. The raw value out of the
+		// font is in design units, which take the same two steps to get there as every other metric in this
+		// function: times scaleToPixels for pixels, times pixelsToUnits for units.
 		// Bug fix: was (charIndex < lastChar) and (nextCharIndex < lastChar), missing the last codepoint pair.
 		for (uint32_t charIndex = firstChar; charIndex <= lastChar; ++charIndex) {
-			uint32_t codePointIndex = (uint32_t)(charIndex - firstChar);
-			int widthPx;
-			if (usePacked) {
-				const stbtt_packedchar *leftInfo = ((const stbtt_packedchar *)packedChars) + codePointIndex;
-				widthPx = leftInfo->x1 - leftInfo->x0;
-			} else {
-				const stbtt_bakedchar *leftInfo = ((const stbtt_bakedchar *)packedChars) + codePointIndex;
-				widthPx = leftInfo->x1 - leftInfo->x0;
-			}
 			for (uint32_t nextCharIndex = firstChar; nextCharIndex <= lastChar; ++nextCharIndex) {
 				if (nextCharIndex == charIndex) {
 					continue;
 				}
-				float kerningPx = stbtt_GetCodepointKernAdvance(&fontInfo, charIndex, nextCharIndex) * pixelsToUnits;
-				if (kerningPx != 0 && widthPx > 0) {
-					float kerning = kerningPx / (float)widthPx;
-					uint32_t a = (uint32_t)(charIndex - firstChar);
-					uint32_t b = (uint32_t)(nextCharIndex - firstChar);
-					kerningTable[a * charCount + b] = kerning;
+				int rawKerning = stbtt_GetCodepointKernAdvance(&fontInfo, (int)charIndex, (int)nextCharIndex);
+				if (rawKerning == 0) {
+					continue;
 				}
+				float kerningPx = (float)rawKerning * scaleToPixels;
+				float kerning = kerningPx * pixelsToUnits;
+				uint32_t a = (uint32_t)(charIndex - firstChar);
+				uint32_t b = (uint32_t)(nextCharIndex - firstChar);
+				kerningTable[a * charCount + b] = kerning;
 			}
 		}
 	}
