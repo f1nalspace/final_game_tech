@@ -268,6 +268,19 @@ SOFTWARE.
 	  string through its own pipeline, rather than drawing the triangles, must not turn it on.
 	- Changed: fuiContext.listSortOrder is gone, since the order now lives with the list that owns it, and
 	  fuiContext.listSortScratch grows to fit rather than being reserved at FUI_MAX_SORTABLE_ROWS.
+	- Fixed: A list row PAST the end of fuiListIcons.cellForRow drew no icon and was not indented either, so a
+	  table shorter than its list had the text jump back to the left edge from that row down. Such a row is now
+	  the same case as one whose cell is negative: no icon, and the indent that keeps the labels a straight edge.
+	- New: fuiListIcons.tint, modulating the whole sheet, and fuiListIcons.tintForRow for a color per row. A
+	  FULLY TRANSPARENT color is one nobody set, so a zeroed struct still draws the sheet exactly as it is.
+	- New: fuiTheme.listIconPadding, which is the gap around a row icon that FUI__LIST_ICON_PADDING used to fix
+	  at two pixels. A theme with taller rows can open it up instead of wearing the tight one.
+	- New: fuiListIcons.column, so a list view's icons go in a column other than the first. A column outside the
+	  list is a list without icons, and where the icons and the row BUTTONS name the same one the button wins.
+	- New: fuiListIcons.iconOnly, giving the icon its whole cell and keeping no room beside it for text. A list
+	  box drawn this way needs no items at all.
+	- New: fuiListIcons.cellForColumn and fuiListIcons.cellForColumnCount, putting an icon in front of a column
+	  HEADER's title. That table is read on its own, so titles can carry icons where the rows carry none.
 
 	# v0.9.2:
 	- Changed: A button is drawn as a BUTTON - a vertically shaded face between a lit top-left edge and a shaded
@@ -1667,6 +1680,8 @@ typedef struct fuiTheme {
 	float menuItemPaddingX;
 	//! Vertical inset above and below the text in a menu row
 	float menuItemPaddingY;
+	//! Gap around a list row's icon: left of it, above and below it, and between it and the row's text
+	float listIconPadding;
 	//! Starting width of a menu popup until its rows are measured
 	float menuPopupMinWidth;
 	//! Outline stroke width of the chrome: a panel, a dialog, a menu popup and a group box all carry this ONE frame width, so nothing in the interface reads as more heavily boxed than its neighbour
@@ -3861,6 +3876,16 @@ typedef enum fuiFileBrowserResult {
 * @note The interface stays ignorant of what an icon MEANS: it draws cell N for the row whose entry says N,
 *       and which cell a row gets is the caller's table. A cell index is `column + row * columns`, so a
 *       single row sheet indexes straight by column. Leave `sheet` zero to draw no icons at all.
+* @note NOTHING here is copied - not the sheet, not a table - so everything pointed at must outlive the call
+*       that builds the list. The struct itself is only read during that call and may be a stack temporary.
+* @note A row is indexed by the CALLER'S OWN row index and not by where that row currently shows, so the icons
+*       of a sorted list follow their rows without the table being sorted alongside it.
+* @note What the sheet has to look like. The grid is cut EXACTLY, with no gutter and no half texel inset, so a
+*       linearly filtered cell samples across the seam into its neighbour: leave the air a cell needs INSIDE
+*       that cell rather than spacing the cells apart. A cell also wants to be about as big as the box it is
+*       drawn into, which is `fuiTheme.menuItemHeight * rowScale` less twice @ref fuiTheme.listIconPadding,
+*       since a smaller cell is scaled up and turns to mush. A backend may ask for a power of two in both axes
+*       on top of that, depending on how old the api underneath it really is.
 */
 typedef struct fuiListIcons {
 	//! The sheet every cell is cut out of, zero to disable icons
@@ -3873,10 +3898,24 @@ typedef struct fuiListIcons {
 	int32_t rows;
 	//! One cell index per list entry. A NEGATIVE entry is one row opting out of a list that has icons
 	const int32_t *cellForRow;
-	//! How many entries cellForRow holds. A row past the end draws no icon
+	//! How many entries cellForRow holds. A row past the end is indented like one opting out, and draws no icon
 	int32_t cellForRowCount;
 	//! How much taller an icon row is than a plain one, and so how big the glyph draws. Zero takes 2.0
 	float rowScale;
+	//! What every icon is modulated by. A FULLY TRANSPARENT color is one nobody set, and draws the sheet as it is
+	fuiColor tint;
+	//! An optional tint per list entry, as long as cellForRow. A fully transparent entry falls back to tint
+	const fuiColor *tintForRow;
+	//! Which column of a list VIEW carries the icons. A column outside the list is a list without icons, and a
+	//! list BOX has no columns and ignores this entirely
+	int32_t column;
+	//! Set to give the icon its whole cell and keep no room beside it for text - the row in a list box, the icon's
+	//! own column in a list view. The icon stays where it sits with text, so turning this on moves nothing
+	bool iconOnly;
+	//! An optional cell index per column HEADER. Negative, or past the end, is a title with no icon in front of it
+	const int32_t *cellForColumn;
+	//! How many entries cellForColumn holds
+	int32_t cellForColumnCount;
 } fuiListIcons;
 
 /**
@@ -3962,12 +4001,14 @@ fui_api bool fuiListBox(fuiContext *context, const fuiRect rect, const char *id,
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] rect The box the list sits in, in pixels.
 * @param[in] id Identifies the list.
-* @param[in] items The strings, one per row.
+* @param[in] items The strings, one per row. May be null for a list of icons ALONE, which says nothing in words.
 * @param[in] count How many strings items holds.
 * @param[in,out] selectedIndex Which row is selected, changed in place. Minus one for none.
 * @param[in] icons Reference to the icon sheet @ref fuiListIcons, or null for a list of plain text.
 * @param[out] outWasActivated Set when a row was double clicked, which is the open this gesture. May be null.
 * @return Returns true on the frame the selection changed.
+* @note Icons make every row taller by the sheet's `rowScale`, so a caller working out how many rows fit has
+*       to count them at that height. A list box has no columns, so @ref fuiListIcons.column is ignored here.
 */
 fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated);
 
@@ -4183,8 +4224,9 @@ fui_api bool fuiListView(fuiContext *context, const fuiRect rect, const char *id
 * @param[in] icons Reference to the icon sheet @ref fuiListIcons, or null for rows of plain text.
 * @param[out] outWasActivated Set when a row was double clicked. May be null.
 * @return Returns true on the frame the selection changed.
-* @note The icon goes in the FIRST column ahead of its text, the same place a list box puts it, and makes
-*       every row taller by the sheet's `rowScale`. The header keeps the plain height whatever the rows do.
+* @note The icon goes ahead of its text in @ref fuiListIcons.column, the first one unless the sheet says
+*       otherwise, and makes every row taller by the sheet's `rowScale`. The header keeps the plain height
+*       whatever the rows do, and carries icons of its own only where @ref fuiListIcons.cellForColumn says so.
 */
 fui_api bool fuiListViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiColumn *columns, const int32_t columnCount, const char *const *cells, const int32_t rowCount, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated);
 
@@ -4204,6 +4246,8 @@ fui_api bool fuiListViewEx(fuiContext *context, const fuiRect rect, const char *
 * @param[out] outWasActivated Set when a row was double clicked. May be null.
 * @return Returns true on the frame the selection changed.
 * @note A press inside a button never also picks the row - the button owns that click.
+* @note Where the buttons and the icons name the SAME column the button wins, that column showing no icon,
+*       since a button replaces the whole cell it stands in. The rows keep their icon height regardless.
 */
 fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const char *id, const fuiColumn *columns, const int32_t columnCount, const char *const *cells, const int32_t rowCount, int32_t *selectedIndex, const fuiListIcons *icons, fuiListRowButtons *rowButtons, bool *outWasActivated);
 
@@ -4614,6 +4658,7 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.menuItemFontHeight = 20.0f;
 	result.menuItemPaddingX = 12.0f;
 	result.menuItemPaddingY = 6.0f;
+	result.listIconPadding = 2.0f;
 	result.menuPopupMinWidth = 160.0f;
 	// One frame width for every box the interface draws, and it is the THIN one: a panel outlined twice as
 	// heavily as the widgets inside it reads as a different design language on the same screen.
@@ -10992,12 +11037,44 @@ fui_api void fuiEndModal(fuiContext *context) {
 // > List box
 // ----------------------------------------------------------------------------
 
-//! Gap between an icon and the edges of its row
-#define FUI__LIST_ICON_PADDING 2.0f
 //! How much taller an icon row is than a plain one when the caller did not say
 #define FUI__LIST_ICON_ROW_SCALE 2.0f
 //! How long after a click a second one on the same row still counts as an activation
 #define FUI__DOUBLE_CLICK_SECONDS 0.35f
+
+//! Gap around a list icon, never negative however the theme was filled in
+fui_inline float fui__ListIconPadding(const fuiTheme *theme) {
+	float result = fuiMaxF(theme->listIconPadding, 0.0f);
+	return(result);
+}
+
+//! Whether a set of icons is filled in far enough to draw anything at all
+fui_inline bool fui__ListIconsCanDraw(const fuiListIcons *icons) {
+	bool result = (icons != fui_null) && (icons->sheet != 0);
+	return(result);
+}
+
+//! What the whole sheet is modulated by. A FULLY TRANSPARENT tint is one nobody set, and leaves the sheet alone
+fui_inline fuiColor fui__ListIconSheetTint(const fuiListIcons *icons) {
+	if(icons->tint.a > 0.0f) {
+		return(icons->tint);
+	}
+	fuiColor untinted = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+	return(untinted);
+}
+
+//! What ONE row's icon is modulated by: the row's own tint where it set one, else the whole sheet's
+fui_inline fuiColor fui__ListIconRowTint(const fuiListIcons *icons, const int32_t rowIndex) {
+	bool rowIsInTheTintTable = (icons->tintForRow != fui_null) && (rowIndex >= 0) && (rowIndex < icons->cellForRowCount);
+	if(rowIsInTheTintTable) {
+		fuiColor rowTint = icons->tintForRow[rowIndex];
+		if(rowTint.a > 0.0f) {
+			return(rowTint);
+		}
+	}
+	fuiColor sheetTint = fui__ListIconSheetTint(icons);
+	return(sheetTint);
+}
 
 //! The part of the sheet one cell covers, in texture coordinates
 fui_inline void fui__ListIconCellUv(const fuiListIcons *icons, const int32_t cell, fuiVec2 *outUvMin, fuiVec2 *outUvMax) {
@@ -11013,10 +11090,8 @@ fui_inline void fui__ListIconCellUv(const fuiListIcons *icons, const int32_t cel
 	*outUvMax = fuiV2(uvLeft + cellWidth, uvTop + cellHeight);
 }
 
-//! Draws one row's icon and answers the rectangle its text has left
+//! Answers the half open range of rows a box of a given height and scroll offset can actually show
 /*
-	Which rows a box of a given height can actually show.
-
 	Both list widgets used to run their loop over EVERY row and `continue` past the ones out of view. That
 	is correct and it is what an immediate mode list usually does, because a list usually has thirty rows
 	in it. At a million it is a million iterations a frame to draw the forty that fit.
@@ -11050,18 +11125,16 @@ fui_inline void fui__ListVisibleRange(const float scroll, const float viewportHe
 	*outEndRow = endRow;
 }
 
-fui_inline fuiRect fui__ListBoxDrawRowIcon(fuiContext *context, const fuiRect rowRect, const float rowHeight, const fuiListIcons *icons, const int32_t rowIndex) {
-	if(icons == fui_null || icons->sheet == 0 || icons->cellForRow == fui_null || rowIndex >= icons->cellForRowCount) {
-		return(rowRect);
-	}
-	float iconBoxSize = rowHeight - FUI__LIST_ICON_PADDING * 2.0f;
-	int32_t cell = icons->cellForRow[rowIndex];
-	if(cell < 0) {
-		// A NEGATIVE cell is one row saying it has no icon, for the odd entry out in a list that otherwise
-		// does - a "none" row, a separator. Its text still starts where the icons do, so the column of labels
-		// below it stays a straight edge.
-		float shiftWithoutIcon = iconBoxSize + FUI__LIST_ICON_PADDING;
-		fuiRect textRect = fuiRectMake(rowRect.x + shiftWithoutIcon, rowRect.y, rowRect.w - shiftWithoutIcon, rowRect.h);
+//! Draws one cell of the sheet into a square box at the left of a rectangle, and answers what is left for text
+/*
+	A NEGATIVE cell draws nothing and still answers the SHIFTED rectangle, which is what keeps the column of
+	labels a straight edge down a list where only some of the rows carry an icon.
+*/
+fui_inline fuiRect fui__ListDrawIconCell(fuiContext *context, const fuiRect rect, const float boxHeight, const fuiListIcons *icons, const int32_t cell, const fuiColor tint, const float iconPadding) {
+	float iconBoxSize = boxHeight - iconPadding * 2.0f;
+	float textShift = iconBoxSize + iconPadding;
+	fuiRect textRect = fuiRectMake(rect.x + textShift, rect.y, rect.w - textShift, rect.h);
+	if(cell < 0 || iconBoxSize <= 0.0f) {
 		return(textRect);
 	}
 
@@ -11083,15 +11156,64 @@ fui_inline fuiRect fui__ListBoxDrawRowIcon(fuiContext *context, const fuiRect ro
 			drawWidth = iconBoxSize * cellAspect;
 		}
 	}
-	float iconLeft = rowRect.x + FUI__LIST_ICON_PADDING + (iconBoxSize - drawWidth) * 0.5f;
-	float iconTop = rowRect.y + FUI__LIST_ICON_PADDING + (iconBoxSize - drawHeight) * 0.5f;
+	float iconLeft = rect.x + iconPadding + (iconBoxSize - drawWidth) * 0.5f;
+	float iconTop = rect.y + iconPadding + (iconBoxSize - drawHeight) * 0.5f;
 	fuiRect iconRect = fuiRectMake(iconLeft, iconTop, drawWidth, drawHeight);
-	fuiColor iconTint = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
-	fuiDrawImage(context, iconRect, icons->sheet, uvMin, uvMax, iconTint);
-
-	float shiftWithIcon = iconBoxSize + FUI__LIST_ICON_PADDING;
-	fuiRect textRect = fuiRectMake(rowRect.x + shiftWithIcon, rowRect.y, rowRect.w - shiftWithIcon, rowRect.h);
+	fuiDrawImage(context, iconRect, icons->sheet, uvMin, uvMax, tint);
 	return(textRect);
+}
+
+//! Draws one ROW's icon and answers the rectangle its text has left
+/*
+	A row PAST the end of the table is one without an icon rather than one without the INDENT. A negative cell
+	has always meant "this row has no icon" - a "none" row, a separator - and still moved its text over so the
+	labels below stayed a straight edge; a table shorter than the list used to do neither, and the text jumped
+	back to the left edge from that row down. Both are the same case now.
+*/
+fui_inline fuiRect fui__ListBoxDrawRowIcon(fuiContext *context, const fuiRect rowRect, const float rowHeight, const fuiListIcons *icons, const int32_t rowIndex) {
+	bool iconsCanDraw = fui__ListIconsCanDraw(icons);
+	if(!iconsCanDraw || icons->cellForRow == fui_null) {
+		return(rowRect);
+	}
+	int32_t cellWithoutIcon = -1;
+	int32_t cell = cellWithoutIcon;
+	bool rowIsInTheTable = (rowIndex >= 0) && (rowIndex < icons->cellForRowCount);
+	if(rowIsInTheTable) {
+		cell = icons->cellForRow[rowIndex];
+	}
+
+	const fuiTheme *theme = &context->theme;
+	float iconPadding = fui__ListIconPadding(theme);
+	fuiColor rowTint = fui__ListIconRowTint(icons, rowIndex);
+	fuiRect textRect = fui__ListDrawIconCell(context, rowRect, rowHeight, icons, cell, rowTint, iconPadding);
+	return(textRect);
+}
+
+//! Draws one column HEADER's icon and answers the rectangle its title has left
+/*
+	A header without an icon keeps its title flush against the left of its cell rather than being indented the
+	way a row is: two header titles in DIFFERENT columns share no edge to line up along, so an indent there
+	would only push a title away from the column it names.
+*/
+fui_inline fuiRect fui__ListDrawHeaderIcon(fuiContext *context, const fuiRect headerCell, const float headerHeight, const fuiListIcons *icons, const int32_t columnIndex) {
+	bool iconsCanDraw = fui__ListIconsCanDraw(icons);
+	if(!iconsCanDraw || icons->cellForColumn == fui_null) {
+		return(headerCell);
+	}
+	bool columnIsInTheTable = (columnIndex >= 0) && (columnIndex < icons->cellForColumnCount);
+	if(!columnIsInTheTable) {
+		return(headerCell);
+	}
+	int32_t cell = icons->cellForColumn[columnIndex];
+	if(cell < 0) {
+		return(headerCell);
+	}
+
+	const fuiTheme *theme = &context->theme;
+	float iconPadding = fui__ListIconPadding(theme);
+	fuiColor sheetTint = fui__ListIconSheetTint(icons);
+	fuiRect titleRect = fui__ListDrawIconCell(context, headerCell, headerHeight, icons, cell, sheetTint, iconPadding);
+	return(titleRect);
 }
 
 fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated) {
@@ -11102,7 +11224,10 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 	if(outWasActivated != fui_null) {
 		*outWasActivated = false;
 	}
-	if(items == fui_null && count > 0) {
+	// A list of icons ALONE needs no items at all, its rows having nothing to say in words.
+	bool hasIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForRow != fui_null);
+	bool iconsAreAlone = hasIcons && icons->iconOnly;
+	if(items == fui_null && count > 0 && !iconsAreAlone) {
 		return(false);
 	}
 
@@ -11113,7 +11238,6 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 	fuiDrawRect(context, rect, theme->widgetTrackColor);
 	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
 
-	bool hasIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForRow != fui_null);
 	float rowScale = FUI__LIST_ICON_ROW_SCALE;
 	if(hasIcons && icons->rowScale > 0.0f) {
 		rowScale = icons->rowScale;
@@ -11164,7 +11288,9 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 			fuiDrawRect(context, rowRect, theme->widgetHoveredColor);
 		}
 		fuiRect textRect = fui__ListBoxDrawRowIcon(context, rowRect, rowHeight, icons, rowIndex);
-		fui__DrawTextInRect(context, textRect, items[rowIndex], theme->textColor);
+		if(!iconsAreAlone) {
+			fui__DrawTextInRect(context, textRect, items[rowIndex], theme->textColor);
+		}
 
 		if(rowIsHovered && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT]) {
 			// A second click on the row that is already selected, inside the double click window, is the open
@@ -12260,13 +12386,26 @@ fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const c
 	bool hasRowButtons = (rowButtons != fui_null) && (rowButtons->labelForRow != fui_null) && (rowButtons->column >= 0) && (rowButtons->column < columnCount);
 	fui__ListSeedColumnWidths(state, columns, columnCount);
 
+	// Which column carries the icons, tested the same way the button column is: one OUTSIDE the list leaves a
+	// list without icons at all, rather than icons that quietly slide back to column zero.
+	//
+	// Where the icons and the buttons land on the same column the BUTTON wins, because it replaces the whole
+	// cell it stands in, and that column simply draws no icon. The rows do keep their icon height there, since
+	// the list is a list WITH icons - it is one column of them that has been taken away.
+	int32_t iconColumn = (icons != fui_null) ? icons->column : 0;
+	bool iconColumnIsInTheList = (iconColumn >= 0) && (iconColumn < columnCount);
+
 	fuiDrawRect(context, rect, theme->widgetTrackColor);
 	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
 
 	// A row carrying an ICON is taller, so the glyph has somewhere to be - by the caller's own factor, because
 	// "as tall as a file browser's row" is far too much for a list of hundreds. The HEADER keeps the plain
 	// text height whatever the rows do.
-	bool hasIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForRow != fui_null);
+	bool hasIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForRow != fui_null) && iconColumnIsInTheList;
+	bool iconsAreAlone = hasIcons && icons->iconOnly;
+	// The HEADER's icons are a table of their own, so a list can put a glyph on its titles without its rows
+	// carrying any, and the other way round.
+	bool hasHeaderIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForColumn != fui_null);
 	float rowHeight = theme->menuItemHeight;
 	if(hasIcons) {
 		float iconRowScale = (icons->rowScale > 0.0f) ? icons->rowScale : FUI__LIST_ICON_ROW_SCALE;
@@ -12343,7 +12482,11 @@ fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const c
 
 		fuiPushClip(context, cellRect);
 		bool isTheSortedColumn = (state != fui_null) && state->sortIsActive && (state->sortColumn == columnIndex);
-		fui__DrawTextInRect(context, cellRect, columns[columnIndex].title, isTheSortedColumn ? theme->accentColor : theme->textColor);
+		fuiRect titleRect = cellRect;
+		if(hasHeaderIcons) {
+			titleRect = fui__ListDrawHeaderIcon(context, cellRect, headerRect.h, icons, columnIndex);
+		}
+		fui__DrawTextInRect(context, titleRect, columns[columnIndex].title, isTheSortedColumn ? theme->accentColor : theme->textColor);
 		if(isTheSortedColumn) {
 			fui__ListDrawSortArrow(context, cellRect, state->sortIsAscending, theme->accentColor);
 		}
@@ -12425,8 +12568,8 @@ fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const c
 			fuiDrawRect(context, rowRect, theme->widgetHoveredColor);
 		}
 
-		// The cells, moved by the sideways scroll and each clipped to its column. An icon goes in the FIRST
-		// column ahead of its text, the same place a list box puts it.
+		// The cells, moved by the sideways scroll and each clipped to its column. An icon goes ahead of its
+		// text in the column the caller named, the same place inside that cell a list box puts it.
 		float cellLeft = rowRect.x - scrollX;
 		bool rowHasButton = false;
 		fuiRect rowButtonRect = fuiRectMake(0.0f, 0.0f, 0.0f, 0.0f);
@@ -12459,10 +12602,14 @@ fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const c
 			}
 
 			fuiRect textRect = cellRect;
-			if(hasIcons && columnIndex == 0) {
+			bool cellShowsItsText = true;
+			if(hasIcons && columnIndex == iconColumn) {
 				textRect = fui__ListBoxDrawRowIcon(context, cellRect, rowHeight, icons, row);
+				cellShowsItsText = !iconsAreAlone;
 			}
-			fui__DrawTextInRect(context, textRect, cells[row * columnCount + columnIndex], theme->textColor);
+			if(cellShowsItsText) {
+				fui__DrawTextInRect(context, textRect, cells[row * columnCount + columnIndex], theme->textColor);
+			}
 			fuiPopClip(context);
 		}
 
