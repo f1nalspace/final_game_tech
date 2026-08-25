@@ -23,8 +23,11 @@ Description:
 	The measurement is split where the cost actually splits:
 
 	  - Build   the time inside fuiBeginFrame .. fuiEndFrame, which is the library doing layout and text
-	  - Render  the time inside fuiGL1Render, which is the backend draining the draw data
-	  - Frame   the whole thing including the vsync wait, which is what the user feels
+	  - Submit  the time inside fuiGL1Render, which is the backend handing the driver its draw calls
+	  - Frame   the whole thing, which is what the user feels
+
+	What is left of the frame after build and submit is the graphics card and the display. Neither is
+	waited on here on purpose: a finish would report a frame idling until the next refresh as a slow one.
 
 	plus the counters that explain them: draw commands, vertices, indices, text bytes and how much the
 	context arena has taken. A frame time history is drawn as a graph, so a spike from a sort or a scroll
@@ -78,16 +81,22 @@ License:
 #include <string.h>
 
 #define PERF_WINDOW_TITLE "final_ui.h performance workbench (FPL + OpenGL)"
-#define PERF_WINDOW_WIDTH 1600
-#define PERF_WINDOW_HEIGHT 940
+#define PERF_WINDOW_WIDTH 1760
+#define PERF_WINDOW_HEIGHT 1060
 
 // Baked once, above the largest text on screen, so every size drawn is a reduction of the atlas.
 #define PERF_FONT_PIXEL_HEIGHT 34.0f
 #define PERF_FONT_ATLAS_SIDE 512u
 
-#define PERF_ROW_HEIGHT 24.0f
-#define PERF_METRICS_PANEL_WIDTH 340.0f
-#define PERF_TAB_STRIP_HEIGHT 28.0f
+// The type the whole workbench is set in. Smaller than the theme's default, because eight columns of a
+// table have to fit in one window - but only a little, because a workbench that cannot be READ while it
+// is being measured is no use, and a column of hashes at thirteen pixels could not be.
+#define PERF_FONT_HEIGHT 16.0f
+#define PERF_MENU_ROW_HEIGHT 25.0f
+
+#define PERF_ROW_HEIGHT 30.0f
+#define PERF_METRICS_PANEL_WIDTH 420.0f
+#define PERF_TAB_STRIP_HEIGHT 34.0f
 #define PERF_CONTENT_INSET 8.0f
 #define PERF_STATUS_TEXT_MAX 192
 
@@ -292,14 +301,14 @@ static const char *const g_perfFolders[] = {
 };
 
 static const fuiColumn g_perfTableColumns[PERF_TABLE_COLUMN_COUNT] = {
-	{ "Id", 90.0f },
-	{ "Name", 190.0f },
-	{ "Category", 110.0f },
-	{ "Status", 100.0f },
-	{ "Modified", 160.0f },
-	{ "Size", 100.0f },
-	{ "Path", 380.0f },
-	{ "Hash", 160.0f },
+	{ "Id", 110.0f },
+	{ "Name", 230.0f },
+	{ "Category", 130.0f },
+	{ "Status", 120.0f },
+	{ "Modified", 195.0f },
+	{ "Size", 120.0f },
+	{ "Path", 440.0f },
+	{ "Hash", 195.0f },
 };
 
 // ----------------------------------------------------------------------------
@@ -835,6 +844,7 @@ typedef struct PerfState {
 
 	bool showMetricsPanel;
 	bool showGraph;
+	bool drawBatchingIsOn;
 	bool sortIsEnabled;
 	bool wordWrapIsOn;
 	bool uiOwnedTheMouseLastFrame;
@@ -845,6 +855,15 @@ typedef struct PerfState {
 	//! Counted while the menu tree is built, which is the only way to know what an open popup really emitted
 	uint32_t menuRowsThisFrame;
 } PerfState;
+
+//! The look both the window and the benchmark run under. Shared, so a reading taken from the terminal is
+//! of the same interface the window shows and not of a differently sized one
+static void PerfApplyTheme(fuiContext *ui) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	theme->fontHeight = PERF_FONT_HEIGHT;
+	theme->menuItemFontHeight = PERF_FONT_HEIGHT;
+	theme->menuItemHeight = PERF_MENU_ROW_HEIGHT;
+}
 
 static void PerfSay(PerfState *state, const char *message) {
 	fplCopyString(message, state->statusMessage, fplArrayCount(state->statusMessage));
@@ -903,6 +922,7 @@ static void PerfInit(PerfState *state) {
 	state->listSelection = -1;
 	state->showMetricsPanel = true;
 	state->showGraph = true;
+	state->drawBatchingIsOn = true;
 	state->sortIsEnabled = true;
 	state->wordWrapIsOn = false;
 	state->isRunning = true;
@@ -960,6 +980,9 @@ static void PerfBuildMenuBar(fuiContext *ui, PerfState *state, const fuiRect bar
 		if(fuiMenuItemCheck(ui, "Sortable columns", state->sortIsEnabled, true)) {
 			state->sortIsEnabled = !state->sortIsEnabled;
 		}
+		if(fuiMenuItemCheck(ui, "Merge draw commands", state->drawBatchingIsOn, true)) {
+			state->drawBatchingIsOn = !state->drawBatchingIsOn;
+		}
 		if(fuiMenuItemCheck(ui, "Word wrap in the text box", state->wordWrapIsOn, true)) {
 			state->wordWrapIsOn = !state->wordWrapIsOn;
 		}
@@ -1013,6 +1036,10 @@ static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect s
 	if(sortWasClicked) {
 		state->sortIsEnabled = !state->sortIsEnabled;
 	}
+	bool batchingWasClicked = fuiToolStripToggle(ui, "Batching", state->drawBatchingIsOn, true);
+	if(batchingWasClicked) {
+		state->drawBatchingIsOn = !state->drawBatchingIsOn;
+	}
 	bool wrapWasClicked = fuiToolStripToggle(ui, "Word wrap", state->wordWrapIsOn, true);
 	if(wrapWasClicked) {
 		state->wordWrapIsOn = !state->wordWrapIsOn;
@@ -1038,11 +1065,11 @@ static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect s
 // The metrics panel
 // ----------------------------------------------------------------------------
 
-#define PERF_GRAPH_HEIGHT 96.0f
+#define PERF_GRAPH_HEIGHT 100.0f
 #define PERF_GRAPH_FLOOR_MILLISECONDS 20.0f
 #define PERF_SIXTY_HERTZ_MILLISECONDS 16.667f
-#define PERF_METRIC_ROW_HEIGHT 20.0f
-#define PERF_STEP_BUTTON_WIDTH 62.0f
+#define PERF_METRIC_ROW_HEIGHT 26.0f
+#define PERF_STEP_BUTTON_WIDTH 78.0f
 
 static void PerfDrawFrameGraph(fuiContext *ui, const PerfMetrics *metrics, const fuiRect rect) {
 	fuiTheme *theme = fuiGetTheme(ui);
@@ -1119,8 +1146,11 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 		return;
 	}
 
+	// Scrolling, because the readout is a fixed list of lines and the window is not: at a readable type
+	// size the last few rows and the graph fall off the bottom of a short window, and a workbench that
+	// hides its own numbers when the window is resized is worse than useless.
 	const float panelTakesTheWholeHeight = 0.0f;
-	bool panelIsOpen = fuiBeginPanel(ui, "Metrics", FUI_DOCK_LEFT, 0.0f, 0.0f, PERF_METRICS_PANEL_WIDTH, panelTakesTheWholeHeight);
+	bool panelIsOpen = fuiBeginScrollPanel(ui, "Metrics", FUI_DOCK_LEFT, 0.0f, 0.0f, PERF_METRICS_PANEL_WIDTH, panelTakesTheWholeHeight);
 	if(panelIsOpen) {
 		const PerfMetrics *metrics = &state->metrics;
 		const PerfDataSet *data = &state->data;
@@ -1132,7 +1162,7 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedBuildMilliseconds);
 		PerfMetricLine(ui, "Build", value);
 		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedRenderMilliseconds);
-		PerfMetricLine(ui, "Render", value);
+		PerfMetricLine(ui, "Submit", value);
 		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedFrameMilliseconds);
 		PerfMetricLine(ui, "Frame", value);
 		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->worstFrameMilliseconds);
@@ -1217,7 +1247,7 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 #define PERF_TABLE_ID "perftable"
 #define PERF_LIST_ID "perflist"
 #define PERF_TEXT_ID "perftext"
-#define PERF_NOTE_HEIGHT 22.0f
+#define PERF_NOTE_HEIGHT 28.0f
 
 static void PerfBuildListViewTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
 	// A list longer than FUI_MAX_SORTABLE_ROWS is not sorted at all, and the library says nothing about
@@ -1352,7 +1382,7 @@ static void PerfBuildStatusBar(fuiContext *ui, PerfState *state, const fuiRect s
 	fplStringFormat(rightText, fplArrayCount(rightText), "build %.2f ms", metrics->smoothedBuildMilliseconds);
 	fuiStatusTextRight(ui, rightText);
 
-	fplStringFormat(rightText, fplArrayCount(rightText), "render %.2f ms", metrics->smoothedRenderMilliseconds);
+	fplStringFormat(rightText, fplArrayCount(rightText), "submit %.2f ms", metrics->smoothedRenderMilliseconds);
 	fuiStatusTextRight(ui, rightText);
 
 	fplStringFormat(rightText, fplArrayCount(rightText), "%u cmds", metrics->commandCount);
@@ -1432,36 +1462,40 @@ typedef struct PerfCase {
 	int32_t scaleStepIndex;
 	int32_t textStepIndex;
 	int32_t menuStepIndex;
+	//! Whether this case merges consecutive draw commands, which is what the "batched" twins turn on
+	bool drawBatchingIsOn;
 } PerfCase;
 
 // Every case names the ONE thing it varies. Reading down a column of these is the whole experiment: the
 // scale goes up by ten and the build time either follows it or it does not.
 static const PerfCase g_perfCases[] = {
-	{ "listview 1K",          PerfSubject_ListView,       0, 0, 0 },
-	{ "listview 10K",         PerfSubject_ListView,       1, 0, 0 },
-	{ "listview 100K",        PerfSubject_ListView,       2, 0, 0 },
-	{ "listview 1M",          PerfSubject_ListView,       4, 0, 0 },
-	{ "listview sorted 1K",   PerfSubject_ListViewSorted, 0, 0, 0 },
-	{ "listview sorted 10K",  PerfSubject_ListViewSorted, 1, 0, 0 },
-	{ "listview sorted 100K", PerfSubject_ListViewSorted, 2, 0, 0 },
-	{ "listview sorted 1M",   PerfSubject_ListViewSorted, 4, 0, 0 },
-	{ "listview resort 1K",   PerfSubject_ListViewResorted, 0, 0, 0 },
-	{ "listview resort 10K",  PerfSubject_ListViewResorted, 1, 0, 0 },
-	{ "listview resort 100K", PerfSubject_ListViewResorted, 2, 0, 0 },
-	{ "listbox 500",          PerfSubject_ListBox,        0, 0, 0 },
-	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0 },
-	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0 },
-	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0 },
-	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0 },
-	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0 },
-	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0 },
-	{ "textbox 200K",         PerfSubject_TextBox,        0, 3, 0 },
-	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0 },
-	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1 },
-	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2 },
-	{ "menu 400 rows",        PerfSubject_MenuPopup,      0, 0, 3 },
-	{ "everything 10K",       PerfSubject_Everything,     1, 1, 1 },
-	{ "everything 100K",      PerfSubject_Everything,     2, 2, 2 },
+	{ "listview 1K",          PerfSubject_ListView,       0, 0, 0, false },
+	{ "listview 10K",         PerfSubject_ListView,       1, 0, 0, false },
+	{ "listview 100K",        PerfSubject_ListView,       2, 0, 0, false },
+	{ "listview 1M",          PerfSubject_ListView,       4, 0, 0, false },
+	{ "listview sorted 1K",   PerfSubject_ListViewSorted, 0, 0, 0, false },
+	{ "listview sorted 10K",  PerfSubject_ListViewSorted, 1, 0, 0, false },
+	{ "listview sorted 100K", PerfSubject_ListViewSorted, 2, 0, 0, false },
+	{ "listview sorted 1M",   PerfSubject_ListViewSorted, 4, 0, 0, false },
+	{ "listview resort 1K",   PerfSubject_ListViewResorted, 0, 0, 0, false },
+	{ "listview resort 10K",  PerfSubject_ListViewResorted, 1, 0, 0, false },
+	{ "listview resort 100K", PerfSubject_ListViewResorted, 2, 0, 0, false },
+	{ "listbox 500",          PerfSubject_ListBox,        0, 0, 0, false },
+	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0, false },
+	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0, false },
+	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0, false },
+	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0, false },
+	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0, false },
+	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0, false },
+	{ "textbox 200K",         PerfSubject_TextBox,        0, 3, 0, false },
+	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0, false },
+	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1, false },
+	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2, false },
+	{ "menu 400 rows",        PerfSubject_MenuPopup,      0, 0, 3, false },
+	{ "everything 10K",       PerfSubject_Everything,     1, 1, 1, false },
+	{ "everything 100K",      PerfSubject_Everything,     2, 2, 2, false },
+	{ "listview 100K batched", PerfSubject_ListView,      2, 0, 0, true },
+	{ "everything 100K batchd", PerfSubject_Everything,   2, 2, 2, true },
 };
 
 static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const PerfSubject subject, const fuiRect rect, const bool isTheFirstFrame) {
@@ -1529,6 +1563,7 @@ static void PerfRunBenchmarkCase(fuiContext *ui, PerfState *state, const PerfCas
 	state->requestedScaleStepIndex = benchmarkCase->scaleStepIndex;
 	state->requestedTextStepIndex = benchmarkCase->textStepIndex;
 	state->requestedMenuStepIndex = benchmarkCase->menuStepIndex;
+	fuiSetDrawBatching(ui, benchmarkCase->drawBatchingIsOn);
 	PerfApplyRequestedScale(state);
 	if(!state->data.isComplete) {
 		printf("%-22s  out of memory\n", benchmarkCase->name);
@@ -1616,12 +1651,7 @@ static int PerfRunBenchmark(void) {
 		return 1;
 	}
 
-	fuiTheme *theme = fuiGetTheme(&ui);
-	const float denseFontHeight = 13.0f;
-	const float denseRowHeight = 20.0f;
-	theme->fontHeight = denseFontHeight;
-	theme->menuItemFontHeight = denseFontHeight;
-	theme->menuItemHeight = denseRowHeight;
+	PerfApplyTheme(&ui);
 
 	PerfState state;
 	PerfInit(&state);
@@ -1716,14 +1746,7 @@ int main(int argc, char **argv) {
 	platform.setClipboardText = fuiFplSetClipboardText;
 	fuiSetPlatform(&ui, &platform);
 
-	// Rows this dense want a smaller type than the default, or eight columns of a table do not fit in a
-	// window at all and the demo measures wrapping instead of what it came to measure.
-	fuiTheme *theme = fuiGetTheme(&ui);
-	const float denseFontHeight = 13.0f;
-	const float denseRowHeight = 20.0f;
-	theme->fontHeight = denseFontHeight;
-	theme->menuItemFontHeight = denseFontHeight;
-	theme->menuItemHeight = denseRowHeight;
+	PerfApplyTheme(&ui);
 
 	PerfState state;
 	PerfInit(&state);
@@ -1745,6 +1768,9 @@ int main(int argc, char **argv) {
 			state.isRunning = false;
 		}
 
+		// The GL1 backend drains the geometry rather than the payloads, so it is free to have this on.
+		fuiSetDrawBatching(&ui, state.drawBatchingIsOn);
+
 		fplTimestamp buildStart = fplTimestampQuery();
 		fuiBeginFrame(&ui, &bridge.input, FUI_PASS_BOTH);
 		PerfBuildUserInterface(&ui, &state, bridge.rightPressedThisFrame);
@@ -1759,11 +1785,16 @@ int main(int argc, char **argv) {
 		glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
+		// What is timed here is SUBMISSION - the backend walking the commands and handing the driver a
+		// scissor, a texture bind and a draw call for each of them. That is the part a user interface
+		// library is answerable for, and the part fewer commands make cheaper.
+		//
+		// Deliberately no glFinish. Waiting for the pixels would fold the display's own pacing into this
+		// number and report a frame that is simply waiting for the next refresh as an expensive one. What
+		// the graphics card then does with twenty thousand vertices is not measured here at all: it is
+		// whatever is left of the frame time after build and submit.
 		fplTimestamp renderStart = fplTimestampQuery();
 		fuiGL1Render(drawData);
-		// The backend hands the driver a draw call per command and returns before any of them have run, so
-		// a finish is the only way to time the work rather than the queueing of it.
-		glFinish();
 		fplTimestamp renderEnd = fplTimestampQuery();
 
 		fplVideoFlip();
