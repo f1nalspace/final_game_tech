@@ -123,6 +123,7 @@ FUI_API_AS_PRIVATE        Set to 1 to make the public api static (single file on
 FUI_ASSERT(expr)          Override the assertion macro (defaults to assert from <assert.h>).
 FUI_MALLOC(size)          Override the default allocate (defaults to malloc; skips <stdlib.h> when set with FUI_FREE).
 FUI_FREE(ptr)             Override the default release (defaults to free; skips <stdlib.h> when set with FUI_MALLOC).
+FUI_STRLEN(text)          Override string length (defaults to strlen; skips <string.h> when set with the memory overrides).
 FUI_MEMSET(dst,val,size)  Override memory set (defaults to memset; skips <string.h> when set with FUI_MEMCPY and FUI_MEMMOVE).
 FUI_MEMCPY(dst,src,size)  Override memory copy (defaults to memcpy; skips <string.h> when set with FUI_MEMSET and FUI_MEMMOVE).
 FUI_MEMMOVE(dst,src,size) Override memory move (defaults to memmove; skips <string.h> when set with FUI_MEMSET and FUI_MEMCPY).
@@ -139,6 +140,8 @@ FUI_MAX_TEXT_LINES        Maximum number of visual lines one text block breaks i
 FUI_MAX_ID_STACK          Maximum nesting depth of the identifier stack (default 32).
 FUI_MAX_LAYOUT_DEPTH      Maximum number of containers open at once (default 32).
 FUI_MAX_WIDGET_STATES     Maximum number of widgets remembering something across frames (default 256).
+FUI_MAX_SORTABLE_ROWS     Maximum number of rows one list view will sort (default 1000000).
+FUI_LIST_SORT_VERIFY_ROWS Up to this many rows, a sorted list notices edited cells by itself (default 4096).
 FUI_MAX_TEXT_INPUT        Maximum number of codepoints typed in one frame (default 32).
 FUI_MAX_TOOLTIP_TEXT      Maximum number of bytes one hover tooltip may say (default 256).
 FUI_MAX_CLIPBOARD_TEXT    Maximum number of bytes one clipboard transfer may carry (default 1024).
@@ -181,7 +184,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.2
+	@version v0.9.3
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -195,6 +198,48 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.3:
+	This one is about SIZE. Everything below came out of a workbench built to answer one question - what does
+	a list of a million rows, a text box holding a whole file, or a menu of tens of thousands of items cost -
+	and it turned out the honest answer was "far more than any of it needed to". See demos/FUI_Performance.
+
+	- Fixed: A sorted list view sorted itself again on EVERY frame, which is n log n natural-order string
+	  comparisons to arrive at the answer it already had. It is now worked out once and kept, keyed on the
+	  address of the cell array, its shape and the sort. Measured on a hundred thousand rows: 41 ms a frame
+	  before, 0.05 ms after.
+	- New: fuiListViewInvalidateSort, which a list longer than FUI_LIST_SORT_VERIFY_ROWS needs from a caller
+	  that edits cells IN PLACE - the same array, the same number of rows, different text. A shorter list
+	  hashes its sorted column every frame and notices that by itself, so nothing existing has to change.
+	- New: FUI_LIST_SORT_VERIFY_ROWS, the length up to which that hash is taken (default 4096).
+	- Changed: FUI_MAX_SORTABLE_ROWS is 1000000 rather than 4096, and it is now a ceiling on what one sorted
+	  list may make the context allocate rather than a buffer reserved up front. A list sorts an array the
+	  size of ITS rows, the first time it is sorted.
+	- Fixed: A list box and a list view walked EVERY row to draw the forty that fit. Both now work out which
+	  rows the box can show and walk only those, so the cost of a list no longer follows its length at all.
+	  A million row list view went from 1.47 ms a frame to 0.05 ms.
+	- Fixed: Every label was measured TWICE and then walked twice more - once by the caller for a height the
+	  font metrics already hold, once inside fuiDrawText for a clip test that needs two numbers, once to count
+	  codepoints for a reservation a byte count bounds, and once to build the glyphs. Only the last of those
+	  is left.
+	- Fixed: fuiDrawText tessellated glyphs the clip could never show. It now skips the ones off the left edge
+	  and stops at the right one, so a long path in a narrow column costs the dozen glyphs that fit rather
+	  than the five hundred it holds.
+	- Fixed: fui__StringLength walked a string a byte at a time. It goes through FUI_STRLEN now, which is the
+	  C library's, and is on the path of every label and of a text field's whole document once a frame. A text
+	  box holding two hundred thousand lines went from 5.07 ms a frame to 0.19 ms.
+	- New: FUI_STRLEN, to override that the way FUI_MEMCPY and the others are overridden.
+	- Fixed: A menu popup taller than the window was placed at the top and drawn off the bottom, where its
+	  rows could be neither seen nor reached. A popup is now no taller than the window, scrolls under the
+	  wheel when it had to be cut, and marks the edge it was cut at.
+	- Fixed: The retained widget state table held 256 widgets and, once full, turned every lookup into a scan
+	  of all of them that answered nothing - so a panel silently lost its scroll position and a list its column
+	  widths. It grows and rehashes instead, at the frame boundary, where nothing is holding a pointer into it.
+	- New: fuiSetDrawBatching, merging consecutive commands that share a clip and a texture into one. OFF by
+	  default, because a merged command carries no fast path payload: a backend that redraws a rectangle or a
+	  string through its own pipeline, rather than drawing the triangles, must not turn it on.
+	- Changed: fuiContext.listSortOrder is gone, since the order now lives with the list that owns it, and
+	  fuiContext.listSortScratch grows to fit rather than being reserved at FUI_MAX_SORTABLE_ROWS.
 
 	# v0.9.2:
 	- Changed: A button is drawn as a BUTTON - a vertically shaded face between a lit top-left edge and a shaded
@@ -457,9 +502,19 @@ SOFTWARE.
 #	define FUI_MAX_LIST_COLUMNS 12
 #endif
 
+#if !defined(FUI_LIST_SORT_VERIFY_ROWS)
+	//! Up to this many rows, a list view HASHES its sorted column every frame and re-sorts by itself when
+	//! the text changed. Past it that hash costs more than it is worth and a caller that edits cells in
+	//! place has to say so with @ref fuiListViewInvalidateSort
+#	define FUI_LIST_SORT_VERIFY_ROWS 4096
+#endif
+
 #if !defined(FUI_MAX_SORTABLE_ROWS)
-	//! Maximum number of rows a list view will sort. A longer list stays in the order the caller gave it
-#	define FUI_MAX_SORTABLE_ROWS 4096
+	//! Maximum number of rows a list view will sort. A longer list stays in the order the caller gave it.
+	//! This is a ceiling on what ONE sorted list may make the context allocate - two int32 arrays of this
+	//! many entries in the worst case - and not a working set that is reserved up front. A list sorts an
+	//! array the size of ITS rows, the first time it is sorted, and never gives it back
+#	define FUI_MAX_SORTABLE_ROWS 1000000
 #endif
 
 #if !defined(FUI_KEY_REPEAT_DELAY)
@@ -905,6 +960,13 @@ fui_inline fuiVec2 fuiRectCenter(const fuiRect rect) {
 * @param[in] rect The rectangle.
 * @return Returns true when the width or the height is zero or negative.
 */
+//! Whether two rectangles are the same one. Bit exact on purpose: both sides come out of the same clip
+//! arithmetic, so a tolerance here would merge two commands that really are clipped differently
+fui_inline bool fui__RectEquals(const fuiRect left, const fuiRect right) {
+	bool result = (left.x == right.x) && (left.y == right.y) && (left.w == right.w) && (left.h == right.h);
+	return(result);
+}
+
 fui_inline bool fuiRectIsEmpty(const fuiRect rect) {
 	bool result = (rect.w <= 0.0f) || (rect.h <= 0.0f);
 	return(result);
@@ -1722,6 +1784,24 @@ typedef struct fuiWidgetState {
 	int32_t lastClickIndex;
 	//! Which tab of a tab control is showing
 	int32_t activeTab;
+	//! Cached display order of a sorted list, one source row per display position, or null while nothing
+	//! has sorted this list yet. Owned by the context arena, which never gives an allocation back
+	int32_t *sortOrder;
+	//! How many entries sortOrder has room for, which only ever grows
+	int32_t sortOrderCapacity;
+	//! The cell array sortOrder was built from, compared by ADDRESS to notice a caller handing over a different one
+	const void *sortOrderCells;
+	//! Hash of the whole sorted column as it read when sortOrder was built, for a list short enough to check
+	fuiId sortOrderFingerprint;
+	//! Whether that hash means anything, which it does not for a list too long to hash every frame
+	bool sortOrderWasFingerprinted;
+	//! How many rows, how many columns, which column and which direction sortOrder was built for
+	int32_t sortOrderRowCount;
+	int32_t sortOrderColumnCount;
+	int32_t sortOrderColumn;
+	bool sortOrderIsAscending;
+	//! Whether sortOrder holds a finished order at all, which is what an invalidation clears
+	bool sortOrderIsBuilt;
 	//! LIVE width of every column of a list view, seeded from the caller's defaults and then owned by the drags
 	float columnWidths[FUI_MAX_LIST_COLUMNS];
 	//! How many of columnWidths are tracked. Zero until seeded, reseeded when the column COUNT changes
@@ -1752,6 +1832,11 @@ typedef struct fuiWidgetStateMap {
 	fuiWidgetState *entries;
 	//! How many slots there are, zero when the allocation was refused
 	uint32_t capacity;
+	//! How many of them are taken. Slots are never given back, so this only ever grows
+	uint32_t count;
+	//! Set when the table filled up or got crowded, which is what makes the NEXT frame grow it. Growing
+	//! mid frame would move every entry while widgets are holding pointers into them
+	bool growthIsWanted;
 } fuiWidgetStateMap;
 
 /**
@@ -1811,6 +1896,10 @@ typedef struct fuiMenuFrame {
 	float cursorY;
 	//! Popup: the widest row this build wants, which is the width the next build opens at
 	float widestItem;
+	//! Popup: how far its rows are lifted, for a menu with more rows than the screen is tall
+	float scrollOffset;
+	//! Popup: how tall all of its rows were the last time it was open, which is what the scroll is bounded by
+	float contentHeight;
 	//! How deep this menu sits in the open path, so a row knows which submenus to close
 	uint32_t depth;
 	//! Whether this frame is the horizontal bar rather than a popup
@@ -1876,6 +1965,8 @@ typedef struct fuiContext {
 	bool isBuildingFrame;
 	//! Set when geometry had to be dropped because the index type ran out of range
 	bool indexRangeExceeded;
+	//! Whether consecutive commands sharing a clip and a texture are merged into one, see @ref fuiSetDrawBatching
+	bool drawBatchingIsOn;
 
 	//! What the current build is for
 	fuiPass pass;
@@ -1973,10 +2064,11 @@ typedef struct fuiContext {
 	fuiWidgetStateMap widgetStates;
 	//! Countdown to the next repeat of the held widget. One widget is active at a time, so one timer serves them all
 	float activeRepeatTimer;
-	//! One source row per display position, rebuilt by whichever list view is being built. Null until one is
-	int32_t *listSortOrder;
-	//! Where the merge sort lands its halves before they go back into listSortOrder
+	//! Where the merge sort lands its halves before they go back into the order. Shared, because one sort
+	//! runs at a time, and grown to fit whichever list needed the most rows. Null until one is sorted
 	int32_t *listSortScratch;
+	//! How many entries listSortScratch has room for
+	int32_t listSortScratchCapacity;
 
 	//! Menus open right now, outermost first. A menu stays open across frames until something closes it
 	fuiId menuOpenPath[FUI_MAX_MENU_DEPTH];
@@ -2173,6 +2265,22 @@ fui_api void fuiEndDrawFrame(fuiContext *context);
 * @note Stays valid until the next @ref fuiBeginDrawFrame on this context.
 */
 fui_api const fuiDrawData *fuiGetDrawData(const fuiContext *context);
+
+/**
+* @brief Turns the merging of consecutive draw commands on or off. Off is the default.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] enabled True to merge, false to emit one command per primitive.
+* @note With this ON, two commands that follow each other with the SAME clip rectangle and the SAME
+*       texture become one command of kind @ref FUI_DRAW_TRIANGLES. A backend that drains the geometry -
+*       binds the texture, sets the scissor, draws the indices - makes far fewer draw calls for it,
+*       which is what a dense table of hundreds of little rectangles wants.
+* @note It is OFF by default because it destroys the fast path payloads. A backend that reads
+*       fuiDrawCommand::payload to redraw a rectangle or a string through its own pipeline, rather than
+*       drawing the triangles, must NOT turn this on: a merged command carries no payload it can use.
+* @note Indices are absolute, so a merged run needs nothing special of a backend that draws them.
+* @see @ref fuiGetDrawData
+*/
+fui_api void fuiSetDrawBatching(fuiContext *context, const bool enabled);
 
 // ****************************************************************************
 //
@@ -4066,6 +4174,17 @@ fui_api void fuiListViewSetSortDefault(fuiContext *context, const char *id, cons
 */
 fui_api void fuiListViewSetSortable(fuiContext *context, const char *id, const bool sortable);
 
+/**
+* @brief Throws away the sorted order a list view has cached, so the next build works it out again.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifier of the list view, the same string it is built with.
+* @note Only needed for a list longer than FUI_LIST_SORT_VERIFY_ROWS whose cells were edited IN PLACE -
+*       the same array, the same number of rows, different text. A shorter list hashes its sorted column
+*       every frame and notices that by itself, and a different array, length or sort is noticed either way.
+* @see @ref fuiListView
+*/
+fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id);
+
 #ifdef __cplusplus
 }
 #endif
@@ -4095,8 +4214,11 @@ fui_api void fuiListViewSetSortable(fuiContext *context, const char *id, const b
 #	endif
 #endif
 
-#if !defined(FUI_MEMSET) || !defined(FUI_MEMCPY) || !defined(FUI_MEMMOVE)
+#if !defined(FUI_MEMSET) || !defined(FUI_MEMCPY) || !defined(FUI_MEMMOVE) || !defined(FUI_STRLEN)
 #	include <string.h>
+#	if !defined(FUI_STRLEN)
+#		define FUI_STRLEN(text) strlen(text)
+#	endif
 #	if !defined(FUI_MEMSET)
 #		define FUI_MEMSET(dst, value, size) memset(dst, value, size)
 #	endif
@@ -4291,16 +4413,20 @@ fui_inline void fui__ArenaFree(fuiArena *arena) {
 // > String helpers
 // ----------------------------------------------------------------------------
 
-//! Returns the number of bytes before the terminating zero, or zero for a null string
+/*
+	Returns the number of bytes before the terminating zero, or zero for a null string.
+
+	This goes through FUI_STRLEN rather than walking the bytes itself, because it is on the path of every
+	single label: a widget handed a caption and no length asks for one here, and so does the multiline
+	text field, once per frame, over the whole document it is showing. A byte at a time loop and the C
+	library's own are an order of magnitude apart on a long string, and the difference showed up as
+	milliseconds a frame on a text field holding a large file.
+*/
 fui_inline size_t fui__StringLength(const char *text) {
 	if(text == fui_null) {
 		return(0);
 	}
-	const char *cursor = text;
-	while(*cursor != 0) {
-		++cursor;
-	}
-	size_t result = (size_t)(cursor - text);
+	size_t result = FUI_STRLEN(text);
 	return(result);
 }
 
@@ -4643,6 +4769,11 @@ typedef struct fui__GeometryWriter {
 	uint32_t baseVertex;
 	//! The command this geometry belongs to, for filling in the fast path payload
 	fuiDrawCommand *command;
+	//! How many indices that command already held before this call was appended to it, which is what a
+	//! trim has to fall back to when the call turns out to draw nothing
+	uint32_t indexCountBeforeThisCall;
+	//! Whether this call was appended to a command that already existed rather than getting one of its own
+	bool wasMergedIntoTheCommandBefore;
 	//! False when there was no room, the clip rejected the call, or there is no frame being built
 	bool isValid;
 } fui__GeometryWriter;
@@ -4683,25 +4814,60 @@ fui_inline fui__GeometryWriter fui__BeginGeometry(fuiContext *context, const fui
 	fuiVertex *vertexArray = (fuiVertex *)context->vertexBuffer.items;
 	fuiDrawIndex *indexArray = (fuiDrawIndex *)context->indexBuffer.items;
 	fuiDrawCommand *commandArray = (fuiDrawCommand *)context->commandBuffer.items;
+	fuiRect clipRect = fuiGetClipRect(context);
 
-	fuiDrawCommand *command = &commandArray[context->commandBuffer.count];
-	fui__ClearMemory(command, sizeof(*command));
-	command->kind = kind;
-	command->clipRect = fuiGetClipRect(context);
-	command->texture = texture;
-	command->vertexOffset = baseVertex;
-	command->indexOffset = context->indexBuffer.count;
-	command->indexCount = indexCount;
+	/*
+		Merging, when the caller asked for it.
+
+		A command is a draw call. A dense table is hundreds of little rectangles that share a clip and a
+		texture and follow each other with nothing in between, and each of them used to be its own call
+		into the driver for geometry that could just as well go out in one.
+
+		A merged command becomes FUI_DRAW_TRIANGLES, because no payload can describe two primitives at
+		once. That is exactly why this is not the default: a backend that draws through the payloads
+		rather than through the geometry would find nothing left in them to read.
+	*/
+	fuiDrawCommand *command = fui_null;
+	bool wasMerged = false;
+	if(context->drawBatchingIsOn && context->commandBuffer.count > 0) {
+		fuiDrawCommand *previous = &commandArray[context->commandBuffer.count - 1u];
+		bool sameClip = fui__RectEquals(previous->clipRect, clipRect);
+		bool sameTexture = (previous->texture == texture);
+		// The two runs of indices have to touch, or one offset and one count cannot name both of them.
+		bool isContiguous = ((previous->indexOffset + previous->indexCount) == context->indexBuffer.count);
+		if(sameClip && sameTexture && isContiguous) {
+			command = previous;
+			wasMerged = true;
+		}
+	}
+
+	if(wasMerged) {
+		result.indexCountBeforeThisCall = command->indexCount;
+		command->kind = FUI_DRAW_TRIANGLES;
+		command->indexCount += indexCount;
+	} else {
+		command = &commandArray[context->commandBuffer.count];
+		fui__ClearMemory(command, sizeof(*command));
+		command->kind = kind;
+		command->clipRect = clipRect;
+		command->texture = texture;
+		command->vertexOffset = baseVertex;
+		command->indexOffset = context->indexBuffer.count;
+		command->indexCount = indexCount;
+	}
 
 	result.vertices = &vertexArray[baseVertex];
 	result.indices = &indexArray[context->indexBuffer.count];
 	result.baseVertex = baseVertex;
 	result.command = command;
+	result.wasMergedIntoTheCommandBefore = wasMerged;
 	result.isValid = true;
 
 	context->vertexBuffer.count += vertexCount;
 	context->indexBuffer.count += indexCount;
-	context->commandBuffer.count += 1u;
+	if(!wasMerged) {
+		context->commandBuffer.count += 1u;
+	}
 	return(result);
 }
 
@@ -4711,17 +4877,25 @@ fui_inline void fui__TrimGeometry(fuiContext *context, fui__GeometryWriter *writ
 	if(!writer->isValid) {
 		return;
 	}
+
+	// A merged call shares its command with everything that went into it before, so what it gives back is
+	// its OWN share of the indices. Only a call that owns its command may take the command away with it.
+	uint32_t keptIndexCount = writer->indexCountBeforeThisCall;
 	if(usedIndexCount == 0 || usedVertexCount == 0) {
-		// Nothing was drawn after all, so drop the command entirely rather than leave an empty one.
 		context->vertexBuffer.count = writer->baseVertex;
-		context->indexBuffer.count = writer->command->indexOffset;
-		context->commandBuffer.count -= 1u;
+		context->indexBuffer.count = writer->command->indexOffset + keptIndexCount;
+		if(writer->wasMergedIntoTheCommandBefore) {
+			writer->command->indexCount = keptIndexCount;
+		} else {
+			// Nothing was drawn after all, so drop the command entirely rather than leave an empty one.
+			context->commandBuffer.count -= 1u;
+		}
 		writer->isValid = false;
 		return;
 	}
 	context->vertexBuffer.count = writer->baseVertex + usedVertexCount;
-	context->indexBuffer.count = writer->command->indexOffset + usedIndexCount;
-	writer->command->indexCount = usedIndexCount;
+	context->indexBuffer.count = writer->command->indexOffset + keptIndexCount + usedIndexCount;
+	writer->command->indexCount = keptIndexCount + usedIndexCount;
 }
 
 //! Writes one textured quad as four vertices and six indices, each corner sampling where it is told to.
@@ -4982,10 +5156,19 @@ fui_api void fuiPopId(fuiContext *context) {
 static void fui__DrawPendingTooltip(fuiContext *context);
 static void fui__ApplyCursor(fuiContext *context);
 
+//! Declared ahead of its definition, because the frame boundary is the one place it may be called from
+//! and that is here, well above where the widget state table itself is written
+fui_inline void fui__WidgetStateMapGrow(fuiContext *context);
+
 fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fuiPass pass) {
 	FUI_ASSERT(context != fui_null && input != fui_null);
 	if(context == fui_null || input == fui_null || !context->isInitialized) {
 		return;
+	}
+
+	// Before anything can take a pointer into it. See fui__WidgetStateMapGrow for why it can only be here.
+	if(context->widgetStates.growthIsWanted) {
+		fui__WidgetStateMapGrow(context);
 	}
 
 	// The drawing half resets the buffers and the clip stack, and defaults the pass. Everything below
@@ -5199,6 +5382,14 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	context->drawData.commandCount = context->commandBuffer.count;
 	context->drawData.textBufferSize = context->textBuffer.count;
 	context->drawData.windowSize = context->windowSize;
+}
+
+fui_api void fuiSetDrawBatching(fuiContext *context, const bool enabled) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	context->drawBatchingIsOn = enabled;
 }
 
 fui_api const fuiDrawData *fuiGetDrawData(const fuiContext *context) {
@@ -5878,6 +6069,13 @@ fui_inline size_t fui__ResolveTextLength(const char *text, const size_t textLeng
 	return(result);
 }
 
+//! How tall one line of text stands, which is a property of the FONT and never of the string. Asking a
+//! measurement for it used to walk the whole string for a number two metrics already hold
+fui_inline float fui__LineExtent(const fuiFont *font, const float pixelHeight) {
+	float result = (font->metrics.ascent + font->metrics.descent) * pixelHeight;
+	return(result);
+}
+
 //! How far the pen moves for one codepoint, including the kerning against the one before it
 fui_inline float fui__CodepointAdvance(const fuiFont *font, const uint32_t codePoint, const uint32_t previousCodePoint, const float pixelHeight, fuiGlyph *outGlyph, bool *outHasGlyph) {
 	FUI_ASSERT(font != fui_null);
@@ -5887,10 +6085,14 @@ fui_inline float fui__CodepointAdvance(const fuiFont *font, const uint32_t codeP
 	}
 
 	fuiGlyph glyph;
-	fui__ClearMemory(&glyph, sizeof(glyph));
 	bool hasGlyph = false;
 	if(font->getGlyph != fui_null) {
 		hasGlyph = font->getGlyph(font->userData, codePoint, &glyph);
+	}
+	if(!hasGlyph) {
+		// Cleared only when the callback did not fill it. This runs once per character of every string
+		// the interface measures, and a hit has no reason to pay for a clear it immediately overwrites.
+		fui__ClearMemory(&glyph, sizeof(glyph));
 	}
 
 	if(outGlyph != fui_null) {
@@ -5965,23 +6167,27 @@ fui_api void fuiDrawText(fuiContext *context, const char *text, const size_t tex
 		return;
 	}
 
-	fuiVec2 textSize = fuiMeasureText(context, text, resolvedLength, pixelHeight);
-	fuiRect bounds = fuiRectMake(position.x, position.y, textSize.x, textSize.y);
-	if(fui__IsClippedAway(context, bounds)) {
+	/*
+		Whether any of this can be seen is answered from the clip and two font metrics, without measuring
+		the string. The measurement that used to stand here was one glyph lookup and one kerning lookup
+		per character, thrown away as soon as it had produced a rectangle - and the caller had almost
+		always measured the same string already to work out where to put it.
+	*/
+	float lineHeight = fui__LineExtent(font, pixelHeight);
+	fuiRect clip = fuiGetClipRect(context);
+	float clipRight = clip.x + clip.w;
+	float clipBottom = clip.y + clip.h;
+	bool isAboveTheClip = (position.y + lineHeight) <= clip.y;
+	bool isBelowTheClip = position.y >= clipBottom;
+	bool startsRightOfTheClip = position.x >= clipRight;
+	if(isAboveTheClip || isBelowTheClip || startsRightOfTheClip) {
 		return;
 	}
 
-	// Count the codepoints first so the reservation is right, then hand back whatever the glyphs that
-	// carry no quad (a space, a control character) did not use.
-	uint32_t codePointCount = 0;
-	size_t countingOffset = 0;
-	while(countingOffset < resolvedLength) {
-		(void)fuiDecodeUtf8(text, resolvedLength, &countingOffset);
-		++codePointCount;
-	}
-	if(codePointCount == 0) {
-		return;
-	}
+	// One quad per BYTE is an upper bound on one quad per codepoint, which is what lets the reservation
+	// skip a counting pass over the whole string. Everything the blanks, the control characters and the
+	// culling below did not use is handed straight back by the trim.
+	uint32_t reservedQuadCount = (uint32_t)resolvedLength;
 
 	uint32_t textByteOffset = context->textBuffer.count;
 	bool textReserved = fui__DrawBufferReserve(&context->arena, &context->textBuffer, textByteOffset + (uint32_t)resolvedLength, sizeof(char));
@@ -5989,7 +6195,7 @@ fui_api void fuiDrawText(fuiContext *context, const char *text, const size_t tex
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TEXT, font->atlasTexture, codePointCount * 4u, codePointCount * 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TEXT, font->atlasTexture, reservedQuadCount * 4u, reservedQuadCount * 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6006,6 +6212,13 @@ fui_api void fuiDrawText(fuiContext *context, const char *text, const size_t tex
 	uint32_t usedIndexCount = 0;
 	size_t offset = 0;
 	while(offset < resolvedLength) {
+		// The pen only ever moves right, so once it is past the clip nothing after this can be seen
+		// either. A cell holding a long path in a narrow column stops after the dozen glyphs that fit
+		// instead of tessellating the whole string into triangles the scissor throws away.
+		if(penX >= clipRight) {
+			break;
+		}
+
 		uint32_t codePoint = fuiDecodeUtf8(text, resolvedLength, &offset);
 		if(codePoint == (uint32_t)'\n' || codePoint == (uint32_t)'\r') {
 			continue;
@@ -6017,13 +6230,18 @@ fui_api void fuiDrawText(fuiContext *context, const char *text, const size_t tex
 		bool hasQuad = hasGlyph && (glyph.size.x > 0.0f) && (glyph.size.y > 0.0f);
 		if(hasQuad) {
 			float quadX = penX + glyph.offset.x * pixelHeight;
-			float quadY = baselineY + glyph.offset.y * pixelHeight;
 			float quadWidth = glyph.size.x * pixelHeight;
-			float quadHeight = glyph.size.y * pixelHeight;
-			fuiRect quad = fuiRectMake(quadX, quadY, quadWidth, quadHeight);
-			fui__WriteQuad(&writer, usedVertexCount, usedIndexCount, quad, glyph.uvMin, glyph.uvMax, packedColor);
-			usedVertexCount += 4u;
-			usedIndexCount += 6u;
+			// The other end of the same idea: a row scrolled sideways is mostly glyphs off its left edge,
+			// and those cost nothing here beyond the advance that has to be summed anyway.
+			bool isLeftOfTheClip = (quadX + quadWidth) <= clip.x;
+			if(!isLeftOfTheClip) {
+				float quadY = baselineY + glyph.offset.y * pixelHeight;
+				float quadHeight = glyph.size.y * pixelHeight;
+				fuiRect quad = fuiRectMake(quadX, quadY, quadWidth, quadHeight);
+				fui__WriteQuad(&writer, usedVertexCount, usedIndexCount, quad, glyph.uvMin, glyph.uvMax, packedColor);
+				usedVertexCount += 4u;
+				usedIndexCount += 6u;
+			}
 		}
 
 		penX += advance;
@@ -6294,6 +6512,68 @@ fui_api void fuiDrawTextBlock(fuiContext *context, const char *text, const size_
 // > Retained widget state
 // ----------------------------------------------------------------------------
 
+//! Above this share of the slots being taken, an open addressed table stops being a lookup and starts
+//! being a linear scan, so it is grown instead. Four fifths, expressed as a numerator and a denominator
+#define FUI__WIDGET_STATE_LOAD_NUMERATOR 4
+#define FUI__WIDGET_STATE_LOAD_DENOMINATOR 5
+
+//! Where an identifier's probe starts. The identifier is already a hash, and a power of two capacity lets
+//! this be a mask rather than a division, which matters because it runs for every widget every frame
+fui_inline uint32_t fui__WidgetStateStartIndex(const fuiId id, const uint32_t capacity) {
+	uint32_t result = (uint32_t)(id % (fuiId)capacity);
+	return(result);
+}
+
+/*
+	Grows the table and puts everything back into it.
+
+	Called from fuiBeginFrame and from nowhere else, on purpose. Every lookup hands back a POINTER into
+	this array, and a panel keeps one of those on the layout stack for as long as it is open - so moving
+	the array while a frame is being built would leave those pointing at freed memory. Between frames
+	nothing is holding one.
+*/
+fui_inline void fui__WidgetStateMapGrow(fuiContext *context) {
+	fuiWidgetStateMap *map = &context->widgetStates;
+	map->growthIsWanted = false;
+
+	uint32_t newCapacity = (map->capacity > 0) ? (map->capacity * 2u) : (uint32_t)FUI_MAX_WIDGET_STATES;
+	if(newCapacity <= map->capacity) {
+		return; // wrapped around, which no real interface can reach
+	}
+
+	size_t byteCount = (size_t)newCapacity * sizeof(fuiWidgetState);
+	fuiWidgetState *newEntries = (fuiWidgetState *)fui__ArenaPushExact(&context->arena, byteCount, true);
+	if(newEntries == fui_null) {
+		// Out of memory. The old table is still perfectly good, just full, so widgets that already have a
+		// slot keep it and new ones go without - which is what happened before there was any growth at all.
+		return;
+	}
+
+	uint32_t moved = 0;
+	for(uint32_t oldIndex = 0; oldIndex < map->capacity; ++oldIndex) {
+		fuiWidgetState *oldEntry = &map->entries[oldIndex];
+		if(!oldEntry->isUsed) {
+			continue;
+		}
+		uint32_t startIndex = fui__WidgetStateStartIndex(oldEntry->id, newCapacity);
+		for(uint32_t probe = 0; probe < newCapacity; ++probe) {
+			uint32_t index = (startIndex + probe) % newCapacity;
+			if(newEntries[index].isUsed) {
+				continue;
+			}
+			newEntries[index] = *oldEntry;
+			moved += 1u;
+			break;
+		}
+	}
+
+	// The arena never gives an allocation back, so the old table is simply left behind. Doubling is what
+	// keeps everything left behind smaller than what is finally in use.
+	map->entries = newEntries;
+	map->capacity = newCapacity;
+	map->count = moved;
+}
+
 //! Looks up the retained state of a widget, creating its slot the first time the widget is seen
 fui_inline fuiWidgetState *fui__WidgetStateGet(fuiContext *context, const fuiId id) {
 	FUI_ASSERT(context != fui_null);
@@ -6309,7 +6589,7 @@ fui_inline fuiWidgetState *fui__WidgetStateGet(fuiContext *context, const fuiId 
 		return(fui_null);
 	}
 
-	uint32_t startIndex = (uint32_t)(id % (fuiId)map->capacity);
+	uint32_t startIndex = fui__WidgetStateStartIndex(id, map->capacity);
 	for(uint32_t probe = 0; probe < map->capacity; ++probe) {
 		uint32_t index = (startIndex + probe) % map->capacity;
 		fuiWidgetState *entry = &map->entries[index];
@@ -6323,12 +6603,20 @@ fui_inline fuiWidgetState *fui__WidgetStateGet(fuiContext *context, const fuiId 
 			// Row zero is a real row, so "nothing was clicked yet" cannot be spelled as a cleared field. A
 			// fresh list would otherwise read its very first click on row zero as the second half of one.
 			entry->lastClickIndex = -1;
+			map->count += 1u;
+			// Asked for at the frame boundary rather than taken now, because everything already handed out
+			// is a pointer into the array this would move.
+			if((map->count * FUI__WIDGET_STATE_LOAD_DENOMINATOR) >= (map->capacity * FUI__WIDGET_STATE_LOAD_NUMERATOR)) {
+				map->growthIsWanted = true;
+			}
 			return(entry);
 		}
 	}
 
-	// Every slot taken by another widget. The caller falls back to un-remembered behaviour rather than
-	// evicting somebody else's panel position, which would move a window the user never touched.
+	// Every slot taken by another widget, and the table could not be grown. The caller falls back to
+	// un-remembered behaviour rather than evicting somebody else's panel position, which would move a
+	// window the user never touched.
+	map->growthIsWanted = true;
 	return(fui_null);
 }
 
@@ -6452,8 +6740,11 @@ fui_inline void fui__DrawTextLeftAligned(fuiContext *context, const fuiRect boun
 		return;
 	}
 	float pixelHeight = context->theme.fontHeight;
-	fuiVec2 textSize = fuiMeasureText(context, text, 0, pixelHeight);
-	float textY = bounds.y + (bounds.h - textSize.y) * 0.5f;
+	// The height of a line is the font's, not the string's, so nothing is measured here at all. This is
+	// the one label path every widget goes down - a table of a few hundred visible cells came through it
+	// a few hundred times a frame, and each of those used to walk its whole string for this one number.
+	float lineHeight = fui__LineExtent(context->font, pixelHeight);
+	float textY = bounds.y + (bounds.h - lineHeight) * 0.5f;
 	// Clipped rather than left to spill: a caption too long for its widget is cropped at the widget edge
 	// instead of running into the next one.
 	fuiPushClip(context, bounds);
@@ -6484,8 +6775,10 @@ fui_inline void fui__DrawTextCenteredInRect(fuiContext *context, const fuiRect r
 	fui__DrawTextLeftAligned(context, rect, textX, text, color);
 }
 
-//! Draws a caption as top anchored rows inside a widget, clipped to it
-fui_inline void fui__DrawTextBlockInRect(fuiContext *context, const fuiRect rect, const char *text, const bool wordWrap, const fuiColor color) {
+//! Draws a caption as top anchored rows inside a widget, clipped to it. The length is taken rather than
+//! measured, because the one caller that holds a large buffer has already paid for it once this frame and
+//! a second walk of a document sized string is not free
+fui_inline void fui__DrawTextBlockInRect(fuiContext *context, const fuiRect rect, const char *text, const size_t textLength, const bool wordWrap, const fuiColor color) {
 	if(context->font == fui_null || text == fui_null) {
 		return;
 	}
@@ -6493,7 +6786,7 @@ fui_inline void fui__DrawTextBlockInRect(fuiContext *context, const fuiRect rect
 	float contentWidth = rect.w - theme->widgetPaddingX * 2.0f;
 	fuiVec2 blockPosition = fuiV2(rect.x + theme->widgetPaddingX, rect.y + FUI__MULTILINE_TOP_PADDING);
 	fuiPushClip(context, rect);
-	fuiDrawTextBlock(context, text, 0, blockPosition, theme->fontHeight, color, wordWrap, contentWidth);
+	fuiDrawTextBlock(context, text, textLength, blockPosition, theme->fontHeight, color, wordWrap, contentWidth);
 	fuiPopClip(context);
 }
 
@@ -7484,7 +7777,8 @@ fui_api void fuiLabelEx(fuiContext *context, const fuiRect rect, const char *tex
 		return;
 	}
 	if(multiline) {
-		fui__DrawTextBlockInRect(context, rect, text, wordWrap, context->theme.textColor);
+		size_t textLength = fui__StringLength(text);
+		fui__DrawTextBlockInRect(context, rect, text, textLength, wordWrap, context->theme.textColor);
 	} else {
 		fui__DrawTextInRect(context, rect, text, context->theme.textColor);
 	}
@@ -8428,7 +8722,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	}
 
 	if(multiline) {
-		fui__DrawTextBlockInRect(context, rect, buffer, wordWrap, theme->textColor);
+		fui__DrawTextBlockInRect(context, rect, buffer, (size_t)length, wordWrap, theme->textColor);
 	} else {
 		fui__DrawTextInRect(context, rect, buffer, theme->textColor);
 	}
@@ -8933,8 +9227,8 @@ fui_inline void fui__DrawTextVCentered(fuiContext *context, const char *text, co
 	if(context->font == fui_null || text == fui_null) {
 		return;
 	}
-	fuiVec2 textSize = fuiMeasureText(context, text, 0, pixelHeight);
-	fuiVec2 position = fuiV2(leftX, centerY - textSize.y * 0.5f);
+	float lineHeight = fui__LineExtent(context->font, pixelHeight);
+	fuiVec2 position = fuiV2(leftX, centerY - lineHeight * 0.5f);
 	fuiDrawText(context, text, 0, position, pixelHeight, color);
 }
 
@@ -8943,8 +9237,10 @@ fui_inline void fui__DrawTextVCenteredRight(fuiContext *context, const char *tex
 	if(context->font == fui_null || text == fui_null) {
 		return;
 	}
+	// The WIDTH is still measured, because right alignment is a fact about the string. The height is not.
 	fuiVec2 textSize = fuiMeasureText(context, text, 0, pixelHeight);
-	fuiVec2 position = fuiV2(rightX - textSize.x, centerY - textSize.y * 0.5f);
+	float lineHeight = fui__LineExtent(context->font, pixelHeight);
+	fuiVec2 position = fuiV2(rightX - textSize.x, centerY - lineHeight * 0.5f);
 	fuiDrawText(context, text, 0, position, pixelHeight, color);
 }
 
@@ -9073,31 +9369,86 @@ fui_api float fuiMenuBarHeight(const fuiContext *context) {
 }
 
 //! Places an open popup at the size the previous build measured, draws its box and clips the rows to it
+//! Clearance a popup keeps from the top and bottom of the window, so a cut one does not sit flush on the edge
+#define FUI__MENU_SCREEN_MARGIN 4.0f
+
+//! How tall the strip is that a cut popup marks its cut edge with
+#define FUI__MENU_SCROLL_HINT_HEIGHT 10.0f
+
+//! Marks one edge of a popup that has rows beyond it, with the triangle every desktop menu uses for it
+static void fui__MenuDrawScrollHint(fuiContext *context, const fuiRect popupRect, const bool isTheTopEdge) {
+	const fuiTheme *theme = &context->theme;
+	float stripTop = isTheTopEdge ? popupRect.y : (popupRect.y + popupRect.h - FUI__MENU_SCROLL_HINT_HEIGHT);
+	fuiRect strip = fuiRectMake(popupRect.x, stripTop, popupRect.w, FUI__MENU_SCROLL_HINT_HEIGHT);
+	fuiDrawRect(context, strip, theme->widgetTrackColor);
+
+	const float arrowHalfWidth = 5.0f;
+	const float arrowInset = 2.5f;
+	float centerX = strip.x + strip.w * 0.5f;
+	float pointY = isTheTopEdge ? (strip.y + arrowInset) : (strip.y + strip.h - arrowInset);
+	float baseY = isTheTopEdge ? (strip.y + strip.h - arrowInset) : (strip.y + arrowInset);
+	fuiVec2 arrow[3];
+	arrow[0] = fuiV2(centerX, pointY);
+	arrow[1] = fuiV2(centerX - arrowHalfWidth, baseY);
+	arrow[2] = fuiV2(centerX + arrowHalfWidth, baseY);
+	fuiDrawPolygon(context, arrow, 3u, theme->textColor);
+}
+
 static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const fuiId id, const float leftX, const float topY) {
 	const fuiTheme *theme = &context->theme;
 	float width = theme->menuPopupMinWidth;
-	float height = fui__MenuRowHeight(context);
+	float contentHeight = fui__MenuRowHeight(context);
 	fuiWidgetState *state = fui__WidgetStateGet(context, id);
 	if(state != fui_null) {
 		width = fuiMaxF(width, state->menuSize.x);
 		if(state->menuSize.y > 0.0f) {
-			height = state->menuSize.y;
+			contentHeight = state->menuSize.y;
 		}
 	}
 
-	// Kept on screen: a popup that would run off an edge is MOVED rather than cropped, which is what makes
-	// "every row is reachable" true near a corner instead of a hope.
+	/*
+		A menu with more rows than the screen is tall.
+
+		Moving it up until it fits is what keeps a normal menu whole near the bottom edge, and it is all
+		that used to happen here. A menu of four hundred rows does not fit anywhere: it was placed at the
+		top of the window and everything past the bottom of it was drawn where nobody could see or reach
+		it. A generated menu, a list of open documents, a font picker - any of those is that menu.
+
+		So a popup is no taller than the window, and one that had to be cut scrolls under the wheel.
+	*/
 	float windowWidth = (float)context->windowSize.x;
 	float windowHeight = (float)context->windowSize.y;
+	float tallestAllowed = fuiMaxF(windowHeight - FUI__MENU_SCREEN_MARGIN * 2.0f, fui__MenuRowHeight(context));
+	float boxHeight = fuiMinF(contentHeight, tallestAllowed);
+	float hiddenHeight = fuiMaxF(contentHeight - boxHeight, 0.0f);
+
+	// Kept on screen: a popup that would run off an edge is MOVED rather than cropped, which is what makes
+	// "every row is reachable" true near a corner instead of a hope.
 	float placedX = fuiClampF(leftX, 0.0f, fuiMaxF(windowWidth - width, 0.0f));
-	float placedY = fuiClampF(topY, 0.0f, fuiMaxF(windowHeight - height, 0.0f));
+	float placedY = fuiClampF(topY, FUI__MENU_SCREEN_MARGIN, fuiMaxF(windowHeight - boxHeight - FUI__MENU_SCREEN_MARGIN, FUI__MENU_SCREEN_MARGIN));
 
 	// A popup is measured from text, so its box lands on fractions of a pixel: the title it drops from is as
 	// wide as its caption, and the widest row it opens at is as wide as ITS caption. Snapped onto the pixel
 	// grid the frame survives whatever the backend rounds its clip to - without this the right hand stroke
 	// is the one that goes, since it is the edge every truncating scissor cuts.
-	frame->popupRect = fui__SnapRectToPixels(fuiRectMake(placedX, placedY, width, height));
-	frame->cursorY = frame->popupRect.y;
+	frame->popupRect = fui__SnapRectToPixels(fuiRectMake(placedX, placedY, width, boxHeight));
+	frame->contentHeight = contentHeight;
+
+	float scroll = 0.0f;
+	if(hiddenHeight > 0.0f && state != fui_null) {
+		scroll = state->scroll;
+		if(context->mouseWheelDelta != 0.0f && fui__MenuCursorIsOver(context, frame->popupRect)) {
+			scroll -= context->mouseWheelDelta * fui__MenuRowHeight(context) * FUI__SCROLL_WHEEL_ROWS;
+			// Taken, so a panel or a parent popup underneath does not scroll to the same turn of the wheel.
+			context->mouseWheelDelta = 0.0f;
+		}
+		scroll = fuiClampF(scroll, 0.0f, hiddenHeight);
+		state->scroll = scroll;
+	} else if(state != fui_null) {
+		state->scroll = 0.0f;
+	}
+	frame->scrollOffset = scroll;
+	frame->cursorY = frame->popupRect.y - scroll;
 	frame->widestItem = 0.0f;
 
 	// The clip ignores the enclosing one on purpose: a submenu's box sits OUTSIDE its parent popup, and
@@ -9113,13 +9464,27 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 
 //! Closes an open popup and remembers what its rows measured, which is the size it opens at next build
 static void fui__MenuEndPopup(fuiContext *context, const fuiMenuFrame *frame, const fuiId id) {
+	// A popup that had to be cut says so at the edge it was cut at, or a menu with three hundred rows
+	// below the fold looks exactly like one with twelve.
+	bool canScrollUp = (frame->scrollOffset > 0.0f);
+	bool canScrollDown = ((frame->scrollOffset + frame->popupRect.h) < frame->contentHeight);
+	if(canScrollUp) {
+		fui__MenuDrawScrollHint(context, frame->popupRect, true);
+	}
+	if(canScrollDown) {
+		fui__MenuDrawScrollHint(context, frame->popupRect, false);
+	}
+
 	// The frame goes on after the rows, or the hover wash on the top and bottom row - which runs the full
 	// width of the popup - would paint over the stroke it sits against.
 	fui__DrawChromeFrame(context, frame->popupRect);
 	fuiPopClip(context);
 	fuiWidgetState *state = fui__WidgetStateGet(context, id);
 	if(state != fui_null) {
-		state->menuSize.y = fui__CeilToPixel(frame->cursorY - frame->popupRect.y);
+		// The scroll is added back, because what is remembered is how tall ALL the rows are and not how
+		// much of them this build happened to show.
+		float rowsEnd = frame->cursorY + frame->scrollOffset;
+		state->menuSize.y = fui__CeilToPixel(rowsEnd - frame->popupRect.y);
 		if(frame->widestItem > 0.0f) {
 			state->menuSize.x = frame->widestItem;
 		}
@@ -10114,6 +10479,42 @@ fui_inline void fui__ListIconCellUv(const fuiListIcons *icons, const int32_t cel
 }
 
 //! Draws one row's icon and answers the rectangle its text has left
+/*
+	Which rows a box of a given height can actually show.
+
+	Both list widgets used to run their loop over EVERY row and `continue` past the ones out of view. That
+	is correct and it is what an immediate mode list usually does, because a list usually has thirty rows
+	in it. At a million it is a million iterations a frame to draw the forty that fit.
+
+	The range is widened by one row at each end on purpose: the first partly visible row is the one the
+	scroll offset lands inside, and the last is the one the bottom edge cuts through. The per-row test
+	further down is kept as well, so a row this arithmetic is generous with still draws nothing.
+*/
+fui_inline void fui__ListVisibleRange(const float scroll, const float viewportHeight, const float rowHeight, const int32_t rowCount, int32_t *outFirstRow, int32_t *outEndRow) {
+	*outFirstRow = 0;
+	*outEndRow = rowCount;
+	if(rowHeight <= 0.0f) {
+		return;
+	}
+
+	int32_t firstRow = (int32_t)(scroll / rowHeight);
+	if(firstRow < 0) {
+		firstRow = 0;
+	}
+	if(firstRow > rowCount) {
+		firstRow = rowCount;
+	}
+
+	int32_t rowsThatFit = (int32_t)(viewportHeight / rowHeight) + 2;
+	int32_t endRow = firstRow + rowsThatFit;
+	if(endRow > rowCount) {
+		endRow = rowCount;
+	}
+
+	*outFirstRow = firstRow;
+	*outEndRow = endRow;
+}
+
 fui_inline fuiRect fui__ListBoxDrawRowIcon(fuiContext *context, const fuiRect rowRect, const float rowHeight, const fuiListIcons *icons, const int32_t rowIndex) {
 	if(icons == fui_null || icons->sheet == 0 || icons->cellForRow == fui_null || rowIndex >= icons->cellForRowCount) {
 		return(rowRect);
@@ -10208,7 +10609,10 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 
 	fuiPushClip(context, rect);
 	bool selectionChanged = false;
-	for(int32_t rowIndex = 0; rowIndex < count; ++rowIndex) {
+	int32_t firstVisibleRow = 0;
+	int32_t endVisibleRow = count;
+	fui__ListVisibleRange(scroll, rect.h, rowHeight, count, &firstVisibleRow, &endVisibleRow);
+	for(int32_t rowIndex = firstVisibleRow; rowIndex < endVisibleRow; ++rowIndex) {
 		float rowTop = rect.y - scroll + (float)rowIndex * rowHeight;
 		bool isAboveTheBox = (rowTop + rowHeight) < rect.y;
 		bool isBelowTheBox = rowTop > (rect.y + rect.h);
@@ -11014,32 +11418,132 @@ fui_inline int32_t fui__CompareNatural(const char *left, const char *right) {
 	return((*left == '\0') ? -1 : 1);
 }
 
-//! Hands out the two row arrays the sort works in, allocated the first time any list is sorted
-fui_inline bool fui__EnsureListSortBuffers(fuiContext *context) {
-	if(context->listSortOrder != fui_null && context->listSortScratch != fui_null) {
-		return(true);
+//! Rounds a row count up to the capacity an array is grown to, so a list that gains a row now and then does
+//! not reallocate every time. The arena never gives an allocation back, and doubling is what keeps what is
+//! left behind below the size of what is finally in use
+fui_inline int32_t fui__ListSortCapacityFor(const int32_t rowCount) {
+	const int32_t smallestUsefulCapacity = 256;
+	int32_t capacity = smallestUsefulCapacity;
+	while(capacity < rowCount) {
+		if(capacity > (FUI_MAX_SORTABLE_ROWS / 2)) {
+			capacity = rowCount;
+			break;
+		}
+		capacity *= 2;
 	}
-	size_t byteCount = (size_t)FUI_MAX_SORTABLE_ROWS * sizeof(int32_t);
-	context->listSortOrder = (int32_t *)fui__ArenaPushExact(&context->arena, byteCount, true);
-	context->listSortScratch = (int32_t *)fui__ArenaPushExact(&context->arena, byteCount, true);
-	bool bothArrived = (context->listSortOrder != fui_null) && (context->listSortScratch != fui_null);
-	return(bothArrived);
+	return(capacity);
 }
 
-//! Builds the DISPLAY ORDER of a list, one source row per display position, and answers null for a list that
-//! is not sorted at all - where a display position and a row are the same thing and no array is needed.
-//! The sort is a bottom up merge sort and STABLE on purpose, so rows reading the same in the sorted column
-//! keep the caller's own order instead of shuffling every frame
-fui_inline const int32_t *fui__BuildListSortOrder(fuiContext *context, const fuiWidgetState *state, const char *const *cells, const int32_t rowCount, const int32_t columnCount) {
+//! Makes sure the shared scratch has room for one sort of this many rows
+fui_inline bool fui__EnsureListSortScratch(fuiContext *context, const int32_t rowCount) {
+	if(context->listSortScratch != fui_null && context->listSortScratchCapacity >= rowCount) {
+		return(true);
+	}
+	int32_t capacity = fui__ListSortCapacityFor(rowCount);
+	size_t byteCount = (size_t)capacity * sizeof(int32_t);
+	int32_t *scratch = (int32_t *)fui__ArenaPushExact(&context->arena, byteCount, false);
+	if(scratch == fui_null) {
+		return(false);
+	}
+	context->listSortScratch = scratch;
+	context->listSortScratchCapacity = capacity;
+	return(true);
+}
+
+//! Makes sure this list's own order array has room for its rows
+fui_inline bool fui__EnsureListSortOrder(fuiContext *context, fuiWidgetState *state, const int32_t rowCount) {
+	if(state->sortOrder != fui_null && state->sortOrderCapacity >= rowCount) {
+		return(true);
+	}
+	int32_t capacity = fui__ListSortCapacityFor(rowCount);
+	size_t byteCount = (size_t)capacity * sizeof(int32_t);
+	int32_t *order = (int32_t *)fui__ArenaPushExact(&context->arena, byteCount, false);
+	if(order == fui_null) {
+		return(false);
+	}
+	state->sortOrder = order;
+	state->sortOrderCapacity = capacity;
+	// A bigger array holds none of what the old one did, so whatever was cached in it is gone.
+	state->sortOrderIsBuilt = false;
+	return(true);
+}
+
+/*
+	Hashes the column a list is sorted by, which is how a SHORT list notices its own cells being edited.
+
+	The cache below is keyed on the address of the cell array and its shape, and a caller that rewrites a
+	cell in place changes neither. For a list of a few thousand rows the whole sorted column can simply be
+	hashed every frame - tens of microseconds - and then nothing has to be said at all. For a list of a
+	million it cannot, and that is what fuiListViewInvalidateSort is for.
+*/
+fui_inline fuiId fui__ListSortFingerprint(const char *const *cells, const int32_t rowCount, const int32_t columnCount, const int32_t sortColumn) {
+	fuiId hash = (fuiId)FUI__HASH_OFFSET_BASIS;
+	for(int32_t row = 0; row < rowCount; ++row) {
+		const char *cell = cells[row * columnCount + sortColumn];
+		if(cell == fui_null) {
+			continue;
+		}
+		size_t length = fui__StringLength(cell);
+		hash = fui__HashBytes(hash, cell, length);
+	}
+	return(hash);
+}
+
+//! Whether the order this list has cached still describes the list it is being asked about
+fui_inline bool fui__ListSortOrderIsStillGood(const fuiWidgetState *state, const char *const *cells, const int32_t rowCount, const int32_t columnCount, const bool canFingerprint, const fuiId fingerprint) {
+	if(!state->sortOrderIsBuilt || state->sortOrder == fui_null) {
+		return(false);
+	}
+	bool sameShape = (state->sortOrderRowCount == rowCount) && (state->sortOrderColumnCount == columnCount);
+	bool sameSort = (state->sortOrderColumn == state->sortColumn) && (state->sortOrderIsAscending == state->sortIsAscending);
+	if(!sameShape || !sameSort) {
+		return(false);
+	}
+	if(canFingerprint && state->sortOrderWasFingerprinted) {
+		// The hash covers the cells whatever array they came in, so the address does not have to agree too.
+		return(state->sortOrderFingerprint == fingerprint);
+	}
+	bool sameCells = (state->sortOrderCells == (const void *)cells);
+	return(sameCells);
+}
+
+/*
+	Builds the DISPLAY ORDER of a list, one source row per display position, and answers null for a list
+	that is not sorted at all - where a display position and a row are the same thing and no array is
+	needed. The sort is a bottom up merge sort and STABLE on purpose, so rows reading the same in the
+	sorted column keep the caller's own order instead of shuffling every frame.
+
+	The order is CACHED. This used to run in full on every frame of every sorted list, which is n log n
+	natural-order string comparisons to produce the identical answer it produced the frame before - by
+	far the most expensive thing the library did, and the reason a list could not be allowed to be large.
+
+	What the cache is keyed on is the shape of the list, the sort, and - up to FUI_LIST_SORT_VERIFY_ROWS
+	rows - a hash of the sorted column itself, so a list of a few thousand rows notices its own cells being
+	edited and needs nothing said. Past that the hash is dropped for the address of the cell array, and a
+	caller that edits a cell IN PLACE has to say so with fuiListViewInvalidateSort. Rebuilding the array,
+	or changing its length, is noticed either way.
+*/
+fui_inline const int32_t *fui__BuildListSortOrder(fuiContext *context, fuiWidgetState *state, const char *const *cells, const int32_t rowCount, const int32_t columnCount) {
 	bool canSort = (state != fui_null) && state->sortIsActive && (state->sortColumn >= 0) && (state->sortColumn < columnCount);
-	if(!canSort || rowCount > FUI_MAX_SORTABLE_ROWS) {
+	if(!canSort || rowCount <= 0 || rowCount > FUI_MAX_SORTABLE_ROWS) {
 		return(fui_null);
 	}
-	if(!fui__EnsureListSortBuffers(context)) {
+	bool canFingerprint = (rowCount <= (int32_t)FUI_LIST_SORT_VERIFY_ROWS);
+	fuiId fingerprint = 0;
+	if(canFingerprint) {
+		fingerprint = fui__ListSortFingerprint(cells, rowCount, columnCount, state->sortColumn);
+	}
+	if(fui__ListSortOrderIsStillGood(state, cells, rowCount, columnCount, canFingerprint, fingerprint)) {
+		return(state->sortOrder);
+	}
+	if(!fui__EnsureListSortOrder(context, state, rowCount)) {
+		return(fui_null);
+	}
+	if(!fui__EnsureListSortScratch(context, rowCount)) {
 		return(fui_null);
 	}
 
-	int32_t *order = context->listSortOrder;
+	int32_t *order = state->sortOrder;
 	int32_t *scratch = context->listSortScratch;
 	for(int32_t row = 0; row < rowCount; ++row) {
 		order[row] = row;
@@ -11072,6 +11576,15 @@ fui_inline const int32_t *fui__BuildListSortOrder(fuiContext *context, const fui
 			order[row] = scratch[row];
 		}
 	}
+
+	state->sortOrderCells = (const void *)cells;
+	state->sortOrderFingerprint = fingerprint;
+	state->sortOrderWasFingerprinted = canFingerprint;
+	state->sortOrderRowCount = rowCount;
+	state->sortOrderColumnCount = columnCount;
+	state->sortOrderColumn = state->sortColumn;
+	state->sortOrderIsAscending = state->sortIsAscending;
+	state->sortOrderIsBuilt = true;
 	return(order);
 }
 
@@ -11172,6 +11685,20 @@ fui_api void fuiListViewSetSortable(fuiContext *context, const char *id, const b
 		return;
 	}
 	state->sortIsLocked = !sortable;
+}
+
+fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id) {
+	FUI_ASSERT(context != fui_null && id != fui_null);
+	if(context == fui_null || id == fui_null) {
+		return;
+	}
+	fuiId listId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, listId);
+	if(state == fui_null) {
+		return;
+	}
+	// The array itself is kept. It is the right size already, and it is the CONTENT of it that is stale.
+	state->sortOrderIsBuilt = false;
 }
 
 fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const char *id, const fuiColumn *columns, const int32_t columnCount, const char *const *cells, const int32_t rowCount, int32_t *selectedIndex, const fuiListIcons *icons, fuiListRowButtons *rowButtons, bool *outWasActivated) {
@@ -11342,7 +11869,10 @@ fui_api bool fuiListViewButtons(fuiContext *context, const fuiRect rect, const c
 
 	bool selectionChanged = false;
 	fuiPushClip(context, bodyRect);
-	for(int32_t displayIndex = 0; displayIndex < rowCount; ++displayIndex) {
+	int32_t firstVisibleRow = 0;
+	int32_t endVisibleRow = rowCount;
+	fui__ListVisibleRange(scrollY, bodyRect.h, rowHeight, rowCount, &firstVisibleRow, &endVisibleRow);
+	for(int32_t displayIndex = firstVisibleRow; displayIndex < endVisibleRow; ++displayIndex) {
 		const int32_t row = fui__ListSourceRow(sortOrder, displayIndex);
 		float rowTop = bodyRect.y - scrollY + (float)displayIndex * rowHeight;
 		bool isAboveTheBody = (rowTop + rowHeight) < bodyRect.y;
