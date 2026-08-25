@@ -171,6 +171,14 @@ fui_api void fuiGL1Render(const fuiDrawData *drawData) {
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
 
+	// The scissor is set only when it CHANGES. A run of commands inside one panel all carry the same clip,
+	// and a dense interface is mostly such runs, so this is most of the scissor calls gone for the price
+	// of four comparisons. The first command always sets it, because nothing has been set yet.
+	GLint lastScissorX = 0;
+	GLint lastScissorY = 0;
+	GLsizei lastScissorWidth = -1;
+	GLsizei lastScissorHeight = -1;
+
 	for(uint32_t commandIndex = 0; commandIndex < drawData->commandCount; ++commandIndex) {
 		const fuiDrawCommand *command = &drawData->commands[commandIndex];
 		if(command->indexCount == 0) {
@@ -187,7 +195,14 @@ fui_api void fuiGL1Render(const fuiDrawData *drawData) {
 		if(scissorWidth <= 0 || scissorHeight <= 0) {
 			continue;
 		}
-		glScissor(scissorX, scissorY, scissorWidth, scissorHeight);
+		bool scissorChanged = (scissorX != lastScissorX) || (scissorY != lastScissorY) || (scissorWidth != lastScissorWidth) || (scissorHeight != lastScissorHeight);
+		if(scissorChanged) {
+			glScissor(scissorX, scissorY, scissorWidth, scissorHeight);
+			lastScissorX = scissorX;
+			lastScissorY = scissorY;
+			lastScissorWidth = scissorWidth;
+			lastScissorHeight = scissorHeight;
+		}
 
 		uint32_t wantedTexture = (uint32_t)command->texture;
 		if(wantedTexture != boundTexture) {
