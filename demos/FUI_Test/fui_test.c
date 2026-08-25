@@ -89,12 +89,17 @@ License:
 #define DEMO_TABLE_NAME_MAX 32
 #define DEMO_TABLE_CELL_COUNT (DEMO_TABLE_ROW_COUNT * DEMO_TABLE_COLUMN_COUNT)
 
-// The icon sheet the demo draws itself: four square cells in a row, one channel of coverage, uploaded the
-// same way the font atlas is. No asset to ship, and a worked example of what fuiListIcons wants.
+// The icon sheets the demo draws itself: four square cells in a row, no asset to ship, and a worked example
+// of what fuiListIcons wants. There are TWO of them, of the same four shapes, because a sheet can reach the
+// backend by either of two roads and the demo runs both - one channel of COVERAGE, uploaded exactly the way
+// the font atlas is and stained one shade by the vertex tint, and four channels of COLOR the sheet carries
+// itself. The Entity table switches between them.
 #define DEMO_ICON_CELL_SIDE 32u
 #define DEMO_ICON_CELL_COUNT 4u
 #define DEMO_ICON_SHEET_WIDTH (DEMO_ICON_CELL_SIDE * DEMO_ICON_CELL_COUNT)
 #define DEMO_ICON_SHEET_HEIGHT DEMO_ICON_CELL_SIDE
+#define DEMO_ICON_SHEET_CHANNELS 4u
+#define DEMO_ICON_SHEET_COLOR_BYTES (DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT * DEMO_ICON_SHEET_CHANNELS)
 
 // ----------------------------------------------------------------------------
 // What the demo is about
@@ -143,12 +148,24 @@ typedef struct DemoState {
 	const char *tableCells[DEMO_TABLE_CELL_COUNT];
 	const char *tableRowButtons[DEMO_TABLE_ROW_COUNT];
 	int32_t tableIconForRow[DEMO_TABLE_ROW_COUNT];
+	//! One tint per row, all of them left FULLY TRANSPARENT except the row that is sounding
+	fuiColor tableIconTintForRow[DEMO_TABLE_ROW_COUNT];
 	int32_t tableSelection;
 	//! Which row is sounding, so its button reads Stop while every other one reads Play
 	int32_t tablePlayingRow;
-	//! The icon sheet, drawn into an alpha bitmap at startup and uploaded like the font atlas
+	//! The coverage sheet, drawn into an alpha bitmap at startup and uploaded like the font atlas
 	fuiTextureId iconSheet;
 	fuiVec2 iconSheetSize;
+	//! The same shapes in four channels, uploaded through fuiGL1UploadImageRGBA
+	fuiTextureId iconSheetColor;
+	fuiVec2 iconSheetColorSize;
+
+	// What the Entity table does with its icons, so every field of fuiListIcons that changes the picture can
+	// be switched while looking at it.
+	bool tableUsesColorSheet;
+	bool tableShowsHeaderIcons;
+	bool tableIconsOnKindColumn;
+	bool tableIconsOnly;
 	//! Which image the preview tab is showing, and how
 	int32_t previewScaleMode;
 	bool previewIsMirrored;
@@ -187,17 +204,10 @@ static void DemoSayFormat(DemoState *demo, const char *format, ...) {
 // four cells of the sheet and the four kinds line up.
 static const char *const g_demoTableKinds[] = { "Solid", "Prop", "Trigger", "Light" };
 
-/*
-	The icon sheet, drawn by the demo into one channel of coverage - a square, a triangle, a ring and a
-	diamond, one per kind. It goes up through the same call the font atlas does, because to this backend an
-	atlas IS a coverage bitmap, and a list icon and a glyph ask exactly the same thing of it.
-
-	The library never learns what a cell MEANS. It draws cell N for the row whose entry says N, and which
-	cell a row gets is the table below.
-*/
-static void DemoDrawIconSheet(unsigned char *coveragePixels) {
+//! Whether one texel of a cell lies inside that cell's shape. BOTH sheets are drawn from this, so the
+//! coverage one and the color one are the same four pictures and only differ in what they are painted with.
+static bool DemoIconTexelIsInk(const int32_t cellIndex, const int32_t x, const int32_t y) {
 	const int32_t cellSide = (int32_t)DEMO_ICON_CELL_SIDE;
-	const int32_t sheetWidth = (int32_t)DEMO_ICON_SHEET_WIDTH;
 	const float centre = (float)cellSide * 0.5f;
 	const float outerRadius = (float)cellSide * 0.36f;
 	const float innerRadius = (float)cellSide * 0.24f;
@@ -206,32 +216,102 @@ static void DemoDrawIconSheet(unsigned char *coveragePixels) {
 	const float innerRadiusSquared = innerRadius * innerRadius;
 	const int32_t squareInset = cellSide / 5;
 
+	float offsetX = ((float)x + 0.5f) - centre;
+	float offsetY = ((float)y + 0.5f) - centre;
+	float distanceSquared = offsetX * offsetX + offsetY * offsetY;
+	float distanceFromCentreX = (offsetX < 0.0f) ? -offsetX : offsetX;
+	float distanceFromCentreY = (offsetY < 0.0f) ? -offsetY : offsetY;
+
+	bool isInk = false;
+	switch(cellIndex) {
+		case 0: // a solid block
+			isInk = (x >= squareInset) && (x < cellSide - squareInset) && (y >= squareInset) && (y < cellSide - squareInset);
+			break;
+		case 1: // a triangle standing on its base
+			isInk = (y >= squareInset) && (y < cellSide - squareInset) && (distanceFromCentreX <= (float)(y - squareInset) * 0.5f);
+			break;
+		case 2: // a ring
+			isInk = (distanceSquared <= outerRadiusSquared) && (distanceSquared >= innerRadiusSquared);
+			break;
+		default: // a diamond
+			isInk = (distanceFromCentreX + distanceFromCentreY) <= outerRadius;
+			break;
+	}
+	return(isInk);
+}
+
+/*
+	The COVERAGE sheet - a square, a triangle, a ring and a diamond, one per kind, in a single channel. It goes
+	up through the same call the font atlas does, because to this backend an atlas IS a coverage bitmap, and a
+	list icon and a glyph ask exactly the same thing of it.
+
+	The library never learns what a cell MEANS. It draws cell N for the row whose entry says N, and which cell
+	a row gets is the table further down.
+*/
+static void DemoDrawIconSheet(unsigned char *coveragePixels) {
+	const int32_t cellSide = (int32_t)DEMO_ICON_CELL_SIDE;
+	const int32_t sheetWidth = (int32_t)DEMO_ICON_SHEET_WIDTH;
+
 	memset(coveragePixels, 0, (size_t)sheetWidth * (size_t)cellSide);
 	for(int32_t cellIndex = 0; cellIndex < (int32_t)DEMO_ICON_CELL_COUNT; ++cellIndex) {
 		for(int32_t y = 0; y < cellSide; ++y) {
 			for(int32_t x = 0; x < cellSide; ++x) {
-				float offsetX = ((float)x + 0.5f) - centre;
-				float offsetY = ((float)y + 0.5f) - centre;
-				float distanceSquared = offsetX * offsetX + offsetY * offsetY;
-				bool isInk = false;
-				switch(cellIndex) {
-					case 0: // a solid block
-						isInk = (x >= squareInset) && (x < cellSide - squareInset) && (y >= squareInset) && (y < cellSide - squareInset);
-						break;
-					case 1: // a triangle standing on its base
-						isInk = (y >= squareInset) && (y < cellSide - squareInset) && (offsetX < 0.0f ? -offsetX : offsetX) <= (float)(y - squareInset) * 0.5f;
-						break;
-					case 2: // a ring
-						isInk = (distanceSquared <= outerRadiusSquared) && (distanceSquared >= innerRadiusSquared);
-						break;
-					default: // a diamond
-						isInk = ((offsetX < 0.0f ? -offsetX : offsetX) + (offsetY < 0.0f ? -offsetY : offsetY)) <= outerRadius;
-						break;
+				bool isInk = DemoIconTexelIsInk(cellIndex, x, y);
+				if(!isInk) {
+					continue;
 				}
-				if(isInk) {
-					int32_t sheetX = cellIndex * cellSide + x;
-					coveragePixels[(size_t)y * (size_t)sheetWidth + (size_t)sheetX] = 255;
+				int32_t sheetX = cellIndex * cellSide + x;
+				coveragePixels[(size_t)y * (size_t)sheetWidth + (size_t)sheetX] = 255;
+			}
+		}
+	}
+}
+
+// What each kind is painted in on the COLOR sheet, one entry per cell.
+static const fuiColor g_demoIconKindColors[DEMO_ICON_CELL_COUNT] = {
+	{ 0.60f, 0.64f, 0.72f, 1.0f }, // Solid, a cool grey
+	{ 0.40f, 0.76f, 0.44f, 1.0f }, // Prop, green
+	{ 0.94f, 0.62f, 0.26f, 1.0f }, // Trigger, amber
+	{ 0.96f, 0.86f, 0.36f, 1.0f }, // Light, a pale yellow
+};
+
+/*
+	The same four shapes in FOUR channels, each kind in its own color and shading from a light top edge to the
+	full color at the bottom. That gradient is the whole point of the sheet: a coverage sheet is stained ONE
+	shade by the vertex tint, and no tint can put two colors inside a single glyph.
+
+	Straight alpha and not premultiplied, which is what fuiGL1UploadImageRGBA wants and what the stb_image
+	loaders in final_assets.h hand over. Everything outside a shape is left transparent AND black, so a linear
+	filter fading off the edge of a shape fades toward nothing rather than toward a dark fringe.
+*/
+static void DemoDrawColorIconSheet(unsigned char *rgbaPixels) {
+	const int32_t cellSide = (int32_t)DEMO_ICON_CELL_SIDE;
+	const int32_t sheetWidth = (int32_t)DEMO_ICON_SHEET_WIDTH;
+	const int32_t bytesPerTexel = (int32_t)DEMO_ICON_SHEET_CHANNELS;
+	// How far the top row of a cell is lifted toward white. Enough to read as lit from above at 44 pixels.
+	const float topHighlightStrength = 0.55f;
+	const float fullChannel = 255.0f;
+
+	memset(rgbaPixels, 0, (size_t)DEMO_ICON_SHEET_COLOR_BYTES);
+	for(int32_t cellIndex = 0; cellIndex < (int32_t)DEMO_ICON_CELL_COUNT; ++cellIndex) {
+		fuiColor kindColor = g_demoIconKindColors[cellIndex];
+		for(int32_t y = 0; y < cellSide; ++y) {
+			float distanceDownTheCell = (float)y / (float)(cellSide - 1);
+			float highlight = topHighlightStrength * (1.0f - distanceDownTheCell);
+			float red = kindColor.r + (1.0f - kindColor.r) * highlight;
+			float green = kindColor.g + (1.0f - kindColor.g) * highlight;
+			float blue = kindColor.b + (1.0f - kindColor.b) * highlight;
+			for(int32_t x = 0; x < cellSide; ++x) {
+				bool isInk = DemoIconTexelIsInk(cellIndex, x, y);
+				if(!isInk) {
+					continue;
 				}
+				int32_t sheetX = cellIndex * cellSide + x;
+				size_t texelAt = ((size_t)y * (size_t)sheetWidth + (size_t)sheetX) * (size_t)bytesPerTexel;
+				rgbaPixels[texelAt + 0] = (unsigned char)(red * fullChannel);
+				rgbaPixels[texelAt + 1] = (unsigned char)(green * fullChannel);
+				rgbaPixels[texelAt + 2] = (unsigned char)(blue * fullChannel);
+				rgbaPixels[texelAt + 3] = (unsigned char)fullChannel;
 			}
 		}
 	}
@@ -547,24 +627,74 @@ static const fuiColumn g_demoTableColumns[DEMO_TABLE_COLUMN_COUNT] = {
 
 static const char *const g_demoTableTabs[] = { "Entities", "Preview" };
 
-static void BuildTableTab(fuiContext *ui, DemoState *demo, const fuiRect listRect) {
+// One cell per column HEADER, read out of the same sheet the rows are. The button column asks for none, which
+// is what a negative entry says.
+static const int32_t g_demoTableHeaderIcons[DEMO_TABLE_COLUMN_COUNT] = { 0, 1, 2, -1 };
+
+#define DEMO_TABLE_CONTROLS_GAP 6.0f
+
+static void BuildTableTab(fuiContext *ui, DemoState *demo, const fuiRect contentRect) {
+	// A row of switches over the list, one per thing fuiListIcons can be told to do, so each of them can be
+	// turned on and off with the list it changes in sight.
+	const float sheetSwitchWidth = 115.0f;
+	const float headerSwitchWidth = 130.0f;
+	const float columnSwitchWidth = 100.0f;
+	const float textSwitchWidth = 115.0f;
+
+	fuiRect controlsRect = fuiRectMake(contentRect.x, contentRect.y, contentRect.w, DEMO_ROW_HEIGHT);
+	fuiBeginStackAt(ui, "tableiconswitches", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiRect sheetSwitchRect = fuiLayoutSlot(ui, sheetSwitchWidth);
+	(void)fuiCheckbox(ui, sheetSwitchRect, "RGBA sheet", &demo->tableUsesColorSheet);
+	fuiRect headerSwitchRect = fuiLayoutSlot(ui, headerSwitchWidth);
+	(void)fuiCheckbox(ui, headerSwitchRect, "Header icons", &demo->tableShowsHeaderIcons);
+	fuiRect columnSwitchRect = fuiLayoutSlot(ui, columnSwitchWidth);
+	(void)fuiCheckbox(ui, columnSwitchRect, "On Kind", &demo->tableIconsOnKindColumn);
+	fuiRect textSwitchRect = fuiLayoutSlot(ui, textSwitchWidth);
+	(void)fuiCheckbox(ui, textSwitchRect, "Icons only", &demo->tableIconsOnly);
+	fuiEndStack(ui);
+
+	float listTop = controlsRect.y + controlsRect.h + DEMO_TABLE_CONTROLS_GAP;
+	fuiRect listRect = fuiRectMake(contentRect.x, listTop, contentRect.w, contentRect.y + contentRect.h - listTop);
+
 	// Every row's button says Play except the one that is sounding, which says Stop. The labels are per ROW,
 	// so one column can read differently on the row that is doing something.
+	fuiColor tintNobodySet = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.0f);
 	for(int32_t rowIndex = 0; rowIndex < DEMO_TABLE_ROW_COUNT; ++rowIndex) {
+		demo->tableIconTintForRow[rowIndex] = tintNobodySet;
 		if(demo->tableRowButtons[rowIndex] == fpl_null) {
 			continue; // the row that opted out stays opted out
 		}
 		demo->tableRowButtons[rowIndex] = (rowIndex == demo->tablePlayingRow) ? "Stop" : "Play";
 	}
 
+	// The sounding row's icon wears the accent color and every other row's entry stays FULLY TRANSPARENT, which
+	// is the way fuiListIcons reads "nobody set this one" and falls back to the tint of the whole sheet.
+	if(demo->tablePlayingRow >= 0) {
+		const fuiTheme *theme = fuiGetTheme(ui);
+		demo->tableIconTintForRow[demo->tablePlayingRow] = theme->accentColor;
+	}
+
+	// Which of the two sheets is showing. A sheet that failed to upload is zero, and the switch falls back to
+	// the one that did rather than to a list of blank rows.
+	bool colorSheetIsUsable = demo->tableUsesColorSheet && (demo->iconSheetColor != 0);
+	fuiTextureId sheet = colorSheetIsUsable ? demo->iconSheetColor : demo->iconSheet;
+	fuiVec2 sheetSize = colorSheetIsUsable ? demo->iconSheetColorSize : demo->iconSheetSize;
+	const int32_t nameColumn = 0;
+	const int32_t kindColumn = 1;
+
 	fuiListIcons icons = fplZeroInit;
-	icons.sheet = demo->iconSheet;
-	icons.sheetSize = demo->iconSheetSize;
+	icons.sheet = sheet;
+	icons.sheetSize = sheetSize;
 	icons.columns = (int32_t)DEMO_ICON_CELL_COUNT;
 	icons.rows = 1;
 	icons.cellForRow = demo->tableIconForRow;
 	icons.cellForRowCount = DEMO_TABLE_ROW_COUNT;
 	icons.rowScale = DEMO_ICON_ROW_SCALE;
+	icons.tintForRow = demo->tableIconTintForRow;
+	icons.column = demo->tableIconsOnKindColumn ? kindColumn : nameColumn;
+	icons.iconOnly = demo->tableIconsOnly;
+	icons.cellForColumn = demo->tableShowsHeaderIcons ? g_demoTableHeaderIcons : fpl_null;
+	icons.cellForColumnCount = DEMO_TABLE_COLUMN_COUNT;
 
 	fuiListRowButtons rowButtons = fplZeroInit;
 	rowButtons.column = DEMO_TABLE_COLUMN_COUNT - 1;
@@ -949,15 +1079,33 @@ int main(int argc, char **argv) {
 	DemoState demo;
 	DemoInit(&demo);
 
-	// The second texture, and the only asset in the demo that is not a font: four icon cells the demo draws
-	// itself. A failed upload leaves the sheet at zero, which is a list of plain text rows rather than a
-	// reason not to start.
+	// The other textures, and the only assets in the demo that are not a font: four icon cells the demo draws
+	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of
+	// plain text rows rather than a reason not to start.
+	//
+	// Both sheets are 128 by 32, which is a power of two in BOTH axes on purpose. This backend is OpenGL 1.1
+	// with no extension test in it, and a size of any other shape was only ever guaranteed from OpenGL 2.0 on -
+	// so a sheet of five 48 pixel cells wants rounding up to 256 by 64 with the spare cells left empty, rather
+	// than going up at its natural 240 by 48. A current driver takes either without complaint; the habit is for
+	// the old implementations this backend is also meant to run on.
 	unsigned char iconPixels[DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT];
 	DemoDrawIconSheet(iconPixels);
 	uint32_t iconTexture = 0;
 	if(fuiGL1UploadFontAtlas(iconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, &iconTexture)) {
 		demo.iconSheet = (fuiTextureId)iconTexture;
 		demo.iconSheetSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
+	}
+
+	// The colored one takes the OTHER road into the backend: four channels through fuiGL1UploadImageRGBA rather
+	// than one through the atlas call. Linear, because the 32 pixel cells are drawn at 44 and a nearest filter
+	// would show every step of the scale.
+	unsigned char colorIconPixels[DEMO_ICON_SHEET_COLOR_BYTES];
+	DemoDrawColorIconSheet(colorIconPixels);
+	uint32_t colorIconTexture = 0;
+	const bool colorSheetIsFilteredLinearly = true;
+	if(fuiGL1UploadImageRGBA(colorIconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, colorSheetIsFilteredLinearly, &colorIconTexture)) {
+		demo.iconSheetColor = (fuiTextureId)colorIconTexture;
+		demo.iconSheetColorSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
 	}
 
 	fuiFplInput bridge;
@@ -993,6 +1141,9 @@ int main(int argc, char **argv) {
 	fuiRelease(&ui);
 	if(iconTexture != 0) {
 		fuiGL1DeleteTexture(iconTexture);
+	}
+	if(colorIconTexture != 0) {
+		fuiGL1DeleteTexture(colorIconTexture);
 	}
 	fuiGL1DeleteTexture(atlasTexture);
 	fuiStbttFontRelease(&bakedFont);
