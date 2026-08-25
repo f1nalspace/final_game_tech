@@ -103,7 +103,13 @@ License:
 // The icon sheet the demo draws itself: four square cells in a row, one channel of coverage. No asset to
 // ship, and a worked example of what fuiListIcons wants.
 #define DEMO_ICON_CELL_SIDE 32u
-#define DEMO_ICON_CELL_COUNT 4u
+// Eight cells: the four entity kinds the table draws, and behind them the four the project tree draws. Eight
+// keeps the sheet 256 wide and so a power of two in both axes, which is what the oldest backends want.
+#define DEMO_ICON_CELL_COUNT 8u
+#define DEMO_ICON_CELL_FOLDER_SHUT 4
+#define DEMO_ICON_CELL_FOLDER_OPEN 5
+#define DEMO_ICON_CELL_FILE 6
+#define DEMO_ICON_CELL_LEVEL 7
 #define DEMO_ICON_SHEET_WIDTH (DEMO_ICON_CELL_SIDE * DEMO_ICON_CELL_COUNT)
 #define DEMO_ICON_SHEET_HEIGHT DEMO_ICON_CELL_SIDE
 
@@ -113,6 +119,16 @@ License:
 #define DEMO_ICON_TEXEL_CHANNELS 4u
 #define DEMO_ICON_TEXEL_COUNT (DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT)
 #define DEMO_ICON_BYTE_COUNT (DEMO_ICON_TEXEL_COUNT * DEMO_ICON_TEXEL_CHANNELS)
+
+#define DEMO_TREE_NODE_MAX 64
+#define DEMO_TREE_ID "projecttree"
+//! The file the Find button digs out, named rather than indexed so the tree table can be edited freely
+#define DEMO_TREE_BURIED_FILE "water-01.wav"
+
+// The framework leaves the window at whatever FPL defaults to, which is not wide enough for an explorer
+// column beside the panels that were already there. Asked for in GameInit.
+#define DEMO_WINDOW_WIDTH 1560u
+#define DEMO_WINDOW_HEIGHT 800u
 
 // ----------------------------------------------------------------------------
 // What the demo is about
@@ -126,6 +142,7 @@ typedef struct DemoState {
 	bool showPickerPanel;
 	bool showListPanel;
 	bool showTablePanel;
+	bool showTreePanel;
 	bool showTooltips;
 
 	// Values the widgets edit. The library holds NONE of these: an immediate mode widget reads the
@@ -171,6 +188,22 @@ typedef struct DemoState {
 	int32_t previewScaleMode;
 	bool previewIsMirrored;
 	bool previewIsTurned;
+
+	// The project tree. The nodes and their flags are the DEMO's, exactly like the table's rows: the library
+	// reads them, writes a flag when an expander is clicked, and copies nothing.
+	fuiTreeNode treeNodes[DEMO_TREE_NODE_MAX];
+	bool treeIsExpanded[DEMO_TREE_NODE_MAX];
+	int32_t treeIconForNode[DEMO_TREE_NODE_MAX];
+	//! One tint per node. This sheet is a single channel of coverage, so a folder and a file are told apart by
+	//! the COLOR they are modulated with rather than by the artwork - which is what tintForRow is for
+	fuiColor treeTintForNode[DEMO_TREE_NODE_MAX];
+	int32_t treeNodeCount;
+	int32_t treeSelection;
+	//! Which node the context menu is about, which is the row the right button went down on and not the selection
+	int32_t treeContextNode;
+	bool treeShowsGuides;
+	bool treeUsesIcons;
+	bool treeKeyboardIsOn;
 
 	char statusMessage[DEMO_STATUS_MESSAGE_MAX];
 	float framesPerSecond;
@@ -230,9 +263,73 @@ static void DemoSayFormat(DemoState *demo, const char *format, ...) {
 static const char *const g_demoTableKinds[] = { "Solid", "Prop", "Trigger", "Light" };
 
 /*
-	The icon sheet, drawn by the demo into one channel of coverage - a square, a triangle, a ring and a
-	diamond, one per kind. It goes up through the same call the font atlas does, because to this backend an
-	atlas IS a coverage bitmap, and a list icon and a glyph ask exactly the same thing of it.
+	The project tree, written out in PREORDER - which is the order the rows come out in when everything is open,
+	and the order a folder read recursively falls out in anyway.
+
+	It is a table and not a real directory on purpose: the library reads no directory, and neither does the demo,
+	so what this panel shows is the same on every machine it is run on.
+*/
+typedef struct DemoTreeEntry {
+	//! What the row says
+	const char *label;
+	//! How deep it sits, zero being a root
+	int32_t depth;
+	//! Which sheet cell a LEAF draws. A folder says minus one and takes the shut or the open folder cell from
+	//! whether it happens to be folded open, which is the demo's business and not the library's
+	int32_t leafIconCell;
+} DemoTreeEntry;
+
+#define DEMO_TREE_FOLDER (-1)
+
+static const DemoTreeEntry g_demoTreeEntries[] = {
+	{ "assets",                    0, DEMO_TREE_FOLDER },
+	{ "fonts",                     1, DEMO_TREE_FOLDER },
+	{ "bitstream-vera.ttf",        2, DEMO_ICON_CELL_FILE },
+	{ "sulphur-point.ttf",         2, DEMO_ICON_CELL_FILE },
+	{ "sprites",                   1, DEMO_TREE_FOLDER },
+	{ "hero",                      2, DEMO_TREE_FOLDER },
+	{ "idle.png",                  3, DEMO_ICON_CELL_FILE },
+	{ "run.png",                   3, DEMO_ICON_CELL_FILE },
+	{ "fall.png",                  3, DEMO_ICON_CELL_FILE },
+	{ "tiles",                     2, DEMO_TREE_FOLDER },
+	{ "grass.png",                 3, DEMO_ICON_CELL_FILE },
+	{ "stone.png",                 3, DEMO_ICON_CELL_FILE },
+	{ "interface",                 2, DEMO_TREE_FOLDER },
+	{ "cursor.png",                3, DEMO_ICON_CELL_FILE },
+	{ "icons.png",                 3, DEMO_ICON_CELL_FILE },
+	{ "audio",                     1, DEMO_TREE_FOLDER },
+	{ "music",                     2, DEMO_TREE_FOLDER },
+	{ "the-long-dusk.ogg",         3, DEMO_ICON_CELL_FILE },
+	{ "steps",                     2, DEMO_TREE_FOLDER },
+	{ "gravel-01.wav",             3, DEMO_ICON_CELL_FILE },
+	{ "gravel-02.wav",             3, DEMO_ICON_CELL_FILE },
+	{ "water-01.wav",              3, DEMO_ICON_CELL_FILE },
+	{ "levels",                    0, DEMO_TREE_FOLDER },
+	{ "gardens-of-ash.lvl",        1, DEMO_ICON_CELL_LEVEL },
+	{ "the-drowned-mill.lvl",      1, DEMO_ICON_CELL_LEVEL },
+	{ "the-quiet-observatory.lvl", 1, DEMO_ICON_CELL_LEVEL },
+	{ "drafts",                    1, DEMO_TREE_FOLDER },
+	{ "untitled-7.lvl",            2, DEMO_ICON_CELL_LEVEL },
+	{ "untitled-8.lvl",            2, DEMO_ICON_CELL_LEVEL },
+	{ "scripts",                   0, DEMO_TREE_FOLDER },
+	{ "boot.lua",                  1, DEMO_ICON_CELL_FILE },
+	{ "dialogue.lua",              1, DEMO_ICON_CELL_FILE },
+	{ "weather.lua",               1, DEMO_ICON_CELL_FILE },
+	{ "tools",                     0, DEMO_TREE_FOLDER },
+	{ "bake-atlas.sh",             1, DEMO_ICON_CELL_FILE },
+	{ "pack-levels.sh",            1, DEMO_ICON_CELL_FILE },
+	{ "readme.txt",                0, DEMO_ICON_CELL_FILE },
+	{ "license.txt",               0, DEMO_ICON_CELL_FILE },
+};
+
+/*
+	The icon sheet, drawn by the demo into one channel of coverage - a square, a triangle, a ring and a diamond
+	for the entity kinds, then a shut folder, an open one, a file and a level file for the project tree. It goes
+	up through the same call the font atlas does, because to this backend an atlas IS a coverage bitmap, and a
+	list icon and a glyph ask exactly the same thing of it.
+
+	One channel carries no colour, so what tells a folder from a file here is the TINT each row is modulated
+	with - fuiListIcons.tintForRow - rather than the artwork.
 
 	The library never learns what a cell MEANS. It draws cell N for the row whose entry says N, and which
 	cell a row gets is the table below.
@@ -248,6 +345,32 @@ static void DemoDrawIconSheet(unsigned char *coveragePixels) {
 	const float innerRadiusSquared = innerRadius * innerRadius;
 	const int32_t squareInset = cellSide / 5;
 
+	// The four shapes the project tree is drawn with, measured off the cell so they scale with it. A folder is
+	// a tab over a body, and the open one is the same folder with its lid lifted clear of it.
+	const int32_t folderLeft = cellSide / 8;
+	const int32_t folderRight = cellSide - cellSide / 8;
+	const int32_t folderTabRight = folderLeft + cellSide / 3;
+	const int32_t folderTabTop = cellSide / 5;
+	const int32_t folderTabBottom = folderTabTop + cellSide / 8;
+	const int32_t folderBottom = cellSide - cellSide / 6;
+	const int32_t folderLidBottom = folderTabBottom + cellSide / 10;
+	const int32_t folderOpenBodyTop = folderLidBottom + cellSide / 12;
+	const int32_t folderOpenBodyLeft = folderLeft + cellSide / 10;
+
+	const int32_t fileLeft = cellSide / 4;
+	const int32_t fileRight = cellSide - cellSide / 5;
+	const int32_t fileTop = cellSide / 6;
+	const int32_t fileBottom = cellSide - cellSide / 6;
+	const int32_t fileFoldSize = cellSide / 4;
+	const int32_t fileFoldLeft = fileRight - fileFoldSize;
+	const int32_t fileFoldBottom = fileTop + fileFoldSize;
+	const int32_t fileLineLeft = fileLeft + cellSide / 10;
+	const int32_t fileLineRight = fileRight - cellSide / 10;
+	const int32_t fileFirstLineTop = fileTop + fileFoldSize + cellSide / 12;
+	const int32_t fileLineSpacing = cellSide / 7;
+	const int32_t fileLineThickness = cellSide / 16 + 1;
+	const int32_t fileLineCount = 3;
+
 	memset(coveragePixels, 0, (size_t)sheetWidth * (size_t)cellSide);
 	for(int32_t cellIndex = 0; cellIndex < (int32_t)DEMO_ICON_CELL_COUNT; ++cellIndex) {
 		for(int32_t y = 0; y < cellSide; ++y) {
@@ -255,6 +378,9 @@ static void DemoDrawIconSheet(unsigned char *coveragePixels) {
 				float offsetX = ((float)x + 0.5f) - centre;
 				float offsetY = ((float)y + 0.5f) - centre;
 				float distanceSquared = offsetX * offsetX + offsetY * offsetY;
+				bool isTheFolderTab = (x >= folderLeft) && (x < folderTabRight) && (y >= folderTabTop) && (y < folderTabBottom);
+				bool isTheFileSheet = (x >= fileLeft) && (x < fileRight) && (y >= fileTop) && (y < fileBottom);
+				bool isTheFileFold = (x >= fileFoldLeft) && (y < fileFoldBottom) && (((x - fileFoldLeft) + (fileFoldBottom - y)) > fileFoldSize);
 				bool isInk = false;
 				switch(cellIndex) {
 					case 0: // a solid block
@@ -266,9 +392,37 @@ static void DemoDrawIconSheet(unsigned char *coveragePixels) {
 					case 2: // a ring
 						isInk = (distanceSquared <= outerRadiusSquared) && (distanceSquared >= innerRadiusSquared);
 						break;
-					default: // a diamond
+					case 3: // a diamond
 						isInk = ((offsetX < 0.0f ? -offsetX : offsetX) + (offsetY < 0.0f ? -offsetY : offsetY)) <= outerRadius;
 						break;
+					case DEMO_ICON_CELL_FOLDER_SHUT:
+					{
+						bool isBody = (x >= folderLeft) && (x < folderRight) && (y >= folderTabBottom) && (y < folderBottom);
+						isInk = isTheFolderTab || isBody;
+					} break;
+					case DEMO_ICON_CELL_FOLDER_OPEN:
+					{
+						// The same tab, a lid where the body's top edge was, and the body itself dropped and
+						// pushed right - a folder with its lid taken off rather than a different folder.
+						bool isLid = (x >= folderLeft) && (x < folderRight) && (y >= folderTabBottom) && (y < folderLidBottom);
+						bool isBody = (x >= folderOpenBodyLeft) && (x < folderRight) && (y >= folderOpenBodyTop) && (y < folderBottom);
+						isInk = isTheFolderTab || isLid || isBody;
+					} break;
+					case DEMO_ICON_CELL_FILE:
+						isInk = isTheFileSheet && !isTheFileFold;
+						break;
+					default: // the same sheet with lines written on it, which is what a level file gets
+					{
+						bool isBetweenTheLines = false;
+						for(int32_t lineIndex = 0; lineIndex < fileLineCount; ++lineIndex) {
+							int32_t lineTop = fileFirstLineTop + lineIndex * fileLineSpacing;
+							bool isOnThisLine = (y >= lineTop) && (y < lineTop + fileLineThickness) && (x >= fileLineLeft) && (x < fileLineRight);
+							if(isOnThisLine) {
+								isBetweenTheLines = true;
+							}
+						}
+						isInk = isTheFileSheet && !isTheFileFold && !isBetweenTheLines;
+					} break;
 				}
 				if(isInk) {
 					int32_t sheetX = cellIndex * cellSide + x;
@@ -277,6 +431,95 @@ static void DemoDrawIconSheet(unsigned char *coveragePixels) {
 			}
 		}
 	}
+}
+
+// What each kind of tree row is modulated with, since one channel of coverage carries no colour of its own.
+static const fuiColor g_demoTreeFolderTint = FUI_COLOR(0.94f, 0.76f, 0.38f, 1.0f);
+static const fuiColor g_demoTreeFileTint = FUI_COLOR(0.78f, 0.83f, 0.90f, 1.0f);
+static const fuiColor g_demoTreeLevelTint = FUI_COLOR(0.62f, 0.82f, 0.92f, 1.0f);
+
+//! Every node's icon and its colour, worked out from what it IS and from whether it is folded open right now
+/*
+	Called every frame before the tree is built, which is cheap for a table this size and always right. It is
+	also the whole point of the icon table belonging to the caller: the library never learns that cell four is a
+	shut folder and cell five an open one, it just draws the cell the row asks for in the colour the row asks for.
+*/
+static void DemoRefreshTreeIcons(DemoState *demo) {
+	for(int32_t nodeIndex = 0; nodeIndex < demo->treeNodeCount; ++nodeIndex) {
+		int32_t leafIconCell = g_demoTreeEntries[nodeIndex].leafIconCell;
+		bool isFolder = (leafIconCell == DEMO_TREE_FOLDER);
+		if(isFolder) {
+			bool isOpen = demo->treeIsExpanded[nodeIndex];
+			demo->treeIconForNode[nodeIndex] = isOpen ? DEMO_ICON_CELL_FOLDER_OPEN : DEMO_ICON_CELL_FOLDER_SHUT;
+			demo->treeTintForNode[nodeIndex] = g_demoTreeFolderTint;
+			continue;
+		}
+		demo->treeIconForNode[nodeIndex] = leafIconCell;
+		bool isALevel = (leafIconCell == DEMO_ICON_CELL_LEVEL);
+		demo->treeTintForNode[nodeIndex] = isALevel ? g_demoTreeLevelTint : g_demoTreeFileTint;
+	}
+}
+
+//! Which node carries a label, so the demo can name one instead of counting rows to it
+static int32_t DemoFindTreeNode(const DemoState *demo, const char *label) {
+	for(int32_t nodeIndex = 0; nodeIndex < demo->treeNodeCount; ++nodeIndex) {
+		if(fplIsStringEqual(demo->treeNodes[nodeIndex].label, label)) {
+			return(nodeIndex);
+		}
+	}
+	return(-1);
+}
+
+//! Writes out the path of a node, which is what the panel's footer says
+static void DemoTreePathOf(const DemoState *demo, const int32_t nodeIndex, char *buffer, const size_t capacity) {
+	buffer[0] = 0;
+	bool nodeIsInside = (nodeIndex >= 0) && (nodeIndex < demo->treeNodeCount);
+	if(!nodeIsInside) {
+		return;
+	}
+	// Ancestors can only be walked UPWARDS out of a preorder array, so the chain is collected from the node
+	// towards its root and then written out the other way round.
+	int32_t chain[FUI_MAX_TREE_DEPTH];
+	int32_t chainLength = 0;
+	int32_t walkIndex = nodeIndex;
+	while(walkIndex >= 0 && chainLength < (int32_t)fplArrayCount(chain)) {
+		chain[chainLength] = walkIndex;
+		chainLength += 1;
+		walkIndex = fuiTreeParentOf(demo->treeNodes, demo->treeNodeCount, walkIndex);
+	}
+	for(int32_t step = chainLength - 1; step >= 0; --step) {
+		int32_t pathNode = chain[step];
+		const char *pathLabel = demo->treeNodes[pathNode].label;
+		fplStringAppend("/", buffer, capacity);
+		fplStringAppend(pathLabel, buffer, capacity);
+	}
+}
+
+//! Copies the table into the nodes, works out the subtree sizes once, and opens the roots
+static void DemoBuildTree(DemoState *demo) {
+	int32_t entryCount = (int32_t)fplArrayCount(g_demoTreeEntries);
+	if(entryCount > DEMO_TREE_NODE_MAX) {
+		entryCount = DEMO_TREE_NODE_MAX;
+	}
+	for(int32_t nodeIndex = 0; nodeIndex < entryCount; ++nodeIndex) {
+		const DemoTreeEntry *entry = &g_demoTreeEntries[nodeIndex];
+		demo->treeNodes[nodeIndex].label = entry->label;
+		demo->treeNodes[nodeIndex].depth = entry->depth;
+		demo->treeIsExpanded[nodeIndex] = false;
+	}
+	demo->treeNodeCount = entryCount;
+
+	// Once, here, and never per frame. This is what lets a folded node be stepped over in one addition.
+	fuiTreeComputeDescendants(demo->treeNodes, demo->treeNodeCount);
+
+	// The roots start open, so the panel opens on something rather than on four shut folders.
+	for(int32_t nodeIndex = 0; nodeIndex < demo->treeNodeCount; ++nodeIndex) {
+		bool isRoot = (demo->treeNodes[nodeIndex].depth == 0);
+		if(isRoot) {
+			demo->treeIsExpanded[nodeIndex] = true;
+		}
+	}
+	DemoRefreshTreeIcons(demo);
 }
 
 //! Fills the table with rows, and points the flat cell array at them. The strings live in DemoState for as
@@ -313,9 +556,16 @@ static void DemoInit(DemoState *demo) {
 	demo->showListPanel = true;
 	demo->showTablePanel = true;
 	demo->showTooltips = true;
+	demo->showTreePanel = true;
 	demo->tableSelection = -1;
 	demo->tablePlayingRow = -1;
+	demo->treeSelection = -1;
+	demo->treeContextNode = -1;
+	demo->treeShowsGuides = true;
+	demo->treeUsesIcons = true;
+	demo->treeKeyboardIsOn = true;
 	DemoBuildTable(demo);
+	DemoBuildTree(demo);
 	demo->showGrid = true;
 	demo->toolSelection = 1;
 	demo->zoom = 1.4f;
@@ -412,6 +662,9 @@ static void BuildMenuBar(fuiContext *ui, DemoState *demo, const fuiRect barRect)
 		}
 		if(fuiMenuItemCheck(ui, "Entity table", demo->showTablePanel, true)) {
 			demo->showTablePanel = !demo->showTablePanel;
+		}
+		if(fuiMenuItemCheck(ui, "Project tree", demo->showTreePanel, true)) {
+			demo->showTreePanel = !demo->showTreePanel;
 		}
 		fuiMenuSeparator(ui);
 		if(fuiMenuItemCheck(ui, "Hover tooltips", demo->showTooltips, true)) {
@@ -715,6 +968,172 @@ static void BuildListPanel(fuiContext *ui, DemoState *demo) {
 	fuiEndPanel(ui);
 }
 
+#define DEMO_TREE_PANEL_X 1160.0f
+#define DEMO_TREE_PANEL_Y 110.0f
+#define DEMO_TREE_PANEL_WIDTH 370.0f
+#define DEMO_TREE_PANEL_HEIGHT 620.0f
+#define DEMO_TREE_FOOTER_GAP 6.0f
+#define DEMO_TREE_ICON_ROW_SCALE 1.4f
+#define DEMO_TREE_MENU_ID "treemenu"
+
+/*
+	The project explorer.
+
+	Everything the tree reads belongs to the demo - the nodes, the flags saying which folders are open, the
+	tables saying which icon a row draws and in what colour. The library writes exactly one of those, the flag
+	of a node whose expander was clicked, and copies none of them.
+*/
+static void BuildTreePanel(fuiContext *ui, DemoState *demo) {
+	if(!demo->showTreePanel) {
+		return;
+	}
+	if(fuiBeginPanelClosable(ui, "Project", FUI_DOCK_NONE, DEMO_TREE_PANEL_X, DEMO_TREE_PANEL_Y, DEMO_TREE_PANEL_WIDTH, DEMO_TREE_PANEL_HEIGHT, &demo->showTreePanel)) {
+		const float foldButtonWidth = 168.0f;
+		const float guideSwitchWidth = 110.0f;
+		const float iconSwitchWidth = 95.0f;
+		const float keySwitchWidth = 95.0f;
+
+		// A shut folder and an open one are two different pictures, and which one a row wears is worked out here
+		// rather than by the library.
+		DemoRefreshTreeIcons(demo);
+
+		fuiRect foldRowRect = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		fuiBeginStackAt(ui, "treefolds", FUI_AXIS_HORIZONTAL, foldRowRect, FUI_SPACING_FROM_THEME);
+		fuiRect expandButtonRect = fuiLayoutSlot(ui, foldButtonWidth);
+		bool expandWasClicked = fuiButton(ui, expandButtonRect, "Expand all");
+		fuiRect collapseButtonRect = fuiLayoutSlot(ui, foldButtonWidth);
+		bool collapseWasClicked = fuiButton(ui, collapseButtonRect, "Collapse all");
+		fuiEndStack(ui);
+
+		if(expandWasClicked) {
+			fuiTreeSetExpandedAll(demo->treeNodes, demo->treeNodeCount, demo->treeIsExpanded, true);
+			DemoSay(demo, "All open. Nothing had to be said to the tree: a short one hashes its own flags.");
+		}
+		if(collapseWasClicked) {
+			fuiTreeSetExpandedAll(demo->treeNodes, demo->treeNodeCount, demo->treeIsExpanded, false);
+			DemoSay(demo, "All shut - and the selection stayed put, because it is a NODE and not a row.");
+		}
+
+		fuiRect findButtonRect = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		if(fuiButton(ui, findButtonRect, "Find " DEMO_TREE_BURIED_FILE)) {
+			int32_t buriedNode = DemoFindTreeNode(demo, DEMO_TREE_BURIED_FILE);
+			// Shut first, so what the two calls underneath do is actually visible rather than already true.
+			fuiTreeSetExpandedAll(demo->treeNodes, demo->treeNodeCount, demo->treeIsExpanded, false);
+			(void)fuiTreeExpandToNode(demo->treeNodes, demo->treeNodeCount, demo->treeIsExpanded, buriedNode);
+			demo->treeSelection = buriedNode;
+			// Called out here rather than from inside a stack row: a stack pushes an identifier scope, and this
+			// has to resolve the tree's identifier in the SAME scope the tree itself is built in.
+			fuiTreeReveal(ui, DEMO_TREE_ID, buriedNode);
+			DemoSayFormat(demo, "Shut everything, opened the way down to %s and scrolled to it.", DEMO_TREE_BURIED_FILE);
+		}
+
+		fuiRect switchRowRect = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		fuiBeginStackAt(ui, "treeswitches", FUI_AXIS_HORIZONTAL, switchRowRect, FUI_SPACING_FROM_THEME);
+		fuiRect guideSwitchRect = fuiLayoutSlot(ui, guideSwitchWidth);
+		(void)fuiCheckbox(ui, guideSwitchRect, "Guides", &demo->treeShowsGuides);
+		fuiRect iconSwitchRect = fuiLayoutSlot(ui, iconSwitchWidth);
+		(void)fuiCheckbox(ui, iconSwitchRect, "Icons", &demo->treeUsesIcons);
+		fuiRect keySwitchRect = fuiLayoutSlot(ui, keySwitchWidth);
+		(void)fuiCheckbox(ui, keySwitchRect, "Keys", &demo->treeKeyboardIsOn);
+		fuiEndStack(ui);
+
+		// The footer is taken off the bottom BEFORE the tree, so the tree is whatever is left rather than
+		// something that has to know how tall a footer is.
+		fuiRect remaining = fuiLayoutRemaining(ui);
+		float footerTop = remaining.y + remaining.h - DEMO_ROW_HEIGHT;
+		fuiRect footerRect = fuiRectMake(remaining.x, footerTop, remaining.w, DEMO_ROW_HEIGHT);
+		float treeHeight = remaining.h - DEMO_ROW_HEIGHT - DEMO_TREE_FOOTER_GAP;
+		fuiRect treeRect = fuiRectMake(remaining.x, remaining.y, remaining.w, treeHeight);
+
+		fuiListIcons icons = fplZeroInit;
+		icons.sheet = demo->iconSheet;
+		icons.sheetSize = demo->iconSheetSize;
+		icons.columns = (int32_t)DEMO_ICON_CELL_COUNT;
+		icons.rows = 1;
+		icons.cellForRow = demo->treeIconForNode;
+		icons.cellForRowCount = demo->treeNodeCount;
+		icons.rowScale = DEMO_TREE_ICON_ROW_SCALE;
+		icons.tintForRow = demo->treeTintForNode;
+
+		fuiTreeDesc desc = fplZeroInit;
+		desc.nodes = demo->treeNodes;
+		desc.nodeCount = demo->treeNodeCount;
+		desc.isExpanded = demo->treeIsExpanded;
+		desc.icons = demo->treeUsesIcons ? &icons : fpl_null;
+		desc.showGuides = demo->treeShowsGuides;
+		desc.keyboardIsEnabled = demo->treeKeyboardIsOn;
+
+		fuiTreeAction action = fplZeroInit;
+		char selectedPath[DEMO_STATUS_MESSAGE_MAX];
+		if(fuiTreeViewEx(ui, treeRect, DEMO_TREE_ID, &desc, &demo->treeSelection, &action)) {
+			DemoTreePathOf(demo, demo->treeSelection, selectedPath, fplArrayCount(selectedPath));
+			DemoSayFormat(demo, "Picked %s", selectedPath);
+		}
+		if(action.activatedNode >= 0) {
+			DemoTreePathOf(demo, action.activatedNode, selectedPath, fplArrayCount(selectedPath));
+			DemoSayFormat(demo, "Opened %s, on the second click of a double click.", selectedPath);
+		}
+		if(action.toggledNode >= 0) {
+			const char *toggledLabel = demo->treeNodes[action.toggledNode].label;
+			bool isOpen = demo->treeIsExpanded[action.toggledNode];
+			DemoSayFormat(demo, "%s %s - the expander owned that click, so nothing was picked.", isOpen ? "Opened" : "Shut", toggledLabel);
+		}
+		if(action.contextNode >= 0) {
+			// Which node the menu is ABOUT is answered by the widget, so the menu and the row under the cursor
+			// cannot disagree about what is being acted on.
+			demo->treeContextNode = action.contextNode;
+			fuiOpenContextMenu(ui, DEMO_TREE_MENU_ID);
+		}
+
+		char footerText[DEMO_STATUS_MESSAGE_MAX];
+		if(demo->treeSelection >= 0) {
+			DemoTreePathOf(demo, demo->treeSelection, footerText, fplArrayCount(footerText));
+		} else {
+			fplCopyString("Fold with a triangle, pick with a row, walk with the arrow keys.", footerText, fplArrayCount(footerText));
+		}
+		fuiLabel(ui, footerRect, footerText);
+	}
+	fuiEndPanel(ui);
+}
+
+//! The menu a right click on a tree row opens, acting on THAT row rather than on the selection
+static void BuildTreeContextMenu(fuiContext *ui, DemoState *demo) {
+	if(fuiBeginContextMenu(ui, DEMO_TREE_MENU_ID)) {
+		int32_t contextNode = demo->treeContextNode;
+		bool nodeIsInside = (contextNode >= 0) && (contextNode < demo->treeNodeCount);
+		int32_t descendantCount = 0;
+		bool hasChildren = false;
+		bool isOpen = false;
+		if(nodeIsInside) {
+			descendantCount = demo->treeNodes[contextNode].descendantCount;
+			hasChildren = (descendantCount > 0);
+			isOpen = hasChildren && demo->treeIsExpanded[contextNode];
+		}
+
+		bool canExpand = hasChildren && !isOpen;
+		if(fuiMenuItem(ui, "Expand", fpl_null, canExpand)) {
+			demo->treeIsExpanded[contextNode] = true;
+		}
+		if(fuiMenuItem(ui, "Collapse", fpl_null, isOpen)) {
+			demo->treeIsExpanded[contextNode] = false;
+		}
+		if(fuiMenuItem(ui, "Expand subtree", fpl_null, hasChildren)) {
+			// The subtree of a node is the run of nodes right behind it, which is what descendantCount says.
+			int32_t lastNode = contextNode + descendantCount;
+			for(int32_t nodeIndex = contextNode; nodeIndex <= lastNode; ++nodeIndex) {
+				demo->treeIsExpanded[nodeIndex] = true;
+			}
+			DemoSayFormat(demo, "Opened all %d nodes under %s.", descendantCount, demo->treeNodes[contextNode].label);
+		}
+		fuiMenuSeparator(ui);
+		if(fuiMenuItem(ui, "Rename...", fpl_null, nodeIsInside)) {
+			fplCopyString(demo->treeNodes[contextNode].label, demo->renameField, fplArrayCount(demo->renameField));
+			fuiOpenDialog(ui, "rename");
+		}
+	}
+	fuiEndContextMenu(ui);
+}
+
 // ----------------------------------------------------------------------------
 // Dialogs
 //
@@ -844,6 +1263,7 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 	BuildPickerPanel(ui, demo);
 	BuildListPanel(ui, demo);
 	BuildTablePanel(ui, demo);
+	BuildTreePanel(ui, demo);
 
 	BuildStatusBar(ui, demo, statusBarRect);
 
@@ -851,13 +1271,16 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 	// cursor from an earlier one with no z ordering anywhere.
 	BuildMenuBar(ui, demo, menuBarRect);
 
+	BuildTreeContextMenu(ui, demo);
+
 	if(fuiBeginContextMenu(ui, "canvasmenu")) {
 		if(fuiMenuItem(ui, "Bring the panels back", fpl_null, true)) {
 			demo->showWidgetsPanel = true;
 			demo->showPickerPanel = true;
 			demo->showListPanel = true;
 			demo->showTablePanel = true;
-			DemoSay(demo, "All four panels are open again.");
+			demo->showTreePanel = true;
+			DemoSay(demo, "All five panels are open again.");
 		}
 		if(fuiMenuItemCheck(ui, "Hover tooltips", demo->showTooltips, true)) {
 			demo->showTooltips = !demo->showTooltips;
@@ -991,6 +1414,10 @@ extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arg
 	}
 	gameMemory->game = state;
 
+	// The framework's GameConfiguration says nothing about window size, so the demo asks for one wide enough
+	// to stand an explorer column beside the panels that were already there.
+	fplSetWindowSize(DEMO_WINDOW_WIDTH, DEMO_WINDOW_HEIGHT);
+
 	RenderState *renderState = gameMemory->render;
 
 	if(!LoadDemoFont(renderState, &state->uiFont)) {
@@ -1021,7 +1448,7 @@ extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arg
 
 	DemoInit(&state->demo);
 
-	// The only asset in the demo that is not a font: four icon cells the demo draws itself. The coverage is
+	// The only asset in the demo that is not a font: eight icon cells the demo draws itself. The coverage is
 	// scratch, the expanded texels are not - the upload reads them after this function has returned.
 	unsigned char coveragePixels[DEMO_ICON_TEXEL_COUNT];
 	DemoDrawIconSheet(coveragePixels);

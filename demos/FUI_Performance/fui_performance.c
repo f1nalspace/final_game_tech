@@ -15,6 +15,7 @@ Description:
 	  - A list view of up to a million rows across eight columns, sortable by every one of them
 	  - A list box of up to half a million rows whose labels are far wider than the box
 	  - A multi line text box holding up to two hundred thousand lines
+	  - A tree view of up to a million nodes, six folders deep, folded and unfolded
 	  - A menu tree of tens of thousands of items, four levels of submenu deep
 
 	The data is random but DETERMINISTIC: one seed, one xorshift, so two runs at the same scale produce
@@ -134,6 +135,46 @@ static const char *const g_perfMenuLabels[PERF_MENU_STEP_COUNT] = { "10", "40", 
 #define PERF_MENU_MAX_DEPTH 4
 
 #define PERF_TABLE_COLUMN_COUNT 8
+
+// ----------------------------------------------------------------------------
+// The generated file tree
+//
+// Shaped like a directory: twelve roots, folders down to a fixed depth, files at the bottom. The node budget
+// is split evenly between the roots, so stepping the scale up makes every root DEEPER rather than making the
+// first root swallow the whole budget - which is what keeps the folded case a dozen rows at every scale.
+//
+// The tree carries as many nodes as the table carries rows, so one scale step sizes both and the two can be
+// read against each other.
+// ----------------------------------------------------------------------------
+
+#define PERF_TREE_ROOT_COUNT 12
+#define PERF_TREE_MAX_DEPTH 6
+#define PERF_TREE_MIN_CHILDREN 2
+#define PERF_TREE_MAX_CHILDREN 8
+
+// The labels come out of a POOL rather than one per node. A million distinct names would be forty megabytes of
+// strings to measure something that does not depend on them being distinct: what a row costs to lay out is the
+// LENGTH of its text, and every name here is the same handful of syllables long whichever pool slot it is.
+#define PERF_TREE_NAME_POOL 2048
+#define PERF_TREE_NAME_CAPACITY 40
+
+/*
+	A ladder as deep as the library indents: at every level one node carries on downwards and one leaf sits
+	beside it.
+
+	The leaf is what makes this worth measuring. A bare chain has no siblings anywhere, and a guide line is only
+	drawn where a node has one - so a chain draws two lines a row however deep it goes, and would measure
+	nothing. With a sibling at every level, the deepest row carries a line for each of its ancestors, which is
+	the per-LEVEL cost this case is here to find.
+*/
+#define PERF_TREE_DEEP_DEPTH FUI_MAX_TREE_DEPTH
+#define PERF_TREE_DEEP_NODE_MAX (PERF_TREE_DEEP_DEPTH * 2)
+
+// The abstract sheet has four cells of different sizes rather than folder artwork, so a "folder" here is simply
+// a different cell from a "file". What the icon cases measure is the second draw command, not the picture.
+#define PERF_TREE_ICON_FOLDER_SHUT 0
+#define PERF_TREE_ICON_FOLDER_OPEN 1
+#define PERF_TREE_ICON_FILE 2
 
 // ----------------------------------------------------------------------------
 // Deterministic randomness
@@ -385,6 +426,22 @@ typedef struct PerfDataSet {
 	int32_t menuTopLevelCount;
 	int32_t menuItemsPerMenu;
 
+	//! The generated file tree, in preorder, plus the two arrays that belong beside it
+	fuiTreeNode *treeNodes;
+	bool *treeIsExpanded;
+	int32_t *treeIconForNode;
+	int32_t treeNodeCount;
+	int32_t treeNodeCapacity;
+	//! The pools every node's label points into, so a million nodes cost a few kilobytes of names
+	const char **treeFolderNames;
+	const char **treeFileNames;
+
+	//! The deep ladder, sized once and never scaled with anything
+	fuiTreeNode deepNodes[PERF_TREE_DEEP_NODE_MAX];
+	bool deepIsExpanded[PERF_TREE_DEEP_NODE_MAX];
+	int32_t deepIconForNode[PERF_TREE_DEEP_NODE_MAX];
+	int32_t deepNodeCount;
+
 	//! What it took to build all of the above, which is a cost of its own worth seeing
 	double generationMilliseconds;
 	size_t generatedByteCount;
@@ -407,6 +464,21 @@ static void PerfDataSetRelease(PerfDataSet *data) {
 	}
 	if(data->menuNodes != fpl_null) {
 		free(data->menuNodes);
+	}
+	if(data->treeNodes != fpl_null) {
+		free(data->treeNodes);
+	}
+	if(data->treeIsExpanded != fpl_null) {
+		free(data->treeIsExpanded);
+	}
+	if(data->treeIconForNode != fpl_null) {
+		free(data->treeIconForNode);
+	}
+	if(data->treeFolderNames != fpl_null) {
+		free(data->treeFolderNames);
+	}
+	if(data->treeFileNames != fpl_null) {
+		free(data->treeFileNames);
 	}
 	memset(data, 0, sizeof(*data));
 }
@@ -718,6 +790,151 @@ static bool PerfGenerateListBox(PerfDataSet *data, PerfRandom *random, const int
 	return(true);
 }
 
+//! Fills the two name pools every tree label points into
+static bool PerfGenerateTreeNames(PerfDataSet *data, PerfRandom *random) {
+	for(int32_t nameIndex = 0; nameIndex < PERF_TREE_NAME_POOL; ++nameIndex) {
+		char *folderName = PerfStringArenaTake(&data->strings, PERF_TREE_NAME_CAPACITY);
+		char *fileName = PerfStringArenaTake(&data->strings, PERF_TREE_NAME_CAPACITY);
+		if(folderName == fpl_null || fileName == fpl_null) {
+			return(false);
+		}
+
+		uint32_t folderWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		size_t offset = 0;
+		offset = PerfWriteText(folderName, offset, g_perfSecondWords[folderWordIndex]);
+		offset = PerfWriteChar(folderName, offset, '-');
+		offset = PerfWriteUInt(folderName, offset, (uint32_t)nameIndex, 4);
+		folderName[offset] = '\0';
+		data->treeFolderNames[nameIndex] = folderName;
+
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		offset = 0;
+		offset = PerfWriteText(fileName, offset, g_perfFirstWords[firstWordIndex]);
+		offset = PerfWriteChar(fileName, offset, '-');
+		offset = PerfWriteText(fileName, offset, g_perfSecondWords[secondWordIndex]);
+		offset = PerfWriteChar(fileName, offset, '-');
+		offset = PerfWriteUInt(fileName, offset, (uint32_t)nameIndex, 4);
+		offset = PerfWriteText(fileName, offset, ".dat");
+		fileName[offset] = '\0';
+		data->treeFileNames[nameIndex] = fileName;
+	}
+	return(true);
+}
+
+/*
+	Writes one node and, when it is a folder, everything under it - in PREORDER, which is the order fuiTreeNode
+	wants and the order a directory read recursively falls out in anyway.
+
+	It stops at stopAtNodeCount rather than at a child count, which is what lets the caller hand each root an
+	equal slice of the budget. A subtree cut off part way through is still a valid preorder, because a PREFIX of
+	one always is.
+*/
+static void PerfWriteTreeSubtree(PerfDataSet *data, PerfRandom *random, const int32_t depth, const int32_t stopAtNodeCount) {
+	bool thereIsRoom = (data->treeNodeCount < stopAtNodeCount) && (data->treeNodeCount < data->treeNodeCapacity);
+	if(!thereIsRoom) {
+		return;
+	}
+	int32_t nodeIndex = data->treeNodeCount;
+	data->treeNodeCount += 1;
+
+	bool isFolder = (depth < PERF_TREE_MAX_DEPTH);
+	uint32_t poolSlot = PerfRandomBelow(random, (uint32_t)PERF_TREE_NAME_POOL);
+	const char *label = isFolder ? data->treeFolderNames[poolSlot] : data->treeFileNames[poolSlot];
+	data->treeNodes[nodeIndex].label = label;
+	data->treeNodes[nodeIndex].depth = depth;
+	data->treeNodes[nodeIndex].descendantCount = 0;
+	data->treeIsExpanded[nodeIndex] = false;
+	data->treeIconForNode[nodeIndex] = isFolder ? PERF_TREE_ICON_FOLDER_SHUT : PERF_TREE_ICON_FILE;
+
+	if(!isFolder) {
+		return;
+	}
+	uint32_t childSpread = (uint32_t)(PERF_TREE_MAX_CHILDREN - PERF_TREE_MIN_CHILDREN + 1);
+	uint32_t extraChildren = PerfRandomBelow(random, childSpread);
+	int32_t childCount = PERF_TREE_MIN_CHILDREN + (int32_t)extraChildren;
+	for(int32_t childIndex = 0; childIndex < childCount; ++childIndex) {
+		PerfWriteTreeSubtree(data, random, depth + 1, stopAtNodeCount);
+	}
+}
+
+//! Writes one node of the deep ladder and answers where the next one goes
+static int32_t PerfWriteDeepNode(PerfDataSet *data, const int32_t writeIndex, const int32_t depth, const bool isFolder) {
+	if(writeIndex >= PERF_TREE_DEEP_NODE_MAX) {
+		return(writeIndex);
+	}
+	int32_t poolSlot = writeIndex % PERF_TREE_NAME_POOL;
+	const char *label = isFolder ? data->treeFolderNames[poolSlot] : data->treeFileNames[poolSlot];
+	data->deepNodes[writeIndex].label = label;
+	data->deepNodes[writeIndex].depth = depth;
+	data->deepNodes[writeIndex].descendantCount = 0;
+	data->deepIsExpanded[writeIndex] = true;
+	data->deepIconForNode[writeIndex] = isFolder ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FILE;
+	return(writeIndex + 1);
+}
+
+//! The deep ladder, which is its own tiny dataset and does not scale with anything
+static void PerfBuildDeepChain(PerfDataSet *data) {
+	// Written top down, and the leaf of a level goes in AFTER the whole subtree below it - which is what
+	// preorder means and what makes the node above it a sibling with something after it.
+	int32_t writeIndex = 0;
+	for(int32_t depth = 0; depth < PERF_TREE_DEEP_DEPTH; ++depth) {
+		const bool carriesOnDownwards = true;
+		writeIndex = PerfWriteDeepNode(data, writeIndex, depth, carriesOnDownwards);
+	}
+	// The siblings, deepest first, so each one lands behind the subtree it belongs beside.
+	for(int32_t depth = PERF_TREE_DEEP_DEPTH - 1; depth >= 1; --depth) {
+		const bool isALeaf = false;
+		writeIndex = PerfWriteDeepNode(data, writeIndex, depth, isALeaf);
+	}
+	data->deepNodeCount = writeIndex;
+	fuiTreeComputeDescendants(data->deepNodes, data->deepNodeCount);
+}
+
+static bool PerfGenerateTree(PerfDataSet *data, PerfRandom *random, const int32_t nodeCount) {
+	data->treeNodes = (fuiTreeNode *)malloc((size_t)nodeCount * sizeof(fuiTreeNode));
+	data->treeIsExpanded = (bool *)malloc((size_t)nodeCount * sizeof(bool));
+	data->treeIconForNode = (int32_t *)malloc((size_t)nodeCount * sizeof(int32_t));
+	data->treeFolderNames = (const char **)malloc((size_t)PERF_TREE_NAME_POOL * sizeof(const char *));
+	data->treeFileNames = (const char **)malloc((size_t)PERF_TREE_NAME_POOL * sizeof(const char *));
+	bool everythingArrived = (data->treeNodes != fpl_null) && (data->treeIsExpanded != fpl_null) && (data->treeIconForNode != fpl_null) && (data->treeFolderNames != fpl_null) && (data->treeFileNames != fpl_null);
+	if(!everythingArrived) {
+		return(false);
+	}
+	data->treeNodeCapacity = nodeCount;
+	data->treeNodeCount = 0;
+
+	bool namesArrived = PerfGenerateTreeNames(data, random);
+	if(!namesArrived) {
+		return(false);
+	}
+
+	// An equal slice of the budget per root, and then whatever the division left over into one more, so the
+	// node count comes out EXACTLY at the scale step rather than near it.
+	for(int32_t rootIndex = 0; rootIndex < PERF_TREE_ROOT_COUNT; ++rootIndex) {
+		int32_t budgetForThisRoot = (int32_t)(((int64_t)(rootIndex + 1) * (int64_t)nodeCount) / (int64_t)PERF_TREE_ROOT_COUNT);
+		PerfWriteTreeSubtree(data, random, 0, budgetForThisRoot);
+	}
+	while(data->treeNodeCount < data->treeNodeCapacity) {
+		PerfWriteTreeSubtree(data, random, 0, data->treeNodeCapacity);
+	}
+
+	// Once, here. This is what lets a folded node be stepped over in a single addition rather than child by child.
+	fuiTreeComputeDescendants(data->treeNodes, data->treeNodeCount);
+
+	// The roots start open, so the tab opens on something rather than on twelve shut folders.
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		bool isRoot = (data->treeNodes[nodeIndex].depth == 0);
+		if(isRoot) {
+			data->treeIsExpanded[nodeIndex] = true;
+			data->treeIconForNode[nodeIndex] = PERF_TREE_ICON_FOLDER_OPEN;
+		}
+	}
+
+	PerfBuildDeepChain(data);
+	return(true);
+}
+
 static bool PerfGenerateText(PerfDataSet *data, PerfRandom *random, const int32_t lineCount) {
 	size_t capacity = (size_t)lineCount * (size_t)PERF_TEXT_BYTES_PER_LINE + 1u;
 	char *buffer = (char *)malloc(capacity);
@@ -767,8 +984,10 @@ static bool PerfDataSetBuild(PerfDataSet *data, const int32_t tableRowCount, con
 
 	size_t tableStringBytes = (size_t)tableRowCount * (size_t)PERF_CELL_BYTES_PER_ROW;
 	size_t listStringBytes = (size_t)listItemCount * (size_t)PERF_LIST_ITEM_CAPACITY;
-	size_t menuStringBytes = (size_t)menuNodeCapacity * (size_t)PERF_MENU_LABEL_CAPACITY + (size_t)PERF_MENU_TOP_LEVEL_COUNT * (size_t)PERF_MENU_TOP_LABEL_CAPACITY;
-	size_t arenaCapacity = tableStringBytes + listStringBytes + menuStringBytes;
+	size_t menuStringBytes = (size_t)menuNodeCapacity * (size_t)PERF_MENU_LABEL_CAPACITY + (size_t)PERF_MENU_TOP_LABEL_CAPACITY * (size_t)PERF_MENU_TOP_LEVEL_COUNT;
+	// Two pools and not one string per node, which is why this does not scale with the tree at all.
+	size_t treeStringBytes = (size_t)PERF_TREE_NAME_POOL * (size_t)PERF_TREE_NAME_CAPACITY * 2u;
+	size_t arenaCapacity = tableStringBytes + listStringBytes + menuStringBytes + treeStringBytes;
 
 	if(!PerfStringArenaInit(&data->strings, arenaCapacity)) {
 		PerfDataSetRelease(data);
@@ -789,7 +1008,9 @@ static bool PerfDataSetBuild(PerfDataSet *data, const int32_t tableRowCount, con
 
 	bool tableArrived = PerfGenerateTable(data, &random, tableRowCount);
 	bool listArrived = tableArrived && PerfGenerateListBox(data, &random, listItemCount);
-	bool textArrived = listArrived && PerfGenerateText(data, &random, textLineCount);
+	// The tree carries as many nodes as the table carries rows, so one scale step sizes both.
+	bool treeArrived = listArrived && PerfGenerateTree(data, &random, tableRowCount);
+	bool textArrived = treeArrived && PerfGenerateText(data, &random, textLineCount);
 	if(!textArrived) {
 		PerfDataSetRelease(data);
 		return(false);
@@ -805,7 +1026,8 @@ static bool PerfDataSetBuild(PerfDataSet *data, const int32_t tableRowCount, con
 	size_t itemPointerBytes = (size_t)listItemCount * sizeof(const char *);
 	size_t iconTableBytes = (size_t)tableRowCount * sizeof(int32_t);
 	size_t menuNodeBytes = (size_t)menuNodeCapacity * sizeof(PerfMenuNode);
-	data->generatedByteCount = data->strings.used + cellPointerBytes + itemPointerBytes + iconTableBytes + menuNodeBytes + data->textCapacity;
+	size_t treeNodeBytes = (size_t)data->treeNodeCapacity * (sizeof(fuiTreeNode) + sizeof(bool) + sizeof(int32_t));
+	data->generatedByteCount = data->strings.used + cellPointerBytes + itemPointerBytes + iconTableBytes + menuNodeBytes + treeNodeBytes + data->textCapacity;
 	data->isComplete = true;
 	return(true);
 }
@@ -874,9 +1096,10 @@ static void PerfMetricsPush(PerfMetrics *metrics, const double buildMilliseconds
 #define PERF_TAB_LIST_VIEW 0
 #define PERF_TAB_LIST_BOX 1
 #define PERF_TAB_TEXT_BOX 2
-#define PERF_TAB_EVERYTHING 3
+#define PERF_TAB_TREE 3
+#define PERF_TAB_EVERYTHING 4
 
-static const char *const g_perfTabNames[] = { "List view", "List box", "Text box", "All at once" };
+static const char *const g_perfTabNames[] = { "List view", "List box", "Text box", "Tree view", "All at once" };
 
 typedef struct PerfState {
 	PerfDataSet data;
@@ -895,6 +1118,12 @@ typedef struct PerfState {
 	int32_t activeTab;
 	int32_t tableSelection;
 	int32_t listSelection;
+	int32_t treeSelection;
+	int32_t deepTreeSelection;
+	//! What the tree's last build came to, which is the number the whole tree experiment turns on
+	int32_t treeVisibleCount;
+	//! Whether the tree draws the lines that tie a node to its children, which is up to one line per level per row
+	bool treeGuidesAreOn;
 
 	bool showMetricsPanel;
 	bool showGraph;
@@ -958,13 +1187,15 @@ static void PerfApplyRequestedScale(PerfState *state) {
 	state->menuStepIndex = state->requestedMenuStepIndex;
 	state->tableSelection = -1;
 	state->listSelection = -1;
+	state->treeSelection = -1;
+	state->deepTreeSelection = -1;
 	state->ranOutOfMemory = false;
 	PerfMetricsReset(&state->metrics);
 
 	const double bytesPerMegabyte = 1024.0 * 1024.0;
 	double megabytes = (double)state->data.generatedByteCount / bytesPerMegabyte;
 	char message[PERF_STATUS_TEXT_MAX];
-	fplStringFormat(message, fplArrayCount(message), "Generated %d rows, %d lines and %d menu nodes in %.0f ms (%.1f MB)", state->data.tableRowCount, state->data.textLineCount, state->data.menuNodeCount, state->data.generationMilliseconds, megabytes);
+	fplStringFormat(message, fplArrayCount(message), "Generated %d rows, %d tree nodes, %d lines and %d menu nodes in %.0f ms (%.1f MB)", state->data.tableRowCount, state->data.treeNodeCount, state->data.textLineCount, state->data.menuNodeCount, state->data.generationMilliseconds, megabytes);
 	PerfSay(state, message);
 }
 
@@ -979,6 +1210,9 @@ static void PerfInit(PerfState *state) {
 	state->activeTab = PERF_TAB_LIST_VIEW;
 	state->tableSelection = -1;
 	state->listSelection = -1;
+	state->treeSelection = -1;
+	state->deepTreeSelection = -1;
+	state->treeGuidesAreOn = false;
 	state->showMetricsPanel = true;
 	state->showGraph = true;
 	state->drawBatchingIsOn = true;
@@ -1110,6 +1344,10 @@ static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect s
 	bool iconsWasClicked = fuiToolStripToggle(ui, "Icons", state->iconsAreOn, true);
 	if(iconsWasClicked) {
 		state->iconsAreOn = !state->iconsAreOn;
+	}
+	bool guidesWasClicked = fuiToolStripToggle(ui, "Guides", state->treeGuidesAreOn, true);
+	if(guidesWasClicked) {
+		state->treeGuidesAreOn = !state->treeGuidesAreOn;
 	}
 
 	fuiToolStripSeparator(ui);
@@ -1258,6 +1496,12 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 		PerfMetricLine(ui, "Text bytes", value);
 		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->menuRowCount);
 		PerfMetricLine(ui, "Menu rows", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", state->treeVisibleCount);
+		PerfMetricLine(ui, "Tree rows", value);
+		// A rebuild is what a fold costs. It should climb by one per click and stay put while nothing changes -
+		// a counter that runs up on its own is the cache failing to recognise a tree it already knows.
+		fplStringFormat(value, fplArrayCount(value), "%7u", ui->treeRebuildCount);
+		PerfMetricLine(ui, "Tree rebuilds", value);
 
 		const double bytesPerKilobyte = 1024.0;
 		double arenaKilobytes = (double)metrics->arenaByteCount / bytesPerKilobyte;
@@ -1276,6 +1520,8 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 		PerfMetricLine(ui, "List rows", value);
 		fplStringFormat(value, fplArrayCount(value), "%7d", data->textLineCount);
 		PerfMetricLine(ui, "Text lines", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->treeNodeCount);
+		PerfMetricLine(ui, "Tree nodes", value);
 		fplStringFormat(value, fplArrayCount(value), "%7d", data->menuNodeCount);
 		PerfMetricLine(ui, "Menu nodes", value);
 
@@ -1314,7 +1560,10 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 #define PERF_TABLE_ID "perftable"
 #define PERF_LIST_ID "perflist"
 #define PERF_TEXT_ID "perftext"
+#define PERF_TREE_ID "perftree"
+#define PERF_DEEP_TREE_ID "perfdeeptree"
 #define PERF_NOTE_HEIGHT 28.0f
+#define PERF_TREE_BUTTON_WIDTH 120.0f
 
 /*
 	The row icons both list widgets take, or a zeroed struct when they are off.
@@ -1404,6 +1653,170 @@ static void PerfBuildTextBoxTab(fuiContext *ui, PerfState *state, const fuiRect 
 	fuiLabel(ui, noteRect, note);
 }
 
+/*
+	The row icons the tree takes. Same sheet as the lists, and the same point: what changes is the DRAW DATA
+	rather than the build, because every row with an icon emits a second command.
+
+	The tree indexes this table by NODE and the lists index theirs by row, so the two cannot share one array -
+	a tree node and a table row of the same number are unrelated things.
+*/
+static void PerfFillTreeIcons(const PerfState *state, const int32_t nodeCount, const int32_t *cellForNode, fuiListIcons *outIcons) {
+	memset(outIcons, 0, sizeof(*outIcons));
+	if(!state->iconsAreOn || state->iconSheet == 0) {
+		return;
+	}
+	outIcons->sheet = state->iconSheet;
+	outIcons->sheetSize = state->iconSheetSize;
+	outIcons->columns = (int32_t)PERF_ICON_CELL_COUNT;
+	outIcons->rows = 1;
+	outIcons->cellForRow = cellForNode;
+	outIcons->cellForRowCount = nodeCount;
+	outIcons->rowScale = PERF_ICON_ROW_SCALE;
+}
+
+/*
+	Folds the whole tree one way or the other.
+
+	Two things have to happen besides the flags. The icons follow, which is a pass of its own because a folder
+	shut and a folder open are two different cells - and the tree is told its rows are stale, because past
+	FUI_TREE_VERIFY_NODES it no longer hashes the flags every frame and cannot see a change made behind its back.
+	That second call is the whole contract of fuiTreeInvalidate, and this is what it looks like.
+*/
+static void PerfSetTreeExpandedAll(fuiContext *ui, PerfState *state, const bool expandedValue) {
+	PerfDataSet *data = &state->data;
+	fuiTreeSetExpandedAll(data->treeNodes, data->treeNodeCount, data->treeIsExpanded, expandedValue);
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		int32_t descendantCount = data->treeNodes[nodeIndex].descendantCount;
+		bool isFolder = (descendantCount > 0);
+		if(isFolder) {
+			data->treeIconForNode[nodeIndex] = expandedValue ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FOLDER_SHUT;
+		}
+	}
+	fuiTreeInvalidate(ui, PERF_TREE_ID);
+}
+
+//! Everything shut except the twelve roots, which is what the tab opens on and what the folded case measures
+static void PerfFoldTreeToRoots(fuiContext *ui, PerfState *state) {
+	PerfDataSet *data = &state->data;
+	PerfSetTreeExpandedAll(ui, state, false);
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		bool isRoot = (data->treeNodes[nodeIndex].depth == 0);
+		if(isRoot) {
+			data->treeIsExpanded[nodeIndex] = true;
+			data->treeIconForNode[nodeIndex] = PERF_TREE_ICON_FOLDER_OPEN;
+		}
+	}
+	fuiTreeInvalidate(ui, PERF_TREE_ID);
+}
+
+//! What a button in the tree tab's control row asked for
+#define PERF_TREE_FOLD_NONE 0
+#define PERF_TREE_FOLD_OPEN 1
+#define PERF_TREE_FOLD_SHUT 2
+#define PERF_TREE_FOLD_ROOTS 3
+
+static void PerfBuildTreeTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	/*
+		The buttons only RECORD what they want, and it is acted on once the stack has closed again.
+
+		A stack pushes an identifier scope, and fuiTreeInvalidate resolves the tree's identifier in whatever
+		scope it is called from - so invalidating from inside the row would name a widget that does not exist
+		and silently do nothing at all. The same is true of fuiTreeReveal.
+	*/
+	int32_t requestedFold = PERF_TREE_FOLD_NONE;
+
+	fuiRect controlsRect = fuiRectMake(rect.x, rect.y, rect.w, PERF_ROW_HEIGHT);
+	fuiBeginStackAt(ui, "treecontrols", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiRect expandButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, expandButtonRect, "Expand all")) {
+		requestedFold = PERF_TREE_FOLD_OPEN;
+	}
+	fuiRect collapseButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, collapseButtonRect, "Collapse all")) {
+		requestedFold = PERF_TREE_FOLD_SHUT;
+	}
+	fuiRect rootsButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, rootsButtonRect, "Only roots")) {
+		requestedFold = PERF_TREE_FOLD_ROOTS;
+	}
+	fuiEndStack(ui);
+
+	if(requestedFold == PERF_TREE_FOLD_OPEN) {
+		PerfSetTreeExpandedAll(ui, state, true);
+		PerfSay(state, "Every node open. That ONE frame pays for the whole index - watch the worst frame, not the median.");
+	} else if(requestedFold == PERF_TREE_FOLD_SHUT) {
+		PerfSetTreeExpandedAll(ui, state, false);
+		PerfSay(state, "Every node shut. A tree of this size now costs what its twelve roots cost.");
+	} else if(requestedFold == PERF_TREE_FOLD_ROOTS) {
+		PerfFoldTreeToRoots(ui, state);
+		PerfSay(state, "Back to the twelve roots.");
+	}
+
+	float treeTop = controlsRect.y + controlsRect.h + PERF_CONTENT_INSET;
+	float treeHeight = rect.y + rect.h - treeTop - PERF_NOTE_HEIGHT;
+	fuiRect treeRect = fuiRectMake(rect.x, treeTop, rect.w, treeHeight);
+
+	fuiListIcons icons;
+	PerfFillTreeIcons(state, state->data.treeNodeCount, state->data.treeIconForNode, &icons);
+
+	fuiTreeDesc desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.nodes = state->data.treeNodes;
+	desc.nodeCount = state->data.treeNodeCount;
+	desc.isExpanded = state->data.treeIsExpanded;
+	desc.icons = &icons;
+	desc.showGuides = state->treeGuidesAreOn;
+	desc.keyboardIsEnabled = true;
+
+	fuiTreeAction action;
+	memset(&action, 0, sizeof(action));
+	bool selectionChanged = fuiTreeViewEx(ui, treeRect, PERF_TREE_ID, &desc, &state->treeSelection, &action);
+	if(action.toggledNode >= 0) {
+		// ONE entry rather than a pass over the table: a fold changes the picture of exactly one row.
+		bool isOpen = state->data.treeIsExpanded[action.toggledNode];
+		state->data.treeIconForNode[action.toggledNode] = isOpen ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FOLDER_SHUT;
+	}
+	if(selectionChanged) {
+		const char *pickedLabel = state->data.treeNodes[state->treeSelection].label;
+		char message[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(message, fplArrayCount(message), "Node %d of %d picked: %s", state->treeSelection + 1, state->data.treeNodeCount, pickedLabel);
+		PerfSay(state, message);
+	}
+
+	// Read straight after the build, because it is what THAT build came to.
+	state->treeVisibleCount = fuiTreeGetVisibleCount(ui, PERF_TREE_ID);
+
+	char note[PERF_STATUS_TEXT_MAX];
+	fplStringFormat(note, fplArrayCount(note), "%d nodes, %d rows showing - a folded subtree is stepped over in one addition, so a frame costs its ROWS and never its nodes", state->data.treeNodeCount, state->treeVisibleCount);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
+}
+
+//! The chain, as deep as the library indents. Guides are forced on, because per-LEVEL cost is what it is for
+static void PerfBuildDeepTreeTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	fuiRect treeRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - PERF_NOTE_HEIGHT);
+
+	fuiListIcons icons;
+	PerfFillTreeIcons(state, state->data.deepNodeCount, state->data.deepIconForNode, &icons);
+
+	fuiTreeDesc desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.nodes = state->data.deepNodes;
+	desc.nodeCount = state->data.deepNodeCount;
+	desc.isExpanded = state->data.deepIsExpanded;
+	desc.icons = &icons;
+	desc.showGuides = true;
+
+	fuiTreeAction *noAction = fpl_null;
+	(void)fuiTreeViewEx(ui, treeRect, PERF_DEEP_TREE_ID, &desc, &state->deepTreeSelection, noAction);
+
+	char note[PERF_STATUS_TEXT_MAX];
+	int32_t linesOnTheDeepestRow = PERF_TREE_DEEP_DEPTH - 1;
+	fplStringFormat(note, fplArrayCount(note), "%d levels with a leaf beside each - the deepest row draws %d guide lines on its own", (int32_t)PERF_TREE_DEEP_DEPTH, linesOnTheDeepestRow);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
+}
+
 #define PERF_SPLIT_FRACTION 0.55f
 
 static void PerfBuildEverythingTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
@@ -1411,12 +1824,19 @@ static void PerfBuildEverythingTab(fuiContext *ui, PerfState *state, const fuiRe
 	float rightWidth = rect.w - leftWidth - PERF_CONTENT_INSET;
 	float rightLeft = rect.x + leftWidth + PERF_CONTENT_INSET;
 	float halfHeight = (rect.h - PERF_CONTENT_INSET) * 0.5f;
+	// The left column is split too now, so the tree stands beside the table rather than squeezing the other
+	// three. Four widgets at once is what an actual application window looks like.
+	float tableHeight = rect.h * PERF_SPLIT_FRACTION;
+	float treeTop = rect.y + tableHeight + PERF_CONTENT_INSET;
+	float treeHeight = rect.y + rect.h - treeTop;
 
-	fuiRect tableRect = fuiRectMake(rect.x, rect.y, leftWidth, rect.h);
+	fuiRect tableRect = fuiRectMake(rect.x, rect.y, leftWidth, tableHeight);
+	fuiRect treeRect = fuiRectMake(rect.x, treeTop, leftWidth, treeHeight);
 	fuiRect listRect = fuiRectMake(rightLeft, rect.y, rightWidth, halfHeight);
 	fuiRect textRect = fuiRectMake(rightLeft, rect.y + halfHeight + PERF_CONTENT_INSET, rightWidth, halfHeight);
 
 	PerfBuildListViewTab(ui, state, tableRect);
+	PerfBuildTreeTab(ui, state, treeRect);
 	PerfBuildListBoxTab(ui, state, listRect);
 	PerfBuildTextBoxTab(ui, state, textRect);
 }
@@ -1436,6 +1856,9 @@ static void PerfBuildContent(fuiContext *ui, PerfState *state, const fuiRect rec
 			break;
 		case PERF_TAB_TEXT_BOX:
 			PerfBuildTextBoxTab(ui, state, contentRect);
+			break;
+		case PERF_TAB_TREE:
+			PerfBuildTreeTab(ui, state, contentRect);
 			break;
 		case PERF_TAB_EVERYTHING:
 			PerfBuildEverythingTab(ui, state, contentRect);
@@ -1553,6 +1976,12 @@ typedef enum PerfSubject {
 	PerfSubject_ListBoxIcons,
 	PerfSubject_TextBox,
 	PerfSubject_TextBoxWrapped,
+	PerfSubject_TreeFolded,
+	PerfSubject_TreeOpen,
+	PerfSubject_TreeToggling,
+	PerfSubject_TreeIcons,
+	PerfSubject_TreeGuides,
+	PerfSubject_TreeDeep,
 	PerfSubject_MenuPopup,
 	PerfSubject_Everything,
 } PerfSubject;
@@ -1598,6 +2027,22 @@ static const PerfCase g_perfCases[] = {
 	{ "textbox 200K wrapped", PerfSubject_TextBoxWrapped, 0, 3, 0, false, 0.0f },
 	{ "textbox 200K at end",  PerfSubject_TextBox,        0, 3, 0, false, -1000000.0f },
 	{ "textbox 200K wrap end", PerfSubject_TextBoxWrapped, 0, 3, 0, false, -1000000.0f },
+	{ "tree 1K folded",       PerfSubject_TreeFolded,     0, 0, 0, false, 0.0f },
+	{ "tree 10K folded",      PerfSubject_TreeFolded,     1, 0, 0, false, 0.0f },
+	{ "tree 100K folded",     PerfSubject_TreeFolded,     2, 0, 0, false, 0.0f },
+	{ "tree 1M folded",       PerfSubject_TreeFolded,     4, 0, 0, false, 0.0f },
+	{ "tree 1K open",         PerfSubject_TreeOpen,       0, 0, 0, false, 0.0f },
+	{ "tree 10K open",        PerfSubject_TreeOpen,       1, 0, 0, false, 0.0f },
+	{ "tree 100K open",       PerfSubject_TreeOpen,       2, 0, 0, false, 0.0f },
+	{ "tree 1M open",         PerfSubject_TreeOpen,       4, 0, 0, false, 0.0f },
+	{ "tree 1M open at end",  PerfSubject_TreeOpen,       4, 0, 0, false, -1000000.0f },
+	{ "tree 10K toggling",    PerfSubject_TreeToggling,   1, 0, 0, false, 0.0f },
+	{ "tree 100K toggling",   PerfSubject_TreeToggling,   2, 0, 0, false, 0.0f },
+	{ "tree 1M toggling",     PerfSubject_TreeToggling,   4, 0, 0, false, 0.0f },
+	{ "tree 100K icons",      PerfSubject_TreeIcons,      2, 0, 0, false, 0.0f },
+	{ "tree 100K icn bat",    PerfSubject_TreeIcons,      2, 0, 0, true, 0.0f },
+	{ "tree 100K guides",     PerfSubject_TreeGuides,     2, 0, 0, false, 0.0f },
+	{ "tree deep 64",         PerfSubject_TreeDeep,       0, 0, 0, false, 0.0f },
 	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0, false, 0.0f },
 	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1, false, 0.0f },
 	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2, false, 0.0f },
@@ -1664,6 +2109,66 @@ static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const Perf
 			PerfBuildTextBoxTab(ui, state, rect);
 			state->wordWrapIsOn = wrapWasOn;
 		} break;
+
+		case PerfSubject_TreeFolded:
+		{
+			// Twelve roots showing and everything else stepped over. The whole claim of the widget is that
+			// this row of the table is FLAT while the scale beside it goes up by a thousand.
+			if(isTheFirstFrame) {
+				PerfFoldTreeToRoots(ui, state);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeOpen:
+		{
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeToggling:
+		{
+			// One root folded the other way on EVERY frame, so the visible rows are worked out again on every
+			// one of them. Nothing real does this - it is what the tree would cost with no index at all, and
+			// so the number the index has to be judged against.
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			bool firstRootWasOpen = state->data.treeIsExpanded[0];
+			state->data.treeIsExpanded[0] = !firstRootWasOpen;
+			fuiTreeInvalidate(ui, PERF_TREE_ID);
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeIcons:
+		{
+			// The same open tree with an icon on every row, at the SAME row height, so the pair of readings
+			// differ in one thing only: the second draw command each visible row now costs.
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
+
+		case PerfSubject_TreeGuides:
+		{
+			bool guidesWereOn = state->treeGuidesAreOn;
+			state->treeGuidesAreOn = true;
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+			state->treeGuidesAreOn = guidesWereOn;
+		} break;
+
+		case PerfSubject_TreeDeep:
+			PerfBuildDeepTreeTab(ui, state, rect);
+			break;
 
 		case PerfSubject_MenuPopup:
 		{
