@@ -17,6 +17,7 @@ and it is the one place the y-down convention has to be turned back into whateve
 - Include this AFTER a header that declares the OpenGL 1.1 entry points (final_dynamic_opengl.h will do)
 - Define FUI_GL1_IMPLEMENTATION in ONE translation unit before including it
 - Upload the font atlas once with fuiGL1UploadFontAtlas, and pass the texture it returns to the fuiFont
+- Upload a COLORED sheet -- an icon sheet, a preview image -- with fuiGL1UploadImageRGBA instead
 
 --- Usage ---
 
@@ -56,7 +57,23 @@ extern "C" {
 fui_api bool fuiGL1UploadFontAtlas(const unsigned char *alphaPixels, const uint32_t width, const uint32_t height, uint32_t *outTexture);
 
 /**
-* @brief Deletes a texture created by @ref fuiGL1UploadFontAtlas.
+* @brief Uploads a four channel image as a texture this backend can draw pictures with.
+* @param[in] rgbaPixels Four bytes per texel in the order red, green, blue, alpha, width * height of them.
+* @param[in] width Width of the image in texels.
+* @param[in] height Height of the image in texels.
+* @param[in] useLinearFilter Smooths the image when it is drawn at another size, rather than keeping its texels hard.
+* @param[out] outTexture Receives the OpenGL texture name.
+* @return Returns true when the texture was created.
+* @note The alpha is expected STRAIGHT rather than premultiplied, because that is the blend this backend
+*       installs. The color a draw is tinted with modulates the texture, so the untouched picture is what
+*       a white tint gives - which is the tint the list widgets draw their row icons with.
+* @note A sheet cut into cells and drawn with the linear filter can pick up the edge texel of the cell
+*       NEXT to it. Leave a texel of empty space between the cells, or upload the sheet unfiltered.
+*/
+fui_api bool fuiGL1UploadImageRGBA(const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture);
+
+/**
+* @brief Deletes a texture created by @ref fuiGL1UploadFontAtlas or @ref fuiGL1UploadImageRGBA.
 * @param[in] texture The OpenGL texture name.
 */
 fui_api void fuiGL1DeleteTexture(const uint32_t texture);
@@ -118,6 +135,34 @@ fui_api bool fuiGL1UploadFontAtlas(const unsigned char *alphaPixels, const uint3
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	free(luminanceAlpha);
+	*outTexture = (uint32_t)textureName;
+	return(textureName != 0);
+}
+
+fui_api bool fuiGL1UploadImageRGBA(const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture) {
+	if(rgbaPixels == fui_null || outTexture == fui_null || width == 0 || height == 0) {
+		return(false);
+	}
+
+	// Nothing is expanded on the way in the way the font atlas is: four channels are what the pipeline
+	// samples, and modulating them against a white vertex color leaves the picture exactly as authored.
+	GLuint textureName = 0;
+	glGenTextures(1, &textureName);
+	glBindTexture(GL_TEXTURE_2D, textureName);
+	// Four bytes per texel makes every row a multiple of four on its own, so this can only ever be wrong
+	// because the font atlas upload left the alignment at one. Put back rather than assumed.
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgbaPixels);
+	// An icon authored bigger than it is drawn wants linear, or it aliases to pieces on the way down.
+	// Pixel art wants the other one, because the hard edges ARE the artwork - so the caller chooses.
+	GLint textureFilter = useLinearFilter ? GL_LINEAR : GL_NEAREST;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureFilter);
+	// Clamped, so sampling the very edge of the image does not wrap around to the other side of it.
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
 	*outTexture = (uint32_t)textureName;
 	return(textureName != 0);
 }
