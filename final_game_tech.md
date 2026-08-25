@@ -29,6 +29,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FOGL_Test/                  # Tests for final_dynamic_opengl.h
 │   ├── FTT_TileTracingDemo/        # Demo for final_tiletrace.hpp
 │   ├── FUI_Adapter_FPL/            # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
+│   ├── FUI_Performance/            # Performance workbench for final_ui.h
 │   ├── FUI_Test/                   # Demo for final_ui.h on FPL and legacy OpenGL
 │   ├── FXML_Test/                  # Tests for final_xml.h
 │   ├── Final_AudioTest/            # Audio format conversion testing
@@ -337,10 +338,17 @@ Demonstrates final_tiletrace.hpp:
 #### FUI_Test
 Demonstrates final_ui.h on FPL and legacy OpenGL:
 - Menus, tool strips, panels, dialogs, every widget, a colour picker, tooltips and a status bar
+- A sortable entity table with row icons and a project tree used as a folder explorer
 - Hand-rolled bridges: an input bridge, a font baked with stb_truetype (fui_font_stbtt.h) and a fixed function backend (fui_backend_gl1.h)
 
+#### FUI_Performance
+A workbench measuring what final_ui.h COSTS, on FPL and legacy OpenGL:
+- Fills the list view, the list box, the text box, the tree view and the menus with far more data than any hand written demo would carry
+- Splits a frame into build, submit and total, with draw command and vertex counters and a frame time graph
+- `--benchmark` runs every case headless and prints a table of medians, which is what a change is judged against
+
 #### FUI_Adapter_FPL
-The same interface as FUI_Test, built on the Final Framework:
+The same interface as FUI_Test - including the project tree - built on the Final Framework:
 - Everything goes through final_ui_adapter.h - input, font, clipboard, allocator and the render backend
 - Uses final_gameplatform.h, final_render.h, final_assets.h and the game memory block
 
