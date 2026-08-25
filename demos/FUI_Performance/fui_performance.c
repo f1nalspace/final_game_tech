@@ -312,6 +312,42 @@ static const fuiColumn g_perfTableColumns[PERF_TABLE_COLUMN_COUNT] = {
 };
 
 // ----------------------------------------------------------------------------
+// The icon sheet
+//
+// Four cells of coverage the workbench paints itself, so the icon cases need no asset. What is IN them
+// hardly matters here - a filled square that grows with the cell index is enough to tell one row's icon
+// from the next - because what these cases measure is the second draw command every icon row costs, not
+// the artwork. 64 by 16 is a power of two in both axes, which the OpenGL 1.x backend wants.
+// ----------------------------------------------------------------------------
+
+#define PERF_ICON_CELL_SIDE 16u
+#define PERF_ICON_CELL_COUNT 4u
+#define PERF_ICON_SHEET_WIDTH (PERF_ICON_CELL_SIDE * PERF_ICON_CELL_COUNT)
+#define PERF_ICON_SHEET_HEIGHT PERF_ICON_CELL_SIDE
+// ONE, where a file browser would want two. A taller row is a different experiment - fewer rows on screen and
+// so fewer of everything - and what these cases are after is the cost of the icon alone, with exactly as many
+// rows visible as the case without one. The 16 pixel cells scale up to the 21 the plain row leaves them.
+#define PERF_ICON_ROW_SCALE 1.0f
+
+static void PerfDrawIconSheet(unsigned char *coveragePixels) {
+	const int32_t cellSide = (int32_t)PERF_ICON_CELL_SIDE;
+	const int32_t sheetWidth = (int32_t)PERF_ICON_SHEET_WIDTH;
+	const int32_t smallestInset = 1;
+
+	memset(coveragePixels, 0, (size_t)sheetWidth * (size_t)cellSide);
+	for(int32_t cellIndex = 0; cellIndex < (int32_t)PERF_ICON_CELL_COUNT; ++cellIndex) {
+		int32_t cellsFromTheLast = (int32_t)PERF_ICON_CELL_COUNT - 1 - cellIndex;
+		int32_t inset = smallestInset + cellsFromTheLast;
+		for(int32_t y = inset; y < cellSide - inset; ++y) {
+			for(int32_t x = inset; x < cellSide - inset; ++x) {
+				int32_t sheetX = cellIndex * cellSide + x;
+				coveragePixels[(size_t)y * (size_t)sheetWidth + (size_t)sheetX] = 255;
+			}
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
 // The dataset
 // ----------------------------------------------------------------------------
 
@@ -328,6 +364,10 @@ typedef struct PerfDataSet {
 	//! Row major, PERF_TABLE_COLUMN_COUNT entries per row, which is the layout fuiListView takes
 	const char **tableCells;
 	int32_t tableRowCount;
+
+	//! One icon cell per row, as long as the table. Kept for BOTH list widgets, the list box indexing it with
+	//! its own shorter row count, so the icon cases cost no second table
+	int32_t *iconForRow;
 
 	const char **listItems;
 	int32_t listItemCount;
@@ -355,6 +395,9 @@ static void PerfDataSetRelease(PerfDataSet *data) {
 	PerfStringArenaRelease(&data->strings);
 	if(data->tableCells != fpl_null) {
 		free(data->tableCells);
+	}
+	if(data->iconForRow != fpl_null) {
+		free(data->iconForRow);
 	}
 	if(data->listItems != fpl_null) {
 		free(data->listItems);
@@ -546,6 +589,12 @@ static bool PerfGenerateTable(PerfDataSet *data, PerfRandom *random, const int32
 	data->tableCells = cells;
 	data->tableRowCount = rowCount;
 
+	int32_t *iconForRow = (int32_t *)malloc((size_t)rowCount * sizeof(int32_t));
+	if(iconForRow == fpl_null) {
+		return(false);
+	}
+	data->iconForRow = iconForRow;
+
 	for(int32_t rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
 		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
 		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
@@ -620,6 +669,10 @@ static bool PerfGenerateTable(PerfDataSet *data, PerfRandom *random, const int32
 		cells[cellBase + PERF_COLUMN_SIZE] = sizeCell;
 		cells[cellBase + PERF_COLUMN_PATH] = pathCell;
 		cells[cellBase + PERF_COLUMN_HASH] = hashCell;
+
+		// The row's category picks its icon, which is what a real one does - the cell index MEANS something to
+		// the caller and nothing at all to the library.
+		iconForRow[rowIndex] = (int32_t)(categoryIndex % PERF_ICON_CELL_COUNT);
 	}
 	return(true);
 }
@@ -750,8 +803,9 @@ static bool PerfDataSetBuild(PerfDataSet *data, const int32_t tableRowCount, con
 
 	size_t cellPointerBytes = (size_t)tableRowCount * (size_t)PERF_TABLE_COLUMN_COUNT * sizeof(const char *);
 	size_t itemPointerBytes = (size_t)listItemCount * sizeof(const char *);
+	size_t iconTableBytes = (size_t)tableRowCount * sizeof(int32_t);
 	size_t menuNodeBytes = (size_t)menuNodeCapacity * sizeof(PerfMenuNode);
-	data->generatedByteCount = data->strings.used + cellPointerBytes + itemPointerBytes + menuNodeBytes + data->textCapacity;
+	data->generatedByteCount = data->strings.used + cellPointerBytes + itemPointerBytes + iconTableBytes + menuNodeBytes + data->textCapacity;
 	data->isComplete = true;
 	return(true);
 }
@@ -847,6 +901,11 @@ typedef struct PerfState {
 	bool drawBatchingIsOn;
 	bool sortIsEnabled;
 	bool wordWrapIsOn;
+	//! Whether both list widgets draw a row icon, which is the second draw command per visible row
+	bool iconsAreOn;
+	//! The sheet those icons come out of, zero until it is uploaded
+	fuiTextureId iconSheet;
+	fuiVec2 iconSheetSize;
 	bool uiOwnedTheMouseLastFrame;
 	bool isRunning;
 	bool ranOutOfMemory;
@@ -925,6 +984,7 @@ static void PerfInit(PerfState *state) {
 	state->drawBatchingIsOn = true;
 	state->sortIsEnabled = true;
 	state->wordWrapIsOn = false;
+	state->iconsAreOn = false;
 	state->isRunning = true;
 	PerfSay(state, "Step the scale up with the tool strip and watch what build time does.");
 }
@@ -979,6 +1039,9 @@ static void PerfBuildMenuBar(fuiContext *ui, PerfState *state, const fuiRect bar
 		}
 		if(fuiMenuItemCheck(ui, "Sortable columns", state->sortIsEnabled, true)) {
 			state->sortIsEnabled = !state->sortIsEnabled;
+		}
+		if(fuiMenuItemCheck(ui, "Row icons", state->iconsAreOn, true)) {
+			state->iconsAreOn = !state->iconsAreOn;
 		}
 		if(fuiMenuItemCheck(ui, "Merge draw commands", state->drawBatchingIsOn, true)) {
 			state->drawBatchingIsOn = !state->drawBatchingIsOn;
@@ -1043,6 +1106,10 @@ static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect s
 	bool wrapWasClicked = fuiToolStripToggle(ui, "Word wrap", state->wordWrapIsOn, true);
 	if(wrapWasClicked) {
 		state->wordWrapIsOn = !state->wordWrapIsOn;
+	}
+	bool iconsWasClicked = fuiToolStripToggle(ui, "Icons", state->iconsAreOn, true);
+	if(iconsWasClicked) {
+		state->iconsAreOn = !state->iconsAreOn;
 	}
 
 	fuiToolStripSeparator(ui);
@@ -1249,6 +1316,30 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 #define PERF_TEXT_ID "perftext"
 #define PERF_NOTE_HEIGHT 28.0f
 
+/*
+	The row icons both list widgets take, or a zeroed struct when they are off.
+
+	Icons are the one option here that changes what the DRAW DATA looks like rather than what the build costs:
+	every visible row emits a second command, because the texture flips between the sheet and the font atlas
+	between the icon and the label, and fuiSetDrawBatching only ever merges commands that share a texture and a
+	clip. Turning the toggle on and reading the command counter is the whole measurement.
+*/
+static void PerfFillListIcons(const PerfState *state, const int32_t rowCount, fuiListIcons *outIcons) {
+	memset(outIcons, 0, sizeof(*outIcons));
+	if(!state->iconsAreOn || state->iconSheet == 0) {
+		return;
+	}
+	outIcons->sheet = state->iconSheet;
+	outIcons->sheetSize = state->iconSheetSize;
+	outIcons->columns = (int32_t)PERF_ICON_CELL_COUNT;
+	outIcons->rows = 1;
+	outIcons->cellForRow = state->data.iconForRow;
+	outIcons->cellForRowCount = rowCount;
+	// Well below the 2.0 a file browser wants: at a hundred thousand rows the point is how many fit on screen
+	// at once, and doubling the row height halves that.
+	outIcons->rowScale = PERF_ICON_ROW_SCALE;
+}
+
 static void PerfBuildListViewTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
 	// A list longer than FUI_MAX_SORTABLE_ROWS is not sorted at all, and the library says nothing about
 	// it: the header still takes the click and still draws its arrow, and the rows simply stay in the
@@ -1259,8 +1350,11 @@ static void PerfBuildListViewTab(fuiContext *ui, PerfState *state, const fuiRect
 
 	fuiListViewSetSortable(ui, PERF_TABLE_ID, state->sortIsEnabled);
 
+	fuiListIcons icons;
+	PerfFillListIcons(state, state->data.tableRowCount, &icons);
+
 	bool wasActivated = false;
-	bool selectionChanged = fuiListViewEx(ui, listRect, PERF_TABLE_ID, g_perfTableColumns, PERF_TABLE_COLUMN_COUNT, state->data.tableCells, state->data.tableRowCount, &state->tableSelection, fpl_null, &wasActivated);
+	bool selectionChanged = fuiListViewEx(ui, listRect, PERF_TABLE_ID, g_perfTableColumns, PERF_TABLE_COLUMN_COUNT, state->data.tableCells, state->data.tableRowCount, &state->tableSelection, &icons, &wasActivated);
 	if(selectionChanged) {
 		size_t nameCellIndex = (size_t)state->tableSelection * (size_t)PERF_TABLE_COLUMN_COUNT + (size_t)PERF_COLUMN_NAME;
 		const char *pickedName = state->data.tableCells[nameCellIndex];
@@ -1278,7 +1372,13 @@ static void PerfBuildListViewTab(fuiContext *ui, PerfState *state, const fuiRect
 }
 
 static void PerfBuildListBoxTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
-	bool selectionChanged = fuiListBox(ui, rect, PERF_LIST_ID, state->data.listItems, state->data.listItemCount, &state->listSelection);
+	// The list box is a tenth of the table's length and reads the FRONT of the same icon table, which is what
+	// keeps the two widgets on one allocation.
+	fuiListIcons icons;
+	PerfFillListIcons(state, state->data.listItemCount, &icons);
+
+	bool *noActivation = fpl_null;
+	bool selectionChanged = fuiListBoxEx(ui, rect, PERF_LIST_ID, state->data.listItems, state->data.listItemCount, &state->listSelection, &icons, noActivation);
 	if(selectionChanged) {
 		char message[PERF_STATUS_TEXT_MAX];
 		fplStringFormat(message, fplArrayCount(message), "List row %d of %d picked", state->listSelection + 1, state->data.listItemCount);
@@ -1449,6 +1549,8 @@ typedef enum PerfSubject {
 	PerfSubject_ListViewSorted,
 	PerfSubject_ListViewResorted,
 	PerfSubject_ListBox,
+	PerfSubject_ListViewIcons,
+	PerfSubject_ListBoxIcons,
 	PerfSubject_TextBox,
 	PerfSubject_TextBoxWrapped,
 	PerfSubject_MenuPopup,
@@ -1485,6 +1587,10 @@ static const PerfCase g_perfCases[] = {
 	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0, false, 0.0f },
 	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0, false, 0.0f },
 	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0, false, 0.0f },
+	{ "listview 100K icons",  PerfSubject_ListViewIcons,  2, 0, 0, false, 0.0f },
+	{ "listview 100K icn bat", PerfSubject_ListViewIcons, 2, 0, 0, true, 0.0f },
+	{ "listbox 50K icons",    PerfSubject_ListBoxIcons,   2, 0, 0, false, 0.0f },
+	{ "listbox 50K icn bat",  PerfSubject_ListBoxIcons,   2, 0, 0, true, 0.0f },
 	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0, false, 0.0f },
 	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0, false, 0.0f },
 	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0, false, 0.0f },
@@ -1526,6 +1632,24 @@ static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const Perf
 		case PerfSubject_ListBox:
 			PerfBuildListBoxTab(ui, state, rect);
 			break;
+
+		case PerfSubject_ListViewIcons:
+		{
+			// The same list again with an icon in front of every row, at the SAME row height, so the pair of
+			// readings differ in one thing only: the second draw command each visible row now costs.
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			PerfBuildListViewTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
+
+		case PerfSubject_ListBoxIcons:
+		{
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			PerfBuildListBoxTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
 
 		case PerfSubject_TextBox:
 			PerfBuildTextBoxTab(ui, state, rect);
@@ -1680,6 +1804,15 @@ static int PerfRunBenchmark(void) {
 	PerfState state;
 	PerfInit(&state);
 
+	// The icon cases want a sheet handle, and for the same reason the font atlas above is zero there is no
+	// texture to hand them: a headless run never binds anything. Any NON-zero handle does, since all the
+	// library asks of it is that it is not the zero that means "this list has no icons" - and it has to differ
+	// from the atlas handle, or a batching case would merge the icon and the label into one command and the
+	// count would come out of this run wrong.
+	const fuiTextureId placeholderIconSheet = (fuiTextureId)1;
+	state.iconSheet = placeholderIconSheet;
+	state.iconSheetSize = fuiV2((float)PERF_ICON_SHEET_WIDTH, (float)PERF_ICON_SHEET_HEIGHT);
+
 	printf("final_ui.h build cost, %d warmup frames then %d measured, one widget per case\n\n", (int)PERF_BENCHMARK_WARMUP_FRAMES, (int)PERF_BENCHMARK_SAMPLE_FRAMES);
 	printf("%-22s %9s %9s %9s %9s %9s %9s\n", "case", "median", "fastest", "slowest", "commands", "vertices", "menurows");
 	printf("%-22s %9s %9s %9s %9s %9s %9s\n", "----------------------", "---------", "---------", "---------", "---------", "---------", "---------");
@@ -1774,6 +1907,17 @@ int main(int argc, char **argv) {
 
 	PerfState state;
 	PerfInit(&state);
+
+	// The icon sheet, painted here rather than shipped. A failed upload leaves it at zero, which is the Icons
+	// toggle quietly drawing nothing rather than a reason not to start the workbench.
+	unsigned char iconPixels[PERF_ICON_SHEET_WIDTH * PERF_ICON_SHEET_HEIGHT];
+	PerfDrawIconSheet(iconPixels);
+	uint32_t iconTexture = 0;
+	if(fuiGL1UploadFontAtlas(iconPixels, PERF_ICON_SHEET_WIDTH, PERF_ICON_SHEET_HEIGHT, &iconTexture)) {
+		state.iconSheet = (fuiTextureId)iconTexture;
+		state.iconSheetSize = fuiV2((float)PERF_ICON_SHEET_WIDTH, (float)PERF_ICON_SHEET_HEIGHT);
+	}
+
 	PerfApplyRequestedScale(&state);
 
 	fuiFplInput bridge;
@@ -1843,6 +1987,9 @@ int main(int argc, char **argv) {
 
 	PerfDataSetRelease(&state.data);
 	fuiRelease(&ui);
+	if(iconTexture != 0) {
+		fuiGL1DeleteTexture(iconTexture);
+	}
 	fuiGL1DeleteTexture(atlasTexture);
 	fuiStbttFontRelease(&bakedFont);
 	fglUnloadOpenGL();
