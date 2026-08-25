@@ -24,8 +24,8 @@ Status: feature complete and in use. Everything the library set out to do is in 
 the draw data and its tessellator, text, input, the interaction core, the layout
 engine, the widgets, text input, the color picker, tooltips, commands and their
 shortcuts, menus, tool strips, the status bar, modal dialogs, the list box, the list
-view, tabs and images - and it carries the entire interface of a game, its level
-editor and its tools.
+view, the tree view, tabs and images - and it carries the entire interface of a game,
+its level editor and its tools.
 
 What it is not yet is v1.0.0, and the reason is rendering QUALITY rather than
 features: the tessellator emits hard edges and nothing in it is anti-aliased, so a
@@ -185,7 +185,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.3
+	@version v0.9.4
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -199,6 +199,53 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.4:
+	This one is a WIDGET: a tree, for a folder explorer or for anything else that nests. It is built the way
+	v0.9.3 left the lists - the caller owns the data, the library owns nothing, and what a frame costs is what
+	is on the screen rather than what is behind it.
+
+	- New: fuiTreeView and fuiTreeViewEx, a scrolling tree of rows that fold open and shut. The caller hands
+	  over a PREORDER array of nodes and a flag per node saying which of them are open; the library writes one
+	  of those flags when an expander is clicked and copies nothing at all.
+	- New: fuiTreeNode, which is a label, a depth and the size of the node's own subtree. That last number is
+	  what lets a folded node be stepped over in ONE addition instead of child by child.
+	- New: fuiTreeDesc and fuiTreeAction, the description a tree is built from and what a build came to besides
+	  its selection - which node was activated, which was folded, and which the right button went down on.
+	- New: The rows are VIRTUALIZED, through an index of visible rows kept the way a sorted list view keeps its
+	  order: keyed on the two arrays, their length and - up to FUI_TREE_VERIFY_NODES nodes - a hash of the
+	  flags, so a short tree notices its own folds and nothing has to be said. Measured on a million nodes:
+	  0.007 ms a frame folded, 0.007 ms fully open, and 0.008 ms fully open and scrolled to the very end. The
+	  same tree with that index thrown away every frame costs 2.35 ms, which is what the index is worth.
+	- New: fuiTreeComputeDescendants, which fills those subtree sizes out of the depths in one pass. Called once
+	  after the nodes are built and never per frame.
+	- New: fuiTreeInvalidate, which a tree of more than FUI_TREE_VERIFY_NODES nodes needs from a caller that
+	  folds something open ITSELF - a fold-everything button, a state restored from a file. A fold the user
+	  clicked is noticed either way.
+	- New: fuiTreeExpandToNode, fuiTreeSetExpandedAll and fuiTreeParentOf, which work on the caller's own arrays
+	  and take no context at all.
+	- New: fuiTreeReveal, scrolling a node into view at the next build - because where a node sits is only known
+	  once the rows are. It drops the cached rows as well, so the usual pair of expanding to a node and then
+	  revealing it needs no invalidation of its own.
+	- New: fuiTreeGetVisibleCount, for a status line saying how much of a tree is unfolded.
+	- New: Row icons, through the same fuiListIcons a list takes, indexed by the NODE index. Which cell a folder
+	  gets when it opens is the caller's table and not the library's business, exactly as it is for a list.
+	- New: Guide lines from a node down to its children, off by default. They cost up to one line per level per
+	  visible row - a hundred thousand node tree goes from 70 draw commands a frame to 250 with them on - which
+	  is why they are asked for rather than assumed.
+	- New: Keyboard navigation, for a tree that asks for it and has been clicked into. Up and down walk the
+	  ROWS so a key never lands on something folded away; right folds open and then steps in, left folds shut
+	  and then steps out; home, end and the page keys go where they say. The list box and the list view still
+	  have none, which is the next thing to put right.
+	- New: fuiTheme.treeIndentWidth, fuiTheme.treeExpanderSize and fuiTheme.treeGuideColor.
+	- New: FUI_MAX_TREE_DEPTH (64), FUI_TREE_VERIFY_NODES (4096) and FUI_MAX_TREE_NODES (1000000). A tree past
+	  the last of those still draws - it simply walks its nodes from the top every frame instead of looking a
+	  row up, which is what a context that cannot spare the memory falls back to as well.
+	- New: fuiContext.treeRebuildCount, purely for inspection: it climbs by one per fold and stays put while
+	  nothing changes, so a workbench can tell a cached frame from one that paid for the walk.
+	- Changed: fuiWidgetState carries the tree's index and its keys, which makes every widget's slot about 56
+	  bytes bigger - a button's included. The table grows on demand rather than being reserved, so this is
+	  memory a program with no tree in it never asks for.
 
 	# v0.9.3:
 	This one is about SIZE. Everything below came out of a workbench built to answer one question - what does
@@ -556,6 +603,25 @@ SOFTWARE.
 	//! many entries in the worst case - and not a working set that is reserved up front. A list sorts an
 	//! array the size of ITS rows, the first time it is sorted, and never gives it back
 #	define FUI_MAX_SORTABLE_ROWS 1000000
+#endif
+
+#if !defined(FUI_MAX_TREE_DEPTH)
+	//! Deepest level a tree view indents and its helpers walk
+#	define FUI_MAX_TREE_DEPTH 64
+#endif
+
+#if !defined(FUI_TREE_VERIFY_NODES)
+	//! Up to this many nodes, a tree view HASHES the expansion flags every frame and notices by itself when a
+	//! caller folded something open or shut behind its back. Past it that hash costs more than it is worth and
+	//! such a caller has to say so with @ref fuiTreeInvalidate
+#	define FUI_TREE_VERIFY_NODES 4096
+#endif
+
+#if !defined(FUI_MAX_TREE_NODES)
+	//! Maximum number of nodes one tree view keeps a visible-row index for. A longer tree still draws, it just
+	//! walks its nodes from the top every frame instead of looking the row up. This is a ceiling on what ONE
+	//! tree may make the context allocate and not a working set reserved up front
+#	define FUI_MAX_TREE_NODES 1000000
 #endif
 
 #if !defined(FUI_KEY_REPEAT_DELAY)
@@ -1660,6 +1726,8 @@ typedef struct fuiTheme {
 	fuiColor knobColor;
 	//! Fill behind a hovered menu title or menu row
 	fuiColor menuHighlightColor;
+	//! Guide lines drawn from a tree node down to its children. Faint on purpose - they are there to be followed, not read
+	fuiColor treeGuideColor;
 	//! Dim wash drawn over the whole window behind a modal dialog
 	fuiColor modalBackdropColor;
 
@@ -1682,6 +1750,10 @@ typedef struct fuiTheme {
 	float menuItemPaddingY;
 	//! Gap around a list row's icon: left of it, above and below it, and between it and the row's text
 	float listIconPadding;
+	//! How far one level of a tree view indents against the level above it, which is also the width of the slot its expander sits in
+	float treeIndentWidth;
+	//! Edge length of the triangle a tree view folds a node open and shut by. Never wider than the indent it sits in
+	float treeExpanderSize;
 	//! Starting width of a menu popup until its rows are measured
 	float menuPopupMinWidth;
 	//! Outline stroke width of the chrome: a panel, a dialog, a menu popup and a group box all carry this ONE frame width, so nothing in the interface reads as more heavily boxed than its neighbour
@@ -1862,6 +1934,36 @@ typedef struct fuiWidgetState {
 	bool sortOrderIsAscending;
 	//! Whether sortOrder holds a finished order at all, which is what an invalidation clears
 	bool sortOrderIsBuilt;
+	//! Cached display order of a TREE, one source node per display row, or null while nothing has built one.
+	//! Owned by the context arena, which never gives an allocation back
+	int32_t *treeVisibleNodes;
+	//! How many entries treeVisibleNodes has room for, which only ever grows
+	int32_t treeVisibleCapacity;
+	//! One guide-line bitmask per display row, or null for a tree that was never asked to draw guides. Bit k
+	//! says a line runs through that row at indent level k
+	uint64_t *treeGuideMasks;
+	//! How many entries treeGuideMasks has room for
+	int32_t treeGuideCapacity;
+	//! How many display rows the tree really has, which is what its scrollbar and its wheel are measured against
+	int32_t treeVisibleCount;
+	//! The node array and the flag array that index was built from, compared by ADDRESS to notice a caller
+	//! handing over different ones
+	const void *treeNodesAddress;
+	const void *treeExpandedAddress;
+	//! How many nodes it was built for
+	int32_t treeSourceNodeCount;
+	//! Hash of the whole expansion table as it read when the index was built, for a tree short enough to check
+	fuiId treeExpandFingerprint;
+	//! Whether that hash means anything, which it does not for a tree too long to hash every frame
+	bool treeExpandWasFingerprinted;
+	//! Whether treeVisibleNodes holds a finished index at all, which is what an invalidation clears
+	bool treeVisibleIsBuilt;
+	//! Whether the guide masks were filled by the SAME build. A tree built while its guides were off has an
+	//! index that is still good and masks that are not, and turning them back on has to notice that
+	bool treeGuidesAreBuilt;
+	//! Which node the next build is to scroll into view, minus one when none was asked for
+	int32_t treeRevealNode;
+
 	//! LIVE width of every column of a list view, seeded from the caller's defaults and then owned by the drags
 	float columnWidths[FUI_MAX_LIST_COLUMNS];
 	//! How many of columnWidths are tracked. Zero until seeded, reseeded when the column COUNT changes
@@ -2133,6 +2235,9 @@ typedef struct fuiContext {
 	int32_t *listSortScratch;
 	//! How many entries listSortScratch has room for
 	int32_t listSortScratchCapacity;
+	//! How often a tree view has had to work its visible rows out again since the context was created. Purely
+	//! for inspection - a workbench reads it to tell a cached frame from one that paid for the walk
+	uint32_t treeRebuildCount;
 
 	//! Menus open right now, outermost first. A menu stays open across frames until something closes it
 	fuiId menuOpenPath[FUI_MAX_MENU_DEPTH];
@@ -4298,6 +4403,188 @@ fui_api void fuiListViewSetSortable(fuiContext *context, const char *id, const b
 */
 fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id);
 
+// ****************************************************************************
+//
+// > Tree view
+//
+// ****************************************************************************
+
+/**
+* @struct fuiTreeNode
+* @brief One node of a tree, in PREORDER - the order the rows come out in when everything is folded open.
+* @note A folder read recursively falls out in exactly that order, so nothing has to be re-arranged to be shown.
+* @note NOTHING here is copied - not the nodes, not their labels, not the flags beside them - so everything
+*       pointed at has to outlive the call that builds the tree.
+*/
+typedef struct fuiTreeNode {
+	//! What the row says
+	const char *label;
+	//! How deep the node sits, zero being a root
+	int32_t depth;
+	//! How many nodes of this node's OWN subtree follow it in the array. Zero is a leaf, and is also what says
+	//! the row carries no expander. Fill it with @ref fuiTreeComputeDescendants rather than by hand
+	int32_t descendantCount;
+} fuiTreeNode;
+
+/**
+* @struct fuiTreeDesc
+* @brief Everything one tree needs. Zero it and fill in what matters.
+* @note A zeroed description with only nodes and a count is a tree that is entirely open, indented by the theme,
+*       drawn in plain text.
+*/
+typedef struct fuiTreeDesc {
+	//! The nodes in preorder, owned by the caller
+	const fuiTreeNode *nodes;
+	//! How many nodes there are
+	int32_t nodeCount;
+	//! One flag per node, WRITTEN by the widget when an expander is clicked. Null is a tree that is always open
+	bool *isExpanded;
+	//! Reference to the icon sheet @ref fuiListIcons, indexed by the NODE index, or null for rows of plain text
+	const fuiListIcons *icons;
+	//! How far one level indents against the one above it. Zero takes @ref fuiTheme.treeIndentWidth
+	float indentWidth;
+	//! Report a row as activated on a SINGLE click rather than on the second one. A folder still folds by its
+	//! expander alone, so that a tree used to pick something does not fold under every pick
+	bool activateOnSingleClick;
+	//! Draw the lines that tie a node to its children, which is what makes a deep tree readable at a glance.
+	//! They cost up to one line per level per visible row, so a very deep tree pays for them in draw commands
+	bool showGuides;
+	//! Let the arrow keys move the selection while the tree has the keyboard. A click on a row is what gives it
+	//! the keyboard in the first place
+	bool keyboardIsEnabled;
+} fuiTreeDesc;
+
+/**
+* @struct fuiTreeAction
+* @brief What a tree build came to besides its selection. Read it straight after the call, like a return value.
+* @note Every field is a NODE index of the caller's own array, never a display row, so folding something shut
+*       moves where a node is drawn and never what it is.
+*/
+typedef struct fuiTreeAction {
+	//! OUT: Which node was activated - double clicked, or single clicked in a tree that asked for that. Minus one when none was
+	int32_t activatedNode;
+	//! OUT: Which node was folded open or shut this build, minus one when none was
+	int32_t toggledNode;
+	//! OUT: Which node the right button went down on, which is the node a context menu is about. Minus one when none was
+	int32_t contextNode;
+} fuiTreeAction;
+
+/**
+* @brief A scrolling tree of rows that fold open and shut.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box the tree sits in, in pixels.
+* @param[in] id Identifies the tree, and is what remembers how far it is scrolled.
+* @param[in] nodes The nodes in preorder @ref fuiTreeNode.
+* @param[in] nodeCount How many nodes there are.
+* @param[in,out] isExpanded One flag per node, written when an expander is clicked. Null is a tree that is always open.
+* @param[in,out] selectedIndex Which NODE is selected, changed in place. Minus one for none.
+* @return Returns true on the frame the selection changed.
+* @see @ref fuiTreeViewEx
+*/
+fui_api bool fuiTreeView(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, int32_t *selectedIndex);
+
+/**
+* @brief A tree that may carry row icons and reports what was activated, folded and right clicked.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box the tree sits in, in pixels.
+* @param[in] id Identifies the tree.
+* @param[in] desc Reference to what to build and how @ref fuiTreeDesc.
+* @param[in,out] selectedIndex Which NODE is selected, changed in place. Minus one for none.
+* @param[out] outAction Reference to what else happened @ref fuiTreeAction. May be null.
+* @return Returns true on the frame the selection changed.
+* @note A click on the EXPANDER folds the node and never moves the selection, the way a button in a list view row
+*       owns its own click. A double click on a node with children folds it too, which is what a file explorer does.
+* @note A node that is folded shut takes its whole subtree out of the rows without touching the selection, so a
+*       selected node inside it stays selected and is simply not on screen.
+* @note The rows are VIRTUALIZED: the tree works out which display rows its box can show and builds only those,
+*       so a folded tree of a million nodes costs its open roots and nothing else.
+* @note With `keyboardIsEnabled` set, and once a click has given the tree the keyboard: up and down move the
+*       selection, right folds a node open and then steps into it, left folds it shut and then steps out to its
+*       parent, home and end go to the ends, the page keys move by a boxful, and return activates. Whatever the
+*       selection lands on is scrolled into view.
+*/
+fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, int32_t *selectedIndex, fuiTreeAction *outAction);
+
+/**
+* @brief Fills in every node's descendantCount from the depths around it, in one pass.
+* @param[in,out] nodes The nodes in preorder, whose descendantCount is written.
+* @param[in] nodeCount How many nodes there are.
+* @note Call it once after the nodes are built or rebuilt, and never per frame. What it computes is what lets a
+*       folded node be stepped over in ONE addition rather than child by child, which is the whole reason a large
+*       tree is cheap.
+* @note Only `depth` has to be filled in beforehand, and it has to describe a real preorder: a node is deeper than
+*       its parent by exactly one, and every node of a subtree follows its root without a gap.
+*/
+fui_api void fuiTreeComputeDescendants(fuiTreeNode *nodes, const int32_t nodeCount);
+
+/**
+* @brief Throws away the visible rows a tree has cached, so the next build works them out again.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifier of the tree, the same string it is built with.
+* @note Only needed for a tree of more than FUI_TREE_VERIFY_NODES nodes whose EXPANSION FLAGS the caller changed
+*       itself - a fold-everything-open button, a state restored from a file. A shorter tree hashes those flags
+*       every frame and notices by itself, and a fold the user clicked is noticed either way.
+* @note Must be called in the same identifier scope as the tree, which calling it right before the tree is.
+* @see @ref fuiTreeViewEx
+*/
+fui_api void fuiTreeInvalidate(fuiContext *context, const char *id);
+
+/**
+* @brief Folds every ANCESTOR of a node open, so that node can be seen at all.
+* @param[in] nodes The nodes in preorder.
+* @param[in] nodeCount How many nodes there are.
+* @param[in,out] isExpanded The flags, changed in place.
+* @param[in] nodeIndex Which node is to become reachable.
+* @return Returns true when at least one ancestor really was folded open.
+* @note This is half of showing a search hit; @ref fuiTreeReveal is the other half, and it is the one that
+*       scrolls. Calling reveal afterwards also drops the tree's cached rows, so nothing else has to be said.
+*/
+fui_api bool fuiTreeExpandToNode(const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, const int32_t nodeIndex);
+
+/**
+* @brief Folds the whole tree open or shut at once.
+* @param[in] nodes The nodes in preorder.
+* @param[in] nodeCount How many nodes there are.
+* @param[in,out] isExpanded The flags, changed in place.
+* @param[in] expandedValue True to fold everything open, false to fold everything shut.
+* @note Only nodes that HAVE children are written, so the flags of the leaves stay where they were.
+* @note For a tree of more than FUI_TREE_VERIFY_NODES nodes, follow this with @ref fuiTreeInvalidate - the
+*       widget cannot see a change the caller made to an array it only holds the address of.
+*/
+fui_api void fuiTreeSetExpandedAll(const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, const bool expandedValue);
+
+/**
+* @brief The parent of a node.
+* @param[in] nodes The nodes in preorder.
+* @param[in] nodeCount How many nodes there are.
+* @param[in] nodeIndex Which node is being asked about.
+* @return Returns the parent's index, or minus one for a root and for an index outside the tree.
+*/
+fui_api int32_t fuiTreeParentOf(const fuiTreeNode *nodes, const int32_t nodeCount, const int32_t nodeIndex);
+
+/**
+* @brief Scrolls a tree so a node is inside its box, at the NEXT build.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifier of the tree, the same string it is built with.
+* @param[in] nodeIndex Which node to scroll to. A node inside something folded shut is not scrolled to.
+* @note Takes effect when the tree is next built, because where a node sits is only known once its rows are.
+*       A node already fully inside the box is left where it is rather than scrolled to the top.
+* @note Also drops the tree's cached rows, so the usual pair - @ref fuiTreeExpandToNode and then this - needs
+*       no invalidation of its own however long the tree is.
+* @note Must be called in the same identifier scope as the tree, which calling it right before the tree is.
+*/
+fui_api void fuiTreeReveal(fuiContext *context, const char *id, const int32_t nodeIndex);
+
+/**
+* @brief How many rows a tree showed the last time it was built.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifier of the tree, the same string it is built with.
+* @return Returns the row count of the PREVIOUS build, and zero for a tree that has never been built.
+* @note For a status line saying how much of a tree is unfolded, and for a caller laying something out beside it.
+* @note Must be called in the same identifier scope as the tree.
+*/
+fui_api int32_t fuiTreeGetVisibleCount(fuiContext *context, const char *id);
+
 #ifdef __cplusplus
 }
 #endif
@@ -4647,6 +4934,7 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.textSelectionColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 0.75f);
 	result.knobColor = fuiColorRGBA(0.85f, 0.88f, 0.92f, 1.0f);
 	result.menuHighlightColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 1.0f);
+	result.treeGuideColor = fuiColorRGBA(0.45f, 0.52f, 0.62f, 0.45f);
 	result.modalBackdropColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.55f);
 
 	result.tooltipBackgroundColor = fuiColorRGBA(0.06f, 0.07f, 0.09f, 0.97f);
@@ -4659,6 +4947,10 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.menuItemPaddingX = 12.0f;
 	result.menuItemPaddingY = 6.0f;
 	result.listIconPadding = 2.0f;
+	// One indent per level, and the expander lives in the indent of its OWN level - so a row's label always
+	// starts one level in from its expander and a leaf lines up with the label of a sibling that has children.
+	result.treeIndentWidth = 16.0f;
+	result.treeExpanderSize = 9.0f;
 	result.menuPopupMinWidth = 160.0f;
 	// One frame width for every box the interface draws, and it is the THIN one: a panel outlined twice as
 	// heavily as the widgets inside it reads as a different design language on the same screen.
@@ -6822,6 +7114,8 @@ fui_inline fuiWidgetState *fui__WidgetStateGet(fuiContext *context, const fuiId 
 			// Row zero is a real row, so "nothing was clicked yet" cannot be spelled as a cleared field. A
 			// fresh list would otherwise read its very first click on row zero as the second half of one.
 			entry->lastClickIndex = -1;
+			// Node zero is a real node, and for the same reason "nothing to scroll to" cannot be a zero either.
+			entry->treeRevealNode = -1;
 			map->count += 1u;
 			// Asked for at the frame boundary rather than taken now, because everything already handed out
 			// is a pointer into the array this would move.
@@ -12650,6 +12944,923 @@ fui_api bool fuiListViewEx(fuiContext *context, const fuiRect rect, const char *
 fui_api bool fuiListView(fuiContext *context, const fuiRect rect, const char *id, const fuiColumn *columns, const int32_t columnCount, const char *const *cells, const int32_t rowCount, int32_t *selectedIndex, bool *outWasActivated) {
 	const fuiListIcons *noIcons = fui_null;
 	return(fuiListViewEx(context, rect, id, columns, columnCount, cells, rowCount, selectedIndex, noIcons, outWasActivated));
+}
+
+// ----------------------------------------------------------------------------
+// > Tree view
+// ----------------------------------------------------------------------------
+
+//! What a field of fuiTreeAction says when nothing happened to it
+#define FUI__TREE_NODE_NONE (-1)
+
+fui_api void fuiTreeComputeDescendants(fuiTreeNode *nodes, const int32_t nodeCount) {
+	if(nodes == fui_null || nodeCount <= 0) {
+		return;
+	}
+	/*
+		Walked BACKWARDS, so every child already knows the size of its own subtree by the time its parent asks
+		about it. The inner loop therefore visits a node's DIRECT children only and steps over each of their
+		subtrees in one addition - which is what keeps the whole thing linear instead of quadratic.
+	*/
+	for(int32_t nodeIndex = nodeCount - 1; nodeIndex >= 0; --nodeIndex) {
+		int32_t ownDepth = nodes[nodeIndex].depth;
+		int32_t descendantCount = 0;
+		int32_t childIndex = nodeIndex + 1;
+		while(childIndex < nodeCount && nodes[childIndex].depth > ownDepth) {
+			int32_t subtreeSize = 1 + nodes[childIndex].descendantCount;
+			descendantCount += subtreeSize;
+			childIndex += subtreeSize;
+		}
+		nodes[nodeIndex].descendantCount = descendantCount;
+	}
+}
+
+//! How many nodes of its own subtree follow a node, never below zero whatever the caller filled in
+fui_inline int32_t fui__TreeDescendantCount(const fuiTreeNode *nodes, const int32_t nodeIndex) {
+	int32_t descendantCount = nodes[nodeIndex].descendantCount;
+	if(descendantCount < 0) {
+		return(0);
+	}
+	return(descendantCount);
+}
+
+//! Whether a node has children AND is folded open, which is the one question that decides what comes next
+fui_inline bool fui__TreeNodeIsOpen(const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeIndex) {
+	int32_t descendantCount = fui__TreeDescendantCount(nodes, nodeIndex);
+	bool hasChildren = (descendantCount > 0);
+	if(!hasChildren) {
+		return(false);
+	}
+	if(isExpanded == fui_null) {
+		return(true);
+	}
+	return(isExpanded[nodeIndex]);
+}
+
+//! The node that follows this one in the ROWS, stepping over the whole subtree of one that is folded shut
+fui_inline int32_t fui__TreeNextVisibleNode(const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeIndex) {
+	bool isOpen = fui__TreeNodeIsOpen(nodes, isExpanded, nodeIndex);
+	if(isOpen) {
+		return(nodeIndex + 1);
+	}
+	int32_t descendantCount = fui__TreeDescendantCount(nodes, nodeIndex);
+	return(nodeIndex + 1 + descendantCount);
+}
+
+//! Counts the rows a tree would show, for a tree that has no cached index to look them up in
+fui_inline int32_t fui__TreeCountVisible(const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount) {
+	int32_t visibleCount = 0;
+	int32_t nodeIndex = 0;
+	while(nodeIndex < nodeCount) {
+		visibleCount += 1;
+		nodeIndex = fui__TreeNextVisibleNode(nodes, isExpanded, nodeIndex);
+	}
+	return(visibleCount);
+}
+
+/*
+	Hashes the whole expansion table, which is how a SHORT tree notices its flags being changed behind its back.
+
+	The index below is keyed on the addresses of the two arrays and on how many nodes they hold, and a caller
+	that folds a node open in place changes none of those. For a tree of a few thousand nodes the flags can
+	simply be hashed every frame - a few microseconds for one linear scan of one byte per node - and then
+	nothing has to be said at all. For a tree of a million it cannot, and that is what fuiTreeInvalidate is for.
+*/
+fui_inline fuiId fui__TreeExpandedFingerprint(const bool *isExpanded, const int32_t nodeCount) {
+	if(isExpanded == fui_null || nodeCount <= 0) {
+		return((fuiId)FUI__HASH_OFFSET_BASIS);
+	}
+	size_t byteCount = (size_t)nodeCount * sizeof(bool);
+	fuiId fingerprint = fui__HashBytes((fuiId)FUI__HASH_OFFSET_BASIS, isExpanded, byteCount);
+	return(fingerprint);
+}
+
+//! How big the visible-row index is made for a tree of this many nodes, in powers of two so it rarely grows again
+fui_inline int32_t fui__TreeVisibleCapacityFor(const int32_t nodeCount) {
+	const int32_t smallestUsefulCapacity = 256;
+	int32_t capacity = smallestUsefulCapacity;
+	while(capacity < nodeCount) {
+		if(capacity > (FUI_MAX_TREE_NODES / 2)) {
+			capacity = nodeCount;
+			break;
+		}
+		capacity *= 2;
+	}
+	return(capacity);
+}
+
+//! Makes sure this tree's own index array has room for every node, in case the whole tree is folded open
+fui_inline bool fui__EnsureTreeVisible(fuiContext *context, fuiWidgetState *state, const int32_t nodeCount) {
+	bool hasRoomAlready = (state->treeVisibleNodes != fui_null) && (state->treeVisibleCapacity >= nodeCount);
+	if(hasRoomAlready) {
+		return(true);
+	}
+	int32_t capacity = fui__TreeVisibleCapacityFor(nodeCount);
+	size_t byteCount = (size_t)capacity * sizeof(int32_t);
+	int32_t *visibleNodes = (int32_t *)fui__ArenaPushExact(&context->arena, byteCount, false);
+	if(visibleNodes == fui_null) {
+		return(false);
+	}
+	state->treeVisibleNodes = visibleNodes;
+	state->treeVisibleCapacity = capacity;
+	// A bigger array holds none of what the old one did, so whatever was cached in it is gone.
+	state->treeVisibleIsBuilt = false;
+	return(true);
+}
+
+//! Whether the index this tree has cached still describes the tree it is being asked about
+fui_inline bool fui__TreeVisibleIsStillGood(const fuiWidgetState *state, const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const bool wantsGuides, const bool canFingerprint, const fuiId fingerprint) {
+	if(!state->treeVisibleIsBuilt || state->treeVisibleNodes == fui_null) {
+		return(false);
+	}
+	// Guides that could be drawn but were never filled in mean the rows have to be walked again. Asked this way
+	// round on purpose: where there is no room for the masks at all, nothing is gained by rebuilding every frame.
+	bool guidesCanBeDrawn = wantsGuides && (state->treeGuideMasks != fui_null) && (state->treeGuideCapacity >= state->treeVisibleCapacity);
+	if(guidesCanBeDrawn && !state->treeGuidesAreBuilt) {
+		return(false);
+	}
+	if(state->treeSourceNodeCount != nodeCount) {
+		return(false);
+	}
+	bool sameNodes = (state->treeNodesAddress == (const void *)nodes);
+	bool sameFlags = (state->treeExpandedAddress == (const void *)isExpanded);
+	if(!sameNodes || !sameFlags) {
+		return(false);
+	}
+	if(canFingerprint && state->treeExpandWasFingerprinted) {
+		return(state->treeExpandFingerprint == fingerprint);
+	}
+	// Too long to hash, so a fold the WIDGET did is what invalidates this - and a fold the caller did is what
+	// fuiTreeInvalidate is for.
+	return(true);
+}
+
+//! Whether a node has another sibling after it, which is what decides if a guide line carries on past its row
+fui_inline bool fui__TreeHasLaterSibling(const fuiTreeNode *nodes, const int32_t nodeCount, const int32_t nodeIndex) {
+	int32_t descendantCount = fui__TreeDescendantCount(nodes, nodeIndex);
+	int32_t nextIndex = nodeIndex + 1 + descendantCount;
+	if(nextIndex >= nodeCount) {
+		return(false);
+	}
+	bool nextIsASibling = (nodes[nextIndex].depth == nodes[nodeIndex].depth);
+	return(nextIsASibling);
+}
+
+/*
+	Folds one node into the running guide state and answers the mask its own row is drawn with.
+
+	Bit k of the ANSWER means "a vertical guide line runs through this row at indent level k". Level k carries the
+	line of the node one level deeper than k - level d-1 is what ties a node at depth d to its next sibling - so
+	the running state is kept per depth and shifted down by one on the way out.
+*/
+fui_inline uint64_t fui__TreeStepGuideMask(uint64_t *runningMask, const fuiTreeNode *nodes, const int32_t nodeCount, const int32_t nodeIndex) {
+	int32_t depth = nodes[nodeIndex].depth;
+	if(depth < 0) {
+		depth = 0;
+	}
+	if(depth > (FUI_MAX_TREE_DEPTH - 1)) {
+		depth = FUI_MAX_TREE_DEPTH - 1;
+	}
+	const int32_t highestBit = 63;
+	uint64_t everyBit = ~(uint64_t)0;
+	uint64_t keepMask = everyBit;
+	if(depth < highestBit) {
+		keepMask = ((uint64_t)1 << (depth + 1)) - (uint64_t)1;
+	}
+	// Everything deeper than this node is behind us, so the lines of those levels end here.
+	uint64_t stepped = *runningMask & keepMask;
+	uint64_t ownBit = (uint64_t)1 << depth;
+	bool hasLaterSibling = fui__TreeHasLaterSibling(nodes, nodeCount, nodeIndex);
+	if(hasLaterSibling) {
+		stepped |= ownBit;
+	} else {
+		stepped &= ~ownBit;
+	}
+	*runningMask = stepped;
+	uint64_t rowMask = stepped >> 1;
+	return(rowMask);
+}
+
+//! Makes sure this tree has room for one guide mask per row, which only a tree that draws guides ever asks for
+fui_inline bool fui__EnsureTreeGuideMasks(fuiContext *context, fuiWidgetState *state) {
+	bool hasRoomAlready = (state->treeGuideMasks != fui_null) && (state->treeGuideCapacity >= state->treeVisibleCapacity);
+	if(hasRoomAlready) {
+		return(true);
+	}
+	int32_t capacity = state->treeVisibleCapacity;
+	size_t byteCount = (size_t)capacity * sizeof(uint64_t);
+	uint64_t *guideMasks = (uint64_t *)fui__ArenaPushExact(&context->arena, byteCount, false);
+	if(guideMasks == fui_null) {
+		return(false);
+	}
+	state->treeGuideMasks = guideMasks;
+	state->treeGuideCapacity = capacity;
+	// The masks are filled alongside the rows, so a fresh array means the rows have to be worked out again.
+	state->treeVisibleIsBuilt = false;
+	return(true);
+}
+
+/*
+	Builds the display order of a tree, one source node per display row.
+
+	This is what makes a tree of any size cost what its OPEN rows cost rather than what it holds. Without it,
+	finding the first row a scrolled box shows means counting visible nodes from the top every frame, which is
+	the same linear walk that both list widgets had taken out of them in v0.9.3.
+
+	A node that is folded shut is stepped over with one addition, so a tree of a million nodes with a dozen
+	open roots costs a dozen iterations - not a million.
+*/
+fui_inline void fui__TreeBuildVisible(fuiWidgetState *state, const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const bool wantsGuides) {
+	bool guidesFitToo = wantsGuides && (state->treeGuideMasks != fui_null) && (state->treeGuideCapacity >= state->treeVisibleCapacity);
+	state->treeGuidesAreBuilt = guidesFitToo;
+	uint64_t runningMask = 0;
+	int32_t visibleCount = 0;
+	int32_t nodeIndex = 0;
+	while(nodeIndex < nodeCount && visibleCount < state->treeVisibleCapacity) {
+		state->treeVisibleNodes[visibleCount] = nodeIndex;
+		if(guidesFitToo) {
+			uint64_t rowMask = fui__TreeStepGuideMask(&runningMask, nodes, nodeCount, nodeIndex);
+			state->treeGuideMasks[visibleCount] = rowMask;
+		}
+		visibleCount += 1;
+		nodeIndex = fui__TreeNextVisibleNode(nodes, isExpanded, nodeIndex);
+	}
+	state->treeVisibleCount = visibleCount;
+}
+
+/*
+	Answers the cached index of visible rows, building it when it is stale, and NULL when there is none to be
+	had - a tree past FUI_MAX_TREE_NODES, or a context that could not spare the memory. The row count is
+	answered either way, so the caller that falls back to walking still knows how far it scrolls.
+*/
+fui_inline const int32_t *fui__TreeResolveVisible(fuiContext *context, fuiWidgetState *state, const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const bool wantsGuides, int32_t *outVisibleCount) {
+	bool canCache = (state != fui_null) && (nodeCount <= (int32_t)FUI_MAX_TREE_NODES);
+	if(canCache) {
+		bool hasRoom = fui__EnsureTreeVisible(context, state, nodeCount);
+		if(hasRoom && wantsGuides) {
+			// Asked for before the cache is judged, because taking the array for the first time is what makes
+			// the rows stale - the masks beside them have never been filled in.
+			(void)fui__EnsureTreeGuideMasks(context, state);
+		}
+		bool canFingerprint = (nodeCount <= (int32_t)FUI_TREE_VERIFY_NODES);
+		fuiId fingerprint = 0;
+		if(canFingerprint) {
+			fingerprint = fui__TreeExpandedFingerprint(isExpanded, nodeCount);
+		}
+		bool isStillGood = fui__TreeVisibleIsStillGood(state, nodes, isExpanded, nodeCount, wantsGuides, canFingerprint, fingerprint);
+		if(isStillGood) {
+			*outVisibleCount = state->treeVisibleCount;
+			return(state->treeVisibleNodes);
+		}
+		if(hasRoom) {
+			fui__TreeBuildVisible(state, nodes, isExpanded, nodeCount, wantsGuides);
+			state->treeNodesAddress = (const void *)nodes;
+			state->treeExpandedAddress = (const void *)isExpanded;
+			state->treeSourceNodeCount = nodeCount;
+			state->treeExpandFingerprint = fingerprint;
+			state->treeExpandWasFingerprinted = canFingerprint;
+			state->treeVisibleIsBuilt = true;
+			context->treeRebuildCount += 1u;
+			*outVisibleCount = state->treeVisibleCount;
+			return(state->treeVisibleNodes);
+		}
+	}
+	int32_t walkedCount = fui__TreeCountVisible(nodes, isExpanded, nodeCount);
+	*outVisibleCount = walkedCount;
+	return(fui_null);
+}
+
+//! Which display row a node sits on, or minus one when it is inside something folded shut
+fui_inline int32_t fui__TreeDisplayRowOf(const int32_t *visibleNodes, const int32_t visibleCount, const int32_t nodeIndex) {
+	// The index holds its node indices in increasing order, so a row is found by halving rather than by walking.
+	int32_t low = 0;
+	int32_t high = visibleCount - 1;
+	while(low <= high) {
+		int32_t middle = low + (high - low) / 2;
+		int32_t middleNode = visibleNodes[middle];
+		if(middleNode == nodeIndex) {
+			return(middle);
+		}
+		if(middleNode < nodeIndex) {
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	return(FUI__TREE_NODE_NONE);
+}
+
+//! The same answer for a tree with no cached index, which has to be walked for it
+fui_inline int32_t fui__TreeWalkDisplayRowOf(const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const int32_t nodeIndex) {
+	int32_t displayRow = 0;
+	int32_t walkIndex = 0;
+	while(walkIndex < nodeCount) {
+		if(walkIndex == nodeIndex) {
+			return(displayRow);
+		}
+		displayRow += 1;
+		walkIndex = fui__TreeNextVisibleNode(nodes, isExpanded, walkIndex);
+	}
+	return(FUI__TREE_NODE_NONE);
+}
+
+//! Moves a scroll offset the least distance that puts one row fully inside the box
+fui_inline float fui__ScrollRowIntoView(const float scroll, const float viewportHeight, const float rowHeight, const int32_t displayRow) {
+	float rowTop = (float)displayRow * rowHeight;
+	float rowBottom = rowTop + rowHeight;
+	float result = scroll;
+	float lowestOffsetThatShowsTheBottom = rowBottom - viewportHeight;
+	if(result < lowestOffsetThatShowsTheBottom) {
+		result = lowestOffsetThatShowsTheBottom;
+	}
+	// Checked second on purpose, so a row TALLER than the box shows its head rather than its feet.
+	if(result > rowTop) {
+		result = rowTop;
+	}
+	if(result < 0.0f) {
+		result = 0.0f;
+	}
+	return(result);
+}
+
+/*
+	Everything one row of a tree needs that does not change from row to row, so the two loops that emit rows -
+	one over the cached index, one walking the nodes when there is no index - share the whole body rather than
+	carrying two copies of it that could drift apart.
+*/
+typedef struct fui__TreeRowContext {
+	const fuiTreeDesc *desc;
+	fuiWidgetState *state;
+	fuiTreeAction *action;
+	int32_t *selectedIndex;
+	fuiId treeId;
+	fuiRect box;
+	float rowWidth;
+	float rowHeight;
+	float indentWidth;
+	float scroll;
+	//! OUT: set when a click moved the selection this build
+	bool selectionChanged;
+} fui__TreeRowContext;
+
+//! Folds one node the other way and drops the cached index, since the rows it describes just changed
+fui_inline void fui__TreeToggleNode(fui__TreeRowContext *rowContext, const int32_t nodeIndex) {
+	const fuiTreeDesc *desc = rowContext->desc;
+	if(desc->isExpanded == fui_null) {
+		return;
+	}
+	bool wasExpanded = desc->isExpanded[nodeIndex];
+	desc->isExpanded[nodeIndex] = !wasExpanded;
+	if(rowContext->state != fui_null) {
+		rowContext->state->treeVisibleIsBuilt = false;
+	}
+	if(rowContext->action != fui_null) {
+		rowContext->action->toggledNode = nodeIndex;
+	}
+}
+
+//! Moves the selection onto a node, saying whether that was a change at all
+fui_inline void fui__TreeSelectNode(fui__TreeRowContext *rowContext, const int32_t nodeIndex) {
+	if(*rowContext->selectedIndex == nodeIndex) {
+		return;
+	}
+	*rowContext->selectedIndex = nodeIndex;
+	rowContext->selectionChanged = true;
+}
+
+//! Thickness of a tree's guide lines. A hairline, because they are there to be followed rather than read
+#define FUI__TREE_GUIDE_THICKNESS 1.0f
+
+//! Draws one row and takes whatever click landed on it
+fui_inline void fui__TreeBuildRow(fuiContext *context, fui__TreeRowContext *rowContext, const int32_t displayRow, const int32_t nodeIndex, const uint64_t guideMask) {
+	float rowHeight = rowContext->rowHeight;
+	float rowTop = rowContext->box.y - rowContext->scroll + (float)displayRow * rowHeight;
+	float boxBottom = rowContext->box.y + rowContext->box.h;
+	bool isAboveTheBox = (rowTop + rowHeight) < rowContext->box.y;
+	bool isBelowTheBox = rowTop > boxBottom;
+	if(isAboveTheBox || isBelowTheBox) {
+		return;
+	}
+
+	const fuiTreeDesc *desc = rowContext->desc;
+	const fuiTheme *theme = &context->theme;
+	const fuiTreeNode *node = &desc->nodes[nodeIndex];
+
+	fuiRect rowRect = fuiRectMake(rowContext->box.x, rowTop, rowContext->rowWidth, rowHeight);
+	bool rowIsHovered = fui__CursorIsOver(context, rowRect);
+	bool rowIsSelected = (*rowContext->selectedIndex == nodeIndex);
+	if(rowIsSelected) {
+		fuiDrawRect(context, rowRect, theme->menuHighlightColor);
+	} else if(rowIsHovered) {
+		fuiDrawRect(context, rowRect, theme->widgetHoveredColor);
+	}
+
+	// The expander sits in the indent slot of the node's OWN level and the content starts one level further in.
+	// That is what lines a leaf's label up with the label of a sibling that has children, rather than with its
+	// expander - which is the difference between a tree that reads as a tree and a list of shifted text.
+	int32_t depth = node->depth;
+	if(depth < 0) {
+		depth = 0;
+	}
+	if(depth > (FUI_MAX_TREE_DEPTH - 1)) {
+		depth = FUI_MAX_TREE_DEPTH - 1;
+	}
+	float indentWidth = rowContext->indentWidth;
+	float expanderLeft = rowRect.x + (float)depth * indentWidth;
+	fuiRect expanderRect = fuiRectMake(expanderLeft, rowTop, indentWidth, rowHeight);
+
+	// Drawn under everything else, so the expander and the icon sit ON the lines rather than being crossed by
+	// them. A root has no parent and so has nothing to be tied to.
+	bool guidesAreWanted = desc->showGuides && (depth > 0);
+	if(guidesAreWanted) {
+		fuiColor guideColor = theme->treeGuideColor;
+		float rowMiddle = rowTop + rowHeight * 0.5f;
+		float rowBottom = rowTop + rowHeight;
+		int32_t ownLevel = depth - 1;
+		for(int32_t level = 0; level <= ownLevel; ++level) {
+			float lineX = rowRect.x + ((float)level + 0.5f) * indentWidth;
+			uint64_t levelBit = (uint64_t)1 << level;
+			bool lineCarriesOn = ((guideMask & levelBit) != 0);
+			if(level < ownLevel) {
+				if(lineCarriesOn) {
+					fuiDrawLine(context, fuiV2(lineX, rowTop), fuiV2(lineX, rowBottom), guideColor, FUI__TREE_GUIDE_THICKNESS);
+				}
+				continue;
+			}
+			// The node's own level: down from the row above, across to where its expander sits, and on down
+			// past the row only when another sibling follows it.
+			float elbowBottom = lineCarriesOn ? rowBottom : rowMiddle;
+			float armEnd = rowRect.x + ((float)depth + 0.5f) * indentWidth;
+			fuiDrawLine(context, fuiV2(lineX, rowTop), fuiV2(lineX, elbowBottom), guideColor, FUI__TREE_GUIDE_THICKNESS);
+			fuiDrawLine(context, fuiV2(lineX, rowMiddle), fuiV2(armEnd, rowMiddle), guideColor, FUI__TREE_GUIDE_THICKNESS);
+		}
+	}
+
+	bool isOpen = fui__TreeNodeIsOpen(desc->nodes, desc->isExpanded, nodeIndex);
+	int32_t descendantCount = fui__TreeDescendantCount(desc->nodes, nodeIndex);
+	bool hasChildren = (descendantCount > 0);
+	bool pressWasOnExpander = false;
+	if(hasChildren) {
+		float glyphSize = theme->treeExpanderSize;
+		if(glyphSize > indentWidth) {
+			glyphSize = indentWidth;
+		}
+		float glyphLeft = expanderRect.x + (expanderRect.w - glyphSize) * 0.5f;
+		float glyphTop = expanderRect.y + (expanderRect.h - glyphSize) * 0.5f;
+		fuiRect glyphBox = fuiRectMake(glyphLeft, glyphTop, glyphSize, glyphSize);
+		bool expanderIsHovered = fui__CursorIsOver(context, expanderRect);
+		fuiColor glyphColor = expanderIsHovered ? theme->accentColor : theme->textColor;
+		bool isCollapsed = !isOpen;
+		fuiDrawCollapseGlyph(context, glyphBox, isCollapsed, glyphColor);
+		pressWasOnExpander = expanderIsHovered;
+	}
+
+	float contentLeft = expanderRect.x + indentWidth;
+	float contentWidth = (rowRect.x + rowRect.w) - contentLeft;
+	if(contentWidth < 0.0f) {
+		contentWidth = 0.0f;
+	}
+	fuiRect contentRect = fuiRectMake(contentLeft, rowTop, contentWidth, rowHeight);
+	fuiRect textRect = fui__ListBoxDrawRowIcon(context, contentRect, rowHeight, desc->icons, nodeIndex);
+	if(node->label != fui_null) {
+		fui__DrawTextInRect(context, textRect, node->label, theme->textColor);
+	}
+
+	bool leftWentDownHere = rowIsHovered && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT];
+	if(leftWentDownHere) {
+		if(pressWasOnExpander) {
+			// The expander owns this click outright, the way a button inside a list view row does: pointing at
+			// the triangle and pointing at the row mean two different things, and folding a node is not picking it.
+			fui__TreeToggleNode(rowContext, nodeIndex);
+		} else {
+			bool isSecondClick = false;
+			fuiWidgetState *state = rowContext->state;
+			if(state != fui_null) {
+				float secondsSinceLastClick = context->timeSeconds - state->lastClickTime;
+				bool sameRowAsLastTime = (state->lastClickIndex == nodeIndex);
+				isSecondClick = sameRowAsLastTime && (secondsSinceLastClick <= FUI__DOUBLE_CLICK_SECONDS);
+				state->lastClickTime = context->timeSeconds;
+				state->lastClickIndex = nodeIndex;
+			}
+			fui__TreeSelectNode(rowContext, nodeIndex);
+			if(isSecondClick && hasChildren) {
+				// A double click on a folder folds it, which is what every file explorer does with one.
+				fui__TreeToggleNode(rowContext, nodeIndex);
+			} else {
+				bool wasActivated = isSecondClick || desc->activateOnSingleClick;
+				if(wasActivated && rowContext->action != fui_null) {
+					rowContext->action->activatedNode = nodeIndex;
+				}
+			}
+		}
+		context->mouseDownConsumed[FUI_MOUSE_LEFT] = true;
+		context->focused = rowContext->treeId;
+	}
+
+	bool rightWentDownHere = rowIsHovered && context->mouseWentDown[FUI_MOUSE_RIGHT] && !context->mouseDownConsumed[FUI_MOUSE_RIGHT];
+	if(rightWentDownHere) {
+		// The row is picked as well, because a menu that acts on "the selected node" and a menu opened on a row
+		// the user never selected would otherwise act on two different things.
+		fui__TreeSelectNode(rowContext, nodeIndex);
+		if(rowContext->action != fui_null) {
+			rowContext->action->contextNode = nodeIndex;
+		}
+		context->mouseDownConsumed[FUI_MOUSE_RIGHT] = true;
+		context->focused = rowContext->treeId;
+	}
+}
+
+//! Which display row a node sits on, however this tree knows about its rows
+fui_inline int32_t fui__TreeFindDisplayRow(const int32_t *visibleNodes, const int32_t visibleCount, const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const int32_t nodeIndex) {
+	if(visibleNodes != fui_null) {
+		return(fui__TreeDisplayRowOf(visibleNodes, visibleCount, nodeIndex));
+	}
+	return(fui__TreeWalkDisplayRowOf(nodes, isExpanded, nodeCount, nodeIndex));
+}
+
+//! Which node a display row shows, however this tree knows about its rows
+fui_inline int32_t fui__TreeNodeAtDisplayRow(const int32_t *visibleNodes, const int32_t visibleCount, const fuiTreeNode *nodes, const bool *isExpanded, const int32_t nodeCount, const int32_t displayRow) {
+	bool rowIsInside = (displayRow >= 0) && (displayRow < visibleCount);
+	if(!rowIsInside) {
+		return(FUI__TREE_NODE_NONE);
+	}
+	if(visibleNodes != fui_null) {
+		return(visibleNodes[displayRow]);
+	}
+	int32_t walkRow = 0;
+	int32_t walkIndex = 0;
+	while(walkIndex < nodeCount) {
+		if(walkRow == displayRow) {
+			return(walkIndex);
+		}
+		walkRow += 1;
+		walkIndex = fui__TreeNextVisibleNode(nodes, isExpanded, walkIndex);
+	}
+	return(FUI__TREE_NODE_NONE);
+}
+
+//! Moves the selection onto a node and asks for it to be scrolled to, which is what every key that moves does
+fui_inline void fui__TreeSelectAndReveal(fui__TreeRowContext *rowContext, const int32_t nodeIndex) {
+	if(nodeIndex < 0) {
+		return;
+	}
+	fui__TreeSelectNode(rowContext, nodeIndex);
+	if(rowContext->state != fui_null) {
+		rowContext->state->treeRevealNode = nodeIndex;
+	}
+}
+
+//! The same for a display row, kept inside the tree however far the key asked to go
+fui_inline void fui__TreeSelectDisplayRow(fui__TreeRowContext *rowContext, const int32_t *visibleNodes, const int32_t visibleCount, const int32_t displayRow) {
+	int32_t clampedRow = displayRow;
+	if(clampedRow < 0) {
+		clampedRow = 0;
+	}
+	if(clampedRow > (visibleCount - 1)) {
+		clampedRow = visibleCount - 1;
+	}
+	const fuiTreeDesc *desc = rowContext->desc;
+	int32_t nodeIndex = fui__TreeNodeAtDisplayRow(visibleNodes, visibleCount, desc->nodes, desc->isExpanded, desc->nodeCount, clampedRow);
+	fui__TreeSelectAndReveal(rowContext, nodeIndex);
+}
+
+/*
+	Answers the keys of a tree that has the keyboard.
+
+	Up and down walk the ROWS rather than the nodes, so a key never lands on something folded away. Right and
+	left are the two halves of the same gesture in both directions - open then step in, shut then step out -
+	which is how a tree is walked without ever reaching for the mouse.
+*/
+fui_inline void fui__TreeHandleKeys(fuiContext *context, fui__TreeRowContext *rowContext, const int32_t *visibleNodes, const int32_t visibleCount) {
+	if(visibleCount <= 0) {
+		return;
+	}
+	const fuiTreeDesc *desc = rowContext->desc;
+	const fuiTreeNode *nodes = desc->nodes;
+	int32_t nodeCount = desc->nodeCount;
+	int32_t selectedNode = *rowContext->selectedIndex;
+	bool hasSelection = (selectedNode >= 0) && (selectedNode < nodeCount);
+
+	int32_t currentRow = FUI__TREE_NODE_NONE;
+	if(hasSelection) {
+		currentRow = fui__TreeFindDisplayRow(visibleNodes, visibleCount, nodes, desc->isExpanded, nodeCount, selectedNode);
+	}
+
+	int32_t rowsPerPage = (int32_t)(rowContext->box.h / rowContext->rowHeight);
+	if(rowsPerPage < 1) {
+		rowsPerPage = 1;
+	}
+
+	// A tree nobody has picked anything in yet answers its first arrow with the top row, rather than with nothing.
+	int32_t firstRow = 0;
+	int32_t lastRow = visibleCount - 1;
+	int32_t wantedRow = FUI__TREE_NODE_NONE;
+	bool aMoveWasAsked = true;
+	if(fuiKeyRepeat(context, FUI_KEY_DOWN)) {
+		wantedRow = (currentRow < 0) ? firstRow : (currentRow + 1);
+	} else if(fuiKeyRepeat(context, FUI_KEY_UP)) {
+		wantedRow = (currentRow < 0) ? firstRow : (currentRow - 1);
+	} else if(fuiKeyRepeat(context, FUI_KEY_PAGE_DOWN)) {
+		wantedRow = (currentRow < 0) ? firstRow : (currentRow + rowsPerPage);
+	} else if(fuiKeyRepeat(context, FUI_KEY_PAGE_UP)) {
+		wantedRow = (currentRow < 0) ? firstRow : (currentRow - rowsPerPage);
+	} else if(fuiKeyRepeat(context, FUI_KEY_HOME)) {
+		wantedRow = firstRow;
+	} else if(fuiKeyRepeat(context, FUI_KEY_END)) {
+		wantedRow = lastRow;
+	} else {
+		aMoveWasAsked = false;
+	}
+	if(aMoveWasAsked) {
+		fui__TreeSelectDisplayRow(rowContext, visibleNodes, visibleCount, wantedRow);
+		return;
+	}
+
+	if(!hasSelection) {
+		return;
+	}
+
+	bool isOpen = fui__TreeNodeIsOpen(nodes, desc->isExpanded, selectedNode);
+	int32_t descendantCount = fui__TreeDescendantCount(nodes, selectedNode);
+	bool hasChildren = (descendantCount > 0);
+	if(fuiKeyRepeat(context, FUI_KEY_RIGHT)) {
+		if(hasChildren && !isOpen) {
+			fui__TreeToggleNode(rowContext, selectedNode);
+		} else if(isOpen) {
+			// In preorder the first child of an open node is simply the node after it.
+			int32_t firstChild = selectedNode + 1;
+			fui__TreeSelectAndReveal(rowContext, firstChild);
+		}
+		return;
+	}
+	if(fuiKeyRepeat(context, FUI_KEY_LEFT)) {
+		if(isOpen) {
+			fui__TreeToggleNode(rowContext, selectedNode);
+		} else {
+			int32_t parentIndex = fuiTreeParentOf(nodes, nodeCount, selectedNode);
+			fui__TreeSelectAndReveal(rowContext, parentIndex);
+		}
+		return;
+	}
+	if(fuiKeyRepeat(context, FUI_KEY_RETURN)) {
+		if(rowContext->action != fui_null) {
+			rowContext->action->activatedNode = selectedNode;
+		}
+	}
+}
+
+fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, int32_t *selectedIndex, fuiTreeAction *outAction) {
+	FUI_ASSERT(context != fui_null && id != fui_null && desc != fui_null && selectedIndex != fui_null);
+	if(context == fui_null || id == fui_null || desc == fui_null || selectedIndex == fui_null) {
+		return(false);
+	}
+	if(outAction != fui_null) {
+		outAction->activatedNode = FUI__TREE_NODE_NONE;
+		outAction->toggledNode = FUI__TREE_NODE_NONE;
+		outAction->contextNode = FUI__TREE_NODE_NONE;
+	}
+
+	const fuiTheme *theme = &context->theme;
+	fuiId treeId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, treeId);
+
+	fuiDrawRect(context, rect, theme->widgetTrackColor);
+	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	const fuiTreeNode *nodes = desc->nodes;
+	int32_t nodeCount = desc->nodeCount;
+	bool treeIsEmpty = (nodes == fui_null) || (nodeCount <= 0);
+	if(treeIsEmpty) {
+		// The empty box is still drawn and still swallows the cursor, so a tree whose data has not arrived yet
+		// keeps its place in the layout instead of letting clicks through to whatever is behind it.
+		(void)fui__ClaimCursor(context, treeId, rect);
+		if(state != fui_null) {
+			// Said out loud, or a tree that HAD rows keeps answering with the count it used to have.
+			state->treeVisibleCount = 0;
+			state->treeVisibleIsBuilt = false;
+		}
+		return(false);
+	}
+
+	// A sheet with no table behind it draws no icon on any row, so it must not make every row taller either -
+	// the same test the list box makes.
+	bool sheetCanDraw = fui__ListIconsCanDraw(desc->icons);
+	bool hasIcons = sheetCanDraw && (desc->icons->cellForRow != fui_null);
+	float rowScale = 1.0f;
+	if(hasIcons) {
+		rowScale = FUI__LIST_ICON_ROW_SCALE;
+		if(desc->icons->rowScale > 0.0f) {
+			rowScale = desc->icons->rowScale;
+		}
+	}
+	float rowHeight = theme->menuItemHeight * rowScale;
+
+	float indentWidth = desc->indentWidth;
+	if(indentWidth <= 0.0f) {
+		indentWidth = theme->treeIndentWidth;
+	}
+
+	int32_t visibleCount = 0;
+	const int32_t *visibleNodes = fui__TreeResolveVisible(context, state, nodes, desc->isExpanded, nodeCount, desc->showGuides, &visibleCount);
+	float contentLength = (float)visibleCount * rowHeight;
+
+	// The gutter is ALWAYS reserved, its thumb simply disabled when the rows fit, so folding one node open does
+	// not narrow every row in the tree.
+	float gutterWidth = fuiScrollGutterWidth();
+	float rowWidth = rect.w - gutterWidth;
+
+	fui__TreeRowContext rowContext;
+	fui__ClearMemory(&rowContext, sizeof(rowContext));
+	rowContext.desc = desc;
+	rowContext.state = state;
+	rowContext.action = outAction;
+	rowContext.selectedIndex = selectedIndex;
+	rowContext.treeId = treeId;
+	rowContext.box = rect;
+	rowContext.rowWidth = rowWidth;
+	rowContext.rowHeight = rowHeight;
+	rowContext.indentWidth = indentWidth;
+	rowContext.scroll = 0.0f;
+	rowContext.selectionChanged = false;
+
+	bool cursorIsOverTree = fui__ClaimCursor(context, treeId, rect);
+	float scroll = (state != fui_null) ? state->scroll : 0.0f;
+	if(cursorIsOverTree && context->mouseWheelDelta != 0.0f) {
+		scroll -= context->mouseWheelDelta * rowHeight * FUI__SCROLL_WHEEL_ROWS;
+	}
+
+	// Answered BEFORE the rows are laid out, because a key that moves the selection asks for the row it landed
+	// on to be scrolled to, and that request is taken a few lines further down.
+	bool treeHasTheKeyboard = (context->focused == treeId);
+	if(desc->keyboardIsEnabled && treeHasTheKeyboard) {
+		fui__TreeHandleKeys(context, &rowContext, visibleNodes, visibleCount);
+	}
+
+	// Answered HERE rather than where it was asked for, because which row a node sits on is only known once the
+	// rows are. Taken whether or not the node could be found, so a request for something folded away is dropped
+	// instead of waiting for a fold that may never come.
+	bool revealIsPending = (state != fui_null) && (state->treeRevealNode >= 0);
+	if(revealIsPending) {
+		int32_t revealRow = FUI__TREE_NODE_NONE;
+		if(visibleNodes != fui_null) {
+			revealRow = fui__TreeDisplayRowOf(visibleNodes, visibleCount, state->treeRevealNode);
+		} else {
+			revealRow = fui__TreeWalkDisplayRowOf(nodes, desc->isExpanded, nodeCount, state->treeRevealNode);
+		}
+		if(revealRow >= 0) {
+			scroll = fui__ScrollRowIntoView(scroll, rect.h, rowHeight, revealRow);
+		}
+		state->treeRevealNode = FUI__TREE_NODE_NONE;
+	}
+
+	fuiPushId(context, id);
+
+	// Resolved and drawn BEFORE the rows, so the rows are laid out from the final offset rather than from one
+	// the wheel is about to change.
+	fuiRect scrollTrack = fuiRectMake(rect.x + rect.w - gutterWidth, rect.y, gutterWidth, rect.h);
+	scroll = fuiScrollbarVertical(context, scrollTrack, "__treeScrollbar", scroll, rect.h, contentLength);
+	if(state != fui_null) {
+		state->scroll = scroll;
+	}
+
+	rowContext.scroll = scroll;
+
+	bool guideMasksAreReady = desc->showGuides && (state != fui_null) && (state->treeGuideMasks != fui_null);
+	const uint64_t noGuides = 0;
+
+	fuiPushClip(context, rect);
+	if(visibleNodes != fui_null) {
+		int32_t firstVisibleRow = 0;
+		int32_t endVisibleRow = visibleCount;
+		fui__ListVisibleRange(scroll, rect.h, rowHeight, visibleCount, &firstVisibleRow, &endVisibleRow);
+		for(int32_t displayRow = firstVisibleRow; displayRow < endVisibleRow; ++displayRow) {
+			int32_t nodeIndex = visibleNodes[displayRow];
+			uint64_t guideMask = guideMasksAreReady ? state->treeGuideMasks[displayRow] : noGuides;
+			fui__TreeBuildRow(context, &rowContext, displayRow, nodeIndex, guideMask);
+		}
+	} else {
+		// No index to look a row up in, so the nodes are walked from the top and the rows outside the box throw
+		// themselves away. Correct and slow, which is the right way round when the alternative is drawing nothing.
+		// The guide state is carried along the walk, so the lines are the same ones the cached path draws.
+		uint64_t runningMask = 0;
+		int32_t displayRow = 0;
+		int32_t nodeIndex = 0;
+		while(nodeIndex < nodeCount) {
+			uint64_t guideMask = noGuides;
+			if(desc->showGuides) {
+				guideMask = fui__TreeStepGuideMask(&runningMask, nodes, nodeCount, nodeIndex);
+			}
+			fui__TreeBuildRow(context, &rowContext, displayRow, nodeIndex, guideMask);
+			displayRow += 1;
+			nodeIndex = fui__TreeNextVisibleNode(nodes, desc->isExpanded, nodeIndex);
+		}
+	}
+	fuiPopClip(context);
+	fuiPopId(context);
+	return(rowContext.selectionChanged);
+}
+
+fui_api bool fuiTreeView(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, int32_t *selectedIndex) {
+	fuiTreeDesc desc;
+	fui__ClearMemory(&desc, sizeof(desc));
+	desc.nodes = nodes;
+	desc.nodeCount = nodeCount;
+	desc.isExpanded = isExpanded;
+	fuiTreeAction *noAction = fui_null;
+	return(fuiTreeViewEx(context, rect, id, &desc, selectedIndex, noAction));
+}
+
+fui_api void fuiTreeInvalidate(fuiContext *context, const char *id) {
+	FUI_ASSERT(context != fui_null && id != fui_null);
+	if(context == fui_null || id == fui_null) {
+		return;
+	}
+	fuiId treeId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, treeId);
+	if(state != fui_null) {
+		state->treeVisibleIsBuilt = false;
+	}
+}
+
+fui_api bool fuiTreeExpandToNode(const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, const int32_t nodeIndex) {
+	bool nodeIsInside = (nodes != fui_null) && (isExpanded != fui_null) && (nodeIndex >= 0) && (nodeIndex < nodeCount);
+	if(!nodeIsInside) {
+		return(false);
+	}
+	// Walked backwards from the node itself, taking one ancestor per level: in preorder the nearest earlier node
+	// one level shallower IS the parent, and the nearest one shallower again is its parent.
+	bool anythingChanged = false;
+	int32_t wantedDepth = nodes[nodeIndex].depth - 1;
+	for(int32_t walkIndex = nodeIndex - 1; walkIndex >= 0 && wantedDepth >= 0; --walkIndex) {
+		if(nodes[walkIndex].depth != wantedDepth) {
+			continue;
+		}
+		if(!isExpanded[walkIndex]) {
+			isExpanded[walkIndex] = true;
+			anythingChanged = true;
+		}
+		wantedDepth -= 1;
+	}
+	return(anythingChanged);
+}
+
+fui_api void fuiTreeSetExpandedAll(const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, const bool expandedValue) {
+	if(nodes == fui_null || isExpanded == fui_null) {
+		return;
+	}
+	for(int32_t nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
+		int32_t descendantCount = fui__TreeDescendantCount(nodes, nodeIndex);
+		bool hasChildren = (descendantCount > 0);
+		if(hasChildren) {
+			isExpanded[nodeIndex] = expandedValue;
+		}
+	}
+}
+
+fui_api int32_t fuiTreeParentOf(const fuiTreeNode *nodes, const int32_t nodeCount, const int32_t nodeIndex) {
+	bool nodeIsInside = (nodes != fui_null) && (nodeIndex >= 0) && (nodeIndex < nodeCount);
+	if(!nodeIsInside) {
+		return(FUI__TREE_NODE_NONE);
+	}
+	int32_t wantedDepth = nodes[nodeIndex].depth - 1;
+	if(wantedDepth < 0) {
+		return(FUI__TREE_NODE_NONE);
+	}
+	for(int32_t walkIndex = nodeIndex - 1; walkIndex >= 0; --walkIndex) {
+		if(nodes[walkIndex].depth == wantedDepth) {
+			return(walkIndex);
+		}
+	}
+	return(FUI__TREE_NODE_NONE);
+}
+
+fui_api void fuiTreeReveal(fuiContext *context, const char *id, const int32_t nodeIndex) {
+	FUI_ASSERT(context != fui_null && id != fui_null);
+	if(context == fui_null || id == fui_null) {
+		return;
+	}
+	fuiId treeId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, treeId);
+	if(state == fui_null) {
+		return;
+	}
+	state->treeRevealNode = nodeIndex;
+	// Whoever wants a node scrolled to has usually just folded its ancestors open, and a tree too long to hash
+	// its flags would otherwise scroll to where that node USED to sit.
+	state->treeVisibleIsBuilt = false;
+}
+
+fui_api int32_t fuiTreeGetVisibleCount(fuiContext *context, const char *id) {
+	FUI_ASSERT(context != fui_null && id != fui_null);
+	if(context == fui_null || id == fui_null) {
+		return(0);
+	}
+	fuiId treeId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, treeId);
+	if(state == fui_null) {
+		return(0);
+	}
+	return(state->treeVisibleCount);
 }
 
 #ifdef __cplusplus
