@@ -63,6 +63,8 @@ extern "C" {
 typedef struct fuiStbttGlyph {
 	//! The geometry final_ui.h asks for, ready to be handed straight back
 	fuiGlyph glyph;
+	//! What the font calls this codepoint, resolved once so no lookup has to walk the cmap again
+	int32_t indexInFont;
 	//! False when the font has no glyph for this codepoint at all
 	bool isKnown;
 } fuiStbttGlyph;
@@ -375,7 +377,9 @@ fui_api bool fuiStbttFontBake(fuiStbttFont *font, const void *ttfData, const fui
 		stbtt_GetPackedQuad(packedCharacters, (int)resolved.atlasWidth, (int)resolved.atlasHeight, (int)glyphIndex, &penX, &penY, &quad, doNotAlignToInteger);
 
 		fuiStbttGlyph *entry = &glyphs[glyphIndex];
-		entry->isKnown = (stbtt_FindGlyphIndex(fontInfo, (int)codePoint) != FUI__STBTT_MISSING_GLYPH_INDEX);
+		int indexInFont = stbtt_FindGlyphIndex(fontInfo, (int)codePoint);
+		entry->indexInFont = (int32_t)indexInFont;
+		entry->isKnown = (indexInFont != FUI__STBTT_MISSING_GLYPH_INDEX);
 		entry->glyph.offset = fuiV2(quad.x0 / resolved.pixelHeight, quad.y0 / resolved.pixelHeight);
 		entry->glyph.size = fuiV2((quad.x1 - quad.x0) / resolved.pixelHeight, (quad.y1 - quad.y0) / resolved.pixelHeight);
 		entry->glyph.uvMin = fuiV2(quad.s0, quad.t0);
