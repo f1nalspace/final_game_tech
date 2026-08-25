@@ -29,7 +29,7 @@ set(MY_HEADER_FILES
 	"../../final_ui.h"
 	"../additions/fui_font_stbtt.h"
 	"../additions/final_fonts.h"
-	"fui_backend_gl1.h"
+	"../additions/fui_backend_gl1.h"
 	)
 
 set(MY_TRANSLATION_UNITS
