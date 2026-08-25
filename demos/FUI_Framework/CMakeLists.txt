@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.10)
 #
 # -----------------------------------------------------------------------------
 
-project(FUI_Adapter_FPL C)
+project(FUI_Framework C)
 
 set(MY_COMPILER "c99")
 
@@ -37,7 +37,7 @@ set(MY_HEADER_FILES
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fui_adapter_fpl.c"
+	"fui_framework.c"
 	)
 
 set(MY_DEFINES "")

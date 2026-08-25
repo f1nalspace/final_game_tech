@@ -22,7 +22,7 @@
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{3642BE0A-D1AF-4E4E-892A-38E2C129CB0D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>FUI_Adapter_FPL</RootNamespace>
+    <RootNamespace>FUI_Framework</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -157,7 +157,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fui_adapter_fpl.c" />
+    <ClCompile Include="fui_framework.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />

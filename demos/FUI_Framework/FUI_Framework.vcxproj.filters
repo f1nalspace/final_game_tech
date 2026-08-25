@@ -13,6 +13,6 @@
     <ClInclude Include="..\additions\final_fonts.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="fui_adapter_fpl.c" />
+    <ClCompile Include="fui_framework.c" />
   </ItemGroup>
 </Project>

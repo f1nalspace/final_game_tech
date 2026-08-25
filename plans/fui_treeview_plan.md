@@ -13,7 +13,7 @@ Dieses Dokument beschreibt vier Dinge: die **Designentscheidungen** (1), die **�
 - **`fuiTreeComputeDescendants` ist in Phase 1 gerutscht**, weil das Widget ohne den Helfer nicht testbar ist — der Aufrufer müsste die Teilbaumgrößen sonst von Hand eintragen.
 - **Ein Fallstrick, der im Plan fehlte:** `fuiBeginStackAt` schiebt einen Id-Scope. `fuiTreeInvalidate` und `fuiTreeReveal` aus einem Button *innerhalb* einer Stack-Zeile heraus lösen die Id also in einem anderen Scope auf und tun still gar nichts. Der Performance-Tab merkt sich deswegen nur, was der Button wollte, und handelt erst nach `fuiEndStack`. Das steht jetzt so in der Doku beider Funktionen und als Kommentar im Demo-Code.
 - **Der Tiefen-Fall war zuerst falsch geschnitten.** Eine reine Kette hat nirgends ein Geschwister, und eine Führungslinie wird nur gezeichnet, wo eins folgt — die Kette hätte also zwei Linien je Zeile gezeichnet, egal wie tief sie ist, und damit nichts gemessen. Sie ist jetzt eine *Leiter*: auf jeder Ebene geht ein Knoten weiter nach unten und ein Blatt steht daneben. Damit zeichnet die tiefste Zeile ihre 63 Linien wirklich, und der Fall ging von 144 auf 705 Draw-Commands.
-- **`demos/FUI_Adapter_FPL` spiegelt den Baum ebenfalls.** Der Final-Framework-Weg über `final_ui_adapter.h` lebt, also darf er nicht hinter FUI_Test zurückfallen. Zwei Unterschiede zur FUI_Test-Fassung, beide durch den Adapter bedingt: das Sheet ist dort einkanalige Coverage, Ordner und Dateien werden also über `fuiListIcons.tintForRow` eingefärbt statt über gemalte Farbe; und die Fenstergröße steht nicht in der `GameConfiguration`, das Demo verlangt sie in `GameInit` über `fplSetWindowSize`.
+- **`demos/FUI_Framework` spiegelt den Baum ebenfalls.** Der Final-Framework-Weg über `final_ui_adapter.h` lebt, also darf er nicht hinter FUI_Test zurückfallen. Zwei Unterschiede zur FUI_Test-Fassung, beide durch den Adapter bedingt: das Sheet ist dort einkanalige Coverage, Ordner und Dateien werden also über `fuiListIcons.tintForRow` eingefärbt statt über gemalte Farbe; und die Fenstergröße steht nicht in der `GameConfiguration`, das Demo verlangt sie in `GameInit` über `fplSetWindowSize`.
 - **Was bewusst offen blieb**, steht unverändert in Abschnitt 8.
 
 Die gemessenen Zahlen stehen in 7.4.
@@ -427,7 +427,7 @@ Dazu `iconForNode` (Ordner zu / Ordner auf / Datei / Level), `isExpanded`, `sele
 - Ein eigenes Kontextmenü **auf dem Baum**, gespeist aus `action.contextNode`: *Aufklappen*, *Zuklappen*, *Teilbaum aufklappen*, *Umbenennen…* (öffnet den vorhandenen `fuiInputBox`-Dialog).
 - Statuszeile meldet Auswahl und Aktivierung, wie die anderen Panels auch.
 
-### 6.4 `demos/FUI_Adapter_FPL/fui_adapter_fpl.c`
+### 6.4 `demos/FUI_Framework/fui_framework.c`
 
 Die Adapter-Demo spiegelt FUI_Test fast eins zu eins. Das Baum-Panel gehört dort ebenfalls hinein, damit beide Demos denselben Funktionsumfang zeigen — aber **erst nachdem FUI_Test steht**, und als eigener Commit. Wenn es zeitlich klemmt, ist das der Punkt, der ohne Schaden liegen bleiben kann; dann muss es aber ausdrücklich hier vermerkt werden.
 

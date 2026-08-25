@@ -1,6 +1,6 @@
 /*
 Name:
-	FUI_Adapter_FPL
+	FUI_Framework
 
 Description:
 	The same interactive demo as FUI_Test, built on the Final Framework through final_ui_adapter.h.
@@ -38,9 +38,13 @@ Requirements:
 	- Final Framework
 
 Build (from the repository root):
-	cmake -S demos/FUI_Adapter_FPL -B build/fui_adapter_fpl && cmake --build build/fui_adapter_fpl
+	cmake -S demos/FUI_Framework -B build/fui_framework && cmake --build build/fui_framework
 
 Changelog:
+	## 2026-08-25
+	- Renamed from FUI_Adapter_FPL: the old name claimed FPL as the distinction, but FUI_Test is an FPL program too - what actually differs is the HOST, which is the Final Framework
+	- New: a teal accent, a backdrop mixed toward it and the host named in the status bar, so the two demos are told apart on sight rather than by their title bars
+
 	## 2026-08-24
 	- Initial version, ported from FUI_Test onto final_ui_adapter.h
 
@@ -79,7 +83,14 @@ License:
 #include <string.h>
 
 #define DEMO_WINDOW_TITLE "final_ui.h demo (Final Framework, through final_ui_adapter.h)"
-#define DEMO_LOG_CATEGORY "FUI_Adapter"
+#define DEMO_LOG_CATEGORY "FUI_Framework"
+
+// What tells this demo from FUI_Test at a glance, in a screenshot with no title bar in it: a teal accent
+// where FUI_Test keeps the theme's default amber, a backdrop mixed toward the same hue, and the host named
+// in the status bar. Nothing between fuiBeginFrame and fuiEndFrame changes - the interface is still FUI_Test's,
+// line for line, which is the point of the demo.
+#define DEMO_HOST_LABEL "Final Framework"
+static const fuiColor g_demoAccentColor = FUI_COLOR(0.30f, 0.78f, 0.74f, 1.0f);
 
 // Loaded once, above the largest text on screen, so every size drawn is a reduction of the atlas. The range
 // is the one FUI_Test bakes: printable ASCII, which is every character this demo puts on screen.
@@ -695,7 +706,7 @@ static void BuildMenuBar(fuiContext *ui, DemoState *demo, const fuiRect barRect)
 
 	if(fuiBeginMenu(ui, "Help")) {
 		if(fuiMenuItem(ui, "What am I looking at?", fpl_null, true)) {
-			DemoSay(demo, "final_ui.h: one header, no dependencies. This window is FPL, OpenGL 1.1 and about 500 lines.");
+			DemoSay(demo, "final_ui.h: one header, no dependencies. This window is a Final Framework game, wired up by final_ui_adapter.h.");
 		}
 	}
 	fuiEndMenu(ui);
@@ -1233,6 +1244,10 @@ static void BuildStatusBar(fuiContext *ui, DemoState *demo, const fuiRect status
 	fuiStatusTextRight(ui, mouseText);
 
 	fuiStatusTextRight(ui, demo->uiOwnedTheMouseLastFrame ? "UI has the mouse" : "world has the mouse");
+
+	// Which of the two demos this is, said out loud. The right hand items are laid out from the right edge
+	// inwards, so this one ends up furthest left of them.
+	fuiStatusTextRight(ui, DEMO_HOST_LABEL);
 	fuiEndStatusBar(ui);
 }
 
@@ -1363,7 +1378,8 @@ static void WireQueuedTextures(GameState *state) {
 //! A grid, so there is something under the panels to see them float over -- and something fuiWantsMouse can
 //! protect. Pushed as render commands in screen pixels, y-up, before the interface goes on top.
 static void RenderBackdrop(RenderState *renderState, const DemoState *demo, const int32_t windowWidth, const int32_t windowHeight) {
-	const Vec4f backdropColor = V4fInit(0.07f, 0.08f, 0.10f, 1.0f);
+	// Mixed toward the accent, so the world behind the panels reads as this demo's too and not only its chrome.
+	const Vec4f backdropColor = V4fInit(0.05f, 0.10f, 0.11f, 1.0f);
 	const float gridAlpha = 0.10f;
 	const float minimumGridSpacing = 4.0f;
 	const float gridLineWidth = 1.0f;
@@ -1445,6 +1461,11 @@ extern bool GameInit(GameMemory *gameMemory, const int argumentCount, char **arg
 	fuiPlatform platform;
 	fuiPlatformFromFPL(&platform);
 	fuiSetPlatform(&state->ui, &platform);
+
+	// The one deliberate deviation from FUI_Test's look. fuiGetTheme hands back the LIVE theme, so a single
+	// field is all it takes to restain every highlight the interface draws.
+	fuiTheme *theme = fuiGetTheme(&state->ui);
+	theme->accentColor = g_demoAccentColor;
 
 	DemoInit(&state->demo);
 

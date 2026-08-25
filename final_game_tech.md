@@ -28,7 +28,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FMEM_Test/                  # Tests for final_memory.h
 │   ├── FOGL_Test/                  # Tests for final_dynamic_opengl.h
 │   ├── FTT_TileTracingDemo/        # Demo for final_tiletrace.hpp
-│   ├── FUI_Adapter_FPL/            # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
+│   ├── FUI_Framework/              # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
 │   ├── FUI_Performance/            # Performance workbench for final_ui.h
 │   ├── FUI_Test/                   # Demo for final_ui.h on FPL and legacy OpenGL
 │   ├── FXML_Test/                  # Tests for final_xml.h
@@ -347,10 +347,11 @@ A workbench measuring what final_ui.h COSTS, on FPL and legacy OpenGL:
 - Splits a frame into build, submit and total, with draw command and vertex counters and a frame time graph
 - `--benchmark` runs every case headless and prints a table of medians, which is what a change is judged against
 
-#### FUI_Adapter_FPL
+#### FUI_Framework
 The same interface as FUI_Test - including the project tree - built on the Final Framework:
 - Everything goes through final_ui_adapter.h - input, font, clipboard, allocator and the render backend
 - Uses final_gameplatform.h, final_render.h, final_assets.h and the game memory block
+- Wears a teal accent and names its host in the status bar, so a screenshot says which of the two demos it came from
 
 ## Additional Libraries
 

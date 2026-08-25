@@ -70,6 +70,11 @@ License:
 #include <string.h>
 
 #define DEMO_WINDOW_TITLE "final_ui.h demo (FPL + OpenGL)"
+
+// Named in the status bar, because FUI_Framework builds this same interface on the Final Framework and a
+// screenshot of either one has to say which is which. This demo keeps the theme's default amber accent; the
+// other one restains it.
+#define DEMO_HOST_LABEL "FPL + OpenGL 1.1"
 #define DEMO_WINDOW_WIDTH 1560
 #define DEMO_WINDOW_HEIGHT 800
 
@@ -1318,6 +1323,11 @@ static void BuildStatusBar(fuiContext *ui, DemoState *demo, const fuiRect status
 	fuiStatusTextRight(ui, mouseText);
 
 	fuiStatusTextRight(ui, demo->uiOwnedTheMouseLastFrame ? "UI has the mouse" : "world has the mouse");
+
+	// Which of the two demos this is, said out loud - FUI_Framework builds the same interface and says its own
+	// host here. The right hand items are laid out from the right edge inwards, so this one ends up furthest
+	// left of them.
+	fuiStatusTextRight(ui, DEMO_HOST_LABEL);
 	fuiEndStatusBar(ui);
 }
 
