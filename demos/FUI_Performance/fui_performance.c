@@ -1287,23 +1287,21 @@ static void PerfBuildListBoxTab(fuiContext *ui, PerfState *state, const fuiRect 
 }
 
 static void PerfBuildTextBoxTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
-	// A multiline field breaks its whole buffer into lines and then shows the first FUI_MAX_TEXT_LINES of
-	// them, with no way to scroll to the rest. At five hundred lines that is invisible; at two hundred
-	// thousand it is the whole story, so the note says what the box is really showing.
-	bool isBeyondTheLineCap = (state->data.textLineCount > (int32_t)FUI_MAX_TEXT_LINES);
-	float noteHeight = isBeyondTheLineCap ? PERF_NOTE_HEIGHT : 0.0f;
-	fuiRect fieldRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - noteHeight);
+	// The field lays out a WINDOW of its document rather than the front of it, so every one of these lines
+	// is reachable with the wheel or the bar. FUI_MAX_TEXT_LINES is the size of that window now and not a
+	// ceiling on the document, which is what it used to be.
+	fuiRect fieldRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - PERF_NOTE_HEIGHT);
 
 	const bool isMultiline = true;
 	int32_t capacity = (int32_t)state->data.textCapacity;
 	(void)fuiTextInputEx(ui, fieldRect, PERF_TEXT_ID, state->data.textBuffer, capacity, isMultiline, state->wordWrapIsOn);
 
-	if(isBeyondTheLineCap) {
-		char note[PERF_STATUS_TEXT_MAX];
-		fplStringFormat(note, fplArrayCount(note), "%d lines loaded, %d shown - FUI_MAX_TEXT_LINES caps it and the field does not scroll", state->data.textLineCount, (int32_t)FUI_MAX_TEXT_LINES);
-		fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - noteHeight, rect.w, noteHeight);
-		fuiLabel(ui, noteRect, note);
-	}
+	const double bytesPerMegabyte = 1024.0 * 1024.0;
+	double megabytes = (double)state->data.textCapacity / bytesPerMegabyte;
+	char note[PERF_STATUS_TEXT_MAX];
+	fplStringFormat(note, fplArrayCount(note), "%d lines, %.1f MB - scroll it with the wheel or the bar. Word wrap makes every scroll lay the document out again", state->data.textLineCount, megabytes);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
 }
 
 #define PERF_SPLIT_FRACTION 0.55f
@@ -1452,6 +1450,7 @@ typedef enum PerfSubject {
 	PerfSubject_ListViewResorted,
 	PerfSubject_ListBox,
 	PerfSubject_TextBox,
+	PerfSubject_TextBoxWrapped,
 	PerfSubject_MenuPopup,
 	PerfSubject_Everything,
 } PerfSubject;
@@ -1464,38 +1463,43 @@ typedef struct PerfCase {
 	int32_t menuStepIndex;
 	//! Whether this case merges consecutive draw commands, which is what the "batched" twins turn on
 	bool drawBatchingIsOn;
+	//! How far to spin the wheel with the cursor INSIDE the widget, for a case that measures a scrolled one
+	float wheelSpin;
 } PerfCase;
 
 // Every case names the ONE thing it varies. Reading down a column of these is the whole experiment: the
 // scale goes up by ten and the build time either follows it or it does not.
 static const PerfCase g_perfCases[] = {
-	{ "listview 1K",          PerfSubject_ListView,       0, 0, 0, false },
-	{ "listview 10K",         PerfSubject_ListView,       1, 0, 0, false },
-	{ "listview 100K",        PerfSubject_ListView,       2, 0, 0, false },
-	{ "listview 1M",          PerfSubject_ListView,       4, 0, 0, false },
-	{ "listview sorted 1K",   PerfSubject_ListViewSorted, 0, 0, 0, false },
-	{ "listview sorted 10K",  PerfSubject_ListViewSorted, 1, 0, 0, false },
-	{ "listview sorted 100K", PerfSubject_ListViewSorted, 2, 0, 0, false },
-	{ "listview sorted 1M",   PerfSubject_ListViewSorted, 4, 0, 0, false },
-	{ "listview resort 1K",   PerfSubject_ListViewResorted, 0, 0, 0, false },
-	{ "listview resort 10K",  PerfSubject_ListViewResorted, 1, 0, 0, false },
-	{ "listview resort 100K", PerfSubject_ListViewResorted, 2, 0, 0, false },
-	{ "listbox 500",          PerfSubject_ListBox,        0, 0, 0, false },
-	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0, false },
-	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0, false },
-	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0, false },
-	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0, false },
-	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0, false },
-	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0, false },
-	{ "textbox 200K",         PerfSubject_TextBox,        0, 3, 0, false },
-	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0, false },
-	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1, false },
-	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2, false },
-	{ "menu 400 rows",        PerfSubject_MenuPopup,      0, 0, 3, false },
-	{ "everything 10K",       PerfSubject_Everything,     1, 1, 1, false },
-	{ "everything 100K",      PerfSubject_Everything,     2, 2, 2, false },
-	{ "listview 100K batched", PerfSubject_ListView,      2, 0, 0, true },
-	{ "everything 100K batchd", PerfSubject_Everything,   2, 2, 2, true },
+	{ "listview 1K",          PerfSubject_ListView,       0, 0, 0, false, 0.0f },
+	{ "listview 10K",         PerfSubject_ListView,       1, 0, 0, false, 0.0f },
+	{ "listview 100K",        PerfSubject_ListView,       2, 0, 0, false, 0.0f },
+	{ "listview 1M",          PerfSubject_ListView,       4, 0, 0, false, 0.0f },
+	{ "listview sorted 1K",   PerfSubject_ListViewSorted, 0, 0, 0, false, 0.0f },
+	{ "listview sorted 10K",  PerfSubject_ListViewSorted, 1, 0, 0, false, 0.0f },
+	{ "listview sorted 100K", PerfSubject_ListViewSorted, 2, 0, 0, false, 0.0f },
+	{ "listview sorted 1M",   PerfSubject_ListViewSorted, 4, 0, 0, false, 0.0f },
+	{ "listview resort 1K",   PerfSubject_ListViewResorted, 0, 0, 0, false, 0.0f },
+	{ "listview resort 10K",  PerfSubject_ListViewResorted, 1, 0, 0, false, 0.0f },
+	{ "listview resort 100K", PerfSubject_ListViewResorted, 2, 0, 0, false, 0.0f },
+	{ "listbox 500",          PerfSubject_ListBox,        0, 0, 0, false, 0.0f },
+	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0, false, 0.0f },
+	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0, false, 0.0f },
+	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0, false, 0.0f },
+	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0, false, 0.0f },
+	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0, false, 0.0f },
+	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0, false, 0.0f },
+	{ "textbox 200K",         PerfSubject_TextBox,        0, 3, 0, false, 0.0f },
+	{ "textbox 200K wrapped", PerfSubject_TextBoxWrapped, 0, 3, 0, false, 0.0f },
+	{ "textbox 200K at end",  PerfSubject_TextBox,        0, 3, 0, false, -1000000.0f },
+	{ "textbox 200K wrap end", PerfSubject_TextBoxWrapped, 0, 3, 0, false, -1000000.0f },
+	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0, false, 0.0f },
+	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1, false, 0.0f },
+	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2, false, 0.0f },
+	{ "menu 400 rows",        PerfSubject_MenuPopup,      0, 0, 3, false, 0.0f },
+	{ "everything 10K",       PerfSubject_Everything,     1, 1, 1, false, 0.0f },
+	{ "everything 100K",      PerfSubject_Everything,     2, 2, 2, false, 0.0f },
+	{ "listview 100K batched", PerfSubject_ListView,      2, 0, 0, true, 0.0f },
+	{ "everything 100K batchd", PerfSubject_Everything,   2, 2, 2, true, 0.0f },
 };
 
 static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const PerfSubject subject, const fuiRect rect, const bool isTheFirstFrame) {
@@ -1526,6 +1530,16 @@ static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const Perf
 		case PerfSubject_TextBox:
 			PerfBuildTextBoxTab(ui, state, rect);
 			break;
+
+		case PerfSubject_TextBoxWrapped:
+		{
+			// Wrapping is the case a scroll cannot shortcut: where a line begins depends on the layout of
+			// everything before it, so moving the window means laying the document out again.
+			bool wrapWasOn = state->wordWrapIsOn;
+			state->wordWrapIsOn = true;
+			PerfBuildTextBoxTab(ui, state, rect);
+			state->wordWrapIsOn = wrapWasOn;
+		} break;
 
 		case PerfSubject_MenuPopup:
 		{
@@ -1593,6 +1607,16 @@ static void PerfRunBenchmarkCase(fuiContext *ui, PerfState *state, const PerfCas
 			input.mousePosition = fuiV2(PERF_BENCHMARK_MENU_ANCHOR, PERF_BENCHMARK_MENU_ANCHOR);
 		} else {
 			input.mousePosition = fuiV2((float)PERF_BENCHMARK_WIDTH - PERF_BENCHMARK_MARGIN, (float)PERF_BENCHMARK_HEIGHT - PERF_BENCHMARK_MARGIN);
+		}
+
+		// A case that measures a SCROLLED widget puts the cursor in the middle of it and spins the wheel
+		// once, during the warmup, so every measured frame is taken with it parked at the far end.
+		bool wantsTheWheel = (benchmarkCase->wheelSpin != 0.0f);
+		if(wantsTheWheel) {
+			input.mousePosition = fuiV2(contentRect.x + contentRect.w * 0.5f, contentRect.y + contentRect.h * 0.5f);
+			if(frameIndex < PERF_BENCHMARK_WARMUP_FRAMES) {
+				input.mouseWheelDelta = benchmarkCase->wheelSpin;
+			}
 		}
 
 		fplTimestamp buildStart = fplTimestampQuery();

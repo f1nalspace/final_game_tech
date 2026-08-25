@@ -124,6 +124,7 @@ FUI_ASSERT(expr)          Override the assertion macro (defaults to assert from 
 FUI_MALLOC(size)          Override the default allocate (defaults to malloc; skips <stdlib.h> when set with FUI_FREE).
 FUI_FREE(ptr)             Override the default release (defaults to free; skips <stdlib.h> when set with FUI_MALLOC).
 FUI_STRLEN(text)          Override string length (defaults to strlen; skips <string.h> when set with the memory overrides).
+FUI_MEMCHR(p,v,size)      Override memory byte search (defaults to memchr; skips <string.h> when set with the others).
 FUI_MEMSET(dst,val,size)  Override memory set (defaults to memset; skips <string.h> when set with FUI_MEMCPY and FUI_MEMMOVE).
 FUI_MEMCPY(dst,src,size)  Override memory copy (defaults to memcpy; skips <string.h> when set with FUI_MEMSET and FUI_MEMMOVE).
 FUI_MEMMOVE(dst,src,size) Override memory move (defaults to memmove; skips <string.h> when set with FUI_MEMSET and FUI_MEMCPY).
@@ -230,8 +231,29 @@ SOFTWARE.
 	  box holding two hundred thousand lines went from 5.07 ms a frame to 0.19 ms.
 	- New: FUI_STRLEN, to override that the way FUI_MEMCPY and the others are overridden.
 	- Fixed: A menu popup taller than the window was placed at the top and drawn off the bottom, where its
-	  rows could be neither seen nor reached. A popup is now no taller than the window, scrolls under the
-	  wheel when it had to be cut, and marks the edge it was cut at.
+	  rows could be neither seen nor reached. A popup is now no taller than the space it opens into, scrolls
+	  under the wheel, and marks the edge it was cut at.
+	- Fixed: That marked edge was a picture and nothing else. Resting the cursor on it now scrolls the menu,
+	  which is what an arrow on the edge of a menu has always meant, and the row underneath it no longer
+	  takes the hover - pointing at the arrow used to light up, and open, whatever was behind it.
+	- Fixed: A menu bar's popup covered the bar it dropped from, and every other title on it, as soon as it
+	  was taller than the window. It opens into the space BELOW its trigger instead when that is most of the
+	  screen, so the title stays visible and the rows past the bottom are scrolled to.
+	- Fixed: A submenu with no room to its parent's right was slid back over the rows it belongs to. It
+	  opens to the LEFT of its parent instead, which is what leaves both of them readable.
+	- Fixed: A multiline text field showed the first FUI_MAX_TEXT_LINES lines of its buffer and had no way
+	  at all to reach the rest - no scrollbar, no wheel, nothing. It lays out a WINDOW of the document now,
+	  with a scrollbar and the wheel, and follows the caret when a key moves it while leaving the view alone
+	  when the wheel moved it. FUI_MAX_TEXT_LINES is the size of that window, not a ceiling on the document.
+	- New: fuiBreakTextLinesFrom, which breaks a window of a text's lines out of it and reports how many it
+	  has in total. This is what the field above is built on.
+	- Changed: An unwrapped text is split on its newlines with a memory scan rather than a decoded walk, and
+	  a field remembers where its window began so the next one seeks from there. Together those are what
+	  make a large document scrollable at all: two hundred thousand lines scrolled to the end went from
+	  1.18 ms a frame to 0.10 ms, and 44 ms to 0.11 ms with word wrap on.
+	- New: FUI_MEMCHR, to override that scan the way FUI_MEMCPY and the others are overridden.
+	- Changed: A multiline field keeps a gutter for its scrollbar, so it wraps inside what is left of its
+	  width rather than underneath the bar.
 	- Fixed: The retained widget state table held 256 widgets and, once full, turned every lookup into a scan
 	  of all of them that answered nothing - so a panel silently lost its scroll position and a list its column
 	  widths. It grows and rehashes instead, at the frame boundary, where nothing is holding a pointer into it.
@@ -1784,6 +1806,23 @@ typedef struct fuiWidgetState {
 	int32_t lastClickIndex;
 	//! Which tab of a tab control is showing
 	int32_t activeTab;
+	//! First VISIBLE line of a multiline text field, which is what scrolling one moves
+	int32_t textFirstLine;
+	//! How many lines its whole buffer broke into, the last time that was counted
+	int32_t textTotalLines;
+	//! What that count was taken from. Counting walks the whole document, so it is taken again only when
+	//! one of these changed - a different buffer, a different length, a different width to wrap at
+	const void *textBuffer;
+	int32_t textBufferLength;
+	float textWrapWidth;
+	bool textWordWrap;
+	//! Whether textTotalLines holds a real count yet
+	bool textTotalIsCounted;
+	//! Byte offset the window laid out last began at, and which line that was. Seeking to the next window
+	//! from HERE is what stops every scroll from laying the whole document out again
+	int32_t textWindowOffset;
+	int32_t textWindowLine;
+	bool textWindowIsKnown;
 	//! Cached display order of a sorted list, one source row per display position, or null while nothing
 	//! has sorted this list yet. Owned by the context arena, which never gives an allocation back
 	int32_t *sortOrder;
@@ -1900,6 +1939,10 @@ typedef struct fuiMenuFrame {
 	float scrollOffset;
 	//! Popup: how tall all of its rows were the last time it was open, which is what the scroll is bounded by
 	float contentHeight;
+	//! Popup: the strip along the top that says there are rows above and scrolls back to them, empty when there are none
+	fuiRect scrollUpStrip;
+	//! Popup: the same along the bottom, empty when every remaining row is already showing
+	fuiRect scrollDownStrip;
 	//! How deep this menu sits in the open path, so a row knows which submenus to close
 	uint32_t depth;
 	//! Whether this frame is the horizontal bar rather than a popup
@@ -2682,6 +2725,26 @@ fui_api bool fuiTruncateTextToWidth(const fuiContext *context, const char *text,
 * @note The lines point INTO text and copy nothing, so text has to outlive them.
 */
 fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, fuiTextLine *outLines, const uint32_t maxLines);
+
+/**
+* @brief Breaks a WINDOW of a text's visual lines out of it, and reports how many lines it has in total.
+* @param[in] context Reference to the context @ref fuiContext.
+* @param[in] text The text to break into lines.
+* @param[in] textLength Length of the text in bytes, or 0 to measure it.
+* @param[in] pixelHeight Height one em is drawn at.
+* @param[in] wordWrap Whether a line too wide for wrapWidth is broken at a space.
+* @param[in] wrapWidth Width to wrap at in pixels, ignored when wordWrap is false.
+* @param[in] firstLine Which visual line the output starts at.
+* @param[out] outLines Receives up to maxLines lines, the first of them being line firstLine.
+* @param[in] maxLines Capacity of outLines.
+* @param[out] outTotalLineCount Receives how many lines the whole text has, or null to stop as soon as the
+*             window is full - which is far cheaper, and all a caller showing the top of a text needs.
+* @return Returns the number of lines written to outLines.
+* @note This is what lets a text field scroll through a document instead of showing only its first
+*       FUI_MAX_TEXT_LINES lines. Counting the total walks the whole text, so pass null when you can.
+* @see @ref fuiBreakTextLines
+*/
+fui_api uint32_t fuiBreakTextLinesFrom(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, const uint32_t firstLine, fuiTextLine *outLines, const uint32_t maxLines, uint32_t *outTotalLineCount);
 
 /**
 * @brief Measures a whole block of text, breaking it the same way @ref fuiBreakTextLines does.
@@ -4214,10 +4277,13 @@ fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id);
 #	endif
 #endif
 
-#if !defined(FUI_MEMSET) || !defined(FUI_MEMCPY) || !defined(FUI_MEMMOVE) || !defined(FUI_STRLEN)
+#if !defined(FUI_MEMSET) || !defined(FUI_MEMCPY) || !defined(FUI_MEMMOVE) || !defined(FUI_STRLEN) || !defined(FUI_MEMCHR)
 #	include <string.h>
 #	if !defined(FUI_STRLEN)
 #		define FUI_STRLEN(text) strlen(text)
+#	endif
+#	if !defined(FUI_MEMCHR)
+#		define FUI_MEMCHR(ptr, value, size) memchr(ptr, value, size)
 #	endif
 #	if !defined(FUI_MEMSET)
 #		define FUI_MEMSET(dst, value, size) memset(dst, value, size)
@@ -6310,32 +6376,102 @@ fui_api bool fuiTruncateTextToWidth(const fuiContext *context, const char *text,
 	return(true);
 }
 
-//! Appends one visual line to the output list, returning false once the list is full
-fui_inline bool fui__AppendTextLine(fuiTextLine *outLines, const uint32_t maxLines, uint32_t *inOutLineCount, const char *start, const size_t length) {
-	if(*inOutLineCount >= maxLines) {
+/*
+	Where a line breaker puts its lines.
+
+	A text field showing part of a large document needs a WINDOW of the lines rather than the first few of
+	them, so this counts every line the text has and stores only the ones the window asked for. When
+	nothing wants the total, it says so by asking to stop as soon as the window is full - which is what
+	every caller that just wants a tooltip broken into rows does, and what keeps that cheap.
+*/
+typedef struct fui__TextLineSink {
+	//! Where the stored lines go, or null to count only
+	fuiTextLine *lines;
+	//! How many of them fit
+	uint32_t capacity;
+	//! Which line the storing starts at, so the window can begin part way into the text
+	uint32_t firstStoredLine;
+	//! How many lines the text has had so far, stored or not
+	uint32_t totalCount;
+	//! How many are really in the array
+	uint32_t storedCount;
+	//! Whether counting goes on after the array is full, which is what a scrollbar needs and a tooltip does not
+	bool countsPastTheWindow;
+	//! Start of the text, so a byte offset into it can be compared against the line being emitted
+	const char *textBase;
+	//! Byte offset to find the line of, or (size_t)-1 when nothing is being looked for
+	size_t offsetToFind;
+	//! Which line that offset landed on, meaningful once offsetWasFound
+	uint32_t offsetLine;
+	//! Whether the offset has been reached yet
+	bool offsetWasFound;
+} fui__TextLineSink;
+
+//! Takes one visual line, returning false once there is no reason to keep breaking
+fui_inline bool fui__AppendTextLine(fui__TextLineSink *sink, const char *start, const size_t length) {
+	uint32_t lineIndex = sink->totalCount;
+	sink->totalCount += 1u;
+
+	bool isInsideTheWindow = (lineIndex >= sink->firstStoredLine) && (sink->storedCount < sink->capacity);
+	if(isInsideTheWindow && sink->lines != fui_null) {
+		sink->lines[sink->storedCount].start = start;
+		sink->lines[sink->storedCount].length = length;
+		sink->storedCount += 1u;
+	}
+
+	// A caret sitting somewhere in a document the field is not showing needs to know which LINE it is on,
+	// and the only thing that knows where the lines fall is the breaker itself. A boundary belongs to the
+	// line that ends there, which is the same rule fui__CaretRowIndex follows.
+	if(!sink->offsetWasFound && sink->offsetToFind != (size_t)-1) {
+		size_t lineStartOffset = (size_t)(start - sink->textBase);
+		if(sink->offsetToFind <= (lineStartOffset + length)) {
+			sink->offsetLine = lineIndex;
+			sink->offsetWasFound = true;
+		}
+	}
+
+	bool windowIsFull = (sink->storedCount >= sink->capacity);
+	bool nothingLeftToLookFor = sink->offsetWasFound || (sink->offsetToFind == (size_t)-1);
+	if(windowIsFull && !sink->countsPastTheWindow && nothingLeftToLookFor) {
 		return(false);
 	}
-	outLines[*inOutLineCount].start = start;
-	outLines[*inOutLineCount].length = length;
-	*inOutLineCount += 1u;
 	return(true);
 }
 
-fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, fuiTextLine *outLines, const uint32_t maxLines) {
-	FUI_ASSERT(context != fui_null && outLines != fui_null);
-	if(outLines == fui_null || maxLines == 0) {
-		return(0);
-	}
-
-	uint32_t lineCount = 0;
+//! The whole line breaker, working into a sink so one implementation serves the plain call and the window
+//! a scrolling text field needs
+fui_inline void fui__BreakTextLinesInto(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, fui__TextLineSink *sink) {
 	if(context == fui_null || text == fui_null) {
-		(void)fui__AppendTextLine(outLines, maxLines, &lineCount, "", 0);
-		return(lineCount);
+		(void)fui__AppendTextLine(sink, "", 0);
+		return;
 	}
 
 	size_t resolvedLength = fui__ResolveTextLength(text, textLength);
 	const fuiFont *font = context->font;
 	bool canWrap = wordWrap && (font != fui_null) && (wrapWidth > 0.0f);
+
+	if(!canWrap) {
+		/*
+			Without wrapping a line is exactly what the newlines say it is, so the lines can be FOUND
+			rather than walked to. That matters far more than it looks: a field showing the ten thousandth
+			line of a document has to get past the first nine thousand nine hundred and ninety nine of
+			them first, and doing that one decoded codepoint at a time is the difference between a text
+			field that can hold a file and one that cannot.
+		*/
+		size_t scanStart = 0;
+		while(scanStart <= resolvedLength) {
+			const char *newline = (const char *)FUI_MEMCHR(&text[scanStart], '\n', resolvedLength - scanStart);
+			size_t lineEnd = (newline != fui_null) ? (size_t)(newline - text) : resolvedLength;
+			if(!fui__AppendTextLine(sink, &text[scanStart], lineEnd - scanStart)) {
+				return;
+			}
+			if(newline == fui_null) {
+				return;
+			}
+			scanStart = lineEnd + 1;
+		}
+		return;
+	}
 
 	size_t lineStart = 0;
 	size_t offset = 0;
@@ -6349,8 +6485,8 @@ fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, 
 		uint32_t codePoint = fuiDecodeUtf8(text, resolvedLength, &offset);
 
 		if(codePoint == (uint32_t)'\n') {
-			if(!fui__AppendTextLine(outLines, maxLines, &lineCount, &text[lineStart], codePointStart - lineStart)) {
-				return(lineCount);
+			if(!fui__AppendTextLine(sink, &text[lineStart], codePointStart - lineStart)) {
+				return;
 			}
 			lineStart = offset;
 			lineWidth = 0.0f;
@@ -6372,14 +6508,14 @@ fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, 
 		if(overflows) {
 			if(lastSpaceStart != (size_t)-1) {
 				// Break at the last space, and drop the space itself rather than start the next line with it.
-				if(!fui__AppendTextLine(outLines, maxLines, &lineCount, &text[lineStart], lastSpaceStart - lineStart)) {
-					return(lineCount);
+				if(!fui__AppendTextLine(sink, &text[lineStart], lastSpaceStart - lineStart)) {
+					return;
 				}
 				lineStart = lastSpaceEnd;
 			} else {
 				// One word longer than the whole wrap width, so it has to be cut mid-word.
-				if(!fui__AppendTextLine(outLines, maxLines, &lineCount, &text[lineStart], codePointStart - lineStart)) {
-					return(lineCount);
+				if(!fui__AppendTextLine(sink, &text[lineStart], codePointStart - lineStart)) {
+					return;
 				}
 				lineStart = codePointStart;
 			}
@@ -6408,8 +6544,39 @@ fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, 
 
 	// Always emit a final line, so empty text still gives a caret somewhere to sit and a trailing
 	// newline still produces the empty line it asked for.
-	(void)fui__AppendTextLine(outLines, maxLines, &lineCount, &text[lineStart], resolvedLength - lineStart);
-	return(lineCount);
+	(void)fui__AppendTextLine(sink, &text[lineStart], resolvedLength - lineStart);
+}
+
+fui_api uint32_t fuiBreakTextLinesFrom(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, const uint32_t firstLine, fuiTextLine *outLines, const uint32_t maxLines, uint32_t *outTotalLineCount) {
+	bool wantsTheLines = (outLines != fui_null) && (maxLines > 0);
+	bool wantsTheTotal = (outTotalLineCount != fui_null);
+	if(!wantsTheLines && !wantsTheTotal) {
+		return(0);
+	}
+
+	fui__TextLineSink sink;
+	fui__ClearMemory(&sink, sizeof(sink));
+	sink.lines = wantsTheLines ? outLines : fui_null;
+	sink.capacity = wantsTheLines ? maxLines : 0u;
+	sink.firstStoredLine = firstLine;
+	sink.offsetToFind = (size_t)-1;
+	// Counting past the window means walking the whole text, which only a caller that needs the total has
+	// any reason to pay for.
+	sink.countsPastTheWindow = (outTotalLineCount != fui_null);
+
+	fui__BreakTextLinesInto(context, text, textLength, pixelHeight, wordWrap, wrapWidth, &sink);
+
+	if(outTotalLineCount != fui_null) {
+		*outTotalLineCount = sink.totalCount;
+	}
+	return(sink.storedCount);
+}
+
+fui_api uint32_t fuiBreakTextLines(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth, fuiTextLine *outLines, const uint32_t maxLines) {
+	const uint32_t fromTheFirstLine = 0;
+	uint32_t *doNotCountPastTheWindow = fui_null;
+	uint32_t result = fuiBreakTextLinesFrom(context, text, textLength, pixelHeight, wordWrap, wrapWidth, fromTheFirstLine, outLines, maxLines, doNotCountPastTheWindow);
+	return(result);
 }
 
 fui_api fuiVec2 fuiMeasureTextBlock(const fuiContext *context, const char *text, const size_t textLength, const float pixelHeight, const bool wordWrap, const float wrapWidth) {
@@ -8430,8 +8597,168 @@ fui_inline int32_t fui__CaretFromCursorSingleLine(const fuiContext *context, con
 	return(result);
 }
 
+//! How many rows a scrolling field keeps ABOVE the one at the top of its box. One is enough, and it is
+//! what lets the up arrow step off the top edge onto a row that is already laid out
+#define FUI__TEXT_OVERSCAN_LINES 1
+
+/**
+* @struct fui__TextWindow
+* @brief The rows of a multiline field that are laid out right now, and where the first of them is drawn.
+* @note A field showing part of a large document lays out a WINDOW of its lines rather than the first few
+*       of them, so every row index below is an index into that window and not into the document.
+*/
+typedef struct fui__TextWindow {
+	//! Which document line the stored rows begin at
+	int32_t storedFirstLine;
+	//! Which document line is the top one the box shows
+	int32_t firstVisibleLine;
+	//! How many lines the whole document has
+	int32_t totalLineCount;
+	//! How many rows the box shows at once
+	int32_t visibleLineCount;
+	//! Where the FIRST STORED row is drawn, which is above the box by whatever was kept for the arrow keys
+	float firstRowTopY;
+} fui__TextWindow;
+
+//! How many lines a whole buffer breaks into. Counted only when something it depends on changed, because
+//! counting means walking the whole document and a field is rebuilt every frame
+fui_inline int32_t fui__TextCountLines(fuiContext *context, fuiWidgetState *state, const char *buffer, const int32_t length, const float pixelHeight, const bool wordWrap, const float wrapWidth) {
+	bool countStillHolds = (state != fui_null) && state->textTotalIsCounted
+		&& (state->textBuffer == (const void *)buffer)
+		&& (state->textBufferLength == length)
+		&& (state->textWordWrap == wordWrap)
+		&& (state->textWrapWidth == wrapWidth);
+	if(countStillHolds) {
+		return(state->textTotalLines);
+	}
+
+	uint32_t totalLineCount = 0;
+	fuiTextLine *countOnly = fui_null;
+	const uint32_t noStorage = 0;
+	const uint32_t fromTheFirstLine = 0;
+	(void)fuiBreakTextLinesFrom(context, buffer, (size_t)length, pixelHeight, wordWrap, wrapWidth, fromTheFirstLine, countOnly, noStorage, &totalLineCount);
+
+	if(state != fui_null) {
+		state->textTotalLines = (int32_t)totalLineCount;
+		state->textBuffer = (const void *)buffer;
+		state->textBufferLength = length;
+		state->textWordWrap = wordWrap;
+		state->textWrapWidth = wrapWidth;
+		state->textTotalIsCounted = true;
+		// A different document, or the same one laid out differently, puts every remembered offset in it wrong.
+		state->textWindowIsKnown = false;
+	}
+	return((int32_t)totalLineCount);
+}
+
+//! Which visual line a byte offset falls on. Used only when the caret is somewhere the field is not
+//! showing - after a click into a fresh field, which anchors it at the very end of the document
+fui_inline int32_t fui__TextLineOfOffset(const fuiContext *context, const char *buffer, const int32_t length, const float pixelHeight, const bool wordWrap, const float wrapWidth, const int32_t offset) {
+	fui__TextLineSink sink;
+	fui__ClearMemory(&sink, sizeof(sink));
+	sink.textBase = buffer;
+	sink.offsetToFind = (size_t)offset;
+	fui__BreakTextLinesInto(context, buffer, (size_t)length, pixelHeight, wordWrap, wrapWidth, &sink);
+	if(!sink.offsetWasFound) {
+		return((sink.totalCount > 0u) ? (int32_t)(sink.totalCount - 1u) : 0);
+	}
+	return((int32_t)sink.offsetLine);
+}
+
+//! Forgets that count, for an edit the field itself has just made to the buffer
+fui_inline void fui__TextForgetLineCount(fuiWidgetState *state) {
+	if(state != fui_null) {
+		state->textTotalIsCounted = false;
+		state->textWindowIsKnown = false;
+	}
+}
+
+/*
+	Where a line starts, seeking from a line whose start is already known.
+
+	Only right for text that is NOT wrapped, where a line is exactly what the newlines say and so can be
+	stepped over in either direction without laying anything out. That is what makes scrolling a large
+	document cost the rows moved rather than the rows passed.
+*/
+fui_inline int32_t fui__TextOffsetOfLineUnwrapped(const char *buffer, const int32_t length, const int32_t fromOffset, const int32_t fromLine, const int32_t wantedLine) {
+	int32_t offset = fuiClampI(fromOffset, 0, length);
+	int32_t line = fromLine;
+
+	while(line < wantedLine && offset < length) {
+		const char *newline = (const char *)FUI_MEMCHR(&buffer[offset], '\n', (size_t)(length - offset));
+		if(newline == fui_null) {
+			offset = length;
+			break;
+		}
+		offset = (int32_t)(newline - buffer) + 1;
+		line += 1;
+	}
+
+	while(line > wantedLine && offset > 0) {
+		// The byte before a line start is the newline that ended the one before it, so the search for the
+		// start of THAT one begins one further back again.
+		int32_t scan = offset - 2;
+		while(scan >= 0 && buffer[scan] != '\n') {
+			scan -= 1;
+		}
+		offset = scan + 1;
+		line -= 1;
+	}
+	return(offset);
+}
+
+/*
+	Lays out the rows around a given first visible line and says where the first stored one is drawn.
+
+	Reaching line ten thousand means getting past the nine thousand nine hundred and ninety nine before
+	it, and doing that from the top of the document every frame is what makes a big one unscrollable. So
+	the window remembers where it began, and the next one seeks from THERE:
+
+	  - unwrapped, either way: the lines are what the newlines say, so it is a scan of the rows moved
+	  - wrapped, forwards:     a wrapped line starts fresh, so laying out from the remembered start is
+	                           the same answer as laying out from the top would have been
+	  - wrapped, backwards:    there is nothing to seek from, and the document is laid out again
+
+	That last one is the honest cost of word wrap: where a line begins depends on the width it is being
+	wrapped to, and nothing but the layout knows it.
+*/
+fui_inline uint32_t fui__TextLayOutWindow(const fuiContext *context, fuiWidgetState *state, const char *buffer, const int32_t length, const float pixelHeight, const bool wordWrap, const float wrapWidth, const float boxTopY, const float rowStep, fuiTextLine *outLines, fui__TextWindow *window) {
+	int32_t storedFirstLine = window->firstVisibleLine - FUI__TEXT_OVERSCAN_LINES;
+	if(storedFirstLine < 0) {
+		storedFirstLine = 0;
+	}
+
+	int32_t startOffset = 0;
+	int32_t startLine = 0;
+	if(state != fui_null && state->textWindowIsKnown) {
+		bool canSeekFromIt = !wordWrap || (storedFirstLine >= state->textWindowLine);
+		if(canSeekFromIt) {
+			startOffset = state->textWindowOffset;
+			startLine = state->textWindowLine;
+		}
+	}
+	if(!wordWrap) {
+		startOffset = fui__TextOffsetOfLineUnwrapped(buffer, length, startOffset, startLine, storedFirstLine);
+		startLine = storedFirstLine;
+	}
+
+	uint32_t linesToSkip = (uint32_t)(storedFirstLine - startLine);
+	uint32_t *doNotCountThemAgain = fui_null;
+	uint32_t storedCount = fuiBreakTextLinesFrom(context, &buffer[startOffset], (size_t)(length - startOffset), pixelHeight, wordWrap, wrapWidth, linesToSkip, outLines, (uint32_t)FUI_MAX_TEXT_LINES, doNotCountThemAgain);
+
+	if(state != fui_null && storedCount > 0) {
+		state->textWindowOffset = (int32_t)(outLines[0].start - buffer);
+		state->textWindowLine = storedFirstLine;
+		state->textWindowIsKnown = true;
+	}
+
+	window->storedFirstLine = storedFirstLine;
+	window->firstRowTopY = boxTopY - (float)(window->firstVisibleLine - storedFirstLine) * rowStep;
+	return(storedCount);
+}
+
 //! Maps the cursor to a byte offset in a multi-line field: the row by y, then the boundary by x inside it
-fui_inline int32_t fui__CaretFromCursorMultiline(const fuiContext *context, const fuiRect rect, const char *buffer, const fuiTextLine *lines, const uint32_t lineCount) {
+fui_inline int32_t fui__CaretFromCursorMultiline(const fuiContext *context, const fuiRect rect, const char *buffer, const fuiTextLine *lines, const uint32_t lineCount, const float firstRowTopY) {
 	if(lineCount == 0) {
 		return(0);
 	}
@@ -8439,7 +8766,6 @@ fui_inline int32_t fui__CaretFromCursorMultiline(const fuiContext *context, cons
 	if(lineStep <= 0.0f) {
 		return(0);
 	}
-	float firstRowTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
 	float rowsDown = (context->mousePosition.y - firstRowTopY) / lineStep;
 	int32_t rowIndex = (int32_t)rowsDown;
 	if(rowsDown < 0.0f) {
@@ -8478,17 +8804,35 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 
 	const fuiTheme *theme = &context->theme;
 	fuiId fieldId = fuiGetId(context, id);
+	// Only a multiline field remembers anything: a single line one has no scroll and nothing to count.
+	fuiWidgetState *state = multiline ? fui__WidgetStateGet(context, fieldId) : fui_null;
+	// Where the caret stood before this build touched anything. What follows it around is gated on it
+	// having MOVED - a view dragged away from the caret with the wheel has to stay where it was put, and
+	// snapping it back on the next frame would make the scrollbar unusable.
+	int32_t caretBeforeThisBuild = context->caretPosition;
+	bool caretWasAlreadyThisFields = (context->caretOwner == fieldId);
 	int32_t length = (int32_t)fui__StringLength(buffer);
-	float contentWidth = rect.w - theme->widgetPaddingX * 2.0f;
+	// A multiline field keeps a gutter for its scrollbar, and wraps inside what is left rather than under it.
+	float gutterWidth = multiline ? fuiScrollGutterWidth() : 0.0f;
+	float contentWidth = rect.w - theme->widgetPaddingX * 2.0f - gutterWidth;
 	float rowStep = fuiGetLineHeight(context, theme->fontHeight);
 
-	// The rows are broken up front because the mouse mapping, home, end, up and down all read them, and
-	// they are broken AGAIN further down because every edit below is a thing that changes them.
+	/*
+		The rows.
+
+		A multiline field lays out a WINDOW of its document rather than the front of it. That is the whole
+		difference between a field that can hold a file and one that shows its first two hundred and fifty
+		six lines and hides the rest: what is laid out is the rows the box can show, plus one above them so
+		the up arrow has somewhere to step, and the scroll says which line that window starts at.
+
+		Everything below indexes into the WINDOW. Nothing has to know about the document, because the caret
+		is kept inside the window - see the scroll-to-caret further down.
+	*/
 	fuiTextLine lines[FUI_MAX_TEXT_LINES];
 	uint32_t lineCount = 0;
-	if(multiline) {
-		lineCount = fuiBreakTextLines(context, buffer, (size_t)length, theme->fontHeight, wordWrap, contentWidth, lines, (uint32_t)FUI_MAX_TEXT_LINES);
-	}
+	fui__TextWindow window;
+	fui__ClearMemory(&window, sizeof(window));
+	window.firstRowTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
 
 	fuiInteraction interaction = fuiInteract(context, fieldId, rect);
 	fui__RegisterFocusable(context, fieldId);
@@ -8513,17 +8857,52 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		context->selectionAnchor = fui__SnapToCodepointStart(buffer, length, context->selectionAnchor);
 	}
 
+	// The box is drawn HERE rather than with the text, because the scrollbar goes in front of it and the
+	// rows have to be laid out from a scroll that the bar has already had its say in.
+	fuiDrawRect(context, rect, theme->widgetTrackColor);
+	fuiColor borderColor = isFocused ? theme->accentColor : theme->panelBorderColor;
+	fuiDrawRectOutline(context, rect, borderColor, theme->widgetBorderThickness);
+
+	float rowsBoxTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
+	if(multiline) {
+		window.totalLineCount = fui__TextCountLines(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth);
+		float rowsBoxHeight = fuiMaxF(rect.h - FUI__MULTILINE_TOP_PADDING * 2.0f, 0.0f);
+		int32_t rowsThatFit = (rowStep > 0.0f) ? (int32_t)(rowsBoxHeight / rowStep) : 1;
+		window.visibleLineCount = fuiMaxI(rowsThatFit, 1);
+
+		// The wheel first and the bar second, so the bar draws where the wheel has just put it rather than
+		// one frame behind. Same order a list box resolves its own two.
+		float scroll = (state != fui_null) ? ((float)state->textFirstLine * rowStep) : 0.0f;
+		if(context->mouseWheelDelta != 0.0f && fui__CursorIsOver(context, rect)) {
+			scroll -= context->mouseWheelDelta * rowStep * FUI__SCROLL_WHEEL_ROWS;
+		}
+		float contentLength = (float)window.totalLineCount * rowStep;
+		fuiRect scrollTrack = fuiRectMake(rect.x + rect.w - gutterWidth, rect.y, gutterWidth, rect.h);
+		fuiPushId(context, id);
+		scroll = fuiScrollbarVertical(context, scrollTrack, "__textScrollbar", scroll, rect.h, contentLength);
+		fuiPopId(context);
+
+		int32_t lastPossibleFirstLine = fuiMaxI(window.totalLineCount - window.visibleLineCount, 0);
+		const float roundToTheNearestLine = 0.5f;
+		int32_t askedForFirstLine = (rowStep > 0.0f) ? (int32_t)((scroll / rowStep) + roundToTheNearestLine) : 0;
+		window.firstVisibleLine = fuiClampI(askedForFirstLine, 0, lastPossibleFirstLine);
+		if(state != fui_null) {
+			state->textFirstLine = window.firstVisibleLine;
+		}
+		lineCount = fui__TextLayOutWindow(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth, rowsBoxTopY, rowStep, lines, &window);
+	}
+
 	if(isFocused && ownsCaret) {
 		bool extendFromClick = fuiIsShiftDown(context);
 		if(interaction.wasPressed) {
 			int32_t clickedAt = multiline
-				? fui__CaretFromCursorMultiline(context, rect, buffer, lines, lineCount)
+				? fui__CaretFromCursorMultiline(context, rect, buffer, lines, lineCount, window.firstRowTopY)
 				: fui__CaretFromCursorSingleLine(context, rect, buffer, length);
 			fui__SetCaret(context, clickedAt, extendFromClick);
 		} else if(interaction.isHeld) {
 			// Holding and moving drags a selection out, which is the same gesture as a click plus shift.
 			int32_t draggedTo = multiline
-				? fui__CaretFromCursorMultiline(context, rect, buffer, lines, lineCount)
+				? fui__CaretFromCursorMultiline(context, rect, buffer, lines, lineCount, window.firstRowTopY)
 				: fui__CaretFromCursorSingleLine(context, rect, buffer, length);
 			const bool extendTheSelection = true;
 			fui__SetCaret(context, draggedTo, extendTheSelection);
@@ -8556,9 +8935,12 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		}
 
 		// Re-break before the movement keys read the rows, or home in the same frame as a backspace would
-		// answer for a layout that no longer exists.
+		// answer for a layout that no longer exists. The document is a different length now, so what was
+		// counted about it is gone too.
 		if(didChange && multiline) {
-			lineCount = fuiBreakTextLines(context, buffer, (size_t)length, theme->fontHeight, wordWrap, contentWidth, lines, (uint32_t)FUI_MAX_TEXT_LINES);
+			fui__TextForgetLineCount(state);
+			window.totalLineCount = fui__TextCountLines(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth);
+			lineCount = fui__TextLayOutWindow(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth, rowsBoxTopY, rowStep, lines, &window);
 		}
 
 		bool extendSelection = fuiIsShiftDown(context);
@@ -8690,19 +9072,58 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		fuiSetCursor(context, FUI_CURSOR_TEXT);
 	}
 
-	fuiDrawRect(context, rect, theme->widgetTrackColor);
-	fuiColor borderColor = isFocused ? theme->accentColor : theme->panelBorderColor;
-	fuiDrawRectOutline(context, rect, borderColor, theme->widgetBorderThickness);
+	/*
+		Scroll to the caret, and lay the window out one last time.
 
-	// Broken one last time, so the caret and the highlight sit on the rows the text is about to be drawn
-	// as rather than the ones it had before this frame's typing.
+		Everything above indexes into the WINDOW, and that only stays true while the caret is inside it.
+		A key that moved the caret past the top or the bottom row is what moves the window, exactly as it
+		does in every editor - and doing it here, after every key has had its turn, means it happens once
+		however many of them fired.
+	*/
 	if(multiline) {
-		lineCount = fuiBreakTextLines(context, buffer, (size_t)length, theme->fontHeight, wordWrap, contentWidth, lines, (uint32_t)FUI_MAX_TEXT_LINES);
+		// Typing, a click, an arrow key or the caret landing here for the first time all move it. The wheel
+		// and the scrollbar do not, and are what this leaves alone.
+		bool caretMoved = (context->caretPosition != caretBeforeThisBuild) || !caretWasAlreadyThisFields || didChange;
+		bool windowMoved = false;
+		if(isFocused && ownsCaret && caretMoved && lineCount > 0) {
+			// Which line the caret is on. Reading it off the window is a handful of comparisons and is
+			// right almost every time; only a caret the window does not reach - the end of a document a
+			// field was just focused on - is worth walking the text for.
+			int32_t windowFirstByte = (int32_t)(lines[0].start - buffer);
+			int32_t windowLastByte = (int32_t)(lines[lineCount - 1u].start - buffer) + (int32_t)lines[lineCount - 1u].length;
+			bool caretIsInsideTheWindow = (context->caretPosition >= windowFirstByte) && (context->caretPosition <= windowLastByte);
+			int32_t caretLine;
+			if(caretIsInsideTheWindow) {
+				uint32_t caretRow = fui__CaretRowIndex(lines, lineCount, buffer, context->caretPosition, fui_null);
+				caretLine = window.storedFirstLine + (int32_t)caretRow;
+			} else {
+				caretLine = fui__TextLineOfOffset(context, buffer, length, theme->fontHeight, wordWrap, contentWidth, context->caretPosition);
+			}
+			int32_t lastVisibleLine = window.firstVisibleLine + window.visibleLineCount - 1;
+			int32_t movedToLine = window.firstVisibleLine;
+			if(caretLine < window.firstVisibleLine) {
+				movedToLine = caretLine;
+			} else if(caretLine > lastVisibleLine) {
+				movedToLine = caretLine - window.visibleLineCount + 1;
+			}
+			int32_t lastPossibleFirstLine = fuiMaxI(window.totalLineCount - window.visibleLineCount, 0);
+			movedToLine = fuiClampI(movedToLine, 0, lastPossibleFirstLine);
+			if(movedToLine != window.firstVisibleLine) {
+				window.firstVisibleLine = movedToLine;
+				if(state != fui_null) {
+					state->textFirstLine = movedToLine;
+				}
+				windowMoved = true;
+			}
+		}
+		if(windowMoved) {
+			lineCount = fui__TextLayOutWindow(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth, rowsBoxTopY, rowStep, lines, &window);
+		}
 	}
 
 	float textLeftX = rect.x + theme->widgetPaddingX;
 	float singleRowTopY = rect.y + (rect.h - theme->fontHeight) * 0.5f;
-	float firstRowTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
+	float firstRowTopY = window.firstRowTopY;
 
 	fuiPushClip(context, rect);
 	bool showsCaretAndSelection = isFocused && ownsCaret;
@@ -8722,7 +9143,15 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	}
 
 	if(multiline) {
-		fui__DrawTextBlockInRect(context, rect, buffer, (size_t)length, wordWrap, theme->textColor);
+		// The rows that are already laid out, rather than the document broken a third time. A row above or
+		// below the box is dropped by the clip, which fuiDrawText answers from two numbers.
+		for(uint32_t rowIndex = 0; rowIndex < lineCount; ++rowIndex) {
+			if(lines[rowIndex].length == 0) {
+				continue;
+			}
+			fuiVec2 rowPosition = fuiV2(textLeftX, firstRowTopY + (float)rowIndex * rowStep);
+			fuiDrawText(context, lines[rowIndex].start, lines[rowIndex].length, rowPosition, theme->fontHeight, theme->textColor);
+		}
 	} else {
 		fui__DrawTextInRect(context, rect, buffer, theme->textColor);
 	}
@@ -9372,18 +9801,31 @@ fui_api float fuiMenuBarHeight(const fuiContext *context) {
 //! Clearance a popup keeps from the top and bottom of the window, so a cut one does not sit flush on the edge
 #define FUI__MENU_SCREEN_MARGIN 4.0f
 
-//! How tall the strip is that a cut popup marks its cut edge with
-#define FUI__MENU_SCROLL_HINT_HEIGHT 10.0f
+//! How tall the strip is that a cut popup marks its cut edge with. Big enough to be a target, because
+//! resting on it is what scrolls the menu - which is what the arrow on one has always meant
+#define FUI__MENU_SCROLL_HINT_HEIGHT 14.0f
+
+//! How many rows a second the menu moves while the cursor rests on one of those strips
+#define FUI__MENU_HOVER_SCROLL_ROWS_PER_SECOND 10.0f
+
+//! Below this share of the window, the space under a menu's trigger is not worth opening into and the
+//! popup takes the whole height instead, covering whatever it drops from
+#define FUI__MENU_SPACE_BELOW_FRACTION 0.5f
+
+//! Where the strip along one edge of a popup sits, whether or not there is anything beyond that edge
+fui_inline fuiRect fui__MenuScrollStrip(const fuiRect popupRect, const bool isTheTopEdge) {
+	float stripTop = isTheTopEdge ? popupRect.y : (popupRect.y + popupRect.h - FUI__MENU_SCROLL_HINT_HEIGHT);
+	fuiRect result = fuiRectMake(popupRect.x, stripTop, popupRect.w, FUI__MENU_SCROLL_HINT_HEIGHT);
+	return(result);
+}
 
 //! Marks one edge of a popup that has rows beyond it, with the triangle every desktop menu uses for it
-static void fui__MenuDrawScrollHint(fuiContext *context, const fuiRect popupRect, const bool isTheTopEdge) {
+static void fui__MenuDrawScrollHint(fuiContext *context, const fuiRect strip, const bool isTheTopEdge, const bool isHovered) {
 	const fuiTheme *theme = &context->theme;
-	float stripTop = isTheTopEdge ? popupRect.y : (popupRect.y + popupRect.h - FUI__MENU_SCROLL_HINT_HEIGHT);
-	fuiRect strip = fuiRectMake(popupRect.x, stripTop, popupRect.w, FUI__MENU_SCROLL_HINT_HEIGHT);
-	fuiDrawRect(context, strip, theme->widgetTrackColor);
+	fuiDrawRect(context, strip, isHovered ? theme->menuHighlightColor : theme->widgetTrackColor);
 
 	const float arrowHalfWidth = 5.0f;
-	const float arrowInset = 2.5f;
+	const float arrowInset = 4.0f;
 	float centerX = strip.x + strip.w * 0.5f;
 	float pointY = isTheTopEdge ? (strip.y + arrowInset) : (strip.y + strip.h - arrowInset);
 	float baseY = isTheTopEdge ? (strip.y + strip.h - arrowInset) : (strip.y + arrowInset);
@@ -9394,7 +9836,7 @@ static void fui__MenuDrawScrollHint(fuiContext *context, const fuiRect popupRect
 	fuiDrawPolygon(context, arrow, 3u, theme->textColor);
 }
 
-static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const fuiId id, const float leftX, const float topY) {
+static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const fuiId id, const float leftX, const float topY, const bool opensSideways) {
 	const fuiTheme *theme = &context->theme;
 	float width = theme->menuPopupMinWidth;
 	float contentHeight = fui__MenuRowHeight(context);
@@ -9418,14 +9860,44 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 	*/
 	float windowWidth = (float)context->windowSize.x;
 	float windowHeight = (float)context->windowSize.y;
-	float tallestAllowed = fuiMaxF(windowHeight - FUI__MENU_SCREEN_MARGIN * 2.0f, fui__MenuRowHeight(context));
-	float boxHeight = fuiMinF(contentHeight, tallestAllowed);
+	float wholeHeight = fuiMaxF(windowHeight - FUI__MENU_SCREEN_MARGIN * 2.0f, fui__MenuRowHeight(context));
+	float spaceBelowTheTrigger = fuiMaxF(windowHeight - FUI__MENU_SCREEN_MARGIN - topY, 0.0f);
+
+	/*
+		Where the box goes, in the order a desktop menu decides it.
+
+		It drops from its trigger when it fits below one. It is moved UP when it does not, which is what
+		keeps a normal menu whole near the bottom edge. And when it is taller than the screen itself it
+		opens into the space below the trigger anyway, as long as that is most of the screen - because a
+		menu bar title whose popup is forced to the top of the window has its popup drawn over the title,
+		and over every other title on the bar with it.
+	*/
+	float boxHeight = contentHeight;
+	float placedY = topY;
+	if(contentHeight > spaceBelowTheTrigger) {
+		bool fitsOnScreenSomewhere = (contentHeight <= wholeHeight);
+		if(fitsOnScreenSomewhere) {
+			placedY = windowHeight - FUI__MENU_SCREEN_MARGIN - contentHeight;
+		} else if(spaceBelowTheTrigger >= (wholeHeight * FUI__MENU_SPACE_BELOW_FRACTION)) {
+			boxHeight = spaceBelowTheTrigger;
+			placedY = topY;
+		} else {
+			boxHeight = wholeHeight;
+			placedY = FUI__MENU_SCREEN_MARGIN;
+		}
+	}
+	placedY = fuiClampF(placedY, FUI__MENU_SCREEN_MARGIN, fuiMaxF(windowHeight - boxHeight - FUI__MENU_SCREEN_MARGIN, FUI__MENU_SCREEN_MARGIN));
 	float hiddenHeight = fuiMaxF(contentHeight - boxHeight, 0.0f);
 
-	// Kept on screen: a popup that would run off an edge is MOVED rather than cropped, which is what makes
-	// "every row is reachable" true near a corner instead of a hope.
+	// Sideways is the same idea: a submenu with no room to its parent's right opens to the LEFT of it
+	// rather than being slid back over the rows it belongs to.
 	float placedX = fuiClampF(leftX, 0.0f, fuiMaxF(windowWidth - width, 0.0f));
-	float placedY = fuiClampF(topY, FUI__MENU_SCREEN_MARGIN, fuiMaxF(windowHeight - boxHeight - FUI__MENU_SCREEN_MARGIN, FUI__MENU_SCREEN_MARGIN));
+	if(opensSideways && (leftX + width) > windowWidth) {
+		float flippedX = frame->triggerRect.x - width;
+		if(flippedX >= 0.0f) {
+			placedX = flippedX;
+		}
+	}
 
 	// A popup is measured from text, so its box lands on fractions of a pixel: the title it drops from is as
 	// wide as its caption, and the widest row it opens at is as wide as ITS caption. Snapped onto the pixel
@@ -9433,6 +9905,12 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 	// is the one that goes, since it is the edge every truncating scissor cuts.
 	frame->popupRect = fui__SnapRectToPixels(fuiRectMake(placedX, placedY, width, boxHeight));
 	frame->contentHeight = contentHeight;
+
+	fuiRect upStrip = fui__MenuScrollStrip(frame->popupRect, true);
+	fuiRect downStrip = fui__MenuScrollStrip(frame->popupRect, false);
+	fuiRect noStrip = fuiRectMake(0.0f, 0.0f, 0.0f, 0.0f);
+	frame->scrollUpStrip = noStrip;
+	frame->scrollDownStrip = noStrip;
 
 	float scroll = 0.0f;
 	if(hiddenHeight > 0.0f && state != fui_null) {
@@ -9442,8 +9920,26 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 			// Taken, so a panel or a parent popup underneath does not scroll to the same turn of the wheel.
 			context->mouseWheelDelta = 0.0f;
 		}
+
+		// Resting the cursor on a strip scrolls the menu, steadily and in real time. An arrow that only
+		// says there is more, and does nothing when it is pointed at, is a button that lies.
+		float hoverStep = fui__MenuRowHeight(context) * FUI__MENU_HOVER_SCROLL_ROWS_PER_SECOND * context->frameTime;
+		if(fui__MenuCursorIsOver(context, upStrip)) {
+			scroll -= hoverStep;
+		} else if(fui__MenuCursorIsOver(context, downStrip)) {
+			scroll += hoverStep;
+		}
+
 		scroll = fuiClampF(scroll, 0.0f, hiddenHeight);
 		state->scroll = scroll;
+
+		// Worked out from the SETTLED scroll, so the strip disappears on the frame the last row arrives.
+		if(scroll > 0.0f) {
+			frame->scrollUpStrip = upStrip;
+		}
+		if(scroll < hiddenHeight) {
+			frame->scrollDownStrip = downStrip;
+		}
 	} else if(state != fui_null) {
 		state->scroll = 0.0f;
 	}
@@ -9465,14 +9961,15 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 //! Closes an open popup and remembers what its rows measured, which is the size it opens at next build
 static void fui__MenuEndPopup(fuiContext *context, const fuiMenuFrame *frame, const fuiId id) {
 	// A popup that had to be cut says so at the edge it was cut at, or a menu with three hundred rows
-	// below the fold looks exactly like one with twelve.
-	bool canScrollUp = (frame->scrollOffset > 0.0f);
-	bool canScrollDown = ((frame->scrollOffset + frame->popupRect.h) < frame->contentHeight);
-	if(canScrollUp) {
-		fui__MenuDrawScrollHint(context, frame->popupRect, true);
+	// below the fold looks exactly like one with twelve. Drawn AFTER the rows, so a row sliding under a
+	// strip goes behind it rather than through it.
+	if(!fuiRectIsEmpty(frame->scrollUpStrip)) {
+		bool isHovered = fui__MenuCursorIsOver(context, frame->scrollUpStrip);
+		fui__MenuDrawScrollHint(context, frame->scrollUpStrip, true, isHovered);
 	}
-	if(canScrollDown) {
-		fui__MenuDrawScrollHint(context, frame->popupRect, false);
+	if(!fuiRectIsEmpty(frame->scrollDownStrip)) {
+		bool isHovered = fui__MenuCursorIsOver(context, frame->scrollDownStrip);
+		fui__MenuDrawScrollHint(context, frame->scrollDownStrip, false, isHovered);
 	}
 
 	// The frame goes on after the rows, or the hover wash on the top and bottom row - which runs the full
@@ -9525,7 +10022,10 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 	frame->widestItem = fuiMaxF(frame->widestItem, desiredWidth);
 
 	fuiRect popupClip = fuiGetClipRect(context);
-	bool cursorIsOnTheRow = fui__MenuCursorIsOver(context, rowRect) && fuiPointInRect(context->mousePosition, popupClip);
+	// A row lying under a scroll strip does not take the hover: the cursor resting there is aiming at the
+	// strip, and letting the row behind it light up - or open its submenu - would make the strip unusable.
+	bool cursorIsOnAStrip = fuiPointInRect(context->mousePosition, frame->scrollUpStrip) || fuiPointInRect(context->mousePosition, frame->scrollDownStrip);
+	bool cursorIsOnTheRow = !cursorIsOnAStrip && fui__MenuCursorIsOver(context, rowRect) && fuiPointInRect(context->mousePosition, popupClip);
 	bool isHovered = enabled && cursorIsOnTheRow;
 	if(isHovered) {
 		fui__MenuTakeTheMouse(context);
@@ -9697,7 +10197,9 @@ fui_api bool fuiBeginMenu(fuiContext *context, const char *label) {
 			leftX = triggerRect.x + triggerRect.w;  // opens to the RIGHT of its row
 			topY = triggerRect.y;                   // with its top on the row's top
 		}
-		fui__MenuBeginPopup(context, frame, id, leftX, topY);
+		// A submenu opens to the side of its row and may have to flip; a bar menu drops straight down.
+		bool opensSideways = !parent->isBar;
+		fui__MenuBeginPopup(context, frame, id, leftX, topY, opensSideways);
 	}
 	return(isOpen);
 }
@@ -9830,7 +10332,8 @@ fui_api bool fuiBeginContextMenu(fuiContext *context, const char *id) {
 
 	if(isOpen) {
 		// Anchored at the cursor as it was when the menu opened, growing down and to the right of it.
-		fui__MenuBeginPopup(context, frame, contextId, context->contextMenuAnchor.x, context->contextMenuAnchor.y);
+		const bool aContextMenuDropsDownwards = false;
+		fui__MenuBeginPopup(context, frame, contextId, context->contextMenuAnchor.x, context->contextMenuAnchor.y, aContextMenuDropsDownwards);
 	}
 	return(isOpen);
 }
