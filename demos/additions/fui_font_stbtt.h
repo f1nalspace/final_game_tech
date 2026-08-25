@@ -45,6 +45,16 @@ is read straight out of them.
 	FUI_STBTT_MEMSET              | Defaults to memset from <string.h>
 	FUI_STBTT_ASSERT              | Defaults to FUI_ASSERT
 
+--- Changelog ---
+
+## v0.9.3
+- Fixed: Kerning was read out of the font per PAIR, per character, on every measurement and every draw.
+  stbtt_GetCodepointKernAdvance is not a lookup - it walks the character map twice and then binary searches
+  the kerning table - and it measured at over eighty percent of the whole frame on a dense interface. The
+  baked range now gets a real table, one float per pair, filled once. Printable ASCII is 36 KB of it.
+- New: A font whose whole baked range kerns to zero is handed back with NO kerning callback at all.
+- New: fuiStbttFont.kerningPairs, fuiStbttFont.hasAnyKerning and fuiStbttGlyph.indexInFont.
+
 --- License ---
 
 MIT License, Copyright (c) 2017-2026 Torsten Spaete
