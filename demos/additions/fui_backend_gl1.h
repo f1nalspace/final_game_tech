@@ -69,6 +69,13 @@ fui_api bool fuiGL1UploadFontAtlas(const unsigned char *alphaPixels, const uint3
 *       a white tint gives - which is the tint the list widgets draw their row icons with.
 * @note A sheet cut into cells and drawn with the linear filter can pick up the edge texel of the cell
 *       NEXT to it. Leave a texel of empty space between the cells, or upload the sheet unfiltered.
+* @note Nothing here tests for GL_ARB_texture_non_power_of_two before uploading, since this backend targets
+*       an api old enough not to have it. A 240 by 48 sheet was tried against a current driver anyway
+*       (NVIDIA 580, a 4.6 compatibility context) and came back correct, with no error out of glTexImage2D
+*       and the right texel read back off the quad - that extension has been core since OpenGL 2.0, so a
+*       driver anyone is likely to be running takes any size. The rule to round a sheet UP to a power of
+*       two in both axes and leave the spare cells empty is a portability habit for the genuinely old
+*       implementations this backend also aims at, and not a bug anybody is going to hit on a desktop today.
 */
 fui_api bool fuiGL1UploadImageRGBA(const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture);
 
