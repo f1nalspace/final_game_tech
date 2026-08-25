@@ -254,6 +254,12 @@ SOFTWARE.
 	- New: FUI_MEMCHR, to override that scan the way FUI_MEMCPY and the others are overridden.
 	- Changed: A multiline field keeps a gutter for its scrollbar, so it wraps inside what is left of its
 	  width rather than underneath the bar.
+	- Fixed: A multiline field clipped its rows to the WHOLE widget, so the row kept above the first visible
+	  one showed its feet inside the top border while scrolled, and the last row was sliced through flush
+	  against the bottom one. The rows are clipped to their own box now, which is a whole number of rows
+	  tall with the remainder split between the two ends, so no row is ever cut in half.
+	- Changed: FUI__MULTILINE_TOP_PADDING is FUI__MULTILINE_PADDING_Y and 6 rather than 4, and it is kept at
+	  the BOTTOM of a multiline widget as well as the top.
 	- Fixed: The retained widget state table held 256 widgets and, once full, turned every lookup into a scan
 	  of all of them that answered nothing - so a panel silently lost its scroll position and a list its column
 	  widths. It grows and rehashes instead, at the frame boundary, where nothing is holding a pointer into it.
@@ -6662,8 +6668,9 @@ fui_api void fuiDrawTextBlock(fuiContext *context, const char *text, const size_
 #define FUI__RESIZE_GRIP_TICK_COUNT 3
 //! Vertical padding above and below the text of a group box title bar
 #define FUI__GROUP_BOX_TITLE_PADDING 3.0f
-//! Inset of the first row from the top edge of a multi-line widget
-#define FUI__MULTILINE_TOP_PADDING 4.0f
+//! Inset of the rows from the top AND bottom edges of a multi-line widget. Both, because a scrolling one
+//! has a row arriving at either edge and a row cut off flush against the frame reads as a broken glyph
+#define FUI__MULTILINE_PADDING_Y 6.0f
 //! Smallest inset of the check mark inside a checkbox box, and of the dot inside a radio marker
 #define FUI__CHECK_MARK_INSET 4.0f
 //! How much bare well is left showing between the bevel of a checkbox box and the mark inside it
@@ -6951,7 +6958,7 @@ fui_inline void fui__DrawTextBlockInRect(fuiContext *context, const fuiRect rect
 	}
 	const fuiTheme *theme = &context->theme;
 	float contentWidth = rect.w - theme->widgetPaddingX * 2.0f;
-	fuiVec2 blockPosition = fuiV2(rect.x + theme->widgetPaddingX, rect.y + FUI__MULTILINE_TOP_PADDING);
+	fuiVec2 blockPosition = fuiV2(rect.x + theme->widgetPaddingX, rect.y + FUI__MULTILINE_PADDING_Y);
 	fuiPushClip(context, rect);
 	fuiDrawTextBlock(context, text, textLength, blockPosition, theme->fontHeight, color, wordWrap, contentWidth);
 	fuiPopClip(context);
@@ -8616,6 +8623,8 @@ typedef struct fui__TextWindow {
 	int32_t totalLineCount;
 	//! How many rows the box shows at once
 	int32_t visibleLineCount;
+	//! How tall exactly those rows are, which is what they are clipped to so none of them is cut in half
+	float rowsHeight;
 	//! Where the FIRST STORED row is drawn, which is above the box by whatever was kept for the arrow keys
 	float firstRowTopY;
 } fui__TextWindow;
@@ -8832,7 +8841,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	uint32_t lineCount = 0;
 	fui__TextWindow window;
 	fui__ClearMemory(&window, sizeof(window));
-	window.firstRowTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
+	window.firstRowTopY = rect.y + FUI__MULTILINE_PADDING_Y;
 
 	fuiInteraction interaction = fuiInteract(context, fieldId, rect);
 	fui__RegisterFocusable(context, fieldId);
@@ -8863,12 +8872,19 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	fuiColor borderColor = isFocused ? theme->accentColor : theme->panelBorderColor;
 	fuiDrawRectOutline(context, rect, borderColor, theme->widgetBorderThickness);
 
-	float rowsBoxTopY = rect.y + FUI__MULTILINE_TOP_PADDING;
+	float rowsBoxTopY = rect.y + FUI__MULTILINE_PADDING_Y;
 	if(multiline) {
 		window.totalLineCount = fui__TextCountLines(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth);
-		float rowsBoxHeight = fuiMaxF(rect.h - FUI__MULTILINE_TOP_PADDING * 2.0f, 0.0f);
-		int32_t rowsThatFit = (rowStep > 0.0f) ? (int32_t)(rowsBoxHeight / rowStep) : 1;
+		float insetHeight = fuiMaxF(rect.h - FUI__MULTILINE_PADDING_Y * 2.0f, 0.0f);
+		int32_t rowsThatFit = (rowStep > 0.0f) ? (int32_t)(insetHeight / rowStep) : 1;
 		window.visibleLineCount = fuiMaxI(rowsThatFit, 1);
+
+		// Only WHOLE rows are shown. A box is almost never an exact number of rows tall, and the remainder
+		// is split between the top and the bottom rather than left at the bottom for a last row to be
+		// sliced through - a row cut off against the frame is the one thing a scrolling field must not do.
+		window.rowsHeight = (float)window.visibleLineCount * rowStep;
+		float leftOverHeight = fuiMaxF(insetHeight - window.rowsHeight, 0.0f);
+		rowsBoxTopY = rect.y + FUI__MULTILINE_PADDING_Y + leftOverHeight * 0.5f;
 
 		// The wheel first and the bar second, so the bar draws where the wheel has just put it rather than
 		// one frame behind. Same order a list box resolves its own two.
@@ -9125,7 +9141,23 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	float singleRowTopY = rect.y + (rect.h - theme->fontHeight) * 0.5f;
 	float firstRowTopY = window.firstRowTopY;
 
-	fuiPushClip(context, rect);
+	/*
+		What the rows are clipped to.
+
+		A multiline field is clipped to the box its ROWS live in and not to the whole widget, which is the
+		difference between a scrolling one that looks right and one that does not. There is always a row
+		just above the first visible one - the up arrow needs somewhere to step - and always a part of one
+		below the last, and clipped to the widget both of them are drawn into the frame: the top one shows
+		its feet above the first row, and the bottom one is cut off flush against the border with nothing
+		between them. The gutter is taken off the right for the same reason, so a long line runs under the
+		padding rather than under the scrollbar.
+	*/
+	fuiRect textClip = rect;
+	if(multiline) {
+		float widestClip = fuiMaxF(rect.w - gutterWidth, 0.0f);
+		textClip = fuiRectMake(rect.x, rowsBoxTopY, widestClip, window.rowsHeight);
+	}
+	fuiPushClip(context, textClip);
 	bool showsCaretAndSelection = isFocused && ownsCaret;
 	if(showsCaretAndSelection && fui__HasSelection(context)) {
 		int32_t selectionStart = fui__SelectionStart(context);
