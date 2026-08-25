@@ -166,6 +166,7 @@
     <ClInclude Include="..\additions\fui_font_stbtt.h" />
     <ClInclude Include="..\additions\final_fonts.h" />
     <ClInclude Include="..\additions\fui_backend_gl1.h" />
+    <ClInclude Include="..\additions\fui_input_fpl.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

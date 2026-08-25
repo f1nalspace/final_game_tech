@@ -30,6 +30,7 @@ set(MY_HEADER_FILES
 	"../additions/fui_font_stbtt.h"
 	"../additions/final_fonts.h"
 	"../additions/fui_backend_gl1.h"
+	"../additions/fui_input_fpl.h"
 	)
 
 set(MY_TRANSLATION_UNITS

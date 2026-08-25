@@ -62,6 +62,9 @@ License:
 #define FUI_GL1_IMPLEMENTATION
 #include <fui_backend_gl1.h>
 
+#define FUI_INPUT_FPL_IMPLEMENTATION
+#include <fui_input_fpl.h>
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -331,200 +334,10 @@ static const fuiCommandTable g_demoCommandTable = { g_demoCommandRows, (uint32_t
 // ----------------------------------------------------------------------------
 // FPL -> final_ui.h
 //
-// The library defines its own key enum rather than borrowing a platform's, so this table is the whole
-// bridge. Everything else is a copy.
+// The whole bridge - the key table, the polled device state, the drained events and the clipboard -
+// lives in fui_input_fpl.h next door, because every FPL program that draws this interface needs the
+// same sixty lines and none of them should carry their own copy of the key table.
 // ----------------------------------------------------------------------------
-
-static fuiKey MapFplKeyToFuiKey(const fplKey key) {
-	if(key >= fplKey_A && key <= fplKey_Z) {
-		return (fuiKey)((int)FUI_KEY_A + ((int)key - (int)fplKey_A));
-	}
-	if(key >= fplKey_0 && key <= fplKey_9) {
-		return (fuiKey)((int)FUI_KEY_0 + ((int)key - (int)fplKey_0));
-	}
-	if(key >= fplKey_F1 && key <= fplKey_F12) {
-		return (fuiKey)((int)FUI_KEY_F1 + ((int)key - (int)fplKey_F1));
-	}
-	switch(key) {
-		case fplKey_Backspace: return FUI_KEY_BACKSPACE;
-		case fplKey_Tab: return FUI_KEY_TAB;
-		case fplKey_Return: return FUI_KEY_RETURN;
-		case fplKey_Escape: return FUI_KEY_ESCAPE;
-		case fplKey_Space: return FUI_KEY_SPACE;
-		case fplKey_PageUp: return FUI_KEY_PAGE_UP;
-		case fplKey_PageDown: return FUI_KEY_PAGE_DOWN;
-		case fplKey_End: return FUI_KEY_END;
-		case fplKey_Home: return FUI_KEY_HOME;
-		case fplKey_Left: return FUI_KEY_LEFT;
-		case fplKey_Up: return FUI_KEY_UP;
-		case fplKey_Right: return FUI_KEY_RIGHT;
-		case fplKey_Down: return FUI_KEY_DOWN;
-		case fplKey_Insert: return FUI_KEY_INSERT;
-		case fplKey_Delete: return FUI_KEY_DELETE;
-		case fplKey_LeftShift: return FUI_KEY_LEFT_SHIFT;
-		case fplKey_RightShift: return FUI_KEY_RIGHT_SHIFT;
-		case fplKey_LeftControl: return FUI_KEY_LEFT_CONTROL;
-		case fplKey_RightControl: return FUI_KEY_RIGHT_CONTROL;
-		case fplKey_LeftAlt: return FUI_KEY_LEFT_ALT;
-		case fplKey_RightAlt: return FUI_KEY_RIGHT_ALT;
-		// X11 reports the side, Win32 can report the generic one. Both have to arrive, or a shortcut works
-		// on one platform and silently does not on the other.
-		case fplKey_Shift: return FUI_KEY_LEFT_SHIFT;
-		case fplKey_Control: return FUI_KEY_LEFT_CONTROL;
-		case fplKey_Alt: return FUI_KEY_LEFT_ALT;
-		default: return FUI_KEY_NONE;
-	}
-}
-
-typedef struct InputBridge {
-	fuiInput input;
-	bool keyWasDown[FUI_KEY_COUNT];
-	bool mouseWasDown[FUI_MOUSE_BUTTON_COUNT];
-	bool windowHasFocus;
-	float wheelThisFrame;
-	uint32_t typedCodePoints[FUI_MAX_TEXT_INPUT];
-	int32_t typedCount;
-	bool rightPressedThisFrame;
-	fplTimestamp lastTimestamp;
-} InputBridge;
-
-static void InputBridgeInit(InputBridge *bridge) {
-	fplClearStruct(bridge);
-	bridge->input = fuiZeroInput();
-	bridge->windowHasFocus = true;
-	bridge->lastTimestamp = fplTimestampQuery();
-}
-
-//! Drains the event queue for the things polling cannot give: typed characters, the wheel, and focus
-static void InputBridgePumpEvents(InputBridge *bridge) {
-	bridge->wheelThisFrame = 0.0f;
-	bridge->typedCount = 0;
-	bridge->rightPressedThisFrame = false;
-
-	fplEvent event;
-	while(fplPollEvent(&event)) {
-		switch(event.type) {
-			case fplEventType_Window:
-			{
-				if(event.window.type == fplWindowEventType_GotFocus) {
-					bridge->windowHasFocus = true;
-				} else if(event.window.type == fplWindowEventType_LostFocus) {
-					bridge->windowHasFocus = false;
-				}
-			} break;
-
-			case fplEventType_Keyboard:
-			{
-				if(event.keyboard.type == fplKeyboardEventType_Input) {
-					// The FULL codepoint, not a byte. final_ui.h takes codepoints precisely so that a
-					// platform layer narrowing this to a char cannot corrupt anything above U+00FF.
-					uint32_t codePoint = (uint32_t)event.keyboard.keyCode;
-					bool isPrintable = (codePoint >= 32u) && (codePoint != 127u);
-					if(isPrintable && bridge->typedCount < (int32_t)FUI_MAX_TEXT_INPUT) {
-						bridge->typedCodePoints[bridge->typedCount++] = codePoint;
-					}
-				}
-			} break;
-
-			case fplEventType_Mouse:
-			{
-				if(event.mouse.type == fplMouseEventType_Wheel) {
-					bridge->wheelThisFrame += event.mouse.wheelDelta;
-				} else if(event.mouse.type == fplMouseEventType_Button) {
-					bool isRightPress = (event.mouse.mouseButton == fplMouseButtonType_Right) && (event.mouse.buttonState != fplButtonState_Release);
-					if(isRightPress) {
-						bridge->rightPressedThisFrame = true;
-					}
-				}
-			} break;
-
-			default:
-				break;
-		}
-	}
-}
-
-/*
-	Fills this frame's fuiInput.
-
-	Held state comes from POLLING rather than from the event queue, which is the lesson the game learned
-	the hard way: a key pressed and released inside one frame latches as stuck-down when its state is
-	accumulated from events. The cost is that such a tap is not seen at all here - two half transitions in
-	one frame is something only an event stream can express - and for an interface that is the right trade.
-*/
-static void InputBridgeBuild(InputBridge *bridge) {
-	fplWindowSize windowSize = fplZeroInit;
-	fplGetWindowSize(&windowSize);
-
-	fplTimestamp now = fplTimestampQuery();
-	double elapsedSeconds = fplTimestampElapsed(bridge->lastTimestamp, now);
-	bridge->lastTimestamp = now;
-
-	fuiInput *input = &bridge->input;
-	input->windowSize = fuiV2i((int32_t)windowSize.width, (int32_t)windowSize.height);
-	input->deltaTime = (float)elapsedSeconds;
-	input->isActive = bridge->windowHasFocus;
-	input->mouseWheelDelta = bridge->wheelThisFrame;
-
-	fplMouseState mouseState = fplZeroInit;
-	fplPollMouseState(&mouseState);
-	input->mousePosition = fuiV2((float)mouseState.x, (float)mouseState.y);
-
-	// FPL orders its buttons left, right, middle; final_ui.h orders them left, middle, right.
-	const fplMouseButtonType fplButtonForFuiButton[FUI_MOUSE_BUTTON_COUNT] = {
-		fplMouseButtonType_Left, fplMouseButtonType_Middle, fplMouseButtonType_Right,
-	};
-	for(int32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
-		bool isDown = mouseState.buttonStates[fplButtonForFuiButton[buttonIndex]] != fplButtonState_Release;
-		bool wasDown = bridge->mouseWasDown[buttonIndex];
-		input->mouseButtons[buttonIndex].endedDown = isDown;
-		input->mouseButtons[buttonIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;
-		bridge->mouseWasDown[buttonIndex] = isDown;
-	}
-
-	fplKeyboardState keyboardState = fplZeroInit;
-	fplPollKeyboardState(&keyboardState);
-	for(int32_t keyIndex = 0; keyIndex < (int32_t)FUI_KEY_COUNT; ++keyIndex) {
-		input->keys[keyIndex].endedDown = false;
-		input->keys[keyIndex].halfTransitionCount = 0;
-	}
-	for(uint32_t rawKey = 0; rawKey < fplArrayCount(keyboardState.buttonStatesMapped); ++rawKey) {
-		fuiKey mappedKey = MapFplKeyToFuiKey((fplKey)rawKey);
-		if(mappedKey == FUI_KEY_NONE) {
-			continue;
-		}
-		bool isDown = keyboardState.buttonStatesMapped[rawKey] != fplButtonState_Release;
-		// Several raw keys can land on one fui key, so a key already reported down stays down.
-		if(isDown) {
-			input->keys[mappedKey].endedDown = true;
-		}
-	}
-	for(int32_t keyIndex = 0; keyIndex < (int32_t)FUI_KEY_COUNT; ++keyIndex) {
-		bool isDown = input->keys[keyIndex].endedDown;
-		bool wasDown = bridge->keyWasDown[keyIndex];
-		input->keys[keyIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;
-		bridge->keyWasDown[keyIndex] = isDown;
-	}
-
-	for(int32_t typedIndex = 0; typedIndex < bridge->typedCount; ++typedIndex) {
-		input->textInput[typedIndex] = bridge->typedCodePoints[typedIndex];
-	}
-	input->textInputLength = bridge->typedCount;
-}
-
-// ----------------------------------------------------------------------------
-// FPL's clipboard, as the library asks for it
-// ----------------------------------------------------------------------------
-
-static bool DemoGetClipboardText(void *userData, char *destination, uint32_t maxDestinationLength) {
-	(void)userData;
-	return fplGetClipboardText(destination, maxDestinationLength);
-}
-
-static bool DemoSetClipboardText(void *userData, const char *text) {
-	(void)userData;
-	return fplSetClipboardText(text);
-}
 
 // ----------------------------------------------------------------------------
 // The interface itself
@@ -1129,8 +942,8 @@ int main(int argc, char **argv) {
 
 	// Optional, and worth wiring: without it the text field simply has no clipboard.
 	fuiPlatform platform = fplZeroInit;
-	platform.getClipboardText = DemoGetClipboardText;
-	platform.setClipboardText = DemoSetClipboardText;
+	platform.getClipboardText = fuiFplGetClipboardText;
+	platform.setClipboardText = fuiFplSetClipboardText;
 	fuiSetPlatform(&ui, &platform);
 
 	DemoState demo;
@@ -1147,13 +960,13 @@ int main(int argc, char **argv) {
 		demo.iconSheetSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
 	}
 
-	InputBridge bridge;
-	InputBridgeInit(&bridge);
+	fuiFplInput bridge;
+	fuiFplInputInit(&bridge);
 
 	float smoothedFrameTime = 1.0f / 60.0f;
 	while(demo.isRunning && fplWindowUpdate()) {
-		InputBridgePumpEvents(&bridge);
-		InputBridgeBuild(&bridge);
+		fuiFplInputPumpEvents(&bridge);
+		fuiFplInputBuild(&bridge);
 
 		// Smoothed, because a per-frame reciprocal flickers too fast to read.
 		float frameTime = bridge.input.deltaTime;
