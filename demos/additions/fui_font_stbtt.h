@@ -108,7 +108,12 @@ typedef struct fuiStbttFont {
 	uint32_t firstCodePoint;
 	//! How many entries the glyph table has
 	uint32_t codePointCount;
-	//! The stbtt_fontinfo, kept alive because kerning is asked for per pair rather than baked into a table
+	//! Kerning of every pair of the baked range, in font units, or null when the range was too large to
+	//! table and the pairs are read out of the font one at a time instead. Row major, left codepoint first
+	float *kerningPairs;
+	//! False when every pair in the range came back zero, which is what lets the callback be dropped entirely
+	bool hasAnyKerning;
+	//! The stbtt_fontinfo, kept alive for the codepoints the baked table does not cover
 	void *fontInfo;
 	//! The caller's TrueType bytes. NOT copied, and they must outlive this font
 	const unsigned char *ttfData;
@@ -223,6 +228,10 @@ extern "C" {
 //! Glyph index a TrueType font gives a codepoint it does not have
 #define FUI__STBTT_MISSING_GLYPH_INDEX 0
 
+//! Largest range that gets a baked kerning table. The table is one float per PAIR, so this is the point
+//! where it would cost a megabyte and reading the font per pair is the better trade after all
+#define FUI__STBTT_MAX_KERNED_CODEPOINTS 512u
+
 fui_api fuiStbttBakeSettings fuiStbttDefaultBakeSettings(void) {
 	fuiStbttBakeSettings result;
 	result.pixelHeight = FUI__STBTT_DEFAULT_PIXEL_HEIGHT;
@@ -256,10 +265,37 @@ static bool fui__StbttGetGlyph(void *userData, uint32_t codePoint, fuiGlyph *out
 	return(true);
 }
 
-//! Reads one kerning pair straight out of the font. Not baked, because a table would be one entry per PAIR
+/*
+	Answers one kerning pair.
+
+	This is called once per CHARACTER of every string the interface measures or draws, which for a table
+	of a few hundred visible cells is tens of thousands of calls a frame. Asking the font each time is
+	what that used to do, and stbtt_GetCodepointKernAdvance is not a lookup: it walks the character map
+	twice to turn the two codepoints into glyph indices and then binary searches the kerning table. It
+	measured at over eighty percent of the whole frame.
+
+	So the baked range gets a real table, one entry per PAIR, filled once at bake time. A range of
+	printable ASCII is 95 by 95, which is thirty six kilobytes and one indexed read per call. A range too
+	large to table that way falls through to the old path, which is still correct, just slow.
+*/
 static float fui__StbttGetKerning(void *userData, uint32_t leftCodePoint, uint32_t rightCodePoint) {
 	fuiStbttFont *font = (fuiStbttFont *)userData;
-	if(font == fui_null || font->fontInfo == fui_null || font->bakedPixelHeight <= 0.0f) {
+	if(font == fui_null || font->bakedPixelHeight <= 0.0f) {
+		return(0.0f);
+	}
+
+	uint32_t firstCodePoint = font->firstCodePoint;
+	uint32_t codePointCount = font->codePointCount;
+	bool leftIsInRange = (leftCodePoint >= firstCodePoint) && ((leftCodePoint - firstCodePoint) < codePointCount);
+	bool rightIsInRange = (rightCodePoint >= firstCodePoint) && ((rightCodePoint - firstCodePoint) < codePointCount);
+	if(font->kerningPairs != fui_null && leftIsInRange && rightIsInRange) {
+		size_t leftIndex = (size_t)(leftCodePoint - firstCodePoint);
+		size_t rightIndex = (size_t)(rightCodePoint - firstCodePoint);
+		size_t pairIndex = leftIndex * (size_t)codePointCount + rightIndex;
+		return(font->kerningPairs[pairIndex]);
+	}
+
+	if(font->fontInfo == fui_null) {
 		return(0.0f);
 	}
 	stbtt_fontinfo *fontInfo = (stbtt_fontinfo *)font->fontInfo;
@@ -388,6 +424,49 @@ fui_api bool fuiStbttFontBake(fuiStbttFont *font, const void *ttfData, const fui
 	}
 	FUI_STBTT_FREE(packedCharacters);
 
+	/*
+		The kerning table.
+
+		Every pair of the baked range, resolved once, so the callback that runs per character of every
+		string is an array read. The glyph indices were resolved in the loop above, so this asks the font
+		by GLYPH and never touches the character map again.
+
+		A range too large to table is left alone: the callback falls back to reading the font per pair,
+		which is what this used to do for everything.
+	*/
+	font->kerningPairs = fui_null;
+	font->hasAnyKerning = false;
+	if(resolved.codePointCount <= FUI__STBTT_MAX_KERNED_CODEPOINTS) {
+		size_t pairCount = (size_t)resolved.codePointCount * (size_t)resolved.codePointCount;
+		float *kerningPairs = (float *)FUI_STBTT_MALLOC(pairCount * sizeof(float));
+		if(kerningPairs != fui_null) {
+			for(uint32_t leftIndex = 0; leftIndex < resolved.codePointCount; ++leftIndex) {
+				int leftGlyph = (int)glyphs[leftIndex].indexInFont;
+				size_t rowBase = (size_t)leftIndex * (size_t)resolved.codePointCount;
+				for(uint32_t rightIndex = 0; rightIndex < resolved.codePointCount; ++rightIndex) {
+					int rightGlyph = (int)glyphs[rightIndex].indexInFont;
+					int rawKerning = 0;
+					// A pair the font has no glyph for on either side cannot kern, and asking would walk
+					// the kerning table for an answer that is always zero.
+					if(leftGlyph != FUI__STBTT_MISSING_GLYPH_INDEX && rightGlyph != FUI__STBTT_MISSING_GLYPH_INDEX) {
+						rawKerning = stbtt_GetGlyphKernAdvance(fontInfo, leftGlyph, rightGlyph);
+					}
+					float kerningInFontUnits = 0.0f;
+					if(rawKerning != 0) {
+						float kerningInPixels = (float)rawKerning * scaleToPixels;
+						kerningInFontUnits = kerningInPixels / resolved.pixelHeight;
+						font->hasAnyKerning = true;
+					}
+					kerningPairs[rowBase + rightIndex] = kerningInFontUnits;
+				}
+			}
+			font->kerningPairs = kerningPairs;
+		}
+	} else {
+		// Nothing is known about a range that was not tabled, so the callback has to stay wired up.
+		font->hasAnyKerning = true;
+	}
+
 	// The space is asked for by name rather than looked up per character, because it is what a codepoint
 	// with no glyph falls back to and that lookup has already failed by then.
 	int rawSpaceAdvance = 0;
@@ -404,6 +483,7 @@ fui_api void fuiStbttFontRelease(fuiStbttFont *font) {
 		return;
 	}
 	FUI_STBTT_FREE(font->glyphs);
+	FUI_STBTT_FREE(font->kerningPairs);
 	FUI_STBTT_FREE(font->atlasPixels);
 	FUI_STBTT_FREE(font->fontInfo);
 	FUI_STBTT_MEMSET(font, 0, sizeof(*font));
@@ -416,7 +496,9 @@ fui_api fuiFont fuiStbttFontToFuiFont(fuiStbttFont *font, const fuiTextureId atl
 		return(result);
 	}
 	result.getGlyph = fui__StbttGetGlyph;
-	result.getKerning = fui__StbttGetKerning;
+	// A font whose whole baked range kerns to zero is handed back with NO kerning callback at all, which
+	// is one indirect call per character that never happens. Plenty of faces are like this.
+	result.getKerning = font->hasAnyKerning ? fui__StbttGetKerning : fui_null;
 	// No measureText fast path: summing the advances final_ui.h already asks for cannot disagree with
 	// itself, and a second measurement path is one more place for a caret to land on the wrong character.
 	result.measureText = fui_null;
