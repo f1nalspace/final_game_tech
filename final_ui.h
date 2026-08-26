@@ -185,7 +185,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.4
+	@version v0.9.5
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -199,6 +199,14 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.5:
+	A dialog may now wear an icon in its title bar, the way a desktop window does. It is OPTIONAL in the
+	plainest sense: the two openers that were already there are unchanged and still draw no picture at all.
+
+	- New: fuiBeginModalIcon and fuiBeginModalResizableIcon, taking a fuiImageDesc that may be null. The
+	  picture is fitted into the square the title bar's own height leaves and the caption starts beside it,
+	  so an icon never sits on top of the title however long that title is.
 
 	# v0.9.4:
 	This one is a WIDGET: a tree, for a folder explorer or for anything else that nests. It is built the way
@@ -3863,6 +3871,10 @@ fui_api bool fuiIsAnyDialogOpen(const fuiContext *context);
 */
 fui_api void fuiCloseAllDialogs(fuiContext *context);
 
+//! Forward declared so a dialog may be handed a title bar icon. The description itself is declared with the
+//! rest of the image drawing further down, which is where it belongs.
+struct fuiImageDesc;
+
 /**
 * @brief Begins the content of a dialog, drawing its backdrop, box and title bar.
 * @param[in,out] context Reference to the context @ref fuiContext.
@@ -3890,6 +3902,35 @@ fui_api bool fuiBeginModal(fuiContext *context, const char *id, const char *titl
 * @see @ref fuiBeginModal, @ref fuiEndModal
 */
 fui_api bool fuiBeginModalResizable(fuiContext *context, const char *id, const char *title, const float width, const float height);
+
+/**
+* @brief Begins a dialog that carries a picture in its title bar, left of the caption.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifies the dialog, the same string @ref fuiOpenDialog was given.
+* @param[in] title What the title bar says.
+* @param[in] width Width of the box in pixels.
+* @param[in] height Height of the box in pixels.
+* @param[in] icon Reference to the picture @ref fuiImageDesc, or null for a dialog without one.
+* @return Returns true when the dialog is open and its content should be built.
+* @note The icon is OPTIONAL and everything else about this is @ref fuiBeginModal. It is fitted into the
+*       square the bar's height leaves and the caption starts beside it, so the two never overlap.
+* @see @ref fuiBeginModal, @ref fuiBeginModalResizableIcon, @ref fuiEndModal
+*/
+fui_api bool fuiBeginModalIcon(fuiContext *context, const char *id, const char *title, const float width, const float height, const struct fuiImageDesc *icon);
+
+/**
+* @brief Begins a movable and resizable dialog that carries a picture in its title bar.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id Identifies the dialog, the same string @ref fuiOpenDialog was given.
+* @param[in] title What the title bar says.
+* @param[in] width Width the box opens at in pixels, before whatever the user dragged.
+* @param[in] height Height the box opens at in pixels, before whatever the user dragged.
+* @param[in] icon Reference to the picture @ref fuiImageDesc, or null for a dialog without one.
+* @return Returns true when the dialog is open and its content should be built.
+* @note The icon is OPTIONAL and everything else about this is @ref fuiBeginModalResizable.
+* @see @ref fuiBeginModalResizable, @ref fuiBeginModalIcon, @ref fuiEndModal
+*/
+fui_api bool fuiBeginModalResizableIcon(fuiContext *context, const char *id, const char *title, const float width, const float height, const struct fuiImageDesc *icon);
 
 /**
 * @brief Ends the content of a dialog.
@@ -11146,8 +11187,8 @@ fui_inline fuiRect fui__DialogCenteredRect(const fuiContext *context, const floa
 	return(result);
 }
 
-//! Shared body of both dialog openers
-fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const char *title, const float width, const float height, const bool isResizable) {
+//! Shared body of every dialog opener. The icon is optional and null is a dialog without one
+fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const char *title, const float width, const float height, const bool isResizable, const fuiImageDesc *icon) {
 	fuiId modalId = fui__StableId(id);
 	int32_t openAt = fui__ModalStackFind(context, modalId);
 	bool isOpen = (openAt >= 0);
@@ -11253,7 +11294,20 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 	// The bar lighting up is the whole of how a dialog says it can be moved, there being no cursor shape here.
 	fuiColor titleBarColor = titleBarIsLit ? theme->widgetHoveredColor : theme->widgetTrackColor;
 	fuiDrawRect(context, titleBar, titleBarColor);
-	fui__DrawTextInRect(context, titleBar, title, theme->textColor);
+
+	// A dialog may carry a picture in its bar the way a desktop window does. It is fitted into the square the
+	// bar's own height leaves and the caption is moved along past it, rather than the two sharing the corner.
+	fuiRect captionBox = titleBar;
+	if(icon != fui_null && icon->texture != FUI_TEXTURE_ID_NONE) {
+		float iconSide = fuiMaxF(titleBar.h - FUI__PANEL_TITLE_BAR_PADDING * 2.0f, 0.0f);
+		fuiRect iconBox = fuiRectMake(titleBar.x + FUI__PANEL_TITLE_BAR_PADDING, titleBar.y + FUI__PANEL_TITLE_BAR_PADDING, iconSide, iconSide);
+		fuiImage(context, iconBox, icon);
+
+		float widthTakenByTheIcon = iconSide + FUI__PANEL_TITLE_BAR_PADDING;
+		captionBox.x += widthTakenByTheIcon;
+		captionBox.w = fuiMaxF(captionBox.w - widthTakenByTheIcon, 0.0f);
+	}
+	fui__DrawTextInRect(context, captionBox, title, theme->textColor);
 
 	// After the title bar, the same way a panel does it, so the dialog is framed all the way round.
 	fui__DrawChromeFrame(context, rect);
@@ -11295,7 +11349,7 @@ fui_api bool fuiBeginModal(fuiContext *context, const char *id, const char *titl
 		return(false);
 	}
 	const bool isResizable = false;
-	return(fui__BeginModalEx(context, id, title, width, height, isResizable));
+	return(fui__BeginModalEx(context, id, title, width, height, isResizable, fui_null));
 }
 
 fui_api bool fuiBeginModalResizable(fuiContext *context, const char *id, const char *title, const float width, const float height) {
@@ -11304,7 +11358,25 @@ fui_api bool fuiBeginModalResizable(fuiContext *context, const char *id, const c
 		return(false);
 	}
 	const bool isResizable = true;
-	return(fui__BeginModalEx(context, id, title, width, height, isResizable));
+	return(fui__BeginModalEx(context, id, title, width, height, isResizable, fui_null));
+}
+
+fui_api bool fuiBeginModalIcon(fuiContext *context, const char *id, const char *title, const float width, const float height, const struct fuiImageDesc *icon) {
+	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null);
+	if(context == fui_null || id == fui_null || title == fui_null) {
+		return(false);
+	}
+	const bool isResizable = false;
+	return(fui__BeginModalEx(context, id, title, width, height, isResizable, icon));
+}
+
+fui_api bool fuiBeginModalResizableIcon(fuiContext *context, const char *id, const char *title, const float width, const float height, const struct fuiImageDesc *icon) {
+	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null);
+	if(context == fui_null || id == fui_null || title == fui_null) {
+		return(false);
+	}
+	const bool isResizable = true;
+	return(fui__BeginModalEx(context, id, title, width, height, isResizable, icon));
 }
 
 fui_api void fuiEndModal(fuiContext *context) {
