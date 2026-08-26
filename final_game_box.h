@@ -219,7 +219,7 @@ Copyright 2024-2026 Torsten Spaete
 	Changelog
 -------------------------------------------------------------------------------
 
-## v1.3.1 Bugfixes (Unreleased)
+## v1.3.1 Bugfixes
 
 ### PPU
 
@@ -378,6 +378,18 @@ Copyright 2024-2026 Torsten Spaete
 // ****************************************************************************
 // Constants
 // ****************************************************************************
+
+// Version of this library, so a frontend can report which core it was built against
+#define FGB_VERSION_MAJOR 1
+#define FGB_VERSION_MINOR 3
+#define FGB_VERSION_PATCH 1
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FGB__STRINGIFY_EXPANDED(value) #value
+#define FGB__STRINGIFY(value) FGB__STRINGIFY_EXPANDED(value)
+
+// Full version as a string literal in the form of "major.minor.patch"
+#define FGB_VERSION_STRING FGB__STRINGIFY(FGB_VERSION_MAJOR) "." FGB__STRINGIFY(FGB_VERSION_MINOR) "." FGB__STRINGIFY(FGB_VERSION_PATCH)
 
 // LCD Width in pixels
 #define FGB_DISPLAY_WIDTH 160
@@ -708,6 +720,12 @@ typedef struct {
 	size_t length;
 } fgbMemory;
 FGB_STATIC_ASSERT(sizeof(fgbMemory) % 4 == 0);
+
+/**
+  * @brief Gets the version of this library, built from the major/minor/patch constants
+  * @return The resulting null-terminated string in the form of "major.minor.patch"
+  */
+FGB_API const char *fgbGetVersion(void);
 
 // ****************************************************************************
 // Forward declarations
@@ -4932,9 +4950,19 @@ static inline uint8_t fgb__BusRead8_Direct(fgbSystem *system, const uint16_t add
 static void fgb__InterruptRequest(fgbSystem *system, const fgbInterruptType type, const char *reason);
 
 // ********************************************************************************************************************
-// 
+//
+// Version
+//
+// ********************************************************************************************************************
+
+FGB_API const char *fgbGetVersion(void) {
+	return FGB_VERSION_STRING;
+}
+
+// ********************************************************************************************************************
+//
 // Utils
-// 
+//
 // ********************************************************************************************************************
 
 #define FGB__BREAK { *((int *)(uintptr_t)0) = 0x42; }
