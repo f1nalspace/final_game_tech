@@ -10,33 +10,37 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 
 ## Libraries
 
-| Name                                             | Description                                 | Platforms        | Language | Latest Version | State       | Size ~  |
-|--------------------------------------------------|---------------------------------------------|------------------|----------|----------------|-------------|---------|
-| [final_platform_layer.h](final_platform_layer.h) | Single file platform abstraction library    | Win32/Linux/Unix | C99      | 1.0.0          | Finished    | 1500 KB |
-| [final_dynamic_opengl.h](final_dynamic_opengl.h) | Single file opengl loader library           | Win32/Linux/Unix | C99      | 1.0.0          | Finished    | 512 KB  |
-| [final_game_box.h](final_game_box.h)             | Single file gameboy DMG/CGB emulator        | Independent      | C99      | 1.3.1          | Finished    | 600 KB  |
-| [final_memory.h](final_memory.h)                 | Single file heap memory handling library    | Independent      | C99      | 1.0.1          | Finished    | 24 KB   |
-| [final_xml.h](final_xml.h)                       | Single file xml parser library              | Independent      | C99      | 0.3.1-alpha    | Finished    | 28 KB   |
-| [final_tiletrace.hpp](final_tiletrace.hpp)       | Single file tilemap contour tracing library | Independent      | C++/11   | 1.02           | Finished    | 36 KB   |
-| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.4-beta     | Beta        | 500 KB  |
+| Name                                             | Description                                 | Platforms        | Language | Latest Version | State    | Size ~  |
+|--------------------------------------------------|---------------------------------------------|------------------|----------|----------------|----------|---------|
+| [final_platform_layer.h](final_platform_layer.h) | Single file platform abstraction library    | Win32/Linux/Unix | C99      | 1.0.1          | Finished | 1700 KB |
+| [final_dynamic_opengl.h](final_dynamic_opengl.h) | Single file opengl loader library           | Win32/Linux/Unix | C99      | 1.0.0          | Finished | 530 KB  |
+| [final_game_box.h](final_game_box.h)             | Single file gameboy DMG/CGB emulator        | Independent      | C99      | 1.3.1          | Finished | 620 KB  |
+| [final_memory.h](final_memory.h)                 | Single file heap memory handling library    | Independent      | C99      | 1.0.2          | Finished | 25 KB   |
+| [final_xml.h](final_xml.h)                       | Single file xml parser library              | Independent      | C99      | 0.3.2-alpha    | Finished | 33 KB   |
+| [final_tiletrace.h](final_tiletrace.h)           | Single file tilemap contour tracing library | Independent      | C17      | 2.0.1          | Finished | 49 KB   |
+| [final_tiletrace.hpp](final_tiletrace.hpp)       | Single file tilemap contour tracing library | Independent      | C++/11   | 1.02           | Obsolete | 34 KB   |
+| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.5-beta     | Beta     | 611 KB  |
 
 * All libraries written in C99/C17 are fully C++ compatible.
 * Few libraries are still in beta/alpha, even though they are finished.
 * Only fully implemented, documented and well tested libraries will leave the alpha/beta phase.
+* `final_tiletrace.hpp` is obsolete and kept for reference only - use the pure C17 `final_tiletrace.h` instead.
 
 ## Folder Structure
 
 ```
 .
-├── README.md                       # This file
 ├── final_platform_layer.h          # Single-header-file platform abstraction library (C99)
 ├── final_dynamic_opengl.h          # Single-header-file OpenGL function loader (C99)
 ├── final_game_box.h                # Single-header-file DMG game boy emulator library (C99)
 ├── final_xml.h                     # Single-header-file simple XML parser library (C99)
 ├── final_memory.h                  # Single-header-file custom memory allocator (C99)
-├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
+├── final_tiletrace.h               # Single-header-file contour tile tracing library (C17)
+├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11, obsolete)
 ├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
-├── LICENSE.md                      # MIT License-file
+├── LICENSE                         # MIT License-file
+├── README.md                       # This file
+├── final_game_tech.md              # Detailed description of the repository and its libraries
 ├── CLAUDE.md                       # General overview of the repository for AI agents such as claude
 ├── assets/                         # Assets for the repo itself, like the logo
 ├── apps/                           # Converters and utility applications (mostly used internally)
