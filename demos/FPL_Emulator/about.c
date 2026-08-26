@@ -18,9 +18,11 @@ const char *AboutDialogId = "About-Dialog";
 //
 // Versions
 //
-// The core carries its own version number, so that one is read rather than written down twice. The
-// libraries under dependencies/ are vendored copies that export no version macro at all, so what their
-// own @version tag says is repeated here and has to be carried over whenever one of them is updated.
+// Every library by this author reports its own version through a getter, so what the dialog shows is what
+// was actually compiled in rather than a number written down a second time and left behind whenever one of
+// them is updated. The third party libraries are the exception: miniz carries its version in code and is
+// read the same way, while the stb headers state theirs in their first comment line only and have to be
+// repeated here by hand.
 //
 
 // Version of this frontend, which is versioned on its own rather than with the core it drives
@@ -30,23 +32,11 @@ const char *AboutDialogId = "About-Dialog";
 
 #define ApplicationCopyrightText "Copyright (c) 2024-2026 Torsten Spaete"
 
-#define PlatformLayerVersionString "1.0.0"
-
-#define UserInterfaceVersionString "0.9.2"
-
-#define OpenGLLoaderVersionString "0.4.0"
-
-#define MathVersionString "1.5.0"
-
-#define MemoryVersionString "0.4.0"
-
-#define FontProviderVersionString "0.9.2"
-
+// Both are taken from the first line of the header under dependencies/stb/, which is the only place an stb
+// library states its version - STBI_VERSION is an ABI marker and not the release number
 #define STBImageVersionString "2.19"
 
 #define STBTrueTypeVersionString "1.26"
-
-#define MiniZVersionString "3.0.2"
 
 //
 // Pages
@@ -84,12 +74,21 @@ static const char *AboutPageTemplate =
 "    Platform Layer   final_platform_layer.h      %s\n"
 "    User Interface   final_ui.h                  %s\n"
 "    OpenGL Loader    final_dynamic_opengl.h      %s\n"
-"    Math             final_math.h                %s\n"
 "    Memory           final_memory.h              %s\n"
-"    Font Provider    fui_font_stbtt.h            %s\n"
 "\n"
-"    Every one of them is written by the same author and released under the MIT License.\n"
-"    The third party libraries are listed on the Libraries page.\n"
+"    Every one of them is written by the same author, released under the MIT License and asked for the\n"
+"    version above itself, so what stands there is what was compiled in.\n"
+"\n"
+"\n"
+"  THIRD PARTY\n"
+"  -----------\n"
+"\n"
+"    TrueType Fonts   stb_truetype.h              %s\n"
+"    Image Decoding   stb_image.h                 %s\n"
+"    Zip Archives     miniz                       %s\n"
+"\n"
+"    Of these only miniz states its version in code, so the two stb numbers are the ones written in\n"
+"    their headers. Every library above is listed with its license on the Libraries page.\n"
 "\n"
 "\n"
 "  ABOUT THE CORE\n"
@@ -525,18 +524,27 @@ static const char *AboutPageNames[AboutPage_Count] = {
 static const char *AboutDialogGetAboutPageText(void) {
 	if (AboutPageText[0] == '\0') {
 		const char *coreVersionString = fgbGetVersion();
+		const char *platformLayerVersionString = fplGetVersion();
+		const char *userInterfaceVersionString = fuiGetVersion();
+		const char *openGLLoaderVersionString = RendererGetOpenGLLoaderVersion();
+		const char *memoryVersionString = fmemGetVersion();
+
+		// The only third party library that can be asked, the two stb ones are the constants above
+		const char *miniZVersionString = mz_version();
+
 		fplStringFormat(AboutPageText, fplArrayCount(AboutPageText), AboutPageTemplate,
 			ApplicationVersionString,
 			ApplicationAuthorName,
 			ApplicationCopyrightText,
 			__DATE__, __TIME__,
 			coreVersionString,
-			PlatformLayerVersionString,
-			UserInterfaceVersionString,
-			OpenGLLoaderVersionString,
-			MathVersionString,
-			MemoryVersionString,
-			FontProviderVersionString);
+			platformLayerVersionString,
+			userInterfaceVersionString,
+			openGLLoaderVersionString,
+			memoryVersionString,
+			STBTrueTypeVersionString,
+			STBImageVersionString,
+			miniZVersionString);
 	}
 	return AboutPageText;
 }

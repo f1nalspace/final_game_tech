@@ -86,6 +86,9 @@ typedef struct {
 extern RendererContext *RendererCreate(fmemMemoryBlock *memory, RendererSupport *outSupport);
 extern void RendererDestroy(RendererContext *context);
 
+// The OpenGL loader is compiled privately into the renderer (FGL_AS_PRIVATE), so its version is reported from here rather than by including the loader a second time somewhere else
+extern const char *RendererGetOpenGLLoaderVersion(void);
+
 extern Texture RendererTextureUpload(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data);
 extern Texture RendererTextureAllocate(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter);
 extern Texture RendererTextureLoadFromMemory(const uint8_t *data, const size_t size, const TextureFormat format, const TextureFilter textureFilter, const uint32_t actualWidth, const uint32_t actualHeight);

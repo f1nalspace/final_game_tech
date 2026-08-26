@@ -24,6 +24,11 @@ Description:
 
 #include "utils.h"
 
+const char *RendererGetOpenGLLoaderVersion(void) {
+	const char *result = fglGetVersion();
+	return result;
+}
+
 typedef struct {
 	ShaderProgram *activeProgram;
 } RendererContextImpl;
