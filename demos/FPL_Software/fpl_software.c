@@ -721,7 +721,7 @@ int main(int argc, char **args) {
 		fplVideoBackBuffer *initialBackBuffer = fplGetVideoBackBuffer();
 
 		AppScenarios app = fplZeroInit;
-		ScenarioInit(&app, ScenarioType_Planes, initialBackBuffer);
+		ScenarioInit(&app, ScenarioType_ShaderMesh, initialBackBuffer);
 		UpdateWindowTitle(&app);
 
 		float dt = 1.0f / 60.0f;
