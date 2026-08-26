@@ -723,6 +723,9 @@ static void BuildMenuBar(fuiContext *ui, DemoState *demo, const fuiRect barRect)
 		if(fuiMenuItem(ui, "Colour dialog", fpl_null, true)) {
 			fuiOpenDialog(ui, "tint");
 		}
+		if(fuiMenuItem(ui, "Dialog with an icon", fpl_null, true)) {
+			fuiOpenDialog(ui, "about");
+		}
 		fuiMenuSeparator(ui);
 		if(fuiMenuItem(ui, "Save level as...", fpl_null, true)) {
 			// Reset the listing, or the browser reopens part way into whatever folder it was left in.
@@ -1244,6 +1247,70 @@ static const bool g_demoRootIsFolder[] = { true, false };
 static const char *const g_demoLevelItems[] = { "..", "gardens-of-ash.lvl", "the-drowned-mill.lvl" };
 static const bool g_demoLevelIsFolder[] = { true, false, false };
 
+//! One cell of the generated sheet, described as a PICTURE rather than as a list icon. A title bar icon is
+//! an ordinary fuiImageDesc, so what it wants is the whole sheet plus the slice of it this cell occupies.
+//! The colour sheet is preferred when it uploaded, and the coverage one is stained with the tint instead.
+static fuiImageDesc DemoIconCellImage(const DemoState *demo, const int32_t cellIndex, const fuiColor coverageTint) {
+	bool colorSheetIsUsable = (demo->iconSheetColor != 0);
+
+	const float cellWidthInUv = 1.0f / (float)DEMO_ICON_CELL_COUNT;
+
+	fuiImageDesc result = fplZeroInit;
+	result.texture = colorSheetIsUsable ? demo->iconSheetColor : demo->iconSheet;
+	result.textureSize = colorSheetIsUsable ? demo->iconSheetColorSize : demo->iconSheetSize;
+	result.uvMin = fuiV2((float)cellIndex * cellWidthInUv, 0.0f);
+	result.uvMax = fuiV2((float)(cellIndex + 1) * cellWidthInUv, 1.0f);
+	result.tint = colorSheetIsUsable ? fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f) : coverageTint;
+	result.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+	return(result);
+}
+
+//! What the hand built dialog says. Wrapped by the label rather than by the line breaks here, so it reflows
+//! as the dialog is dragged wider.
+static const char *g_demoAboutText =
+	"final_ui.h draws this box, the picture in its caption bar and every widget under it.\n"
+	"\n"
+	"That picture is one cell of the very same sheet the Entity table and the Project tree draw from - "
+	"generated at startup rather than loaded from anywhere - handed over as a plain fuiImageDesc.\n"
+	"\n"
+	"It is OPTIONAL: fuiBeginModal and fuiBeginModalResizable take no picture at all and are unchanged. "
+	"The caption starts beside the icon rather than under it, however long the caption happens to be.";
+
+//! Everything but this one is a STANDARD dialog the library builds whole. This one is built by hand out of
+//! fuiBeginModalResizableIcon, which is the only way to reach the title bar icon.
+static void BuildAboutDialog(fuiContext *ui, DemoState *demo) {
+	const fuiTheme *theme = fuiGetTheme(ui);
+
+	const float aboutWidth = 480.0f;
+	const float aboutHeight = 360.0f;
+	const float aboutButtonWidth = 96.0f;
+	const float aboutButtonHeight = DEMO_ROW_HEIGHT + 4.0f;
+
+	fuiImageDesc aboutIcon = DemoIconCellImage(demo, DEMO_ICON_CELL_LEVEL, theme->accentColor);
+
+	if(fuiBeginModalResizableIcon(ui, "about", "About this demo", aboutWidth, aboutHeight, &aboutIcon)) {
+		fuiRect content = fuiLayoutRemaining(ui);
+
+		float textHeight = content.h - aboutButtonHeight - theme->widgetSpacing;
+		fuiRect textRect = fuiRectMake(content.x, content.y, content.w, textHeight);
+		fuiLabelEx(ui, textRect, g_demoAboutText, true, true);
+
+		float buttonX = content.x + (content.w - aboutButtonWidth) * 0.5f;
+		float buttonY = content.y + content.h - aboutButtonHeight;
+		bool wasAccepted = fuiButton(ui, fuiRectMake(buttonX, buttonY, aboutButtonWidth, aboutButtonHeight), "OK");
+
+		// Through the library rather than by asking the key plainly, so a dialog stacked under this one does
+		// not answer the very same press the moment this one closes.
+		bool wasAnsweredByAKey = fuiDialogTakeKey(ui, FUI_KEY_RETURN) || fuiDialogTakeKey(ui, FUI_KEY_ESCAPE);
+
+		if(wasAccepted || wasAnsweredByAKey) {
+			fuiCloseDialog(ui, "about");
+			DemoSay(demo, "Closed. That dialog was built by hand - the icon in its bar is what the standard ones cannot take.");
+		}
+	}
+	fuiEndModal(ui);
+}
+
 static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 	fuiDialogResult discardResult = fuiMessageBox(ui, "discard", "Discard changes", "The level has unsaved changes. Discard them?", FUI_MESSAGE_BOX_YES_NO_CANCEL);
 	if(discardResult == FUI_DIALOG_RESULT_YES) {
@@ -1299,6 +1366,8 @@ static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 			DemoSay(demo, "Saved under a new name. Nothing was written, but the dialog really did answer.");
 		}
 	}
+
+	BuildAboutDialog(ui, demo);
 
 	fuiDialogResult overwriteResult = fuiMessageBox(ui, "overwrite", "Overwrite", "That file already exists. Overwrite it?", FUI_MESSAGE_BOX_YES_NO);
 	if(overwriteResult == FUI_DIALOG_RESULT_YES) {
