@@ -107,7 +107,7 @@ SOFTWARE.
 
 /*!
 	@file final_tiletrace.h
-	@version v2.0.0
+	@version v2.0.1
 	@author Torsten Spaete
 	@brief Final TileTrace (FTT) - A pure C17 single file header contour tile tracing library.
 */
