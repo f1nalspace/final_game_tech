@@ -137,3 +137,69 @@ extern float UICheckboxRowX(fuiContext *ui, const float contentX);
 extern bool UICheckboxEx(fuiContext *ui, const fuiRect rect, const char *label, bool *value, const bool enabled);
 
 extern bool UIRadioEx(fuiContext *ui, const fuiRect rect, const char *label, int32_t *selected, const int32_t option, const bool enabled);
+
+//
+// Relief and bevel box
+//
+// final_ui.h draws every widget box as a shaded face between a lit and a shaded edge, but keeps the painter
+// that does it private. The composite widgets below carry their own copy of it, so a tab or a button built
+// here stands in the same light as the ones the library builds.
+//
+
+typedef enum {
+	// Standing out of the panel, which is what a button at rest and the tab in front look like
+	UIRelief_Raised = 0,
+	// Pushed into the panel, which is what a widget being held looks like
+	UIRelief_Sunken,
+	// Neither, just a filled box, which is what sits behind the front surface rather than on it
+	UIRelief_Flat,
+} UIRelief;
+
+// Opacity multiplies every colour the box is drawn with, which is what lets a button fade out without the
+// theme knowing anything about it. Pass one to draw it as the theme says.
+extern void UIBevelBox(fuiContext *ui, const fuiRect rect, const fuiColor faceColor, const UIRelief relief, const float opacity);
+
+//
+// Tab strip
+//
+// The same row of headers fuiTabControl draws, except which tab is showing lives in the CALLER's state
+// rather than inside the library. That is the whole reason this exists: a button that opens a dialog on a
+// particular page has to be able to say which page, and the library's own tab control cannot be told.
+//
+
+extern int32_t UITabStrip(fuiContext *ui, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount, int32_t *selectedIndex);
+
+//
+// Text view
+//
+// A read only box of text that is NOT wrapped: every line is drawn exactly as it was written and the box
+// scrolls in both directions to reach the rest of it. The text it is given is laid out in columns, so
+// wrapping it would be the very thing that made it unreadable.
+//
+
+typedef struct {
+	// What the measurement below was taken from, so a block of text is only measured again when it changes
+	const char *measuredText;
+	float measuredFontHeight;
+	float contentWidth;
+	float contentHeight;
+
+	float scrollX;
+	float scrollY;
+} UITextViewState;
+
+// backgroundOpacity fades the box's own fill, so something drawn BEHIND the view can show through the text
+// sitting on it. Pass one for the solid box the theme describes, and zero to leave the fill out altogether.
+extern void UITextView(fuiContext *ui, const fuiRect rect, const char *id, const char *text, UITextViewState *state, const float backgroundOpacity);
+
+//
+// Icon button
+//
+// A picture that is clickable and nothing else: no box, no bevel and no caption, so what the user sees is
+// the icon itself. It answers a press by sinking slightly, which is the only chrome it carries.
+//
+
+// Opacity fades the icon, so one sitting over the emulated display can stay out of the way until the cursor
+// comes near it. A faded icon is still fully clickable, and hovering it brings it fully back.
+// The texture is loaded upside down by the image loader, which is why this flips it back on the way in.
+extern bool UIIconButton(fuiContext *ui, const fuiRect rect, const char *id, const Texture *icon, const float opacity);

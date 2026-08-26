@@ -19,6 +19,7 @@ Features:
 	- Color palette rendering for CGB
 	- Asyncrounous audio playback
 	- Asyncrounous emulation using ring buffer for audio and image data
+	- Information dialog with the key mapping, the feature list, the credits and the licenses
 
 Key mapping:
 
@@ -48,6 +49,11 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-26
+	- Added an information dialog with an About, How to Use, Controls, Features and Libraries page
+	- Added the information icon in the bottom left corner of both views, which is what opens that dialog
+	- Added UITextView, UITabStrip, UIBevelBox and UIIconButton to ui.c/ui.h
+
 	## 2026-08-24
 	- Migrated the entire frontend UI to final_ui.h, replacing the hand rolled widget set in ui.c/ui.h
 	- Switched the whole frontend to a top-left origin with y pointing down, matching final_ui.h
@@ -164,6 +170,7 @@ License:
 #include "fontdata.h"
 #include "imagedata.h"
 #include "ui.c"
+#include "about.c"
 #include "render.c"
 #include "utils.c"
 #include "shaders.h"
@@ -173,6 +180,17 @@ License:
 
 // Do not draw any mouse cursors
 #define NO_CURSOR 1
+
+// How large the clickable information icon in the window's bottom left corner is drawn, in pixels
+#define INFO_ICON_SIZE 100.0f
+
+// How large the application icon overlaying the right panel is drawn, in pixels. Two thirds larger than the
+// information icon, so the two corners read as a pair without the decoration outweighing the button
+#define APP_ICON_SIZE (INFO_ICON_SIZE * (5.0f / 3.0f))
+
+// How strongly that application icon shows over the panel it lies on. It is decoration and answers no click,
+// so a click meant for what lies under it still gets there whatever this says
+#define APP_ICON_OPACITY 0.75f
 
 // Set from FGB!
 #define MAX_STATE_SLOT_COUNT 6
@@ -701,6 +719,10 @@ typedef struct {
 	Mat4f viewProjectionMat;
 
 	Texture cursorTexture;
+	Texture aboutIconTexture;
+	Texture aboutIconSmallTexture;
+	Texture appIconTexture;
+	Texture appIconSmallTexture;
 	Texture displayTexture;
 	Texture backgroundMapTexture;
 	Texture tileMapTexture;
@@ -735,6 +757,7 @@ typedef struct {
 	float rightPanelWidth;
 
 	StatesDialog statesDialog;
+	AboutDialog aboutDialog;
 
 	Emulator emulator;
 
@@ -987,6 +1010,12 @@ static Application *CreateApplication(fmemMemoryBlock *mem, const EmulatorParame
 	app->backgroundMapTexture = RendererTextureAllocate(mem, FGB_BACKGROUND_MAP_WIDTH, FGB_BACKGROUND_MAP_HEIGHT, TextureFormat_RGBA, TextureFilter_Nearest);
 	app->cursorTexture = RendererTextureLoadFromMemory(ptr_mouseCursor, sizeOf_mouseCursor, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
 	app->gbTexture = RendererTextureLoadFromMemory(ptr_gameboyImage, sizeOf_gameboyImage, TextureFormat_Automatic, TextureFilter_Linear, 619, 1024);
+	app->aboutIconTexture = RendererTextureLoadFromMemory(ptr_aboutIcon, sizeOf_aboutIcon, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
+	// Two bakes of each picture rather than one: a texture shrunk to a fifth of its size by the sampler is a
+	// smear, and this renderer builds no mip chain to shrink it with
+	app->aboutIconSmallTexture = RendererTextureLoadFromMemory(ptr_aboutIconSmall, sizeOf_aboutIconSmall, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
+	app->appIconTexture = RendererTextureLoadFromMemory(ptr_appIcon, sizeOf_appIcon, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
+	app->appIconSmallTexture = RendererTextureLoadFromMemory(ptr_appIconSmall, sizeOf_appIconSmall, TextureFormat_Automatic, TextureFilter_Linear, 0, 0);
 
 	// Load shaders
 	if (rendererSupport->hasGLSL) {
@@ -1046,6 +1075,10 @@ static void ReleaseApplication(Application **appRef) {
 	RendererShaderRelease(&app->bicubicHermiteShader.program);
 
 	RendererTextureRelease(&app->cursorTexture);
+	RendererTextureRelease(&app->aboutIconTexture);
+	RendererTextureRelease(&app->aboutIconSmallTexture);
+	RendererTextureRelease(&app->appIconTexture);
+	RendererTextureRelease(&app->appIconSmallTexture);
 	RendererTextureRelease(&app->tileMapTexture);
 	RendererTextureRelease(&app->displayTexture);
 	RendererTextureRelease(&app->backgroundMapTexture);
@@ -2269,6 +2302,10 @@ static const float DebugSplitterGripWidth = 6.0f;
 // How thick the accent line drawn on a hovered or dragged grip is
 static const float DebugSplitterHighlightThickness = 2.0f;
 
+// Added on top of the right column's seeded width, so the action buttons start out wide enough for their captions
+// rather than only after the splitter has been dragged out by hand
+static const float DebugRightColumnExtraSeedWidth = 75.0f;
+
 // Seeds the column widths the first time round and keeps them inside what the window can hold, which is
 // what stops a window dragged narrow from collapsing the middle column or overlapping the two sides
 static void ClampDebugColumnWidths(Application *app, const float w) {
@@ -2276,7 +2313,8 @@ static void ClampDebugColumnWidths(Application *app, const float w) {
 		app->leftPanelWidth = fplMax(w * 0.325f, 300.0f);
 	}
 	if (app->rightPanelWidth <= 0.0f) {
-		app->rightPanelWidth = fplMax(w * 0.35f, 300.0f);
+		const float seededRightPanelWidth = fplMax(w * 0.35f, 300.0f);
+		app->rightPanelWidth = seededRightPanelWidth + DebugRightColumnExtraSeedWidth;
 	}
 
 	// A window too narrow to honour both minimums AND the middle cannot be satisfied, so the sides keep
@@ -2370,8 +2408,73 @@ static DebugLayout ComputeDebugLayout(const Application *app, const float w, con
 	return layout;
 }
 
+// Whether a caption still fits a button of the given width. Measured with the font in use rather than decided at a
+// hardcoded column width, so a bigger font gives up on the full wording sooner, and it leaves the caption the same
+// room fuiButton does when it draws, so what is decided here is what the drawing then honours.
+static bool DoesButtonCaptionFit(fuiContext *ui, const char *caption, const float buttonWidth) {
+	const fuiTheme *theme = fuiGetTheme(ui);
+	const float widthAvailableForCaption = buttonWidth - theme->widgetPaddingX * 2.0f;
+	const fuiVec2 captionSize = fuiMeasureText(ui, caption, 0, theme->fontHeight);
+	return captionSize.x <= widthAvailableForCaption;
+}
+
 // Identifies the states dialog to the library, and is what fuiOpenDialog and fuiBeginModal agree on
 static const char *StatesDialogId = "States-Dialog";
+
+//
+// Information icon
+//
+// The one way into everything a first time user cannot find out by looking: the key mapping, what the
+// application can do, and what it was built out of. It is a bare picture rather than a button with a
+// caption, and it floats over the bottom left corner of BOTH views so it never moves out from under the
+// hand that reached for it.
+//
+
+// How far either corner icon sits from the two edges of the corner it floats over
+static const float InfoIconMargin = 12.0f;
+
+// How faint it is drawn while the cursor is somewhere else. Faint enough not to compete with whatever it
+// covers, solid enough that somebody who has never seen the application still notices it is there
+static const float InfoIconIdleOpacity = 0.3f;
+
+// How far around the icon the cursor has to come for it to fade fully in, as a multiple of its own size
+static const float InfoIconRevealFactor = 1.0f;
+
+static fuiRect ComputeInfoIconRect(const float windowHeight) {
+	fuiRect result = fuiRectMake(InfoIconMargin, windowHeight - INFO_ICON_SIZE - InfoIconMargin, INFO_ICON_SIZE, INFO_ICON_SIZE);
+	return result;
+}
+
+// The application's own icon, mirroring the information icon across the window into the bottom right corner,
+// which is the foot of the right panel. Decoration only: it answers no click and swallows none either.
+static fuiRect ComputeAppIconRect(const float windowWidth, const float windowHeight) {
+	fuiRect result = fuiRectMake(windowWidth - APP_ICON_SIZE - InfoIconMargin, windowHeight - APP_ICON_SIZE - InfoIconMargin, APP_ICON_SIZE, APP_ICON_SIZE);
+	return result;
+}
+
+static void DrawAppIconOverlay(fuiContext *ui, const Texture *icon, const fuiRect rect) {
+	if (icon == fpl_null || !icon->isValid) {
+		return;
+	}
+	fuiImageDesc iconImage = fplZeroInit;
+	iconImage.texture = (fuiTextureId)icon->id;
+	iconImage.textureSize = fuiV2((float)icon->width, (float)icon->height);
+	iconImage.uvMin = fuiV2(0.0f, 0.0f);
+	iconImage.uvMax = fuiV2(icon->uScale, icon->vScale);
+	iconImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, APP_ICON_OPACITY);
+	iconImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+	// The image loader flips every texture on the way in, so it is turned back over here
+	iconImage.flags = FUI_IMAGE_FLIP_V;
+	fuiImage(ui, rect, &iconImage);
+}
+
+static float ComputeInfoIconOpacity(fuiContext *ui, const fuiRect iconRect) {
+	const fuiRect revealArea = fuiRectInflate(iconRect, iconRect.h * InfoIconRevealFactor);
+	const fuiVec2 cursor = fuiGetMousePosition(ui);
+	const bool cursorIsNear = (cursor.x >= revealArea.x) && (cursor.x < (revealArea.x + revealArea.w)) && (cursor.y >= revealArea.y) && (cursor.y < (revealArea.y + revealArea.h));
+	float result = cursorIsNear ? 1.0f : InfoIconIdleOpacity;
+	return result;
+}
 
 static void BuildStatesDialog(Application *app, const InputState *input) {
 	fuiContext *ui = &app->ui;
@@ -2698,6 +2801,13 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 	const char *pauseOrResumeButtonName = system->state == fgbEmulationState_Running ? "Pause" : "Resume";
 
+	// The three step buttons all get the same width and sit side by side, so they are decided together against the
+	// longest of their captions. A row where only the middle one has shortened reads as a mistake rather than as a fit.
+	const bool stepCaptionsFitInFull = DoesButtonCaptionFit(ui, "Single Step", layout.actionButtonWidth);
+	const char *frameStepCaption = stepCaptionsFitInFull ? "Frame Step" : "Step/F";
+	const char *singleStepCaption = stepCaptionsFitInFull ? "Single Step" : "Step/S";
+	const char *microStepCaption = stepCaptionsFitInFull ? "Micro Step" : "Step/M";
+
 	tmpX = layout.actions.x + layout.actionsPadding;
 	const float actionButtonY = layout.actions.y + layout.actionsPadding;
 
@@ -2716,7 +2826,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool frameStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error && !emulator->isFrameStepActive;
-	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Frame Step", frameStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), frameStepCaption, frameStepEnabled)) {
 		emulator->isFrameStepActive = true;
 		emulator->isMicroStepActive = false;
 		fgbResume(system);
@@ -2726,7 +2836,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool singleStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error;
-	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Single Step", singleStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), singleStepCaption, singleStepEnabled)) {
 		emulator->isFrameStepActive = false;
 		emulator->isMicroStepActive = false;
 		fgbStep(system);
@@ -2736,7 +2846,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	tmpX += layout.actionButtonWidth + layout.actionsSpacing;
 
 	bool microStepEnabled = emulator->isActive && system->state != fgbEmulationState_Error;
-	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), "Micro Step", microStepEnabled)) {
+	if (fuiButtonEx(ui, fuiRectMake(tmpX, actionButtonY, layout.actionButtonWidth, layout.actionButtonHeight), microStepCaption, microStepEnabled)) {
 		emulator->isFrameStepActive = false;
 		emulator->isMicroStepActive = true;
 		fgbMicroStep(system);
@@ -2910,9 +3020,25 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 	}
 
 	//
-	// States Dialog
+	// Corner icons
+	//
+	// The information button on the left and the application's own icon on the right, both built after every
+	// panel so they lie over the one they share a corner with rather than under it.
+	//
+	DrawAppIconOverlay(ui, &app->appIconSmallTexture, ComputeAppIconRect(w, h));
+
+	const fuiRect infoIconRect = ComputeInfoIconRect(h);
+	const float infoIconOpacity = ComputeInfoIconOpacity(ui, infoIconRect);
+	if (UIIconButton(ui, infoIconRect, "Debug-Info-Icon", &app->aboutIconTexture, infoIconOpacity)) {
+		AboutDialogOpen(ui, &app->aboutDialog, AboutPage_About);
+	}
+	fuiTooltip(ui, infoIconRect, "Key mapping, features, credits and licenses");
+
+	//
+	// Dialogs
 	//
 	BuildStatesDialog(app, input);
+	AboutDialogBuild(ui, &app->aboutDialog, &app->aboutIconSmallTexture, &app->appIconTexture, w, h);
 
 	fuiEndFrame(ui);
 
@@ -2938,13 +3064,33 @@ static void RenderGameFrame(Application *app, const InputState *input) {
 
 	RenderDisplayTexture(app, displayArea, displayAspect);
 
-	// Nothing but the placeholder is built here, and only while no game is loaded, but it goes through the
-	// same path the debugger does so the display is covered by exactly one convention
-	fuiBeginFrame(&app->ui, &app->uiInput, FUI_PASS_BOTH);
-	DrawDisplayFrame(app, displayArea);
-	fuiEndFrame(&app->ui);
+	// The placeholder, the information button and its dialog are built here, and they go through the same
+	// path the debugger does so the display is covered by exactly one convention
+	fuiContext *ui = &app->ui;
+	fuiBeginFrame(ui, &app->uiInput, FUI_PASS_BOTH);
 
-	const fuiDrawData *uiDrawData = fuiGetDrawData(&app->ui);
+	DrawDisplayFrame(app, displayArea);
+
+	//
+	// Information icon
+	//
+	// The same corner and the same icon the debugger carries, except here it lies over the game. Nothing is
+	// being covered while no game is loaded, and that is exactly the moment somebody needs to be told how to
+	// load one, so it stands at full strength until there is something to stay out of the way of.
+	//
+	const fuiRect infoIconRect = ComputeInfoIconRect(h);
+	const float infoIconOpacity = app->emulator.isActive ? ComputeInfoIconOpacity(ui, infoIconRect) : 1.0f;
+
+	if (UIIconButton(ui, infoIconRect, "Player-Info-Icon", &app->aboutIconTexture, infoIconOpacity)) {
+		AboutDialogOpen(ui, &app->aboutDialog, AboutPage_HowToUse);
+	}
+	fuiTooltip(ui, infoIconRect, "Key mapping, features, credits and licenses");
+
+	AboutDialogBuild(ui, &app->aboutDialog, &app->aboutIconSmallTexture, &app->appIconTexture, w, h);
+
+	fuiEndFrame(ui);
+
+	const fuiDrawData *uiDrawData = fuiGetDrawData(ui);
 	RendererDrawUIDrawData(uiDrawData);
 }
 

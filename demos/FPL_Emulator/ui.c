@@ -461,3 +461,365 @@ bool UIRadioEx(fuiContext *ui, const fuiRect rect, const char *label, int32_t *s
 	UIDrawDisabledWash(ui, rect);
 	return false;
 }
+
+//
+// Relief and bevel box
+//
+
+// Matches what final_ui.h insets its own bevel by, so a box built here and a box built by the library
+// carry the same chamfer
+static const float UIBevelInsetSteps = 1.0f;
+
+static fuiColor UIFadeColor(const fuiColor color, const float opacity) {
+	fuiColor result = fuiColorWithAlpha(color, color.a * opacity);
+	return result;
+}
+
+void UIBevelBox(fuiContext *ui, const fuiRect rect, const fuiColor faceColor, const UIRelief relief, const float opacity) {
+	fuiTheme *theme = fuiGetTheme(ui);
+
+	if (relief == UIRelief_Flat) {
+		fuiDrawRect(ui, rect, UIFadeColor(faceColor, opacity));
+		fuiDrawRectOutline(ui, rect, UIFadeColor(theme->panelBorderColor, opacity), theme->widgetBorderThickness);
+		return;
+	}
+
+	// The light comes from overhead, so a raised face catches it along its top and a sunken one lies in
+	// its own shadow there
+	const bool isSunken = (relief == UIRelief_Sunken);
+	const float shadingStrength = theme->widgetFaceShadingStrength;
+	const fuiColor litFace = fuiColorShade(faceColor, shadingStrength);
+	const fuiColor shadedFace = fuiColorShade(faceColor, -shadingStrength);
+	const fuiColor topFace = isSunken ? shadedFace : litFace;
+	const fuiColor bottomFace = isSunken ? litFace : shadedFace;
+	fuiDrawRectVerticalGradient(ui, rect, UIFadeColor(topFace, opacity), UIFadeColor(bottomFace, opacity));
+
+	// Inside the outline rather than under it, so the frame stays the outermost thing on the box
+	const fuiRect bevelBox = fuiRectInflate(rect, -theme->widgetBorderThickness * UIBevelInsetSteps);
+	const fuiColor topLeftEdgeColor = isSunken ? theme->widgetBevelShadowColor : theme->widgetBevelLightColor;
+	const fuiColor bottomRightEdgeColor = isSunken ? theme->widgetBevelLightColor : theme->widgetBevelShadowColor;
+
+	const float smallestSide = fuiMinF(bevelBox.w, bevelBox.h);
+	const float maximumThickness = smallestSide * 0.5f;
+	const float edgeThickness = fuiMinF(theme->widgetBevelThickness, maximumThickness);
+	if (edgeThickness > 0.0f) {
+		const float innerHeight = bevelBox.h - edgeThickness * 2.0f;
+		const fuiRect topEdge = fuiRectMake(bevelBox.x, bevelBox.y, bevelBox.w, edgeThickness);
+		const fuiRect leftEdge = fuiRectMake(bevelBox.x, bevelBox.y + edgeThickness, edgeThickness, innerHeight);
+		const fuiRect bottomEdge = fuiRectMake(bevelBox.x, bevelBox.y + bevelBox.h - edgeThickness, bevelBox.w, edgeThickness);
+		const fuiRect rightEdge = fuiRectMake(bevelBox.x + bevelBox.w - edgeThickness, bevelBox.y + edgeThickness, edgeThickness, innerHeight);
+
+		fuiDrawRect(ui, topEdge, UIFadeColor(topLeftEdgeColor, opacity));
+		fuiDrawRect(ui, leftEdge, UIFadeColor(topLeftEdgeColor, opacity));
+		fuiDrawRect(ui, bottomEdge, UIFadeColor(bottomRightEdgeColor, opacity));
+		fuiDrawRect(ui, rightEdge, UIFadeColor(bottomRightEdgeColor, opacity));
+	}
+
+	fuiDrawRectOutline(ui, rect, UIFadeColor(theme->panelBorderColor, opacity), theme->widgetBorderThickness);
+}
+
+//
+// Tab strip
+//
+
+// Thickness of the accent line drawn under the header whose page is showing, matching the library's own tabs
+static const float UITabAccentThickness = 3.0f;
+
+// Gap between two headers, matching the library's own tabs
+static const float UITabHeaderSpacing = 2.0f;
+
+static fuiColor UIWidgetFillColor(fuiContext *ui, const fuiInteraction interaction) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	if (interaction.isHeld) {
+		return theme->widgetActiveColor;
+	}
+	if (interaction.isHovered) {
+		return theme->widgetHoveredColor;
+	}
+	return theme->widgetColor;
+}
+
+int32_t UITabStrip(fuiContext *ui, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount, int32_t *selectedIndex) {
+	if (ui == fpl_null || id == fpl_null || tabs == fpl_null || tabCount <= 0 || selectedIndex == fpl_null) {
+		return 0;
+	}
+
+	fuiTheme *theme = fuiGetTheme(ui);
+
+	int32_t activeTab = (int32_t)fuiClampF((float)*selectedIndex, 0.0f, (float)(tabCount - 1));
+
+	fuiPushId(ui, id);
+	float headerLeft = rect.x;
+	for (int32_t tabIndex = 0; tabIndex < tabCount; ++tabIndex) {
+		fuiVec2 labelSize = fuiMeasureText(ui, tabs[tabIndex], 0, theme->fontHeight);
+		float headerWidth = labelSize.x + theme->widgetPaddingX * 2.0f;
+		fuiRect headerRect = fuiRectMake(headerLeft, rect.y, headerWidth, rect.h);
+
+		fuiPushIdInt(ui, tabIndex);
+		fuiId headerId = fuiGetId(ui, "__tabStripHeader");
+		fuiPopId(ui);
+		fuiInteraction interaction = fuiInteract(ui, headerId, headerRect);
+
+		bool isShowing = (tabIndex == activeTab);
+		fuiColor fill = isShowing ? theme->widgetActiveColor : UIWidgetFillColor(ui, interaction);
+
+		// The tab in front stands out of the strip and the ones behind it lie flat in it, the same three
+		// reliefs the library's own tab control uses
+		UIRelief relief = UIRelief_Flat;
+		if (isShowing) {
+			relief = UIRelief_Raised;
+		} else if (interaction.isHeld) {
+			relief = UIRelief_Sunken;
+		}
+		UIBevelBox(ui, headerRect, fill, relief, 1.0f);
+
+		float labelX = headerRect.x + (headerRect.w - labelSize.x) * 0.5f;
+		float labelY = headerRect.y + (headerRect.h - labelSize.y) * 0.5f;
+		fuiDrawText(ui, tabs[tabIndex], 0, fuiV2(labelX, labelY), theme->fontHeight, theme->textColor);
+
+		if (isShowing) {
+			fuiRect underline = fuiRectMake(headerRect.x, headerRect.y + headerRect.h - UITabAccentThickness, headerRect.w, UITabAccentThickness);
+			fuiDrawRect(ui, underline, theme->accentColor);
+		}
+
+		if (interaction.wasClicked) {
+			activeTab = tabIndex;
+		}
+
+		headerLeft += headerWidth + UITabHeaderSpacing;
+	}
+	fuiPopId(ui);
+
+	*selectedIndex = activeTab;
+	return activeTab;
+}
+
+//
+// Text view
+//
+
+// How many lines of one block of text the view can lay out. Text longer than this is cut, which is why the
+// content the about dialog carries is kept well under it
+#define UI_TEXT_VIEW_MAX_LINES 512
+
+// How many rows one notch of the mouse wheel travels
+static const float UITextViewWheelRows = 3.0f;
+
+// How far one notch of the wheel pans sideways while shift is held, in pixels
+static const float UITextViewWheelPanX = 48.0f;
+
+// Space between the text and the edges of the box it sits in
+static const float UITextViewPadding = 6.0f;
+
+// Broken out of the text once per call rather than kept, because only one view is built at a time and the
+// lines point straight into the caller's own string
+static fuiTextLine UITextViewLines[UI_TEXT_VIEW_MAX_LINES];
+
+// The horizontal twin of fuiScrollbarVertical, which the library only offers along the other axis
+static float UIScrollbarHorizontal(fuiContext *ui, const fuiRect track, const char *id, const float scroll, const float viewportLength, const float contentLength) {
+	fuiTheme *theme = fuiGetTheme(ui);
+
+	// The same minimum the library keeps, so a thumb never shrinks past being grabbable
+	const float minimumThumbWidth = 18.0f;
+	const float disabledThumbAlpha = 0.35f;
+
+	const float maximumScroll = contentLength - viewportLength;
+	if (maximumScroll <= 0.0f) {
+		// Drawn but disabled, rather than hidden, so the box does not change shape the moment its content grows
+		fuiColor dimmedThumb = fuiColorWithAlpha(theme->widgetColor, theme->widgetColor.a * disabledThumbAlpha);
+		fuiDrawRect(ui, track, theme->widgetTrackColor);
+		fuiDrawRect(ui, track, dimmedThumb);
+		fuiDrawRectOutline(ui, track, theme->panelBorderColor, theme->widgetBorderThickness);
+		return 0.0f;
+	}
+
+	const float visibleRatio = (contentLength > 0.0f) ? (viewportLength / contentLength) : 1.0f;
+	const float thumbWidth = fuiMaxF(track.w * visibleRatio, minimumThumbWidth);
+	const float trackRange = track.w - thumbWidth;
+
+	const float scrollRatioBeforeDrag = (maximumScroll > 0.0f) ? (scroll / maximumScroll) : 0.0f;
+	const fuiRect thumbBeforeDrag = fuiRectMake(track.x + scrollRatioBeforeDrag * trackRange, track.y, thumbWidth, track.h);
+
+	fuiId thumbId = fuiGetId(ui, id);
+	fuiInteraction interaction = fuiInteract(ui, thumbId, thumbBeforeDrag);
+
+	float newScroll = scroll;
+	if (interaction.isHeld && trackRange > 0.0f) {
+		float scrollPerPixel = maximumScroll / trackRange;
+		fuiVec2 mouseDelta = fuiGetMouseDelta(ui);
+		newScroll += mouseDelta.x * scrollPerPixel;
+	}
+	newScroll = fuiClampF(newScroll, 0.0f, maximumScroll);
+
+	const float scrollRatio = newScroll / maximumScroll;
+	const fuiRect thumb = fuiRectMake(track.x + scrollRatio * trackRange, track.y, thumbWidth, track.h);
+	const fuiColor thumbColor = interaction.isHeld ? theme->accentColor : (interaction.isHovered ? theme->widgetHoveredColor : theme->widgetColor);
+
+	fuiDrawRect(ui, track, theme->widgetTrackColor);
+	fuiDrawRect(ui, thumb, thumbColor);
+	fuiDrawRectOutline(ui, thumb, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	return newScroll;
+}
+
+// Measures the widest line and the stacked height of the whole block, but only when the block or the size
+// it is drawn at has actually changed since the last time round
+static void UITextViewMeasure(fuiContext *ui, const char *text, const float fontHeight, const float lineHeight, UITextViewState *state) {
+	if (state->measuredText == text && state->measuredFontHeight == fontHeight) {
+		return;
+	}
+
+	const bool noWordWrap = false;
+	const float unusedWrapWidth = 0.0f;
+	uint32_t lineCount = fuiBreakTextLines(ui, text, 0, fontHeight, noWordWrap, unusedWrapWidth, UITextViewLines, UI_TEXT_VIEW_MAX_LINES);
+
+	float widestLine = 0.0f;
+	for (uint32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		const fuiTextLine *line = UITextViewLines + lineIndex;
+		fuiVec2 lineSize = fuiMeasureText(ui, line->start, line->length, fontHeight);
+		widestLine = fuiMaxF(widestLine, lineSize.x);
+	}
+
+	state->measuredText = text;
+	state->measuredFontHeight = fontHeight;
+	state->contentWidth = widestLine;
+	state->contentHeight = (float)lineCount * lineHeight;
+}
+
+static bool UIRectContainsPoint(const fuiRect rect, const fuiVec2 point) {
+	bool result = (point.x >= rect.x) && (point.x < (rect.x + rect.w)) && (point.y >= rect.y) && (point.y < (rect.y + rect.h));
+	return result;
+}
+
+void UITextView(fuiContext *ui, const fuiRect rect, const char *id, const char *text, UITextViewState *state, const float backgroundOpacity) {
+	if (ui == fpl_null || id == fpl_null || text == fpl_null || state == fpl_null) {
+		return;
+	}
+
+	fuiTheme *theme = fuiGetTheme(ui);
+
+	const float fontHeight = theme->fontHeight;
+	const float lineHeight = fuiGetLineHeight(ui, fontHeight);
+	const float gutter = fuiScrollGutterWidth();
+
+	// The frame is drawn whatever the fill does, so a view with no fill at all is still a box rather than
+	// loose text floating over whatever lies behind it
+	const float clampedBackgroundOpacity = fuiClampF(backgroundOpacity, 0.0f, 1.0f);
+	if (clampedBackgroundOpacity > 0.0f) {
+		fuiDrawRect(ui, rect, UIFadeColor(theme->widgetTrackColor, clampedBackgroundOpacity));
+	}
+	fuiDrawRectOutline(ui, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	// Both gutters are always reserved, so the text does not shift the moment a scrollbar becomes live
+	const fuiRect viewport = fuiRectMake(rect.x, rect.y, rect.w - gutter, rect.h - gutter);
+
+	UITextViewMeasure(ui, text, fontHeight, lineHeight, state);
+
+	const float visibleWidth = fuiMaxF(0.0f, viewport.w - UITextViewPadding * 2.0f);
+	const float visibleHeight = fuiMaxF(0.0f, viewport.h - UITextViewPadding * 2.0f);
+	const float maximumScrollX = fuiMaxF(0.0f, state->contentWidth - visibleWidth);
+	const float maximumScrollY = fuiMaxF(0.0f, state->contentHeight - visibleHeight);
+
+	float scrollX = state->scrollX;
+	float scrollY = state->scrollY;
+
+	// The wheel scrolls whichever axis the shift key asks for, which is the only way sideways scrolling is
+	// reachable without letting go of the wheel and grabbing the bar
+	if (UIRectContainsPoint(rect, fuiGetMousePosition(ui))) {
+		float wheelDelta = fuiGetMouseWheelDelta(ui);
+		if (wheelDelta != 0.0f) {
+			if (fuiIsShiftDown(ui)) {
+				scrollX -= wheelDelta * UITextViewWheelPanX;
+			} else {
+				scrollY -= wheelDelta * lineHeight * UITextViewWheelRows;
+			}
+		}
+	}
+
+	fuiPushId(ui, id);
+
+	// Resolved before the text, so it is laid out from the offset the bars settled on
+	const fuiRect verticalTrack = fuiRectMake(rect.x + rect.w - gutter, rect.y, gutter, rect.h - gutter);
+	scrollY = fuiScrollbarVertical(ui, verticalTrack, "__textViewScrollbarY", scrollY, visibleHeight, state->contentHeight);
+	scrollY = fuiClampF(scrollY, 0.0f, maximumScrollY);
+
+	const fuiRect horizontalTrack = fuiRectMake(rect.x, rect.y + rect.h - gutter, rect.w - gutter, gutter);
+	scrollX = UIScrollbarHorizontal(ui, horizontalTrack, "__textViewScrollbarX", scrollX, visibleWidth, state->contentWidth);
+	scrollX = fuiClampF(scrollX, 0.0f, maximumScrollX);
+
+	// The little square where the two bars meet, filled so it does not read as a hole in the box
+	const fuiRect scrollCorner = fuiRectMake(rect.x + rect.w - gutter, rect.y + rect.h - gutter, gutter, gutter);
+	fuiDrawRect(ui, scrollCorner, theme->widgetTrackColor);
+
+	state->scrollX = scrollX;
+	state->scrollY = scrollY;
+
+	const bool noWordWrap = false;
+	const float unusedWrapWidth = 0.0f;
+	uint32_t lineCount = fuiBreakTextLines(ui, text, 0, fontHeight, noWordWrap, unusedWrapWidth, UITextViewLines, UI_TEXT_VIEW_MAX_LINES);
+
+	const float textX = viewport.x + UITextViewPadding - scrollX;
+	const float firstLineY = viewport.y + UITextViewPadding - scrollY;
+
+	fuiPushClip(ui, viewport);
+	for (uint32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		const fuiTextLine *line = UITextViewLines + lineIndex;
+		if (line->length == 0) {
+			continue;
+		}
+
+		float lineY = firstLineY + (float)lineIndex * lineHeight;
+		bool isAboveTheBox = (lineY + lineHeight) < viewport.y;
+		bool isBelowTheBox = lineY > (viewport.y + viewport.h);
+		if (isAboveTheBox || isBelowTheBox) {
+			continue;
+		}
+
+		fuiDrawText(ui, line->start, line->length, fuiV2(textX, lineY), fontHeight, theme->textColor);
+	}
+	fuiPopClip(ui);
+
+	// A wheel notch over the box belongs to the box, not to whatever lies behind the dialog
+	fuiBlockMouse(ui, rect);
+
+	fuiPopId(ui);
+}
+
+//
+// Icon button
+//
+
+// How far the icon sinks into its own square while it is held, as a fraction of its size. Just enough to
+// read as a press without the picture appearing to jump
+static const float UIIconButtonPressInsetFactor = 0.04f;
+
+bool UIIconButton(fuiContext *ui, const fuiRect rect, const char *id, const Texture *icon, const float opacity) {
+	if (ui == fpl_null || id == fpl_null) {
+		return false;
+	}
+
+	fuiId buttonId = fuiGetId(ui, id);
+	fuiInteraction interaction = fuiInteract(ui, buttonId, rect);
+
+	// A hovered icon comes fully into view whatever opacity was asked for, because the cursor being on it
+	// is exactly the moment it has to be readable
+	const float drawOpacity = interaction.isHovered ? 1.0f : fuiClampF(opacity, 0.0f, 1.0f);
+
+	if (icon != fpl_null && icon->isValid) {
+		const float pressInset = interaction.isHeld ? (fuiMinF(rect.w, rect.h) * UIIconButtonPressInsetFactor) : 0.0f;
+		const fuiRect iconBox = fuiRectInflate(rect, -pressInset);
+
+		fuiImageDesc iconImage = fplZeroInit;
+		iconImage.texture = (fuiTextureId)icon->id;
+		iconImage.textureSize = fuiV2((float)icon->width, (float)icon->height);
+		iconImage.uvMin = fuiV2(0.0f, 0.0f);
+		iconImage.uvMax = fuiV2(icon->uScale, icon->vScale);
+		iconImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, drawOpacity);
+		iconImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+		// The image loader flips every texture on the way in, so it is turned back over here
+		iconImage.flags = FUI_IMAGE_FLIP_V;
+		fuiImage(ui, iconBox, &iconImage);
+	}
+
+	return interaction.wasClicked;
+}
