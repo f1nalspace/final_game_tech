@@ -309,6 +309,25 @@ SOFTWARE.
 #endif
 
 //
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FGL_VERSION_MAJOR 1
+#define FGL_VERSION_MINOR 0
+#define FGL_VERSION_PATCH 0
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FGL__STRINGIFY_EXPANDED(value) #value
+#define FGL__STRINGIFY(value) FGL__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FGL_VERSION_STRING FGL__STRINGIFY(FGL_VERSION_MAJOR) "." FGL__STRINGIFY(FGL_VERSION_MINOR) "." FGL__STRINGIFY(FGL_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fgl_api const char *fglGetVersion(void);
+
+//
 // Platform includes
 //
 #if defined(FGL_PLATFORM_WIN32)
@@ -5765,6 +5784,10 @@ extern "C" {
 // ****************************************************************************
 #if defined(FGL_IMPLEMENTATION) && !defined(FGL_IMPLEMENTED)
 #	define FGL_IMPLEMENTED
+
+fgl_api const char *fglGetVersion(void) {
+	return FGL_VERSION_STRING;
+}
 
 #if !defined(FGL_AS_PRIVATE)
 		// *******************************************************************************

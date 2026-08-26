@@ -2701,6 +2701,28 @@ SOFTWARE.
 #define fpl_common_api fpl__m_common_api
 
 //
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FPL_VERSION_MAJOR 1
+#define FPL_VERSION_MINOR 0
+#define FPL_VERSION_PATCH 1
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FPL__STRINGIFY_EXPANDED(value) #value
+#define FPL__STRINGIFY(value) FPL__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FPL_VERSION_STRING FPL__STRINGIFY(FPL_VERSION_MAJOR) "." FPL__STRINGIFY(FPL_VERSION_MINOR) "." FPL__STRINGIFY(FPL_VERSION_PATCH)
+
+/**
+* @brief Gets the version of this library, built from the major/minor/patch constants.
+* @return Returns the null-terminated version string in the form of "major.minor.patch".
+*/
+fpl_common_api const char *fplGetVersion(void);
+
+//
 // Inlining
 //
 #if defined(FPL_COMPILER_MSVC)
@@ -11368,6 +11390,10 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
 #define FPL__IMPLEMENTED
+
+fpl_common_api const char *fplGetVersion(void) {
+	return FPL_VERSION_STRING;
+}
 
 // ############################################################################
 //

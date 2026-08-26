@@ -162,6 +162,25 @@ SOFTWARE.
 #	define ftt_api extern
 #endif // FTT_API_AS_PRIVATE
 
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FTT_VERSION_MAJOR 2
+#define FTT_VERSION_MINOR 0
+#define FTT_VERSION_PATCH 1
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FTT__STRINGIFY_EXPANDED(value) #value
+#define FTT__STRINGIFY(value) FTT__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FTT_VERSION_STRING FTT__STRINGIFY(FTT_VERSION_MAJOR) "." FTT__STRINGIFY(FTT_VERSION_MINOR) "." FTT__STRINGIFY(FTT_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+ftt_api const char *fttGetVersion(void);
+
 //! Null pointer
 #define ftt_null NULL
 
@@ -554,6 +573,10 @@ ftt_inline float fttGetProgressPercentage(const fttTileTracer *tracer) {
 // ****************************************************************************
 #if defined(FTT_IMPLEMENTATION) && !defined(FTT_IMPLEMENTED)
 #	define FTT_IMPLEMENTED
+
+ftt_api const char *fttGetVersion(void) {
+	return FTT_VERSION_STRING;
+}
 
 // Default allocator backing - only pull in <stdlib.h> when malloc/free are not overridden
 #if !defined(FTT_MALLOC) || !defined(FTT_FREE)

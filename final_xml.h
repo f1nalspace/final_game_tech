@@ -142,6 +142,25 @@ SOFTWARE.
 #	define fxml_api extern
 #endif
 
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FXML_VERSION_MAJOR 0
+#define FXML_VERSION_MINOR 3
+#define FXML_VERSION_PATCH 2
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FXML__STRINGIFY_EXPANDED(value) #value
+#define FXML__STRINGIFY(value) FXML__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FXML_VERSION_STRING FXML__STRINGIFY(FXML_VERSION_MAJOR) "." FXML__STRINGIFY(FXML_VERSION_MINOR) "." FXML__STRINGIFY(FXML_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fxml_api const char *fxmlGetVersion(void);
+
 // Malloc functions override
 #ifndef FXML_MALLOC
 #	include <malloc.h>
@@ -384,6 +403,10 @@ extern "C" {
 
 #if defined(FXML_IMPLEMENTATION) && !defined(FXML_IMPLEMENTED)
 #define FXML_IMPLEMENTED
+
+fxml_api const char *fxmlGetVersion(void) {
+	return FXML_VERSION_STRING;
+}
 
 #if _DEBUG && 0
 #include <crtdbg.h>

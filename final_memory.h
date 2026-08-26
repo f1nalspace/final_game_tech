@@ -223,6 +223,25 @@ SOFTWARE.
 #	define fmem_api extern
 #endif
 
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FMEM_VERSION_MAJOR 1
+#define FMEM_VERSION_MINOR 0
+#define FMEM_VERSION_PATCH 2
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FMEM__STRINGIFY_EXPANDED(value) #value
+#define FMEM__STRINGIFY(value) FMEM__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FMEM_VERSION_STRING FMEM__STRINGIFY(FMEM_VERSION_MAJOR) "." FMEM__STRINGIFY(FMEM_VERSION_MINOR) "." FMEM__STRINGIFY(FMEM_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fmem_api const char *fmemGetVersion(void);
+
 #if defined(FMEM_IS_C99)
 	//! Initialize a struct to zero (C99)
 #	define FMEM_ZERO_INIT {0}
@@ -348,6 +367,10 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 #if defined(FMEM_IMPLEMENTATION) && !defined(FMEM_IMPLEMENTED)
 #define FMEM_IMPLEMENTED
+
+fmem_api const char *fmemGetVersion(void) {
+	return FMEM_VERSION_STRING;
+}
 
 // Functions override
 #ifndef FMEM_MEMSET

@@ -506,6 +506,25 @@ SOFTWARE.
 #	define fui_api extern
 #endif // FUI_API_AS_PRIVATE
 
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FUI_VERSION_MAJOR 0
+#define FUI_VERSION_MINOR 9
+#define FUI_VERSION_PATCH 5
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FUI__STRINGIFY_EXPANDED(value) #value
+#define FUI__STRINGIFY(value) FUI__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FUI_VERSION_STRING FUI__STRINGIFY(FUI_VERSION_MAJOR) "." FUI__STRINGIFY(FUI_VERSION_MINOR) "." FUI__STRINGIFY(FUI_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fui_api const char *fuiGetVersion(void);
+
 //! Inline helper declaration
 #define fui_inline static inline
 
@@ -4644,6 +4663,10 @@ fui_api int32_t fuiTreeGetVisibleCount(fuiContext *context, const char *id);
 #ifndef FUI_IMPLEMENTED
 #	define FUI_IMPLEMENTED
 #endif
+
+fui_api const char *fuiGetVersion(void) {
+	return FUI_VERSION_STRING;
+}
 
 #if !defined(FUI_MALLOC) || !defined(FUI_FREE)
 #	include <stdlib.h>
