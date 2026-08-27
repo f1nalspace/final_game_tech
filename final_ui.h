@@ -207,6 +207,10 @@ SOFTWARE.
 	- New: fuiBeginModalIcon and fuiBeginModalResizableIcon, taking a fuiImageDesc that may be null. The
 	  picture is fitted into the square the title bar's own height leaves and the caption starts beside it,
 	  so an icon never sits on top of the title however long that title is.
+	- Changed: A DISABLED button keeps the RAISED shape a button at rest wears - lit edge along its top and its
+	  left - rather than lying pushed into the panel. What cannot be clicked is said by its darker face and its
+	  muted caption, because a box drawn pushed in while nobody is pushing it reads as a button stuck down. Only
+	  a button being held sinks, and a tool strip toggle still sinks for as long as it is lit.
 
 	# v0.9.4:
 	This one is a WIDGET: a tree, for a folder explorer or for anything else that nests. It is built the way
@@ -8382,9 +8386,10 @@ fui_inline void fui__DrawButton(fuiContext *context, const fuiRect rect, const c
 	const fuiTheme *theme = &context->theme;
 	fuiColor fill = enabled ? fui__WidgetFillColor(context, interaction) : theme->widgetTrackColor;
 	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
-	// A disabled button is not a button that can be pushed, so it lies flush in the panel rather than standing
-	// out of it - the shape says as much as the muted caption does.
-	bool buttonIsPushed = interaction.isHeld || !enabled;
+	// Only a button actually being HELD is drawn pushed in. A disabled one keeps the raised shape every other
+	// button at rest wears and says what it is by its darker face and its muted caption, because a box that
+	// looks pushed while nobody is pushing it reads as a button stuck down rather than one that cannot be used.
+	bool buttonIsPushed = interaction.isHeld;
 	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
 	fui__DrawBevelBox(context, rect, fill, relief);
 	fuiRect labelRect = fui__PressedContentRect(context, rect, interaction.isHeld);
@@ -10944,8 +10949,9 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 	}
 	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
 	// A lit toggle stays pushed IN for as long as it is on, which is what tells a toggle apart from a button
-	// that happens to be under the cursor.
-	bool buttonIsPushed = isActive || interaction.isHeld || !enabled;
+	// that happens to be under the cursor. Being disabled is NOT a reason to sink, so a disabled toggle that
+	// is off stands exactly as an enabled one does, only darker.
+	bool buttonIsPushed = isActive || interaction.isHeld;
 	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
 	fui__DrawBevelBox(context, slot, fill, relief);
 	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
