@@ -122,6 +122,13 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
+	# v2.1.0:
+	- Changed: The trace is O(n) in the tile count instead of O(n^2), because vertex dedup, edge cancel and traversal look up a lattice cell (fttVertexSlot) instead of scanning the whole vertex/edge pool. A 501x400 map with 94k solid tiles went from 46 s to under a second
+	- Changed: A cancelled edge is marked instead of removed from the edge array, so edge indices stay stable and the memmove per cancel is gone (output order is unchanged)
+	- Changed: The tile and edge searches continue from a cursor instead of restarting at zero, since both only ever move forward
+	- Changed: The up-front reservations are bounded by the solid tile count and the lattice size instead of 4 per map tile
+	- Fixed: A fresh contour no longer reserves room for the whole remaining boundary, which on many small regions was by far the largest allocation - a 1024x1024 grid of rooms asked the arena for 1.8 GB
+
 	# v2.0.1:
 	- Fixed: Arena allocation failure (OOM) no longer dereferences a null block in release; the arena sets outOfMemory, pushes fall back to a scratch slot, and the tracer stops cleanly
 
@@ -168,8 +175,8 @@ SOFTWARE.
 
 //! Version of this library, so an application can report which build it was compiled against
 #define FTT_VERSION_MAJOR 2
-#define FTT_VERSION_MINOR 0
-#define FTT_VERSION_PATCH 1
+#define FTT_VERSION_MINOR 1
+#define FTT_VERSION_PATCH 0
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FTT__STRINGIFY_EXPANDED(value) #value
@@ -401,6 +408,23 @@ typedef struct fttTileEdges {
 	uint32_t count;    //!< Number of valid edges in the array
 } fttTileEdges;
 
+//! How many boundary edges can ever LEAVE one lattice corner. A corner is shared by at most four tiles, and
+//! each solid tile contributes exactly one edge starting there (the side of its outline that leaves that
+//! corner), and a tile is expanded at most once - so four is a hard bound, not a guess.
+#define FTT_MAX_EDGES_PER_VERTEX 4
+
+//! One point of the (w+1) x (h+1) lattice of tile corners: everything the tracer needs to answer "is there
+//! already a vertex here" and "which boundary edges start here" WITHOUT searching.
+//!
+//! This is what makes the trace linear. Both questions used to be a scan over the entire vertex/edge pool,
+//! once per tile corner and per tile edge - which is fine on a hand-built map and quadratic on a large one
+//! (a 501x400 map with 94k solid tiles spent 46 seconds doing 4.6 billion vertex comparisons).
+typedef struct fttVertexSlot {
+	int32_t mainVertexIndex;                         //!< Index into mainVertices, or -1 while this corner is unused
+	int32_t outgoingEdges[FTT_MAX_EDGES_PER_VERTEX]; //!< Indices into mainEdges of the edges STARTING here
+	uint32_t outgoingEdgeCount;                      //!< How many of the slots above are taken
+} fttVertexSlot;
+
 //! A single output contour - an ordered list of world-space vertices (fttVec2i).
 //! Closed contours have the first vertex duplicated at the end.
 typedef struct fttChainSegment {
@@ -428,6 +452,19 @@ typedef struct fttTileTracer {
 	fttArray mainVertices;        //!< Deduplicated fttVec2i pool shared across all tiles
 	fttArray mainEdges;           //!< fttEdge boundary edges (phase 1 output / phase 2 input)
 	fttArray chainSegments;       //!< fttChainSegment final output (one per contiguous solid-region boundary)
+
+	//! fttVertexSlot per lattice corner, (w+1) * (h+1) of them, indexed by corner position. The lookup index
+	//! that keeps every vertex and edge question constant-time; see fttVertexSlot.
+	fttArray vertexSlots;
+
+	//! Edges in mainEdges that are still valid. An edge is never removed from that array - phase 1 MARKS a
+	//! cancelled one and phase 2 marks a consumed one - so the array count is not the boundary size.
+	uint32_t liveEdgeCount;
+
+	//! Where the next search starts, so neither restarts at zero. Both only ever move forward: a tile is
+	//! never un-removed from the map, and an edge is never un-consumed.
+	uint32_t nextSolidTileSearchIndex; //!< First-solid-tile search (phase 1)
+	uint32_t nextFreeEdgeSearchIndex;  //!< First-free-edge search (phase 2)
 
 	// Progress tracking - integer counters used to compute a 0..100 percentage
 	uint32_t totalSolidTileCount; //!< Number of solid tiles at init (phase 1 denominator)
@@ -860,14 +897,24 @@ static void ftt__RemoveTile(fttArray *tiles, fttVec2u dimension, uint32_t x, uin
 	ftt__SetTileSolid(tiles, dimension, x, y, -1);
 }
 
-static fttTile *ftt__GetFirstSolidTile(fttArray *tiles, fttVec2u dimension) {
-	for (uint32_t tileY = 0; tileY < dimension.h; ++tileY) {
-		for (uint32_t tileX = 0; tileX < dimension.w; ++tileX) {
-			if (ftt__IsTileSolid(tiles, dimension, (int32_t)tileX, (int32_t)tileY)) {
-				return ftt__GetTilePtr(tiles, dimension, tileX, tileY);
-			}
+// The next solid tile in row-major order, continuing from where the last search stopped rather than from
+// (0,0). A tile is only ever REMOVED from the map (expanded into a region), never put back, so everything
+// before the cursor is settled for good and re-walking it per region is pure waste - on a large map it is
+// the whole grid once per contour.
+static fttTile *ftt__GetFirstSolidTile(fttTileTracer *tracer) {
+	uint32_t tileTotal = (uint32_t)tracer->tiles.count;
+	uint32_t searchIndex = tracer->nextSolidTileSearchIndex;
+	while (searchIndex < tileTotal) {
+		fttTile *tile = FTT_ARRAY_PTR(tracer->tiles, fttTile, searchIndex);
+		if (tile->isSolid > 0) {
+			// Left ON the hit, not past it: it is removed from the map before the next search runs, so it is
+			// skipped anyway - and a tile that somehow is not would be lost if the cursor stepped over it.
+			tracer->nextSolidTileSearchIndex = searchIndex;
+			return tile;
 		}
+		++searchIndex;
 	}
+	tracer->nextSolidTileSearchIndex = tileTotal;
 	return ftt_null;
 }
 
@@ -916,25 +963,119 @@ static fttTileVertices ftt__CreateTileVertices(fttTile *tile) {
 	return result;
 }
 
+// --- Lattice lookup ---------------------------------------------------------
+//
+// Every corner a tile can produce is (x | x+1, y | y+1) of a tile inside the map, so all of them live on the
+// (w+1) x (h+1) lattice and each one addresses exactly one fttVertexSlot. That is what turns "have I seen
+// this vertex" and "is there already an edge between these two" from scans into array reads.
+
+//! The slot for one lattice corner, or null when the lattice is missing (out of memory at init).
+static fttVertexSlot *ftt__GetVertexSlot(fttTileTracer *tracer, fttVec2i corner) {
+	uint32_t latticeWidth = tracer->tileCount.w + 1;
+	uint32_t latticeHeight = tracer->tileCount.h + 1;
+	FTT_ASSERT(corner.x >= 0 && corner.x < (int32_t)latticeWidth);
+	FTT_ASSERT(corner.y >= 0 && corner.y < (int32_t)latticeHeight);
+	if (corner.x < 0 || corner.y < 0 || corner.x >= (int32_t)latticeWidth || corner.y >= (int32_t)latticeHeight) {
+		return ftt_null;
+	}
+	size_t slotIndex = (size_t)corner.y * (size_t)latticeWidth + (size_t)corner.x;
+	if (slotIndex >= tracer->vertexSlots.count) {
+		return ftt_null;
+	}
+	return FTT_ARRAY_PTR(tracer->vertexSlots, fttVertexSlot, slotIndex);
+}
+
+//! The slot a main vertex sits in, addressed through its position.
+static fttVertexSlot *ftt__GetVertexSlotByIndex(fttTileTracer *tracer, int32_t mainVertexIndex) {
+	if (mainVertexIndex < 0 || (size_t)mainVertexIndex >= tracer->mainVertices.count) {
+		return ftt_null;
+	}
+	fttVec2i corner = FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, mainVertexIndex);
+	return ftt__GetVertexSlot(tracer, corner);
+}
+
+//! The main vertex index of a corner, or -1 while no tile has claimed that corner.
+static int32_t ftt__FindMainVertexIndex(fttTileTracer *tracer, fttVec2i corner) {
+	fttVertexSlot *slot = ftt__GetVertexSlot(tracer, corner);
+	if (slot == ftt_null) {
+		return -1;
+	}
+	return slot->mainVertexIndex;
+}
+
+//! The LOWEST-indexed live edge starting at fromVertexIndex, optionally required to end at toVertexIndex
+//! (pass -1 for "any"). Returns -1 when there is none.
+//!
+//! Lowest-indexed is not a detail: the scans this replaced walked mainEdges from zero and took the first
+//! hit, and at a pinch point - two solid regions meeting at a single corner - more than one edge starts at
+//! the same vertex, so which one wins decides how the contour turns there. Picking the lowest index keeps
+//! the traced output byte for byte what it was.
+static int32_t ftt__FindLiveEdgeFrom(fttTileTracer *tracer, int32_t fromVertexIndex, int32_t toVertexIndex) {
+	fttVertexSlot *slot = ftt__GetVertexSlotByIndex(tracer, fromVertexIndex);
+	if (slot == ftt_null) {
+		return -1;
+	}
+	int32_t lowestMatchIndex = -1;
+	for (uint32_t outgoingIndex = 0; outgoingIndex < slot->outgoingEdgeCount; ++outgoingIndex) {
+		int32_t edgeIndex = slot->outgoingEdges[outgoingIndex];
+		fttEdge *edge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, edgeIndex);
+		if (edge->isInvalid) {
+			continue;
+		}
+		if (toVertexIndex >= 0 && edge->vertIndex1 != toVertexIndex) {
+			continue;
+		}
+		if (lowestMatchIndex < 0 || edgeIndex < lowestMatchIndex) {
+			lowestMatchIndex = edgeIndex;
+		}
+	}
+	return lowestMatchIndex;
+}
+
+//! Appends a boundary edge and files it under the corner it starts at, so it can be found again without a scan.
+static void ftt__PushMainEdge(fttTileTracer *tracer, fttEdge edge) {
+	size_t pushedIndex = tracer->mainEdges.count;
+	FTT__ARRAY_PUSH(&tracer->mainEdges, fttEdge, edge);
+	if (tracer->mainEdges.count != pushedIndex + 1) {
+		return; // out of memory; the arena flag stops the tracer on the next step
+	}
+	++tracer->liveEdgeCount;
+
+	fttVertexSlot *slot = ftt__GetVertexSlotByIndex(tracer, edge.vertIndex0);
+	if (slot == ftt_null) {
+		return;
+	}
+	// Four is a hard bound (see fttVertexSlot). The check is here so that a map that somehow broke it would
+	// drop an edge rather than write past the slot.
+	FTT_ASSERT(slot->outgoingEdgeCount < FTT_MAX_EDGES_PER_VERTEX);
+	if (slot->outgoingEdgeCount >= FTT_MAX_EDGES_PER_VERTEX) {
+		return;
+	}
+	slot->outgoingEdges[slot->outgoingEdgeCount] = (int32_t)pushedIndex;
+	++slot->outgoingEdgeCount;
+}
+
 static fttTileIndices ftt__PushTileVertices(fttTileTracer *tracer, fttTile *tile) {
 	fttTileIndices result;
 	fttTileVertices tileVerts = ftt__CreateTileVertices(tile);
 	result.count = tileVerts.count;
 	for (uint32_t vertIndex = 0; vertIndex < tileVerts.count; ++vertIndex) {
 		fttVec2i vertex = tileVerts.verts[vertIndex];
-		int32_t matchedMainVertexIndex = -1;
-		for (uint32_t mainVertexIndex = 0; mainVertexIndex < tracer->mainVertices.count; ++mainVertexIndex) {
-			if (ftt__IsEqual(FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, mainVertexIndex), vertex)) {
-				matchedMainVertexIndex = (int32_t)mainVertexIndex;
-				break;
-			}
+		fttVertexSlot *slot = ftt__GetVertexSlot(tracer, vertex);
+		if (slot == ftt_null) {
+			result.indices[vertIndex] = -1;
+			continue;
 		}
-		if (matchedMainVertexIndex == -1) {
-			result.indices[vertIndex] = (int32_t)tracer->mainVertices.count;
+		if (slot->mainVertexIndex < 0) {
+			size_t pushedIndex = tracer->mainVertices.count;
 			FTT__ARRAY_PUSH(&tracer->mainVertices, fttVec2i, vertex);
-		} else {
-			result.indices[vertIndex] = matchedMainVertexIndex;
+			if (tracer->mainVertices.count != pushedIndex + 1) {
+				result.indices[vertIndex] = -1; // out of memory; the slot stays unclaimed and the tracer stops
+				continue;
+			}
+			slot->mainVertexIndex = (int32_t)pushedIndex;
 		}
+		result.indices[vertIndex] = slot->mainVertexIndex;
 	}
 	return result;
 }
@@ -951,39 +1092,47 @@ static fttTileEdges ftt__CreateTileEdges(fttTileIndices tileIndices, fttTile *ti
 	return result;
 }
 
+// Drops the edges this tile shares with an already-expanded neighbour, and kills the neighbour's matching
+// edge with them: a side both tiles are solid across is interior, not boundary.
+//
+// The neighbour's edge runs the other way round, so it is looked up as "a live edge from v1 to v0" - one
+// array read plus at most four comparisons, where this used to walk the entire boundary per tile side.
+// It is MARKED dead rather than removed from the middle of mainEdges: an index has to stay valid for the
+// whole trace now that the lattice slots point at them, and the ordered removal it replaces was a memmove
+// over the live boundary for every one of the (many) interior sides.
 static fttTileEdges ftt__RemoveOverlapEdges(fttTileTracer *tracer, fttTileEdges inputEdges) {
 	fttTileEdges result;
 	result.count = 0;
 	for (uint32_t edgeIndex = 0; edgeIndex < inputEdges.count; ++edgeIndex) {
 		fttEdge inputEdge = inputEdges.edges[edgeIndex];
-		bool addIt = true;
-		for (uint32_t mainEdgeIndex = 0; mainEdgeIndex < tracer->mainEdges.count; ++mainEdgeIndex) {
-			fttEdge mainEdge = FTT_ARRAY_AT(tracer->mainEdges, fttEdge, mainEdgeIndex);
-			if (inputEdge.vertIndex0 == mainEdge.vertIndex1 && inputEdge.vertIndex1 == mainEdge.vertIndex0) {
-				addIt = false;
-				ftt__ArrayRemoveOrdered(&tracer->mainEdges, mainEdgeIndex);
-				break;
-			}
+		int32_t opposingEdgeIndex = ftt__FindLiveEdgeFrom(tracer, inputEdge.vertIndex1, inputEdge.vertIndex0);
+		if (opposingEdgeIndex >= 0) {
+			fttEdge *opposingEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, opposingEdgeIndex);
+			opposingEdge->isInvalid = true;
+			--tracer->liveEdgeCount;
+			continue;
 		}
-		if (addIt) {
-			result.edges[result.count++] = inputEdge;
-		}
+		result.edges[result.count++] = inputEdge;
 	}
 	return result;
 }
 
+// Whether a candidate tile touches the region built so far along a whole side - the test that decides
+// whether expansion continues into it. A shared side shows up as a known edge running the OTHER way,
+// tv1 -> tv0, so the same lattice lookup answers it; a corner that is not a vertex yet is answer enough,
+// because no vertex means no edge.
 static bool ftt__IsTileSharesCommonEdges(fttTileTracer *tracer, fttTileVertices tileVertices) {
 	uint32_t vertexCount = tileVertices.count;
 	for (uint32_t vertIndex = 0; vertIndex < vertexCount; ++vertIndex) {
 		fttVec2i tv0 = tileVertices.verts[vertIndex];
 		fttVec2i tv1 = tileVertices.verts[(vertIndex + 1) % vertexCount];
-		for (uint32_t edgeIndex = 0; edgeIndex < tracer->mainEdges.count; ++edgeIndex) {
-			fttEdge edge = FTT_ARRAY_AT(tracer->mainEdges, fttEdge, edgeIndex);
-			fttVec2i mv0 = FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, edge.vertIndex0);
-			fttVec2i mv1 = FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, edge.vertIndex1);
-			if (ftt__IsEqual(tv0, mv1) && ftt__IsEqual(tv1, mv0)) {
-				return true;
-			}
+		int32_t fromVertexIndex = ftt__FindMainVertexIndex(tracer, tv1);
+		int32_t toVertexIndex = ftt__FindMainVertexIndex(tracer, tv0);
+		if (fromVertexIndex < 0 || toVertexIndex < 0) {
+			continue;
+		}
+		if (ftt__FindLiveEdgeFrom(tracer, fromVertexIndex, toVertexIndex) >= 0) {
+			return true;
 		}
 	}
 	return false;
@@ -1039,6 +1188,13 @@ static void ftt__AddChainSegmentVertex(fttChainSegment *chainSegment, fttVec2i v
 // State machine helpers
 // ----------------------------------------------------------------------------
 
+//! Vertices a fresh contour starts with before it has to grow. A small number on purpose, not a bound: most
+//! contours are a handful of corners and the array doubles when one is not. Reserving the whole REMAINING
+//! boundary per contour - which is what this did - costs nothing on a map with one big outline and asks the
+//! arena for gigabytes on a map made of many small ones (a 1024x1024 grid of rooms traces ~3000 contours,
+//! each reserving the entire boundary: 1.8 GB requested, almost none of it written).
+#define FTT_CHAIN_SEGMENT_INITIAL_VERTICES 16
+
 //! Returns the chain segment currently being built (or null)
 static fttChainSegment *ftt__CurChainSegment(fttTileTracer *tracer) {
 	if (tracer->curChainSegmentIndex < 0) {
@@ -1050,32 +1206,35 @@ static fttChainSegment *ftt__CurChainSegment(fttTileTracer *tracer) {
 static bool ftt__ProcessTraverseNextEdge(fttTileTracer *tracer) {
 	fttEdge *lastEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, tracer->lastEdgeIndex);
 	fttEdge *startEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, tracer->startEdgeIndex);
-	for (uint32_t mainEdgeIndex = 0; mainEdgeIndex < tracer->mainEdges.count; ++mainEdgeIndex) {
-		fttEdge *curEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, mainEdgeIndex);
-		if (!curEdge->isInvalid && (curEdge->vertIndex0 == lastEdge->vertIndex1)) {
-			fttChainSegment *curChainSegment = ftt__CurChainSegment(tracer);
-			// If v0 from current edge equals starting edge - then we are finished
-			if (curEdge->vertIndex1 == startEdge->vertIndex0) {
-				// We are done with this line segment - Set cur step to find next starting edge
-				tracer->lastEdgeIndex = -1;
-				tracer->curStep = FTT_STEP_TRAVERSE_FIND_STARTING_EDGE;
-				// Optimize and finalize shape
-				ftt__OptimizeChainSegment(curChainSegment);
-				ftt__FinalizeChainSegment(curChainSegment);
-				// Add first vertex to the end again, because we have a fully closed chain
-				ftt__AddChainSegmentVertex(curChainSegment, FTT_ARRAY_AT(curChainSegment->vertices, fttVec2i, 0));
-			} else {
-				// Now our current edge is the last edge
-				tracer->lastEdgeIndex = (int32_t)mainEdgeIndex;
-				// Add always the first edge vertex to the list
-				ftt__AddChainSegmentVertex(curChainSegment, FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, curEdge->vertIndex1));
-				// Optimize shape
-				ftt__OptimizeChainSegment(curChainSegment);
-			}
-			curEdge->isInvalid = true;
-			++tracer->consumedEdgeCount;
-			return true;
+
+	// Where the contour goes next is "a live edge starting where the last one ended", which the lattice
+	// answers directly. This used to walk mainEdges from zero for every single edge of every contour.
+	int32_t nextEdgeIndex = ftt__FindLiveEdgeFrom(tracer, lastEdge->vertIndex1, -1);
+	if (nextEdgeIndex >= 0) {
+		fttEdge *curEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, nextEdgeIndex);
+		fttChainSegment *curChainSegment = ftt__CurChainSegment(tracer);
+		// If v0 from current edge equals starting edge - then we are finished
+		if (curEdge->vertIndex1 == startEdge->vertIndex0) {
+			// We are done with this line segment - Set cur step to find next starting edge
+			tracer->lastEdgeIndex = -1;
+			tracer->curStep = FTT_STEP_TRAVERSE_FIND_STARTING_EDGE;
+			// Optimize and finalize shape
+			ftt__OptimizeChainSegment(curChainSegment);
+			ftt__FinalizeChainSegment(curChainSegment);
+			// Add first vertex to the end again, because we have a fully closed chain
+			ftt__AddChainSegmentVertex(curChainSegment, FTT_ARRAY_AT(curChainSegment->vertices, fttVec2i, 0));
+		} else {
+			// Now our current edge is the last edge
+			tracer->lastEdgeIndex = nextEdgeIndex;
+			// Add always the first edge vertex to the list
+			ftt__AddChainSegmentVertex(curChainSegment, FTT_ARRAY_AT(tracer->mainVertices, fttVec2i, curEdge->vertIndex1));
+			// Optimize shape
+			ftt__OptimizeChainSegment(curChainSegment);
 		}
+		curEdge->isInvalid = true;
+		--tracer->liveEdgeCount;
+		++tracer->consumedEdgeCount;
+		return true;
 	}
 
 	// We will come here for a line segment which is not fully closed, may have holes or something
@@ -1098,15 +1257,18 @@ static bool ftt__ProcessTraverseNextEdge(fttTileTracer *tracer) {
 static bool ftt__ProcessTraverseFindStartingEdge(fttTileTracer *tracer) {
 	bool result = false;
 
-	// Find next free starting edge - at the start this is always none
-	tracer->startEdgeIndex = -1;
-	for (uint32_t mainEdgeIndex = 0; mainEdgeIndex < tracer->mainEdges.count; ++mainEdgeIndex) {
-		fttEdge *mainEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, mainEdgeIndex);
+	// Find next free starting edge - at the start this is always none. Continues from the cursor: an edge is
+	// never un-consumed, so everything before it is dead for good and re-walking it per contour is waste.
+	uint32_t searchIndex = tracer->nextFreeEdgeSearchIndex;
+	while (searchIndex < tracer->mainEdges.count) {
+		fttEdge *mainEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, searchIndex);
 		if (!mainEdge->isInvalid) {
-			tracer->startEdgeIndex = (int32_t)mainEdgeIndex;
 			break;
 		}
+		++searchIndex;
 	}
+	tracer->nextFreeEdgeSearchIndex = searchIndex;
+	tracer->startEdgeIndex = (searchIndex < tracer->mainEdges.count) ? (int32_t)searchIndex : -1;
 
 	if (tracer->startEdgeIndex >= 0) {
 		// Continue when we found a starting edge and create the actual line segment for it
@@ -1114,6 +1276,7 @@ static bool ftt__ProcessTraverseFindStartingEdge(fttTileTracer *tracer) {
 		tracer->lastEdgeIndex = tracer->startEdgeIndex;
 		fttEdge *startEdge = FTT_ARRAY_PTR(tracer->mainEdges, fttEdge, tracer->startEdgeIndex);
 		startEdge->isInvalid = true;
+		--tracer->liveEdgeCount;
 		++tracer->consumedEdgeCount;
 		int32_t v0 = startEdge->vertIndex0;
 		int32_t v1 = startEdge->vertIndex1;
@@ -1122,7 +1285,7 @@ static bool ftt__ProcessTraverseFindStartingEdge(fttTileTracer *tracer) {
 		// Create a fresh chain segment
 		fttChainSegment newSegment;
 		ftt__ArrayInit(&newSegment.vertices, &tracer->arena, sizeof(fttVec2i));
-		ftt__ArrayReserve(&newSegment.vertices, tracer->mainEdges.count + 1);
+		ftt__ArrayReserve(&newSegment.vertices, FTT_CHAIN_SEGMENT_INITIAL_VERTICES);
 		FTT__ARRAY_PUSH(&tracer->chainSegments, fttChainSegment, newSegment);
 		tracer->curChainSegmentIndex = (int32_t)(tracer->chainSegments.count - 1);
 
@@ -1172,7 +1335,7 @@ static void ftt__AddTile(fttTileTracer *tracer, fttTile *tile) {
 
 	// Push the remaining edges to the main edges list
 	for (uint32_t tileEdgeIndex = 0; tileEdgeIndex < tileEdges.count; ++tileEdgeIndex) {
-		FTT__ARRAY_PUSH(&tracer->mainEdges, fttEdge, tileEdges.edges[tileEdgeIndex]);
+		ftt__PushMainEdge(tracer, tileEdges.edges[tileEdgeIndex]);
 	}
 }
 
@@ -1190,6 +1353,24 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	tracer->tileCount = tileCount;
 
 	uint32_t tileTotal = tileCount.w * tileCount.h;
+	uint32_t latticeTotal = (tileCount.w + 1) * (tileCount.h + 1);
+
+	// Count the solid tiles BEFORE reserving, because they are what the reservations below are bounded by.
+	// Only a solid tile ever produces vertices and edges, so sizing those pools off the whole map - as this
+	// used to - reserves several times what a map with any empty space can possibly use.
+	uint32_t solidTileCount = 0;
+	for (uint32_t tileIndex = 0; tileIndex < tileTotal; ++tileIndex) {
+		if (mapTiles[tileIndex] > 0) {
+			++solidTileCount;
+		}
+	}
+
+	// A deduplicated vertex pool cannot outgrow the lattice of tile corners either, and on a mostly solid map
+	// that is the tighter of the two bounds by a factor of four.
+	uint32_t maxVertexCount = solidTileCount * 4;
+	if (maxVertexCount > latticeTotal) {
+		maxVertexCount = latticeTotal;
+	}
 
 	// Initialize all the dynamic arrays and pre-reserve based on the known bounds
 	ftt__ArrayInit(&tracer->tiles, &tracer->arena, sizeof(fttTile));
@@ -1197,58 +1378,60 @@ ftt_api void fttInitTileTracer(fttTileTracer *tracer, fttVec2u tileCount, const 
 	ftt__ArrayInit(&tracer->mainVertices, &tracer->arena, sizeof(fttVec2i));
 	ftt__ArrayInit(&tracer->mainEdges, &tracer->arena, sizeof(fttEdge));
 	ftt__ArrayInit(&tracer->chainSegments, &tracer->arena, sizeof(fttChainSegment));
+	ftt__ArrayInit(&tracer->vertexSlots, &tracer->arena, sizeof(fttVertexSlot));
 
 	ftt__ArrayReserve(&tracer->tiles, tileTotal);
-	ftt__ArrayReserve(&tracer->openList, tileTotal);
-	ftt__ArrayReserve(&tracer->mainVertices, tileTotal * 4);
-	ftt__ArrayReserve(&tracer->mainEdges, tileTotal * 4);
+	ftt__ArrayReserve(&tracer->openList, solidTileCount);
+	ftt__ArrayReserve(&tracer->mainVertices, maxVertexCount);
+	ftt__ArrayReserve(&tracer->mainEdges, solidTileCount * 4);
 	ftt__ArrayReserve(&tracer->chainSegments, 64);
+	ftt__ArrayReserve(&tracer->vertexSlots, latticeTotal);
 
-	// If the tile buffer could not be reserved (out of memory), leave the tracer in a valid, empty, done state
-	// instead of writing tiles into a null buffer below.
-	if (tracer->arena.outOfMemory || tracer->tiles.capacity < tileTotal) {
-		tracer->tiles.count = 0;
-		tracer->startTile = ftt_null;
-		tracer->curTile = ftt_null;
-		tracer->nextTile = ftt_null;
-		tracer->startEdgeIndex = -1;
-		tracer->lastEdgeIndex = -1;
-		tracer->curChainSegmentIndex = -1;
-		tracer->totalSolidTileCount = 0;
-		tracer->processedTileCount = 0;
-		tracer->totalEdgeCount = 0;
-		tracer->consumedEdgeCount = 0;
-		tracer->curStep = FTT_STEP_DONE;
-		return;
-	}
-
-	// Fill the tile array from the map and count how many tiles are solid
-	tracer->tiles.count = tileTotal;
-	uint32_t solidTileCount = 0;
-	for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
-		for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
-			uint32_t tileIndex = ftt__ComputeTileIndex(tileCount, tileX, tileY);
-			fttTileType tileType = (fttTileType)mapTiles[tileIndex];
-			int32_t isSolid = (int32_t)mapTiles[tileIndex];
-			if (isSolid > 0) {
-				++solidTileCount;
-			}
-			FTT_ARRAY_AT(tracer->tiles, fttTile, tileIndex) = ftt__MakeTile((int32_t)tileX, (int32_t)tileY, isSolid, tileType);
-		}
-	}
-
-	tracer->curStep = FTT_STEP_FIND_START;
 	tracer->startTile = ftt_null;
 	tracer->curTile = ftt_null;
 	tracer->nextTile = ftt_null;
 	tracer->startEdgeIndex = -1;
 	tracer->lastEdgeIndex = -1;
 	tracer->curChainSegmentIndex = -1;
-
-	tracer->totalSolidTileCount = solidTileCount;
 	tracer->processedTileCount = 0;
 	tracer->totalEdgeCount = 0;
 	tracer->consumedEdgeCount = 0;
+	tracer->liveEdgeCount = 0;
+	tracer->nextSolidTileSearchIndex = 0;
+	tracer->nextFreeEdgeSearchIndex = 0;
+
+	// If the tile buffer or the lattice could not be reserved (out of memory), leave the tracer in a valid,
+	// empty, done state instead of writing into a null buffer below.
+	if (tracer->arena.outOfMemory || tracer->tiles.capacity < tileTotal || tracer->vertexSlots.capacity < latticeTotal) {
+		tracer->tiles.count = 0;
+		tracer->vertexSlots.count = 0;
+		tracer->totalSolidTileCount = 0;
+		tracer->curStep = FTT_STEP_DONE;
+		return;
+	}
+
+	// Every lattice corner starts unclaimed and with no edges leaving it. outgoingEdges is deliberately left
+	// as it is: outgoingEdgeCount is what says how much of it means anything.
+	tracer->vertexSlots.count = latticeTotal;
+	for (uint32_t slotIndex = 0; slotIndex < latticeTotal; ++slotIndex) {
+		fttVertexSlot *slot = FTT_ARRAY_PTR(tracer->vertexSlots, fttVertexSlot, slotIndex);
+		slot->mainVertexIndex = -1;
+		slot->outgoingEdgeCount = 0;
+	}
+
+	// Fill the tile array from the map
+	tracer->tiles.count = tileTotal;
+	for (uint32_t tileY = 0; tileY < tileCount.h; ++tileY) {
+		for (uint32_t tileX = 0; tileX < tileCount.w; ++tileX) {
+			uint32_t tileIndex = ftt__ComputeTileIndex(tileCount, tileX, tileY);
+			fttTileType tileType = (fttTileType)mapTiles[tileIndex];
+			int32_t isSolid = (int32_t)mapTiles[tileIndex];
+			FTT_ARRAY_AT(tracer->tiles, fttTile, tileIndex) = ftt__MakeTile((int32_t)tileX, (int32_t)tileY, isSolid, tileType);
+		}
+	}
+
+	tracer->curStep = FTT_STEP_FIND_START;
+	tracer->totalSolidTileCount = solidTileCount;
 }
 
 ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
@@ -1281,7 +1464,7 @@ ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 		{
 			ftt__ArrayClear(&tracer->openList);
 			tracer->curTile = ftt_null;
-			tracer->startTile = ftt__GetFirstSolidTile(&tracer->tiles, tracer->tileCount);
+			tracer->startTile = ftt__GetFirstSolidTile(tracer);
 			if (tracer->startTile != ftt_null) {
 				// Add the start tile to the open list and build vertices and edges from it
 				ftt__AddTile(tracer, tracer->startTile);
@@ -1291,14 +1474,15 @@ ftt_api bool fttNextTileTraceStep(fttTileTracer *tracer) {
 				ftt__GetNextOpenTile(tracer);
 			} else {
 				// No start found, exit if we have not found any edges at all
-				if (tracer->mainEdges.count == 0) {
+				if (tracer->liveEdgeCount == 0) {
 					result = false;
 				} else {
 					// Clear all chain segments and switch to phase 2
 					ftt__ArrayClear(&tracer->chainSegments);
 					tracer->curChainSegmentIndex = -1;
-					// All boundary edges are now known - remember them as the phase 2 denominator
-					tracer->totalEdgeCount = (uint32_t)tracer->mainEdges.count;
+					// All boundary edges are now known - remember them as the phase 2 denominator. The LIVE count,
+					// not the array count: mainEdges also holds every interior edge that phase 1 cancelled.
+					tracer->totalEdgeCount = tracer->liveEdgeCount;
 					tracer->curStep = FTT_STEP_TRAVERSE_FIND_STARTING_EDGE;
 				}
 			}
@@ -1376,6 +1560,9 @@ ftt_api void fttFreeTileTracer(fttTileTracer *tracer) {
 	tracer->chainSegments.items = ftt_null;
 	tracer->chainSegments.count = 0;
 	tracer->chainSegments.capacity = 0;
+	tracer->vertexSlots.items = ftt_null;
+	tracer->vertexSlots.count = 0;
+	tracer->vertexSlots.capacity = 0;
 	tracer->startTile = ftt_null;
 	tracer->curTile = ftt_null;
 	tracer->nextTile = ftt_null;
@@ -1387,6 +1574,9 @@ ftt_api void fttFreeTileTracer(fttTileTracer *tracer) {
 	tracer->processedTileCount = 0;
 	tracer->totalEdgeCount = 0;
 	tracer->consumedEdgeCount = 0;
+	tracer->liveEdgeCount = 0;
+	tracer->nextSolidTileSearchIndex = 0;
+	tracer->nextFreeEdgeSearchIndex = 0;
 }
 
 #ifdef __cplusplus
