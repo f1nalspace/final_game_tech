@@ -58,8 +58,8 @@ while (running) {
 	fuiInput input = fuiZeroInput();
 	MyFillInput(&input);                   // mouse, keys, typed codepoints, window size
 
-	fuiBeginFrame(&ui, &input, FUI_PASS_BOTH);
-	fuiBeginPanel(&ui, "settings", FUI_DOCK_NONE, 20, 20, 260, 180);
+	fuiBeginFrame(&ui, &input, fuiPass_Both);
+	fuiBeginPanel(&ui, "settings", fuiDock_None, 20, 20, 260, 180);
 	fuiLabel(&ui, fuiLayoutSlot(&ui, 24), "Settings");
 	fuiCheckbox(&ui, fuiLayoutSlot(&ui, 24), "Fullscreen", &fullscreen);
 	if (fuiButton(&ui, fuiLayoutSlot(&ui, 28), "Quit")) running = false;
@@ -110,7 +110,7 @@ came from, so a backend picks whichever is cheaper for it:
 - A modern OpenGL, Vulkan or D3D backend ignores `kind` and draws indexCount indices
   starting at indexOffset, with clipRect as the scissor and texture as the binding.
 - A legacy OpenGL, software or high level backend switches on `kind` and takes the
-  fast path -- FUI_DRAW_RECT is a rectangle fill, FUI_DRAW_TEXT is a text call.
+  fast path -- fuiDrawKind_Rect is a rectangle fill, fuiDrawKind_Text is a text call.
 
 Both come out of the same build, so nothing is computed twice.
 
@@ -199,6 +199,55 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.6:
+	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
+	edge, and a text field may be read only - and the scrolling both of them inherited, which turns out to
+	have been wrong for as long as a multiline field has had a scrollbar. Then a tree that is there to be
+	PICKED FROM rather than read: every row may carry a check box, and it has three states because a folder
+	is rarely all one thing. And a rename that touches every caller - the enum values finally read the way
+	the rest of the final libraries write theirs.
+
+	- New: fuiTreeNode.rightLabel, drawn right aligned against the row's right edge in the muted text color.
+	  The left label gives up exactly the width it takes, so a long name is shortened by the row rather than
+	  drawn underneath it. It sits at the END of the struct, so a positional initializer written against the
+	  three fields that were there keeps meaning what it meant.
+	- New: fuiTextView, the read only half of fuiTextInputEx. It takes a const string and no capacity, keeps
+	  the selection, the clipboard copy, the arrow keys and the scrolling, and draws no caret - what it drops
+	  is every branch that would change the buffer, which is what lets the text be const at the call site.
+	- New: fuiCheckTreeView, a third entry point beside fuiTreeView and fuiTreeViewEx, with the same body
+	  behind all three. It takes one array more than the others - one fuiCheckState per NODE, owned by the
+	  caller - and that array is the whole difference between a tree with boxes and a tree without. A
+	  description carrying a field that is null in almost every call would have said less than two functions do.
+	- New: fuiCheckState, which is Unchecked, Checked or Mixed. Mixed is drawn as a smaller filled square
+	  instead of the full mark, which is what "part of what is under here" looks like at a glance.
+	- New: fuiTreeAction.checkedNode and fuiTreeAction.checkedNodeWantedState, which is how a click on a box is
+	  reported. The widget writes NOTHING into the states: a check is a REQUEST, and what a row says afterwards
+	  is decided by whoever answers it. A file half staged is wholly staged once it is checked and leaves the
+	  tree it was checked in - a widget that had set the state itself would have shown it wrong for a frame.
+	- New: fuiTreeComputeCheckStates, the counterpart of fuiTreeComputeDescendants: it fills in every node that
+	  HAS children out of its own subtree - all of it checked makes it Checked, none of it Unchecked, anything
+	  in between Mixed - in one backwards pass over the preorder. The leaves are read and left alone, because
+	  they are what the rest is computed from.
+	- New: The space bar checks and unchecks the selected row, for a tree that has the keyboard. The box owns
+	  its click the way the expander owns its own: pointing at the box and pointing at the row are two
+	  different things, and checking a node is not picking it.
+	- Changed: EVERY enum value now reads prefixTypeName_Value - fuiKey_PageUp, fuiDock_Fill, fuiPass_Both,
+	  fuiDialogResult_Ok, fuiDrawKind_Rect - rather than the shouted form it wore until now. An enum is not a
+	  constant: it is named after the type it belongs to, which is what fplInitFlags_All and fplKey_Return have
+	  always done one library over. Nothing else about them moved - same values, same order, same meaning - so
+	  a caller renames and is finished. What stays shouted is what really is a macro: FUI_MAX_TREE_DEPTH,
+	  FUI_KEY_REPEAT_DELAY, and FUI_MOUSE_LEFT with the two buttons beside it, which are #defines rather than
+	  an enum. The older entries below say what they said at the time and were left alone.
+	- Fixed: A multiline text field kept its scroll offset as the LINE it had rounded to, and rebuilt the
+	  pixel offset the scrollbar wants out of it once a frame. The bar works in continuous pixels: it was
+	  handed a value already quantized to a row, added the mouse motion to it, and had its answer quantized
+	  again on the way back, so everything a drag was worth below half a row was thrown away every frame. A
+	  drag slower than that moved NOTHING however far it was pulled, and a faster one put the thumb where
+	  the next frame immediately took it back - which is what read as flicker. Dragged at two pixels a
+	  frame, a 33 line text in an eight row box did not move at all before and steps a row every three
+	  frames now. The exact offset lives in fuiWidgetState.scroll from here on, and
+	  fuiWidgetState.textFirstLine goes on holding the whole row that is drawn.
 
 	# v0.9.5:
 	A dialog may now wear an icon in its title bar, the way a desktop window does. It is OPTIONAL in the
@@ -517,7 +566,7 @@ SOFTWARE.
 //! Version of this library, so an application can report which build it was compiled against
 #define FUI_VERSION_MAJOR 0
 #define FUI_VERSION_MINOR 9
-#define FUI_VERSION_PATCH 5
+#define FUI_VERSION_PATCH 6
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FUI__STRINGIFY_EXPANDED(value) #value
@@ -1316,20 +1365,20 @@ typedef struct fuiVertex {
 */
 typedef enum fuiDrawKind {
 	//! No shortcut available, draw the indices
-	FUI_DRAW_TRIANGLES = 0,
+	fuiDrawKind_Triangles = 0,
 	//! One axis aligned filled rectangle, see fuiDrawCommand::payload::rect
-	FUI_DRAW_RECT,
+	fuiDrawKind_Rect,
 	//! One axis aligned rectangle outline, see fuiDrawCommand::payload::rectOutline
-	FUI_DRAW_RECT_OUTLINE,
+	fuiDrawKind_RectOutline,
 	//! One straight line segment, see fuiDrawCommand::payload::line
-	FUI_DRAW_LINE,
+	fuiDrawKind_Line,
 	//! One string on one baseline, see fuiDrawCommand::payload::text
-	FUI_DRAW_TEXT,
+	fuiDrawKind_Text,
 	//! One textured axis aligned quad, see fuiDrawCommand::payload::image
-	FUI_DRAW_IMAGE,
+	fuiDrawKind_Image,
 } fuiDrawKind;
 
-//! Fast path payload of a @ref FUI_DRAW_RECT command
+//! Fast path payload of a @ref fuiDrawKind_Rect command
 typedef struct fuiDrawRectPayload {
 	//! The rectangle to fill
 	fuiRect rect;
@@ -1337,7 +1386,7 @@ typedef struct fuiDrawRectPayload {
 	fuiColor color;
 } fuiDrawRectPayload;
 
-//! Fast path payload of a @ref FUI_DRAW_RECT_OUTLINE command
+//! Fast path payload of a @ref fuiDrawKind_RectOutline command
 typedef struct fuiDrawRectOutlinePayload {
 	//! The rectangle to outline, the stroke is drawn INSIDE these bounds
 	fuiRect rect;
@@ -1347,7 +1396,7 @@ typedef struct fuiDrawRectOutlinePayload {
 	fuiColor color;
 } fuiDrawRectOutlinePayload;
 
-//! Fast path payload of a @ref FUI_DRAW_LINE command
+//! Fast path payload of a @ref fuiDrawKind_Line command
 typedef struct fuiDrawLinePayload {
 	//! Where the line starts
 	fuiVec2 start;
@@ -1359,7 +1408,7 @@ typedef struct fuiDrawLinePayload {
 	fuiColor color;
 } fuiDrawLinePayload;
 
-//! Fast path payload of a @ref FUI_DRAW_TEXT command
+//! Fast path payload of a @ref fuiDrawKind_Text command
 typedef struct fuiDrawTextPayload {
 	//! Byte offset of the string inside fuiDrawData::textBuffer
 	uint32_t textOffset;
@@ -1382,20 +1431,20 @@ typedef struct fuiDrawTextPayload {
 */
 typedef enum fuiImageFlags {
 	//! Drawn as it is stored
-	FUI_IMAGE_FLAGS_NONE = 0,
+	fuiImageFlags_None = 0,
 	//! Mirrored left to right
-	FUI_IMAGE_FLIP_U = 1 << 0,
+	fuiImageFlags_FlipU = 1 << 0,
 	//! Mirrored top to bottom
-	FUI_IMAGE_FLIP_V = 1 << 1,
+	fuiImageFlags_FlipV = 1 << 1,
 	//! Turned a quarter turn clockwise on screen
-	FUI_IMAGE_ROTATE_90_CW = 1 << 2,
+	fuiImageFlags_Rotate90CW = 1 << 2,
 	//! Turned a quarter turn counter clockwise on screen
-	FUI_IMAGE_ROTATE_90_CCW = 1 << 3,
+	fuiImageFlags_Rotate90CCW = 1 << 3,
 } fuiImageFlags;
 
 /**
 * @struct fuiDrawImagePayload
-* @brief Fast path payload of a @ref FUI_DRAW_IMAGE command.
+* @brief Fast path payload of a @ref fuiDrawKind_Image command.
 * @note `rect` is the FINAL quad, already the shape a quarter turn made it - a backend maps the texture
 *       onto it as `flags` says and must not turn the rectangle a second time.
 */
@@ -1433,15 +1482,15 @@ typedef struct fuiDrawCommand {
 	uint32_t indexCount;
 	//! Fast path payload - the member matching `kind` is valid, and is ignored entirely when drawing triangles
 	union {
-		//! Valid when kind is @ref FUI_DRAW_RECT
+		//! Valid when kind is @ref fuiDrawKind_Rect
 		fuiDrawRectPayload rect;
-		//! Valid when kind is @ref FUI_DRAW_RECT_OUTLINE
+		//! Valid when kind is @ref fuiDrawKind_RectOutline
 		fuiDrawRectOutlinePayload rectOutline;
-		//! Valid when kind is @ref FUI_DRAW_LINE
+		//! Valid when kind is @ref fuiDrawKind_Line
 		fuiDrawLinePayload line;
-		//! Valid when kind is @ref FUI_DRAW_TEXT
+		//! Valid when kind is @ref fuiDrawKind_Text
 		fuiDrawTextPayload text;
-		//! Valid when kind is @ref FUI_DRAW_IMAGE
+		//! Valid when kind is @ref fuiDrawKind_Image
 		fuiDrawImagePayload image;
 	} payload;
 } fuiDrawCommand;
@@ -1459,7 +1508,7 @@ typedef struct fuiDrawData {
 	const fuiDrawIndex *indices;
 	//! The commands, in the order they were built, which is the order they must be drawn in
 	const fuiDrawCommand *commands;
-	//! Backing bytes every @ref FUI_DRAW_TEXT payload points into
+	//! Backing bytes every @ref fuiDrawKind_Text payload points into
 	const char *textBuffer;
 	//! Number of entries in the vertex array
 	uint32_t vertexCount;
@@ -1550,75 +1599,75 @@ fui_inline bool fuiButtonWentUp(const fuiButtonState state) {
 */
 typedef enum fuiKey {
 	//! No key
-	FUI_KEY_NONE = 0,
+	fuiKey_None = 0,
 
 	//! The backspace key
-	FUI_KEY_BACKSPACE,
+	fuiKey_Backspace,
 	//! The tab key
-	FUI_KEY_TAB,
+	fuiKey_Tab,
 	//! The return or enter key
-	FUI_KEY_RETURN,
+	fuiKey_Return,
 	//! The escape key
-	FUI_KEY_ESCAPE,
+	fuiKey_Escape,
 	//! The space bar
-	FUI_KEY_SPACE,
+	fuiKey_Space,
 	//! The page up key
-	FUI_KEY_PAGE_UP,
+	fuiKey_PageUp,
 	//! The page down key
-	FUI_KEY_PAGE_DOWN,
+	fuiKey_PageDown,
 	//! The end key
-	FUI_KEY_END,
+	fuiKey_End,
 	//! The home key
-	FUI_KEY_HOME,
+	fuiKey_Home,
 	//! The left arrow key
-	FUI_KEY_LEFT,
+	fuiKey_Left,
 	//! The up arrow key
-	FUI_KEY_UP,
+	fuiKey_Up,
 	//! The right arrow key
-	FUI_KEY_RIGHT,
+	fuiKey_Right,
 	//! The down arrow key
-	FUI_KEY_DOWN,
+	fuiKey_Down,
 	//! The insert key
-	FUI_KEY_INSERT,
+	fuiKey_Insert,
 	//! The delete key
-	FUI_KEY_DELETE,
+	fuiKey_Delete,
 
-	//! The digit 0, the digits are contiguous up to @ref FUI_KEY_9
-	FUI_KEY_0,
-	FUI_KEY_1, FUI_KEY_2, FUI_KEY_3, FUI_KEY_4, FUI_KEY_5, FUI_KEY_6, FUI_KEY_7, FUI_KEY_8,
+	//! The digit 0, the digits are contiguous up to @ref fuiKey_9
+	fuiKey_0,
+	fuiKey_1, fuiKey_2, fuiKey_3, fuiKey_4, fuiKey_5, fuiKey_6, fuiKey_7, fuiKey_8,
 	//! The digit 9
-	FUI_KEY_9,
+	fuiKey_9,
 
-	//! The letter A, the letters are contiguous up to @ref FUI_KEY_Z
-	FUI_KEY_A,
-	FUI_KEY_B, FUI_KEY_C, FUI_KEY_D, FUI_KEY_E, FUI_KEY_F, FUI_KEY_G, FUI_KEY_H, FUI_KEY_I,
-	FUI_KEY_J, FUI_KEY_K, FUI_KEY_L, FUI_KEY_M, FUI_KEY_N, FUI_KEY_O, FUI_KEY_P, FUI_KEY_Q,
-	FUI_KEY_R, FUI_KEY_S, FUI_KEY_T, FUI_KEY_U, FUI_KEY_V, FUI_KEY_W, FUI_KEY_X, FUI_KEY_Y,
+	//! The letter A, the letters are contiguous up to @ref fuiKey_Z
+	fuiKey_A,
+	fuiKey_B, fuiKey_C, fuiKey_D, fuiKey_E, fuiKey_F, fuiKey_G, fuiKey_H, fuiKey_I,
+	fuiKey_J, fuiKey_K, fuiKey_L, fuiKey_M, fuiKey_N, fuiKey_O, fuiKey_P, fuiKey_Q,
+	fuiKey_R, fuiKey_S, fuiKey_T, fuiKey_U, fuiKey_V, fuiKey_W, fuiKey_X, fuiKey_Y,
 	//! The letter Z
-	FUI_KEY_Z,
+	fuiKey_Z,
 
-	//! The function key F1, the function keys are contiguous up to @ref FUI_KEY_F12
-	FUI_KEY_F1,
-	FUI_KEY_F2, FUI_KEY_F3, FUI_KEY_F4, FUI_KEY_F5, FUI_KEY_F6, FUI_KEY_F7, FUI_KEY_F8,
-	FUI_KEY_F9, FUI_KEY_F10, FUI_KEY_F11,
+	//! The function key F1, the function keys are contiguous up to @ref fuiKey_F12
+	fuiKey_F1,
+	fuiKey_F2, fuiKey_F3, fuiKey_F4, fuiKey_F5, fuiKey_F6, fuiKey_F7, fuiKey_F8,
+	fuiKey_F9, fuiKey_F10, fuiKey_F11,
 	//! The function key F12
-	FUI_KEY_F12,
+	fuiKey_F12,
 
 	//! The left control key
-	FUI_KEY_LEFT_CONTROL,
+	fuiKey_LeftControl,
 	//! The right control key
-	FUI_KEY_RIGHT_CONTROL,
+	fuiKey_RightControl,
 	//! The left shift key
-	FUI_KEY_LEFT_SHIFT,
+	fuiKey_LeftShift,
 	//! The right shift key
-	FUI_KEY_RIGHT_SHIFT,
+	fuiKey_RightShift,
 	//! The left alt key
-	FUI_KEY_LEFT_ALT,
+	fuiKey_LeftAlt,
 	//! The right alt key
-	FUI_KEY_RIGHT_ALT,
+	fuiKey_RightAlt,
 
 	//! How many keys there are, which is the size of the key array in @ref fuiInput
-	FUI_KEY_COUNT,
+	fuiKey_Count,
 } fuiKey;
 
 /**
@@ -1635,7 +1684,7 @@ typedef struct fuiInput {
 	//! State of every mouse button, indexed by @ref FUI_MOUSE_LEFT and friends
 	fuiButtonState mouseButtons[FUI_MOUSE_BUTTON_COUNT];
 	//! State of every key, indexed by @ref fuiKey
-	fuiButtonState keys[FUI_KEY_COUNT];
+	fuiButtonState keys[fuiKey_Count];
 	//! Unicode codepoints typed this frame, in the order they arrived
 	uint32_t textInput[FUI_MAX_TEXT_INPUT];
 	//! How many entries of textInput are filled
@@ -1685,19 +1734,19 @@ fui_api bool fuiKeyRepeatEdge(const fuiButtonState button, const float frameTime
 */
 typedef enum fuiCursor {
 	//! The ordinary pointer, which is what every frame starts as
-	FUI_CURSOR_ARROW = 0,
+	fuiCursor_Arrow = 0,
 	//! The I-beam of an editable text field
-	FUI_CURSOR_TEXT,
+	fuiCursor_Text,
 	//! A left-right resize handle, such as a vertical splitter
-	FUI_CURSOR_RESIZE_HORIZONTAL,
+	fuiCursor_ResizeHorizontal,
 	//! An up-down resize handle, such as a horizontal splitter
-	FUI_CURSOR_RESIZE_VERTICAL,
+	fuiCursor_ResizeVertical,
 	//! A corner resize handle
-	FUI_CURSOR_RESIZE_DIAGONAL,
+	fuiCursor_ResizeDiagonal,
 	//! The pointing hand of something clickable
-	FUI_CURSOR_HAND,
+	fuiCursor_Hand,
 	//! How many cursor shapes there are
-	FUI_CURSOR_COUNT,
+	fuiCursor_Count,
 } fuiCursor;
 
 /**
@@ -1856,13 +1905,13 @@ typedef uint64_t fuiId;
 typedef enum fuiPass {
 	//! Interact and draw in one build. The simple loop, at the cost of hover and click resolving against
 	//! the previous frame's layout - the standard immediate mode contract, and one frame of lag.
-	FUI_PASS_BOTH = 0,
+	fuiPass_Both = 0,
 	//! Hit test and run interactions, emit no geometry. Build this one where input is read, so that
 	//! @ref fuiWantsMouse is already correct before the caller decides what to do with the cursor.
-	FUI_PASS_INTERACT,
+	fuiPass_Interact,
 	//! Emit geometry only. Every input edge is neutralized, so building the same tree a second time
 	//! cannot fire anything twice.
-	FUI_PASS_DRAW,
+	fuiPass_Draw,
 } fuiPass;
 
 // ****************************************************************************
@@ -1879,25 +1928,25 @@ typedef enum fuiPass {
 */
 typedef enum fuiDock {
 	//! Free floating at an explicit position and size, taking nothing away from the parent
-	FUI_DOCK_NONE = 0,
+	fuiDock_None = 0,
 	//! Bite a strip of the given width off the left edge
-	FUI_DOCK_LEFT,
+	fuiDock_Left,
 	//! Bite a strip of the given width off the right edge
-	FUI_DOCK_RIGHT,
+	fuiDock_Right,
 	//! Bite a strip of the given height off the top edge
-	FUI_DOCK_TOP,
+	fuiDock_Top,
 	//! Bite a strip of the given height off the bottom edge
-	FUI_DOCK_BOTTOM,
+	fuiDock_Bottom,
 	//! Consume everything the parent has left
-	FUI_DOCK_FILL,
+	fuiDock_Fill,
 } fuiDock;
 
 //! Direction a container hands its slots out in.
 typedef enum fuiAxis {
 	//! Slots stack downwards, each taking the full content width
-	FUI_AXIS_VERTICAL = 0,
+	fuiAxis_Vertical = 0,
 	//! Slots stack to the right, each taking the full content height
-	FUI_AXIS_HORIZONTAL,
+	fuiAxis_Horizontal,
 } fuiAxis;
 
 /**
@@ -1916,7 +1965,8 @@ typedef struct fuiWidgetState {
 	fuiVec2 sizeOffset;
 	//! Flow length the content consumed the last time it was built, which is what auto sizing reads
 	float measuredExtent;
-	//! Scroll offset of a scrolling container, in pixels from the top of its content
+	//! Scroll offset of a scrolling container, in pixels from the top of its content. A multiline text
+	//! field keeps its exact offset here too, while @ref textFirstLine holds the whole row it rounds to
 	float scroll;
 	//! Sideways scroll offset of a container wider than its box, in pixels from the left of its content
 	float scrollX;
@@ -2192,15 +2242,15 @@ typedef struct fuiContext {
 	//! Whether the window had focus this frame
 	bool inputIsActive;
 	//! Key states this frame, indexed by @ref fuiKey
-	fuiButtonState keys[FUI_KEY_COUNT];
+	fuiButtonState keys[fuiKey_Count];
 	//! Codepoints typed this frame
 	uint32_t textInput[FUI_MAX_TEXT_INPUT];
 	//! How many entries of textInput are filled
 	int32_t textInputLength;
 	//! Countdown to the next repeat of each held key, so an arrow key held down keeps stepping
-	float keyRepeatTimers[FUI_KEY_COUNT];
+	float keyRepeatTimers[fuiKey_Count];
 	//! Whether each key fired this frame counting repeats, resolved once so asking twice cannot double the rate
-	bool keyRepeated[FUI_KEY_COUNT];
+	bool keyRepeated[fuiKey_Count];
 
 	//! Host services, all callbacks null until @ref fuiSetPlatform is called
 	fuiPlatform platform;
@@ -2386,7 +2436,7 @@ fui_api void fuiSetPlatform(fuiContext *context, const fuiPlatform *platform);
 * @brief Asks for a cursor shape for the rest of this frame.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] cursor The shape @ref fuiCursor to show.
-* @note Later calls win, and the shape resets to @ref FUI_CURSOR_ARROW at the start of every frame.
+* @note Later calls win, and the shape resets to @ref fuiCursor_Arrow at the start of every frame.
 */
 fui_api void fuiSetCursor(fuiContext *context, const fuiCursor cursor);
 
@@ -2426,9 +2476,9 @@ fui_api bool fuiSetClipboardText(const fuiContext *context, const char *text);
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] input Reference to this frame's input @ref fuiInput.
 * @param[in] pass What this build is for, see @ref fuiPass.
-* @note A one pass caller passes @ref FUI_PASS_BOTH and builds once. A two pass caller builds the SAME
-*       tree twice, once with @ref FUI_PASS_INTERACT where it reads input and once with
-*       @ref FUI_PASS_DRAW where it renders, which is what removes the one frame of hover lag.
+* @note A one pass caller passes @ref fuiPass_Both and builds once. A two pass caller builds the SAME
+*       tree twice, once with @ref fuiPass_Interact where it reads input and once with
+*       @ref fuiPass_Draw where it renders, which is what removes the one frame of hover lag.
 * @see @ref fuiEndFrame
 */
 fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fuiPass pass);
@@ -2471,7 +2521,7 @@ fui_api const fuiDrawData *fuiGetDrawData(const fuiContext *context);
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] enabled True to merge, false to emit one command per primitive.
 * @note With this ON, two commands that follow each other with the SAME clip rectangle and the SAME
-*       texture become one command of kind @ref FUI_DRAW_TRIANGLES. A backend that drains the geometry -
+*       texture become one command of kind @ref fuiDrawKind_Triangles. A backend that drains the geometry -
 *       binds the texture, sets the scissor, draws the indices - makes far fewer draw calls for it,
 *       which is what a dense table of hundreds of little rectangles wants.
 * @note It is OFF by default because it destroys the fast path payloads. A backend that reads
@@ -2720,8 +2770,8 @@ fui_api void fuiDrawRect(fuiContext *context, const fuiRect rect, const fuiColor
 * @param[in] rect The rectangle to fill, in pixels.
 * @param[in] topColor The color along the top edge.
 * @param[in] bottomColor The color along the bottom edge.
-* @note Two identical stops are drawn as a plain @ref FUI_DRAW_RECT, so a flat theme keeps the fast path a
-*       backend can shortcut. A real gradient goes out as @ref FUI_DRAW_TRIANGLES, because a per-corner color
+* @note Two identical stops are drawn as a plain @ref fuiDrawKind_Rect, so a flat theme keeps the fast path a
+*       backend can shortcut. A real gradient goes out as @ref fuiDrawKind_Triangles, because a per-corner color
 *       is something no rectangle payload can carry.
 */
 fui_api void fuiDrawRectVerticalGradient(fuiContext *context, const fuiRect rect, const fuiColor topColor, const fuiColor bottomColor);
@@ -3006,14 +3056,14 @@ fui_api void fuiTooltip(fuiContext *context, const fuiRect hoverRect, const char
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the panel and doubles as the caption on its title bar.
 * @param[in] dock Where to place it inside the enclosing container, see @ref fuiDock.
-* @param[in] x Left edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
-* @param[in] y Top edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
+* @param[in] x Left edge in pixels, used only when dock is @ref fuiDock_None.
+* @param[in] y Top edge in pixels, used only when dock is @ref fuiDock_None.
 * @param[in] width Width in pixels for a left or right dock, or for a floating panel.
 * @param[in] height Height in pixels for a top or bottom dock, or for a floating panel.
 * @return Returns false when the panel is folded away, so the caller may skip building hidden content.
 * @note ALWAYS pair this with @ref fuiEndPanel, including when it returned false. A floating panel is moved
 *       by its title bar and resized by its corner, and both are remembered under `id` across frames.
-* @note The rectangle is resolved HERE and the drag is handled further down, so under @ref FUI_PASS_BOTH a
+* @note The rectangle is resolved HERE and the drag is handled further down, so under @ref fuiPass_Both a
 *       panel being dragged trails the cursor by one frame. A two pass caller sees none of that, because the
 *       draw pass re-reads what the interact pass already applied.
 * @see @ref fuiEndPanel
@@ -3025,14 +3075,14 @@ fui_api bool fuiBeginPanel(fuiContext *context, const char *id, const fuiDock do
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the panel and doubles as the caption on its title bar.
 * @param[in] dock Where to place it inside the enclosing container, see @ref fuiDock.
-* @param[in] x Left edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
-* @param[in] y Top edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
+* @param[in] x Left edge in pixels, used only when dock is @ref fuiDock_None.
+* @param[in] y Top edge in pixels, used only when dock is @ref fuiDock_None.
 * @param[in] width Width in pixels for a left or right dock, or for a floating panel.
 * @param[in] height Height in pixels for a top or bottom dock, or for a floating panel.
 * @return Returns false when the panel is folded away.
 * @note A scrollbar always sits in a reserved gutter on the right, with its thumb disabled while the content
 *       fits, so the panel does not change width the moment one row is added. Closed by @ref fuiEndPanel.
-* @note The content is laid out HERE from the scroll @ref fuiEndPanel resolves, so under @ref FUI_PASS_BOTH
+* @note The content is laid out HERE from the scroll @ref fuiEndPanel resolves, so under @ref fuiPass_Both
 *       a wheel notch lands one frame later. A two pass caller sees none of that.
 */
 fui_api bool fuiBeginScrollPanel(fuiContext *context, const char *id, const fuiDock dock, const float x, const float y, const float width, const float height);
@@ -3042,8 +3092,8 @@ fui_api bool fuiBeginScrollPanel(fuiContext *context, const char *id, const fuiD
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the panel and doubles as the caption on its title bar.
 * @param[in] dock Where to place it inside the enclosing container, see @ref fuiDock.
-* @param[in] x Left edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
-* @param[in] y Top edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
+* @param[in] x Left edge in pixels, used only when dock is @ref fuiDock_None.
+* @param[in] y Top edge in pixels, used only when dock is @ref fuiDock_None.
 * @param[in] width Width in pixels for a left or right dock, or for a floating panel.
 * @param[in] height Height in pixels for a top or bottom dock, or for a floating panel.
 * @param[in,out] isOpen Reference to the caller's own visibility flag, cleared when the button is clicked. Pass null for no button.
@@ -3057,8 +3107,8 @@ fui_api bool fuiBeginPanelClosable(fuiContext *context, const char *id, const fu
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the panel and doubles as the caption on its title bar.
 * @param[in] dock Where to place it inside the enclosing container, see @ref fuiDock.
-* @param[in] x Left edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
-* @param[in] y Top edge in pixels, used only when dock is @ref FUI_DOCK_NONE.
+* @param[in] x Left edge in pixels, used only when dock is @ref fuiDock_None.
+* @param[in] y Top edge in pixels, used only when dock is @ref fuiDock_None.
 * @param[in] width Width in pixels for a left or right dock, or for a floating panel.
 * @param[in] height Height in pixels for a top or bottom dock, or for a floating panel.
 * @param[in,out] isOpen Reference to the caller's own visibility flag, cleared when the button is clicked. Pass null for no button.
@@ -3082,7 +3132,7 @@ fui_api void fuiEndPanel(fuiContext *context);
 * @param[in] id Identifies the container and scopes the identifiers of everything inside it.
 * @param[in] axis Direction its slot children flow in, see @ref fuiAxis.
 * @param[in] dock Which edge of the enclosing container to bite a strip off, see @ref fuiDock.
-* @param[in] sizeAcross Thickness of that strip in pixels, ignored for @ref FUI_DOCK_FILL.
+* @param[in] sizeAcross Thickness of that strip in pixels, ignored for @ref fuiDock_Fill.
 * @param[in] spacing Trailing margin every slot carries, in pixels, or @ref FUI_SPACING_FROM_THEME for the theme's.
 * @note This is how a row of buttons is built inside a column of rows. ALWAYS pair with @ref fuiEndStack.
 * @see @ref fuiEndStack
@@ -3449,6 +3499,23 @@ fui_api bool fuiTextInput(fuiContext *context, const fuiRect rect, const char *i
 fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char *id, char *buffer, const int32_t capacity, const bool multiline, const bool wordWrap);
 
 /**
+* @brief A text field that can be read but not changed: selected, copied from and scrolled through.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the field.
+* @param[in] text The zero terminated text to show, which the widget never writes to.
+* @param[in] multiline Set to true for a text AREA, laid out and scrolled exactly as @ref fuiTextInputEx lays one out.
+* @param[in] wordWrap Set to true to wrap long rows to the field's content width, ignored unless multiline.
+* @note Everything about READING a text field is here - click and drag to select, shift with the arrow keys,
+*       ctrl and a, ctrl and c, the wheel and the scrollbar. Only what would change the text is gone, and with
+*       it the caret: a blinking bar in a field that takes no keys is a promise the field does not keep.
+* @note Takes no capacity and no buffer of its own. The string is read where it already lies, which is what
+*       makes this the widget for a diff, a log or a license - anything the caller HAS and wants shown.
+* @see @ref fuiTextInputEx
+*/
+fui_api void fuiTextView(fuiContext *context, const fuiRect rect, const char *id, const char *text, const bool multiline, const bool wordWrap);
+
+/**
 * @brief Converts a hue, saturation and value triple into red, green and blue.
 * @param[in] hsv The color as hue, saturation and value, every component in 0 to 1.
 * @return Returns the color as red, green and blue, every component in 0 to 1.
@@ -3497,19 +3564,19 @@ typedef int32_t fuiCommandId;
 //! Modifier keys a shortcut requires, combined with a bitwise or.
 typedef enum fuiModifier {
 	//! The bare key, with no modifier held
-	FUI_MOD_NONE = 0,
+	fuiModifier_None = 0,
 	//! Either control key
-	FUI_MOD_CONTROL = 1 << 0,
+	fuiModifier_Control = 1 << 0,
 	//! Either shift key
-	FUI_MOD_SHIFT = 1 << 1,
+	fuiModifier_Shift = 1 << 1,
 	//! Either alt key
-	FUI_MOD_ALT = 1 << 2,
+	fuiModifier_Alt = 1 << 2,
 } fuiModifier;
 
 /**
 * @struct fuiShortcut
 * @brief A keyboard shortcut: one key plus the modifiers that must be held with it.
-* @note A key of @ref FUI_KEY_NONE means the command has no shortcut, so nothing is dispatched and nothing
+* @note A key of @ref fuiKey_None means the command has no shortcut, so nothing is dispatched and nothing
 *       is written next to its label.
 */
 typedef struct fuiShortcut {
@@ -3983,7 +4050,7 @@ fui_api bool fuiModalOwnedInputThisFrame(const fuiContext *context);
 /**
 * @brief Takes the key a dialog answers with, for at most ONE dialog per press.
 * @param[in,out] context Reference to the context @ref fuiContext.
-* @param[in] key The key being answered, in practice @ref FUI_KEY_RETURN or @ref FUI_KEY_ESCAPE.
+* @param[in] key The key being answered, in practice @ref fuiKey_Return or @ref fuiKey_Escape.
 * @return Returns true when this build may act on that press.
 * @note Two dialogs stacked on each other are built one after the other, and the moment the front one
 *       closes the one underneath BECOMES the front one - inside the same build. Asking plainly whether
@@ -3996,47 +4063,47 @@ fui_api bool fuiDialogTakeKey(fuiContext *context, const fuiKey key);
 //! Which buttons a message box offers, and so what it can answer.
 typedef enum fuiMessageBoxButtons {
 	//! A single OK, for a message that is only to be acknowledged
-	FUI_MESSAGE_BOX_OK = 0,
+	fuiMessageBoxButtons_Ok = 0,
 	//! OK and Cancel, for an action the user may still call off
-	FUI_MESSAGE_BOX_OK_CANCEL,
+	fuiMessageBoxButtons_OkCancel,
 	//! Yes and No, for a question with no way out of answering
-	FUI_MESSAGE_BOX_YES_NO,
+	fuiMessageBoxButtons_YesNo,
 	//! Yes, No and Cancel, for a question that may also be called off
-	FUI_MESSAGE_BOX_YES_NO_CANCEL,
+	fuiMessageBoxButtons_YesNoCancel,
 } fuiMessageBoxButtons;
 
-//! What a dialog was answered with. Everything but @ref FUI_DIALOG_RESULT_NONE means it closed this frame.
+//! What a dialog was answered with. Everything but @ref fuiDialogResult_None means it closed this frame.
 typedef enum fuiDialogResult {
 	//! Still open, or not open at all
-	FUI_DIALOG_RESULT_NONE = 0,
+	fuiDialogResult_None = 0,
 	//! Accepted
-	FUI_DIALOG_RESULT_OK,
+	fuiDialogResult_Ok,
 	//! Dismissed, by the button, by the escape key or by the title bar
-	FUI_DIALOG_RESULT_CANCEL,
+	fuiDialogResult_Cancel,
 	//! Answered yes
-	FUI_DIALOG_RESULT_YES,
+	fuiDialogResult_Yes,
 	//! Answered no
-	FUI_DIALOG_RESULT_NO,
+	fuiDialogResult_No,
 } fuiDialogResult;
 
 //! Whether a file dialog is picking something that exists or naming something that does not.
 typedef enum fuiFileDialogMode {
 	//! Pick one of the listed entries
-	FUI_FILE_DIALOG_OPEN = 0,
+	fuiFileDialogMode_Open = 0,
 	//! Type a name, with the list there to pick one to overwrite
-	FUI_FILE_DIALOG_SAVE,
+	fuiFileDialogMode_Save,
 } fuiFileDialogMode;
 
 //! What a @ref fuiFileBrowser build came to. Only Descend leaves the dialog open in both modes.
 typedef enum fuiFileBrowserResult {
 	//! Nothing happened this frame
-	FUI_FILE_BROWSER_NONE = 0,
+	fuiFileBrowserResult_None = 0,
 	//! A folder row was activated. The dialog stays open for the caller to list that folder instead
-	FUI_FILE_BROWSER_DESCEND,
+	fuiFileBrowserResult_Descend,
 	//! A file was accepted. An opening browser closes, a saving one stays up for the caller to close
-	FUI_FILE_BROWSER_ACCEPT,
+	fuiFileBrowserResult_Accept,
 	//! Dismissed by the button or by the escape key. The dialog closes
-	FUI_FILE_BROWSER_CANCEL,
+	fuiFileBrowserResult_Cancel,
 } fuiFileBrowserResult;
 
 /**
@@ -4094,7 +4161,7 @@ typedef struct fuiListIcons {
 * @param[in] title What the title bar says.
 * @param[in] text The message. The box grows wider than its minimum to fit a long one.
 * @param[in] buttons Which buttons to offer @ref fuiMessageBoxButtons.
-* @return Returns what the user chose, and @ref FUI_DIALOG_RESULT_NONE while it is still up.
+* @return Returns what the user chose, and @ref fuiDialogResult_None while it is still up.
 * @note Closes itself as soon as it is answered. Enter takes the first button, escape the dismissing one.
 */
 fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const char *title, const char *text, const fuiMessageBoxButtons buttons);
@@ -4107,7 +4174,7 @@ fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const
 * @param[in] label What the field is asking for.
 * @param[in,out] buffer The text, edited in place. Seed it before opening the dialog to offer a default.
 * @param[in] capacity How many bytes buffer holds, counting the terminator.
-* @return Returns @ref FUI_DIALOG_RESULT_OK or @ref FUI_DIALOG_RESULT_CANCEL once answered.
+* @return Returns @ref fuiDialogResult_Ok or @ref fuiDialogResult_Cancel once answered.
 * @note The field takes the keyboard as the dialog opens, so the user can type straight away.
 */
 fui_api fuiDialogResult fuiInputBox(fuiContext *context, const char *id, const char *title, const char *label, char *buffer, const int32_t capacity);
@@ -4121,7 +4188,7 @@ fui_api fuiDialogResult fuiInputBox(fuiContext *context, const char *id, const c
 * @param[in,out] buffer The text, edited in place.
 * @param[in] capacity How many bytes buffer holds, counting the terminator.
 * @param[in] wordWrap True to fold a long line at a word rather than let it run off the right edge.
-* @return Returns @ref FUI_DIALOG_RESULT_OK or @ref FUI_DIALOG_RESULT_CANCEL once answered.
+* @return Returns @ref fuiDialogResult_Ok or @ref fuiDialogResult_Cancel once answered.
 */
 fui_api fuiDialogResult fuiInputBoxMultiline(fuiContext *context, const char *id, const char *title, const char *label, char *buffer, const int32_t capacity, const bool wordWrap);
 
@@ -4132,7 +4199,7 @@ fui_api fuiDialogResult fuiInputBoxMultiline(fuiContext *context, const char *id
 * @param[in] title What the title bar says.
 * @param[in,out] color The color, edited in place while the dialog is up.
 * @param[in] hasAlpha True to offer the alpha band as well.
-* @return Returns @ref FUI_DIALOG_RESULT_OK or @ref FUI_DIALOG_RESULT_CANCEL once answered.
+* @return Returns @ref fuiDialogResult_Ok or @ref fuiDialogResult_Cancel once answered.
 * @note The color is written as it is dragged, so a caller that means to restore it on cancel has to keep
 *       its own copy of what it was.
 */
@@ -4147,7 +4214,7 @@ fui_api fuiDialogResult fuiColorDialog(fuiContext *context, const char *id, cons
 * @param[in] hasAlpha True to offer the alpha band as well.
 * @param[in,out] liveUpdate The switch, owned by the caller so it survives the dialog closing. Null is
 *                exactly @ref fuiColorDialog, and the row is not drawn at all.
-* @return Returns @ref FUI_DIALOG_RESULT_OK or @ref FUI_DIALOG_RESULT_CANCEL once answered.
+* @return Returns @ref fuiDialogResult_Ok or @ref fuiDialogResult_Cancel once answered.
 * @note The dialog only owns the switch's UI. ACTING on it - pushing every drag through to the real thing
 *       a swatch cannot show, such as a light - is the caller's, and is the whole reason it exists.
 */
@@ -4193,7 +4260,7 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 * @param[in,out] nameBuffer The typed name in save mode, ignored when opening. May be null when opening.
 * @param[in] nameCapacity How many bytes nameBuffer holds, counting the terminator.
 * @param[in] icons Reference to the icon sheet @ref fuiListIcons, or null for a list of plain text.
-* @return Returns @ref FUI_DIALOG_RESULT_OK or @ref FUI_DIALOG_RESULT_CANCEL once answered.
+* @return Returns @ref fuiDialogResult_Ok or @ref fuiDialogResult_Cancel once answered.
 * @note Accepting with nothing selected is ignored in open mode, since there is nothing to open.
 */
 fui_api fuiDialogResult fuiFileDialog(fuiContext *context, const char *id, const char *title, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiFileDialogMode mode, char *nameBuffer, const int32_t nameCapacity, const fuiListIcons *icons);
@@ -4229,23 +4296,23 @@ fui_api fuiFileBrowserResult fuiFileBrowser(fuiContext *context, const char *id,
 //! grid, with the middle of them first so that a zeroed description asks for the sensible one
 typedef enum fuiImagePlacement {
 	//! Centered both ways
-	FUI_IMAGE_PLACE_CENTER = 0,
+	fuiImagePlacement_Center = 0,
 	//! Against the top left corner
-	FUI_IMAGE_PLACE_TOP_LEFT,
+	fuiImagePlacement_TopLeft,
 	//! Centered across, against the top
-	FUI_IMAGE_PLACE_TOP,
+	fuiImagePlacement_Top,
 	//! Against the top right corner
-	FUI_IMAGE_PLACE_TOP_RIGHT,
+	fuiImagePlacement_TopRight,
 	//! Centered down, against the left
-	FUI_IMAGE_PLACE_LEFT,
+	fuiImagePlacement_Left,
 	//! Centered down, against the right
-	FUI_IMAGE_PLACE_RIGHT,
+	fuiImagePlacement_Right,
 	//! Against the bottom left corner
-	FUI_IMAGE_PLACE_BOTTOM_LEFT,
+	fuiImagePlacement_BottomLeft,
 	//! Centered across, against the bottom
-	FUI_IMAGE_PLACE_BOTTOM,
+	fuiImagePlacement_Bottom,
 	//! Against the bottom right corner
-	FUI_IMAGE_PLACE_BOTTOM_RIGHT,
+	fuiImagePlacement_BottomRight,
 } fuiImagePlacement;
 
 /**
@@ -4256,13 +4323,13 @@ typedef enum fuiImagePlacement {
 */
 typedef enum fuiImageScaleMode {
 	//! At its own size, placed by the placement. May be larger than the box
-	FUI_IMAGE_SCALE_ORIGIN = 0,
+	fuiImageScaleMode_Origin = 0,
 	//! Stretched to fill the box exactly, distorting it
-	FUI_IMAGE_SCALE_STRETCH,
+	fuiImageScaleMode_Stretch,
 	//! Origin with the placement forced to the center
-	FUI_IMAGE_SCALE_CENTER,
+	fuiImageScaleMode_Center,
 	//! Fitted inside the box keeping its shape, leaving bars on the two sides that came up short
-	FUI_IMAGE_SCALE_LETTERBOX,
+	fuiImageScaleMode_Letterbox,
 } fuiImageScaleMode;
 
 /**
@@ -4474,6 +4541,21 @@ fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id);
 // ****************************************************************************
 
 /**
+* @enum fuiCheckState
+* @brief What the check box of a tree row says about that row.
+* @note Mixed is what a row says when part of what lies under it is checked and part of it is not - a folder
+*       whose files are not all the same way round, or a file the caller knows only half of.
+*/
+typedef enum fuiCheckState {
+	//! Nothing under this row is checked
+	fuiCheckState_Unchecked = 0,
+	//! Everything under this row is checked
+	fuiCheckState_Checked,
+	//! Part of it is and part of it is not, drawn as a smaller filled square rather than as the full mark
+	fuiCheckState_Mixed,
+} fuiCheckState;
+
+/**
 * @struct fuiTreeNode
 * @brief One node of a tree, in PREORDER - the order the rows come out in when everything is folded open.
 * @note A folder read recursively falls out in exactly that order, so nothing has to be re-arranged to be shown.
@@ -4488,6 +4570,10 @@ typedef struct fuiTreeNode {
 	//! How many nodes of this node's OWN subtree follow it in the array. Zero is a leaf, and is also what says
 	//! the row carries no expander. Fill it with @ref fuiTreeComputeDescendants rather than by hand
 	int32_t descendantCount;
+	//! A second label, drawn right aligned against the row's right edge in the muted text color - a status, a
+	//! size, a date. Null on a row that has nothing to say there. The left label gives up exactly the width
+	//! this one takes, so the two never overlap
+	const char *rightLabel;
 } fuiTreeNode;
 
 /**
@@ -4521,8 +4607,8 @@ typedef struct fuiTreeDesc {
 /**
 * @struct fuiTreeAction
 * @brief What a tree build came to besides its selection. Read it straight after the call, like a return value.
-* @note Every field is a NODE index of the caller's own array, never a display row, so folding something shut
-*       moves where a node is drawn and never what it is.
+* @note Every field that names something is a NODE index of the caller's own array, never a display row, so
+*       folding something shut moves where a node is drawn and never what it is.
 */
 typedef struct fuiTreeAction {
 	//! OUT: Which node was activated - double clicked, or single clicked in a tree that asked for that. Minus one when none was
@@ -4531,6 +4617,12 @@ typedef struct fuiTreeAction {
 	int32_t toggledNode;
 	//! OUT: Which node the right button went down on, which is the node a context menu is about. Minus one when none was
 	int32_t contextNode;
+	//! OUT: Which node was clicked on its CHECK BOX, minus one when none was. Only a tree built by
+	//! @ref fuiCheckTreeView has boxes to click
+	int32_t checkedNode;
+	//! OUT: What that click asked of the node - Checked or Unchecked, never Mixed. A request rather than a
+	//! report, because the widget writes no check state of its own @ref fuiCheckState
+	fuiCheckState checkedNodeWantedState;
 } fuiTreeAction;
 
 /**
@@ -4570,6 +4662,31 @@ fui_api bool fuiTreeView(fuiContext *context, const fuiRect rect, const char *id
 fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, int32_t *selectedIndex, fuiTreeAction *outAction);
 
 /**
+* @brief The same tree, with a three state check box on every row.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box the tree sits in, in pixels.
+* @param[in] id Identifies the tree.
+* @param[in] desc Reference to what to build and how @ref fuiTreeDesc.
+* @param[in] checkStates One state per NODE, owned by the caller and never written by the widget @ref fuiCheckState.
+* @param[in,out] selectedIndex Which NODE is selected, changed in place. Minus one for none.
+* @param[out] outAction Reference to what else happened @ref fuiTreeAction, the clicked box included. May be null,
+*             which makes a tree whose boxes can be clicked to no effect.
+* @return Returns true on the frame the selection changed.
+* @note Everything @ref fuiTreeViewEx does, this does as well - the two run through one body and differ in the
+*       boxes alone. An extra entry point rather than a field in the description, because a tree with boxes needs
+*       one array more than a tree without, and a field that is null in almost every call says less than a second
+*       function does.
+* @note The box OWNS its click, the way the expander owns its own: pointing at the box and pointing at the row are
+*       two different things, and checking a node is not picking it. The space bar does to the selected row what a
+*       click on its box would, for a tree that asked for the keyboard.
+* @note The widget writes NOTHING into `checkStates`. A click is reported as @ref fuiTreeAction.checkedNode plus
+*       @ref fuiTreeAction.checkedNodeWantedState, and what a row says afterwards is decided by whoever answers
+*       that request - which is the only way round that works when a check is what makes a row change or go away.
+* @see @ref fuiTreeComputeCheckStates, which fills in the rows that HAVE children out of the ones that do not.
+*/
+fui_api bool fuiCheckTreeView(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, const fuiCheckState *checkStates, int32_t *selectedIndex, fuiTreeAction *outAction);
+
+/**
 * @brief Fills in every node's descendantCount from the depths around it, in one pass.
 * @param[in,out] nodes The nodes in preorder, whose descendantCount is written.
 * @param[in] nodeCount How many nodes there are.
@@ -4580,6 +4697,21 @@ fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *
 *       its parent by exactly one, and every node of a subtree follows its root without a gap.
 */
 fui_api void fuiTreeComputeDescendants(fuiTreeNode *nodes, const int32_t nodeCount);
+
+/**
+* @brief Fills in the check state of every node that HAS children out of the states inside its own subtree.
+* @param[in] nodes The nodes in preorder.
+* @param[in] nodeCount How many nodes there are.
+* @param[in,out] checkStates One state per node. The leaves are read and left where they are; everything above
+*                them is written @ref fuiCheckState.
+* @note All of a node's children checked makes it Checked, none of them makes it Unchecked, and anything in
+*       between makes it Mixed - so a folder holding one staged file and one untouched one says so by itself,
+*       and nobody has to write that rule twice.
+* @note One backwards pass over the preorder, because there every subtree lies behind its own root: by the time
+*       a parent is reached its children already carry their answer, so it looks at its DIRECT children only.
+* @note descendantCount has to be filled in beforehand, which @ref fuiTreeComputeDescendants does.
+*/
+fui_api void fuiTreeComputeCheckStates(const fuiTreeNode *nodes, const int32_t nodeCount, fuiCheckState *checkStates);
 
 /**
 * @brief Throws away the visible rows a tree has cached, so the next build works them out again.
@@ -5149,7 +5281,7 @@ fui_api void fuiSetPlatform(fuiContext *context, const fuiPlatform *platform) {
 
 fui_api void fuiSetCursor(fuiContext *context, const fuiCursor cursor) {
 	FUI_ASSERT(context != fui_null);
-	if(context == fui_null || cursor >= FUI_CURSOR_COUNT) {
+	if(context == fui_null || cursor >= fuiCursor_Count) {
 		return;
 	}
 	context->cursor = cursor;
@@ -5158,7 +5290,7 @@ fui_api void fuiSetCursor(fuiContext *context, const fuiCursor cursor) {
 fui_api fuiCursor fuiGetCursor(const fuiContext *context) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
-		return(FUI_CURSOR_ARROW);
+		return(fuiCursor_Arrow);
 	}
 	return(context->cursor);
 }
@@ -5268,7 +5400,7 @@ fui_inline fui__GeometryWriter fui__BeginGeometry(fuiContext *context, const fui
 	// An interact pass exists to hit test, and its geometry would be thrown away by the draw pass that
 	// follows. Skipping it here, at the one place geometry is reserved, is what keeps a two pass caller
 	// from tessellating the whole interface twice per frame.
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return(result);
 	}
 
@@ -5300,7 +5432,7 @@ fui_inline fui__GeometryWriter fui__BeginGeometry(fuiContext *context, const fui
 		texture and follow each other with nothing in between, and each of them used to be its own call
 		into the driver for geometry that could just as well go out in one.
 
-		A merged command becomes FUI_DRAW_TRIANGLES, because no payload can describe two primitives at
+		A merged command becomes fuiDrawKind_Triangles, because no payload can describe two primitives at
 		once. That is exactly why this is not the default: a backend that draws through the payloads
 		rather than through the geometry would find nothing left in them to read.
 	*/
@@ -5320,7 +5452,7 @@ fui_inline fui__GeometryWriter fui__BeginGeometry(fuiContext *context, const fui
 
 	if(wasMerged) {
 		result.indexCountBeforeThisCall = command->indexCount;
-		command->kind = FUI_DRAW_TRIANGLES;
+		command->kind = fuiDrawKind_Triangles;
 		command->indexCount += indexCount;
 	} else {
 		command = &commandArray[context->commandBuffer.count];
@@ -5482,37 +5614,37 @@ static const char *fui__LetterKeyNames[26] = { "A", "B", "C", "D", "E", "F", "G"
 static const char *fui__FunctionKeyNames[12] = { "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12" };
 
 fui_api const char *fuiKeyGetName(const fuiKey key) {
-	if(key >= FUI_KEY_0 && key <= FUI_KEY_9) {
-		return(fui__DigitKeyNames[(int)key - (int)FUI_KEY_0]);
+	if(key >= fuiKey_0 && key <= fuiKey_9) {
+		return(fui__DigitKeyNames[(int)key - (int)fuiKey_0]);
 	}
-	if(key >= FUI_KEY_A && key <= FUI_KEY_Z) {
-		return(fui__LetterKeyNames[(int)key - (int)FUI_KEY_A]);
+	if(key >= fuiKey_A && key <= fuiKey_Z) {
+		return(fui__LetterKeyNames[(int)key - (int)fuiKey_A]);
 	}
-	if(key >= FUI_KEY_F1 && key <= FUI_KEY_F12) {
-		return(fui__FunctionKeyNames[(int)key - (int)FUI_KEY_F1]);
+	if(key >= fuiKey_F1 && key <= fuiKey_F12) {
+		return(fui__FunctionKeyNames[(int)key - (int)fuiKey_F1]);
 	}
 	switch(key) {
-		case FUI_KEY_BACKSPACE: return("Backspace");
-		case FUI_KEY_TAB: return("Tab");
-		case FUI_KEY_RETURN: return("Enter");
-		case FUI_KEY_ESCAPE: return("Esc");
-		case FUI_KEY_SPACE: return("Space");
-		case FUI_KEY_PAGE_UP: return("PageUp");
-		case FUI_KEY_PAGE_DOWN: return("PageDown");
-		case FUI_KEY_END: return("End");
-		case FUI_KEY_HOME: return("Home");
-		case FUI_KEY_LEFT: return("Left");
-		case FUI_KEY_UP: return("Up");
-		case FUI_KEY_RIGHT: return("Right");
-		case FUI_KEY_DOWN: return("Down");
-		case FUI_KEY_INSERT: return("Insert");
-		case FUI_KEY_DELETE: return("Delete");
-		case FUI_KEY_LEFT_CONTROL: return("Ctrl");
-		case FUI_KEY_RIGHT_CONTROL: return("Ctrl");
-		case FUI_KEY_LEFT_SHIFT: return("Shift");
-		case FUI_KEY_RIGHT_SHIFT: return("Shift");
-		case FUI_KEY_LEFT_ALT: return("Alt");
-		case FUI_KEY_RIGHT_ALT: return("Alt");
+		case fuiKey_Backspace: return("Backspace");
+		case fuiKey_Tab: return("Tab");
+		case fuiKey_Return: return("Enter");
+		case fuiKey_Escape: return("Esc");
+		case fuiKey_Space: return("Space");
+		case fuiKey_PageUp: return("PageUp");
+		case fuiKey_PageDown: return("PageDown");
+		case fuiKey_End: return("End");
+		case fuiKey_Home: return("Home");
+		case fuiKey_Left: return("Left");
+		case fuiKey_Up: return("Up");
+		case fuiKey_Right: return("Right");
+		case fuiKey_Down: return("Down");
+		case fuiKey_Insert: return("Insert");
+		case fuiKey_Delete: return("Delete");
+		case fuiKey_LeftControl: return("Ctrl");
+		case fuiKey_RightControl: return("Ctrl");
+		case fuiKey_LeftShift: return("Shift");
+		case fuiKey_RightShift: return("Shift");
+		case fuiKey_LeftAlt: return("Alt");
+		case fuiKey_RightAlt: return("Alt");
 		default: return("");
 	}
 }
@@ -5652,7 +5784,7 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 	// then says what this build really is, so the order here is load bearing.
 	fuiBeginDrawFrame(context, input->windowSize);
 
-	bool isDrawPass = (pass == FUI_PASS_DRAW);
+	bool isDrawPass = (pass == fuiPass_Draw);
 	context->pass = pass;
 	context->isInteractive = !isDrawPass;
 
@@ -5676,7 +5808,7 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 		}
 	}
 
-	for(uint32_t keyIndex = 0; keyIndex < (uint32_t)FUI_KEY_COUNT; ++keyIndex) {
+	for(uint32_t keyIndex = 0; keyIndex < (uint32_t)fuiKey_Count; ++keyIndex) {
 		context->keys[keyIndex] = input->keys[keyIndex];
 		if(isDrawPass) {
 			// Keep whether it is held, drop the edge, so the second build cannot fire a shortcut twice.
@@ -5710,7 +5842,7 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 	// Both are rebuilt from scratch by this build. Whoever is hovered asks for the tooltip again; the
 	// timer and the text below outlive the frame, which is what lets the rest delay count at all.
 	context->tooltipRequested = false;
-	context->cursor = FUI_CURSOR_ARROW;
+	context->cursor = fuiCursor_Arrow;
 
 	context->firstFocusableThisFrame = FUI_ID_NONE;
 	context->previousFocusableThisFrame = FUI_ID_NONE;
@@ -5744,7 +5876,7 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		// rather than where the popup is built, because "outside every menu" is only knowable once they all are.
 		bool anyButtonWentDown = context->mouseWentDown[FUI_MOUSE_LEFT] || context->mouseWentDown[FUI_MOUSE_MIDDLE] || context->mouseWentDown[FUI_MOUSE_RIGHT];
 		bool dismissedByAPress = anyButtonWentDown && !context->menuOwnsTheMouse;
-		if(fuiKeyWentDown(context, FUI_KEY_ESCAPE) || dismissedByAPress) {
+		if(fuiKeyWentDown(context, fuiKey_Escape) || dismissedByAPress) {
 			context->menuOpenDepth = 0;
 		}
 
@@ -5767,7 +5899,7 @@ fui_api void fuiEndFrame(fuiContext *context) {
 
 	// Tab off the LAST focusable field wraps around to the first. The walk itself happens as the fields
 	// are built, and reaching the end unconsumed is exactly the case that walk cannot see.
-	bool tabWentUnanswered = fuiKeyWentDown(context, FUI_KEY_TAB) && !context->tabWasConsumedThisFrame;
+	bool tabWentUnanswered = fuiKeyWentDown(context, fuiKey_Tab) && !context->tabWasConsumedThisFrame;
 	if(tabWentUnanswered && context->firstFocusableThisFrame != FUI_ID_NONE) {
 		context->focused = context->firstFocusableThisFrame;
 		context->tabWasConsumedThisFrame = true;
@@ -5820,7 +5952,7 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 
 	// Default to the one-pass contract. fuiBeginFrame calls this first and then says what the pass really
 	// is, so a caller reaching for the drawing half on its own can never land in a pass that draws nothing.
-	context->pass = FUI_PASS_BOTH;
+	context->pass = fuiPass_Both;
 	context->isInteractive = true;
 
 	// The ROOT container: the whole window, opened here and never closed by the caller. Without it a dock
@@ -5832,7 +5964,7 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 	fuiRect wholeWindow = fuiRectMake(0.0f, 0.0f, (float)windowSize.x, (float)windowSize.y);
 	fuiLayoutNode *rootLayout = &context->layoutStack[0];
 	fui__ClearMemory(rootLayout, sizeof(*rootLayout));
-	rootLayout->axis = FUI_AXIS_VERTICAL;
+	rootLayout->axis = fuiAxis_Vertical;
 	rootLayout->contentBox = wholeWindow;
 	rootLayout->remaining = wholeWindow;
 	context->layoutDepth = 1;
@@ -6078,7 +6210,7 @@ fui_api float fuiGetMouseWheelDelta(const fuiContext *context) {
 
 fui_api bool fuiIsKeyDown(const fuiContext *context, const fuiKey key) {
 	FUI_ASSERT(context != fui_null);
-	if(context == fui_null || key <= FUI_KEY_NONE || key >= FUI_KEY_COUNT) {
+	if(context == fui_null || key <= fuiKey_None || key >= fuiKey_Count) {
 		return(false);
 	}
 	bool result = fuiButtonIsDown(context->keys[key]);
@@ -6087,7 +6219,7 @@ fui_api bool fuiIsKeyDown(const fuiContext *context, const fuiKey key) {
 
 fui_api bool fuiKeyWentDown(const fuiContext *context, const fuiKey key) {
 	FUI_ASSERT(context != fui_null);
-	if(context == fui_null || key <= FUI_KEY_NONE || key >= FUI_KEY_COUNT) {
+	if(context == fui_null || key <= fuiKey_None || key >= fuiKey_Count) {
 		return(false);
 	}
 	bool result = fuiButtonWentDown(context->keys[key]);
@@ -6096,7 +6228,7 @@ fui_api bool fuiKeyWentDown(const fuiContext *context, const fuiKey key) {
 
 fui_api bool fuiKeyRepeat(fuiContext *context, const fuiKey key) {
 	FUI_ASSERT(context != fui_null);
-	if(context == fui_null || key <= FUI_KEY_NONE || key >= FUI_KEY_COUNT) {
+	if(context == fui_null || key <= fuiKey_None || key >= fuiKey_Count) {
 		return(false);
 	}
 	// Resolved once per frame rather than here, so asking twice in one build cannot step the timer twice
@@ -6106,17 +6238,17 @@ fui_api bool fuiKeyRepeat(fuiContext *context, const fuiKey key) {
 }
 
 fui_api bool fuiIsControlDown(const fuiContext *context) {
-	bool result = fuiIsKeyDown(context, FUI_KEY_LEFT_CONTROL) || fuiIsKeyDown(context, FUI_KEY_RIGHT_CONTROL);
+	bool result = fuiIsKeyDown(context, fuiKey_LeftControl) || fuiIsKeyDown(context, fuiKey_RightControl);
 	return(result);
 }
 
 fui_api bool fuiIsShiftDown(const fuiContext *context) {
-	bool result = fuiIsKeyDown(context, FUI_KEY_LEFT_SHIFT) || fuiIsKeyDown(context, FUI_KEY_RIGHT_SHIFT);
+	bool result = fuiIsKeyDown(context, fuiKey_LeftShift) || fuiIsKeyDown(context, fuiKey_RightShift);
 	return(result);
 }
 
 fui_api bool fuiIsAltDown(const fuiContext *context) {
-	bool result = fuiIsKeyDown(context, FUI_KEY_LEFT_ALT) || fuiIsKeyDown(context, FUI_KEY_RIGHT_ALT);
+	bool result = fuiIsKeyDown(context, fuiKey_LeftAlt) || fuiIsKeyDown(context, fuiKey_RightAlt);
 	return(result);
 }
 
@@ -6146,7 +6278,7 @@ fui_api void fuiDrawRect(fuiContext *context, const fuiRect rect, const fuiColor
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_RECT, FUI_TEXTURE_ID_NONE, 4u, 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Rect, FUI_TEXTURE_ID_NONE, 4u, 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6169,13 +6301,13 @@ fui_api void fuiDrawRectVerticalGradient(fuiContext *context, const fuiRect rect
 	uint32_t packedTopColor = fuiPackColor(topColor);
 	uint32_t packedBottomColor = fuiPackColor(bottomColor);
 	// Two stops that round to the same bytes are a flat fill, and a flat fill is worth handing over as one:
-	// a FUI_DRAW_RECT carries a payload a backend can take a shortcut on, where a gradient never can.
+	// a fuiDrawKind_Rect carries a payload a backend can take a shortcut on, where a gradient never can.
 	if(packedTopColor == packedBottomColor) {
 		fuiDrawRect(context, rect, topColor);
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TRIANGLES, FUI_TEXTURE_ID_NONE, 4u, 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Triangles, FUI_TEXTURE_ID_NONE, 4u, 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6197,7 +6329,7 @@ fui_api void fuiDrawRectOutline(fuiContext *context, const fuiRect rect, const f
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_RECT_OUTLINE, FUI_TEXTURE_ID_NONE, 16u, 24u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_RectOutline, FUI_TEXTURE_ID_NONE, 16u, 24u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6277,7 +6409,7 @@ fui_api void fuiDrawLine(fuiContext *context, const fuiVec2 start, const fuiVec2
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_LINE, FUI_TEXTURE_ID_NONE, 4u, 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Line, FUI_TEXTURE_ID_NONE, 4u, 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6320,7 +6452,7 @@ fui_api void fuiDrawPolygon(fuiContext *context, const fuiVec2 *points, const ui
 
 	uint32_t triangleCount = pointCount - 2u;
 	uint32_t indexCount = triangleCount * 3u;
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TRIANGLES, FUI_TEXTURE_ID_NONE, pointCount, indexCount);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Triangles, FUI_TEXTURE_ID_NONE, pointCount, indexCount);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6352,7 +6484,7 @@ fui_api void fuiDrawPolygonOutline(fuiContext *context, const fuiVec2 *points, c
 	}
 
 	uint32_t segmentCount = pointCount;
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TRIANGLES, FUI_TEXTURE_ID_NONE, segmentCount * 4u, segmentCount * 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Triangles, FUI_TEXTURE_ID_NONE, segmentCount * 4u, segmentCount * 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6376,10 +6508,10 @@ fui_api void fuiDrawPolygonOutline(fuiContext *context, const fuiVec2 *points, c
 //! The texture coordinate of each of a quad's four corners, in the order the quad writer lays them down:
 //! top-left, top-right, bottom-right, bottom-left. A quarter turn is a rotation of that order.
 fui_inline void fui__ImageCornerUvs(const fuiVec2 uvMin, const fuiVec2 uvMax, const fuiImageFlags flags, fuiVec2 *outCornerUvs) {
-	bool flipU = (flags & FUI_IMAGE_FLIP_U) == FUI_IMAGE_FLIP_U;
-	bool flipV = (flags & FUI_IMAGE_FLIP_V) == FUI_IMAGE_FLIP_V;
-	bool rotateClockwise = (flags & FUI_IMAGE_ROTATE_90_CW) == FUI_IMAGE_ROTATE_90_CW;
-	bool rotateCounterClockwise = (flags & FUI_IMAGE_ROTATE_90_CCW) == FUI_IMAGE_ROTATE_90_CCW;
+	bool flipU = (flags & fuiImageFlags_FlipU) == fuiImageFlags_FlipU;
+	bool flipV = (flags & fuiImageFlags_FlipV) == fuiImageFlags_FlipV;
+	bool rotateClockwise = (flags & fuiImageFlags_Rotate90CW) == fuiImageFlags_Rotate90CW;
+	bool rotateCounterClockwise = (flags & fuiImageFlags_Rotate90CCW) == fuiImageFlags_Rotate90CCW;
 
 	// Mirroring first, by swapping the edge each side samples from, and the quarter turn on top of that -
 	// the same order the sprite backends this mirrors apply them in.
@@ -6418,7 +6550,7 @@ fui_api void fuiDrawImageEx(fuiContext *context, const fuiRect rect, const fuiTe
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_IMAGE, texture, 4u, 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Image, texture, 4u, 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -6438,7 +6570,7 @@ fui_api void fuiDrawImageEx(fuiContext *context, const fuiRect rect, const fuiTe
 }
 
 fui_api void fuiDrawImage(fuiContext *context, const fuiRect rect, const fuiTextureId texture, const fuiVec2 uvMin, const fuiVec2 uvMax, const fuiColor color) {
-	fuiDrawImageEx(context, rect, texture, uvMin, uvMax, color, FUI_IMAGE_FLAGS_NONE);
+	fuiDrawImageEx(context, rect, texture, uvMin, uvMax, color, fuiImageFlags_None);
 }
 
 // ----------------------------------------------------------------------------
@@ -6672,7 +6804,7 @@ fui_api void fuiDrawText(fuiContext *context, const char *text, const size_t tex
 		return;
 	}
 
-	fui__GeometryWriter writer = fui__BeginGeometry(context, FUI_DRAW_TEXT, font->atlasTexture, reservedQuadCount * 4u, reservedQuadCount * 6u);
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Text, font->atlasTexture, reservedQuadCount * 4u, reservedQuadCount * 6u);
 	if(!writer.isValid) {
 		return;
 	}
@@ -7254,12 +7386,12 @@ fui_inline void fui__DrawBevelEdges(fuiContext *context, const fuiRect box, cons
 //! widget nobody has pushed must not borrow that shape to mean something else
 typedef enum fui__Relief {
 	//! Standing out of the panel. What a button at rest looks like, and the tab whose page is showing
-	FUI__RELIEF_RAISED = 0,
+	fui__Relief_Raised = 0,
 	//! Pushed into the panel. A button being held, a lit toggle, and the well a checkbox puts its mark in
-	FUI__RELIEF_SUNKEN,
+	fui__Relief_Sunken,
 	//! Neither pushed nor standing out, just a filled box. What sits BEHIND the front surface rather than on it,
 	//! such as a tab whose page is not showing
-	FUI__RELIEF_FLAT,
+	fui__Relief_Flat,
 } fui__Relief;
 
 //! One widget box in its relief: a vertically shaded face between a lit and a shaded edge, framed by the same
@@ -7268,13 +7400,13 @@ typedef enum fui__Relief {
 fui_inline void fui__DrawBevelBox(fuiContext *context, const fuiRect rect, const fuiColor faceColor, const fui__Relief relief) {
 	const fuiTheme *theme = &context->theme;
 
-	if(relief == FUI__RELIEF_FLAT) {
+	if(relief == fui__Relief_Flat) {
 		fuiDrawRect(context, rect, faceColor);
 		fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
 		return;
 	}
 
-	bool isSunken = (relief == FUI__RELIEF_SUNKEN);
+	bool isSunken = (relief == fui__Relief_Sunken);
 	float shadingStrength = theme->widgetFaceShadingStrength;
 	fuiColor litFace = fuiColorShade(faceColor, shadingStrength);
 	fuiColor shadedFace = fuiColorShade(faceColor, -shadingStrength);
@@ -7544,7 +7676,7 @@ fui_inline fuiRect fui__ParentBox(fuiContext *context) {
 fui_inline fuiRect fui__TakeDockRegion(fuiRect *box, const fuiDock dock, const float width, const float height) {
 	fuiRect region = *box;
 	switch(dock) {
-		case FUI_DOCK_LEFT:
+		case fuiDock_Left:
 		{
 			float takenWidth = fuiMinF(width, box->w);
 			region = fuiRectMake(box->x, box->y, takenWidth, box->h);
@@ -7552,14 +7684,14 @@ fui_inline fuiRect fui__TakeDockRegion(fuiRect *box, const fuiDock dock, const f
 			box->w -= takenWidth;
 		} break;
 
-		case FUI_DOCK_RIGHT:
+		case fuiDock_Right:
 		{
 			float takenWidth = fuiMinF(width, box->w);
 			region = fuiRectMake(box->x + box->w - takenWidth, box->y, takenWidth, box->h);
 			box->w -= takenWidth;
 		} break;
 
-		case FUI_DOCK_TOP:
+		case fuiDock_Top:
 		{
 			// y-down: the top edge is the LOW y one, so a top strip starts where the box starts.
 			float takenHeight = fuiMinF(height, box->h);
@@ -7568,15 +7700,15 @@ fui_inline fuiRect fui__TakeDockRegion(fuiRect *box, const fuiDock dock, const f
 			box->h -= takenHeight;
 		} break;
 
-		case FUI_DOCK_BOTTOM:
+		case fuiDock_Bottom:
 		{
 			float takenHeight = fuiMinF(height, box->h);
 			region = fuiRectMake(box->x, box->y + box->h - takenHeight, box->w, takenHeight);
 			box->h -= takenHeight;
 		} break;
 
-		case FUI_DOCK_NONE:
-		case FUI_DOCK_FILL:
+		case fuiDock_None:
+		case fuiDock_Fill:
 		default:
 		{
 			region = *box;
@@ -7675,7 +7807,7 @@ fui_inline void fui__PopLayout(fuiContext *context) {
 fui_inline fuiRect fui__ConsumeLeading(fuiLayoutNode *node, const float amount) {
 	fuiRect *remaining = &node->remaining;
 	fuiRect strip;
-	if(node->axis == FUI_AXIS_VERTICAL) {
+	if(node->axis == fuiAxis_Vertical) {
 		// y-down makes both axes read the same: the leading edge is the low coordinate one either way.
 		float taken = fuiMinF(amount, remaining->h);
 		strip = fuiRectMake(remaining->x, remaining->y, remaining->w, taken);
@@ -7818,7 +7950,7 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 	fuiId collapseId = fuiGetId(context, "__panelCollapse");
 	fuiId closeId = fuiGetId(context, "__panelClose");
 
-	bool isFloating = (dock == FUI_DOCK_NONE);
+	bool isFloating = (dock == fuiDock_None);
 	bool isCollapsed = (state != fui_null) ? state->isCollapsed : false;
 	float titleBarHeight = fui__PanelTitleBarHeight(context);
 
@@ -7829,10 +7961,10 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 		effectiveWidth += state->sizeOffset.x;
 		effectiveHeight += state->sizeOffset.y;
 	}
-	if(isFloating || dock == FUI_DOCK_LEFT || dock == FUI_DOCK_RIGHT) {
+	if(isFloating || dock == fuiDock_Left || dock == fuiDock_Right) {
 		effectiveWidth = fuiMaxF(effectiveWidth, FUI__PANEL_MIN_WIDTH);
 	}
-	if(isFloating || dock == FUI_DOCK_TOP || dock == FUI_DOCK_BOTTOM) {
+	if(isFloating || dock == fuiDock_Top || dock == fuiDock_Bottom) {
 		float minimumHeight = isCollapsed ? titleBarHeight : FUI__PANEL_MIN_HEIGHT;
 		effectiveHeight = fuiMaxF(effectiveHeight, minimumHeight);
 		if(isCollapsed) {
@@ -7929,19 +8061,19 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 			highlight = grip;
 			resizesX = true;
 			resizesY = true;
-		} else if(dock == FUI_DOCK_LEFT) {
+		} else if(dock == fuiDock_Left) {
 			grip = fuiRectMake(rect.x + rect.w - edgeGrip, rect.y, edgeGrip, rect.h);
 			highlight = fuiRectMake(rect.x + rect.w - lineThickness, rect.y, lineThickness, rect.h);
 			resizesX = true;
-		} else if(dock == FUI_DOCK_RIGHT) {
+		} else if(dock == fuiDock_Right) {
 			grip = fuiRectMake(rect.x, rect.y, edgeGrip, rect.h);
 			highlight = fuiRectMake(rect.x, rect.y, lineThickness, rect.h);
 			resizesX = true;
-		} else if(dock == FUI_DOCK_TOP) {
+		} else if(dock == fuiDock_Top) {
 			grip = fuiRectMake(rect.x, rect.y + rect.h - edgeGrip, rect.w, edgeGrip);
 			highlight = fuiRectMake(rect.x, rect.y + rect.h - lineThickness, rect.w, lineThickness);
 			resizesY = true;
-		} else if(dock == FUI_DOCK_BOTTOM) {
+		} else if(dock == fuiDock_Bottom) {
 			grip = fuiRectMake(rect.x, rect.y, rect.w, edgeGrip);
 			highlight = fuiRectMake(rect.x, rect.y, rect.w, lineThickness);
 			resizesY = true;
@@ -7960,12 +8092,12 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 			if(resizeInteraction.isHeld) {
 				if(resizesX) {
 					// A right dock grows toward decreasing x, so its drag reads the other way round.
-					float horizontalSign = (dock == FUI_DOCK_RIGHT) ? -1.0f : 1.0f;
+					float horizontalSign = (dock == fuiDock_Right) ? -1.0f : 1.0f;
 					state->sizeOffset.x += context->mouseDelta.x * horizontalSign;
 				}
 				if(resizesY) {
 					// A bottom dock is gripped by its TOP edge, so dragging up is what grows it.
-					float verticalSign = (dock == FUI_DOCK_BOTTOM) ? -1.0f : 1.0f;
+					float verticalSign = (dock == fuiDock_Bottom) ? -1.0f : 1.0f;
 					state->sizeOffset.y += context->mouseDelta.y * verticalSign;
 				}
 			}
@@ -7998,7 +8130,7 @@ fui_inline bool fui__BeginPanelEx(fuiContext *context, const char *id, const fui
 		fui__ResolveScrollBoxes(contentBox, scroll, theme->panelPaddingX, &clipBox, &scrollTrack, &layoutBox);
 	}
 
-	fuiLayoutNode *node = fui__PushLayout(context, panelId, state, true, FUI_AXIS_VERTICAL, theme->widgetSpacing, layoutBox);
+	fuiLayoutNode *node = fui__PushLayout(context, panelId, state, true, fuiAxis_Vertical, theme->widgetSpacing, layoutBox);
 	if(node != fui_null) {
 		node->isHidden = isCollapsed;
 		node->isScrollable = doesScroll && (state != fui_null);
@@ -8145,7 +8277,7 @@ fui_api void fuiBeginScrollStackAt(fuiContext *context, const char *id, const fu
 	fui__ResolveScrollBoxes(rect, scroll, context->theme.panelPaddingX, &viewport, &track, &layoutBox);
 
 	float resolvedSpacing = fui__ResolveSpacing(context, spacing);
-	fuiLayoutNode *node = fui__PushLayout(context, stackId, state, false, FUI_AXIS_VERTICAL, resolvedSpacing, layoutBox);
+	fuiLayoutNode *node = fui__PushLayout(context, stackId, state, false, fuiAxis_Vertical, resolvedSpacing, layoutBox);
 	if(node != fui_null) {
 		node->isScrollable = (state != fui_null);
 		node->scrollViewport = viewport;
@@ -8309,7 +8441,7 @@ fui_inline void fui__PushGroupBox(fuiContext *context, const char *label, const 
 	float contentY = box.y + titleHeight + theme->panelPaddingY;
 	float contentWidth = fuiMaxF(0.0f, box.w - theme->panelPaddingX * 2.0f);
 	fuiRect contentBox = fuiRectMake(contentX, contentY, contentWidth, contentHeight);
-	fui__PushStackAt(context, label, FUI_AXIS_VERTICAL, contentBox, theme->widgetSpacing, state);
+	fui__PushStackAt(context, label, fuiAxis_Vertical, contentBox, theme->widgetSpacing, state);
 }
 
 fui_api void fuiBeginGroupBox(fuiContext *context, const char *label, const float contentHeight) {
@@ -8390,7 +8522,7 @@ fui_inline void fui__DrawButton(fuiContext *context, const fuiRect rect, const c
 	// button at rest wears and says what it is by its darker face and its muted caption, because a box that
 	// looks pushed while nobody is pushing it reads as a button stuck down rather than one that cannot be used.
 	bool buttonIsPushed = interaction.isHeld;
-	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
+	fui__Relief relief = buttonIsPushed ? fui__Relief_Sunken : fui__Relief_Raised;
 	fui__DrawBevelBox(context, rect, fill, relief);
 	fuiRect labelRect = fui__PressedContentRect(context, rect, interaction.isHeld);
 	fui__DrawTextCenteredInRect(context, labelRect, label, labelColor);
@@ -8483,7 +8615,7 @@ fui_api bool fuiCheckbox(fuiContext *context, const fuiRect rect, const char *la
 	fuiColor boxFill = interaction.isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
 	// A checkbox box is a WELL the mark sits in rather than a face that can be pushed, so it is bevelled the
 	// other way round from a button and stays that way whether it is ticked or not.
-	fui__DrawBevelBox(context, box, boxFill, FUI__RELIEF_SUNKEN);
+	fui__DrawBevelBox(context, box, boxFill, fui__Relief_Sunken);
 	if(*value) {
 		fuiRect checkMark = fui__CheckMarkRect(context, box);
 		fuiDrawRect(context, checkMark, theme->accentColor);
@@ -8513,7 +8645,7 @@ fui_api bool fuiRadio(fuiContext *context, const fuiRect rect, const char *label
 	fuiRect marker = fuiRectMake(rect.x + theme->widgetPaddingX, rect.y + (rect.h - markerSide) * 0.5f, markerSide, markerSide);
 	fuiColor markerFill = interaction.isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
 	// The same well a checkbox puts its tick in, so the two read as one family of widget.
-	fui__DrawBevelBox(context, marker, markerFill, FUI__RELIEF_SUNKEN);
+	fui__DrawBevelBox(context, marker, markerFill, fui__Relief_Sunken);
 	if(*selected == option) {
 		fuiRect dot = fui__CheckMarkRect(context, marker);
 		fuiDrawRect(context, dot, theme->accentColor);
@@ -8784,7 +8916,7 @@ fui_inline void fui__RegisterFocusable(fuiContext *context, const fuiId id) {
 	if(context->firstFocusableThisFrame == FUI_ID_NONE) {
 		context->firstFocusableThisFrame = id;
 	}
-	if(fuiKeyWentDown(context, FUI_KEY_TAB) && !context->tabWasConsumedThisFrame) {
+	if(fuiKeyWentDown(context, fuiKey_Tab) && !context->tabWasConsumedThisFrame) {
 		bool takeTheFirstOne = (context->focused == FUI_ID_NONE);
 		bool comesAfterTheFocusedOne = (context->previousFocusableThisFrame == context->focused);
 		if(takeTheFirstOne || comesAfterTheFocusedOne) {
@@ -9213,7 +9345,14 @@ fui_inline void fui__DrawSelectionRow(fuiContext *context, const float rowLeftX,
 	fuiDrawRect(context, highlight, theme->textSelectionColor);
 }
 
-fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char *id, char *buffer, const int32_t capacity, const bool multiline, const bool wordWrap) {
+/*
+The one build that both the editor and the viewer go through.
+
+The read only flag gates every branch that would CHANGE the buffer, and nothing else. The selection, the
+clipboard copy, the arrow keys, the wheel and the scrollbar are the same either way, because reading a text
+is the half of a text field a viewer needs all of - and it is the half that is hard to write twice.
+*/
+fui_inline bool fui__TextInputBuild(fuiContext *context, const fuiRect rect, const char *id, char *buffer, const int32_t capacity, const bool multiline, const bool wordWrap, const bool isReadOnly) {
 	FUI_ASSERT(context != fui_null && id != fui_null && buffer != fui_null);
 	if(context == fui_null || id == fui_null || buffer == fui_null || capacity <= 1) {
 		return(false);
@@ -9294,9 +9433,18 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		float leftOverHeight = fuiMaxF(insetHeight - window.rowsHeight, 0.0f);
 		rowsBoxTopY = rect.y + FUI__MULTILINE_PADDING_Y + leftOverHeight * 0.5f;
 
-		// The wheel first and the bar second, so the bar draws where the wheel has just put it rather than
-		// one frame behind. Same order a list box resolves its own two.
-		float scroll = (state != fui_null) ? ((float)state->textFirstLine * rowStep) : 0.0f;
+		/*
+			The wheel first and the bar second, so the bar draws where the wheel has just put it rather than
+			one frame behind. Same order a list box resolves its own two.
+
+			The offset is kept in PIXELS rather than as the line it lands on. What the window SHOWS is the
+			rounded position, because only whole rows are drawn - but rounding the stored value as well
+			threw away everything a drag did that was worth less than half a row. The bar works in
+			continuous pixels: it was handed a value quantized to a line, added the mouse motion, and had
+			its answer quantized again on the way back. A slow drag therefore moved nothing at all, and a
+			fast one put the thumb somewhere the next frame immediately took back - which is the flicker.
+		*/
+		float scroll = (state != fui_null) ? state->scroll : 0.0f;
 		if(context->mouseWheelDelta != 0.0f && fui__CursorIsOver(context, rect)) {
 			scroll -= context->mouseWheelDelta * rowStep * FUI__SCROLL_WHEEL_ROWS;
 		}
@@ -9311,6 +9459,9 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		int32_t askedForFirstLine = (rowStep > 0.0f) ? (int32_t)((scroll / rowStep) + roundToTheNearestLine) : 0;
 		window.firstVisibleLine = fuiClampI(askedForFirstLine, 0, lastPossibleFirstLine);
 		if(state != fui_null) {
+			// Held to the same end the rows are, so the thumb cannot come to rest past the last line.
+			float furthestScroll = (float)lastPossibleFirstLine * rowStep;
+			state->scroll = fuiClampF(scroll, 0.0f, furthestScroll);
 			state->textFirstLine = window.firstVisibleLine;
 		}
 		lineCount = fui__TextLayOutWindow(context, state, buffer, length, theme->fontHeight, wordWrap, contentWidth, rowsBoxTopY, rowStep, lines, &window);
@@ -9337,7 +9488,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	if(isFocused && ownsCaret) {
 		// Backspace erases in front of the caret and delete erases at it, and both take the whole selection
 		// instead when there is one. A line break erases like any other character, merging the two rows.
-		if(fuiKeyRepeat(context, FUI_KEY_BACKSPACE)) {
+		if(!isReadOnly && fuiKeyRepeat(context, fuiKey_Backspace)) {
 			if(fui__DeleteSelection(context, buffer, &length)) {
 				didChange = true;
 			} else if(context->caretPosition > 0) {
@@ -9348,7 +9499,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 				didChange = true;
 			}
 		}
-		if(fuiKeyRepeat(context, FUI_KEY_DELETE)) {
+		if(!isReadOnly && fuiKeyRepeat(context, fuiKey_Delete)) {
 			if(fui__DeleteSelection(context, buffer, &length)) {
 				didChange = true;
 			} else if(context->caretPosition < length) {
@@ -9368,7 +9519,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		}
 
 		bool extendSelection = fuiIsShiftDown(context);
-		if(fuiKeyRepeat(context, FUI_KEY_LEFT)) {
+		if(fuiKeyRepeat(context, fuiKey_Left)) {
 			if(fui__HasSelection(context) && !extendSelection) {
 				// A plain arrow key over a selection collapses it onto its edge rather than moving on from
 				// the caret, which is what every text field does and what makes the selection feel like one thing.
@@ -9377,7 +9528,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 				fui__SetCaret(context, fui__PreviousCodepointStart(buffer, context->caretPosition), extendSelection);
 			}
 		}
-		if(fuiKeyRepeat(context, FUI_KEY_RIGHT)) {
+		if(fuiKeyRepeat(context, fuiKey_Right)) {
 			if(fui__HasSelection(context) && !extendSelection) {
 				fui__SetCaret(context, fui__SelectionEnd(context), false);
 			} else if(context->caretPosition < length) {
@@ -9385,8 +9536,8 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 			}
 		}
 
-		bool wantsHome = fuiKeyRepeat(context, FUI_KEY_HOME);
-		bool wantsEnd = fuiKeyRepeat(context, FUI_KEY_END);
+		bool wantsHome = fuiKeyRepeat(context, fuiKey_Home);
+		bool wantsEnd = fuiKeyRepeat(context, fuiKey_End);
 		if(multiline && lineCount > 0) {
 			// Home and end act on the CURRENT row; up and down keep the column and step to the next one.
 			if(wantsHome || wantsEnd) {
@@ -9395,8 +9546,8 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 				int32_t target = wantsHome ? rowStart : (rowStart + (int32_t)lines[rowIndex].length);
 				fui__SetCaret(context, target, extendSelection);
 			}
-			bool wantsUp = fuiKeyRepeat(context, FUI_KEY_UP);
-			bool wantsDown = fuiKeyRepeat(context, FUI_KEY_DOWN);
+			bool wantsUp = fuiKeyRepeat(context, fuiKey_Up);
+			bool wantsDown = fuiKeyRepeat(context, fuiKey_Down);
 			if(wantsUp || wantsDown) {
 				int32_t column = 0;
 				uint32_t rowIndex = fui__CaretRowIndex(lines, lineCount, buffer, context->caretPosition, &column);
@@ -9419,13 +9570,13 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		}
 
 		if(fuiIsControlDown(context)) {
-			if(fuiKeyWentDown(context, FUI_KEY_A)) {
+			if(fuiKeyWentDown(context, fuiKey_A)) {
 				context->selectionAnchor = 0;
 				const bool extendToTheEnd = true;
 				fui__SetCaret(context, length, extendToTheEnd);
 			}
-			bool wantsCopy = fuiKeyWentDown(context, FUI_KEY_C);
-			bool wantsCut = fuiKeyWentDown(context, FUI_KEY_X);
+			bool wantsCopy = fuiKeyWentDown(context, fuiKey_C);
+			bool wantsCut = fuiKeyWentDown(context, fuiKey_X);
 			if(wantsCopy || wantsCut) {
 				// With nothing selected there is nothing to copy but the whole field, which is what the
 				// keystroke almost always means there.
@@ -9445,11 +9596,11 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 					clipboardText[copyLength] = '\0';
 					(void)fuiSetClipboardText(context, clipboardText);
 				}
-				if(wantsCut && hasSelection && fui__DeleteSelection(context, buffer, &length)) {
+				if(wantsCut && !isReadOnly && hasSelection && fui__DeleteSelection(context, buffer, &length)) {
 					didChange = true;
 				}
 			}
-			if(fuiKeyWentDown(context, FUI_KEY_V)) {
+			if(!isReadOnly && fuiKeyWentDown(context, fuiKey_V)) {
 				char clipboardText[FUI_MAX_CLIPBOARD_TEXT];
 				if(fuiGetClipboardText(context, clipboardText, (uint32_t)FUI_MAX_CLIPBOARD_TEXT)) {
 					if(fui__InsertText(context, buffer, capacity, &length, clipboardText, multiline)) {
@@ -9463,7 +9614,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		// ctrl and v is a keystroke rather than a character, so neither may reach the buffer. Alt is the
 		// exception that has to be let through: ctrl with alt is how a keyboard types AltGr characters.
 		bool isAChord = fuiIsControlDown(context) && !fuiIsAltDown(context);
-		if(!isAChord) {
+		if(!isAChord && !isReadOnly) {
 			for(int32_t typedIndex = 0; typedIndex < context->textInputLength; ++typedIndex) {
 				uint32_t typed = context->textInput[typedIndex];
 				bool isControlCode = (typed < 0x20u) || (typed == 0x7Fu);
@@ -9479,21 +9630,21 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		if(multiline) {
 			// A plain enter inserts a line break and the edge is SWALLOWED, so a modal hosting the field
 			// does not also commit on it. Ctrl and enter inserts nothing and leaves the edge for the modal.
-			if(fuiKeyWentDown(context, FUI_KEY_RETURN) && !fuiIsControlDown(context)) {
+			if(!isReadOnly && fuiKeyWentDown(context, fuiKey_Return) && !fuiIsControlDown(context)) {
 				if(fui__InsertCodepoint(context, buffer, capacity, &length, (uint32_t)'\n')) {
 					didChange = true;
 				}
-				context->keys[FUI_KEY_RETURN].halfTransitionCount = 0;
+				context->keys[fuiKey_Return].halfTransitionCount = 0;
 			}
 			// Escape is left to the host, which is usually a modal that cancels on it.
-		} else if(fuiKeyWentDown(context, FUI_KEY_RETURN) || fuiKeyWentDown(context, FUI_KEY_ESCAPE)) {
+		} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Escape)) {
 			context->focused = FUI_ID_NONE;
 			isFocused = false;
 		}
 	}
 
 	if(interaction.isHovered) {
-		fuiSetCursor(context, FUI_CURSOR_TEXT);
+		fuiSetCursor(context, fuiCursor_Text);
 	}
 
 	/*
@@ -9535,7 +9686,10 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 			if(movedToLine != window.firstVisibleLine) {
 				window.firstVisibleLine = movedToLine;
 				if(state != fui_null) {
+					// The pixel offset goes with it. Moving only the line would leave the bar where it was,
+					// and the next frame would read that back and undo the move the caret just made.
 					state->textFirstLine = movedToLine;
+					state->scroll = (float)movedToLine * rowStep;
 				}
 				windowMoved = true;
 			}
@@ -9566,8 +9720,11 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		textClip = fuiRectMake(rect.x, rowsBoxTopY, widestClip, window.rowsHeight);
 	}
 	fuiPushClip(context, textClip);
-	bool showsCaretAndSelection = isFocused && ownsCaret;
-	if(showsCaretAndSelection && fui__HasSelection(context)) {
+	bool showsSelection = isFocused && ownsCaret;
+	// A viewer highlights what is selected, because that is what says what a copy would take. It shows no
+	// caret: a blinking bar says "type here", and here nothing can be typed.
+	bool showsCaret = showsSelection && !isReadOnly;
+	if(showsSelection && fui__HasSelection(context)) {
 		int32_t selectionStart = fui__SelectionStart(context);
 		int32_t selectionEnd = fui__SelectionEnd(context);
 		if(multiline) {
@@ -9596,7 +9753,7 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 		fui__DrawTextInRect(context, rect, buffer, theme->textColor);
 	}
 
-	if(showsCaretAndSelection) {
+	if(showsCaret) {
 		float blinkPeriod = (theme->caretBlinkHz > 0.0f) ? (1.0f / theme->caretBlinkHz) : 0.5f;
 		bool caretIsVisible = FUI_FMODF(context->caretBlinkTime, blinkPeriod * 2.0f) < blinkPeriod;
 		if(caretIsVisible) {
@@ -9617,6 +9774,30 @@ fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char 
 	fuiPopClip(context);
 
 	return(didChange);
+}
+
+fui_api bool fuiTextInputEx(fuiContext *context, const fuiRect rect, const char *id, char *buffer, const int32_t capacity, const bool multiline, const bool wordWrap) {
+	const bool isReadOnly = false;
+	bool result = fui__TextInputBuild(context, rect, id, buffer, capacity, multiline, wordWrap, isReadOnly);
+	return(result);
+}
+
+fui_api void fuiTextView(fuiContext *context, const fuiRect rect, const char *id, const char *text, const bool multiline, const bool wordWrap) {
+	FUI_ASSERT(context != fui_null && id != fui_null && text != fui_null);
+	if(context == fui_null || id == fui_null || text == fui_null) {
+		return;
+	}
+
+	/*
+		The cast is what the read only flag buys. Every branch behind it that would write went through the
+		gate in fui__TextInputBuild, so the bytes are only ever read - and the caller may hand over a string
+		it does not own and cannot spare a copy of, straight out of an arena or a const table.
+	*/
+	char *textThatIsOnlyRead = (char *)text;
+	size_t textLength = fui__StringLength(text);
+	int32_t capacityOfTheWholeText = (int32_t)textLength + 1;
+	const bool isReadOnly = true;
+	(void)fui__TextInputBuild(context, rect, id, textThatIsOnlyRead, capacityOfTheWholeText, multiline, wordWrap, isReadOnly);
 }
 
 fui_api bool fuiTextInput(fuiContext *context, const fuiRect rect, const char *id, char *buffer, const int32_t capacity) {
@@ -9714,7 +9895,7 @@ fui_api fuiVec3 fuiRgbToHsv(const fuiVec3 rgb) {
 
 //! One axis of a two-color ramp. Both the color AND the alpha are interpolated, so a fade to transparent works
 fui_inline void fui__DrawRampX(fuiContext *context, const fuiRect rect, const fuiColor leftColor, const fuiColor rightColor) {
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return; // an interact pass emits nothing, so skip the whole run rather than dropping 64 rectangles
 	}
 	for(int32_t stepIndex = 0; stepIndex < FUI__PICKER_RAMP_STEPS; ++stepIndex) {
@@ -9732,7 +9913,7 @@ fui_inline void fui__DrawRampX(fuiContext *context, const fuiRect rect, const fu
 
 //! One axis of a two-color ramp, running downwards
 fui_inline void fui__DrawRampY(fuiContext *context, const fuiRect rect, const fuiColor topColor, const fuiColor bottomColor) {
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return;
 	}
 	for(int32_t stepIndex = 0; stepIndex < FUI__PICKER_RAMP_STEPS; ++stepIndex) {
@@ -9747,7 +9928,7 @@ fui_inline void fui__DrawRampY(fuiContext *context, const fuiRect rect, const fu
 
 //! The whole hue wheel, red at the bottom. Not a two-color ramp: it walks all six sectors
 fui_inline void fui__DrawHueStrip(fuiContext *context, const fuiRect rect) {
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return;
 	}
 	for(int32_t stepIndex = 0; stepIndex < FUI__PICKER_RAMP_STEPS; ++stepIndex) {
@@ -9763,7 +9944,7 @@ fui_inline void fui__DrawHueStrip(fuiContext *context, const fuiRect rect) {
 
 //! The grey chequer that says "there is nothing behind this", drawn under anything translucent
 fui_inline void fui__DrawCheckerboard(fuiContext *context, const fuiRect rect) {
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return;
 	}
 	fuiDrawRect(context, rect, fui__PickerCheckerLight);
@@ -10020,17 +10201,17 @@ fui_api const char *fuiShortcutToText(const fuiShortcut shortcut, char *buffer, 
 		return(buffer);
 	}
 	buffer[0] = '\0';
-	if(shortcut.key == FUI_KEY_NONE) {
+	if(shortcut.key == fuiKey_None) {
 		return(buffer);
 	}
 	// Modifiers first, in the order every desktop writes them in, each followed by a plus.
-	if((shortcut.modifiers & (uint32_t)FUI_MOD_CONTROL) != 0u) {
+	if((shortcut.modifiers & (uint32_t)fuiModifier_Control) != 0u) {
 		(void)fui__AppendString(buffer, bufferCapacity, "Ctrl+");
 	}
-	if((shortcut.modifiers & (uint32_t)FUI_MOD_SHIFT) != 0u) {
+	if((shortcut.modifiers & (uint32_t)fuiModifier_Shift) != 0u) {
 		(void)fui__AppendString(buffer, bufferCapacity, "Shift+");
 	}
-	if((shortcut.modifiers & (uint32_t)FUI_MOD_ALT) != 0u) {
+	if((shortcut.modifiers & (uint32_t)fuiModifier_Alt) != 0u) {
 		(void)fui__AppendString(buffer, bufferCapacity, "Alt+");
 	}
 	const char *keyName = fuiKeyGetName(shortcut.key);
@@ -10043,15 +10224,15 @@ fui_api const char *fuiShortcutToText(const fuiShortcut shortcut, char *buffer, 
 
 //! Exactly which modifiers are held, so a shortcut matches on the whole set rather than on a subset of it
 fui_inline uint32_t fui__HeldModifiers(const fuiContext *context) {
-	uint32_t modifiers = (uint32_t)FUI_MOD_NONE;
+	uint32_t modifiers = (uint32_t)fuiModifier_None;
 	if(fuiIsControlDown(context)) {
-		modifiers |= (uint32_t)FUI_MOD_CONTROL;
+		modifiers |= (uint32_t)fuiModifier_Control;
 	}
 	if(fuiIsShiftDown(context)) {
-		modifiers |= (uint32_t)FUI_MOD_SHIFT;
+		modifiers |= (uint32_t)fuiModifier_Shift;
 	}
 	if(fuiIsAltDown(context)) {
-		modifiers |= (uint32_t)FUI_MOD_ALT;
+		modifiers |= (uint32_t)fuiModifier_Alt;
 	}
 	return(modifiers);
 }
@@ -10070,7 +10251,7 @@ fui_api fuiCommandId fuiDispatchShortcuts(fuiContext *context, const fuiCommandT
 	for(uint32_t index = 0; index < table->count; ++index) {
 		const fuiCommand *command = &table->commands[index];
 		fuiShortcut shortcut = command->shortcut;
-		if(shortcut.key == FUI_KEY_NONE) {
+		if(shortcut.key == fuiKey_None) {
 			continue;
 		}
 		// An EXACT match, so Ctrl+S stays quiet while Ctrl+Shift+S is held and the two can mean two things.
@@ -10485,7 +10666,7 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 		float boxTop = rowRect.y + (rowRect.h - checkBoxSide) * 0.5f;
 		fuiRect box = fuiRectMake(rowRect.x + contentInsetX, boxTop, checkBoxSide, checkBoxSide);
 		fuiColor boxFill = isHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
-		fui__DrawBevelBox(context, box, boxFill, FUI__RELIEF_SUNKEN);
+		fui__DrawBevelBox(context, box, boxFill, fui__Relief_Sunken);
 		if(isChecked) {
 			fuiRect checkMark = fui__CheckMarkRect(context, box);
 			fuiDrawRect(context, checkMark, theme->accentColor);
@@ -10810,7 +10991,7 @@ fui_api void fuiCloseMenus(fuiContext *context) {
 fui_inline fuiRect fui__StripNextSlot(fuiContext *context, const float thickness) {
 	float spacing = context->theme.widgetSpacing;
 	fuiRect slot;
-	if(context->stripAxis == FUI_AXIS_HORIZONTAL) {
+	if(context->stripAxis == fuiAxis_Horizontal) {
 		slot = fuiRectMake(context->stripCursor, context->stripRect.y, thickness, context->stripRect.h);
 	} else {
 		slot = fuiRectMake(context->stripRect.x, context->stripCursor, context->stripRect.w, thickness);
@@ -10823,7 +11004,7 @@ fui_inline fuiRect fui__StripNextSlot(fuiContext *context, const float thickness
 
 //! How much of the flow axis a labelled strip item takes: its text on a row, the theme's row height in a column
 fui_inline float fui__StripItemThickness(const fuiContext *context, const char *label) {
-	if(context->stripAxis == FUI_AXIS_HORIZONTAL) {
+	if(context->stripAxis == fuiAxis_Horizontal) {
 		fuiVec2 labelSize = fuiMeasureText(context, label, 0, context->theme.fontHeight);
 		return(labelSize.x + context->theme.widgetPaddingX * 2.0f);
 	}
@@ -10856,11 +11037,11 @@ fui_api void fuiBeginToolStrip(fuiContext *context, const char *id, const fuiRec
 	// is the same gap that separates two items. A strip made taller than it needs to be simply centres its
 	// items in what it was given.
 	float crossInset = theme->menuItemPaddingY;
-	fuiRect itemBox = (axis == FUI_AXIS_HORIZONTAL) ? fui__RectInset(rect, 0.0f, crossInset) : fui__RectInset(rect, crossInset, 0.0f);
+	fuiRect itemBox = (axis == fuiAxis_Horizontal) ? fui__RectInset(rect, 0.0f, crossInset) : fui__RectInset(rect, crossInset, 0.0f);
 	float naturalItemThickness = theme->menuItemHeight;
-	if(axis == FUI_AXIS_HORIZONTAL && itemBox.h > naturalItemThickness) {
+	if(axis == fuiAxis_Horizontal && itemBox.h > naturalItemThickness) {
 		itemBox = fuiRectMake(itemBox.x, itemBox.y + (itemBox.h - naturalItemThickness) * 0.5f, itemBox.w, naturalItemThickness);
-	} else if(axis == FUI_AXIS_VERTICAL && itemBox.w > naturalItemThickness) {
+	} else if(axis == fuiAxis_Vertical && itemBox.w > naturalItemThickness) {
 		itemBox = fuiRectMake(itemBox.x + (itemBox.w - naturalItemThickness) * 0.5f, itemBox.y, naturalItemThickness, itemBox.h);
 	}
 
@@ -10868,7 +11049,7 @@ fui_api void fuiBeginToolStrip(fuiContext *context, const char *id, const fuiRec
 	context->stripRect = itemBox;
 	context->stripAxis = axis;
 	float leadingInset = theme->widgetSpacing;
-	context->stripCursor = (axis == FUI_AXIS_HORIZONTAL) ? (itemBox.x + leadingInset) : (itemBox.y + leadingInset);
+	context->stripCursor = (axis == fuiAxis_Horizontal) ? (itemBox.x + leadingInset) : (itemBox.y + leadingInset);
 }
 
 fui_api void fuiEndToolStrip(fuiContext *context) {
@@ -10952,7 +11133,7 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 	// that happens to be under the cursor. Being disabled is NOT a reason to sink, so a disabled toggle that
 	// is off stands exactly as an enabled one does, only darker.
 	bool buttonIsPushed = isActive || interaction.isHeld;
-	fui__Relief relief = buttonIsPushed ? FUI__RELIEF_SUNKEN : FUI__RELIEF_RAISED;
+	fui__Relief relief = buttonIsPushed ? fui__Relief_Sunken : fui__Relief_Raised;
 	fui__DrawBevelBox(context, slot, fill, relief);
 	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
 	fuiRect labelRect = fui__PressedContentRect(context, slot, labelIsPressed);
@@ -10973,7 +11154,7 @@ fui_api void fuiToolStripSeparator(fuiContext *context) {
 	// The rule spans its slot end to end, the way fuiSeparator does in a flow container, so it stands exactly
 	// as tall as the buttons it divides. The strip is already inset from the bar around it, so there is
 	// nothing left here to trim.
-	if(context->stripAxis == FUI_AXIS_HORIZONTAL) {
+	if(context->stripAxis == fuiAxis_Horizontal) {
 		float lineX = slot.x + slot.w * 0.5f;
 		lineStart = fuiV2(lineX, slot.y);
 		lineEnd = fuiV2(lineX, slot.y + slot.h);
@@ -11368,7 +11549,7 @@ fui_inline bool fui__BeginModalEx(fuiContext *context, const char *id, const cha
 	// so the content is never scissored away by whatever hosted the code that opened the dialog.
 	fuiPopClip(context);
 	fui__PushClipAbsolute(context, contentBox);
-	(void)fui__PushLayout(context, modalId, state, false, FUI_AXIS_VERTICAL, theme->widgetSpacing, contentBox);
+	(void)fui__PushLayout(context, modalId, state, false, fuiAxis_Vertical, theme->widgetSpacing, contentBox);
 	return(true);
 }
 
@@ -11737,54 +11918,54 @@ typedef struct fui__DialogButtonSpec {
 fui_inline int32_t fui__MessageBoxButtonSpecs(const fuiMessageBoxButtons buttons, fui__DialogButtonSpec *specs, fuiDialogResult *outAcceptResult, fuiDialogResult *outDismissResult) {
 	int32_t count = 0;
 	switch(buttons) {
-		case FUI_MESSAGE_BOX_OK:
+		case fuiMessageBoxButtons_Ok:
 		{
 			specs[count].label = "OK";
-			specs[count].result = FUI_DIALOG_RESULT_OK;
+			specs[count].result = fuiDialogResult_Ok;
 			count += 1;
-			*outAcceptResult = FUI_DIALOG_RESULT_OK;
+			*outAcceptResult = fuiDialogResult_Ok;
 			// With one button there is nothing else escape could mean.
-			*outDismissResult = FUI_DIALOG_RESULT_OK;
+			*outDismissResult = fuiDialogResult_Ok;
 		} break;
 
-		case FUI_MESSAGE_BOX_OK_CANCEL:
+		case fuiMessageBoxButtons_OkCancel:
 		{
 			specs[count].label = "OK";
-			specs[count].result = FUI_DIALOG_RESULT_OK;
+			specs[count].result = fuiDialogResult_Ok;
 			count += 1;
 			specs[count].label = "Cancel";
-			specs[count].result = FUI_DIALOG_RESULT_CANCEL;
+			specs[count].result = fuiDialogResult_Cancel;
 			count += 1;
-			*outAcceptResult = FUI_DIALOG_RESULT_OK;
-			*outDismissResult = FUI_DIALOG_RESULT_CANCEL;
+			*outAcceptResult = fuiDialogResult_Ok;
+			*outDismissResult = fuiDialogResult_Cancel;
 		} break;
 
-		case FUI_MESSAGE_BOX_YES_NO:
+		case fuiMessageBoxButtons_YesNo:
 		{
 			specs[count].label = "Yes";
-			specs[count].result = FUI_DIALOG_RESULT_YES;
+			specs[count].result = fuiDialogResult_Yes;
 			count += 1;
 			specs[count].label = "No";
-			specs[count].result = FUI_DIALOG_RESULT_NO;
+			specs[count].result = fuiDialogResult_No;
 			count += 1;
-			*outAcceptResult = FUI_DIALOG_RESULT_YES;
-			*outDismissResult = FUI_DIALOG_RESULT_NO;
+			*outAcceptResult = fuiDialogResult_Yes;
+			*outDismissResult = fuiDialogResult_No;
 		} break;
 
-		case FUI_MESSAGE_BOX_YES_NO_CANCEL:
+		case fuiMessageBoxButtons_YesNoCancel:
 		default:
 		{
 			specs[count].label = "Yes";
-			specs[count].result = FUI_DIALOG_RESULT_YES;
+			specs[count].result = fuiDialogResult_Yes;
 			count += 1;
 			specs[count].label = "No";
-			specs[count].result = FUI_DIALOG_RESULT_NO;
+			specs[count].result = fuiDialogResult_No;
 			count += 1;
 			specs[count].label = "Cancel";
-			specs[count].result = FUI_DIALOG_RESULT_CANCEL;
+			specs[count].result = fuiDialogResult_Cancel;
 			count += 1;
-			*outAcceptResult = FUI_DIALOG_RESULT_YES;
-			*outDismissResult = FUI_DIALOG_RESULT_CANCEL;
+			*outAcceptResult = fuiDialogResult_Yes;
+			*outDismissResult = fuiDialogResult_Cancel;
 		} break;
 	}
 	return(count);
@@ -11794,7 +11975,7 @@ fui_inline int32_t fui__MessageBoxButtonSpecs(const fuiMessageBoxButtons buttons
 fui_inline fuiDialogResult fui__DialogButtonRow(fuiContext *context, const fuiRect contentBox, const fui__DialogButtonSpec *specs, const int32_t count, const fuiDialogResult acceptResult, const fuiDialogResult dismissResult) {
 	const fuiTheme *theme = &context->theme;
 	float spacing = theme->widgetSpacing;
-	fuiDialogResult chosen = FUI_DIALOG_RESULT_NONE;
+	fuiDialogResult chosen = fuiDialogResult_None;
 
 	float rowWidth = (float)count * FUI__DIALOG_BUTTON_WIDTH + (float)(count - 1) * spacing;
 	float buttonX = contentBox.x + contentBox.w - rowWidth;
@@ -11810,9 +11991,9 @@ fui_inline fuiDialogResult fui__DialogButtonRow(fuiContext *context, const fuiRe
 	// Only the FRONT dialog answers a key, and only one dialog answers each press - see fuiDialogTakeKey for
 	// why the second half of that is not the same statement as the first.
 	if(fuiIsFrontModal(context)) {
-		if(fuiDialogTakeKey(context, FUI_KEY_RETURN)) {
+		if(fuiDialogTakeKey(context, fuiKey_Return)) {
 			chosen = acceptResult;
-		} else if(fuiDialogTakeKey(context, FUI_KEY_ESCAPE)) {
+		} else if(fuiDialogTakeKey(context, fuiKey_Escape)) {
 			chosen = dismissResult;
 		}
 	}
@@ -11838,10 +12019,10 @@ fui_inline void fui__DialogFocusField(fuiContext *context, const char *fieldId) 
 fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const char *title, const char *text, const fuiMessageBoxButtons buttons) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && text != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || text == fui_null) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 
 	// The message is drawn as one line, so a box narrower than it would silently clip the tail. The box grows
@@ -11851,7 +12032,7 @@ fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const
 	float dialogWidth = fuiMaxF(fittedWidth, FUI__MESSAGE_BOX_MIN_WIDTH);
 	const float dialogHeight = 160.0f;
 
-	fuiDialogResult result = FUI_DIALOG_RESULT_NONE;
+	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModal(context, id, title, dialogWidth, dialogHeight)) {
 		fuiRect content = fuiLayoutRemaining(context);
 		float textRowHeight = fui__DialogTextRowHeight(context);
@@ -11859,14 +12040,14 @@ fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const
 		fuiLabel(context, textRect, text);
 
 		fui__DialogButtonSpec specs[FUI__DIALOG_MAX_BUTTONS];
-		fuiDialogResult acceptResult = FUI_DIALOG_RESULT_NONE;
-		fuiDialogResult dismissResult = FUI_DIALOG_RESULT_NONE;
+		fuiDialogResult acceptResult = fuiDialogResult_None;
+		fuiDialogResult dismissResult = fuiDialogResult_None;
 		int32_t buttonCount = fui__MessageBoxButtonSpecs(buttons, specs, &acceptResult, &dismissResult);
 		result = fui__DialogButtonRow(context, content, specs, buttonCount, acceptResult, dismissResult);
 	}
 	fuiEndModal(context);
 
-	if(result != FUI_DIALOG_RESULT_NONE) {
+	if(result != fuiDialogResult_None) {
 		fuiCloseDialog(context, id);
 	}
 	return(result);
@@ -11875,15 +12056,15 @@ fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const
 fui_api fuiDialogResult fuiInputBox(fuiContext *context, const char *id, const char *title, const char *label, char *buffer, const int32_t capacity) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && label != fui_null && buffer != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || label == fui_null || buffer == fui_null) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 
 	const float dialogWidth = 360.0f;
 	const float dialogHeight = 180.0f;
-	fuiDialogResult result = FUI_DIALOG_RESULT_NONE;
+	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModal(context, id, title, dialogWidth, dialogHeight)) {
 		const fuiTheme *theme = &context->theme;
 		fuiRect content = fuiLayoutRemaining(context);
@@ -11899,14 +12080,14 @@ fui_api fuiDialogResult fuiInputBox(fuiContext *context, const char *id, const c
 
 		fui__DialogButtonSpec specs[2];
 		specs[0].label = "OK";
-		specs[0].result = FUI_DIALOG_RESULT_OK;
+		specs[0].result = fuiDialogResult_Ok;
 		specs[1].label = "Cancel";
-		specs[1].result = FUI_DIALOG_RESULT_CANCEL;
-		result = fui__DialogButtonRow(context, content, specs, 2, FUI_DIALOG_RESULT_OK, FUI_DIALOG_RESULT_CANCEL);
+		specs[1].result = fuiDialogResult_Cancel;
+		result = fui__DialogButtonRow(context, content, specs, 2, fuiDialogResult_Ok, fuiDialogResult_Cancel);
 	}
 	fuiEndModal(context);
 
-	if(result != FUI_DIALOG_RESULT_NONE) {
+	if(result != fuiDialogResult_None) {
 		context->focused = FUI_ID_NONE;
 		fuiCloseDialog(context, id);
 	}
@@ -11916,15 +12097,15 @@ fui_api fuiDialogResult fuiInputBox(fuiContext *context, const char *id, const c
 fui_api fuiDialogResult fuiInputBoxMultiline(fuiContext *context, const char *id, const char *title, const char *label, char *buffer, const int32_t capacity, const bool wordWrap) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && label != fui_null && buffer != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || label == fui_null || buffer == fui_null) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 
 	const float dialogWidth = 460.0f;
 	const float dialogHeight = 340.0f;
-	fuiDialogResult result = FUI_DIALOG_RESULT_NONE;
+	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModal(context, id, title, dialogWidth, dialogHeight)) {
 		const fuiTheme *theme = &context->theme;
 		fuiRect content = fuiLayoutRemaining(context);
@@ -11943,14 +12124,14 @@ fui_api fuiDialogResult fuiInputBoxMultiline(fuiContext *context, const char *id
 
 		fui__DialogButtonSpec specs[2];
 		specs[0].label = "OK";
-		specs[0].result = FUI_DIALOG_RESULT_OK;
+		specs[0].result = fuiDialogResult_Ok;
 		specs[1].label = "Cancel";
-		specs[1].result = FUI_DIALOG_RESULT_CANCEL;
-		result = fui__DialogButtonRow(context, content, specs, 2, FUI_DIALOG_RESULT_OK, FUI_DIALOG_RESULT_CANCEL);
+		specs[1].result = fuiDialogResult_Cancel;
+		result = fui__DialogButtonRow(context, content, specs, 2, fuiDialogResult_Ok, fuiDialogResult_Cancel);
 	}
 	fuiEndModal(context);
 
-	if(result != FUI_DIALOG_RESULT_NONE) {
+	if(result != fuiDialogResult_None) {
 		context->focused = FUI_ID_NONE;
 		fuiCloseDialog(context, id);
 	}
@@ -11960,10 +12141,10 @@ fui_api fuiDialogResult fuiInputBoxMultiline(fuiContext *context, const char *id
 fui_api fuiDialogResult fuiColorDialogEx(fuiContext *context, const char *id, const char *title, fuiColor *color, const bool hasAlpha, bool *liveUpdate) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && color != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || color == fui_null) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 
 	// Wide enough that the saturation square stays roughly square once the channel column takes its share.
@@ -11977,7 +12158,7 @@ fui_api fuiDialogResult fuiColorDialogEx(fuiContext *context, const char *id, co
 	float liveUpdateSpacing = showLiveUpdateRow ? context->theme.widgetSpacing : 0.0f;
 	float dialogHeight = dialogBaseHeight + liveUpdateRowHeight + liveUpdateSpacing;
 
-	fuiDialogResult result = FUI_DIALOG_RESULT_NONE;
+	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModal(context, id, title, dialogWidth, dialogHeight)) {
 		const fuiTheme *theme = &context->theme;
 		fuiRect content = fuiLayoutRemaining(context);
@@ -12010,14 +12191,14 @@ fui_api fuiDialogResult fuiColorDialogEx(fuiContext *context, const char *id, co
 
 		fui__DialogButtonSpec specs[2];
 		specs[0].label = "OK";
-		specs[0].result = FUI_DIALOG_RESULT_OK;
+		specs[0].result = fuiDialogResult_Ok;
 		specs[1].label = "Cancel";
-		specs[1].result = FUI_DIALOG_RESULT_CANCEL;
-		result = fui__DialogButtonRow(context, content, specs, 2, FUI_DIALOG_RESULT_OK, FUI_DIALOG_RESULT_CANCEL);
+		specs[1].result = fuiDialogResult_Cancel;
+		result = fui__DialogButtonRow(context, content, specs, 2, fuiDialogResult_Ok, fuiDialogResult_Cancel);
 	}
 	fuiEndModal(context);
 
-	if(result != FUI_DIALOG_RESULT_NONE) {
+	if(result != fuiDialogResult_None) {
 		fuiCloseDialog(context, id);
 	}
 	return(result);
@@ -12031,16 +12212,16 @@ fui_api fuiDialogResult fuiColorDialog(fuiContext *context, const char *id, cons
 fui_api fuiDialogResult fuiFileDialog(fuiContext *context, const char *id, const char *title, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiFileDialogMode mode, char *nameBuffer, const int32_t nameCapacity, const fuiListIcons *icons) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && selectedIndex != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || selectedIndex == fui_null) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_DIALOG_RESULT_NONE);
+		return(fuiDialogResult_None);
 	}
 
 	const float dialogWidth = 840.0f;
 	const float dialogHeight = 680.0f;
-	bool isSaving = (mode == FUI_FILE_DIALOG_SAVE) && (nameBuffer != fui_null);
-	fuiDialogResult result = FUI_DIALOG_RESULT_NONE;
+	bool isSaving = (mode == fuiFileDialogMode_Save) && (nameBuffer != fui_null);
+	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModalResizable(context, id, title, dialogWidth, dialogHeight)) {
 		const fuiTheme *theme = &context->theme;
 		fuiRect content = fuiLayoutRemaining(context);
@@ -12069,22 +12250,22 @@ fui_api fuiDialogResult fuiFileDialog(fuiContext *context, const char *id, const
 
 		fui__DialogButtonSpec specs[2];
 		specs[0].label = isSaving ? "Save" : "Open";
-		specs[0].result = FUI_DIALOG_RESULT_OK;
+		specs[0].result = fuiDialogResult_Ok;
 		specs[1].label = "Cancel";
-		specs[1].result = FUI_DIALOG_RESULT_CANCEL;
-		result = fui__DialogButtonRow(context, content, specs, 2, FUI_DIALOG_RESULT_OK, FUI_DIALOG_RESULT_CANCEL);
+		specs[1].result = fuiDialogResult_Cancel;
+		result = fui__DialogButtonRow(context, content, specs, 2, fuiDialogResult_Ok, fuiDialogResult_Cancel);
 
 		// Opening needs something to open. An accept with nothing picked is ignored rather than answered.
-		if(result == FUI_DIALOG_RESULT_OK && !isSaving) {
+		if(result == fuiDialogResult_Ok && !isSaving) {
 			bool selectionIsReal = (*selectedIndex >= 0) && (*selectedIndex < count);
 			if(!selectionIsReal) {
-				result = FUI_DIALOG_RESULT_NONE;
+				result = fuiDialogResult_None;
 			}
 		}
 	}
 	fuiEndModal(context);
 
-	if(result != FUI_DIALOG_RESULT_NONE) {
+	if(result != fuiDialogResult_None) {
 		context->focused = FUI_ID_NONE;
 		fuiCloseDialog(context, id);
 	}
@@ -12094,20 +12275,20 @@ fui_api fuiDialogResult fuiFileDialog(fuiContext *context, const char *id, const
 fui_api fuiFileBrowserResult fuiFileBrowser(fuiContext *context, const char *id, const char *title, const char *locationLabel, const char *const *items, const bool *isFolder, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, char *nameBuffer, const int32_t nameCapacity, int32_t *outIndex) {
 	FUI_ASSERT(context != fui_null && id != fui_null && title != fui_null && selectedIndex != fui_null);
 	if(context == fui_null || id == fui_null || title == fui_null || selectedIndex == fui_null) {
-		return(FUI_FILE_BROWSER_NONE);
+		return(fuiFileBrowserResult_None);
 	}
 	if(isFolder == fui_null && count > 0) {
-		return(FUI_FILE_BROWSER_NONE);
+		return(fuiFileBrowserResult_None);
 	}
 	if(!fuiDialogIsOpen(context, id)) {
-		return(FUI_FILE_BROWSER_NONE);
+		return(fuiFileBrowserResult_None);
 	}
 
 	// The name field is what makes this a SAVING browser: there is nothing else to type into.
 	bool isSaving = (nameBuffer != fui_null);
 	const float dialogWidth = 840.0f;
 	const float dialogHeight = 680.0f;
-	fuiFileBrowserResult result = FUI_FILE_BROWSER_NONE;
+	fuiFileBrowserResult result = fuiFileBrowserResult_None;
 	int32_t activatedRow = -1;
 	bool acceptedTypedName = false;
 	if(fuiBeginModalResizable(context, id, title, dialogWidth, dialogHeight)) {
@@ -12142,31 +12323,31 @@ fui_api fuiFileBrowserResult fuiFileBrowser(fuiContext *context, const char *id,
 
 		fui__DialogButtonSpec specs[2];
 		specs[0].label = isSaving ? "Save" : "Open";
-		specs[0].result = FUI_DIALOG_RESULT_OK;
+		specs[0].result = fuiDialogResult_Ok;
 		specs[1].label = "Cancel";
-		specs[1].result = FUI_DIALOG_RESULT_CANCEL;
-		fuiDialogResult buttonResult = fui__DialogButtonRow(context, content, specs, 2, FUI_DIALOG_RESULT_OK, FUI_DIALOG_RESULT_CANCEL);
-		if(buttonResult == FUI_DIALOG_RESULT_OK) {
+		specs[1].result = fuiDialogResult_Cancel;
+		fuiDialogResult buttonResult = fui__DialogButtonRow(context, content, specs, 2, fuiDialogResult_Ok, fuiDialogResult_Cancel);
+		if(buttonResult == fuiDialogResult_Ok) {
 			if(isSaving) {
 				// Saving accepts the TYPED name, which is not necessarily any row.
 				acceptedTypedName = (nameBuffer[0] != '\0');
 			} else if(selectionIsReal) {
 				activatedRow = *selectedIndex;
 			}
-		} else if(buttonResult == FUI_DIALOG_RESULT_CANCEL) {
-			result = FUI_FILE_BROWSER_CANCEL;
+		} else if(buttonResult == fuiDialogResult_Cancel) {
+			result = fuiFileBrowserResult_Cancel;
 		}
 	}
 	fuiEndModal(context);
 
 	// An activated row is a folder to descend into or a file to accept. Cancel already won above.
 	bool activatedRowIsReal = (activatedRow >= 0) && (activatedRow < count);
-	if(result == FUI_FILE_BROWSER_NONE && activatedRowIsReal) {
+	if(result == fuiFileBrowserResult_None && activatedRowIsReal) {
 		if(isFolder[activatedRow]) {
 			if(outIndex != fui_null) {
 				*outIndex = activatedRow;
 			}
-			result = FUI_FILE_BROWSER_DESCEND;
+			result = fuiFileBrowserResult_Descend;
 		} else if(isSaving) {
 			// A file double clicked while saving is the one being overwritten.
 			fui__CopyString(nameBuffer, (size_t)nameCapacity, items[activatedRow]);
@@ -12175,20 +12356,20 @@ fui_api fuiFileBrowserResult fuiFileBrowser(fuiContext *context, const char *id,
 			if(outIndex != fui_null) {
 				*outIndex = activatedRow;
 			}
-			result = FUI_FILE_BROWSER_ACCEPT;
+			result = fuiFileBrowserResult_Accept;
 		}
 	}
-	if(result == FUI_FILE_BROWSER_NONE && acceptedTypedName) {
+	if(result == fuiFileBrowserResult_None && acceptedTypedName) {
 		if(outIndex != fui_null) {
 			// The accept is the typed name, which may match no listed row at all.
 			*outIndex = -1;
 		}
-		result = FUI_FILE_BROWSER_ACCEPT;
+		result = fuiFileBrowserResult_Accept;
 	}
 
 	// Descend keeps the dialog OPEN, since the caller lists the folder and comes straight back. Cancel closes
 	// it. An opening accept closes; a saving one stays up, so the caller can run an overwrite prompt first.
-	bool closesNow = (result == FUI_FILE_BROWSER_CANCEL) || (result == FUI_FILE_BROWSER_ACCEPT && !isSaving);
+	bool closesNow = (result == fuiFileBrowserResult_Cancel) || (result == fuiFileBrowserResult_Accept && !isSaving);
 	if(closesNow) {
 		context->focused = FUI_ID_NONE;
 		fuiCloseDialog(context, id);
@@ -12215,15 +12396,15 @@ fui_inline void fui__FitAspect(const float aspect, const float availableWidth, c
 //! Which third of its box the image is anchored in, across and down, as 0, 1 or 2
 fui_inline void fui__ImagePlacementCells(const fuiImagePlacement placement, int32_t *outAcross, int32_t *outDown) {
 	switch(placement) {
-		case FUI_IMAGE_PLACE_TOP_LEFT: *outAcross = 0; *outDown = 0; break;
-		case FUI_IMAGE_PLACE_TOP: *outAcross = 1; *outDown = 0; break;
-		case FUI_IMAGE_PLACE_TOP_RIGHT: *outAcross = 2; *outDown = 0; break;
-		case FUI_IMAGE_PLACE_LEFT: *outAcross = 0; *outDown = 1; break;
-		case FUI_IMAGE_PLACE_RIGHT: *outAcross = 2; *outDown = 1; break;
-		case FUI_IMAGE_PLACE_BOTTOM_LEFT: *outAcross = 0; *outDown = 2; break;
-		case FUI_IMAGE_PLACE_BOTTOM: *outAcross = 1; *outDown = 2; break;
-		case FUI_IMAGE_PLACE_BOTTOM_RIGHT: *outAcross = 2; *outDown = 2; break;
-		case FUI_IMAGE_PLACE_CENTER:
+		case fuiImagePlacement_TopLeft: *outAcross = 0; *outDown = 0; break;
+		case fuiImagePlacement_Top: *outAcross = 1; *outDown = 0; break;
+		case fuiImagePlacement_TopRight: *outAcross = 2; *outDown = 0; break;
+		case fuiImagePlacement_Left: *outAcross = 0; *outDown = 1; break;
+		case fuiImagePlacement_Right: *outAcross = 2; *outDown = 1; break;
+		case fuiImagePlacement_BottomLeft: *outAcross = 0; *outDown = 2; break;
+		case fuiImagePlacement_Bottom: *outAcross = 1; *outDown = 2; break;
+		case fuiImagePlacement_BottomRight: *outAcross = 2; *outDown = 2; break;
+		case fuiImagePlacement_Center:
 		default: *outAcross = 1; *outDown = 1; break;
 	}
 }
@@ -12233,7 +12414,7 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 	if(context == fui_null || desc == fui_null || desc->texture == FUI_TEXTURE_ID_NONE) {
 		return;
 	}
-	if(context->pass == FUI_PASS_INTERACT) {
+	if(context->pass == fuiPass_Interact) {
 		return;
 	}
 
@@ -12262,8 +12443,8 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 
 	// A quarter turn swaps what the shape IS, so everything below fits and places the turned shape. Without
 	// this a tall cell laid on its side would be fitted as though it were still tall and come out squashed.
-	bool turnsClockwise = (desc->flags & FUI_IMAGE_ROTATE_90_CW) == FUI_IMAGE_ROTATE_90_CW;
-	bool turnsCounterClockwise = (desc->flags & FUI_IMAGE_ROTATE_90_CCW) == FUI_IMAGE_ROTATE_90_CCW;
+	bool turnsClockwise = (desc->flags & fuiImageFlags_Rotate90CW) == fuiImageFlags_Rotate90CW;
+	bool turnsCounterClockwise = (desc->flags & fuiImageFlags_Rotate90CCW) == fuiImageFlags_Rotate90CCW;
 	bool isTurned = turnsClockwise != turnsCounterClockwise;
 	if(isTurned) {
 		float swappedRequestedWidth = requestedWidth;
@@ -12278,19 +12459,19 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 	float drawWidth = requestedWidth;
 	float drawHeight = requestedHeight;
 	switch(desc->scaleMode) {
-		case FUI_IMAGE_SCALE_STRETCH:
+		case fuiImageScaleMode_Stretch:
 		{
 			drawWidth = rect.w;
 			drawHeight = rect.h;
 		} break;
 
-		case FUI_IMAGE_SCALE_LETTERBOX:
+		case fuiImageScaleMode_Letterbox:
 		{
 			fui__FitAspect(sampledAspect, rect.w, rect.h, &drawWidth, &drawHeight);
 		} break;
 
-		case FUI_IMAGE_SCALE_ORIGIN:
-		case FUI_IMAGE_SCALE_CENTER:
+		case fuiImageScaleMode_Origin:
+		case fuiImageScaleMode_Center:
 		default:
 		{
 			if(desc->keepAspectRatio) {
@@ -12302,7 +12483,7 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 		} break;
 	}
 
-	fuiImagePlacement placement = (desc->scaleMode == FUI_IMAGE_SCALE_CENTER) ? FUI_IMAGE_PLACE_CENTER : desc->placement;
+	fuiImagePlacement placement = (desc->scaleMode == fuiImageScaleMode_Center) ? fuiImagePlacement_Center : desc->placement;
 	int32_t placeAcross = 1;
 	int32_t placeDown = 1;
 	fui__ImagePlacementCells(placement, &placeAcross, &placeDown);
@@ -12361,11 +12542,11 @@ fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const cha
 		// The tab in front stands out of the strip and the ones behind it lie FLAT in it. Flat rather than
 		// sunken: sunken is the shape of a widget that has been pushed, and a tab nobody is pushing must not
 		// wear it - a whole row of them reads as a row of dead buttons. Pushing one really does sink it.
-		fui__Relief relief = FUI__RELIEF_FLAT;
+		fui__Relief relief = fui__Relief_Flat;
 		if(isShowing) {
-			relief = FUI__RELIEF_RAISED;
+			relief = fui__Relief_Raised;
 		} else if(interaction.isHeld) {
-			relief = FUI__RELIEF_SUNKEN;
+			relief = fui__Relief_Sunken;
 		}
 		fui__DrawBevelBox(context, headerRect, fill, relief);
 		// Every caption in the strip is drawn in the FULL text color. The muted one is what a disabled widget
@@ -13391,6 +13572,9 @@ fui_inline float fui__ScrollRowIntoView(const float scroll, const float viewport
 */
 typedef struct fui__TreeRowContext {
 	const fuiTreeDesc *desc;
+	//! One state per node while the rows carry check boxes, and null while they do not - which is the whole of
+	//! what separates fuiCheckTreeView from fuiTreeViewEx
+	const fuiCheckState *checkStates;
 	fuiWidgetState *state;
 	fuiTreeAction *action;
 	int32_t *selectedIndex;
@@ -13429,8 +13613,49 @@ fui_inline void fui__TreeSelectNode(fui__TreeRowContext *rowContext, const int32
 	rowContext->selectionChanged = true;
 }
 
+/*
+	Reports what a click on a row's check box asked for, and writes nothing at all into the caller's states.
+
+	A check is a REQUEST here. What a row says afterwards is decided by whoever answers it - a file half staged
+	is wholly staged once it is checked, and leaves the very tree it was checked in - so a widget that had set
+	the state itself would have shown it wrong until the next answer arrived. A half checked row answers a click
+	by becoming whole, which makes emptying one two clicks: check it, then uncheck it.
+*/
+fui_inline void fui__TreeCheckNode(fui__TreeRowContext *rowContext, const int32_t nodeIndex) {
+	if(rowContext->action == fui_null) {
+		return;
+	}
+	fuiCheckState currentState = fuiCheckState_Unchecked;
+	if(rowContext->checkStates != fui_null) {
+		currentState = rowContext->checkStates[nodeIndex];
+	}
+	bool wantsUnchecked = (currentState == fuiCheckState_Checked);
+	rowContext->action->checkedNode = nodeIndex;
+	rowContext->action->checkedNodeWantedState = wantsUnchecked ? fuiCheckState_Unchecked : fuiCheckState_Checked;
+}
+
 //! Thickness of a tree's guide lines. A hairline, because they are there to be followed rather than read
 #define FUI__TREE_GUIDE_THICKNESS 1.0f
+
+//! How much of the full check mark a MIXED row keeps, so "part of it" and "all of it" are told apart at a glance
+#define FUI__TREE_MIXED_MARK_SCALE 0.5f
+
+//! The slot a row's check box sits in: the box itself plus the gap that keeps it off whatever comes after it
+fui_inline fuiRect fui__TreeCheckSlotRect(const fuiContext *context, const fuiRect rowRect, const float slotLeft) {
+	const fuiTheme *theme = &context->theme;
+	float slotWidth = theme->fontHeight + FUI__WIDGET_LABEL_GAP;
+	fuiRect result = fuiRectMake(slotLeft, rowRect.y, slotWidth, rowRect.h);
+	return(result);
+}
+
+//! The well inside that slot, at the size a checkbox outside a tree draws it and centered however tall the row is
+fui_inline fuiRect fui__TreeCheckBoxRect(const fuiContext *context, const fuiRect checkSlot) {
+	const fuiTheme *theme = &context->theme;
+	float boxSide = theme->fontHeight;
+	float boxTop = checkSlot.y + (checkSlot.h - boxSide) * 0.5f;
+	fuiRect result = fuiRectMake(checkSlot.x, boxTop, boxSide, boxSide);
+	return(result);
+}
 
 //! Draws one row and takes whatever click landed on it
 fui_inline void fui__TreeBuildRow(fuiContext *context, fui__TreeRowContext *rowContext, const int32_t displayRow, const int32_t nodeIndex, const uint64_t guideMask) {
@@ -13516,13 +13741,58 @@ fui_inline void fui__TreeBuildRow(fuiContext *context, fui__TreeRowContext *rowC
 		pressWasOnExpander = expanderIsHovered;
 	}
 
+	// Between the expander slot and the content: the box moves with the row's own indent, so a check sits under
+	// the check of the row above it rather than under its label.
 	float contentLeft = expanderRect.x + indentWidth;
+	const fuiCheckState *checkStates = rowContext->checkStates;
+	bool rowHasACheckBox = (checkStates != fui_null);
+	bool pressWasOnCheckBox = false;
+	if(rowHasACheckBox) {
+		fuiRect checkSlot = fui__TreeCheckSlotRect(context, rowRect, contentLeft);
+		fuiRect checkBox = fui__TreeCheckBoxRect(context, checkSlot);
+		bool checkBoxIsHovered = fui__CursorIsOver(context, checkSlot);
+		fuiColor boxFill = checkBoxIsHovered ? theme->widgetHoveredColor : theme->widgetTrackColor;
+		// The very well fuiCheckbox puts its tick in, so a checked row and a checked widget mean the same thing
+		// and look it.
+		fui__DrawBevelBox(context, checkBox, boxFill, fui__Relief_Sunken);
+		fuiCheckState checkState = checkStates[nodeIndex];
+		if(checkState != fuiCheckState_Unchecked) {
+			fuiRect checkMark = fui__CheckMarkRect(context, checkBox);
+			if(checkState == fuiCheckState_Mixed) {
+				// The same mark drawn smaller inside the same well - "only half of this", with a box around it.
+				float markInset = checkMark.w * (1.0f - FUI__TREE_MIXED_MARK_SCALE) * 0.5f;
+				checkMark = fuiRectInflate(checkMark, -markInset);
+			}
+			fuiDrawRect(context, checkMark, theme->accentColor);
+		}
+		pressWasOnCheckBox = checkBoxIsHovered;
+		contentLeft = checkSlot.x + checkSlot.w;
+	}
+
 	float contentWidth = (rowRect.x + rowRect.w) - contentLeft;
 	if(contentWidth < 0.0f) {
 		contentWidth = 0.0f;
 	}
 	fuiRect contentRect = fuiRectMake(contentLeft, rowTop, contentWidth, rowHeight);
 	fuiRect textRect = fui__ListBoxDrawRowIcon(context, contentRect, rowHeight, desc->icons, nodeIndex);
+
+	// The right label is drawn FIRST and takes its width off the left one, rather than being drawn over it.
+	// A status pushed off the row by a long name would be the one thing on the row that no amount of
+	// widening or scrolling brings back, because the row has no horizontal scroll to bring it back with.
+	if(node->rightLabel != fui_null) {
+		fuiVec2 rightLabelSize = fuiMeasureText(context, node->rightLabel, 0, theme->fontHeight);
+		float rowRightEdge = rowRect.x + rowRect.w;
+		float rightLabelLeft = rowRightEdge - theme->widgetPaddingX - rightLabelSize.x;
+		float lineExtent = fui__LineExtent(context->font, theme->fontHeight);
+		float rightLabelTop = rowTop + (rowHeight - lineExtent) * 0.5f;
+		fuiVec2 rightLabelPosition = fuiV2(rightLabelLeft, rightLabelTop);
+		fuiDrawText(context, node->rightLabel, 0, rightLabelPosition, theme->fontHeight, theme->textMutedColor);
+
+		float widthTakenByTheRightLabel = rightLabelSize.x + theme->widgetPaddingX * 2.0f;
+		float widthLeftForTheLabel = textRect.w - widthTakenByTheRightLabel;
+		textRect.w = (widthLeftForTheLabel > 0.0f) ? widthLeftForTheLabel : 0.0f;
+	}
+
 	if(node->label != fui_null) {
 		fui__DrawTextInRect(context, textRect, node->label, theme->textColor);
 	}
@@ -13533,6 +13803,10 @@ fui_inline void fui__TreeBuildRow(fuiContext *context, fui__TreeRowContext *rowC
 			// The expander owns this click outright, the way a button inside a list view row does: pointing at
 			// the triangle and pointing at the row mean two different things, and folding a node is not picking it.
 			fui__TreeToggleNode(rowContext, nodeIndex);
+		} else if(pressWasOnCheckBox) {
+			// And the box owns its own for the same reason: checking a node is not picking it either, so the
+			// selection stays wherever it was.
+			fui__TreeCheckNode(rowContext, nodeIndex);
 		} else {
 			bool isSecondClick = false;
 			fuiWidgetState *state = rowContext->state;
@@ -13657,17 +13931,17 @@ fui_inline void fui__TreeHandleKeys(fuiContext *context, fui__TreeRowContext *ro
 	int32_t lastRow = visibleCount - 1;
 	int32_t wantedRow = FUI__TREE_NODE_NONE;
 	bool aMoveWasAsked = true;
-	if(fuiKeyRepeat(context, FUI_KEY_DOWN)) {
+	if(fuiKeyRepeat(context, fuiKey_Down)) {
 		wantedRow = (currentRow < 0) ? firstRow : (currentRow + 1);
-	} else if(fuiKeyRepeat(context, FUI_KEY_UP)) {
+	} else if(fuiKeyRepeat(context, fuiKey_Up)) {
 		wantedRow = (currentRow < 0) ? firstRow : (currentRow - 1);
-	} else if(fuiKeyRepeat(context, FUI_KEY_PAGE_DOWN)) {
+	} else if(fuiKeyRepeat(context, fuiKey_PageDown)) {
 		wantedRow = (currentRow < 0) ? firstRow : (currentRow + rowsPerPage);
-	} else if(fuiKeyRepeat(context, FUI_KEY_PAGE_UP)) {
+	} else if(fuiKeyRepeat(context, fuiKey_PageUp)) {
 		wantedRow = (currentRow < 0) ? firstRow : (currentRow - rowsPerPage);
-	} else if(fuiKeyRepeat(context, FUI_KEY_HOME)) {
+	} else if(fuiKeyRepeat(context, fuiKey_Home)) {
 		wantedRow = firstRow;
-	} else if(fuiKeyRepeat(context, FUI_KEY_END)) {
+	} else if(fuiKeyRepeat(context, fuiKey_End)) {
 		wantedRow = lastRow;
 	} else {
 		aMoveWasAsked = false;
@@ -13684,7 +13958,7 @@ fui_inline void fui__TreeHandleKeys(fuiContext *context, fui__TreeRowContext *ro
 	bool isOpen = fui__TreeNodeIsOpen(nodes, desc->isExpanded, selectedNode);
 	int32_t descendantCount = fui__TreeDescendantCount(nodes, selectedNode);
 	bool hasChildren = (descendantCount > 0);
-	if(fuiKeyRepeat(context, FUI_KEY_RIGHT)) {
+	if(fuiKeyRepeat(context, fuiKey_Right)) {
 		if(hasChildren && !isOpen) {
 			fui__TreeToggleNode(rowContext, selectedNode);
 		} else if(isOpen) {
@@ -13694,7 +13968,7 @@ fui_inline void fui__TreeHandleKeys(fuiContext *context, fui__TreeRowContext *ro
 		}
 		return;
 	}
-	if(fuiKeyRepeat(context, FUI_KEY_LEFT)) {
+	if(fuiKeyRepeat(context, fuiKey_Left)) {
 		if(isOpen) {
 			fui__TreeToggleNode(rowContext, selectedNode);
 		} else {
@@ -13703,14 +13977,30 @@ fui_inline void fui__TreeHandleKeys(fuiContext *context, fui__TreeRowContext *ro
 		}
 		return;
 	}
-	if(fuiKeyRepeat(context, FUI_KEY_RETURN)) {
+	bool rowsHaveCheckBoxes = (rowContext->checkStates != fui_null);
+	if(rowsHaveCheckBoxes && fuiKeyWentDown(context, fuiKey_Space)) {
+		// Exactly what a click on the selected row's box would ask for, so a tree can be walked AND checked
+		// without ever reaching for the mouse. Not repeated while the key is held: a check is one decision, and
+		// holding space would ask for it and its opposite over and over.
+		fui__TreeCheckNode(rowContext, selectedNode);
+		return;
+	}
+	if(fuiKeyRepeat(context, fuiKey_Return)) {
 		if(rowContext->action != fui_null) {
 			rowContext->action->activatedNode = selectedNode;
 		}
 	}
 }
 
-fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, int32_t *selectedIndex, fuiTreeAction *outAction) {
+/*
+	The body every tree runs through, whichever entry point was called.
+
+	checkStates being non-null is the ONE thing that separates a tree with boxes from a tree without: it draws
+	the boxes, it decides what a click on one is worth and it is what the space bar asks about. Everything else -
+	the rows, the folding, the selection, the keys - is the same code for all three, the way fuiTreeView has
+	always been fuiTreeViewEx with a zeroed description.
+*/
+fui_inline bool fui__TreeViewBuild(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, const fuiCheckState *checkStates, int32_t *selectedIndex, fuiTreeAction *outAction) {
 	FUI_ASSERT(context != fui_null && id != fui_null && desc != fui_null && selectedIndex != fui_null);
 	if(context == fui_null || id == fui_null || desc == fui_null || selectedIndex == fui_null) {
 		return(false);
@@ -13719,6 +14009,8 @@ fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *
 		outAction->activatedNode = FUI__TREE_NODE_NONE;
 		outAction->toggledNode = FUI__TREE_NODE_NONE;
 		outAction->contextNode = FUI__TREE_NODE_NONE;
+		outAction->checkedNode = FUI__TREE_NODE_NONE;
+		outAction->checkedNodeWantedState = fuiCheckState_Unchecked;
 	}
 
 	const fuiTheme *theme = &context->theme;
@@ -13773,6 +14065,7 @@ fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *
 	fui__TreeRowContext rowContext;
 	fui__ClearMemory(&rowContext, sizeof(rowContext));
 	rowContext.desc = desc;
+	rowContext.checkStates = checkStates;
 	rowContext.state = state;
 	rowContext.action = outAction;
 	rowContext.selectedIndex = selectedIndex;
@@ -13861,6 +14154,18 @@ fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *
 	return(rowContext.selectionChanged);
 }
 
+fui_api bool fuiTreeViewEx(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, int32_t *selectedIndex, fuiTreeAction *outAction) {
+	const fuiCheckState *noCheckStates = fui_null;
+	return(fui__TreeViewBuild(context, rect, id, desc, noCheckStates, selectedIndex, outAction));
+}
+
+fui_api bool fuiCheckTreeView(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeDesc *desc, const fuiCheckState *checkStates, int32_t *selectedIndex, fuiTreeAction *outAction) {
+	// A check tree without states is the caller's mistake and not something to draw around: it falls back to the
+	// plain tree, which is the one thing that cannot be wrong about a row whose state nobody knows.
+	FUI_ASSERT(checkStates != fui_null);
+	return(fui__TreeViewBuild(context, rect, id, desc, checkStates, selectedIndex, outAction));
+}
+
 fui_api bool fuiTreeView(fuiContext *context, const fuiRect rect, const char *id, const fuiTreeNode *nodes, const int32_t nodeCount, bool *isExpanded, int32_t *selectedIndex) {
 	fuiTreeDesc desc;
 	fui__ClearMemory(&desc, sizeof(desc));
@@ -13915,6 +14220,55 @@ fui_api void fuiTreeSetExpandedAll(const fuiTreeNode *nodes, const int32_t nodeC
 		if(hasChildren) {
 			isExpanded[nodeIndex] = expandedValue;
 		}
+	}
+}
+
+fui_api void fuiTreeComputeCheckStates(const fuiTreeNode *nodes, const int32_t nodeCount, fuiCheckState *checkStates) {
+	if(nodes == fui_null || checkStates == fui_null || nodeCount <= 0) {
+		return;
+	}
+	/*
+		Walked BACKWARDS, the same way fuiTreeComputeDescendants is: every child already carries its own answer
+		by the time its parent asks for it, so a parent visits its DIRECT children only and steps over each of
+		their subtrees in one addition - which is what keeps this linear rather than quadratic.
+	*/
+	for(int32_t nodeIndex = nodeCount - 1; nodeIndex >= 0; --nodeIndex) {
+		int32_t descendantCount = fui__TreeDescendantCount(nodes, nodeIndex);
+		bool hasChildren = (descendantCount > 0);
+		if(!hasChildren) {
+			// A leaf is what all of this is computed FROM, so whatever the caller put there stays there.
+			continue;
+		}
+		int32_t endOfSubtree = nodeIndex + 1 + descendantCount;
+		if(endOfSubtree > nodeCount) {
+			endOfSubtree = nodeCount;
+		}
+		int32_t ownDepth = nodes[nodeIndex].depth;
+		bool sawChecked = false;
+		bool sawUnchecked = false;
+		bool sawMixed = false;
+		int32_t childIndex = nodeIndex + 1;
+		while(childIndex < endOfSubtree && nodes[childIndex].depth > ownDepth) {
+			fuiCheckState childState = checkStates[childIndex];
+			if(childState == fuiCheckState_Checked) {
+				sawChecked = true;
+			} else if(childState == fuiCheckState_Unchecked) {
+				sawUnchecked = true;
+			} else {
+				sawMixed = true;
+			}
+			int32_t childDescendantCount = fui__TreeDescendantCount(nodes, childIndex);
+			childIndex += 1 + childDescendantCount;
+		}
+		bool everythingIsChecked = sawChecked && !sawUnchecked && !sawMixed;
+		bool nothingIsChecked = sawUnchecked && !sawChecked && !sawMixed;
+		fuiCheckState ownState = fuiCheckState_Mixed;
+		if(everythingIsChecked) {
+			ownState = fuiCheckState_Checked;
+		} else if(nothingIsChecked) {
+			ownState = fuiCheckState_Unchecked;
+		}
+		checkStates[nodeIndex] = ownState;
 	}
 }
 
