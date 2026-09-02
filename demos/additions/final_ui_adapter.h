@@ -204,88 +204,88 @@ typedef struct fui__KeyMapping {
 // Only the keys an interface acts on. A key that is not in here reaches the interface as nothing at all,
 // which is deliberate: the game's own bindings are the game's business.
 static const fui__KeyMapping fui__globalKeyMappings[] = {
-	{ fplKey_Backspace, FUI_KEY_BACKSPACE },
-	{ fplKey_Tab, FUI_KEY_TAB },
-	{ fplKey_Return, FUI_KEY_RETURN },
-	{ fplKey_Escape, FUI_KEY_ESCAPE },
-	{ fplKey_Space, FUI_KEY_SPACE },
-	{ fplKey_PageUp, FUI_KEY_PAGE_UP },
-	{ fplKey_PageDown, FUI_KEY_PAGE_DOWN },
-	{ fplKey_End, FUI_KEY_END },
-	{ fplKey_Home, FUI_KEY_HOME },
-	{ fplKey_Left, FUI_KEY_LEFT },
-	{ fplKey_Up, FUI_KEY_UP },
-	{ fplKey_Right, FUI_KEY_RIGHT },
-	{ fplKey_Down, FUI_KEY_DOWN },
-	{ fplKey_Insert, FUI_KEY_INSERT },
-	{ fplKey_Delete, FUI_KEY_DELETE },
+	{ fplKey_Backspace, fuiKey_Backspace },
+	{ fplKey_Tab, fuiKey_Tab },
+	{ fplKey_Return, fuiKey_Return },
+	{ fplKey_Escape, fuiKey_Escape },
+	{ fplKey_Space, fuiKey_Space },
+	{ fplKey_PageUp, fuiKey_PageUp },
+	{ fplKey_PageDown, fuiKey_PageDown },
+	{ fplKey_End, fuiKey_End },
+	{ fplKey_Home, fuiKey_Home },
+	{ fplKey_Left, fuiKey_Left },
+	{ fplKey_Up, fuiKey_Up },
+	{ fplKey_Right, fuiKey_Right },
+	{ fplKey_Down, fuiKey_Down },
+	{ fplKey_Insert, fuiKey_Insert },
+	{ fplKey_Delete, fuiKey_Delete },
 
-	{ fplKey_0, FUI_KEY_0 },
-	{ fplKey_1, FUI_KEY_1 },
-	{ fplKey_2, FUI_KEY_2 },
-	{ fplKey_3, FUI_KEY_3 },
-	{ fplKey_4, FUI_KEY_4 },
-	{ fplKey_5, FUI_KEY_5 },
-	{ fplKey_6, FUI_KEY_6 },
-	{ fplKey_7, FUI_KEY_7 },
-	{ fplKey_8, FUI_KEY_8 },
-	{ fplKey_9, FUI_KEY_9 },
+	{ fplKey_0, fuiKey_0 },
+	{ fplKey_1, fuiKey_1 },
+	{ fplKey_2, fuiKey_2 },
+	{ fplKey_3, fuiKey_3 },
+	{ fplKey_4, fuiKey_4 },
+	{ fplKey_5, fuiKey_5 },
+	{ fplKey_6, fuiKey_6 },
+	{ fplKey_7, fuiKey_7 },
+	{ fplKey_8, fuiKey_8 },
+	{ fplKey_9, fuiKey_9 },
 
-	{ fplKey_A, FUI_KEY_A },
-	{ fplKey_B, FUI_KEY_B },
-	{ fplKey_C, FUI_KEY_C },
-	{ fplKey_D, FUI_KEY_D },
-	{ fplKey_E, FUI_KEY_E },
-	{ fplKey_F, FUI_KEY_F },
-	{ fplKey_G, FUI_KEY_G },
-	{ fplKey_H, FUI_KEY_H },
-	{ fplKey_I, FUI_KEY_I },
-	{ fplKey_J, FUI_KEY_J },
-	{ fplKey_K, FUI_KEY_K },
-	{ fplKey_L, FUI_KEY_L },
-	{ fplKey_M, FUI_KEY_M },
-	{ fplKey_N, FUI_KEY_N },
-	{ fplKey_O, FUI_KEY_O },
-	{ fplKey_P, FUI_KEY_P },
-	{ fplKey_Q, FUI_KEY_Q },
-	{ fplKey_R, FUI_KEY_R },
-	{ fplKey_S, FUI_KEY_S },
-	{ fplKey_T, FUI_KEY_T },
-	{ fplKey_U, FUI_KEY_U },
-	{ fplKey_V, FUI_KEY_V },
-	{ fplKey_W, FUI_KEY_W },
-	{ fplKey_X, FUI_KEY_X },
-	{ fplKey_Y, FUI_KEY_Y },
-	{ fplKey_Z, FUI_KEY_Z },
+	{ fplKey_A, fuiKey_A },
+	{ fplKey_B, fuiKey_B },
+	{ fplKey_C, fuiKey_C },
+	{ fplKey_D, fuiKey_D },
+	{ fplKey_E, fuiKey_E },
+	{ fplKey_F, fuiKey_F },
+	{ fplKey_G, fuiKey_G },
+	{ fplKey_H, fuiKey_H },
+	{ fplKey_I, fuiKey_I },
+	{ fplKey_J, fuiKey_J },
+	{ fplKey_K, fuiKey_K },
+	{ fplKey_L, fuiKey_L },
+	{ fplKey_M, fuiKey_M },
+	{ fplKey_N, fuiKey_N },
+	{ fplKey_O, fuiKey_O },
+	{ fplKey_P, fuiKey_P },
+	{ fplKey_Q, fuiKey_Q },
+	{ fplKey_R, fuiKey_R },
+	{ fplKey_S, fuiKey_S },
+	{ fplKey_T, fuiKey_T },
+	{ fplKey_U, fuiKey_U },
+	{ fplKey_V, fuiKey_V },
+	{ fplKey_W, fuiKey_W },
+	{ fplKey_X, fuiKey_X },
+	{ fplKey_Y, fuiKey_Y },
+	{ fplKey_Z, fuiKey_Z },
 
-	{ fplKey_F1, FUI_KEY_F1 },
-	{ fplKey_F2, FUI_KEY_F2 },
-	{ fplKey_F3, FUI_KEY_F3 },
-	{ fplKey_F4, FUI_KEY_F4 },
-	{ fplKey_F5, FUI_KEY_F5 },
-	{ fplKey_F6, FUI_KEY_F6 },
-	{ fplKey_F7, FUI_KEY_F7 },
-	{ fplKey_F8, FUI_KEY_F8 },
-	{ fplKey_F9, FUI_KEY_F9 },
-	{ fplKey_F10, FUI_KEY_F10 },
-	{ fplKey_F11, FUI_KEY_F11 },
-	{ fplKey_F12, FUI_KEY_F12 },
+	{ fplKey_F1, fuiKey_F1 },
+	{ fplKey_F2, fuiKey_F2 },
+	{ fplKey_F3, fuiKey_F3 },
+	{ fplKey_F4, fuiKey_F4 },
+	{ fplKey_F5, fuiKey_F5 },
+	{ fplKey_F6, fuiKey_F6 },
+	{ fplKey_F7, fuiKey_F7 },
+	{ fplKey_F8, fuiKey_F8 },
+	{ fplKey_F9, fuiKey_F9 },
+	{ fplKey_F10, fuiKey_F10 },
+	{ fplKey_F11, fuiKey_F11 },
+	{ fplKey_F12, fuiKey_F12 },
 
-	{ fplKey_LeftControl, FUI_KEY_LEFT_CONTROL },
-	{ fplKey_RightControl, FUI_KEY_RIGHT_CONTROL },
-	{ fplKey_LeftShift, FUI_KEY_LEFT_SHIFT },
-	{ fplKey_RightShift, FUI_KEY_RIGHT_SHIFT },
-	{ fplKey_LeftAlt, FUI_KEY_LEFT_ALT },
-	{ fplKey_RightAlt, FUI_KEY_RIGHT_ALT },
+	{ fplKey_LeftControl, fuiKey_LeftControl },
+	{ fplKey_RightControl, fuiKey_RightControl },
+	{ fplKey_LeftShift, fuiKey_LeftShift },
+	{ fplKey_RightShift, fuiKey_RightShift },
+	{ fplKey_LeftAlt, fuiKey_LeftAlt },
+	{ fplKey_RightAlt, fuiKey_RightAlt },
 };
 
 // The generic modifier codes, which are what WINDOWS delivers while X11 sends the Left/Right ones. Folded
 // onto the LEFT half of each pair, because the library always asks about a modifier as a pair
 // (fuiIsControlDown covers both) and a generic press has to answer that question.
 static const fui__KeyMapping fui__globalGenericModifierMappings[] = {
-	{ fplKey_Control, FUI_KEY_LEFT_CONTROL },
-	{ fplKey_Shift, FUI_KEY_LEFT_SHIFT },
-	{ fplKey_Alt, FUI_KEY_LEFT_ALT },
+	{ fplKey_Control, fuiKey_LeftControl },
+	{ fplKey_Shift, fuiKey_LeftShift },
+	{ fplKey_Alt, fuiKey_LeftAlt },
 };
 
 //! Copies one button, keeping the half transition count the library's press and release edges are built on
@@ -546,18 +546,18 @@ fpl_internal Vec2f fui__ToRenderBottomLeft(const fuiRect rect, const float windo
 */
 fpl_internal SpriteFlags fui__ToSpriteFlags(const fuiImageFlags flags) {
 	SpriteFlags result = SpriteFlags_None;
-	bool mirrorsAcross = (flags & FUI_IMAGE_FLIP_U) == FUI_IMAGE_FLIP_U;
-	bool mirrorsDown = (flags & FUI_IMAGE_FLIP_V) == FUI_IMAGE_FLIP_V;
+	bool mirrorsAcross = (flags & fuiImageFlags_FlipU) == fuiImageFlags_FlipU;
+	bool mirrorsDown = (flags & fuiImageFlags_FlipV) == fuiImageFlags_FlipV;
 	if(mirrorsAcross) {
 		result |= SpriteFlags_FlipU;
 	}
 	if(!mirrorsDown) {
 		result |= SpriteFlags_FlipV;
 	}
-	if((flags & FUI_IMAGE_ROTATE_90_CW) == FUI_IMAGE_ROTATE_90_CW) {
+	if((flags & fuiImageFlags_Rotate90CW) == fuiImageFlags_Rotate90CW) {
 		result |= SpriteFlags_Rotate_90_CW;
 	}
-	if((flags & FUI_IMAGE_ROTATE_90_CCW) == FUI_IMAGE_ROTATE_90_CCW) {
+	if((flags & fuiImageFlags_Rotate90CCW) == fuiImageFlags_Rotate90CCW) {
 		result |= SpriteFlags_Rotate_90_CCW;
 	}
 	return(result);
@@ -632,7 +632,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 		}
 
 		switch(command->kind) {
-			case FUI_DRAW_RECT:
+			case fuiDrawKind_Rect:
 			{
 				const fuiDrawRectPayload *payload = &command->payload.rect;
 				Vec2f bottomLeft = fui__ToRenderBottomLeft(payload->rect, windowHeight);
@@ -643,7 +643,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				RenderPushRectangle(renderState, bottomLeft, size, color, isFilled, noLineWidth);
 			} break;
 
-			case FUI_DRAW_RECT_OUTLINE:
+			case fuiDrawKind_RectOutline:
 			{
 				const fuiDrawRectOutlinePayload *payload = &command->payload.rectOutline;
 				Vec2f bottomLeft = fui__ToRenderBottomLeft(payload->rect, windowHeight);
@@ -653,7 +653,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				RenderPushRectangle(renderState, bottomLeft, size, color, isFilled, payload->thickness);
 			} break;
 
-			case FUI_DRAW_LINE:
+			case fuiDrawKind_Line:
 			{
 				const fuiDrawLinePayload *payload = &command->payload.line;
 				Vec2f start = fui__ToRenderPoint(payload->start, windowHeight);
@@ -662,7 +662,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				RenderPushLine(renderState, start, end, color, payload->thickness);
 			} break;
 
-			case FUI_DRAW_TEXT:
+			case fuiDrawKind_Text:
 			{
 				const fuiDrawTextPayload *payload = &command->payload.text;
 				if(fontAsset == fpl_null || fontAsset->texture == fpl_null) {
@@ -687,7 +687,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				RenderPushText(renderState, text, (size_t)payload->textLength, font, fontAsset->texture, position, payload->pixelHeight, FUI__RENDER_TEXT_LEFT_ALIGN, FUI__RENDER_TEXT_CENTER_ALIGN, color);
 			} break;
 
-			case FUI_DRAW_IMAGE:
+			case fuiDrawKind_Image:
 			{
 				const fuiDrawImagePayload *payload = &command->payload.image;
 				TextureHandle texture = (TextureHandle)(uintptr_t)command->texture;
@@ -702,8 +702,8 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				// A quarter turn makes the pipeline swap the two extents for itself, and the library's
 				// rectangle is ALREADY the turned shape - so it is handed the unswapped half extent and the
 				// two swaps cancel.
-				bool turnsClockwise = (payload->flags & FUI_IMAGE_ROTATE_90_CW) == FUI_IMAGE_ROTATE_90_CW;
-				bool turnsCounterClockwise = (payload->flags & FUI_IMAGE_ROTATE_90_CCW) == FUI_IMAGE_ROTATE_90_CCW;
+				bool turnsClockwise = (payload->flags & fuiImageFlags_Rotate90CW) == fuiImageFlags_Rotate90CW;
+				bool turnsCounterClockwise = (payload->flags & fuiImageFlags_Rotate90CCW) == fuiImageFlags_Rotate90CCW;
 				bool isTurned = turnsClockwise != turnsCounterClockwise;
 				float halfWidth = payload->rect.w * 0.5f;
 				float halfHeight = payload->rect.h * 0.5f;
@@ -715,7 +715,7 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 				RenderPushSprite(renderState, centre, halfExtent, texture, tint, uvRect, spriteFlags);
 			} break;
 
-			case FUI_DRAW_TRIANGLES:
+			case fuiDrawKind_Triangles:
 			default:
 			{
 				fui__RenderCommandTriangles(renderState, drawData, command, windowHeight);

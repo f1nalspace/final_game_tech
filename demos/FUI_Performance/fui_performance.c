@@ -1309,7 +1309,7 @@ static void PerfBuildMenuBar(fuiContext *ui, PerfState *state, const fuiRect bar
 // ----------------------------------------------------------------------------
 
 static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect stripRect) {
-	fuiBeginToolStrip(ui, "toolstrip", stripRect, FUI_AXIS_HORIZONTAL);
+	fuiBeginToolStrip(ui, "toolstrip", stripRect, fuiAxis_Horizontal);
 
 	for(int32_t stepIndex = 0; stepIndex < PERF_SCALE_STEP_COUNT; ++stepIndex) {
 		bool isTheCurrentStep = (state->scaleStepIndex == stepIndex);
@@ -1432,7 +1432,7 @@ static void PerfMetricLine(fuiContext *ui, const char *name, const char *value) 
 //! A row of step buttons that all set the same request, which is the shape both scale rows below take
 static void PerfStepButtonRow(fuiContext *ui, const char *stackId, const char *const *labels, const int32_t labelCount, const int32_t currentIndex, int32_t *requestedIndex) {
 	fuiRect rowRect = fuiLayoutSlot(ui, PERF_ROW_HEIGHT);
-	fuiBeginStackAt(ui, stackId, FUI_AXIS_HORIZONTAL, rowRect, FUI_SPACING_FROM_THEME);
+	fuiBeginStackAt(ui, stackId, fuiAxis_Horizontal, rowRect, FUI_SPACING_FROM_THEME);
 	for(int32_t labelIndex = 0; labelIndex < labelCount; ++labelIndex) {
 		fuiRect buttonRect = fuiLayoutSlot(ui, PERF_STEP_BUTTON_WIDTH);
 		bool isTheCurrentStep = (currentIndex == labelIndex);
@@ -1455,7 +1455,7 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 	// size the last few rows and the graph fall off the bottom of a short window, and a workbench that
 	// hides its own numbers when the window is resized is worse than useless.
 	const float panelTakesTheWholeHeight = 0.0f;
-	bool panelIsOpen = fuiBeginScrollPanel(ui, "Metrics", FUI_DOCK_LEFT, 0.0f, 0.0f, PERF_METRICS_PANEL_WIDTH, panelTakesTheWholeHeight);
+	bool panelIsOpen = fuiBeginScrollPanel(ui, "Metrics", fuiDock_Left, 0.0f, 0.0f, PERF_METRICS_PANEL_WIDTH, panelTakesTheWholeHeight);
 	if(panelIsOpen) {
 		const PerfMetrics *metrics = &state->metrics;
 		const PerfDataSet *data = &state->data;
@@ -1726,7 +1726,7 @@ static void PerfBuildTreeTab(fuiContext *ui, PerfState *state, const fuiRect rec
 	int32_t requestedFold = PERF_TREE_FOLD_NONE;
 
 	fuiRect controlsRect = fuiRectMake(rect.x, rect.y, rect.w, PERF_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "treecontrols", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiBeginStackAt(ui, "treecontrols", fuiAxis_Horizontal, controlsRect, FUI_SPACING_FROM_THEME);
 	fuiRect expandButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
 	if(fuiButton(ui, expandButtonRect, "Expand all")) {
 		requestedFold = PERF_TREE_FOLD_OPEN;
@@ -1929,9 +1929,9 @@ static void PerfBuildUserInterface(fuiContext *ui, PerfState *state, const bool 
 	float menuBarHeight = fuiMenuBarHeight(ui);
 	float toolStripThickness = fuiToolStripThickness(ui);
 	float statusBarHeight = fuiStatusBarHeight(ui);
-	fuiRect menuBarRect = fuiLayoutDock(ui, FUI_DOCK_TOP, menuBarHeight);
-	fuiRect toolStripRect = fuiLayoutDock(ui, FUI_DOCK_TOP, toolStripThickness);
-	fuiRect statusBarRect = fuiLayoutDock(ui, FUI_DOCK_BOTTOM, statusBarHeight);
+	fuiRect menuBarRect = fuiLayoutDock(ui, fuiDock_Top, menuBarHeight);
+	fuiRect toolStripRect = fuiLayoutDock(ui, fuiDock_Top, toolStripThickness);
+	fuiRect statusBarRect = fuiLayoutDock(ui, fuiDock_Bottom, statusBarHeight);
 
 	PerfBuildToolStrip(ui, state, toolStripRect);
 	PerfBuildMetricsPanel(ui, state);
@@ -2249,7 +2249,7 @@ static void PerfRunBenchmarkCase(fuiContext *ui, PerfState *state, const PerfCas
 		}
 
 		fplTimestamp buildStart = fplTimestampQuery();
-		fuiBeginFrame(ui, &input, FUI_PASS_BOTH);
+		fuiBeginFrame(ui, &input, fuiPass_Both);
 		PerfBuildBenchmarkFrame(ui, state, benchmarkCase->subject, contentRect, isTheFirstFrame);
 		fuiEndFrame(ui);
 		fplTimestamp buildEnd = fplTimestampQuery();
@@ -2436,7 +2436,7 @@ int main(int argc, char **argv) {
 
 		// Escape quits, but only when no dialog and no text field wants it first.
 		bool keyboardIsTaken = fuiWantsKeyboard(&ui);
-		bool escapeWentDown = fuiKeyWentDown(&ui, FUI_KEY_ESCAPE);
+		bool escapeWentDown = fuiKeyWentDown(&ui, fuiKey_Escape);
 		if(escapeWentDown && !keyboardIsTaken) {
 			state.isRunning = false;
 		}
@@ -2445,7 +2445,7 @@ int main(int argc, char **argv) {
 		fuiSetDrawBatching(&ui, state.drawBatchingIsOn);
 
 		fplTimestamp buildStart = fplTimestampQuery();
-		fuiBeginFrame(&ui, &bridge.input, FUI_PASS_BOTH);
+		fuiBeginFrame(&ui, &bridge.input, fuiPass_Both);
 		PerfBuildUserInterface(&ui, &state, bridge.rightPressedThisFrame);
 		fuiEndFrame(&ui);
 		fplTimestamp buildEnd = fplTimestampQuery();

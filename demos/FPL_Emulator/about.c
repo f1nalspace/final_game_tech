@@ -577,8 +577,8 @@ static fuiImageDesc AboutDialogImageFromTexture(const Texture *texture, const fl
 	result.uvMin = fuiV2(0.0f, 0.0f);
 	result.uvMax = fuiV2(texture->uScale, texture->vScale);
 	result.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, opacity);
-	result.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
-	result.flags = FUI_IMAGE_FLIP_V;
+	result.scaleMode = fuiImageScaleMode_Letterbox;
+	result.flags = fuiImageFlags_FlipV;
 	return result;
 }
 
@@ -649,7 +649,7 @@ void AboutDialogBuild(fuiContext *ui, AboutDialog *dialog, const Texture *titleI
 	}
 
 	// Escape is taken through the library, so a dialog stacked on another one does not close both on one press
-	if (fuiDialogTakeKey(ui, FUI_KEY_ESCAPE)) {
+	if (fuiDialogTakeKey(ui, fuiKey_Escape)) {
 		shouldClose = true;
 	}
 

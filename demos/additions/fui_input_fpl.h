@@ -28,7 +28,7 @@ cannot give at all is drained from the queue instead: typed characters, the whee
 	while(fplWindowUpdate()) {
 		fuiFplInputPumpEvents(&bridge);
 		fuiFplInputBuild(&bridge);
-		fuiBeginFrame(&context, &bridge.input, FUI_PASS_BOTH);
+		fuiBeginFrame(&context, &bridge.input, fuiPass_Both);
 		...
 		fuiEndFrame(&context);
 	}
@@ -57,7 +57,7 @@ typedef struct fuiFplInput {
 	//! The finished input, ready to hand to @ref fuiBeginFrame
 	fuiInput input;
 	//! Whether each key was down on the PREVIOUS frame, which is what a half transition is measured against
-	bool keyWasDown[FUI_KEY_COUNT];
+	bool keyWasDown[fuiKey_Count];
 	//! Whether each mouse button was down on the previous frame
 	bool mouseWasDown[FUI_MOUSE_BUTTON_COUNT];
 	//! Whether the window had the focus, which only the event queue can answer
@@ -77,7 +77,7 @@ typedef struct fuiFplInput {
 /**
 * @brief Maps one FPL key to the key final_ui.h knows it as.
 * @param[in] key The FPL key.
-* @return Returns the matching @ref fuiKey, or FUI_KEY_NONE for a key the interface has no use for.
+* @return Returns the matching @ref fuiKey, or fuiKey_None for a key the interface has no use for.
 */
 fui_api fuiKey fuiFplMapKey(const fplKey key);
 
@@ -133,42 +133,42 @@ fui_api bool fuiFplSetClipboardText(void *userData, const char *text);
 
 fui_api fuiKey fuiFplMapKey(const fplKey key) {
 	if(key >= fplKey_A && key <= fplKey_Z) {
-		return (fuiKey)((int)FUI_KEY_A + ((int)key - (int)fplKey_A));
+		return (fuiKey)((int)fuiKey_A + ((int)key - (int)fplKey_A));
 	}
 	if(key >= fplKey_0 && key <= fplKey_9) {
-		return (fuiKey)((int)FUI_KEY_0 + ((int)key - (int)fplKey_0));
+		return (fuiKey)((int)fuiKey_0 + ((int)key - (int)fplKey_0));
 	}
 	if(key >= fplKey_F1 && key <= fplKey_F12) {
-		return (fuiKey)((int)FUI_KEY_F1 + ((int)key - (int)fplKey_F1));
+		return (fuiKey)((int)fuiKey_F1 + ((int)key - (int)fplKey_F1));
 	}
 	switch(key) {
-		case fplKey_Backspace: return FUI_KEY_BACKSPACE;
-		case fplKey_Tab: return FUI_KEY_TAB;
-		case fplKey_Return: return FUI_KEY_RETURN;
-		case fplKey_Escape: return FUI_KEY_ESCAPE;
-		case fplKey_Space: return FUI_KEY_SPACE;
-		case fplKey_PageUp: return FUI_KEY_PAGE_UP;
-		case fplKey_PageDown: return FUI_KEY_PAGE_DOWN;
-		case fplKey_End: return FUI_KEY_END;
-		case fplKey_Home: return FUI_KEY_HOME;
-		case fplKey_Left: return FUI_KEY_LEFT;
-		case fplKey_Up: return FUI_KEY_UP;
-		case fplKey_Right: return FUI_KEY_RIGHT;
-		case fplKey_Down: return FUI_KEY_DOWN;
-		case fplKey_Insert: return FUI_KEY_INSERT;
-		case fplKey_Delete: return FUI_KEY_DELETE;
-		case fplKey_LeftShift: return FUI_KEY_LEFT_SHIFT;
-		case fplKey_RightShift: return FUI_KEY_RIGHT_SHIFT;
-		case fplKey_LeftControl: return FUI_KEY_LEFT_CONTROL;
-		case fplKey_RightControl: return FUI_KEY_RIGHT_CONTROL;
-		case fplKey_LeftAlt: return FUI_KEY_LEFT_ALT;
-		case fplKey_RightAlt: return FUI_KEY_RIGHT_ALT;
+		case fplKey_Backspace: return fuiKey_Backspace;
+		case fplKey_Tab: return fuiKey_Tab;
+		case fplKey_Return: return fuiKey_Return;
+		case fplKey_Escape: return fuiKey_Escape;
+		case fplKey_Space: return fuiKey_Space;
+		case fplKey_PageUp: return fuiKey_PageUp;
+		case fplKey_PageDown: return fuiKey_PageDown;
+		case fplKey_End: return fuiKey_End;
+		case fplKey_Home: return fuiKey_Home;
+		case fplKey_Left: return fuiKey_Left;
+		case fplKey_Up: return fuiKey_Up;
+		case fplKey_Right: return fuiKey_Right;
+		case fplKey_Down: return fuiKey_Down;
+		case fplKey_Insert: return fuiKey_Insert;
+		case fplKey_Delete: return fuiKey_Delete;
+		case fplKey_LeftShift: return fuiKey_LeftShift;
+		case fplKey_RightShift: return fuiKey_RightShift;
+		case fplKey_LeftControl: return fuiKey_LeftControl;
+		case fplKey_RightControl: return fuiKey_RightControl;
+		case fplKey_LeftAlt: return fuiKey_LeftAlt;
+		case fplKey_RightAlt: return fuiKey_RightAlt;
 		// X11 reports the side, Win32 can report the generic one. Both have to arrive, or a shortcut works
 		// on one platform and silently does not on the other.
-		case fplKey_Shift: return FUI_KEY_LEFT_SHIFT;
-		case fplKey_Control: return FUI_KEY_LEFT_CONTROL;
-		case fplKey_Alt: return FUI_KEY_LEFT_ALT;
-		default: return FUI_KEY_NONE;
+		case fplKey_Shift: return fuiKey_LeftShift;
+		case fplKey_Control: return fuiKey_LeftControl;
+		case fplKey_Alt: return fuiKey_LeftAlt;
+		default: return fuiKey_None;
 	}
 }
 
@@ -259,13 +259,13 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 
 	fplKeyboardState keyboardState = fplZeroInit;
 	fplPollKeyboardState(&keyboardState);
-	for(int32_t keyIndex = 0; keyIndex < (int32_t)FUI_KEY_COUNT; ++keyIndex) {
+	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
 		input->keys[keyIndex].endedDown = false;
 		input->keys[keyIndex].halfTransitionCount = 0;
 	}
 	for(uint32_t rawKey = 0; rawKey < fplArrayCount(keyboardState.buttonStatesMapped); ++rawKey) {
 		fuiKey mappedKey = fuiFplMapKey((fplKey)rawKey);
-		if(mappedKey == FUI_KEY_NONE) {
+		if(mappedKey == fuiKey_None) {
 			continue;
 		}
 		bool isDown = keyboardState.buttonStatesMapped[rawKey] != fplButtonState_Release;
@@ -274,7 +274,7 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 			input->keys[mappedKey].endedDown = true;
 		}
 	}
-	for(int32_t keyIndex = 0; keyIndex < (int32_t)FUI_KEY_COUNT; ++keyIndex) {
+	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
 		bool isDown = input->keys[keyIndex].endedDown;
 		bool wasDown = bridge->keyWasDown[keyIndex];
 		input->keys[keyIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;

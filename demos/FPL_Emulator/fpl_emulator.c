@@ -1445,7 +1445,7 @@ static void DrawSoundState(Application *app, fgbSystem *system, const fuiRect ar
 	fplStringFormat(TextBuffer, fplArrayCount(TextBuffer), "%u%%", masterVolumePercentage);
 
 	const fuiRect masterVolumeRow = fuiRectMake(contentX, rowY, contentWidth, lineHeight);
-	fuiBeginStackAt(ui, "Master-Volume-Row", FUI_AXIS_HORIZONTAL, masterVolumeRow, SoundStateVolumeRowSpacing);
+	fuiBeginStackAt(ui, "Master-Volume-Row", fuiAxis_Horizontal, masterVolumeRow, SoundStateVolumeRowSpacing);
 
 	const char *masterVolumeCaption = "Master Volume:";
 	const fuiVec2 masterVolumeCaptionSize = UITextSize(ui, masterVolumeCaption, 0);
@@ -1832,7 +1832,7 @@ static void DrawBackgroundMap(fuiContext *ui, const Application *app, const fuiR
 	mapImage.textureSize = fuiV2((float)tex->width, (float)tex->height);
 	mapImage.uvMin = fuiV2(0.0f, 0.0f);
 	mapImage.uvMax = fuiV2(tex->uScale, tex->vScale);
-	mapImage.scaleMode = FUI_IMAGE_SCALE_STRETCH;
+	mapImage.scaleMode = fuiImageScaleMode_Stretch;
 	fuiImage(ui, fuiRectMake(tilesX, tilesY, totalTilesWidth, totalTilesHeight), &mapImage);
 
 	const fuiColor gridLineColor = fuiColorRGBA(0.1f, 0.1f, 0.1f, 0.25f);
@@ -1920,7 +1920,7 @@ static void DrawTiles(fuiContext *ui, const Texture *tex, const fuiRect area, co
 	tileImage.textureSize = fuiV2((float)tex->width, (float)tex->height);
 	tileImage.uvMin = fuiV2(0.0f, 0.0f);
 	tileImage.uvMax = fuiV2(tex->uScale, tex->vScale);
-	tileImage.scaleMode = FUI_IMAGE_SCALE_STRETCH;
+	tileImage.scaleMode = fuiImageScaleMode_Stretch;
 	fuiImage(ui, fuiRectMake(rx, ry, totalTilesWidth, totalTilesHeight), &tileImage);
 
 	for (uint8_t i = 0; i <= gridCountX; ++i) {
@@ -2462,9 +2462,9 @@ static void DrawAppIconOverlay(fuiContext *ui, const Texture *icon, const fuiRec
 	iconImage.uvMin = fuiV2(0.0f, 0.0f);
 	iconImage.uvMax = fuiV2(icon->uScale, icon->vScale);
 	iconImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, APP_ICON_OPACITY);
-	iconImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+	iconImage.scaleMode = fuiImageScaleMode_Letterbox;
 	// The image loader flips every texture on the way in, so it is turned back over here
-	iconImage.flags = FUI_IMAGE_FLIP_V;
+	iconImage.flags = fuiImageFlags_FlipV;
 	fuiImage(ui, rect, &iconImage);
 }
 
@@ -2561,7 +2561,7 @@ static void BuildStatesDialog(Application *app, const InputState *input) {
 			slotImage.uvMin = fuiV2(0.0f, 0.0f);
 			slotImage.uvMax = fuiV2(texture->uScale, texture->vScale);
 			slotImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, textureAlpha);
-			slotImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+			slotImage.scaleMode = fuiImageScaleMode_Letterbox;
 			fuiImage(ui, cellRect, &slotImage);
 
 			if (isSlotSelected) {
@@ -2666,7 +2666,7 @@ static void BuildStatesDialog(Application *app, const InputState *input) {
 	}
 
 	// Escape is taken through the library, so a dialog stacked on another one does not close both on one press
-	if (fuiDialogTakeKey(ui, FUI_KEY_ESCAPE)) {
+	if (fuiDialogTakeKey(ui, fuiKey_Escape)) {
 		shouldClose = true;
 	}
 
@@ -2714,7 +2714,7 @@ static void RenderDebugFrame(Application *app, const InputState *input) {
 
 	const fuiColor foregroundColor = theme->textColor;
 
-	fuiBeginFrame(ui, &app->uiInput, FUI_PASS_BOTH);
+	fuiBeginFrame(ui, &app->uiInput, fuiPass_Both);
 
 	//
 	// GamePak info
@@ -3067,7 +3067,7 @@ static void RenderGameFrame(Application *app, const InputState *input) {
 	// The placeholder, the information button and its dialog are built here, and they go through the same
 	// path the debugger does so the display is covered by exactly one convention
 	fuiContext *ui = &app->ui;
-	fuiBeginFrame(ui, &app->uiInput, FUI_PASS_BOTH);
+	fuiBeginFrame(ui, &app->uiInput, fuiPass_Both);
 
 	DrawDisplayFrame(app, displayArea);
 
@@ -3417,7 +3417,7 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 
 					// The very same press also reaches the interface, which is what makes its own keyboard navigation work
 					fuiKey uiKey = UIKeyFromPlatformKey(ev.keyboard.mappedKey);
-					if (uiKey != FUI_KEY_NONE) {
+					if (uiKey != fuiKey_None) {
 						UIInputSetButton(&app->uiInput.keys[uiKey], isDown);
 					}
 

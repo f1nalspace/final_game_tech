@@ -21,10 +21,10 @@ Description:
 	final_ui.h itself pulls in nothing but the C standard library. FPL, stb_truetype and OpenGL all appear
 	in THIS file and in the two headers next to it, never in the library.
 
-	The loop is ONE pass (FUI_PASS_BOTH), which is what a plain demo wants: build the interface once per
+	The loop is ONE pass (fuiPass_Both), which is what a plain demo wants: build the interface once per
 	frame and let hover resolve against the previous frame's layout. A host that has to know whether the
 	interface wants the mouse before it decides what to do with the cursor - a game with a world behind
-	the interface, say - builds twice instead, FUI_PASS_INTERACT then FUI_PASS_DRAW.
+	the interface, say - builds twice instead, fuiPass_Interact then fuiPass_Draw.
 
 Requirements:
 	- C99 compiler
@@ -212,8 +212,8 @@ typedef struct DemoState {
 		question WHILE the interface is being built - the world deciding whether a click was meant for it,
 		a status line reporting the answer - therefore has to ask about the previous frame.
 
-		A host that cannot live with that one frame of lag builds twice instead, FUI_PASS_INTERACT before it
-		reads input and FUI_PASS_DRAW when it renders, and then the answer is current inside the same frame.
+		A host that cannot live with that one frame of lag builds twice instead, fuiPass_Interact before it
+		reads input and fuiPass_Draw when it renders, and then the answer is current inside the same frame.
 	*/
 	bool uiOwnedTheMouseLastFrame;
 } DemoState;
@@ -648,9 +648,9 @@ static bool DemoSaveIsEnabled(void *userData) {
 }
 
 static const fuiCommand g_demoCommandRows[] = {
-	{ DEMO_COMMAND_NEW, "New", { FUI_KEY_N, (uint32_t)FUI_MOD_CONTROL }, fpl_null, fpl_null, DemoInvokeNew },
-	{ DEMO_COMMAND_SAVE, "Save", { FUI_KEY_S, (uint32_t)FUI_MOD_CONTROL }, DemoSaveIsEnabled, fpl_null, DemoInvokeSave },
-	{ DEMO_COMMAND_QUIT, "Quit", { FUI_KEY_Q, (uint32_t)FUI_MOD_CONTROL }, fpl_null, fpl_null, DemoInvokeQuit },
+	{ DEMO_COMMAND_NEW, "New", { fuiKey_N, (uint32_t)fuiModifier_Control }, fpl_null, fpl_null, DemoInvokeNew },
+	{ DEMO_COMMAND_SAVE, "Save", { fuiKey_S, (uint32_t)fuiModifier_Control }, DemoSaveIsEnabled, fpl_null, DemoInvokeSave },
+	{ DEMO_COMMAND_QUIT, "Quit", { fuiKey_Q, (uint32_t)fuiModifier_Control }, fpl_null, fpl_null, DemoInvokeQuit },
 };
 
 static const fuiCommandTable g_demoCommandTable = { g_demoCommandRows, (uint32_t)fplArrayCount(g_demoCommandRows) };
@@ -747,7 +747,7 @@ static void BuildMenuBar(fuiContext *ui, DemoState *demo, const fuiRect barRect)
 }
 
 static void BuildToolStrip(fuiContext *ui, DemoState *demo, const fuiRect stripRect) {
-	fuiBeginToolStrip(ui, "toolstrip", stripRect, FUI_AXIS_HORIZONTAL);
+	fuiBeginToolStrip(ui, "toolstrip", stripRect, fuiAxis_Horizontal);
 	if(fuiToolStripToggle(ui, "Select", demo->toolSelection == 0, true)) {
 		demo->toolSelection = 0;
 	}
@@ -782,7 +782,7 @@ static void BuildWidgetsPanel(fuiContext *ui, DemoState *demo) {
 		return;
 	}
 	// Closable: the X in its title bar writes the same flag the View menu toggles.
-	if(fuiBeginScrollPanelClosable(ui, "Widgets", FUI_DOCK_NONE, 24.0f, 110.0f, 360.0f, 470.0f, &demo->showWidgetsPanel)) {
+	if(fuiBeginScrollPanelClosable(ui, "Widgets", fuiDock_None, 24.0f, 110.0f, 360.0f, 470.0f, &demo->showWidgetsPanel)) {
 		fuiLabel(ui, fuiLayoutSlot(ui, DEMO_ROW_HEIGHT), "Every widget the library has so far.");
 		fuiSeparator(ui, fuiLayoutSlot(ui, 12.0f));
 
@@ -841,7 +841,7 @@ static void BuildPickerPanel(fuiContext *ui, DemoState *demo) {
 	if(!demo->showPickerPanel) {
 		return;
 	}
-	if(fuiBeginPanelClosable(ui, "Colour", FUI_DOCK_NONE, 410.0f, 110.0f, 420.0f, 300.0f, &demo->showPickerPanel)) {
+	if(fuiBeginPanelClosable(ui, "Colour", fuiDock_None, 410.0f, 110.0f, 420.0f, 300.0f, &demo->showPickerPanel)) {
 		bool didEnd = false;
 		fuiRect pickerRect = fuiLayoutRemaining(ui);
 		if(fuiColorPicker(ui, pickerRect, "tint", &demo->tint, true, true, fpl_null, &didEnd)) {
@@ -892,7 +892,7 @@ static void BuildTableTab(fuiContext *ui, DemoState *demo, const fuiRect content
 	const float textSwitchWidth = 115.0f;
 
 	fuiRect controlsRect = fuiRectMake(contentRect.x, contentRect.y, contentRect.w, DEMO_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "tableiconswitches", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiBeginStackAt(ui, "tableiconswitches", fuiAxis_Horizontal, controlsRect, FUI_SPACING_FROM_THEME);
 	fuiRect sheetSwitchRect = fuiLayoutSlot(ui, sheetSwitchWidth);
 	(void)fuiCheckbox(ui, sheetSwitchRect, "RGBA sheet", &demo->tableUsesColorSheet);
 	fuiRect headerSwitchRect = fuiLayoutSlot(ui, headerSwitchWidth);
@@ -968,14 +968,14 @@ static void BuildPreviewTab(fuiContext *ui, DemoState *demo, const fuiRect conte
 	static const char *const scaleModeNames[] = { "Origin", "Stretch", "Center", "Letterbox" };
 
 	fuiRect controlsRect = fuiRectMake(contentRect.x, contentRect.y, contentRect.w, DEMO_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "previewcontrols", FUI_AXIS_HORIZONTAL, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiBeginStackAt(ui, "previewcontrols", fuiAxis_Horizontal, controlsRect, FUI_SPACING_FROM_THEME);
 	for(int32_t modeIndex = 0; modeIndex < (int32_t)fplArrayCount(scaleModeNames); ++modeIndex) {
 		(void)fuiRadio(ui, fuiLayoutSlot(ui, 110.0f), scaleModeNames[modeIndex], &demo->previewScaleMode, modeIndex);
 	}
 	fuiEndStack(ui);
 
 	fuiRect flagsRect = fuiRectMake(contentRect.x, contentRect.y + DEMO_ROW_HEIGHT + 4.0f, contentRect.w, DEMO_ROW_HEIGHT);
-	fuiBeginStackAt(ui, "previewflags", FUI_AXIS_HORIZONTAL, flagsRect, FUI_SPACING_FROM_THEME);
+	fuiBeginStackAt(ui, "previewflags", fuiAxis_Horizontal, flagsRect, FUI_SPACING_FROM_THEME);
 	(void)fuiCheckbox(ui, fuiLayoutSlot(ui, 140.0f), "Mirror", &demo->previewIsMirrored);
 	(void)fuiCheckbox(ui, fuiLayoutSlot(ui, 190.0f), "Quarter turn", &demo->previewIsTurned);
 	fuiEndStack(ui);
@@ -986,12 +986,12 @@ static void BuildPreviewTab(fuiContext *ui, DemoState *demo, const fuiRect conte
 	fuiRect box = fuiRectMake(contentRect.x, boxTop, contentRect.w, contentRect.y + contentRect.h - boxTop);
 	fuiDrawRectOutline(ui, box, fuiGetTheme(ui)->panelBorderColor, 1.0f);
 
-	fuiImageFlags flags = FUI_IMAGE_FLAGS_NONE;
+	fuiImageFlags flags = fuiImageFlags_None;
 	if(demo->previewIsMirrored) {
-		flags = (fuiImageFlags)(flags | FUI_IMAGE_FLIP_U);
+		flags = (fuiImageFlags)(flags | fuiImageFlags_FlipU);
 	}
 	if(demo->previewIsTurned) {
-		flags = (fuiImageFlags)(flags | FUI_IMAGE_ROTATE_90_CW);
+		flags = (fuiImageFlags)(flags | fuiImageFlags_Rotate90CW);
 	}
 
 	fuiImageDesc desc = fplZeroInit;
@@ -1008,7 +1008,7 @@ static void BuildTablePanel(fuiContext *ui, DemoState *demo) {
 	if(!demo->showTablePanel) {
 		return;
 	}
-	if(fuiBeginPanelClosable(ui, "Entity table", FUI_DOCK_NONE, 300.0f, 300.0f, DEMO_TABLE_PANEL_WIDTH, DEMO_TABLE_PANEL_HEIGHT, &demo->showTablePanel)) {
+	if(fuiBeginPanelClosable(ui, "Entity table", fuiDock_None, 300.0f, 300.0f, DEMO_TABLE_PANEL_WIDTH, DEMO_TABLE_PANEL_HEIGHT, &demo->showTablePanel)) {
 		int32_t activeTab = fuiTabControl(ui, fuiLayoutSlot(ui, DEMO_TABLE_TAB_HEIGHT), "tabletabs", g_demoTableTabs, (int32_t)fplArrayCount(g_demoTableTabs));
 
 		// The footer is taken off the bottom BEFORE the rest is handed to the tab, so the tab's content is
@@ -1038,7 +1038,7 @@ static void BuildListPanel(fuiContext *ui, DemoState *demo) {
 	if(!demo->showListPanel) {
 		return;
 	}
-	if(fuiBeginScrollPanelClosable(ui, "Scrolling list", FUI_DOCK_NONE, 860.0f, 110.0f, 290.0f, 340.0f, &demo->showListPanel)) {
+	if(fuiBeginScrollPanelClosable(ui, "Scrolling list", fuiDock_None, 860.0f, 110.0f, 290.0f, 340.0f, &demo->showListPanel)) {
 		for(int32_t rowIndex = 0; rowIndex < DEMO_LIST_ROW_COUNT; ++rowIndex) {
 			char rowLabel[48];
 			fplStringFormat(rowLabel, fplArrayCount(rowLabel), "entity %02d", rowIndex);
@@ -1080,7 +1080,7 @@ static void BuildTreePanel(fuiContext *ui, DemoState *demo) {
 	if(!demo->showTreePanel) {
 		return;
 	}
-	if(fuiBeginPanelClosable(ui, "Project", FUI_DOCK_NONE, DEMO_TREE_PANEL_X, DEMO_TREE_PANEL_Y, DEMO_TREE_PANEL_WIDTH, DEMO_TREE_PANEL_HEIGHT, &demo->showTreePanel)) {
+	if(fuiBeginPanelClosable(ui, "Project", fuiDock_None, DEMO_TREE_PANEL_X, DEMO_TREE_PANEL_Y, DEMO_TREE_PANEL_WIDTH, DEMO_TREE_PANEL_HEIGHT, &demo->showTreePanel)) {
 		const float foldButtonWidth = 168.0f;
 		const float guideSwitchWidth = 110.0f;
 		const float iconSwitchWidth = 95.0f;
@@ -1091,7 +1091,7 @@ static void BuildTreePanel(fuiContext *ui, DemoState *demo) {
 		DemoRefreshTreeIcons(demo);
 
 		fuiRect foldRowRect = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
-		fuiBeginStackAt(ui, "treefolds", FUI_AXIS_HORIZONTAL, foldRowRect, FUI_SPACING_FROM_THEME);
+		fuiBeginStackAt(ui, "treefolds", fuiAxis_Horizontal, foldRowRect, FUI_SPACING_FROM_THEME);
 		fuiRect expandButtonRect = fuiLayoutSlot(ui, foldButtonWidth);
 		if(fuiButton(ui, expandButtonRect, "Expand all")) {
 			fuiTreeSetExpandedAll(demo->treeNodes, demo->treeNodeCount, demo->treeIsExpanded, true);
@@ -1116,7 +1116,7 @@ static void BuildTreePanel(fuiContext *ui, DemoState *demo) {
 		}
 
 		fuiRect switchRowRect = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
-		fuiBeginStackAt(ui, "treeswitches", FUI_AXIS_HORIZONTAL, switchRowRect, FUI_SPACING_FROM_THEME);
+		fuiBeginStackAt(ui, "treeswitches", fuiAxis_Horizontal, switchRowRect, FUI_SPACING_FROM_THEME);
 		fuiRect guideSwitchRect = fuiLayoutSlot(ui, guideSwitchWidth);
 		(void)fuiCheckbox(ui, guideSwitchRect, "Guides", &demo->treeShowsGuides);
 		fuiRect iconSwitchRect = fuiLayoutSlot(ui, iconSwitchWidth);
@@ -1261,7 +1261,7 @@ static fuiImageDesc DemoIconCellImage(const DemoState *demo, const int32_t cellI
 	result.uvMin = fuiV2((float)cellIndex * cellWidthInUv, 0.0f);
 	result.uvMax = fuiV2((float)(cellIndex + 1) * cellWidthInUv, 1.0f);
 	result.tint = colorSheetIsUsable ? fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f) : coverageTint;
-	result.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+	result.scaleMode = fuiImageScaleMode_Letterbox;
 	return(result);
 }
 
@@ -1301,7 +1301,7 @@ static void BuildAboutDialog(fuiContext *ui, DemoState *demo) {
 
 		// Through the library rather than by asking the key plainly, so a dialog stacked under this one does
 		// not answer the very same press the moment this one closes.
-		bool wasAnsweredByAKey = fuiDialogTakeKey(ui, FUI_KEY_RETURN) || fuiDialogTakeKey(ui, FUI_KEY_ESCAPE);
+		bool wasAnsweredByAKey = fuiDialogTakeKey(ui, fuiKey_Return) || fuiDialogTakeKey(ui, fuiKey_Escape);
 
 		if(wasAccepted || wasAnsweredByAKey) {
 			fuiCloseDialog(ui, "about");
@@ -1312,17 +1312,17 @@ static void BuildAboutDialog(fuiContext *ui, DemoState *demo) {
 }
 
 static void BuildDialogs(fuiContext *ui, DemoState *demo) {
-	fuiDialogResult discardResult = fuiMessageBox(ui, "discard", "Discard changes", "The level has unsaved changes. Discard them?", FUI_MESSAGE_BOX_YES_NO_CANCEL);
-	if(discardResult == FUI_DIALOG_RESULT_YES) {
+	fuiDialogResult discardResult = fuiMessageBox(ui, "discard", "Discard changes", "The level has unsaved changes. Discard them?", fuiMessageBoxButtons_YesNoCancel);
+	if(discardResult == fuiDialogResult_Yes) {
 		DemoSay(demo, "Discarded. Enter took the first button, escape the dismissing one.");
-	} else if(discardResult == FUI_DIALOG_RESULT_NO) {
+	} else if(discardResult == fuiDialogResult_No) {
 		DemoSay(demo, "Kept. A message box closes itself as soon as it is answered.");
-	} else if(discardResult == FUI_DIALOG_RESULT_CANCEL) {
+	} else if(discardResult == fuiDialogResult_Cancel) {
 		DemoSay(demo, "Cancelled.");
 	}
 
 	fuiDialogResult renameResult = fuiInputBox(ui, "rename", "Rename level", "New name", demo->renameField, (int32_t)fplArrayCount(demo->renameField));
-	if(renameResult == FUI_DIALOG_RESULT_OK) {
+	if(renameResult == fuiDialogResult_Ok) {
 		fplCopyString(demo->renameField, demo->nameField, fplArrayCount(demo->nameField));
 		DemoSay(demo, "Renamed. The field takes the keyboard as the dialog opens, so you can just type.");
 	}
@@ -1330,7 +1330,7 @@ static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 	// The live update switch is the CALLER's: the dialog owns its row and nothing else, which is the only
 	// way a colour that drives something real can be judged while it is being dragged.
 	fuiDialogResult tintResult = fuiColorDialogEx(ui, "tint", "Pick a colour", &demo->dialogColor, true, &demo->colorLiveUpdate);
-	if(tintResult == FUI_DIALOG_RESULT_OK) {
+	if(tintResult == fuiDialogResult_Ok) {
 		demo->tint = demo->dialogColor;
 		DemoSay(demo, "Colour taken. The swatch sits over a chequer, so a low alpha reads as transparency.");
 	}
@@ -1342,7 +1342,7 @@ static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 	const char *locationLabel = isInsideLevels ? "/levels" : "/";
 	int32_t browserOutIndex = -1;
 	fuiFileBrowserResult browserResult = fuiFileBrowser(ui, "browse", "Save level as", locationLabel, browserItems, browserIsFolder, browserItemCount, &demo->browserSelection, fpl_null, demo->browserName, (int32_t)fplArrayCount(demo->browserName), &browserOutIndex);
-	if(browserResult == FUI_FILE_BROWSER_DESCEND) {
+	if(browserResult == fuiFileBrowserResult_Descend) {
 		// The dialog stays open and the caller lists the folder instead. Which folder is answered from the
 		// ROW that was activated, not from where we happen to be: row zero of the levels listing is the ".."
 		// that goes back up. Resetting the selection matters too, or the new listing opens with whatever row
@@ -1350,7 +1350,7 @@ static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 		bool wentUpADirectory = isInsideLevels && (browserOutIndex == 0);
 		demo->browserFolder = wentUpADirectory ? DEMO_BROWSER_ROOT : DEMO_BROWSER_LEVELS;
 		demo->browserSelection = -1;
-	} else if(browserResult == FUI_FILE_BROWSER_ACCEPT) {
+	} else if(browserResult == fuiFileBrowserResult_Accept) {
 		// A SAVING browser stays open on accept, on purpose: this is where an overwrite prompt goes, and it
 		// opens ON TOP of the browser rather than instead of it. Escape then closes one level per press.
 		bool nameIsTaken = false;
@@ -1369,11 +1369,11 @@ static void BuildDialogs(fuiContext *ui, DemoState *demo) {
 
 	BuildAboutDialog(ui, demo);
 
-	fuiDialogResult overwriteResult = fuiMessageBox(ui, "overwrite", "Overwrite", "That file already exists. Overwrite it?", FUI_MESSAGE_BOX_YES_NO);
-	if(overwriteResult == FUI_DIALOG_RESULT_YES) {
+	fuiDialogResult overwriteResult = fuiMessageBox(ui, "overwrite", "Overwrite", "That file already exists. Overwrite it?", fuiMessageBoxButtons_YesNo);
+	if(overwriteResult == fuiDialogResult_Yes) {
 		fuiCloseDialog(ui, "browse");
 		DemoSay(demo, "Overwritten. That prompt was a modal on top of a modal.");
-	} else if(overwriteResult == FUI_DIALOG_RESULT_NO) {
+	} else if(overwriteResult == fuiDialogResult_No) {
 		DemoSay(demo, "Kept. The browser underneath is still open - escape closes one level at a time.");
 	}
 }
@@ -1405,9 +1405,9 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 	// encloses them and their thickness from the theme. Nothing here names a pixel: a menu bar is one menu
 	// row tall, a tool strip one strip button, a status bar one line of text - and a restyled theme moves all
 	// three without a constant to chase.
-	fuiRect menuBarRect = fuiLayoutDock(ui, FUI_DOCK_TOP, fuiMenuBarHeight(ui));
-	fuiRect toolStripRect = fuiLayoutDock(ui, FUI_DOCK_TOP, fuiToolStripThickness(ui));
-	fuiRect statusBarRect = fuiLayoutDock(ui, FUI_DOCK_BOTTOM, fuiStatusBarHeight(ui));
+	fuiRect menuBarRect = fuiLayoutDock(ui, fuiDock_Top, fuiMenuBarHeight(ui));
+	fuiRect toolStripRect = fuiLayoutDock(ui, fuiDock_Top, fuiToolStripThickness(ui));
+	fuiRect statusBarRect = fuiLayoutDock(ui, fuiDock_Bottom, fuiStatusBarHeight(ui));
 
 	// The shortcuts first, so a Ctrl+Q is answered even while the pointer is somewhere harmless. Nothing
 	// is dispatched while a text field has the keyboard, which is why typing an S into the name field
@@ -1616,7 +1616,7 @@ int main(int argc, char **argv) {
 
 		// One pass: build the whole interface between begin and end, and let the library work out what
 		// was clicked. That is the entire contract.
-		fuiBeginFrame(&ui, &bridge.input, FUI_PASS_BOTH);
+		fuiBeginFrame(&ui, &bridge.input, fuiPass_Both);
 		BuildUserInterface(&ui, &demo, bridge.rightPressedThisFrame);
 		fuiEndFrame(&ui);
 

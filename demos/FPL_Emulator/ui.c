@@ -163,7 +163,7 @@ void UIInputBeginFrame(fuiInput *input) {
 	for (uint32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
 		input->mouseButtons[buttonIndex].halfTransitionCount = 0;
 	}
-	for (uint32_t keyIndex = 0; keyIndex < FUI_KEY_COUNT; ++keyIndex) {
+	for (uint32_t keyIndex = 0; keyIndex < fuiKey_Count; ++keyIndex) {
 		input->keys[keyIndex].halfTransitionCount = 0;
 	}
 
@@ -184,60 +184,60 @@ void UIInputSetButton(fuiButtonState *button, const bool isDown) {
 fuiKey UIKeyFromPlatformKey(const fplKey key) {
 	// The digits, the letters and the function keys are contiguous in both enumerations, so each of the three ranges maps with one offset
 	if (key >= fplKey_0 && key <= fplKey_9) {
-		return (fuiKey)(FUI_KEY_0 + (key - fplKey_0));
+		return (fuiKey)(fuiKey_0 + (key - fplKey_0));
 	}
 	if (key >= fplKey_A && key <= fplKey_Z) {
-		return (fuiKey)(FUI_KEY_A + (key - fplKey_A));
+		return (fuiKey)(fuiKey_A + (key - fplKey_A));
 	}
 	if (key >= fplKey_F1 && key <= fplKey_F12) {
-		return (fuiKey)(FUI_KEY_F1 + (key - fplKey_F1));
+		return (fuiKey)(fuiKey_F1 + (key - fplKey_F1));
 	}
 
 	switch (key) {
 		case fplKey_Backspace:
-			return FUI_KEY_BACKSPACE;
+			return fuiKey_Backspace;
 		case fplKey_Tab:
-			return FUI_KEY_TAB;
+			return fuiKey_Tab;
 		case fplKey_Return:
-			return FUI_KEY_RETURN;
+			return fuiKey_Return;
 		case fplKey_Escape:
-			return FUI_KEY_ESCAPE;
+			return fuiKey_Escape;
 		case fplKey_Space:
-			return FUI_KEY_SPACE;
+			return fuiKey_Space;
 		case fplKey_PageUp:
-			return FUI_KEY_PAGE_UP;
+			return fuiKey_PageUp;
 		case fplKey_PageDown:
-			return FUI_KEY_PAGE_DOWN;
+			return fuiKey_PageDown;
 		case fplKey_End:
-			return FUI_KEY_END;
+			return fuiKey_End;
 		case fplKey_Home:
-			return FUI_KEY_HOME;
+			return fuiKey_Home;
 		case fplKey_Left:
-			return FUI_KEY_LEFT;
+			return fuiKey_Left;
 		case fplKey_Up:
-			return FUI_KEY_UP;
+			return fuiKey_Up;
 		case fplKey_Right:
-			return FUI_KEY_RIGHT;
+			return fuiKey_Right;
 		case fplKey_Down:
-			return FUI_KEY_DOWN;
+			return fuiKey_Down;
 		case fplKey_Insert:
-			return FUI_KEY_INSERT;
+			return fuiKey_Insert;
 		case fplKey_Delete:
-			return FUI_KEY_DELETE;
+			return fuiKey_Delete;
 		case fplKey_LeftControl:
-			return FUI_KEY_LEFT_CONTROL;
+			return fuiKey_LeftControl;
 		case fplKey_RightControl:
-			return FUI_KEY_RIGHT_CONTROL;
+			return fuiKey_RightControl;
 		case fplKey_LeftShift:
-			return FUI_KEY_LEFT_SHIFT;
+			return fuiKey_LeftShift;
 		case fplKey_RightShift:
-			return FUI_KEY_RIGHT_SHIFT;
+			return fuiKey_RightShift;
 		case fplKey_LeftAlt:
-			return FUI_KEY_LEFT_ALT;
+			return fuiKey_LeftAlt;
 		case fplKey_RightAlt:
-			return FUI_KEY_RIGHT_ALT;
+			return fuiKey_RightAlt;
 		default:
-			return FUI_KEY_NONE;
+			return fuiKey_None;
 	}
 }
 
@@ -815,9 +815,9 @@ bool UIIconButton(fuiContext *ui, const fuiRect rect, const char *id, const Text
 		iconImage.uvMin = fuiV2(0.0f, 0.0f);
 		iconImage.uvMax = fuiV2(icon->uScale, icon->vScale);
 		iconImage.tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, drawOpacity);
-		iconImage.scaleMode = FUI_IMAGE_SCALE_LETTERBOX;
+		iconImage.scaleMode = fuiImageScaleMode_Letterbox;
 		// The image loader flips every texture on the way in, so it is turned back over here
-		iconImage.flags = FUI_IMAGE_FLIP_V;
+		iconImage.flags = fuiImageFlags_FlipV;
 		fuiImage(ui, iconBox, &iconImage);
 	}
 
