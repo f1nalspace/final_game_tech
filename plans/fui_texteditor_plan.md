@@ -13,9 +13,9 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 **Iterationen 0 bis 3 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
 
 - `final_ui_texteditor.h` v0.4.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen und sichtbarem Whitespace. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
-- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. Damit sind die Zusätze, die dieser Add-on braucht, alle drin. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
 - `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden und geänderte Zeilen, plus Auswahl und Kopieren.
-- `--selftest` läuft mit **351 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
+- `--selftest` läuft mit **354 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
 
 Was beim Bauen von Iteration 0 anders lief als geplant:
 
@@ -44,6 +44,9 @@ Und was bei Iteration 3 dazukam:
 - **Die Konvergenz-Schwelle war zuerst falsch.** Sie stand auf `lineCount` statt auf dem höchsten Zeilenindex, und die Abfrage war `>=` statt `>`. Folge: nach einem vollständigen Durchlauf wurde sie nie zurückgesetzt, und die nächste Änderung hat wieder das ganze Dokument neu gefärbt — genau das, was das Verfahren verhindern soll. Aufgefallen ist es nur, weil der Test die **Anzahl der Lexer-Aufrufe zählt** statt nur das Ergebnis zu prüfen.
 - **Nur wirklich neue Zeilen sind „ungeschrieben".** Eine Einfügung ohne Zeilenvorschub legt keinen neuen Zustandsslot an und darf die Schwelle deshalb auch nicht anheben.
 - **Ein Zeilenstück wird an Stilgrenzen zerschnitten, aber als Präfix gemessen.** Jeder Lauf wird von *Stückanfang* bis Laufende gemessen und die Differenz genommen, sodass die Breiten sich teleskopisch zu genau dem aufsummieren, was das ganze Stück misst. Ohne das liefe eine eingefärbte Zeile pro Stilgrenze um ein Kerning-Paar gegen den Cursor davon.
+- **Beide Scrollbalken waren unsichtbar — seit Iteration 1.** Der Hintergrund deckt den ganzen Rahmen und wurde *nach* ihnen gezeichnet, hat sie also übermalt, sobald sie da waren. Am Layout war nichts falsch, die Balken wurden wirklich gebaut, und jede Prüfung, die Geometrie *zählt*, war grün — nur hingeschaut hatte niemand. Aufgefallen ist es dem Nutzer. Die Prüfung, die es jetzt festhält, geht deshalb über die **Reihenfolge**, in der die Geometrie ausgegeben wird: der Daumen trägt die Widget-Farbe, der Hintergrund die Track-Farbe, und der letzte Vertex der einen muss vor dem letzten der anderen liegen. Mit dem alten Code wird sie rot — gegengeprüft.
+- **Die Scrollrinne hatte keine eigene Farbe.** Sie wurde in `widgetTrackColor` gezeichnet — genau der Farbe, mit der sich ein scrollender Container selbst füllt. Sichtbar war der Balken damit auch nach dem Reihenfolge-Fix kaum: die Rinne ging im Feld daneben unter, und der Daumen schien frei im Inhalt zu schweben. `fuiTheme.scrollTrackColor` liegt jetzt zwischen dem versenkten Feld und dem Daumen, sodass beide Kanten der Rinne auf einen Blick lesbar sind. Das ist eine Änderung an `final_ui.h`, von der ListView und Scroll-Panel genauso profitieren.
+- **Die Zeilenende-Marke saß ein Leerzeichen zu weit rechts.** Ein Abstand dort ist ein Zeichen, das nicht im Dokument steht, liest sich aber wie eines — der Cursor kann nicht hinein, markieren lässt es sich auch nicht. Die Marke steht jetzt bündig am letzten Zeichen; was sie vom Text trennt, ist ihre Farbe.
 - **Ein Marker mit `*` und `/` darin ist ein schlechter Marker.** Der „Zeile 3 ändern"-Knopf hängte zuerst einen Blockkommentar an — der den Kommentar schließt, in dem der Dateikopf von `final_ui.h` steht, und damit den halben Bildschirm umfärbt. Korrektes C, verwirrendes Demo. (Der Kommentar, der das erklärt, musste aus demselben Grund umgeschrieben werden.)
 
 ## 2. Designentscheidungen
@@ -83,6 +86,7 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 | `fuiScrollbarHorizontal` ✅ | `fui__Scrollbar(..., false)` gab es intern längst, die ListView ruft es direkt auf; öffentlich war nur die vertikale Fassung | Iteration 1, drin seit `final_ui.h` v0.9.7 |
 | `fuiRegisterFocusable` ✅ | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
 | `fuiGetFrameTime` ✅ | War nicht geplant. Ein Add-on bekommt nur den Kontext, und ohne Zeitquelle kann es nichts takten — Blinken, Doppelklick, Auto-Scrollen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
+| `fuiTheme.scrollTrackColor` ✅ | War nicht geplant. Die Schiene wurde in `widgetTrackColor` gezeichnet — derselben Farbe, mit der sich ein scrollender Container selbst füllt. Die Rinne verschwand also im Feld daneben, und der Daumen schien frei im Inhalt zu schweben | Iteration 3, drin seit `final_ui.h` v0.9.7 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -335,6 +339,8 @@ Dokument, Zeilenindex, Encoding-Seam, Demo-Gerüst, `--selftest`.
 
 **Abnahme:** *Erfüllt.* Der C-Lexer färbt `final_ui.h`, und der Blockkommentar des Dateikopfs trägt korrekt über achtzig Zeilen. Statt „unter einem Frame" wird die härtere Zahl geprüft: `[incremental colouring]` **zählt die Lexer-Aufrufe**. Ein volles Dokument von 2000 Zeilen kostet 2000 Aufrufe, ein zweites Nachfragen null, und eine Änderung in Zeile 3 danach **höchstens zwei** — und die Gegenprobe, dass eine Änderung, die den Zustand wirklich verändert (ein geöffneter Blockkommentar), eben *nicht* früh abbricht.
 
+Nachgeprüft wurde außerdem von Hand, was keine kopflose Prüfung zeigt: beide Scrollbalken sind sichtbar, ein Dokument mit gemischten Zeilenenden zeigt je Zeile `LF` beziehungsweise `CRLF` und in der Statusleiste `Mixed`, und die Marken stehen bündig am letzten Zeichen.
+
 **Was noch aussteht:** Eine echte Diff-Ansicht braucht zwei Fassungen zum Vergleichen. Das Demo vergleicht positionsweise gegen die geladene Datei, was genau das ist, was es sagt — welche Zeilen sich *verschoben* haben, findet ein Diff heraus, und das ist Sache des Aufrufers. Der Editor nimmt nur die Antwort entgegen.
 
 ### Iteration 4 — Bearbeitungsmodus
@@ -423,7 +429,7 @@ Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1
 
 Kopflos nach dem Vorbild von `PerfRunBenchmark` (`fui_performance.c:2277`): `fplInitFlags_None`, kein Fenster, kein OpenGL, ein Exit-Code. Prüfmakros wie in `apps/mathtest/mathtest.c`.
 
-Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Fünfundzwanzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, Kopieren gegen Datei, Zustände folgen ihren Zeilen, inkrementelles Einfärben, Dekorations-Nachschlag und Zeilenenden je Zeile.
+Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Sechsundzwanzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Scrollbalken nicht übermalt, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, Kopieren gegen Datei, Zustände folgen ihren Zeilen, inkrementelles Einfärben, Dekorations-Nachschlag und Zeilenenden je Zeile.
 
 Zu jeder Textprüfung gehören zwei Vergleiche — einmal stückweise über `fuiEditorCopyRange`, einmal zusammenhängend über `fuiEditorGetContiguousText`. Stimmen die nicht überein, sähen ein Lexer und eine Suche zwei verschiedene Dokumente.
 

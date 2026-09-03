@@ -1495,6 +1495,72 @@ static void SelfTestSelection(void) {
 	fuiEditorRelease(&editor);
 }
 
+/*
+	That the scrollbar is still THERE when the frame is finished.
+
+	It was not, for three iterations: the background covers the whole frame and was drawn after the bars,
+	so both of them were painted over the moment they were drawn. Nothing about the layout was wrong, the
+	bars really were built, and every check that counted geometry passed - which is why this one goes by
+	the ORDER the geometry was emitted in instead.
+
+	The thumb is the last thing the bar draws and it carries the widget colour; the editor's background
+	carries the track colour and nothing else in this build does. So the last vertex of the track colour
+	has to come BEFORE the last vertex of the thumb's. The status line is switched off because it carries
+	the widget colour too, and it is drawn after everything.
+*/
+static void SelfTestScrollbarSurvivesTheBackground(void) {
+	CheckSection("scrollbar is not painted over");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, fpl_null, 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+
+	const int32_t lineCount = 400;
+	static char documentText[400 * 16];
+	int32_t documentLength = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t roomLeft = (int32_t)sizeof(documentText) - documentLength;
+		int written = snprintf(&documentText[documentLength], (size_t)roomLeft, "line %d\n", (int)lineIndex);
+		if(written <= 0 || written >= roomLeft) {
+			break;
+		}
+		documentLength += written;
+	}
+	fuiEditorSetText(&harness.editor, documentText, documentLength);
+
+	harness.config.toggles.showStatusBar = false;
+	harness.config.toggles.verticalScrollbar = fuiEditorScrollbarMode_Always;
+	harness.config.toggles.horizontalScrollbar = fuiEditorScrollbarMode_Never;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+
+	(void)HarnessFrame(&harness);
+	const fuiDrawData *drawData = fuiGetDrawData(&harness.ui);
+
+	fuiTheme *theme = fuiGetTheme(&harness.ui);
+	uint32_t trackColor = fuiPackColor(theme->widgetTrackColor);
+	uint32_t thumbColor = fuiPackColor(theme->widgetColor);
+
+	int32_t lastTrackColouredVertex = -1;
+	int32_t lastThumbColouredVertex = -1;
+	for(uint32_t vertexIndex = 0; vertexIndex < drawData->vertexCount; ++vertexIndex) {
+		uint32_t vertexColor = drawData->vertices[vertexIndex].color;
+		if(vertexColor == trackColor) {
+			lastTrackColouredVertex = (int32_t)vertexIndex;
+		}
+		if(vertexColor == thumbColor) {
+			lastThumbColouredVertex = (int32_t)vertexIndex;
+		}
+	}
+
+	CHECK(lastTrackColouredVertex >= 0);
+	CHECK(lastThumbColouredVertex >= 0);
+	CHECK(lastThumbColouredVertex > lastTrackColouredVertex);
+
+	HarnessRelease(&harness);
+}
+
 //! Every key the editor answers to, pressed against a document whose lines say which line they are
 static void SelfTestKeyboard(void) {
 	CheckSection("keyboard");
@@ -1984,6 +2050,7 @@ static int RunSelfTest(void) {
 	SelfTestLineGeometry();
 	SelfTestWords();
 	SelfTestSelection();
+	SelfTestScrollbarSurvivesTheBackground();
 	SelfTestKeyboard();
 	SelfTestWheelDoesNotFightTheCaret();
 	SelfTestCopyAgainstFile();

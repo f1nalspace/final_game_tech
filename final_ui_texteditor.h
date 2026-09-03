@@ -153,7 +153,9 @@ SOFTWARE.
 	  found in them by binary search rather than by walking them.
 	- New: fuiEditorConfig.toggles.showWhitespace draws a dot in every blank and an arrow across the full
 	  width of every tab - which is what says how far a tab really reached. And .showLineEndings writes LF
-	  or CRLF after every line, which is what makes a file with mixed endings show itself.
+	  or CRLF after every line - what that LINE really ends with, not what the document mostly does - which
+	  is what makes a file with mixed endings show itself. The mark sits flush against the last character:
+	  a blank in front of it would be a character that is not in the document, and it reads as one.
 	- New: A line is cut into runs wherever what it is drawn WITH changes, and each run is measured as a
 	  PREFIX of the piece it belongs to rather than on its own, so the widths telescope back to exactly
 	  what the whole piece measures. Without that a coloured line and the caret on it would drift apart by
@@ -161,6 +163,10 @@ SOFTWARE.
 	- New: FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME. A file opened and jumped straight to the end of has to
 	  be walked once; doing that in a single frame is a stall, so it is spread over as many as it takes and
 	  what has not been reached yet is drawn plain. Set high enough that an ordinary file never notices.
+	- Fixed: BOTH scrollbars were invisible, and had been since they were added. The background covers the
+	  whole frame and was drawn after them, so every bar was painted over the moment it was drawn. Nothing
+	  about the layout was wrong and every check that counted geometry passed - which is why the test that
+	  now guards it goes by the ORDER the geometry was emitted in instead.
 	- Changed: fuiEditorLineIndex carries a second array. A document costs one more int32 per line, whether
 	  it has a lexer or not - four megabytes on a million line file, beside the four the line starts
 	  already take. Paying it always is what keeps every gap operation free of a null check.
@@ -4215,6 +4221,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, &scrollX, &scrollY);
 	}
 
+	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
+	// so drawing it afterwards paints straight over both of them - which is exactly what it used to do.
+	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
+	// so drawing it afterwards paints straight over both of them - which is exactly what it used to do.
+	fuiDrawRect(context, layout.frameRect, config->colors.background);
+
 	// Both bars are resolved BEFORE a line is laid out, so the lines are placed from the offsets the frame
 	// ends on rather than from ones the wheel is about to change.
 	float maxScrollY = fuiMaxF(contentHeight - layout.bodyRect.h, 0.0f);
@@ -4233,8 +4245,6 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	fuiPopId(context);
 	editor->scrollX = scrollX;
 	editor->scrollY = scrollY;
-
-	fuiDrawRect(context, layout.frameRect, config->colors.background);
 
 	int32_t firstScreenLine = 0;
 	int32_t endScreenLine = 0;
@@ -4398,15 +4408,28 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			widestLineSoFar = lineWidth;
 		}
 
-		// The ending is written AFTER the line, a blank clear of its last character, because that is where
-		// it actually is - and it is what makes a file with mixed endings show itself.
+		/*
+			The ending is written where the line really ends, flush against its last character.
+
+			Not one blank further: a gap there is a character that is not in the document, and it reads as
+			one - the caret cannot be put in it, and nothing selects it, so it can only mislead. What sets
+			the mark apart from the text is its colour, which is what a mark is for.
+		*/
 		bool hasAnEndingToShow = config->toggles.showLineEndings && (documentLine < (documentLineCount - 1));
 		if(hasAnEndingToShow) {
 			fuiEditorEol lineEnding = fuiEditor__LineEndingOf(editor, documentLine);
 			const char *endingName = fuiEditorEolGetName(lineEnding);
 			size_t endingLength = FUI_TEXTEDITOR_STRLEN(endingName);
-			fuiVec2 endingPosition = fuiV2(lineLeftX + lineWidth + render.spaceWidth, lineTopY);
+			fuiVec2 endingPosition = fuiV2(lineLeftX + lineWidth, lineTopY);
 			fuiDrawText(context, endingName, endingLength, endingPosition, render.fontHeight, config->colors.whitespace);
+
+			// The mark counts towards how wide the line is, or there would be no way to scroll far enough
+			// right to read the one on a long line.
+			fuiVec2 endingSize = fuiMeasureText(context, endingName, endingLength, render.fontHeight);
+			float lineWidthWithTheMark = lineWidth + endingSize.x;
+			if(lineWidthWithTheMark > widestLineSoFar) {
+				widestLineSoFar = lineWidthWithTheMark;
+			}
 		}
 	}
 
@@ -4444,7 +4467,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		float cornerX = layout.verticalTrackRect.x;
 		float cornerY = layout.horizontalTrackRect.y;
 		fuiRect cornerRect = fuiRectMake(cornerX, cornerY, layout.verticalTrackRect.w, layout.horizontalTrackRect.h);
-		fuiDrawRect(context, cornerRect, theme->widgetTrackColor);
+		fuiDrawRect(context, cornerRect, theme->scrollTrackColor);
 	}
 
 	// Its OWN status line, rather than fuiBeginStatusBar - that one docks against the bottom of the window,
