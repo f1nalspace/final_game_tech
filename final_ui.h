@@ -213,6 +213,13 @@ SOFTWARE.
 	- New: fuiGetFrameTime, which answers what the last frame took - and answers ZERO during a draw pass,
 	  so anything driven off it cannot run at double speed in a two pass caller. Everything in here that is
 	  timed reads the same field; a widget that is not in here had no way to.
+	- New: fuiTheme.scrollTrackColor, and both halves of the scrollbar draw their gutter in it. It used to
+	  be widgetTrackColor, which is also what a scrolling container paints ITSELF with - so the gutter
+	  disappeared into the field beside it and left a thumb apparently floating in the content. It sits
+	  between the recessed field and the thumb, so both edges of the gutter read at a glance. It is a NEW
+	  field in the middle of fuiTheme rather than at its end, because a theme is built by taking
+	  fuiDefaultTheme and changing what one wants - nobody fills forty fields positionally - and a colour
+	  belongs with the colours.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -1810,6 +1817,10 @@ typedef struct fuiTheme {
 	fuiColor widgetActiveColor;
 	//! Recessed backing, such as a slider track, a checkbox box or a text field
 	fuiColor widgetTrackColor;
+	//! Backing of a scrollbar's gutter. Deliberately NOT @ref widgetTrackColor: a scrolling container is
+	//! usually a recessed field itself, and a gutter painted in the same colour as the field beside it
+	//! disappears into it - leaving a thumb that seems to float in the content
+	fuiColor scrollTrackColor;
 	//! Lit edge along the top and left of a raised widget, and along the bottom and right of a sunken one. Translucent, so it brightens whatever face it lies on instead of painting one fixed color over all of them
 	fuiColor widgetBevelLightColor;
 	//! Shaded edge opposite the lit one. Translucent for the same reason the lit edge is
@@ -5175,6 +5186,9 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.widgetHoveredColor = fuiColorRGBA(0.28f, 0.32f, 0.40f, 1.0f);
 	result.widgetActiveColor = fuiColorRGBA(0.36f, 0.44f, 0.58f, 1.0f);
 	result.widgetTrackColor = fuiColorRGBA(0.06f, 0.07f, 0.09f, 1.0f);
+	// Between the recessed field it sits beside and the thumb that rides in it, so both edges of the
+	// gutter read at a glance.
+	result.scrollTrackColor = fuiColorRGBA(0.13f, 0.14f, 0.17f, 1.0f);
 	// Translucent white and translucent black rather than two fixed greys, so ONE pair of edges lifts the idle
 	// face, the hovered face and the accented face of a toggle alike.
 	result.widgetBevelLightColor = fuiColorRGBA(1.0f, 1.0f, 1.0f, 0.22f);
@@ -7661,7 +7675,7 @@ fui_inline float fui__Scrollbar(fuiContext *context, const fuiRect track, const 
 		// Drawn but disabled. The alternative - hiding it - changes the width of everything beside it the
 		// moment one row is added, which makes a list twitch as it fills.
 		fuiColor dimmedThumb = fuiColorWithAlpha(theme->widgetColor, theme->widgetColor.a * FUI__SCROLLBAR_DISABLED_ALPHA);
-		fuiDrawRect(context, track, theme->widgetTrackColor);
+		fuiDrawRect(context, track, theme->scrollTrackColor);
 		fuiDrawRect(context, track, dimmedThumb);
 		fuiDrawRectOutline(context, track, theme->panelBorderColor, theme->widgetBorderThickness);
 		return(0.0f);
@@ -7686,7 +7700,7 @@ fui_inline float fui__Scrollbar(fuiContext *context, const fuiRect track, const 
 
 	fuiRect thumb = fui__ScrollThumbRect(track, newScroll, maxScroll, thumbExtent, isVertical);
 	fuiColor thumbColor = interaction.isHeld ? theme->accentColor : (interaction.isHovered ? theme->widgetHoveredColor : theme->widgetColor);
-	fuiDrawRect(context, track, theme->widgetTrackColor);
+	fuiDrawRect(context, track, theme->scrollTrackColor);
 	fuiDrawRect(context, thumb, thumbColor);
 	fuiDrawRectOutline(context, thumb, theme->panelBorderColor, theme->widgetBorderThickness);
 	return(newScroll);
