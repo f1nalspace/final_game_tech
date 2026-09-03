@@ -10,12 +10,12 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 ## 1. Stand
 
-**Iterationen 0 bis 3 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
+**Iterationen 0 bis 4 sind umgesetzt.** Was es gibt: das Dokument, eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann — und seit Iteration 4 schreibt sie auch. Damit sind **beide Kerniterationen** fertig; alles Weitere ist Komfort auf einem Editor, der schon einer ist.
 
-- `final_ui_texteditor.h` v0.4.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen und sichtbarem Whitespace. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
-- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. Damit sind die Zusätze, die dieser Add-on braucht, alle drin. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
-- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden und geänderte Zeilen, plus Auswahl und Kopieren.
-- `--selftest` läuft mit **354 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
+- `final_ui_texteditor.h` v0.5.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen, sichtbarem Whitespace — und Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen, Zeilenlöschen, Geändert-Flag und `onChange`. `fuiEditorConfig` mit `colors` / `metrics` / `toggles` / `callbacks`.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable`, `fuiGetFrameTime`, `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` und `fuiConsumeKey` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
+- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden, geänderte Zeilen und **Nur-Lesen**, plus Auswahl, Kopieren, einer Zeile, die jede Änderung meldet, und einem **„Save & verify"**, das schreibt und byteweise zurückliest.
+- `--selftest` läuft mit **486 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der Tasten drückt, tippt, mit der mittleren Maustaste klickt und die Antwort zurückliest.
 
 Was beim Bauen von Iteration 0 anders lief als geplant:
 
@@ -48,6 +48,20 @@ Und was bei Iteration 3 dazukam:
 - **Die Scrollrinne hatte keine eigene Farbe.** Sie wurde in `widgetTrackColor` gezeichnet — genau der Farbe, mit der sich ein scrollender Container selbst füllt. Sichtbar war der Balken damit auch nach dem Reihenfolge-Fix kaum: die Rinne ging im Feld daneben unter, und der Daumen schien frei im Inhalt zu schweben. `fuiTheme.scrollTrackColor` liegt jetzt zwischen dem versenkten Feld und dem Daumen, sodass beide Kanten der Rinne auf einen Blick lesbar sind. Das ist eine Änderung an `final_ui.h`, von der ListView und Scroll-Panel genauso profitieren.
 - **Die Zeilenende-Marke saß ein Leerzeichen zu weit rechts.** Ein Abstand dort ist ein Zeichen, das nicht im Dokument steht, liest sich aber wie eines — der Cursor kann nicht hinein, markieren lässt es sich auch nicht. Die Marke steht jetzt bündig am letzten Zeichen; was sie vom Text trennt, ist ihre Farbe.
 - **Ein Marker mit `*` und `/` darin ist ein schlechter Marker.** Der „Zeile 3 ändern"-Knopf hängte zuerst einen Blockkommentar an — der den Kommentar schließt, in dem der Dateikopf von `final_ui.h` steht, und damit den halben Bildschirm umfärbt. Korrektes C, verwirrendes Demo. (Der Kommentar, der das erklärt, musste aus demselben Grund umgeschrieben werden.)
+
+Und was bei Iteration 4 dazukam:
+
+- **Der Cursor wird von der Änderung bewegt, nicht vom Zweig, der sie gemacht hat.** Geplant war das nirgends. `fuiEditorInsert` und `fuiEditorErase` rücken Cursor, Auswahlanker und Drag-Anker jetzt selbst — und damit stimmen sie für *jeden* Weg ins Dokument: Tastendruck, Einfügen aus der Zwischenablage, mittlere Maustaste, und den programmatischen `fuiEditorInsert` des Aufrufers gleich mit. Die Alternative wäre gewesen, es in jedem schreibenden Zweig einzeln zu tun, und einer davon hätte es vergessen.
+- **`fuiEditorSetText` hatte damit sofort einen Fehler.** Es setzt den Cursor auf null und füllt danach — und ein Insert, der jede Position hinter sich mitzieht, hat ihn prompt ans Dateiende getragen. Der Cursor wird jetzt **nach** dem Füllen zurückgesetzt. Gefunden von `[an edit moves the caret]`, das genau diese Zeile prüft.
+- **`final_ui.h` brauchte drei Zusätze, nicht einen.** Vorhergesehen war die mittlere Maustaste (`fuiMouseButtonWentDown`, dazu das Gegenstück `fuiIsMouseButtonDown`). Dazu kam `fuiConsumeKey`: das mehrzeilige Textfeld in `final_ui.h` greift dafür seit jeher direkt in `context->keys[...]`, und ohne öffentliche Fassung kann ein fremdes Widget das Enter, aus dem es einen Zeilenumbruch gemacht hat, nicht aufbrauchen — der Dialog darüber committet dann auf demselben Tastendruck. Das Textfeld benutzt jetzt selbst die neue Funktion.
+- **Ein Ausschneiden, dessen Kopie fehlgeschlagen ist, löscht nicht.** FPLs Hook verweigert oberhalb von zwei Kilobyte, und einen Undo-Stapel gibt es erst in Iteration 5 — ein Ctrl+X, das trotzdem gelöscht hätte, wäre ein Löschen ohne Rückweg. Als Prüfung drin, mit einer Zwischenablage, die *alles* verweigert.
+- **Der Überschreibmodus ist durch das definiert, was er *nicht* frisst.** Ein überschriebener Zeilenumbruch verbindet zwei Zeilen, und das ist nicht, was „ein Zeichen ersetzen" heißt. Also: Halt am Zeilenende, und ein Text mit Zeilenvorschub darin überschreibt gar nichts.
+- **Backspace und Entf behandeln CR+LF als *ein* Ende.** Nur das LF zu nehmen ließe ein Carriage Return am Ende der verbundenen Zeile stehen — ein Zeichen, das nichts zeichnet, nichts markiert und niemand findet, in einer Datei, die völlig richtig aussieht.
+- **Enter schreibt das Ende, mit dem das Dokument angekommen ist** — aber bei `fuiEditorEol_Cr` und `_Mixed` ein Line Feed, weil im Dokumentmodell *nur* ein Line Feed eine Zeile beendet. Ein „\r" einzufügen hätte gar keine neue Zeile gemacht.
+- **`onChange` läuft bei `fuiEditorSetText` und `fuiEditorLoadFromMemory` nicht.** Die ersetzen das Dokument, statt es zu ändern, und der Aufrufer war es selbst. Dafür gibt es ein internes `isReplacingDocument`, weil das Füllen intern durch dasselbe `fuiEditorInsert` läuft.
+- **Getippte Zeichen werden zu *einem* Insert gesammelt.** Was das festhält, ist nicht der Text danach — der stimmt so oder so — sondern die **Anzahl der Versionssprünge**. Genau die Art Prüfung, die letzte Iteration den Fehler im Lexer-Wasserstand gefunden hat.
+- **Die schärfste Prüfung ist eine zweite, dumme Implementierung.** `[edits against a plain buffer]` fährt 400 gemischte Einfügungen und Löschungen an pseudozufälligen Stellen über `final_ui.h` — einmal durch den Editor, einmal per `memmove` über einen flachen `malloc`-Puffer — und vergleicht am Ende byteweise. Danach wird der Zeilenindex noch einmal gegen einen rohen Scan nach Zeilenvorschüben gehalten, denn Bytes, die stimmen, sagen nichts über Zeilen, die es nicht tun.
+- **Jede neue Absicherung wurde absichtlich kaputtgemacht und die Suite dabei rot gesehen** — Cursor-Nachführung (21 Fehler), Ausschneiden ohne Kopie (3), CR vor LF (3), Überschreiben über das Zeilenende hinaus (7), ein Insert je Zeichen (1). Eine Prüfung, die man nicht rot gesehen hat, prüft nichts.
 
 ## 2. Designentscheidungen
 
@@ -87,6 +101,8 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 | `fuiRegisterFocusable` ✅ | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
 | `fuiGetFrameTime` ✅ | War nicht geplant. Ein Add-on bekommt nur den Kontext, und ohne Zeitquelle kann es nichts takten — Blinken, Doppelklick, Auto-Scrollen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
 | `fuiTheme.scrollTrackColor` ✅ | War nicht geplant. Die Schiene wurde in `widgetTrackColor` gezeichnet — derselben Farbe, mit der sich ein scrollender Container selbst füllt. Die Rinne verschwand also im Feld daneben, und der Daumen schien frei im Inhalt zu schweben | Iteration 3, drin seit `final_ui.h` v0.9.7 |
+| `fuiMouseButtonWentDown`, `fuiIsMouseButtonDown` ✅ | `fuiInteract` antwortet für die linke Taste und für keine andere. Ein Widget, das mit der mittleren etwas meint — ein Einfügen —, konnte gar nicht fragen | Iteration 4, drin seit `final_ui.h` v0.9.7 |
+| `fuiConsumeKey` ✅ | Braucht ein Widget, das eine Taste selbst beantwortet hat. Das mehrzeilige Textfeld macht das seit jeher über `context->keys[...]` direkt; öffentlich gab es das nicht, und ohne es committet der Dialog auf demselben Enter, das gerade eine Zeile umgebrochen hat | Iteration 4, drin seit `final_ui.h` v0.9.7 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -196,6 +212,22 @@ int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const
 void fuiEditorSetLexer(fuiEditor *editor, const fuiEditorLexer *lexer);                     // null nimmt ihn weg
 void fuiEditorInvalidateStyles(fuiEditor *editor, const int32_t documentLine);
 void fuiEditorSetDecorations(fuiEditor *editor, const fuiEditorDecorations *decorations);   // null nimmt sie weg
+
+// Schreiben (Iteration 4). Alles davon geht durch fuiEditorInsert/fuiEditorErase und durch nichts sonst,
+// und alles davon ist von toggles.isReadOnly gesperrt - die beiden Primitive selbst nicht
+bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const int32_t textLength);
+bool fuiEditorInsertLineBreak(fuiEditor *editor);
+bool fuiEditorDeleteSelection(fuiEditor *editor);
+bool fuiEditorDeleteBackward(fuiEditor *editor);
+bool fuiEditorDeleteForward(fuiEditor *editor);
+bool fuiEditorDeleteLine(fuiEditor *editor, const int32_t documentLine);
+
+// Zustand des Schreibens
+bool fuiEditorIsReadOnly(const fuiEditor *editor);
+bool fuiEditorIsModified(const fuiEditor *editor);
+void fuiEditorClearModified(fuiEditor *editor);          // was Speichern damit macht, ist Sache des Aufrufers
+bool fuiEditorIsOverwriting(const fuiEditor *editor);
+void fuiEditorSetOverwriting(fuiEditor *editor, const bool isOverwriting);
 ```
 
 Zwei Konventionen, die überall gelten:
@@ -205,7 +237,7 @@ Zwei Konventionen, die überall gelten:
 
 ### 3.2 Was noch kommt
 
-Alles Schreibende. Cursor und Auswahl (Iteration 2), Lexer und Dekoration (Iteration 3), Tippen, Undo, Suchen und Ersetzen, weitere Encodings und der Zeilenumbruch (Iterationen 4 bis 7). `fuiEditorConfig` bekommt dabei die beiden noch fehlenden Unterstrukturen `callbacks` (Iteration 4) und `shortcuts` (Iteration 8).
+Undo, Suchen und Ersetzen, weitere Encodings und der Zeilenumbruch (Iterationen 5 bis 7). `fuiEditorConfig` hat seit Iteration 4 auch `callbacks`; `shortcuts` fehlt noch und kommt in Iteration 8.
 
 Zwei Abweichungen vom ursprünglichen Entwurf sind schon eingetreten und stehen so im Header:
 
@@ -343,16 +375,22 @@ Nachgeprüft wurde außerdem von Hand, was keine kopflose Prüfung zeigt: beide 
 
 **Was noch aussteht:** Eine echte Diff-Ansicht braucht zwei Fassungen zum Vergleichen. Das Demo vergleicht positionsweise gegen die geladene Datei, was genau das ist, was es sagt — welche Zeilen sich *verschoben* haben, findet ein Diff heraus, und das ist Sache des Aufrufers. Der Editor nimmt nur die Antwort entgegen.
 
-### Iteration 4 — Bearbeitungsmodus
+### Iteration 4 — Bearbeitungsmodus ✅
 
-- Tippen, Enter, Backspace und Entf **mit Berücksichtigung der Auswahl**.
-- Einfg schaltet Einfügen/Überschreiben um, sichtbar am Cursor (Strich gegen Kasten).
-- Ctrl+V, **mittlere Maustaste** (`FUI_MOUSE_MIDDLE` ist über `fui_input_fpl.h` verdrahtet; `fuiInteract` reagiert nur auf links, der Editor fragt den Knopf selbst ab), Ctrl+X (Auswahl, sonst die ganze Zeile), Ctrl+D löscht die Zeile.
-- Geändert-Flag, `onChange`-Callback, `isReadOnly` sperrt jeden schreibenden Zweig.
+- Tippen, Enter, Backspace und Entf **mit Berücksichtigung der Auswahl**. Alles, was ein Frame an Codepoints geliefert hat, wird zu **einem** Insert gesammelt.
+- Einfg schaltet Einfügen/Überschreiben um, sichtbar am Cursor — Strich gegen Kasten, und der Kasten als **Umriss**, damit das Zeichen darunter lesbar bleibt. Überschreiben hält am Zeilenende an.
+- Ctrl+V, Shift+Einfg und die **mittlere Maustaste**, die dort einfügt, wo geklickt wurde. Ctrl+X und Shift+Entf schneiden die Auswahl aus, sonst die ganze Zeile samt Ende — und verweigern, wenn die Zwischenablage den Text nicht genommen hat. Ctrl+D löscht die Zeile.
+- Geändert-Flag, `onChange` mit `fuiEditorChange`, `isReadOnly` sperrt jeden schreibenden Zweig — `fuiEditorInsert`/`fuiEditorErase` bleiben offen, sonst wäre eine Nur-Lese-Ansicht eine Ansicht auf nichts.
+- Cursor, Auswahlanker und Drag-Anker werden von der Änderung selbst nachgeführt, in `fuiEditorInsert` und `fuiEditorErase`.
+- `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` und `fuiConsumeKey` in `final_ui.h` (v0.9.7, Version unverändert).
 
-**Abnahme:** Im Demo eine Datei laden, bearbeiten, speichern; das Ergebnis stimmt byteweise.
+**Abnahme:** *Erfüllt.* Im Demo `final_ui.h` geladen, eine Zeile beschrieben, eine gelöscht, „Save & verify" — 658 309 Bytes geschrieben und byteweise identisch zurückgelesen; gegengeprüft gegen eine unabhängig aus der Quelldatei gerechnete Erwartung. Kopflos automatisiert steht dafür `[edits against a plain buffer]`: 400 gemischte Änderungen an pseudozufälligen Stellen, parallel auf einem flachen `memmove`-Puffer mitgeführt und am Ende byteweise verglichen, plus der Zeilenindex gegen einen rohen Scan. Dazu `[typing]`, `[enter, backspace and delete]`, `[overwrite mode]`, `[cut, paste and the line commands]`, `[middle button paste]`, `[read only]`, `[an edit moves the caret]` und `[the change callback]`.
+
+**Was noch aussteht und bewusst liegen bleibt:** **Tab rückt nicht ein** — die Taste gehört bis Iteration 5 der Fokuskette. Und es gibt **kein Undo**; das Demo sagt es in einer eigenen Zeile.
 
 ### Iteration 5 — Undo/Redo und Blockoperationen
+
+Ein Aufhänger steht schon: jede Änderung läuft durch `fuiEditor__NoteChange`, das Offset, entfernte und eingefügte Bytes kennt. Ein Undo-Eintrag ist genau das, plus den Bytes, die weggegangen sind.
 
 - Undo-Stapel mit Zusammenfassen: eine getippte Wortfolge ist ein Schritt. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Cursor und Auswahl inklusive.
 - Tab/Shift+Tab rücken eine Markierung ein und aus, Ctrl+Shift+D dupliziert, Alt+Hoch/Runter verschiebt, Enter übernimmt die Einrückung.

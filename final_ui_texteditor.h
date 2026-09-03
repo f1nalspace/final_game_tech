@@ -22,8 +22,8 @@ colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
 Status: under construction. The view is there and can be read, scrolled, selected from, copied out
-of and coloured by a lexer; typing into it, find and replace and undo are not in yet. See the
-changelog for what is.
+of, coloured by a lexer and TYPED into; find and replace and undo are not in yet - so what is typed
+cannot be taken back yet either. See the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -35,6 +35,9 @@ changelog for what is.
 - Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory().
 - Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
 - Read the caret and the selection back with fuiEditorGetCaretOffset() and fuiEditorCopySelection().
+- Let it be typed into, or do not - fuiEditorConfig.toggles.isReadOnly locks every writing branch there is.
+- Hear about every change through fuiEditorConfig.callbacks.onChange, and ask fuiEditorIsModified() whether
+  anything was written at all since the document was filled or fuiEditorClearModified() was last called.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
@@ -84,6 +87,7 @@ FUI_TEXTEDITOR_MIN_LINE_SLOTS   Smallest number of line slots the line index is 
 FUI_TEXTEDITOR_MIN_GAP_BYTES    How much room an insert leaves behind for the next one (default 1024).
 FUI_TEXTEDITOR_MIN_GAP_SLOTS    How many line slots an insert leaves behind for the next one (default 64).
 FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME  How many lines one build may colour before leaving the rest for the next (default 50000).
+FUI_TEXTEDITOR_MAX_PASTE_BYTES  How many bytes one paste may bring in (default 65536).
 
 -------------------------------------------------------------------------------
 	License
@@ -116,7 +120,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.4.0
+	@version v0.5.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -130,6 +134,64 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.5.0:
+	It writes now. Everything up to here was a view onto a document that could not be changed; this is the
+	other core iteration - typing, deleting, cutting and pasting - and the point at which the caret stops
+	being a place to read from and becomes a place to write at.
+
+	- New: TYPING. Every codepoint the frame delivered is gathered into ONE insert rather than one insert
+	  per character, so a burst of keys is a single edit, a single call into onChange and a single entry
+	  for the undo stack that iteration 5 will hang off it. A chord is not typing: control without alt is
+	  filtered out, and control WITH alt is let through, because that is how a keyboard types altgr characters.
+	- New: Enter, backspace and delete, all three of them AWARE OF THE SELECTION - with something selected
+	  they replace or remove it rather than acting on the one character beside the caret.
+	- New: Backspace and delete treat a carriage return and the line feed behind it as the ONE ending they
+	  are. Taking the line feed alone would leave a return standing at the end of the joined line, which is
+	  a character nothing shows and nobody can find.
+	- New: Enter writes the ending the document ARRIVED with, so a file loaded as crlf stays crlf when a
+	  line is added to it rather than growing a mixed one.
+	- New: OVERWRITE MODE, toggled with the insert key - fuiEditorSetOverwriting and fuiEditorIsOverwriting.
+	  The caret says which mode it is in by being a box rather than a bar, drawn as an outline so that the
+	  character about to be replaced can still be read; a filled block would hide the one thing worth seeing.
+	  Overwriting never eats a line ending: a break typed over would JOIN two lines, which is not what
+	  replacing a character means.
+	- New: Ctrl+v, shift+insert, and the MIDDLE MOUSE BUTTON, which pastes where it is clicked rather than
+	  where the caret was - the caret goes to the pointer first, the way it does everywhere on x11.
+	- New: Ctrl+x and shift+delete cut the selection, or the whole line with its ending when there is none,
+	  which is what makes it a way to MOVE a line rather than a way to blank one. It refuses to cut what the
+	  clipboard would not take: a cut whose copy failed is a delete with no way back, and there is no undo
+	  stack to catch it yet.
+	- New: Ctrl+d deletes the caret's line - fuiEditorDeleteLine. The last line of a document has no ending
+	  of its own to take with it, so it takes the one in FRONT of it instead.
+	- New: The writing api, all of it going through fuiEditorInsert and fuiEditorErase and through nothing
+	  else, because those two are what keep the line index, the lexer watermark and the version in step:
+	  fuiEditorInsertAtCaret, fuiEditorInsertLineBreak, fuiEditorDeleteSelection, fuiEditorDeleteBackward,
+	  fuiEditorDeleteForward and fuiEditorDeleteLine.
+	- New: An edit MOVES the caret, the selection and the drag anchors that stood behind it, inside
+	  fuiEditorInsert and fuiEditorErase themselves. A caller that inserts a line at the top of the document
+	  does not have to know that the caret it left on line five hundred is now on line five hundred and one -
+	  and a caret that was inside what was erased collapses onto the point the erase happened at.
+	- New: fuiEditorConfig.toggles.isReadOnly, which locks every branch a USER can write through and leaves
+	  fuiEditorInsert and fuiEditorErase open, so a read-only view can still be filled by the program that
+	  owns it.
+	- New: fuiEditorConfig.callbacks with onChange and fuiEditorChange, which says where the change was, how
+	  many bytes went and came, and how many lines appeared or vanished - enough to keep a diff, a baseline
+	  or an outline in step without walking the document to find out what happened. It is NOT called for
+	  fuiEditorSetText or fuiEditorLoadFromMemory: those replace the document rather than change it, and the
+	  caller is the one who did it.
+	- New: fuiEditorIsModified and fuiEditorClearModified. Filling the document clears the flag, every edit
+	  sets it, and saving is what the caller clears it at.
+	- New: The status line says INS or OVR, and says when the document has unsaved changes or cannot be
+	  written to at all.
+	- New: fuiEditorAction.didChange goes by the document VERSION across the build rather than by any one
+	  branch reporting itself, so an edit that arrived some way nobody thought of still says so.
+	- Changed: final_ui.h v0.9.7 also carries fuiIsMouseButtonDown, fuiMouseButtonWentDown and fuiConsumeKey
+	  now. fuiInteract answers for the left button alone, and a key that this widget answered has to be spent
+	  or the dialog hosting it commits on the same enter that just broke a line.
+	- Changed: fuiEditorSetText puts the caret back AFTER it has filled the document, not before. An insert
+	  moves every position at or behind it along, which is what typing wants and what a whole new document
+	  emphatically does not - the caret would have ended up at the end of the file.
 
 	# v0.4.0:
 	Colour, in two layers, because two very different things are meant by it. And whitespace made visible,
@@ -296,7 +358,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 4
+#define FUI_TEXTEDITOR_VERSION_MINOR 5
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -339,6 +401,13 @@ fui_api const char *fuiEditorGetVersion(void);
 	//! opened and jumped straight to the end of has to be walked once, and doing that in a single frame
 	//! is a stall - so it is spread over as many frames as it takes, showing plain text until it arrives
 #	define FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME 50000
+#endif
+
+#if !defined(FUI_TEXTEDITOR_MAX_PASTE_BYTES)
+	//! How many bytes one paste may bring in. There is a limit at all because fuiGetClipboardText writes
+	//! into a buffer of a size it is TOLD and cannot be asked how much there really is, so a number has to
+	//! be picked before the clipboard is read rather than after
+#	define FUI_TEXTEDITOR_MAX_PASTE_BYTES 65536
 #endif
 
 // ****************************************************************************
@@ -512,6 +581,9 @@ typedef struct fuiEditorToggles {
 	bool highlightCurrentLine;
 	//! Let the keyboard and the mouse move the caret and the selection, and put the editor in the tab chain
 	bool isInteractive;
+	//! Show the document and refuse every change a USER could make to it. @ref fuiEditorInsert and
+	//! @ref fuiEditorErase stay open, so the program that owns the editor can still fill it
+	bool isReadOnly;
 	//! Draw a dot in every blank and an arrow across every tab
 	bool showWhitespace;
 	//! Write CR, LF or CRLF at the end of every line, which is what tells a mixed file apart from a clean one
@@ -521,6 +593,51 @@ typedef struct fuiEditorToggles {
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode horizontalScrollbar;
 } fuiEditorToggles;
+
+//! Declared ahead of the configuration, so a callback in it can be handed the editor it belongs to
+struct fuiEditor;
+
+/**
+* @struct fuiEditorChange
+* @brief What one change did to the document, handed to @ref fuiEditorOnChange.
+* @note Enough to keep a diff, a baseline or an outline in step without walking the document to find out
+*       what happened - which on a document worth having an editor for is the whole cost of the frame.
+*/
+typedef struct fuiEditorChange {
+	//! The byte offset the change happened at
+	int32_t offset;
+	//! How many bytes went away there
+	int32_t removedBytes;
+	//! How many bytes arrived there
+	int32_t insertedBytes;
+	//! Which document line the change starts on, counted from zero
+	int32_t firstLine;
+	//! How many lines appeared, or vanished when it is negative
+	int32_t lineCountDelta;
+} fuiEditorChange;
+
+/**
+* @brief Told about every change to the document, after it has happened.
+* @param[in,out] editor Reference to the editor @ref fuiEditor the change was made to.
+* @param[in] change Reference to what the change did @ref fuiEditorChange.
+* @param[in] userData Whatever was hung on the callbacks.
+* @note The caret and the selection have ALREADY been moved along by the change when this runs, so what
+*       they read is where they really are rather than where they were.
+* @note Not called for @ref fuiEditorSetText or @ref fuiEditorLoadFromMemory - those replace the document
+*       rather than change it, and the caller is the one who did it.
+*/
+typedef void (*fuiEditorOnChange)(struct fuiEditor *editor, const fuiEditorChange *change, void *userData);
+
+/**
+* @struct fuiEditorCallbacks
+* @brief What the editor calls back into, all of it optional.
+*/
+typedef struct fuiEditorCallbacks {
+	//! Told about every change to the document. Null for none
+	fuiEditorOnChange onChange;
+	//! Passed back to every callback above
+	void *userData;
+} fuiEditorCallbacks;
 
 /**
 * @struct fuiEditorConfig
@@ -536,6 +653,8 @@ typedef struct fuiEditorConfig {
 	fuiEditorMetrics metrics;
 	//! What it shows and leaves out
 	fuiEditorToggles toggles;
+	//! What it calls back into
+	fuiEditorCallbacks callbacks;
 } fuiEditorConfig;
 
 // ****************************************************************************
@@ -726,6 +845,12 @@ typedef struct fuiEditor {
 	fuiEditorEol eol;
 	//! Bumped by every change to the text, so anything worked out from the document can tell that it went stale
 	int32_t version;
+	//! Whether anything has been written since the document was filled or the flag was last cleared
+	bool isModified;
+	//! Whether typing replaces what it lands on rather than pushing it along
+	bool isOverwriting;
+	//! Set while the whole document is being REPLACED, which is what keeps onChange out of a load
+	bool isReplacingDocument;
 
 	//! The lexer, as the caller gave it. Zeroed means no colouring at all
 	fuiEditorLexer lexer;
@@ -1157,6 +1282,96 @@ fui_api int32_t fuiEditorGetSelectionEnd(const fuiEditor *editor);
 * @note Ask once with null, allocate, ask again - the same rule every copying call in this file follows.
 */
 fui_api int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const int32_t destinationCapacity);
+
+/**
+* @brief Tests whether the editor refuses every change a user could make to it.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true while @ref fuiEditorToggles.isReadOnly is set.
+*/
+fui_api bool fuiEditorIsReadOnly(const fuiEditor *editor);
+
+/**
+* @brief Tests whether anything has been written to the document.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when the document has changed since it was filled or since @ref fuiEditorClearModified.
+*/
+fui_api bool fuiEditorIsModified(const fuiEditor *editor);
+
+/**
+* @brief Says that the document as it stands is what has been saved.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @note What saving is is the caller's business; all this does is put the flag back.
+*/
+fui_api void fuiEditorClearModified(fuiEditor *editor);
+
+/**
+* @brief Tests whether typing replaces what it lands on rather than pushing it along.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true in overwrite mode, which the caret shows by being a box rather than a bar.
+*/
+fui_api bool fuiEditorIsOverwriting(const fuiEditor *editor);
+
+/**
+* @brief Switches between inserting and overwriting, which the insert key does as well.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] isOverwriting True to replace what is typed over, false to push it along.
+*/
+fui_api void fuiEditorSetOverwriting(fuiEditor *editor, const bool isOverwriting);
+
+/**
+* @brief Writes text where the caret is, replacing the selection when there is one.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] text The utf-8 text to write.
+* @param[in] textLength Length of the text in bytes, pass 0 to measure up to the terminating zero.
+* @return Returns true when anything was written.
+* @note Refused while @ref fuiEditorToggles.isReadOnly is set - use @ref fuiEditorInsert to fill a document
+*       the user may not change.
+* @note In overwrite mode a text with no line feed in it eats as many codepoints as it brings, but never
+*       past the end of the line: a break typed over would JOIN two lines, which is not what overwriting is.
+*/
+fui_api bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const int32_t textLength);
+
+/**
+* @brief Breaks the line at the caret, replacing the selection when there is one.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when the break was written.
+* @note Written as the ending the document ARRIVED with, so a file loaded as crlf stays crlf. A document of
+*       lone carriage returns gets a line feed, because that is the only thing that ends a line in here.
+*/
+fui_api bool fuiEditorInsertLineBreak(fuiEditor *editor);
+
+/**
+* @brief Removes the selected text.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when there was a selection to remove.
+*/
+fui_api bool fuiEditorDeleteSelection(fuiEditor *editor);
+
+/**
+* @brief Removes the selection, or the one codepoint in front of the caret when there is none.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when anything was removed.
+* @note A carriage return and the line feed behind it go together: leaving the return standing would put a
+*       character at the end of the joined line that nothing shows and nobody can find.
+*/
+fui_api bool fuiEditorDeleteBackward(fuiEditor *editor);
+
+/**
+* @brief Removes the selection, or the one codepoint the caret sits on when there is none.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when anything was removed.
+*/
+fui_api bool fuiEditorDeleteForward(fuiEditor *editor);
+
+/**
+* @brief Removes one whole line, its ending included.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] documentLine The zero based document line to remove.
+* @return Returns true when the line was removed.
+* @note The LAST line has no ending of its own to take with it, so it takes the one in front of it instead -
+*       otherwise removing it would leave the line above it ending in a break and an empty line behind that.
+*/
+fui_api bool fuiEditorDeleteLine(fuiEditor *editor, const int32_t documentLine);
 
 /**
 * @brief Scrolls a document line to the top of the view.
@@ -2265,6 +2480,54 @@ static const fuiEditorLineDecoration *fuiEditor__LineDecorationAt(const fuiEdito
 // > Editing
 // ----------------------------------------------------------------------------
 
+/*
+	Where a position that was standing in the document ends up after an edit somewhere in it.
+
+	This is what lets a caller insert a line at the top of a file without having to know that the caret it
+	left on line five hundred is now on line five hundred and one. The editor owns the caret, the selection
+	and the drag anchors, so the editor is the one that has to move them.
+*/
+static int32_t fuiEditor__PositionAfterChange(const int32_t position, const int32_t offset, const int32_t removedBytes, const int32_t insertedBytes) {
+	if(position < offset) {
+		return(position);
+	}
+	int32_t removedEnd = offset + removedBytes;
+	if(position <= removedEnd) {
+		// At the edit, or inside what went away: all of it collapses onto the end of what was written
+		// there, which is also what leaves the caret BEHIND text that was just typed.
+		return(offset + insertedBytes);
+	}
+	return(position - removedBytes + insertedBytes);
+}
+
+//! Everything that has to happen after a change, in the one place both fuiEditorInsert and fuiEditorErase reach
+static void fuiEditor__NoteChange(fuiEditor *editor, const int32_t offset, const int32_t removedBytes, const int32_t insertedBytes, const int32_t firstLine, const int32_t lineCountDelta) {
+	editor->version += 1;
+	editor->isModified = true;
+
+	editor->caretOffset = fuiEditor__PositionAfterChange(editor->caretOffset, offset, removedBytes, insertedBytes);
+	editor->selectionAnchor = fuiEditor__PositionAfterChange(editor->selectionAnchor, offset, removedBytes, insertedBytes);
+	editor->dragAnchorStart = fuiEditor__PositionAfterChange(editor->dragAnchorStart, offset, removedBytes, insertedBytes);
+	editor->dragAnchorEnd = fuiEditor__PositionAfterChange(editor->dragAnchorEnd, offset, removedBytes, insertedBytes);
+
+	// The column the caret WANTED belonged to the text as it was. Keeping it across an edit would send the
+	// next arrow key somewhere nobody asked for.
+	editor->hasDesiredDistance = false;
+
+	// Called last, with the caret already where it really is - and never during a load, which replaces the
+	// document rather than changing it.
+	fuiEditorOnChange onChange = editor->config.callbacks.onChange;
+	if(onChange != fui_null && !editor->isReplacingDocument) {
+		fuiEditorChange change;
+		change.offset = offset;
+		change.removedBytes = removedBytes;
+		change.insertedBytes = insertedBytes;
+		change.firstLine = firstLine;
+		change.lineCountDelta = lineCountDelta;
+		onChange(editor, &change, editor->config.callbacks.userData);
+	}
+}
+
 fui_api bool fuiEditorInsert(fuiEditor *editor, const int32_t offset, const char *text, const int32_t textLength) {
 	if(editor == fui_null || !editor->isInitialized || text == fui_null) {
 		return(false);
@@ -2332,7 +2595,8 @@ fui_api bool fuiEditorInsert(fuiEditor *editor, const int32_t offset, const char
 	int32_t lastUnwrittenLine = (addedLineCount > 0) ? (insertedOnLine + addedLineCount) : 0;
 	fuiEditor__InvalidateStylesFrom(editor, insertedOnLine + 1, lastUnwrittenLine);
 
-	editor->version += 1;
+	const int32_t nothingWasRemoved = 0;
+	fuiEditor__NoteChange(editor, insertOffset, nothingWasRemoved, insertedLength, insertedOnLine, addedLineCount);
 	return(true);
 }
 
@@ -2370,7 +2634,8 @@ fui_api bool fuiEditorErase(fuiEditor *editor, const int32_t offset, const int32
 	const int32_t nothingIsUnwritten = 0;
 	fuiEditor__InvalidateStylesFrom(editor, firstLine + 1, nothingIsUnwritten);
 
-	editor->version += 1;
+	const int32_t nothingWasInserted = 0;
+	fuiEditor__NoteChange(editor, eraseStart, erasedLength, nothingWasInserted, firstLine, -removedLineCount);
 	return(true);
 }
 
@@ -2387,9 +2652,16 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	editor->version += 1;
 	editor->caretOffset = 0;
 	editor->selectionAnchor = 0;
+	editor->dragAnchorStart = 0;
+	editor->dragAnchorEnd = 0;
+	editor->hasDesiredDistance = false;
 	editor->scrollX = 0.0f;
 	editor->scrollY = 0.0f;
 	editor->hasPendingScroll = false;
+
+	// Replacing the whole document is not a CHANGE to it - the caller is the one who did it, and telling
+	// them about their own load through onChange would be noise at best and a recursion at worst.
+	editor->isReplacingDocument = true;
 
 	// A brand new document has state slots nothing ever wrote, all the way down. What fills it below sets
 	// the floor to the line count it ends up with.
@@ -2398,6 +2670,8 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 
 	if(text == fui_null) {
 		editor->eol = fuiEditorEol_Lf;
+		editor->isReplacingDocument = false;
+		editor->isModified = false;
 		return(true);
 	}
 
@@ -2408,12 +2682,23 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	}
 
 	editor->eol = fuiEditor__DetectEol(text, resolvedLength);
-	if(resolvedLength <= 0) {
-		return(true);
+	bool didFill = true;
+	if(resolvedLength > 0) {
+		const int32_t atTheStart = 0;
+		didFill = fuiEditorInsert(editor, atTheStart, text, resolvedLength);
 	}
 
-	const int32_t atTheStart = 0;
-	return(fuiEditorInsert(editor, atTheStart, text, resolvedLength));
+	// The caret goes back AFTER the fill and not before it. An insert moves every position at or behind it
+	// along - which is exactly what typing wants and emphatically not what a whole new document wants, or
+	// the caret would come out of a load sitting at the end of the file.
+	editor->caretOffset = 0;
+	editor->selectionAnchor = 0;
+	editor->dragAnchorStart = 0;
+	editor->dragAnchorEnd = 0;
+	editor->hasDesiredDistance = false;
+	editor->isReplacingDocument = false;
+	editor->isModified = false;
+	return(didFill);
 }
 
 fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, const int32_t dataLength, const fuiEditorEncoding *encoding) {
@@ -2525,7 +2810,7 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 #define FUI_TEXTEDITOR__ASSUMED_DIGIT_WIDTH_RATIO 0.6f
 
 //! How long the editor's own status line may get, which is a handful of numbers and names
-#define FUI_TEXTEDITOR__MAX_STATUS_TEXT 160
+#define FUI_TEXTEDITOR__MAX_STATUS_TEXT 224
 
 //! How long a line number may get, which is the digits of an int32 and its sign
 #define FUI_TEXTEDITOR__MAX_NUMBER_TEXT 16
@@ -3459,6 +3744,221 @@ fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine
 }
 
 // ----------------------------------------------------------------------------
+// > Writing
+// ----------------------------------------------------------------------------
+
+/*
+	Everything below goes through fuiEditorInsert and fuiEditorErase and through nothing else.
+
+	Those two are what keep the line index, the lexer watermark, the version and the caret in step with the
+	bytes. A branch that reached past them into document.bytes would leave a document that looks right and
+	reports the wrong lines from that point on - which is the kind of wrong that is found weeks later.
+*/
+
+//! Whether a USER may write into this editor. fuiEditorInsert and fuiEditorErase stay open either way
+fui_inline bool fuiEditor__CanWrite(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(!editor->config.toggles.isReadOnly);
+}
+
+/*
+	How many bytes overwrite mode would eat to make room for that many codepoints.
+
+	It stops at the end of the LINE and goes no further. fuiEditorGetLineEnd leaves the ending out, so a
+	carriage return is safe from this as well - and a line break typed over would JOIN two lines, which is
+	not what replacing a character means in any editor anybody has used.
+*/
+static int32_t fuiEditor__OverwrittenByteCount(const fuiEditor *editor, const int32_t codepointCount) {
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, caretLine);
+	int32_t walkOffset = editor->caretOffset;
+	for(int32_t stepIndex = 0; stepIndex < codepointCount; ++stepIndex) {
+		if(walkOffset >= lineEnd) {
+			break;
+		}
+		walkOffset = fuiEditorNextCodepointOffset(editor, walkOffset);
+	}
+	return(walkOffset - editor->caretOffset);
+}
+
+fui_api bool fuiEditorIsReadOnly(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(false);
+	}
+	return(editor->config.toggles.isReadOnly);
+}
+
+fui_api bool fuiEditorIsModified(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(false);
+	}
+	return(editor->isModified);
+}
+
+fui_api void fuiEditorClearModified(fuiEditor *editor) {
+	if(editor == fui_null) {
+		return;
+	}
+	editor->isModified = false;
+}
+
+fui_api bool fuiEditorIsOverwriting(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(false);
+	}
+	return(editor->isOverwriting);
+}
+
+fui_api void fuiEditorSetOverwriting(fuiEditor *editor, const bool isOverwriting) {
+	if(editor == fui_null) {
+		return;
+	}
+	editor->isOverwriting = isOverwriting;
+}
+
+fui_api bool fuiEditorDeleteSelection(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t selectionLength = selectionEnd - selectionStart;
+	if(selectionLength <= 0) {
+		return(false);
+	}
+	return(fuiEditorErase(editor, selectionStart, selectionLength));
+}
+
+fui_api bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const int32_t textLength) {
+	if(!fuiEditor__CanWrite(editor) || text == fui_null) {
+		return(false);
+	}
+
+	int32_t insertedLength = textLength;
+	if(insertedLength <= 0) {
+		size_t measuredLength = FUI_TEXTEDITOR_STRLEN(text);
+		insertedLength = (int32_t)measuredLength;
+	}
+	if(insertedLength <= 0) {
+		return(false);
+	}
+
+	// The selection goes first, always. Doing it the other way round would write into a range that is
+	// about to be erased, and the erase would take the new text with it.
+	(void)fuiEditorDeleteSelection(editor);
+
+	const char *foundLineBreak = (const char *)FUI_TEXTEDITOR_MEMCHR(text, '\n', (size_t)insertedLength);
+	bool bringsALineBreak = (foundLineBreak != fui_null);
+	if(editor->isOverwriting && !bringsALineBreak) {
+		int32_t codepointCount = fuiEditor__CountCodepoints(text, insertedLength);
+		int32_t overwrittenByteCount = fuiEditor__OverwrittenByteCount(editor, codepointCount);
+		if(overwrittenByteCount > 0) {
+			(void)fuiEditorErase(editor, editor->caretOffset, overwrittenByteCount);
+		}
+	}
+
+	int32_t caretOffset = editor->caretOffset;
+	return(fuiEditorInsert(editor, caretOffset, text, insertedLength));
+}
+
+fui_api bool fuiEditorInsertLineBreak(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	// A LINE FEED and nothing else ends a line in here, so a break is written as one - with the carriage
+	// return in front of it when that is what the file arrived with. A document written in lone carriage
+	// returns has no lines to speak of yet, and normalising those is a later iteration's job.
+	const char *breakBytes = "\n";
+	int32_t breakLength = 1;
+	if(editor->eol == fuiEditorEol_CrLf) {
+		breakBytes = "\r\n";
+		breakLength = 2;
+	}
+	return(fuiEditorInsertAtCaret(editor, breakBytes, breakLength));
+}
+
+fui_api bool fuiEditorDeleteBackward(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	if(fuiEditorHasSelection(editor)) {
+		return(fuiEditorDeleteSelection(editor));
+	}
+
+	int32_t caretOffset = editor->caretOffset;
+	if(caretOffset <= 0) {
+		return(false);
+	}
+	int32_t eraseStart = fuiEditorPreviousCodepointOffset(editor, caretOffset);
+
+	// A carriage return and the line feed behind it are the ONE ending they look like. Taking the feed
+	// alone would leave a return standing at the end of the joined line - a character nothing shows.
+	char byteAtEraseStart = fuiEditorGetByte(editor, eraseStart);
+	if(byteAtEraseStart == '\n' && eraseStart > 0) {
+		char byteBeforeIt = fuiEditorGetByte(editor, eraseStart - 1);
+		if(byteBeforeIt == '\r') {
+			eraseStart -= 1;
+		}
+	}
+	return(fuiEditorErase(editor, eraseStart, caretOffset - eraseStart));
+}
+
+fui_api bool fuiEditorDeleteForward(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	if(fuiEditorHasSelection(editor)) {
+		return(fuiEditorDeleteSelection(editor));
+	}
+
+	int32_t caretOffset = editor->caretOffset;
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	if(caretOffset >= textLength) {
+		return(false);
+	}
+	int32_t eraseEnd = fuiEditorNextCodepointOffset(editor, caretOffset);
+
+	// The same ending, seen from the other side: a delete on the carriage return takes the feed with it.
+	char byteAtCaret = fuiEditorGetByte(editor, caretOffset);
+	if(byteAtCaret == '\r') {
+		char byteAfterIt = fuiEditorGetByte(editor, caretOffset + 1);
+		if(byteAfterIt == '\n') {
+			eraseEnd = caretOffset + 2;
+		}
+	}
+	return(fuiEditorErase(editor, caretOffset, eraseEnd - caretOffset));
+}
+
+fui_api bool fuiEditorDeleteLine(fuiEditor *editor, const int32_t documentLine) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	if(documentLine < 0 || documentLine >= lineCount) {
+		return(false);
+	}
+
+	int32_t eraseStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t eraseEnd = fuiEditorGetTextLength(editor);
+	bool isTheLastLine = (documentLine >= (lineCount - 1));
+	if(!isTheLastLine) {
+		eraseEnd = fuiEditorGetLineStart(editor, documentLine + 1);
+	} else if(documentLine > 0) {
+		// The last line has no ending of its own to take with it, so it takes the one in FRONT of it -
+		// otherwise removing it would leave the line above ending in a break with nothing behind it.
+		eraseStart = fuiEditorGetLineEnd(editor, documentLine - 1);
+	}
+	int32_t erasedLength = eraseEnd - eraseStart;
+	if(erasedLength <= 0) {
+		return(false);
+	}
+	return(fuiEditorErase(editor, eraseStart, erasedLength));
+}
+
+// ----------------------------------------------------------------------------
 // > Words
 // ----------------------------------------------------------------------------
 
@@ -3841,12 +4341,112 @@ static bool fuiEditor__CopySelectionToClipboard(fuiContext *context, fuiEditor *
 	return(didSet);
 }
 
+//! Ctrl+x - the selection, or the whole line with its ending when there is none
+static bool fuiEditor__CutToClipboard(fuiContext *context, fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	bool hasSomethingSelected = fuiEditorHasSelection(editor);
+	if(!hasSomethingSelected) {
+		// With nothing selected it takes the whole line, its ENDING included, which is what makes ctrl+x
+		// a way to move a line rather than a way to blank one.
+		int32_t caretLine = fuiEditorGetCaretLine(editor);
+		int32_t lineCount = fuiEditorGetLineCount(editor);
+		int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
+		int32_t lineEnd = fuiEditorGetTextLength(editor);
+		bool isTheLastLine = (caretLine >= (lineCount - 1));
+		if(!isTheLastLine) {
+			lineEnd = fuiEditorGetLineStart(editor, caretLine + 1);
+		}
+		if(lineEnd <= lineStart) {
+			return(false);
+		}
+		fuiEditorSetSelection(editor, lineStart, lineEnd);
+	}
+
+	bool didCopy = fuiEditor__CopySelectionToClipboard(context, editor);
+	if(!didCopy) {
+		// Nothing is thrown away that the clipboard would not take. A cut whose copy failed is a delete
+		// with no way back, and there is no undo stack to catch it until the next iteration.
+		return(false);
+	}
+	return(fuiEditorDeleteSelection(editor));
+}
+
+//! Ctrl+v, shift+insert and the middle mouse button all arrive here
+static bool fuiEditor__PasteFromClipboard(fuiContext *context, fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	// A size has to be picked BEFORE the clipboard is read: fuiGetClipboardText writes into a buffer of
+	// the size it is told and there is no way to ask it how much there really is.
+	const int32_t pasteCapacity = FUI_TEXTEDITOR_MAX_PASTE_BYTES;
+	char *pastedText = (char *)fuiEditor__Allocate(editor, pasteCapacity);
+	if(pastedText == fui_null) {
+		return(false);
+	}
+	pastedText[0] = '\0';
+
+	bool didPaste = false;
+	bool didGet = fuiGetClipboardText(context, pastedText, (uint32_t)pasteCapacity);
+	if(didGet) {
+		size_t pastedLength = FUI_TEXTEDITOR_STRLEN(pastedText);
+		if(pastedLength > 0) {
+			didPaste = fuiEditorInsertAtCaret(editor, pastedText, (int32_t)pastedLength);
+		}
+	}
+	fuiEditor__Release(editor, pastedText);
+	return(didPaste);
+}
+
+//! Gathers everything typed this frame into ONE insert, so a burst of keys is a single edit
+static bool fuiEditor__TypeWhatWasTyped(fuiContext *context, fuiEditor *editor) {
+	int32_t typedCount = 0;
+	const uint32_t *typedCodepoints = fuiGetTextInput(context, &typedCount);
+	if(typedCodepoints == fui_null || typedCount <= 0) {
+		return(false);
+	}
+
+	// A chord is a keystroke rather than typing, so control filters the characters out - except with ALT,
+	// because control together with alt is how a keyboard types altgr characters.
+	bool isAChord = fuiIsControlDown(context) && !fuiIsAltDown(context);
+	if(isAChord) {
+		return(false);
+	}
+
+	char typedText[FUI_MAX_TEXT_INPUT * FUI_TEXTEDITOR__MAX_UTF8_BYTES];
+	const int32_t typedCapacity = (int32_t)sizeof(typedText);
+	int32_t typedLength = 0;
+	for(int32_t typedIndex = 0; typedIndex < typedCount; ++typedIndex) {
+		uint32_t typedCodepoint = typedCodepoints[typedIndex];
+
+		// A platform sends the control codes down the typed-character path as well, and every one of them
+		// that means anything in here has a key of its own - enter, backspace, delete. Letting them
+		// through would answer the same keystroke twice.
+		bool isAControlCode = (typedCodepoint < 0x20u) || (typedCodepoint == 0x7Fu);
+		if(isAControlCode) {
+			continue;
+		}
+		int32_t roomLeft = typedCapacity - typedLength;
+		if(roomLeft < FUI_TEXTEDITOR__MAX_UTF8_BYTES) {
+			break;
+		}
+		uint32_t encodedLength = fuiEncodeUtf8(typedCodepoint, &typedText[typedLength]);
+		typedLength += (int32_t)encodedLength;
+	}
+	if(typedLength <= 0) {
+		return(false);
+	}
+	return(fuiEditorInsertAtCaret(editor, typedText, typedLength));
+}
+
 //! Every key the editor answers to while it has the keyboard
 static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t linesPerPage, bool *outDidCopy) {
 	bool wantsToExtend = fuiIsShiftDown(context);
 	bool wantsToJumpByWord = fuiIsControlDown(context);
 	int32_t textLength = fuiEditorGetTextLength(editor);
-	int32_t lineCount = fuiEditorGetLineCount(editor);
 
 	if(fuiKeyRepeat(context, fuiKey_Left)) {
 		int32_t wantedOffset;
@@ -3920,12 +4520,102 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		}
 	}
 
-	(void)lineCount;
+	/*
+		The insert key, in the three meanings it has had since before ctrl+c existed.
+
+		Plain, it switches between inserting and overwriting; with control it copies; with shift it pastes.
+		The copy is not a writing branch, so it works in a read-only editor as well - which is why the whole
+		key is answered ABOVE the read-only gate rather than below it.
+	*/
+	if(fuiKeyWentDown(context, fuiKey_Insert)) {
+		if(wantsToJumpByWord) {
+			bool didCopy = fuiEditor__CopySelectionToClipboard(context, editor);
+			if(didCopy && outDidCopy != fui_null) {
+				*outDidCopy = true;
+			}
+		} else if(wantsToExtend) {
+			(void)fuiEditor__PasteFromClipboard(context, editor);
+		} else {
+			editor->isOverwriting = !editor->isOverwriting;
+			editor->caretBlinkTime = 0.0f;
+		}
+	}
+
+	// Everything from here on WRITES, and there is exactly one gate in front of all of it.
+	bool canWrite = !editor->config.toggles.isReadOnly;
+	if(!canWrite) {
+		return;
+	}
+
+	if(fuiKeyRepeat(context, fuiKey_Backspace)) {
+		(void)fuiEditorDeleteBackward(editor);
+		editor->caretBlinkTime = 0.0f;
+	}
+
+	// Shift and delete is the other spelling of cut, and it is an EDGE rather than a repeat - a held one
+	// would cut line after line into a clipboard that only keeps the last of them.
+	bool wantsToCutWithDelete = wantsToExtend && fuiKeyWentDown(context, fuiKey_Delete);
+	if(wantsToCutWithDelete) {
+		bool didCut = fuiEditor__CutToClipboard(context, editor);
+		if(didCut && outDidCopy != fui_null) {
+			*outDidCopy = true;
+		}
+		editor->caretBlinkTime = 0.0f;
+	} else if(fuiKeyRepeat(context, fuiKey_Delete)) {
+		(void)fuiEditorDeleteForward(editor);
+		editor->caretBlinkTime = 0.0f;
+	}
+
+	if(!wantsToJumpByWord && fuiKeyRepeat(context, fuiKey_Return)) {
+		(void)fuiEditorInsertLineBreak(editor);
+		editor->caretBlinkTime = 0.0f;
+
+		// The edge is SPENT, so a dialog hosting this editor does not also commit on the enter that just
+		// broke a line. final_ui.h's own multi-line field has done exactly this since it had one.
+		fuiConsumeKey(context, fuiKey_Return);
+	}
+
+	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_V)) {
+		(void)fuiEditor__PasteFromClipboard(context, editor);
+		editor->caretBlinkTime = 0.0f;
+	}
+	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_X)) {
+		bool didCut = fuiEditor__CutToClipboard(context, editor);
+		if(didCut && outDidCopy != fui_null) {
+			*outDidCopy = true;
+		}
+		editor->caretBlinkTime = 0.0f;
+	}
+	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_D)) {
+		int32_t caretLine = fuiEditorGetCaretLine(editor);
+		(void)fuiEditorDeleteLine(editor, caretLine);
+		editor->caretBlinkTime = 0.0f;
+	}
+
+	// Last, so that every key which MEANS something has already had its turn at the characters it would
+	// otherwise arrive as.
+	bool didType = fuiEditor__TypeWhatWasTyped(context, editor);
+	if(didType) {
+		editor->caretBlinkTime = 0.0f;
+	}
 }
 
 //! The click, the drag, and what a second and a third click in the same place mean
 static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const fuiInteraction *interaction, const float frameTime, const float scrollX, float *inOutScrollY) {
 	fuiVec2 mousePosition = fuiGetMousePosition(context);
+
+	// The middle button pastes where it is CLICKED rather than where the caret was, which is what it does
+	// everywhere on x11 - so the caret goes to the pointer first and the text lands under it. fuiInteract
+	// answers for the left button and for nothing else, so the button is asked about directly.
+	bool middleButtonWentDown = fuiMouseButtonWentDown(context, FUI_MOUSE_MIDDLE);
+	if(middleButtonWentDown && interaction->isHovered) {
+		int32_t pastePointOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+		const bool dropTheSelection = false;
+		const bool dropTheDesiredColumn = false;
+		fuiEditor__MoveCaretTo(editor, pastePointOffset, dropTheSelection, dropTheDesiredColumn);
+		(void)fuiEditor__PasteFromClipboard(context, editor);
+		editor->caretBlinkTime = 0.0f;
+	}
 
 	if(interaction->wasPressed) {
 		float movedX = mousePosition.x - editor->lastPressPosition.x;
@@ -4093,6 +4783,20 @@ static void fuiEditor__BuildStatusText(const fuiEditor *editor, char *destinatio
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Tab ");
 	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, editor->resolvedConfig.metrics.tabSize);
+
+	// Which mode the caret is in is also shown BY the caret, as a box against a bar - but a name is what
+	// somebody looking for the setting rather than at the caret will find.
+	const char *insertModeName = editor->isOverwriting ? "OVR" : "INS";
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, insertModeName);
+
+	if(editor->config.toggles.isReadOnly) {
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Read only");
+	} else if(editor->isModified) {
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Modified");
+	}
 	(void)writeOffset;
 }
 
@@ -4139,6 +4843,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	int32_t caretBeforeThisBuild = editor->caretOffset;
 	int32_t anchorBeforeThisBuild = editor->selectionAnchor;
+	int32_t versionBeforeThisBuild = editor->version;
 	float frameTime = fuiGetFrameTime(context);
 
 	// An edit throws the widest line away rather than keeping a width that belonged to text which is gone.
@@ -4176,7 +4881,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
 	if(config->toggles.isInteractive) {
 		fuiRegisterFocusable(context, editorId);
-		if(bodyInteraction.wasPressed) {
+
+		// A middle click is a press too, and one that pastes into an editor which does not have the
+		// keyboard afterwards would leave the caret sitting somewhere nothing can be typed at.
+		bool middleButtonWentDown = fuiMouseButtonWentDown(context, FUI_MOUSE_MIDDLE);
+		bool tookAPress = bodyInteraction.wasPressed || (bodyInteraction.isHovered && middleButtonWentDown);
+		if(tookAPress) {
 			fuiSetFocusedId(context, editorId);
 		}
 	}
@@ -4215,14 +4925,16 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		}
 	}
 
+	// Taken from the document's VERSION across the whole build rather than from any one branch reporting
+	// itself, so an edit that arrived some way nobody thought of still says so.
+	result.didChange = (editor->version != versionBeforeThisBuild);
+
 	bool caretMoved = (editor->caretOffset != caretBeforeThisBuild) || (editor->selectionAnchor != anchorBeforeThisBuild);
 	result.didMoveCaret = caretMoved;
 	if(caretMoved) {
 		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, &scrollX, &scrollY);
 	}
 
-	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
-	// so drawing it afterwards paints straight over both of them - which is exactly what it used to do.
 	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
 	// so drawing it afterwards paints straight over both of them - which is exactly what it used to do.
 	fuiDrawRect(context, layout.frameRect, config->colors.background);
@@ -4440,8 +5152,28 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		int32_t caretLineEnd = fuiEditorGetLineEnd(editor, caretDocumentLine);
 		float caretDistance = fuiEditor__DistanceOfOffset(context, editor, &render, caretLineStart, caretLineEnd, editor->caretOffset);
 		float caretTop = layout.textRect.y + (float)caretScreenLine * render.lineHeight - scrollY;
-		fuiRect caretRect = fuiRectMake(lineLeftX + caretDistance, caretTop, config->metrics.caretWidth, render.lineHeight);
-		fuiDrawRect(context, caretRect, config->colors.caret);
+		float caretLeft = lineLeftX + caretDistance;
+		if(editor->isOverwriting) {
+			/*
+				A box rather than a bar, and an OUTLINE rather than a filled one.
+
+				What overwriting is about to replace is the one thing worth seeing, and a solid block would
+				sit on top of exactly that - there is no way to invert a glyph from out here. At the end of
+				a line there is no character to box, so it falls back to a blank's width.
+			*/
+			float boxWidth = render.spaceWidth;
+			int32_t offsetAfterTheCaret = fuiEditorNextCodepointOffset(editor, editor->caretOffset);
+			bool thereIsACharacterUnderIt = (offsetAfterTheCaret > editor->caretOffset) && (offsetAfterTheCaret <= caretLineEnd);
+			if(thereIsACharacterUnderIt) {
+				float distanceAfterTheCaret = fuiEditor__DistanceOfOffset(context, editor, &render, caretLineStart, caretLineEnd, offsetAfterTheCaret);
+				boxWidth = distanceAfterTheCaret - caretDistance;
+			}
+			fuiRect caretBoxRect = fuiRectMake(caretLeft, caretTop, boxWidth, render.lineHeight);
+			fuiDrawRectOutline(context, caretBoxRect, config->colors.caret, config->metrics.caretWidth);
+		} else {
+			fuiRect caretRect = fuiRectMake(caretLeft, caretTop, config->metrics.caretWidth, render.lineHeight);
+			fuiDrawRect(context, caretRect, config->colors.caret);
+		}
 	}
 	fuiPopClip(context);
 

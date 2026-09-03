@@ -33,6 +33,9 @@
 /apps/**/bin/
 /apps/**/obj/
 doxy-workspace.doxyedit
+
+# What the FUI_Editor demo's "Save & verify" button writes
+fui_editor_demo_saved.txt
 /demos/**/[bB]uild
 /demos/**/[iI]mmediates
 .claude/

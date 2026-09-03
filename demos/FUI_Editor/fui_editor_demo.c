@@ -73,6 +73,10 @@ License:
 //! Which file the demo fills its document from, relative to the repository root
 #define DEMO_SOURCE_FILE_PATH "final_ui.h"
 
+//! Where "Save & verify" writes to. A file of its OWN - the document on screen is this repository's own
+//! final_ui.h, and a demo that saves over the file it is showing is a demo nobody runs twice
+#define DEMO_SAVE_FILE_PATH "fui_editor_demo_saved.txt"
+
 //! Largest file the demo is willing to read into memory
 #define DEMO_MAX_FILE_BYTES (64 * 1024 * 1024)
 
@@ -1252,6 +1256,38 @@ typedef struct EditorTestHarness {
 	fuiEditorConfig config;
 } EditorTestHarness;
 
+/*
+	A clipboard of the test's own, so that cutting and pasting can be checked without a window.
+
+	It is also what makes the one case worth having a test for reachable at all: a hook that REFUSES the
+	text. FPL's own does exactly that above two kilobytes, and a cut that deleted the selection anyway
+	would be a delete with no way back.
+*/
+#define DEMO_TEST_CLIPBOARD_CAPACITY 4096
+static char g_testClipboard[DEMO_TEST_CLIPBOARD_CAPACITY];
+static bool g_testClipboardRefusesEverything = false;
+static int32_t g_testClipboardSetCount = 0;
+
+static bool TestClipboardGet(void *userData, char *destination, uint32_t maxDestinationLength) {
+	(void)userData;
+	fplCopyString(g_testClipboard, destination, maxDestinationLength);
+	return(true);
+}
+
+static bool TestClipboardSet(void *userData, const char *text) {
+	(void)userData;
+	if(g_testClipboardRefusesEverything) {
+		return(false);
+	}
+	size_t textLength = fplGetStringLength(text);
+	if(textLength >= DEMO_TEST_CLIPBOARD_CAPACITY) {
+		return(false);
+	}
+	fplCopyString(text, g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	g_testClipboardSetCount += 1;
+	return(true);
+}
+
 static bool HarnessInit(EditorTestHarness *harness, const char *text, const float editorWidth, const float editorHeight) {
 	fplClearStruct(harness);
 	harness->face = MakeTestFace();
@@ -1275,6 +1311,14 @@ static bool HarnessInit(EditorTestHarness *harness, const char *text, const floa
 		fuiEditorSetText(&harness->editor, text, 0);
 	}
 
+	fuiPlatform testPlatform = fplZeroInit;
+	testPlatform.getClipboardText = TestClipboardGet;
+	testPlatform.setClipboardText = TestClipboardSet;
+	fuiSetPlatform(&harness->ui, &testPlatform);
+	g_testClipboard[0] = '\0';
+	g_testClipboardRefusesEverything = false;
+	g_testClipboardSetCount = 0;
+
 	harness->rect = fuiRectMake(10.0f, 10.0f, editorWidth, editorHeight);
 	harness->input = fuiZeroInput();
 	harness->input.windowSize = fuiV2i((int32_t)(editorWidth + 64.0f), (int32_t)(editorHeight + 64.0f));
@@ -1295,6 +1339,7 @@ static fuiEditorAction HarnessFrame(EditorTestHarness *harness) {
 	fuiEndFrame(&harness->ui);
 
 	harness->input.mouseWheelDelta = 0.0f;
+	harness->input.textInputLength = 0;
 	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
 		harness->input.keys[keyIndex].halfTransitionCount = 0;
 		harness->input.keys[keyIndex].endedDown = false;
@@ -1325,6 +1370,39 @@ static void HarnessPressKey(EditorTestHarness *harness, const fuiKey key, const 
 static void HarnessFocusTheEditor(EditorTestHarness *harness) {
 	fuiId editorId = fuiGetId(&harness->ui, "editor");
 	fuiSetFocusedId(&harness->ui, editorId);
+}
+
+//! Types a utf-8 text as ONE frame's worth of codepoints, which is what a fast typist really delivers
+static void HarnessTypeText(EditorTestHarness *harness, const char *utf8Text, const bool withControl) {
+	size_t textLength = fplGetStringLength(utf8Text);
+	size_t readOffset = 0;
+	int32_t typedCount = 0;
+	while(readOffset < textLength && typedCount < FUI_MAX_TEXT_INPUT) {
+		uint32_t codepoint = fuiDecodeUtf8(utf8Text, textLength, &readOffset);
+		if(codepoint == 0) {
+			break;
+		}
+		harness->input.textInput[typedCount] = codepoint;
+		typedCount += 1;
+	}
+	harness->input.textInputLength = typedCount;
+	if(withControl) {
+		harness->input.keys[fuiKey_LeftControl].halfTransitionCount = 1;
+		harness->input.keys[fuiKey_LeftControl].endedDown = true;
+	}
+	(void)HarnessFrame(harness);
+}
+
+//! Presses the middle mouse button at a point in the widget, which is what pastes there
+static void HarnessClickMiddleAt(EditorTestHarness *harness, const float x, const float y) {
+	// Hovering is resolved against the PREVIOUS build, so the pointer has to stand there for a frame
+	// before the press can be seen as happening over the editor at all.
+	harness->input.mousePosition = fuiV2(x, y);
+	(void)HarnessFrame(harness);
+
+	harness->input.mouseButtons[FUI_MOUSE_MIDDLE].halfTransitionCount = 1;
+	harness->input.mouseButtons[FUI_MOUSE_MIDDLE].endedDown = true;
+	(void)HarnessFrame(harness);
 }
 
 /*
@@ -2029,6 +2107,630 @@ static void SelfTestLineEndingsOfLines(void) {
 	fuiEditorRelease(&editor);
 }
 
+// ----------------------------------------------------------------------------
+// > Writing
+// ----------------------------------------------------------------------------
+
+/*
+	What a burst of typing costs.
+
+	Everything the frame delivered has to become ONE insert. Checking the resulting text would pass either
+	way - what says it is one edit is the document's VERSION, which every insert and every erase bumps
+	exactly once. The same rule found the bug in the colouring watermark last iteration: check the cost,
+	not only the result.
+*/
+static void SelfTestTyping(void) {
+	CheckSection("typing");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "ab\ncd", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noControl = false;
+	const bool withControl = true;
+	const bool dropTheSelection = false;
+
+	fuiEditorSetCaretOffset(&harness.editor, 1, dropTheSelection);
+	int32_t versionBeforeTyping = harness.editor.version;
+	HarnessTypeText(&harness, "XY", noControl);
+	CHECK_TEXT(&harness.editor, "aXYb\ncd");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 3);
+	CHECK_I(harness.editor.version - versionBeforeTyping, 1);
+	CHECK(fuiEditorIsModified(&harness.editor));
+
+	// A chord is a keystroke, not typing. Control and v is a paste and must not leave a "v" behind.
+	int32_t versionBeforeTheChord = harness.editor.version;
+	HarnessTypeText(&harness, "Z", withControl);
+	CHECK_I(harness.editor.version, versionBeforeTheChord);
+	CHECK_TEXT(&harness.editor, "aXYb\ncd");
+
+	// Typing over a selection replaces it, in one edit rather than a delete and an insert.
+	fuiEditorSetSelection(&harness.editor, 1, 4);
+	int32_t versionBeforeTheReplacement = harness.editor.version;
+	HarnessTypeText(&harness, "Q", noControl);
+	CHECK_TEXT(&harness.editor, "aQ\ncd");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 2);
+	CHECK(!fuiEditorHasSelection(&harness.editor));
+	CHECK_I(harness.editor.version - versionBeforeTheReplacement, 2);
+
+	// Multi-byte characters go in whole. A caret that landed inside one would be the end of everything.
+	fuiEditorSetCaretOffset(&harness.editor, 0, dropTheSelection);
+	HarnessTypeText(&harness, "\xc3\xa4", noControl);
+	CHECK_TEXT(&harness.editor, "\xc3\xa4" "aQ\ncd");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 2);
+
+	// fuiEditorClearModified is what saving puts the flag back with, and nothing else clears it.
+	fuiEditorClearModified(&harness.editor);
+	CHECK(!fuiEditorIsModified(&harness.editor));
+
+	HarnessRelease(&harness);
+}
+
+static void SelfTestEnterBackspaceDelete(void) {
+	CheckSection("enter, backspace and delete");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "abcd", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool withShift = true;
+	const bool noControl = false;
+	const bool dropTheSelection = false;
+
+	fuiEditorSetCaretOffset(&harness.editor, 2, dropTheSelection);
+	HarnessPressKey(&harness, fuiKey_Return, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "ab\ncd");
+	CHECK_I(fuiEditorGetLineCount(&harness.editor), 2);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 3);
+
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abcd");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 2);
+
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abd");
+
+	// Neither end of the document has anything to remove, and neither may wrap around to the other one.
+	fuiEditorSetCaretOffset(&harness.editor, 0, dropTheSelection);
+	int32_t versionAtTheFront = harness.editor.version;
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	CHECK_I(harness.editor.version, versionAtTheFront);
+	int32_t documentLength = fuiEditorGetTextLength(&harness.editor);
+	fuiEditorSetCaretOffset(&harness.editor, documentLength, dropTheSelection);
+	int32_t versionAtTheBack = harness.editor.version;
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	CHECK_I(harness.editor.version, versionAtTheBack);
+
+	// Both of them take the SELECTION when there is one, rather than the character beside the caret.
+	fuiEditorSetSelection(&harness.editor, 0, 2);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "d");
+	fuiEditorSetText(&harness.editor, "abcd", 0);
+	fuiEditorSetSelection(&harness.editor, 1, 3);
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "ad");
+
+	/*
+		A carriage return and the line feed behind it are ONE ending.
+
+		Taking the feed alone would leave the return standing at the end of the joined line: a character
+		nothing draws, nothing selects and nobody can find, in a file that looks exactly right.
+	*/
+	fuiEditorSetText(&harness.editor, "ab\r\ncd", 0);
+	CHECK(fuiEditorGetEol(&harness.editor) == fuiEditorEol_CrLf);
+	fuiEditorSetCaretOffset(&harness.editor, 4, dropTheSelection);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abcd");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 2);
+
+	fuiEditorSetText(&harness.editor, "ab\r\ncd", 0);
+	fuiEditorSetCaretOffset(&harness.editor, 2, dropTheSelection);
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abcd");
+
+	// And enter writes back what the document arrived with, so a crlf file stays crlf rather than mixed.
+	fuiEditorSetText(&harness.editor, "ab\r\ncd", 0);
+	fuiEditorSetCaretOffset(&harness.editor, 1, dropTheSelection);
+	HarnessPressKey(&harness, fuiKey_Return, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "a\r\nb\r\ncd");
+	CHECK_I(fuiEditorGetLineCount(&harness.editor), 3);
+	CHECK(fuiEditorGetEol(&harness.editor) == fuiEditorEol_CrLf);
+
+	(void)withShift;
+	HarnessRelease(&harness);
+}
+
+static void SelfTestOverwriteMode(void) {
+	CheckSection("overwrite mode");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "abc\ndef", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool dropTheSelection = false;
+
+	CHECK(!fuiEditorIsOverwriting(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_Insert, noShift, noControl);
+	CHECK(fuiEditorIsOverwriting(&harness.editor));
+
+	fuiEditorSetCaretOffset(&harness.editor, 0, dropTheSelection);
+	HarnessTypeText(&harness, "X", noControl);
+	CHECK_TEXT(&harness.editor, "Xbc\ndef");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 1);
+
+	// Two characters at once eat two, which is what a paste of two would have to do as well.
+	HarnessTypeText(&harness, "YZ", noControl);
+	CHECK_TEXT(&harness.editor, "XYZ\ndef");
+
+	/*
+		At the end of a line there is nothing to overwrite, so it INSERTS.
+
+		Eating the break would join the line to the one below it, and joining two lines is not what
+		replacing a character means in any editor anybody has used.
+	*/
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 3);
+	HarnessTypeText(&harness, "W", noControl);
+	CHECK_TEXT(&harness.editor, "XYZW\ndef");
+	CHECK_I(fuiEditorGetLineCount(&harness.editor), 2);
+
+	// And a break TYPED while overwriting still splits, rather than replacing a character with a newline.
+	fuiEditorSetCaretOffset(&harness.editor, 1, dropTheSelection);
+	HarnessPressKey(&harness, fuiKey_Return, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "X\nYZW\ndef");
+
+	HarnessPressKey(&harness, fuiKey_Insert, noShift, noControl);
+	CHECK(!fuiEditorIsOverwriting(&harness.editor));
+	fuiEditorSetCaretOffset(&harness.editor, 0, dropTheSelection);
+	HarnessTypeText(&harness, "Q", noControl);
+	CHECK_TEXT(&harness.editor, "QX\nYZW\ndef");
+
+	HarnessRelease(&harness);
+}
+
+static void SelfTestCutPasteAndLines(void) {
+	CheckSection("cut, paste and the line commands");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "one\ntwo\nthree", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool withControl = true;
+
+	// Ctrl+x on a selection: the clipboard gets it, the document loses it.
+	fuiEditorSetSelection(&harness.editor, 4, 7);
+	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "one\n\nthree");
+	CHECK(strcmp(g_testClipboard, "two") == 0);
+
+	// And ctrl+v puts it back where the caret was left.
+	HarnessPressKey(&harness, fuiKey_V, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 7);
+
+	/*
+		Ctrl+x with NOTHING selected takes the whole line, its ending included.
+
+		Without the ending it would be a way to blank a line rather than a way to move one, and pasting it
+		back somewhere else would run it into whatever is already there.
+	*/
+	fuiEditorSetCaretLine(&harness.editor, 1);
+	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "one\nthree");
+	CHECK(strcmp(g_testClipboard, "two\n") == 0);
+
+	// Ctrl+d on the LAST line takes the ending in front of it - there is none behind it to take.
+	fuiEditorSetCaretLine(&harness.editor, 1);
+	HarnessPressKey(&harness, fuiKey_D, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "one");
+	CHECK_I(fuiEditorGetLineCount(&harness.editor), 1);
+
+	/*
+		A cut whose COPY failed must not delete anything.
+
+		FPL's own clipboard hook refuses above two kilobytes, and there is no undo stack to catch this
+		until the next iteration - so a cut that went ahead anyway would be a delete with no way back.
+	*/
+	fuiEditorSetText(&harness.editor, "keep me", 0);
+	fuiEditorSelectAll(&harness.editor);
+	g_testClipboardRefusesEverything = true;
+	int32_t versionBeforeTheRefusedCut = harness.editor.version;
+	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
+	CHECK_I(harness.editor.version, versionBeforeTheRefusedCut);
+	CHECK_TEXT(&harness.editor, "keep me");
+	g_testClipboardRefusesEverything = false;
+
+	// Shift and insert is the other spelling of paste, and shift and delete of cut.
+	fuiEditorSetText(&harness.editor, "abc", 0);
+	fplCopyString("!", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	fuiEditorSetCaretOffset(&harness.editor, 3, false);
+	HarnessPressKey(&harness, fuiKey_Insert, true, noControl);
+	CHECK_TEXT(&harness.editor, "abc!");
+	fuiEditorSetSelection(&harness.editor, 0, 3);
+	HarnessPressKey(&harness, fuiKey_Delete, true, noControl);
+	CHECK_TEXT(&harness.editor, "!");
+	CHECK(strcmp(g_testClipboard, "abc") == 0);
+
+	(void)noShift;
+	HarnessRelease(&harness);
+}
+
+/*
+	The middle mouse button pastes where it is CLICKED, not where the caret was.
+
+	That is what it does everywhere on x11, and it is the reason final_ui.h needed fuiMouseButtonWentDown:
+	fuiInteract answers for the left button and for nothing else.
+*/
+static void SelfTestMiddleButtonPaste(void) {
+	CheckSection("middle button paste");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "aaaaaaaaaa\nbbbbbbbbbb\ncccccccccc", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	fplCopyString("PASTED", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+
+	// The caret is parked at the very end, so a paste that landed AT the caret rather than at the pointer
+	// would show up on the last line instead of the first.
+	int32_t documentLength = fuiEditorGetTextLength(&harness.editor);
+	fuiEditorSetCaretOffset(&harness.editor, documentLength, false);
+
+	int32_t lengthOfTheFirstLineBefore = fuiEditorGetLineLength(&harness.editor, 0);
+	float insideTheFirstLineX = harness.rect.x + 200.0f;
+	float insideTheFirstLineY = harness.rect.y + DEMO_TEST_FONT_HEIGHT * 0.5f;
+	HarnessClickMiddleAt(&harness, insideTheFirstLineX, insideTheFirstLineY);
+
+	int32_t lengthOfTheFirstLineAfter = fuiEditorGetLineLength(&harness.editor, 0);
+	CHECK_I(lengthOfTheFirstLineAfter - lengthOfTheFirstLineBefore, 6);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 0);
+	CHECK_I(fuiEditorGetLineCount(&harness.editor), 3);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	One toggle, and it has to hold every writing branch there is.
+
+	Reading is not writing, so ctrl+c goes on working - and neither is the PROGRAM writing, so
+	fuiEditorInsert goes on working too. A read-only editor a caller cannot fill is a view onto nothing.
+*/
+static void SelfTestReadOnly(void) {
+	CheckSection("read only");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "one\ntwo\nthree", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	harness.config.toggles.isReadOnly = true;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool withControl = true;
+
+	CHECK(fuiEditorIsReadOnly(&harness.editor));
+	fplCopyString("nope", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	fuiEditorSetCaretOffset(&harness.editor, 2, false);
+
+	int32_t versionBefore = harness.editor.version;
+	HarnessTypeText(&harness, "X", noControl);
+	HarnessPressKey(&harness, fuiKey_Return, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_V, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_D, noShift, withControl);
+	CHECK_I(harness.editor.version, versionBefore);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	CHECK(!fuiEditorIsModified(&harness.editor));
+
+	// The api a user reaches through is shut as well, and every one of them says so rather than lying.
+	CHECK(!fuiEditorInsertAtCaret(&harness.editor, "X", 1));
+	CHECK(!fuiEditorInsertLineBreak(&harness.editor));
+	CHECK(!fuiEditorDeleteBackward(&harness.editor));
+	CHECK(!fuiEditorDeleteForward(&harness.editor));
+	CHECK(!fuiEditorDeleteLine(&harness.editor, 0));
+	fuiEditorSelectAll(&harness.editor);
+	CHECK(!fuiEditorDeleteSelection(&harness.editor));
+	CHECK_I(harness.editor.version, versionBefore);
+
+	// Copying is reading, so it still works.
+	g_testClipboardSetCount = 0;
+	HarnessPressKey(&harness, fuiKey_C, noShift, withControl);
+	CHECK_I(g_testClipboardSetCount, 1);
+
+	// And the PROGRAM may still fill it, which is what makes a read-only view usable at all.
+	CHECK(fuiEditorInsert(&harness.editor, 0, "filled ", 7));
+	CHECK(harness.editor.version != versionBefore);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	An edit moves the caret and the selection that stood behind it.
+
+	Without this a caller that inserts a line at the top of a document would have to know that the caret it
+	left on line five hundred is now on line five hundred and one - and every caller would get it wrong in
+	the same way.
+*/
+static void SelfTestEditsMoveTheCaret(void) {
+	CheckSection("an edit moves the caret");
+
+	fuiEditor editor;
+	if(!fuiEditorInit(&editor, fpl_null)) {
+		CHECK(false);
+		return;
+	}
+	const bool dropTheSelection = false;
+
+	fuiEditorSetText(&editor, "0123456789", 0);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 0);
+
+	fuiEditorSetCaretOffset(&editor, 5, dropTheSelection);
+	CHECK(fuiEditorInsert(&editor, 2, "abc", 3));
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 8);
+
+	// An insert BEHIND the caret leaves it exactly where it was.
+	CHECK(fuiEditorInsert(&editor, 10, "z", 1));
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 8);
+
+	// An erase in front of it pulls it back by what went away.
+	CHECK(fuiEditorErase(&editor, 0, 3));
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 5);
+
+	// And an erase THROUGH it collapses it onto where the erase happened.
+	CHECK(fuiEditorErase(&editor, 4, 3));
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 4);
+
+	// The selection is two positions and both of them move.
+	fuiEditorSetText(&editor, "0123456789", 0);
+	fuiEditorSetSelection(&editor, 2, 6);
+	CHECK(fuiEditorInsert(&editor, 0, "AB", 2));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 4);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 8);
+
+	// A load is not an edit: the caret goes back to the front rather than being carried to the end by the
+	// insert that filled the document.
+	fuiEditorSetText(&editor, "a much longer document than the one before it", 0);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 0);
+	CHECK(!fuiEditorHasSelection(&editor));
+
+	fuiEditorRelease(&editor);
+}
+
+static int32_t g_changeCallCount = 0;
+static fuiEditorChange g_lastChange;
+
+static void TestOnChange(fuiEditor *editor, const fuiEditorChange *change, void *userData) {
+	(void)editor;
+	(void)userData;
+	g_changeCallCount += 1;
+	g_lastChange = *change;
+}
+
+static void SelfTestChangeCallback(void) {
+	CheckSection("the change callback");
+
+	fuiEditor editor;
+	if(!fuiEditorInit(&editor, fpl_null)) {
+		CHECK(false);
+		return;
+	}
+
+	fuiEditorConfig config = fuiEditorDefaultConfig();
+	config.callbacks.onChange = TestOnChange;
+	fuiEditorSetConfig(&editor, &config);
+
+	// Filling the document is not a CHANGE to it: the caller is the one who did it, and being told about
+	// one's own load is noise at best and a recursion at worst.
+	g_changeCallCount = 0;
+	fuiEditorSetText(&editor, "one\ntwo\nthree", 0);
+	CHECK_I(g_changeCallCount, 0);
+
+	fuiEditorSetCaretOffset(&editor, 4, false);
+	CHECK(fuiEditorInsertAtCaret(&editor, "ab", 2));
+	CHECK_I(g_changeCallCount, 1);
+	CHECK_I(g_lastChange.offset, 4);
+	CHECK_I(g_lastChange.removedBytes, 0);
+	CHECK_I(g_lastChange.insertedBytes, 2);
+	CHECK_I(g_lastChange.firstLine, 1);
+	CHECK_I(g_lastChange.lineCountDelta, 0);
+
+	// A text with a break in it says how many lines came with it, so a caller keeping something per line
+	// knows how far to shift it.
+	CHECK(fuiEditorInsertAtCaret(&editor, "x\ny\nz", 5));
+	CHECK_I(g_changeCallCount, 2);
+	CHECK_I(g_lastChange.lineCountDelta, 2);
+
+	CHECK(fuiEditorErase(&editor, 0, 4));
+	CHECK_I(g_changeCallCount, 3);
+	CHECK_I(g_lastChange.offset, 0);
+	CHECK_I(g_lastChange.removedBytes, 4);
+	CHECK_I(g_lastChange.insertedBytes, 0);
+	CHECK_I(g_lastChange.lineCountDelta, -1);
+
+	fuiEditorRelease(&editor);
+}
+
+//! A generator with a fixed seed, so a failure in the run below is reproducible rather than a story
+static uint32_t TestNextRandom(uint32_t *state) {
+	*state = (*state) * 1664525u + 1013904223u;
+	return(*state);
+}
+
+/*
+	The acceptance criterion of this iteration, without a window: edit, and let the bytes prove it.
+
+	A long run of inserts and deletes at pseudo random places is applied to the editor and to a plain
+	malloc'd buffer at the same time, and the two are compared byte for byte at the end. The gap buffer,
+	the split line index, the shared tail offset and the caret bookkeeping all have to agree with a
+	reference implementation that is too dumb to be wrong - and the line index is checked separately
+	against a raw scan for line feeds, because a document whose BYTES are right and whose LINES are not
+	looks perfect until something asks it for line nine thousand.
+*/
+static void SelfTestEditsAgainstAPlainBuffer(void) {
+	CheckSection("edits against a plain buffer");
+
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && fileData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], &fileData, &fileLength);
+		candidateIndex += 1;
+	}
+	if(fileData == fpl_null) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	if(!fuiEditorInit(&editor, fpl_null)) {
+		free(fileData);
+		CHECK(false);
+		return;
+	}
+	fuiEditorSetText(&editor, (const char *)fileData, fileLength);
+
+	const int32_t stepCount = 400;
+	const int32_t longestInsert = 16;
+	const int32_t longestErase = 24;
+	int32_t mirrorCapacity = fileLength + stepCount * longestInsert + longestInsert;
+	char *mirror = (char *)malloc((size_t)mirrorCapacity);
+	if(mirror == fpl_null) {
+		fuiEditorRelease(&editor);
+		free(fileData);
+		CHECK(false);
+		return;
+	}
+	memcpy(mirror, fileData, (size_t)fileLength);
+	int32_t mirrorLength = fileLength;
+	free(fileData);
+
+	const char *insertTexts[] = { "x", "hello", "\n", "ab\ncd", "  \t", "\xc3\xa4\xc3\xb6", "// note\n", "}\n\n" };
+	uint32_t randomState = 0x13579BDFu;
+	bool everyStepAgreed = true;
+
+	for(int32_t stepIndex = 0; stepIndex < stepCount && everyStepAgreed; ++stepIndex) {
+		int32_t documentLength = fuiEditorGetTextLength(&editor);
+		uint32_t placeRoll = TestNextRandom(&randomState);
+		int32_t rawOffset = (int32_t)(placeRoll % (uint32_t)(documentLength + 1));
+		int32_t offset = fuiEditorSnapToCodepointStart(&editor, rawOffset);
+
+		bool wantsToInsert = ((placeRoll & 0x10000u) != 0u);
+		if(wantsToInsert) {
+			uint32_t textRoll = TestNextRandom(&randomState);
+			const char *insertText = insertTexts[textRoll % fplArrayCount(insertTexts)];
+			int32_t insertLength = (int32_t)strlen(insertText);
+
+			fuiEditorSetCaretOffset(&editor, offset, false);
+			everyStepAgreed = fuiEditorInsertAtCaret(&editor, insertText, insertLength);
+
+			int32_t bytesBehindTheEdit = mirrorLength - offset;
+			memmove(&mirror[offset + insertLength], &mirror[offset], (size_t)bytesBehindTheEdit);
+			memcpy(&mirror[offset], insertText, (size_t)insertLength);
+			mirrorLength += insertLength;
+
+			// The caret has to come out BEHIND what was written, or typing would run backwards.
+			int32_t caretAfterTheInsert = fuiEditorGetCaretOffset(&editor);
+			everyStepAgreed = everyStepAgreed && (caretAfterTheInsert == (offset + insertLength));
+		} else {
+			uint32_t lengthRoll = TestNextRandom(&randomState);
+			int32_t wantedEnd = offset + (int32_t)(lengthRoll % (uint32_t)longestErase) + 1;
+			if(wantedEnd > documentLength) {
+				wantedEnd = documentLength;
+			}
+			int32_t eraseEnd = fuiEditorSnapToCodepointStart(&editor, wantedEnd);
+			if(eraseEnd <= offset) {
+				continue;
+			}
+
+			fuiEditorSetSelection(&editor, offset, eraseEnd);
+			everyStepAgreed = fuiEditorDeleteSelection(&editor);
+
+			int32_t bytesBehindTheErase = mirrorLength - eraseEnd;
+			memmove(&mirror[offset], &mirror[eraseEnd], (size_t)bytesBehindTheErase);
+			mirrorLength -= (eraseEnd - offset);
+
+			// And the caret collapses onto where the erase happened, whichever end it was dragged from.
+			int32_t caretAfterTheErase = fuiEditorGetCaretOffset(&editor);
+			everyStepAgreed = everyStepAgreed && (caretAfterTheErase == offset);
+		}
+	}
+	CHECK(everyStepAgreed);
+
+	int32_t finalLength = fuiEditorGetTextLength(&editor);
+	CHECK_I(finalLength, mirrorLength);
+
+	if(finalLength == mirrorLength) {
+		const char *documentText = fuiEditorGetContiguousText(&editor);
+		int comparison = memcmp(documentText, mirror, (size_t)mirrorLength);
+		CHECK_I(comparison, 0);
+	}
+
+	// The line index, against a raw scan for line feeds. Bytes being right says nothing about lines.
+	int32_t expectedLineCount = 1;
+	for(int32_t byteIndex = 0; byteIndex < mirrorLength; ++byteIndex) {
+		if(mirror[byteIndex] == '\n') {
+			expectedLineCount += 1;
+		}
+	}
+	CHECK_I(fuiEditorGetLineCount(&editor), expectedLineCount);
+
+	bool everyLineStartMatches = true;
+	int32_t expectedLineIndex = 0;
+	int32_t expectedLineStart = 0;
+	for(int32_t byteIndex = 0; byteIndex <= mirrorLength && everyLineStartMatches; ++byteIndex) {
+		bool isTheEndOfALine = (byteIndex == mirrorLength) || (mirror[byteIndex] == '\n');
+		if(!isTheEndOfALine) {
+			continue;
+		}
+		int32_t reportedStart = fuiEditorGetLineStart(&editor, expectedLineIndex);
+		int32_t reportedLine = fuiEditorGetLineOfOffset(&editor, expectedLineStart);
+		everyLineStartMatches = (reportedStart == expectedLineStart) && (reportedLine == expectedLineIndex);
+		expectedLineIndex += 1;
+		expectedLineStart = byteIndex + 1;
+	}
+	CHECK(everyLineStartMatches);
+
+	free(mirror);
+	fuiEditorRelease(&editor);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -2058,6 +2760,15 @@ static int RunSelfTest(void) {
 	SelfTestIncrementalColouring();
 	SelfTestDecorationLookup();
 	SelfTestLineEndingsOfLines();
+	SelfTestTyping();
+	SelfTestEnterBackspaceDelete();
+	SelfTestOverwriteMode();
+	SelfTestCutPasteAndLines();
+	SelfTestMiddleButtonPaste();
+	SelfTestReadOnly();
+	SelfTestEditsMoveTheCaret();
+	SelfTestChangeCallback();
+	SelfTestEditsAgainstAPlainBuffer();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -2093,6 +2804,10 @@ typedef struct EditorDemoState {
 	fuiEditorConfig editorConfig;
 	//! What the last copy came to, since what reaches the SYSTEM clipboard is up to the platform
 	char copyDescription[192];
+	//! What the last change to the document was, as onChange reported it
+	char editDescription[192];
+	//! What the last save came to, and whether what was written read back identical
+	char saveDescription[256];
 	//! Whether the C lexer is installed
 	bool useLexer;
 	//! Whether the changed lines are handed over as decorations
@@ -2307,6 +3022,9 @@ static bool DemoReadWholeFile(const char *filePath, uint8_t **outData, int32_t *
 	return(true);
 }
 
+//! Defined below, beside the saving it keeps the description for
+static void DemoOnEditorChange(fuiEditor *editor, const fuiEditorChange *change, void *userData);
+
 static void DemoInit(EditorDemoState *demo) {
 	fplClearStruct(demo);
 	demo->isRunning = true;
@@ -2315,12 +3033,16 @@ static void DemoInit(EditorDemoState *demo) {
 	// Started from the defaults and then edited by the toolbar, which is what a caller who wants to change
 	// one thing does: take the defaults, change the one field, hand the whole thing back.
 	demo->editorConfig = fuiEditorDefaultConfig();
+	demo->editorConfig.callbacks.onChange = DemoOnEditorChange;
+	demo->editorConfig.callbacks.userData = demo;
 	fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
 
 	DemoBuildCStyleTable();
 	demo->useLexer = true;
 	demo->decoratedVersion = -1;
 	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
+	fplCopyString("Type into it - there is no undo yet, so what is typed cannot be taken back", demo->editDescription, fplArrayCount(demo->editDescription));
+	fplCopyString("Not saved yet", demo->saveDescription, fplArrayCount(demo->saveDescription));
 
 	// Tried from the working directory and from one level up, so running it out of the build folder and
 	// out of the repository root both find something.
@@ -2395,6 +3117,76 @@ static void DemoChangeAnEarlyLine(EditorDemoState *demo) {
 	int32_t lineEnd = fuiEditorGetLineEnd(&demo->editor, theLineToChange);
 	(void)fuiEditorInsert(&demo->editor, lineEnd, marker, 0);
 	demo->showChangedLines = true;
+}
+
+/*
+	What onChange is for, shown by using it.
+
+	The editor says where the change was, how many bytes went and came and how many lines appeared - so a
+	caller that keeps something ALONGSIDE the document, a baseline or an outline or a diff, can bring it up
+	to date without walking the document to find out what happened. The demo only writes a sentence with it,
+	but a sentence is enough to show that everything which changes the document arrives here: a key, a
+	paste, the middle mouse button and the toolbar's own fuiEditorInsert alike.
+*/
+static void DemoOnEditorChange(fuiEditor *editor, const fuiEditorChange *change, void *userData) {
+	EditorDemoState *demo = (EditorDemoState *)userData;
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	fplStringFormat(demo->editDescription, fplArrayCount(demo->editDescription), "Line %d: -%d +%d bytes, %+d lines, caret now on line %d", (int)(change->firstLine + 1), (int)change->removedBytes, (int)change->insertedBytes, (int)change->lineCountDelta, (int)(caretLine + 1));
+}
+
+static bool DemoWriteWholeFile(const char *filePath, const void *data, const int32_t dataLength) {
+	fplFileHandle fileHandle;
+	if(!fplFileCreateBinary(filePath, &fileHandle)) {
+		return(false);
+	}
+	uint32_t writtenCount = fplFileWriteBlock32(&fileHandle, data, (uint32_t)dataLength);
+	fplFileClose(&fileHandle);
+	return(writtenCount == (uint32_t)dataLength);
+}
+
+/*
+	The acceptance criterion of this iteration, as a button.
+
+	"It saved" and "what came out is what was in there" are two different claims, and only the second one is
+	worth making - so what was written is read straight back in and compared byte for byte. It goes to a
+	file of its OWN rather than back over the source: the document on screen is this repository's own
+	final_ui.h, and a demo that overwrites the file it is showing is a demo nobody runs twice.
+*/
+static void DemoSaveAndVerify(EditorDemoState *demo) {
+	int32_t documentLength = fuiEditorGetTextLength(&demo->editor);
+	if(documentLength <= 0) {
+		fplCopyString("Nothing to save - the document is empty", demo->saveDescription, fplArrayCount(demo->saveDescription));
+		return;
+	}
+
+	const char *documentText = fuiEditorGetContiguousText(&demo->editor);
+	if(!DemoWriteWholeFile(DEMO_SAVE_FILE_PATH, documentText, documentLength)) {
+		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Could not write %s", DEMO_SAVE_FILE_PATH);
+		return;
+	}
+
+	uint8_t *savedData = fpl_null;
+	int32_t savedLength = 0;
+	if(!DemoReadWholeFile(DEMO_SAVE_FILE_PATH, &savedData, &savedLength)) {
+		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Wrote %s but could not read it back", DEMO_SAVE_FILE_PATH);
+		return;
+	}
+
+	bool lengthsMatch = (savedLength == documentLength);
+	bool bytesMatch = false;
+	if(lengthsMatch) {
+		int comparison = memcmp(savedData, documentText, (size_t)documentLength);
+		bytesMatch = (comparison == 0);
+	}
+	free(savedData);
+
+	if(!lengthsMatch || !bytesMatch) {
+		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "MISMATCH: wrote %d bytes, read back %d", (int)documentLength, (int)savedLength);
+		return;
+	}
+
+	fuiEditorClearModified(&demo->editor);
+	fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Saved %d bytes to %s and read them back identical", (int)documentLength, DEMO_SAVE_FILE_PATH);
 }
 
 /*
@@ -2600,6 +3392,29 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 		fuiLabel(ui, noteRect, demo->copyDescription);
 	}
 	fuiEndStack(ui);
+
+	// What this iteration added: the document can be written to now. Read only is a CONFIGURATION toggle
+	// like every other one here, and it is the one gate every writing branch in the editor goes through.
+	fuiRect editingRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "editing", fuiAxis_Horizontal, editingRow, rowSpacing);
+	{
+		fuiRect readOnlyRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, readOnlyRect, "Read only", &demo->editorConfig.toggles.isReadOnly)) {
+			configurationChanged = true;
+		}
+
+		fuiRect saveRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, saveRect, "Save & verify")) {
+			DemoSaveAndVerify(demo);
+		}
+
+		fuiRect saveNoteRect = fuiLayoutRemaining(ui);
+		fuiLabel(ui, saveNoteRect, demo->saveDescription);
+	}
+	fuiEndStack(ui);
+
+	fuiRect changeRow = fuiLayoutSlot(ui, rowHeight);
+	fuiLabel(ui, changeRow, demo->editDescription);
 
 	fuiRect colouringRow = fuiLayoutSlot(ui, rowHeight);
 	fuiBeginStackAt(ui, "colouring", fuiAxis_Horizontal, colouringRow, rowSpacing);
