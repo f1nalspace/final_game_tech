@@ -7,8 +7,9 @@ Description:
 
 	The editor add-on is built over several iterations, and this demo grows with it. What is in right now
 	is the document - a gap buffer, a line index that is a split array of its own, and the encoding seam -
-	and a widget over it that can be READ: a gutter with line numbers, tab stops, two scrollbars and a
-	status line. Nothing types into it yet.
+	and a widget over it that can be READ: a gutter with line numbers, tab stops, two scrollbars, a status
+	line, and a caret that can be moved by the keyboard and the mouse and selected from. Nothing types
+	into it yet.
 
 	It fills itself from final_ui.h, because at over fourteen thousand lines that is the largest file to
 	hand and the one the add-on has to hold up against.
@@ -1003,6 +1004,508 @@ static void SelfTestWidgetEmptyDocument(void) {
 	fuiRelease(&ui);
 }
 
+/*
+	One editor, one context, one face of known measurements - built headlessly so that a key can be
+	pressed and the answer read back without a window anywhere near it.
+*/
+typedef struct EditorTestHarness {
+	fuiFont face;
+	fuiContext ui;
+	fuiEditor editor;
+	fuiInput input;
+	fuiRect rect;
+	fuiEditorConfig config;
+} EditorTestHarness;
+
+static bool HarnessInit(EditorTestHarness *harness, const char *text, const float editorWidth, const float editorHeight) {
+	fplClearStruct(harness);
+	harness->face = MakeTestFace();
+	if(!fuiInit(&harness->ui, &harness->face, fpl_null)) {
+		return(false);
+	}
+	if(!fuiEditorInit(&harness->editor, fpl_null)) {
+		fuiRelease(&harness->ui);
+		return(false);
+	}
+
+	harness->config = fuiEditorDefaultConfig();
+	harness->config.metrics.fontHeight = DEMO_TEST_FONT_HEIGHT;
+	harness->config.metrics.textPaddingX = 4.0f;
+	harness->config.metrics.gutterPaddingX = 4.0f;
+	harness->config.metrics.statusBarHeight = 24.0f;
+	harness->config.metrics.tabSize = 4;
+	fuiEditorSetConfig(&harness->editor, &harness->config);
+
+	if(text != fpl_null) {
+		fuiEditorSetText(&harness->editor, text, 0);
+	}
+
+	harness->rect = fuiRectMake(10.0f, 10.0f, editorWidth, editorHeight);
+	harness->input = fuiZeroInput();
+	harness->input.windowSize = fuiV2i((int32_t)(editorWidth + 64.0f), (int32_t)(editorHeight + 64.0f));
+	harness->input.deltaTime = 1.0f / 60.0f;
+	harness->input.isActive = true;
+	return(true);
+}
+
+static void HarnessRelease(EditorTestHarness *harness) {
+	fuiEditorRelease(&harness->editor);
+	fuiRelease(&harness->ui);
+}
+
+//! Builds one frame and then clears every input EDGE, the way a real frame's input would have moved on
+static fuiEditorAction HarnessFrame(EditorTestHarness *harness) {
+	fuiBeginFrame(&harness->ui, &harness->input, fuiPass_Both);
+	fuiEditorAction action = fuiTextEditor(&harness->ui, harness->rect, "editor", &harness->editor);
+	fuiEndFrame(&harness->ui);
+
+	harness->input.mouseWheelDelta = 0.0f;
+	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
+		harness->input.keys[keyIndex].halfTransitionCount = 0;
+		harness->input.keys[keyIndex].endedDown = false;
+	}
+	for(int32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
+		harness->input.mouseButtons[buttonIndex].halfTransitionCount = 0;
+		harness->input.mouseButtons[buttonIndex].endedDown = false;
+	}
+	return(action);
+}
+
+//! Presses one key with its modifiers and builds the frame that sees it
+static void HarnessPressKey(EditorTestHarness *harness, const fuiKey key, const bool withShift, const bool withControl) {
+	harness->input.keys[key].halfTransitionCount = 1;
+	harness->input.keys[key].endedDown = true;
+	if(withShift) {
+		harness->input.keys[fuiKey_LeftShift].halfTransitionCount = 1;
+		harness->input.keys[fuiKey_LeftShift].endedDown = true;
+	}
+	if(withControl) {
+		harness->input.keys[fuiKey_LeftControl].halfTransitionCount = 1;
+		harness->input.keys[fuiKey_LeftControl].endedDown = true;
+	}
+	(void)HarnessFrame(harness);
+}
+
+//! Gives the editor the keyboard, which a click would otherwise have done
+static void HarnessFocusTheEditor(EditorTestHarness *harness) {
+	fuiId editorId = fuiGetId(&harness->ui, "editor");
+	fuiSetFocusedId(&harness->ui, editorId);
+}
+
+/*
+	Where a character sits and which character a place belongs to, which have to be each other's inverse.
+
+	Every tab stop in the line is a place where the two could disagree, so the line under test has one at
+	the front, one in the middle and text on both sides of it.
+*/
+static void SelfTestLineGeometry(void) {
+	CheckSection("line geometry");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "ab\tcd", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+
+	fuiEditor__Render render = fuiEditor__MakeRender(&harness.ui, &harness.editor.resolvedConfig);
+	CHECK(render.isMonospace);
+
+	float characterWidth = render.characterWidth;
+	float tabWidth = characterWidth * 4.0f;
+	int32_t lineStart = fuiEditorGetLineStart(&harness.editor, 0);
+	int32_t lineEnd = fuiEditorGetLineEnd(&harness.editor, 0);
+	CHECK_I(lineEnd - lineStart, 5);
+
+	// "ab" is two characters, the tab then jumps to the stop at four, and "cd" follows it.
+	float distanceAtA = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 0);
+	float distanceAtB = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 1);
+	float distanceAtTab = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 2);
+	float distanceAtC = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 3);
+	float distanceAtEnd = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 5);
+	CHECK(distanceAtA == 0.0f);
+	CHECK(distanceAtB == characterWidth);
+	CHECK(distanceAtTab == characterWidth * 2.0f);
+	CHECK(distanceAtC == tabWidth);
+	CHECK(distanceAtEnd == tabWidth + characterWidth * 2.0f);
+
+	// And the way back. A point just inside a character belongs to it; one just past its middle belongs
+	// to the next.
+	int32_t offsetAtNothing = fuiEditor__OffsetAtDistance(&harness.ui, &harness.editor, &render, lineStart, lineEnd, 0.0f);
+	int32_t offsetJustInsideB = fuiEditor__OffsetAtDistance(&harness.ui, &harness.editor, &render, lineStart, lineEnd, characterWidth * 1.1f);
+	int32_t offsetPastTheTab = fuiEditor__OffsetAtDistance(&harness.ui, &harness.editor, &render, lineStart, lineEnd, tabWidth + characterWidth * 0.1f);
+	int32_t offsetPastTheEnd = fuiEditor__OffsetAtDistance(&harness.ui, &harness.editor, &render, lineStart, lineEnd, tabWidth * 10.0f);
+	CHECK_I(offsetAtNothing, 0);
+	CHECK_I(offsetJustInsideB, 1);
+	CHECK_I(offsetPastTheTab, 3);
+	CHECK_I(offsetPastTheEnd, 5);
+
+	// Every boundary of the line has to survive the round trip through both of them.
+	int32_t firstWrongRoundTrip = -1;
+	for(int32_t offset = lineStart; offset <= lineEnd; ++offset) {
+		float distance = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &render, lineStart, lineEnd, offset);
+		int32_t backAgain = fuiEditor__OffsetAtDistance(&harness.ui, &harness.editor, &render, lineStart, lineEnd, distance);
+		if(backAgain != offset && firstWrongRoundTrip < 0) {
+			firstWrongRoundTrip = offset;
+		}
+	}
+	CHECK_I(firstWrongRoundTrip, -1);
+
+	HarnessRelease(&harness);
+}
+
+//! What counts as a word, which is what ctrl and an arrow, and a double click, both go by
+static void SelfTestWords(void) {
+	CheckSection("words");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "foo bar_baz  qux(1)\nnext", 0);
+
+	// 0123456789...
+	// foo bar_baz  qux(1)
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 0), 4);
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 4), 13);
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 13), 16);
+	CHECK_I(fuiEditor__PreviousWordOffset(&editor, 11), 4);
+	CHECK_I(fuiEditor__PreviousWordOffset(&editor, 4), 0);
+	CHECK_I(fuiEditor__PreviousWordOffset(&editor, 0), 0);
+
+	// Punctuation is a run of its own, so "qux(1)" is four jumps rather than one.
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 16), 17);
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 17), 18);
+
+	// And a jump never runs over a line break: one press reaches it, the next one crosses it.
+	int32_t lineBreakOffset = 19;
+	CHECK_I(fuiEditor__NextWordOffset(&editor, 18), lineBreakOffset);
+	CHECK_I(fuiEditor__NextWordOffset(&editor, lineBreakOffset), lineBreakOffset + 1);
+
+	int32_t wordStart = 0;
+	int32_t wordEnd = 0;
+	fuiEditor__WordRangeAt(&editor, 6, &wordStart, &wordEnd);
+	CHECK_I(wordStart, 4);
+	CHECK_I(wordEnd, 11);
+
+	// The bracket is punctuation, so it is its own run rather than part of the name in front of it.
+	fuiEditor__WordRangeAt(&editor, 16, &wordStart, &wordEnd);
+	CHECK_I(wordStart, 16);
+	CHECK_I(wordEnd, 17);
+
+	// A whole line comes WITH its ending, so pasting it back somewhere puts a line there.
+	int32_t lineStart = 0;
+	int32_t lineEnd = 0;
+	fuiEditor__LineRangeAt(&editor, 5, &lineStart, &lineEnd);
+	CHECK_I(lineStart, 0);
+	CHECK_I(lineEnd, 20);
+
+	// The last line has no ending to take with it.
+	fuiEditor__LineRangeAt(&editor, 21, &lineStart, &lineEnd);
+	CHECK_I(lineStart, 20);
+	CHECK_I(lineEnd, fuiEditorGetTextLength(&editor));
+
+	fuiEditorRelease(&editor);
+}
+
+//! The selection itself, without a widget anywhere near it
+static void SelfTestSelection(void) {
+	CheckSection("selection");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "alpha\nbeta\ngamma", 0);
+
+	CHECK(!fuiEditorHasSelection(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 0);
+
+	fuiEditorSetSelection(&editor, 6, 10);
+	CHECK(fuiEditorHasSelection(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 6);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 10);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 10);
+
+	char selectedText[32];
+	int32_t selectedLength = fuiEditorCopySelection(&editor, selectedText, (int32_t)sizeof(selectedText));
+	CHECK_I(selectedLength, 4);
+	CHECK(strcmp(selectedText, "beta") == 0);
+
+	// Held down at the far end and dragged back is the same selection, and the caret is at the near end.
+	fuiEditorSetSelection(&editor, 10, 6);
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 6);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 10);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 6);
+
+	fuiEditorClearSelection(&editor);
+	CHECK(!fuiEditorHasSelection(&editor));
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 6);
+
+	fuiEditorSelectAll(&editor);
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), fuiEditorGetTextLength(&editor));
+
+	// Asking with no buffer answers the full length, which is what sizes one.
+	char *noBuffer = fpl_null;
+	int32_t neededLength = fuiEditorCopySelection(&editor, noBuffer, 0);
+	CHECK_I(neededLength, fuiEditorGetTextLength(&editor));
+
+	// The caret lands on a codepoint boundary however badly it is aimed.
+	fuiEditorSetText(&editor, "a\xC3\xA4" "b", 0);
+	fuiEditorSetCaretOffset(&editor, 2, false);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 1);
+	CHECK_I(fuiEditorGetCaretColumn(&editor), 1);
+	fuiEditorSetCaretOffset(&editor, 3, false);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 3);
+	CHECK_I(fuiEditorGetCaretColumn(&editor), 2);
+
+	fuiEditorRelease(&editor);
+}
+
+//! Every key the editor answers to, pressed against a document whose lines say which line they are
+static void SelfTestKeyboard(void) {
+	CheckSection("keyboard");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "aaaaaaaaaa\nbb\ncccccccccc\ndddd", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool withShift = true;
+	const bool withControl = true;
+
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 1);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 2);
+	HarnessPressKey(&harness, fuiKey_Up, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 1);
+
+	HarnessPressKey(&harness, fuiKey_End, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretColumn(&harness.editor), 2);
+	HarnessPressKey(&harness, fuiKey_Home, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretColumn(&harness.editor), 0);
+
+	HarnessPressKey(&harness, fuiKey_End, noShift, withControl);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), fuiEditorGetTextLength(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 0);
+
+	/*
+		The column a caret WANTS.
+
+		Walked off the end of a long line, down across a short one and on, it has to come back out at the
+		column it started in. A caret that only remembered where it landed would be stuck at the short
+		line's width from there on - which is the single most noticeable thing an editor can get wrong.
+	*/
+	HarnessPressKey(&harness, fuiKey_End, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretColumn(&harness.editor), 10);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretColumn(&harness.editor), 2);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretColumn(&harness.editor), 10);
+
+	// Shift drags the selection along, and a plain arrow drops it and lands on its END rather than one
+	// character past it.
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_Right, withShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Right, withShift, noControl);
+	CHECK(fuiEditorHasSelection(&harness.editor));
+	CHECK_I(fuiEditorGetSelectionStart(&harness.editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&harness.editor), 2);
+	HarnessPressKey(&harness, fuiKey_Right, noShift, noControl);
+	CHECK(!fuiEditorHasSelection(&harness.editor));
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 2);
+
+	HarnessPressKey(&harness, fuiKey_A, noShift, withControl);
+	CHECK_I(fuiEditorGetSelectionStart(&harness.editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&harness.editor), fuiEditorGetTextLength(&harness.editor));
+
+	/*
+		That the caret is really EMITTED, which is the one thing a screenshot of an unfocused editor cannot
+		show. An editor without the keyboard draws no caret; the same editor with it draws one more quad.
+	*/
+	fuiSetFocusedId(&harness.ui, FUI_ID_NONE);
+	(void)HarnessFrame(&harness);
+	const fuiDrawData *unfocusedDrawData = fuiGetDrawData(&harness.ui);
+	uint32_t vertexCountWithoutCaret = unfocusedDrawData->vertexCount;
+
+	HarnessFocusTheEditor(&harness);
+	harness.editor.caretBlinkTime = 0.0f;
+	(void)HarnessFrame(&harness);
+	const fuiDrawData *focusedDrawData = fuiGetDrawData(&harness.ui);
+	uint32_t vertexCountWithCaret = focusedDrawData->vertexCount;
+	CHECK(vertexCountWithCaret > vertexCountWithoutCaret);
+
+	/*
+		The blink, which has to be LIT the moment the caret moves.
+
+		A caret that happens to be in its dark half while somebody is typing looks like the keystroke was
+		lost, so every move resets the phase rather than letting it run on.
+	*/
+	fuiTheme *theme = fuiGetTheme(&harness.ui);
+	float blinkPeriod = 1.0f / theme->caretBlinkHz;
+	const float noTimeAtAll = 0.0f;
+	harness.editor.caretBlinkTime = 0.0f;
+	CHECK(fuiEditor__AdvanceCaretBlink(&harness.editor, theme, noTimeAtAll));
+	CHECK(!fuiEditor__AdvanceCaretBlink(&harness.editor, theme, blinkPeriod));
+	CHECK(fuiEditor__AdvanceCaretBlink(&harness.editor, theme, blinkPeriod));
+
+	// A frame that ate a whole stall comes back ON PHASE rather than running the cycles it missed.
+	harness.editor.caretBlinkTime = 0.0f;
+	const float aVeryLongStall = 60.0f;
+	(void)fuiEditor__AdvanceCaretBlink(&harness.editor, theme, aVeryLongStall);
+	CHECK(harness.editor.caretBlinkTime < (blinkPeriod * 2.0f));
+
+	harness.editor.caretBlinkTime = blinkPeriod * 1.5f;
+	fuiEditorSetCaretOffset(&harness.editor, 3, false);
+	CHECK(harness.editor.caretBlinkTime == 0.0f);
+	CHECK(fuiEditor__AdvanceCaretBlink(&harness.editor, theme, noTimeAtAll));
+
+	// A key that moves nothing reports nothing, which is what the caller's didMoveCaret is for.
+	fuiEditorSetCaretOffset(&harness.editor, 0, false);
+	fuiEditorAction quietAction = HarnessFrame(&harness);
+	CHECK(!quietAction.didMoveCaret);
+	fuiEditorAction movingAction;
+	harness.input.keys[fuiKey_Down].halfTransitionCount = 1;
+	harness.input.keys[fuiKey_Down].endedDown = true;
+	movingAction = HarnessFrame(&harness);
+	CHECK(movingAction.didMoveCaret);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The wheel against the caret.
+
+	Scrolling away from the caret and then doing nothing has to LEAVE the view where it was put. Bringing
+	the caret back into view unconditionally is the classic way to nail a document down: the wheel moves
+	it, the next frame drags it back, and it looks like the wheel is broken.
+*/
+static void SelfTestWheelDoesNotFightTheCaret(void) {
+	CheckSection("wheel against caret");
+
+	EditorTestHarness harness;
+	const int32_t lineCount = 400;
+	char documentText[400 * 16];
+	int32_t documentLength = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t roomLeft = (int32_t)sizeof(documentText) - documentLength;
+		int written = snprintf(&documentText[documentLength], (size_t)roomLeft, "line %d\n", (int)lineIndex);
+		if(written <= 0 || written >= roomLeft) {
+			break;
+		}
+		documentLength += written;
+	}
+	if(!HarnessInit(&harness, fpl_null, 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	fuiEditorSetText(&harness.editor, documentText, documentLength);
+
+	// Twice, because hovering is resolved against the PREVIOUS build - the first frame is what makes the
+	// editor the thing under the cursor.
+	harness.input.mousePosition = fuiV2(harness.rect.x + 200.0f, harness.rect.y + 100.0f);
+	(void)HarnessFrame(&harness);
+	(void)HarnessFrame(&harness);
+	CHECK(harness.editor.scrollY == 0.0f);
+
+	const float threeNotchesBackwards = -3.0f;
+	harness.input.mouseWheelDelta = threeNotchesBackwards;
+	(void)HarnessFrame(&harness);
+	float scrollAfterTheWheel = harness.editor.scrollY;
+	CHECK(scrollAfterTheWheel > 0.0f);
+
+	// And now nothing at all happens for three frames.
+	(void)HarnessFrame(&harness);
+	(void)HarnessFrame(&harness);
+	(void)HarnessFrame(&harness);
+	CHECK(harness.editor.scrollY == scrollAfterTheWheel);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 0);
+
+	// A key that DOES move the caret pulls the view back to it, which is the other half of the same rule.
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_Down, false, false);
+	CHECK(harness.editor.scrollY < scrollAfterTheWheel);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The acceptance test of this iteration: select everything and copy it out.
+
+	final_ui.h itself is the document, and what comes back has to be the file byte for byte. Everything the
+	editor does to text - the hole it is stored around, the line index over it, the offsets the selection
+	is made of - is wrong somewhere if this is off by a single byte.
+*/
+static void SelfTestCopyAgainstFile(void) {
+	CheckSection("copy against file");
+
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && fileData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], &fileData, &fileLength);
+		candidateIndex += 1;
+	}
+	if(fileData == fpl_null) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
+	CHECK(fuiEditorLoadFromMemory(&editor, fileData, fileLength, &utf8Encoding));
+
+	fuiEditorSelectAll(&editor);
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), fileLength);
+
+	char *noBuffer = fpl_null;
+	int32_t neededLength = fuiEditorCopySelection(&editor, noBuffer, 0);
+	CHECK_I(neededLength, fileLength);
+
+	char *copiedText = (char *)malloc((size_t)neededLength + 1);
+	if(copiedText != fpl_null) {
+		int32_t copiedLength = fuiEditorCopySelection(&editor, copiedText, neededLength + 1);
+		CHECK_I(copiedLength, fileLength);
+		CHECK(memcmp(copiedText, fileData, (size_t)fileLength) == 0);
+		CHECK(copiedText[fileLength] == '\0');
+		free(copiedText);
+	} else {
+		CHECK(false);
+	}
+
+	// And one selection that does NOT start at zero, so the offsets are exercised rather than the length.
+	const int32_t someWayIn = 100000;
+	const int32_t someLength = 50000;
+	fuiEditorSetSelection(&editor, someWayIn, someWayIn + someLength);
+	char *middleText = (char *)malloc((size_t)someLength + 1);
+	if(middleText != fpl_null) {
+		int32_t middleLength = fuiEditorCopySelection(&editor, middleText, someLength + 1);
+		CHECK_I(middleLength, someLength);
+		CHECK(memcmp(middleText, &fileData[someWayIn], (size_t)someLength) == 0);
+		free(middleText);
+	} else {
+		CHECK(false);
+	}
+
+	fuiEditorRelease(&editor);
+	free(fileData);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -1021,6 +1524,12 @@ static int RunSelfTest(void) {
 	SelfTestDocumentAgainstFile();
 	SelfTestWidgetLayout();
 	SelfTestWidgetEmptyDocument();
+	SelfTestLineGeometry();
+	SelfTestWords();
+	SelfTestSelection();
+	SelfTestKeyboard();
+	SelfTestWheelDoesNotFightTheCaret();
+	SelfTestCopyAgainstFile();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -1054,6 +1563,8 @@ typedef struct EditorDemoState {
 	EditorDemoMonoFace activeMonoFace;
 	//! What the editor is configured with, edited in place by the toolbar and pushed on every change
 	fuiEditorConfig editorConfig;
+	//! What the last copy came to, since what reaches the SYSTEM clipboard is up to the platform
+	char copyDescription[192];
 	//! Whether the loop keeps going
 	bool isRunning;
 } EditorDemoState;
@@ -1107,6 +1618,7 @@ static void DemoInit(EditorDemoState *demo) {
 	// one thing does: take the defaults, change the one field, hand the whole thing back.
 	demo->editorConfig = fuiEditorDefaultConfig();
 	fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
+	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
 
 	// Tried from the working directory and from one level up, so running it out of the build folder and
 	// out of the repository root both find something.
@@ -1142,12 +1654,50 @@ static void DemoRelease(EditorDemoState *demo) {
 }
 
 /*
+	Copies the selection and says how much of it there was.
+
+	The editor hands over the whole selection however big it is - it allocates for exactly what is
+	selected. What reaches the SYSTEM clipboard after that is the platform's business, and FPL's X11
+	backend currently caps a selection at FPL_MAX_BUFFER_LENGTH bytes. So the byte count is reported here
+	rather than assumed: whoever pastes it somewhere else can tell at a glance whether it all arrived.
+*/
+static void DemoCopySelection(fuiContext *ui, EditorDemoState *demo) {
+	char *noBuffer = fpl_null;
+	const int32_t noCapacity = 0;
+	int32_t selectionLength = fuiEditorCopySelection(&demo->editor, noBuffer, noCapacity);
+	if(selectionLength <= 0) {
+		fplCopyString("Nothing selected", demo->copyDescription, fplArrayCount(demo->copyDescription));
+		return;
+	}
+
+	int32_t bufferLength = selectionLength + 1;
+	char *copiedText = (char *)malloc((size_t)bufferLength);
+	if(copiedText == fpl_null) {
+		fplCopyString("Out of memory", demo->copyDescription, fplArrayCount(demo->copyDescription));
+		return;
+	}
+	(void)fuiEditorCopySelection(&demo->editor, copiedText, bufferLength);
+	bool didSet = fuiSetClipboardText(ui, copiedText);
+	free(copiedText);
+
+	const int32_t platformClipboardLimit = FPL_MAX_BUFFER_LENGTH;
+	if(!didSet) {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copy of %d bytes was refused", (int)selectionLength);
+	} else if(selectionLength >= platformClipboardLimit) {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes - the platform clipboard holds %d", (int)selectionLength, (int)platformClipboardLimit);
+	} else {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes", (int)selectionLength);
+	}
+}
+
+/*
 	What there is to show at this iteration.
 
-	The editor is read only so far - it draws, it scrolls, and nothing types into it yet. So the panel is a
-	toolbar over one fuiTextEditor: the toolbar is there to prove that the configuration really is the whole
-	of what a caller decides about an editor, and the editor below it is there to be scrolled through
-	final_ui.h, which is the largest file to hand and the one this add-on has to hold up against.
+	The editor is read only so far - it draws, it scrolls, the caret moves and the selection can be copied
+	out, and nothing types into it yet. So the panel is a toolbar over one fuiTextEditor: the toolbar is
+	there to prove that the configuration really is the whole of what a caller decides about an editor, and
+	the editor below it is there to be read through final_ui.h, which is the largest file to hand and the
+	one this add-on has to hold up against.
 */
 static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 	const float panelPadding = 16.0f;
@@ -1265,6 +1815,29 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 				configurationChanged = true;
 			}
 		}
+	}
+	fuiEndStack(ui);
+
+	fuiRect selectionRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "selection", fuiAxis_Horizontal, selectionRow, rowSpacing);
+	{
+		fuiRect interactiveRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, interactiveRect, "Interactive", &demo->editorConfig.toggles.isInteractive)) {
+			configurationChanged = true;
+		}
+
+		fuiRect selectAllRect = fuiLayoutSlot(ui, buttonWidth + buttonWidth / 2.0f);
+		if(fuiButton(ui, selectAllRect, "Select all")) {
+			fuiEditorSelectAll(&demo->editor);
+		}
+
+		fuiRect copyRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButton(ui, copyRect, "Copy")) {
+			DemoCopySelection(ui, demo);
+		}
+
+		fuiRect noteRect = fuiLayoutRemaining(ui);
+		fuiLabel(ui, noteRect, demo->copyDescription);
 	}
 	fuiEndStack(ui);
 

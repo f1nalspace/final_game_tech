@@ -21,8 +21,9 @@ the caller would hand over invariants rather than data. Everything ELSE - the
 colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
-Status: under construction. The view is there and can be read and scrolled; typing into it,
-syntax colouring, find and replace and undo are not in yet. See the changelog for what is.
+Status: under construction. The view is there and can be read, scrolled, selected from and copied
+out of; typing into it, syntax colouring, find and replace and undo are not in yet. See the
+changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -33,6 +34,7 @@ syntax colouring, find and replace and undo are not in yet. See the changelog fo
 - Create one fuiEditor per document with fuiEditorInit(), pass fui_null as allocator to use malloc/free.
 - Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory().
 - Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
+- Read the caret and the selection back with fuiEditorGetCaretOffset() and fuiEditorCopySelection().
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
 - Release it with fuiEditorRelease().
 
@@ -111,7 +113,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.2.0
+	@version v0.3.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -125,6 +127,43 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.3.0:
+	A caret in it. The view from v0.2.0 can now be moved through, selected from and copied out of - by the
+	keyboard, by the mouse, and by the caller - and it still writes nothing back. That is the whole of the
+	read-only editor: what is left after this is the part that changes the text.
+
+	- New: A caret and a selection, both of them the EDITOR's rather than the context's. final_ui.h keeps
+	  one caret for every text field there is, which is right for fields that are only ever typed into one
+	  at a time and wrong for two editors side by side. fuiEditorGetCaretOffset, fuiEditorSetCaretOffset,
+	  fuiEditorGetCaretColumn, fuiEditorSetSelection, fuiEditorSelectAll, fuiEditorClearSelection,
+	  fuiEditorHasSelection, fuiEditorGetSelectionStart, fuiEditorGetSelectionEnd and fuiEditorCopySelection.
+	- New: The keyboard. Arrows, home and end, page up and down, ctrl with the arrows for whole words, ctrl
+	  with home and end for the whole document, shift with any of them to drag the selection along, ctrl+a
+	  and ctrl+c. All of it over fuiKeyRepeat, so holding a key repeats at the same rate everything else in
+	  the library does.
+	- New: The caret remembers the column it WANTS. Walked off the end of a long line, down across a short
+	  one and on, it comes back out where it started - a caret that only remembered where it landed would
+	  be stuck at the short line's width from there on.
+	- New: The mouse. Click, drag, shift and click to reach out, double click for a word, triple click for
+	  a whole line, and a drag that began on a word or a line stays on whole ones. A drag that runs off the
+	  top or the bottom keeps scrolling by itself, faster the further out it is.
+	- New: The caret is brought back into view when it MOVED and at no other time. Doing it unconditionally
+	  is the classic way to nail a document down: the wheel scrolls away from the caret, the next frame
+	  drags it back, and the wheel looks broken. There is a test for exactly that.
+	- New: One walk over a line answers every question asked about it - where to draw it, how wide it is,
+	  how far into it an offset sits, which offset a distance lands on. They come out of the same pieces,
+	  which is what keeps the caret standing where the glyphs really are, tabs and all.
+	- New: The caret's own line is measured before the layout, so an arrow key walking into a long line can
+	  scroll sideways to it even though that line has never been on screen.
+	- New: fuiEditorConfig.colors.selectionBackground and .caret, .metrics.caretWidth, and
+	  .toggles.isInteractive - which turns the keyboard and the mouse off and leaves a view that is only read.
+	- New: The editor is in the tab chain, through fuiRegisterFocusable.
+	- Note: ctrl+c hands the WHOLE selection to fuiSetClipboardText, in one allocation of exactly its size,
+	  so nothing is ever cut off - least of all in the middle of a codepoint. What happens to it after that
+	  is the platform hook's business: FPL's X11 backend currently copies it into a buffer of
+	  FPL_MAX_BUFFER_LENGTH bytes and drops the rest. fuiEditorCopySelection is the way to get all of it.
+	- Changed: final_ui.h v0.9.8 is now the minimum, for fuiRegisterFocusable and fuiGetFrameTime.
 
 	# v0.2.0:
 	Something to look at. The document from v0.1.0 gets a widget over it that can be READ - a gutter with
@@ -210,7 +249,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 2
+#define FUI_TEXTEDITOR_VERSION_MINOR 3
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -370,6 +409,10 @@ typedef struct fuiEditorColors {
 	fuiColor gutterSeparator;
 	//! Wash over the whole width of the line the caret is on, the gutter included
 	fuiColor currentLineBackground;
+	//! Wash behind selected text, translucent so the glyphs on top of it stay readable
+	fuiColor selectionBackground;
+	//! The caret itself
+	fuiColor caret;
 	//! Fill behind the editor's own status line
 	fuiColor statusBarBackground;
 	//! Text of the editor's own status line
@@ -391,6 +434,8 @@ typedef struct fuiEditorMetrics {
 	float gutterPaddingX;
 	//! Height of the editor's own status line. Zero takes @ref fuiTheme.menuItemHeight
 	float statusBarHeight;
+	//! How wide the caret is drawn. Zero is two pixels
+	float caretWidth;
 	//! How many characters wide one tab stop is. Zero is four
 	int32_t tabSize;
 	//! How many digits the gutter is wide even when the document is shorter than that. Zero is three
@@ -408,6 +453,8 @@ typedef struct fuiEditorToggles {
 	bool showStatusBar;
 	//! Wash the line the caret is on, across the gutter as well as the text
 	bool highlightCurrentLine;
+	//! Let the keyboard and the mouse move the caret and the selection, and put the editor in the tab chain
+	bool isInteractive;
 	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode verticalScrollbar;
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
@@ -513,6 +560,26 @@ typedef struct fuiEditor {
 	int32_t widestMeasuredVersion;
 	//! Where the caret sits, as a byte offset into the document
 	int32_t caretOffset;
+	//! Where the selection was started, as a byte offset. Equal to the caret when nothing is selected
+	int32_t selectionAnchor;
+	//! How far into its line the caret WANTS to be while it is being moved up and down, in pixels
+	float desiredDistance;
+	//! Whether that wish is standing, which every sideways move drops
+	bool hasDesiredDistance;
+	//! How long the caret has been in its current blink phase
+	float caretBlinkTime;
+	//! How long ago the last press was, which is what makes the next one a double click
+	float timeSinceLastPress;
+	//! Where that press was
+	fuiVec2 lastPressPosition;
+	//! One for a click, two for a double click, three for a triple one
+	int32_t pressCount;
+	//! The range the press established, which a drag extends away from rather than collapsing
+	int32_t dragAnchorStart;
+	//! The other end of it
+	int32_t dragAnchorEnd;
+	//! Whether the editor is the one holding the press
+	bool isDraggingSelection;
 	//! Which screen line a fuiEditorScrollToLine is waiting to put at the top
 	int32_t pendingScrollScreenLine;
 	//! Whether there is such a request waiting at all
@@ -729,6 +796,10 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 typedef struct fuiEditorAction {
 	//! OUT: The editor has the keyboard
 	bool isFocused;
+	//! OUT: The caret or the selection moved during this build
+	bool didMoveCaret;
+	//! OUT: The selection was put on the clipboard during this build
+	bool didCopy;
 	//! OUT: The document was changed by this build
 	bool didChange;
 } fuiEditorAction;
@@ -772,6 +843,21 @@ fui_api const fuiEditorConfig *fuiEditorGetConfig(const fuiEditor *editor);
 fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor);
 
 /**
+* @brief Returns where the caret sits, as a byte offset into the document.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the byte offset, always on a codepoint boundary.
+*/
+fui_api int32_t fuiEditorGetCaretOffset(const fuiEditor *editor);
+
+/**
+* @brief Puts the caret somewhere, optionally dragging the selection along with it.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] offset The byte offset, clamped to the document and pulled back onto a codepoint boundary.
+* @param[in] extendSelection Keep the anchor where it is, which is what shift and a drag do. False drops the selection.
+*/
+fui_api void fuiEditorSetCaretOffset(fuiEditor *editor, const int32_t offset, const bool extendSelection);
+
+/**
 * @brief Returns which document line the caret sits on.
 * @param[in] editor Reference to the editor @ref fuiEditor.
 * @return Returns the zero based document line index.
@@ -779,12 +865,71 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 fui_api int32_t fuiEditorGetCaretLine(const fuiEditor *editor);
 
 /**
-* @brief Puts the caret at the start of a document line, which is what the current line wash follows.
+* @brief Returns how many codepoints of its line stand in front of the caret.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero based column.
+* @note Counted in CODEPOINTS, not in the columns a tab spans - the two differ the moment a line is
+*       indented, and which of them a status line should say is the caller's taste rather than this file's.
+*/
+fui_api int32_t fuiEditorGetCaretColumn(const fuiEditor *editor);
+
+/**
+* @brief Puts the caret at the start of a document line and drops the selection.
 * @param[in,out] editor Reference to the editor @ref fuiEditor.
 * @param[in] documentLine The zero based document line, clamped to what there is.
-* @note The stand-in until the caret can be moved by the mouse and the keyboard.
 */
 fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine);
+
+/**
+* @brief Selects a range, leaving the caret at its second end.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] anchorOffset Where the selection is held down, in bytes.
+* @param[in] caretOffset Where it is dragged to, in bytes. The two may be in either order.
+*/
+fui_api void fuiEditorSetSelection(fuiEditor *editor, const int32_t anchorOffset, const int32_t caretOffset);
+
+/**
+* @brief Selects the whole document.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+*/
+fui_api void fuiEditorSelectAll(fuiEditor *editor);
+
+/**
+* @brief Drops the selection, leaving the caret where it is.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+*/
+fui_api void fuiEditorClearSelection(fuiEditor *editor);
+
+/**
+* @brief Tests whether anything is selected.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when the selection covers at least one byte.
+*/
+fui_api bool fuiEditorHasSelection(const fuiEditor *editor);
+
+/**
+* @brief Returns the lower end of the selection.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the byte offset, which is the caret's own offset when nothing is selected.
+*/
+fui_api int32_t fuiEditorGetSelectionStart(const fuiEditor *editor);
+
+/**
+* @brief Returns the upper end of the selection.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the byte offset, which is the caret's own offset when nothing is selected.
+*/
+fui_api int32_t fuiEditorGetSelectionEnd(const fuiEditor *editor);
+
+/**
+* @brief Copies the selected text out.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @param[out] destination Where to write it, or null to ask only how long it is.
+* @param[in] destinationCapacity How much room there is, terminator included.
+* @return Returns the FULL length in bytes, whether it fitted or not.
+* @note Ask once with null, allocate, ask again - the same rule every copying call in this file follows.
+*/
+fui_api int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const int32_t destinationCapacity);
 
 /**
 * @brief Scrolls a document line to the top of the view.
@@ -1801,6 +1946,18 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 //! How many lines one notch of the wheel moves the view
 #define FUI_TEXTEDITOR__WHEEL_LINES 3.0f
 
+//! How long after a press a second one still counts as a double click, in seconds
+#define FUI_TEXTEDITOR__MULTI_CLICK_SECONDS 0.4f
+
+//! How far a second press may land from the first and still count as a double click, in pixels
+#define FUI_TEXTEDITOR__MULTI_CLICK_SLOP 4.0f
+
+//! How fast a drag past the edge scrolls, in lines per second per line of overshoot
+#define FUI_TEXTEDITOR__AUTOSCROLL_LINES_PER_SECOND 8.0f
+
+//! How wide the caret is drawn when the caller named nothing
+#define FUI_TEXTEDITOR__DEFAULT_CARET_WIDTH 2.0f
+
 //! How far apart two character widths may measure and still count as the same width
 #define FUI_TEXTEDITOR__MONOSPACE_TOLERANCE 0.01f
 
@@ -1831,6 +1988,7 @@ fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
 	result.toggles.showLineNumbers = true;
 	result.toggles.showStatusBar = true;
 	result.toggles.highlightCurrentLine = true;
+	result.toggles.isInteractive = true;
 
 	// The vertical bar is reserved whether it is needed or not, because a document that is being typed into
 	// crosses the "one line more than fits" boundary constantly, and every crossing would shift every line
@@ -1920,6 +2078,8 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.colors.gutterCurrentLineText = fuiEditor__ResolveColor(editor->config.colors.gutterCurrentLineText, theme->accentColor);
 	resolved.colors.gutterSeparator = fuiEditor__ResolveColor(editor->config.colors.gutterSeparator, theme->treeGuideColor);
 	resolved.colors.currentLineBackground = fuiEditor__ResolveColor(editor->config.colors.currentLineBackground, currentLineWash);
+	resolved.colors.selectionBackground = fuiEditor__ResolveColor(editor->config.colors.selectionBackground, theme->textSelectionColor);
+	resolved.colors.caret = fuiEditor__ResolveColor(editor->config.colors.caret, theme->accentColor);
 	resolved.colors.statusBarBackground = fuiEditor__ResolveColor(editor->config.colors.statusBarBackground, theme->widgetColor);
 	resolved.colors.statusBarText = fuiEditor__ResolveColor(editor->config.colors.statusBarText, theme->textMutedColor);
 
@@ -1928,6 +2088,7 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.metrics.textPaddingX = fuiEditor__ResolveLength(editor->config.metrics.textPaddingX, theme->widgetPaddingX);
 	resolved.metrics.gutterPaddingX = fuiEditor__ResolveLength(editor->config.metrics.gutterPaddingX, theme->widgetPaddingX);
 	resolved.metrics.statusBarHeight = fuiEditor__ResolveLength(editor->config.metrics.statusBarHeight, theme->menuItemHeight);
+	resolved.metrics.caretWidth = fuiEditor__ResolveLength(editor->config.metrics.caretWidth, FUI_TEXTEDITOR__DEFAULT_CARET_WIDTH);
 	resolved.metrics.tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
 	resolved.metrics.gutterMinDigits = fuiEditor__ResolveCount(editor->config.metrics.gutterMinDigits, FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS);
 
@@ -2044,8 +2205,7 @@ static const char *fuiEditor__ContiguousRunAt(const fuiEditor *editor, const int
 fui_inline int32_t fuiEditor__CountCodepoints(const char *bytes, const int32_t byteCount) {
 	int32_t codepointCount = 0;
 	for(int32_t byteIndex = 0; byteIndex < byteCount; ++byteIndex) {
-		uint8_t currentByte = (uint8_t)bytes[byteIndex];
-		bool isAContinuationByte = ((currentByte & 0xC0u) == 0x80u);
+		bool isAContinuationByte = fuiEditor__IsUtf8Continuation(bytes[byteIndex]);
 		if(!isAContinuationByte) {
 			codepointCount += 1;
 		}
@@ -2165,6 +2325,8 @@ typedef struct fuiEditor__Render {
 	float tabWidth;
 	//! Width of a digit, which is what the gutter is sized by
 	float digitWidth;
+	//! Width of a blank, which is what a selected line break is shown as
+	float spaceWidth;
 	//! Whether every character of the face is the same width, which turns measuring into a multiplication
 	bool isMonospace;
 } fuiEditor__Render;
@@ -2198,6 +2360,7 @@ static fuiEditor__Render fuiEditor__MakeRender(fuiContext *context, const fuiEdi
 	result.isMonospace = (wideSize.x > 0.0f) && (widthDifference <= FUI_TEXTEDITOR__MONOSPACE_TOLERANCE);
 	result.characterWidth = wideSize.x;
 	result.digitWidth = digitSize.x;
+	result.spaceWidth = spaceSize.x;
 
 	// A tab stop is measured in SPACES rather than in the widest character, because that is what a tab stop
 	// is taken to be everywhere else. On a monospace face the two are the same number anyway.
@@ -2243,54 +2406,340 @@ fui_inline float fuiEditor__NextTabStopDistance(const fuiEditor__Render *render,
 	return((float)(wholeStopsPassed + 1) * render->tabWidth);
 }
 
+// ----------------------------------------------------------------------------
+// > Line geometry
+// ----------------------------------------------------------------------------
+
 /*
-	Draws one line and answers how wide it came out.
+	One line, cut into the pieces that are drawn and measured in one go.
 
-	Two things cut a line into pieces, and both are handled by the same loop: the HOLE, which may sit
-	anywhere inside it, and the TABS, which are not drawn at all and instead jump the pen to the next stop.
-	fuiDrawText knows about neither - it has no idea what a tab is, and it wants bytes that lie next to
-	each other.
+	Two things cut a line up, and both are handled here so that nothing else has to know about either: the
+	HOLE, which may sit anywhere inside it, and the TABS, which are not drawn at all and instead jump the
+	pen to the next stop. Everything that asks a question about a line - where to draw it, how wide it is,
+	how far into it an offset sits, which offset a distance lands on - walks these same pieces, which is
+	what keeps the caret standing where the glyphs really are.
 */
-static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float lineLeftX, const float lineTopY, const fuiColor textColor) {
-	// The pen is carried as a DISTANCE from the line's own start rather than as an x on the screen, which
-	// is what keeps the tab stops exact however far to the right the editor happens to sit.
-	float distanceIntoTheLine = 0.0f;
-	int32_t offset = lineStart;
-	while(offset < lineEnd) {
+
+//! One piece of a line
+typedef struct fuiEditor__LineSegment {
+	//! The bytes, pointing straight into the document. Null for a tab, which is not drawn at all
+	const char *bytes;
+	//! How many bytes there are, and one for a tab
+	int32_t byteCount;
+	//! The document offset the piece starts at
+	int32_t offset;
+	//! Whether this piece is a tab, which jumps the pen rather than drawing anything
+	bool isTab;
+} fuiEditor__LineSegment;
+
+//! Where a walk over a line's pieces has got to
+typedef struct fuiEditor__LineCursor {
+	//! The document being walked
+	const fuiEditor *editor;
+	//! The document offset the next piece starts at
+	int32_t offset;
+	//! Where the line ends
+	int32_t lineEnd;
+	//! The unbroken piece of buffer the walk is inside of
+	const char *runBytes;
+	//! The document offset that piece starts at
+	int32_t runOffset;
+	//! How long it is
+	int32_t runLength;
+} fuiEditor__LineCursor;
+
+static fuiEditor__LineCursor fuiEditor__BeginLineWalk(const fuiEditor *editor, const int32_t lineStart, const int32_t lineEnd) {
+	fuiEditor__LineCursor result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+	result.editor = editor;
+	result.offset = lineStart;
+	result.lineEnd = lineEnd;
+	return(result);
+}
+
+static bool fuiEditor__NextLineSegment(fuiEditor__LineCursor *cursor, fuiEditor__LineSegment *outSegment) {
+	if(cursor->offset >= cursor->lineEnd) {
+		return(false);
+	}
+
+	int32_t runEnd = cursor->runOffset + cursor->runLength;
+	bool theRunIsUsedUp = (cursor->runBytes == fui_null) || (cursor->offset >= runEnd);
+	if(theRunIsUsedUp) {
 		int32_t runLength = 0;
-		const char *runBytes = fuiEditor__ContiguousRunAt(editor, offset, lineEnd, &runLength);
+		const char *runBytes = fuiEditor__ContiguousRunAt(cursor->editor, cursor->offset, cursor->lineEnd, &runLength);
 		if(runBytes == fui_null || runLength <= 0) {
-			break;
+			return(false);
 		}
+		cursor->runBytes = runBytes;
+		cursor->runOffset = cursor->offset;
+		cursor->runLength = runLength;
+	}
 
-		int32_t runOffset = 0;
-		while(runOffset < runLength) {
-			int32_t bytesLeftInTheRun = runLength - runOffset;
-			const char *foundTab = (const char *)FUI_TEXTEDITOR_MEMCHR(&runBytes[runOffset], '\t', (size_t)bytesLeftInTheRun);
-			int32_t plainLength = bytesLeftInTheRun;
-			if(foundTab != fui_null) {
-				plainLength = (int32_t)(foundTab - &runBytes[runOffset]);
-			}
+	int32_t offsetIntoTheRun = cursor->offset - cursor->runOffset;
+	int32_t bytesLeftInTheRun = cursor->runLength - offsetIntoTheRun;
+	const char *pieceBytes = &cursor->runBytes[offsetIntoTheRun];
 
-			if(plainLength > 0) {
-				fuiVec2 textPosition = fuiV2(lineLeftX + distanceIntoTheLine, lineTopY);
-				fuiDrawText(context, &runBytes[runOffset], (size_t)plainLength, textPosition, render->fontHeight, textColor);
-				distanceIntoTheLine += fuiEditor__MeasureRun(context, render, &runBytes[runOffset], plainLength);
-				runOffset += plainLength;
-			}
-			if(foundTab != fui_null) {
-				distanceIntoTheLine = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
-				runOffset += 1;
-			}
+	if(pieceBytes[0] == '\t') {
+		outSegment->bytes = fui_null;
+		outSegment->byteCount = 1;
+		outSegment->offset = cursor->offset;
+		outSegment->isTab = true;
+		cursor->offset += 1;
+		return(true);
+	}
+
+	const char *foundTab = (const char *)FUI_TEXTEDITOR_MEMCHR(pieceBytes, '\t', (size_t)bytesLeftInTheRun);
+	int32_t plainLength = bytesLeftInTheRun;
+	if(foundTab != fui_null) {
+		plainLength = (int32_t)(foundTab - pieceBytes);
+	}
+	outSegment->bytes = pieceBytes;
+	outSegment->byteCount = plainLength;
+	outSegment->offset = cursor->offset;
+	outSegment->isTab = false;
+	cursor->offset += plainLength;
+	return(true);
+}
+
+//! Draws one line and answers how wide it came out
+static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float lineLeftX, const float lineTopY, const fuiColor textColor) {
+	float distanceIntoTheLine = 0.0f;
+	fuiEditor__LineCursor cursor = fuiEditor__BeginLineWalk(editor, lineStart, lineEnd);
+	fuiEditor__LineSegment segment;
+	while(fuiEditor__NextLineSegment(&cursor, &segment)) {
+		if(segment.isTab) {
+			distanceIntoTheLine = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+			continue;
 		}
-		offset += runLength;
+		fuiVec2 textPosition = fuiV2(lineLeftX + distanceIntoTheLine, lineTopY);
+		fuiDrawText(context, segment.bytes, (size_t)segment.byteCount, textPosition, render->fontHeight, textColor);
+		distanceIntoTheLine += fuiEditor__MeasureRun(context, render, segment.bytes, segment.byteCount);
 	}
 	return(distanceIntoTheLine);
 }
 
+/*
+	How far the pen moves for ONE codepoint, the kerning against the one in front of it included.
+
+	final_ui.h exposes measuring and not the kerning table behind it, so the kerning of a pair is reached
+	as the difference between measuring the pair and measuring the first of the two. That keeps this in
+	step with what a whole run measures to, which is what the pen is actually advanced by - a caret worked
+	out without the kerning would drift away from the glyphs across a long line.
+*/
+fui_inline float fuiEditor__CodepointAdvance(fuiContext *context, const fuiEditor__Render *render, const char *bytes, const int32_t previousStart, const int32_t currentStart, const int32_t currentEnd) {
+	if(render->isMonospace) {
+		return(render->characterWidth);
+	}
+	int32_t currentLength = currentEnd - currentStart;
+	bool thereIsNothingInFront = (previousStart < 0);
+	if(thereIsNothingInFront) {
+		fuiVec2 aloneSize = fuiMeasureText(context, &bytes[currentStart], (size_t)currentLength, render->fontHeight);
+		return(aloneSize.x);
+	}
+	fuiVec2 pairSize = fuiMeasureText(context, &bytes[previousStart], (size_t)(currentEnd - previousStart), render->fontHeight);
+	fuiVec2 firstSize = fuiMeasureText(context, &bytes[previousStart], (size_t)(currentStart - previousStart), render->fontHeight);
+	return(pairSize.x - firstSize.x);
+}
+
+//! Which offset inside ONE piece a distance lands on, snapped to the nearer codepoint boundary
+static int32_t fuiEditor__OffsetInSegment(fuiContext *context, const fuiEditor__Render *render, const fuiEditor__LineSegment *segment, const float segmentStartDistance, const float wantedDistance) {
+	float distance = segmentStartDistance;
+	int32_t previousStart = -1;
+	int32_t currentStart = 0;
+	while(currentStart < segment->byteCount) {
+		int32_t currentEnd = currentStart + 1;
+		while(currentEnd < segment->byteCount && fuiEditor__IsUtf8Continuation(segment->bytes[currentEnd])) {
+			currentEnd += 1;
+		}
+
+		// Snapped to the NEARER boundary, so clicking on the left half of a character puts the caret in
+		// front of it and clicking on the right half puts it behind - which is what a click means.
+		float advance = fuiEditor__CodepointAdvance(context, render, segment->bytes, previousStart, currentStart, currentEnd);
+		float middleOfTheCharacter = distance + advance * 0.5f;
+		if(wantedDistance < middleOfTheCharacter) {
+			return(segment->offset + currentStart);
+		}
+
+		distance += advance;
+		previousStart = currentStart;
+		currentStart = currentEnd;
+	}
+	return(segment->offset + segment->byteCount);
+}
+
+/*
+	How far into the line the pen stands at a document offset.
+
+	One measurement per PIECE rather than one per character: every piece the offset lies behind is measured
+	whole, and the piece it lies inside is measured once up to it. A line with three tabs in it is four
+	measurements however long it is.
+*/
+static float fuiEditor__DistanceOfOffset(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const int32_t wantedOffset) {
+	if(wantedOffset <= lineStart) {
+		return(0.0f);
+	}
+
+	float distanceIntoTheLine = 0.0f;
+	fuiEditor__LineCursor cursor = fuiEditor__BeginLineWalk(editor, lineStart, lineEnd);
+	fuiEditor__LineSegment segment;
+	while(fuiEditor__NextLineSegment(&cursor, &segment)) {
+		if(segment.isTab) {
+			if(wantedOffset <= segment.offset) {
+				return(distanceIntoTheLine);
+			}
+			distanceIntoTheLine = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+			continue;
+		}
+
+		int32_t segmentEnd = segment.offset + segment.byteCount;
+		if(wantedOffset >= segmentEnd) {
+			distanceIntoTheLine += fuiEditor__MeasureRun(context, render, segment.bytes, segment.byteCount);
+			continue;
+		}
+
+		int32_t prefixLength = wantedOffset - segment.offset;
+		distanceIntoTheLine += fuiEditor__MeasureRun(context, render, segment.bytes, prefixLength);
+		return(distanceIntoTheLine);
+	}
+	return(distanceIntoTheLine);
+}
+
+//! How wide one line is in total
+fui_inline float fuiEditor__LineWidth(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd) {
+	return(fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, lineEnd));
+}
+
+//! Which document offset a distance into the line lands on
+static int32_t fuiEditor__OffsetAtDistance(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float wantedDistance) {
+	if(wantedDistance <= 0.0f) {
+		return(lineStart);
+	}
+
+	float distanceIntoTheLine = 0.0f;
+	fuiEditor__LineCursor cursor = fuiEditor__BeginLineWalk(editor, lineStart, lineEnd);
+	fuiEditor__LineSegment segment;
+	while(fuiEditor__NextLineSegment(&cursor, &segment)) {
+		if(segment.isTab) {
+			// A tab is one character that happens to be as wide as the gap to its stop, so its own middle
+			// is what decides whether the caret goes in front of it or behind it.
+			float stopDistance = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+			float middleOfTheTab = (distanceIntoTheLine + stopDistance) * 0.5f;
+			if(wantedDistance < middleOfTheTab) {
+				return(segment.offset);
+			}
+			if(wantedDistance < stopDistance) {
+				return(segment.offset + 1);
+			}
+			distanceIntoTheLine = stopDistance;
+			continue;
+		}
+
+		float segmentWidth = fuiEditor__MeasureRun(context, render, segment.bytes, segment.byteCount);
+		bool theDistanceIsBehindThisPiece = (wantedDistance >= (distanceIntoTheLine + segmentWidth));
+		if(theDistanceIsBehindThisPiece) {
+			distanceIntoTheLine += segmentWidth;
+			continue;
+		}
+		return(fuiEditor__OffsetInSegment(context, render, &segment, distanceIntoTheLine, wantedDistance));
+	}
+	return(lineEnd);
+}
+
 // ----------------------------------------------------------------------------
-// > The view
+// > Caret and selection
 // ----------------------------------------------------------------------------
+
+fui_api int32_t fuiEditorGetCaretOffset(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(editor->caretOffset);
+}
+
+fui_api int32_t fuiEditorGetSelectionStart(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(fuiEditor__MinI32(editor->selectionAnchor, editor->caretOffset));
+}
+
+fui_api int32_t fuiEditorGetSelectionEnd(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(fuiEditor__MaxI32(editor->selectionAnchor, editor->caretOffset));
+}
+
+fui_api bool fuiEditorHasSelection(const fuiEditor *editor) {
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	return(selectionEnd > selectionStart);
+}
+
+fui_api void fuiEditorClearSelection(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	editor->selectionAnchor = editor->caretOffset;
+}
+
+/*
+	The one place the caret ever moves.
+
+	Everything that moves it - a key, a click, a drag, the caller - comes through here, so that the three
+	things that always go with a move happen once rather than at every call site: the offset is pulled onto
+	a codepoint boundary, the anchor follows unless the selection is being extended, and the blink is reset
+	to SOLID. A caret that happens to be in its dark half while somebody is typing looks like the keystroke
+	was lost.
+*/
+static void fuiEditor__MoveCaretTo(fuiEditor *editor, const int32_t offset, const bool extendSelection, const bool keepDesiredDistance) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t clampedOffset = fuiEditor__ClampI32(offset, 0, textLength);
+	int32_t snappedOffset = fuiEditorSnapToCodepointStart(editor, clampedOffset);
+
+	editor->caretOffset = snappedOffset;
+	if(!extendSelection) {
+		editor->selectionAnchor = snappedOffset;
+	}
+	if(!keepDesiredDistance) {
+		editor->hasDesiredDistance = false;
+	}
+	editor->caretBlinkTime = 0.0f;
+}
+
+fui_api void fuiEditorSetCaretOffset(fuiEditor *editor, const int32_t offset, const bool extendSelection) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	const bool dropTheDesiredDistance = false;
+	fuiEditor__MoveCaretTo(editor, offset, extendSelection, dropTheDesiredDistance);
+}
+
+fui_api void fuiEditorSetSelection(fuiEditor *editor, const int32_t anchorOffset, const int32_t caretOffset) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t clampedAnchor = fuiEditor__ClampI32(anchorOffset, 0, textLength);
+	editor->selectionAnchor = fuiEditorSnapToCodepointStart(editor, clampedAnchor);
+
+	const bool keepTheAnchorJustSet = true;
+	const bool dropTheDesiredDistance = false;
+	fuiEditor__MoveCaretTo(editor, caretOffset, keepTheAnchorJustSet, dropTheDesiredDistance);
+}
+
+fui_api void fuiEditorSelectAll(fuiEditor *editor) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	const int32_t fromTheStart = 0;
+	fuiEditorSetSelection(editor, fromTheStart, textLength);
+}
+
+fui_api int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t selectionLength = selectionEnd - selectionStart;
+	return(fuiEditorCopyRange(editor, selectionStart, selectionLength, destination, destinationCapacity));
+}
 
 fui_api int32_t fuiEditorGetCaretLine(const fuiEditor *editor) {
 	if(editor == fui_null || !editor->isInitialized) {
@@ -2299,18 +2748,221 @@ fui_api int32_t fuiEditorGetCaretLine(const fuiEditor *editor) {
 	return(fuiEditorGetLineOfOffset(editor, editor->caretOffset));
 }
 
+fui_api int32_t fuiEditorGetCaretColumn(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
+
+	int32_t column = 0;
+	int32_t offset = lineStart;
+	while(offset < editor->caretOffset) {
+		char currentByte = fuiEditorGetByte(editor, offset);
+		if(!fuiEditor__IsUtf8Continuation(currentByte)) {
+			column += 1;
+		}
+		offset += 1;
+	}
+	return(column);
+}
+
 fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine) {
 	if(editor == fui_null || !editor->isInitialized) {
 		return;
 	}
 	int32_t lineCount = fuiEditorGetLineCount(editor);
 	if(lineCount <= 0) {
-		editor->caretOffset = 0;
+		fuiEditorSetCaretOffset(editor, 0, false);
 		return;
 	}
 	int32_t clampedLine = fuiEditor__ClampI32(documentLine, 0, lineCount - 1);
-	editor->caretOffset = fuiEditorGetLineStart(editor, clampedLine);
+	int32_t lineStart = fuiEditorGetLineStart(editor, clampedLine);
+	const bool dropTheSelection = false;
+	fuiEditorSetCaretOffset(editor, lineStart, dropTheSelection);
 }
+
+// ----------------------------------------------------------------------------
+// > Words
+// ----------------------------------------------------------------------------
+
+//! What kind of character a byte is, which is all a word jump ever has to know
+typedef enum fuiEditor__CharClass {
+	//! A blank, which is what lies BETWEEN two words
+	fuiEditor__CharClass_Space = 0,
+	//! A letter, a digit or an underscore, which is what a word is made of
+	fuiEditor__CharClass_Word,
+	//! Everything else - brackets, operators, punctuation
+	fuiEditor__CharClass_Punctuation,
+	//! A line feed, which ends the line and is never crossed by one jump
+	fuiEditor__CharClass_LineBreak,
+} fuiEditor__CharClass;
+
+fui_inline fuiEditor__CharClass fuiEditor__ClassOfByte(const char byte) {
+	unsigned char value = (unsigned char)byte;
+	if(value == (unsigned char)'\n') {
+		return(fuiEditor__CharClass_LineBreak);
+	}
+	if(value == (unsigned char)' ' || value == (unsigned char)'\t' || value == (unsigned char)'\r') {
+		return(fuiEditor__CharClass_Space);
+	}
+
+	bool isADigit = (value >= (unsigned char)'0') && (value <= (unsigned char)'9');
+	bool isLowerCase = (value >= (unsigned char)'a') && (value <= (unsigned char)'z');
+	bool isUpperCase = (value >= (unsigned char)'A') && (value <= (unsigned char)'Z');
+	bool isAnUnderscore = (value == (unsigned char)'_');
+
+	// Everything above ascii counts as part of a word. It is a letter far more often than not, and the
+	// alternative is a unicode category table that this add-on has no business carrying around.
+	bool isAboveAscii = (value >= 0x80u);
+	if(isADigit || isLowerCase || isUpperCase || isAnUnderscore || isAboveAscii) {
+		return(fuiEditor__CharClass_Word);
+	}
+	return(fuiEditor__CharClass_Punctuation);
+}
+
+fui_inline fuiEditor__CharClass fuiEditor__ClassAt(const fuiEditor *editor, const int32_t offset) {
+	char byteThere = fuiEditorGetByte(editor, offset);
+	return(fuiEditor__ClassOfByte(byteThere));
+}
+
+/*
+	Where the next word starts, counted from an offset.
+
+	A jump never crosses a LINE BREAK: standing at the end of a line, one press puts the caret on the next
+	line and a second one takes it to the first word there. Running straight through would make a single
+	press land somewhere the eye was not following.
+*/
+static int32_t fuiEditor__NextWordOffset(const fuiEditor *editor, const int32_t offset) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t current = fuiEditor__ClampI32(offset, 0, textLength);
+	if(current >= textLength) {
+		return(textLength);
+	}
+
+	fuiEditor__CharClass startClass = fuiEditor__ClassAt(editor, current);
+	if(startClass == fuiEditor__CharClass_LineBreak) {
+		return(current + 1);
+	}
+
+	while(current < textLength) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, current);
+		if(classHere != startClass) {
+			break;
+		}
+		current += 1;
+	}
+	while(current < textLength) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, current);
+		if(classHere != fuiEditor__CharClass_Space) {
+			break;
+		}
+		current += 1;
+	}
+	return(current);
+}
+
+//! Where the word in front of an offset starts, by the same rules read backwards
+static int32_t fuiEditor__PreviousWordOffset(const fuiEditor *editor, const int32_t offset) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t current = fuiEditor__ClampI32(offset, 0, textLength);
+	if(current <= 0) {
+		return(0);
+	}
+
+	fuiEditor__CharClass classBehind = fuiEditor__ClassAt(editor, current - 1);
+	if(classBehind == fuiEditor__CharClass_LineBreak) {
+		return(current - 1);
+	}
+
+	while(current > 0) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, current - 1);
+		if(classHere != fuiEditor__CharClass_Space) {
+			break;
+		}
+		current -= 1;
+	}
+	if(current <= 0) {
+		return(0);
+	}
+
+	fuiEditor__CharClass runClass = fuiEditor__ClassAt(editor, current - 1);
+	if(runClass == fuiEditor__CharClass_LineBreak) {
+		return(current);
+	}
+	while(current > 0) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, current - 1);
+		if(classHere != runClass) {
+			break;
+		}
+		current -= 1;
+	}
+	return(current);
+}
+
+//! The run of one character class an offset stands in, which is what a double click selects
+static void fuiEditor__WordRangeAt(const fuiEditor *editor, const int32_t offset, int32_t *outStart, int32_t *outEnd) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t current = fuiEditor__ClampI32(offset, 0, textLength);
+
+	// At the very end of the document, and at the end of a line, there is no character UNDER the caret -
+	// so the word that ends there is the one meant.
+	bool thereIsNothingUnderIt = (current >= textLength) || (fuiEditor__ClassAt(editor, current) == fuiEditor__CharClass_LineBreak);
+	if(thereIsNothingUnderIt && current > 0) {
+		current -= 1;
+	}
+	if(current >= textLength) {
+		*outStart = textLength;
+		*outEnd = textLength;
+		return;
+	}
+
+	fuiEditor__CharClass wantedClass = fuiEditor__ClassAt(editor, current);
+	if(wantedClass == fuiEditor__CharClass_LineBreak) {
+		*outStart = current;
+		*outEnd = current;
+		return;
+	}
+
+	int32_t rangeStart = current;
+	while(rangeStart > 0) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, rangeStart - 1);
+		if(classHere != wantedClass) {
+			break;
+		}
+		rangeStart -= 1;
+	}
+	int32_t rangeEnd = current;
+	while(rangeEnd < textLength) {
+		fuiEditor__CharClass classHere = fuiEditor__ClassAt(editor, rangeEnd);
+		if(classHere != wantedClass) {
+			break;
+		}
+		rangeEnd += 1;
+	}
+
+	*outStart = rangeStart;
+	*outEnd = rangeEnd;
+}
+
+//! A whole line INCLUDING its ending, which is what a triple click selects and what pasting it back needs
+static void fuiEditor__LineRangeAt(const fuiEditor *editor, const int32_t offset, int32_t *outStart, int32_t *outEnd) {
+	int32_t documentLine = fuiEditorGetLineOfOffset(editor, offset);
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	*outStart = fuiEditorGetLineStart(editor, documentLine);
+	bool isTheLastLine = (documentLine >= (lineCount - 1));
+	if(isTheLastLine) {
+		*outEnd = textLength;
+		return;
+	}
+	*outEnd = fuiEditorGetLineStart(editor, documentLine + 1);
+}
+
+// ----------------------------------------------------------------------------
+// > The view
+// ----------------------------------------------------------------------------
 
 fui_api void fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine) {
 	if(editor == fui_null || !editor->isInitialized) {
@@ -2437,21 +3089,324 @@ static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEdit
 	return(result);
 }
 
+// ----------------------------------------------------------------------------
+// > Input
+// ----------------------------------------------------------------------------
+
+//! Which document offset a point on screen lands on
+static int32_t fuiEditor__OffsetAtPoint(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float scrollX, const float scrollY, const fuiVec2 point) {
+	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
+	if(screenLineCount <= 0 || render->lineHeight <= 0.0f) {
+		return(0);
+	}
+
+	float distanceDownTheContent = (point.y - layout->textRect.y) + scrollY;
+	int32_t screenLine = (int32_t)(distanceDownTheContent / render->lineHeight);
+	if(distanceDownTheContent < 0.0f) {
+		screenLine = 0;
+	}
+	screenLine = fuiEditor__ClampI32(screenLine, 0, screenLineCount - 1);
+
+	int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+
+	const fuiEditorConfig *config = &editor->resolvedConfig;
+	float lineLeftX = layout->textRect.x + config->metrics.textPaddingX - scrollX;
+	float distanceIntoTheLine = point.x - lineLeftX;
+	return(fuiEditor__OffsetAtDistance(context, editor, render, lineStart, lineEnd, distanceIntoTheLine));
+}
+
+/*
+	Moves the caret a number of lines, keeping the column it WANTS rather than the one it lands on.
+
+	A caret walked down through a ragged block of code and back up has to come home to where it started.
+	That only works if the sideways position is remembered from the last move that was really sideways -
+	the short line in the middle would otherwise pull it left and keep it there.
+*/
+static void fuiEditor__MoveCaretByLines(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineDelta, const bool extendSelection) {
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	if(!editor->hasDesiredDistance) {
+		int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
+		int32_t lineEnd = fuiEditorGetLineEnd(editor, caretLine);
+		editor->desiredDistance = fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, editor->caretOffset);
+		editor->hasDesiredDistance = true;
+	}
+
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t wantedLine = fuiEditor__ClampI32(caretLine + lineDelta, 0, lineCount - 1);
+	int32_t wantedLineStart = fuiEditorGetLineStart(editor, wantedLine);
+	int32_t wantedLineEnd = fuiEditorGetLineEnd(editor, wantedLine);
+	int32_t wantedOffset = fuiEditor__OffsetAtDistance(context, editor, render, wantedLineStart, wantedLineEnd, editor->desiredDistance);
+
+	const bool keepTheDesiredDistance = true;
+	fuiEditor__MoveCaretTo(editor, wantedOffset, extendSelection, keepTheDesiredDistance);
+}
+
+//! Puts the selection on the clipboard, in one allocation of exactly the size it needs
+static bool fuiEditor__CopySelectionToClipboard(fuiContext *context, fuiEditor *editor) {
+	char *noBufferYet = fui_null;
+	const int32_t noCapacityYet = 0;
+	int32_t neededLength = fuiEditorCopySelection(editor, noBufferYet, noCapacityYet);
+	if(neededLength <= 0) {
+		return(false);
+	}
+
+	// Sized to the selection rather than to a fixed buffer, so nothing is ever cut in half - least of all
+	// in the middle of a codepoint.
+	int32_t bufferLength = neededLength + 1;
+	char *clipboardText = (char *)fuiEditor__Allocate(editor, bufferLength);
+	if(clipboardText == fui_null) {
+		return(false);
+	}
+	(void)fuiEditorCopySelection(editor, clipboardText, bufferLength);
+	bool didSet = fuiSetClipboardText(context, clipboardText);
+	fuiEditor__Release(editor, clipboardText);
+	return(didSet);
+}
+
+//! Every key the editor answers to while it has the keyboard
+static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t linesPerPage, bool *outDidCopy) {
+	bool wantsToExtend = fuiIsShiftDown(context);
+	bool wantsToJumpByWord = fuiIsControlDown(context);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+
+	if(fuiKeyRepeat(context, fuiKey_Left)) {
+		int32_t wantedOffset;
+		bool collapsesTheSelection = !wantsToExtend && !wantsToJumpByWord && fuiEditorHasSelection(editor);
+		if(wantsToJumpByWord) {
+			wantedOffset = fuiEditor__PreviousWordOffset(editor, editor->caretOffset);
+		} else if(collapsesTheSelection) {
+			// A plain arrow against a selection puts the caret at that END of it rather than one character
+			// further, which is what every editor does and what nobody notices until it is missing.
+			wantedOffset = fuiEditorGetSelectionStart(editor);
+		} else {
+			wantedOffset = fuiEditorPreviousCodepointOffset(editor, editor->caretOffset);
+		}
+		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
+	}
+
+	if(fuiKeyRepeat(context, fuiKey_Right)) {
+		int32_t wantedOffset;
+		bool collapsesTheSelection = !wantsToExtend && !wantsToJumpByWord && fuiEditorHasSelection(editor);
+		if(wantsToJumpByWord) {
+			wantedOffset = fuiEditor__NextWordOffset(editor, editor->caretOffset);
+		} else if(collapsesTheSelection) {
+			wantedOffset = fuiEditorGetSelectionEnd(editor);
+		} else {
+			wantedOffset = fuiEditorNextCodepointOffset(editor, editor->caretOffset);
+		}
+		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
+	}
+
+	if(fuiKeyRepeat(context, fuiKey_Up)) {
+		const int32_t oneLineUp = -1;
+		fuiEditor__MoveCaretByLines(context, editor, render, oneLineUp, wantsToExtend);
+	}
+	if(fuiKeyRepeat(context, fuiKey_Down)) {
+		const int32_t oneLineDown = 1;
+		fuiEditor__MoveCaretByLines(context, editor, render, oneLineDown, wantsToExtend);
+	}
+	if(fuiKeyRepeat(context, fuiKey_PageUp)) {
+		int32_t pageUp = -linesPerPage;
+		fuiEditor__MoveCaretByLines(context, editor, render, pageUp, wantsToExtend);
+	}
+	if(fuiKeyRepeat(context, fuiKey_PageDown)) {
+		fuiEditor__MoveCaretByLines(context, editor, render, linesPerPage, wantsToExtend);
+	}
+
+	if(fuiKeyRepeat(context, fuiKey_Home)) {
+		int32_t wantedOffset = 0;
+		if(!wantsToJumpByWord) {
+			int32_t caretLine = fuiEditorGetCaretLine(editor);
+			wantedOffset = fuiEditorGetLineStart(editor, caretLine);
+		}
+		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
+	}
+	if(fuiKeyRepeat(context, fuiKey_End)) {
+		int32_t wantedOffset = textLength;
+		if(!wantsToJumpByWord) {
+			int32_t caretLine = fuiEditorGetCaretLine(editor);
+			wantedOffset = fuiEditorGetLineEnd(editor, caretLine);
+		}
+		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
+	}
+
+	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_A)) {
+		fuiEditorSelectAll(editor);
+		editor->caretBlinkTime = 0.0f;
+	}
+	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_C)) {
+		bool didCopy = fuiEditor__CopySelectionToClipboard(context, editor);
+		if(didCopy && outDidCopy != fui_null) {
+			*outDidCopy = true;
+		}
+	}
+
+	(void)lineCount;
+}
+
+//! The click, the drag, and what a second and a third click in the same place mean
+static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const fuiInteraction *interaction, const float frameTime, const float scrollX, float *inOutScrollY) {
+	fuiVec2 mousePosition = fuiGetMousePosition(context);
+
+	if(interaction->wasPressed) {
+		float movedX = mousePosition.x - editor->lastPressPosition.x;
+		float movedY = mousePosition.y - editor->lastPressPosition.y;
+		float movedDistanceSquared = movedX * movedX + movedY * movedY;
+		bool isNearTheLastPress = (movedDistanceSquared <= (FUI_TEXTEDITOR__MULTI_CLICK_SLOP * FUI_TEXTEDITOR__MULTI_CLICK_SLOP));
+		bool isSoonAfterTheLastPress = (editor->timeSinceLastPress <= FUI_TEXTEDITOR__MULTI_CLICK_SECONDS);
+		if(isNearTheLastPress && isSoonAfterTheLastPress) {
+			editor->pressCount += 1;
+		} else {
+			editor->pressCount = 1;
+		}
+		// Round back to a single click after the third, so a fourth one starts over rather than staying
+		// on whole lines for as long as somebody keeps clicking.
+		if(editor->pressCount > 3) {
+			editor->pressCount = 1;
+		}
+		editor->timeSinceLastPress = 0.0f;
+		editor->lastPressPosition = mousePosition;
+
+		int32_t pressedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+		bool wantsToExtend = fuiIsShiftDown(context);
+
+		if(editor->pressCount == 2) {
+			fuiEditor__WordRangeAt(editor, pressedOffset, &editor->dragAnchorStart, &editor->dragAnchorEnd);
+			fuiEditorSetSelection(editor, editor->dragAnchorStart, editor->dragAnchorEnd);
+		} else if(editor->pressCount == 3) {
+			fuiEditor__LineRangeAt(editor, pressedOffset, &editor->dragAnchorStart, &editor->dragAnchorEnd);
+			fuiEditorSetSelection(editor, editor->dragAnchorStart, editor->dragAnchorEnd);
+		} else if(wantsToExtend) {
+			// Shift and a click reaches out from wherever the selection was already held down.
+			editor->dragAnchorStart = editor->selectionAnchor;
+			editor->dragAnchorEnd = editor->selectionAnchor;
+			fuiEditor__MoveCaretTo(editor, pressedOffset, true, false);
+		} else {
+			fuiEditor__MoveCaretTo(editor, pressedOffset, false, false);
+			editor->dragAnchorStart = editor->caretOffset;
+			editor->dragAnchorEnd = editor->caretOffset;
+		}
+		editor->isDraggingSelection = true;
+	}
+
+	if(!interaction->isHeld) {
+		editor->isDraggingSelection = false;
+		editor->timeSinceLastPress += frameTime;
+		return;
+	}
+
+	// A drag that has run off the top or the bottom keeps going by itself, faster the further out it is,
+	// which is what makes it possible to select more than fits on the screen.
+	float topEdge = layout->textRect.y;
+	float bottomEdge = layout->textRect.y + layout->textRect.h;
+	float overshoot = 0.0f;
+	if(mousePosition.y < topEdge) {
+		overshoot = mousePosition.y - topEdge;
+	} else if(mousePosition.y > bottomEdge) {
+		overshoot = mousePosition.y - bottomEdge;
+	}
+	if(overshoot != 0.0f && render->lineHeight > 0.0f) {
+		float overshootInLines = overshoot / render->lineHeight;
+		*inOutScrollY += overshootInLines * FUI_TEXTEDITOR__AUTOSCROLL_LINES_PER_SECOND * render->lineHeight * frameTime;
+	}
+
+	int32_t draggedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+
+	// A drag that began on a word or on a line stays on whole words or whole lines, and never shrinks
+	// past the one it began on.
+	if(editor->pressCount == 2 || editor->pressCount == 3) {
+		int32_t draggedRangeStart = draggedOffset;
+		int32_t draggedRangeEnd = draggedOffset;
+		if(editor->pressCount == 2) {
+			fuiEditor__WordRangeAt(editor, draggedOffset, &draggedRangeStart, &draggedRangeEnd);
+		} else {
+			fuiEditor__LineRangeAt(editor, draggedOffset, &draggedRangeStart, &draggedRangeEnd);
+		}
+		bool isDraggingForwards = (draggedRangeEnd > editor->dragAnchorEnd);
+		if(isDraggingForwards) {
+			fuiEditorSetSelection(editor, editor->dragAnchorStart, draggedRangeEnd);
+		} else {
+			fuiEditorSetSelection(editor, editor->dragAnchorEnd, draggedRangeStart);
+		}
+		return;
+	}
+
+	fuiEditor__MoveCaretTo(editor, draggedOffset, true, false);
+}
+
+/*
+	Brings the caret back into view - but ONLY when it has really moved.
+
+	Doing it unconditionally is the classic way to break the wheel: the view is scrolled away from the
+	caret, the next frame drags it straight back, and the document appears to be nailed down. So this runs
+	off a comparison against where the caret stood at the top of the build, and the wheel and the
+	scrollbars, which move the view without moving the caret, are left alone.
+*/
+static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, float *inOutScrollX, float *inOutScrollY) {
+	const fuiEditorConfig *config = &editor->resolvedConfig;
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretLine);
+
+	float caretTop = (float)caretScreenLine * render->lineHeight;
+	float caretBottom = caretTop + render->lineHeight;
+	if(caretTop < *inOutScrollY) {
+		*inOutScrollY = caretTop;
+	} else if(caretBottom > (*inOutScrollY + layout->bodyRect.h)) {
+		*inOutScrollY = caretBottom - layout->bodyRect.h;
+	}
+
+	int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, caretLine);
+	float caretDistance = fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, editor->caretOffset);
+	float caretContentX = config->metrics.textPaddingX + caretDistance;
+
+	// A margin of one character, so the caret is never flush against an edge it is about to cross.
+	float margin = render->characterWidth;
+	float leftEdge = *inOutScrollX;
+	float rightEdge = *inOutScrollX + layout->textRect.w;
+	if(caretContentX < (leftEdge + margin)) {
+		*inOutScrollX = fuiMaxF(caretContentX - margin, 0.0f);
+	} else if(caretContentX > (rightEdge - margin)) {
+		*inOutScrollX = caretContentX - layout->textRect.w + margin;
+	}
+}
+
+// ----------------------------------------------------------------------------
+// > The widget
+// ----------------------------------------------------------------------------
+
 //! Fills in the editor's own status line - where the caret is, how big the document is, and how it is written
 static void fuiEditor__BuildStatusText(const fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
 	const char *fieldSeparator = "   |   ";
 	int32_t documentLineCount = fuiEditorGetLineCount(editor);
 	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t caretColumn = fuiEditorGetCaretColumn(editor);
 	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t selectionLength = selectionEnd - selectionStart;
 	fuiEditorEol documentEol = fuiEditorGetEol(editor);
 	const char *eolName = fuiEditorEolGetName(documentEol);
 	const char *encodingName = (editor->encoding.name != fui_null) ? editor->encoding.name : "?";
 
+	// Counted from one, because that is what every other tool that names a line counts from, and a status
+	// line is read beside those tools rather than beside this file.
 	int32_t writeOffset = 0;
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Ln ");
 	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, caretLine + 1);
-	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " of ");
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, ", Col ");
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, caretColumn + 1);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
 	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, documentLineCount);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " lines");
+	if(selectionLength > 0) {
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+		writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, selectionLength);
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " selected");
+	}
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
 	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, textLength);
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " bytes");
@@ -2463,6 +3418,26 @@ static void fuiEditor__BuildStatusText(const fuiEditor *editor, char *destinatio
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Tab ");
 	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, editor->resolvedConfig.metrics.tabSize);
 	(void)writeOffset;
+}
+
+//! Advances the blink and answers whether the caret is in its lit half right now
+static bool fuiEditor__AdvanceCaretBlink(fuiEditor *editor, const fuiTheme *theme, const float frameTime) {
+	float blinkPeriod = 0.5f;
+	if(theme->caretBlinkHz > 0.0f) {
+		blinkPeriod = 1.0f / theme->caretBlinkHz;
+	}
+	float fullCycle = blinkPeriod * 2.0f;
+
+	editor->caretBlinkTime += frameTime;
+	if(editor->caretBlinkTime >= fullCycle) {
+		// One subtraction is enough for any sane frame. A stall that skipped whole cycles only has to come
+		// back ON PHASE, not to remember how many of them it missed.
+		editor->caretBlinkTime -= fullCycle;
+		if(editor->caretBlinkTime >= fullCycle) {
+			editor->caretBlinkTime = 0.0f;
+		}
+	}
+	return(editor->caretBlinkTime < blinkPeriod);
 }
 
 fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor) {
@@ -2486,10 +3461,29 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		return(result);
 	}
 
+	int32_t caretBeforeThisBuild = editor->caretOffset;
+	int32_t anchorBeforeThisBuild = editor->selectionAnchor;
+	float frameTime = fuiGetFrameTime(context);
+
 	// An edit throws the widest line away rather than keeping a width that belonged to text which is gone.
 	if(editor->widestMeasuredVersion != editor->version) {
 		editor->widestMeasuredLineWidth = 0.0f;
 		editor->widestMeasuredVersion = editor->version;
+	}
+
+	/*
+		The caret's own line is measured before anything is laid out.
+
+		It is the one line that has to be reachable sideways whether it has ever been on screen or not: an
+		arrow key walking down into a long line has to be able to scroll to the caret, and it can only do
+		that if the horizontal range already knows the line is that wide.
+	*/
+	int32_t caretLineBeforeLayout = fuiEditorGetCaretLine(editor);
+	int32_t caretLineStartBeforeLayout = fuiEditorGetLineStart(editor, caretLineBeforeLayout);
+	int32_t caretLineEndBeforeLayout = fuiEditorGetLineEnd(editor, caretLineBeforeLayout);
+	float caretLineWidth = fuiEditor__LineWidth(context, editor, &render, caretLineStartBeforeLayout, caretLineEndBeforeLayout);
+	if(caretLineWidth > editor->widestMeasuredLineWidth) {
+		editor->widestMeasuredLineWidth = caretLineWidth;
 	}
 
 	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
@@ -2504,11 +3498,14 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	fuiId editorId = fuiGetId(context, id);
 	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
-	if(bodyInteraction.wasPressed) {
-		fuiSetFocusedId(context, editorId);
+	if(config->toggles.isInteractive) {
+		fuiRegisterFocusable(context, editorId);
+		if(bodyInteraction.wasPressed) {
+			fuiSetFocusedId(context, editorId);
+		}
 	}
 	fuiId focusedId = fuiGetFocusedId(context);
-	result.isFocused = (focusedId == editorId);
+	result.isFocused = config->toggles.isInteractive && (focusedId == editorId);
 
 	// A fuiEditorScrollToLine that has been waiting for a line height is answered here, where there is one.
 	if(editor->hasPendingScroll) {
@@ -2531,6 +3528,21 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		} else {
 			scrollY -= wheelDistance;
 		}
+	}
+
+	if(config->toggles.isInteractive) {
+		fuiEditor__HandleMouse(context, editor, &render, &layout, &bodyInteraction, frameTime, scrollX, &scrollY);
+		if(result.isFocused) {
+			int32_t linesPerPage = (int32_t)(layout.bodyRect.h / render.lineHeight);
+			linesPerPage = fuiEditor__MaxI32(linesPerPage, 1);
+			fuiEditor__HandleKeyboard(context, editor, &render, linesPerPage, &result.didCopy);
+		}
+	}
+
+	bool caretMoved = (editor->caretOffset != caretBeforeThisBuild) || (editor->selectionAnchor != anchorBeforeThisBuild);
+	result.didMoveCaret = caretMoved;
+	if(caretMoved) {
+		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, &scrollX, &scrollY);
 	}
 
 	// Both bars are resolved BEFORE a line is laid out, so the lines are placed from the offsets the frame
@@ -2562,6 +3574,10 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	int32_t caretDocumentLine = fuiEditorGetCaretLine(editor);
 	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretDocumentLine);
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	bool hasSelection = (selectionEnd > selectionStart);
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
 	bool hasLineNumbers = config->toggles.showLineNumbers && (layout.gutterRect.w > 0.0f);
 
 	if(hasLineNumbers) {
@@ -2571,7 +3587,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	// The wash goes over the gutter as well as the text: a current line that stops at the line number reads
 	// as two things beside each other rather than as one line.
 	bool caretLineIsVisible = (caretScreenLine >= firstScreenLine) && (caretScreenLine < endScreenLine);
-	if(config->toggles.highlightCurrentLine && caretLineIsVisible) {
+	if(config->toggles.highlightCurrentLine && caretLineIsVisible && !hasSelection) {
 		float washTop = layout.bodyRect.y + (float)caretScreenLine * render.lineHeight - scrollY;
 		fuiRect washRect = fuiRectMake(layout.bodyRect.x, washTop, layout.bodyRect.w, render.lineHeight);
 		fuiPushClip(context, layout.bodyRect);
@@ -2621,10 +3637,43 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
 		int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
 		float lineTopY = layout.textRect.y + (float)screenLine * render.lineHeight - scrollY;
+
+		if(hasSelection) {
+			int32_t washStart = fuiEditor__ClampI32(selectionStart, lineStart, lineEnd);
+			int32_t washEnd = fuiEditor__ClampI32(selectionEnd, lineStart, lineEnd);
+
+			// A line whose ENDING is inside the selection gets a blank's worth of wash past its last
+			// character, which is how a selected line break is shown at all - it has no glyph of its own.
+			bool isTheLastLine = (documentLine >= (documentLineCount - 1));
+			bool coversTheLineBreak = !isTheLastLine && (selectionEnd > lineEnd) && (selectionStart <= lineEnd);
+			bool thereIsAnythingToWash = (washEnd > washStart) || coversTheLineBreak;
+			if(thereIsAnythingToWash) {
+				float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
+				float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+				float washWidth = washEndDistance - washStartDistance;
+				if(coversTheLineBreak) {
+					washWidth += render.spaceWidth;
+				}
+				fuiRect washRect = fuiRectMake(lineLeftX + washStartDistance, lineTopY, washWidth, render.lineHeight);
+				fuiDrawRect(context, washRect, config->colors.selectionBackground);
+			}
+		}
+
 		float lineWidth = fuiEditor__DrawLine(context, editor, &render, lineStart, lineEnd, lineLeftX, lineTopY, config->colors.text);
 		if(lineWidth > widestLineSoFar) {
 			widestLineSoFar = lineWidth;
 		}
+	}
+
+	// Drawn last, so it stands on top of the glyph it sits beside rather than under it.
+	bool caretIsLitRightNow = fuiEditor__AdvanceCaretBlink(editor, theme, frameTime);
+	if(result.isFocused && caretIsLitRightNow && caretLineIsVisible) {
+		int32_t caretLineStart = fuiEditorGetLineStart(editor, caretDocumentLine);
+		int32_t caretLineEnd = fuiEditorGetLineEnd(editor, caretDocumentLine);
+		float caretDistance = fuiEditor__DistanceOfOffset(context, editor, &render, caretLineStart, caretLineEnd, editor->caretOffset);
+		float caretTop = layout.textRect.y + (float)caretScreenLine * render.lineHeight - scrollY;
+		fuiRect caretRect = fuiRectMake(lineLeftX + caretDistance, caretTop, config->metrics.caretWidth, render.lineHeight);
+		fuiDrawRect(context, caretRect, config->colors.caret);
 	}
 	fuiPopClip(context);
 
@@ -2637,6 +3686,10 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		That is what scintilla does, and for the same reason.
 	*/
 	editor->widestMeasuredLineWidth = widestLineSoFar;
+
+	if(bodyInteraction.isHovered && config->toggles.isInteractive) {
+		fuiSetCursor(context, fuiCursor_Text);
+	}
 
 	fuiDrawRectOutline(context, layout.frameRect, config->colors.border, theme->widgetBorderThickness);
 

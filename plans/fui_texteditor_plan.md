@@ -10,12 +10,12 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 ## 1. Stand
 
-**Iteration 0 und Iteration 1 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen und gescrollt werden kann.
+**Iterationen 0 bis 2 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert und kopiert werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
 
-- `final_ui_texteditor.h` v0.2.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken und eigener Statusleiste. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
-- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal` ist öffentlich. Das ist der eine der beiden Zusätze, den Iteration 1 gebraucht hat; `fuiRegisterFocusable` folgt in Iteration 2.
-- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (14 357 Zeilen, 652 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Tabbreite und Schriftschnitt.
-- `--selftest` läuft mit **218 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch.
+- `final_ui_texteditor.h` v0.3.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, und Cursor, Auswahl, Tastatur, Maus und Kopieren. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
+- `final_ui.h` v0.9.8 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin.
+- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite und Schriftschnitt, plus Auswahl und Kopieren.
+- `--selftest` läuft mit **308 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
 
 Was beim Bauen von Iteration 0 anders lief als geplant:
 
@@ -30,6 +30,13 @@ Und was beim Bauen von Iteration 1 anders lief als geplant:
 - **Die Konfiguration wird gegen das Theme gehalten, aus dem sie aufgelöst wurde.** Geplant war „einmal beim Setzen auflösen". Damit wäre ein Kontext, der zwischen zwei Frames umgestylt wird, unbemerkt geblieben. Ein `memcmp` über das Theme je Frame kostet ein paar hundert Byte und nimmt die Falle ganz weg.
 - **Die Breite für den waagerechten Balken ist die breiteste *gesehene* Zeile.** Jede Zeile jedes Frame zu messen wäre genau der Gang über das ganze Dokument, den das Widget vermeiden soll — bei einer proportionalen Schrift ein Glyphen-Lookup je Zeichen. Der Bereich wächst also beim Durchscrollen, und eine Änderung setzt ihn zurück. Scintilla macht es genauso.
 - **Der Prüfrahmen wurde gegengeprüft, und zwar nicht absichtlich.** Drei echte Fehler und ein Stack-Overflow im Testcode selbst sind in dieser Iteration gemeldet worden, bevor sie behoben wurden. Zusätzlich wurde die Tabstopp-Toleranz einmal auf null gesetzt: die Prüfung wurde rot, wie sie sollte.
+
+Und was bei Iteration 2 dazukam:
+
+- **`final_ui.h` brauchte einen dritten Zusatz.** Geplant waren zwei; es wurde auch `fuiGetFrameTime`. Ein Add-on bekommt nur den Kontext gereicht, und ohne Zeitquelle kann es nichts takten — kein Blinken, keinen Doppelklick, kein Auto-Scrollen. Die Funktion gibt im Draw-Pass null zurück, damit ein Zwei-Pass-Aufrufer nichts doppelt laufen lässt.
+- **Cursorposition und Zeichnen müssen aus derselben Quelle kommen.** Beides läuft jetzt über denselben Segment-Walk über eine Zeile: dieselben Stücke, dieselbe Tabstopp-Rechnung, dieselbe Messung. Zwei getrennte Rechnungen wären an jedem Tabulator und an jedem Kerning-Paar auseinandergelaufen.
+- **Kerning ist nur als Differenz erreichbar.** `final_ui.h` gibt Messen heraus, nicht die Kerningtabelle. Der Vorschub eines Zeichens ist deshalb `Messung(Paar) − Messung(erstes)` — zwei O(1)-Messungen statt einer Präfixmessung je Kandidat, die quadratisch geworden wäre. Bei Monospace fällt beides weg.
+- **Die Zeile des Cursors wird vor dem Layout gemessen.** Sonst kann eine Pfeiltaste, die in eine lange Zeile hineinläuft, nicht seitwärts zu ihr scrollen: der waagerechte Bereich kennt die Zeile ja noch nicht.
 
 ## 2. Designentscheidungen
 
@@ -66,7 +73,8 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 | Was | Warum es fehlte | Wann |
 |---|---|---|
 | `fuiScrollbarHorizontal` ✅ | `fui__Scrollbar(..., false)` gab es intern längst, die ListView ruft es direkt auf; öffentlich war nur die vertikale Fassung | Iteration 1, drin seit `final_ui.h` v0.9.7 |
-| `fuiRegisterFocusable` | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2 |
+| `fuiRegisterFocusable` ✅ | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2, drin seit `final_ui.h` v0.9.8 |
+| `fuiGetFrameTime` ✅ | War nicht geplant. Ein Add-on bekommt nur den Kontext, und ohne Zeitquelle kann es nichts takten — Blinken, Doppelklick, Auto-Scrollen | Iteration 2, drin seit `final_ui.h` v0.9.8 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -154,11 +162,23 @@ const fuiEditorConfig *fuiEditorGetConfig(const fuiEditor *editor);
 fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor);
 
 // Die Ansicht
-int32_t fuiEditorGetCaretLine(const fuiEditor *editor);
-void    fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine);
 void    fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine);
 int32_t fuiEditorGetFirstVisibleLine(const fuiEditor *editor);
 int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor);
+
+// Cursor und Auswahl
+int32_t fuiEditorGetCaretOffset(const fuiEditor *editor);
+void    fuiEditorSetCaretOffset(fuiEditor *editor, const int32_t offset, const bool extendSelection);
+int32_t fuiEditorGetCaretLine(const fuiEditor *editor);
+int32_t fuiEditorGetCaretColumn(const fuiEditor *editor);
+void    fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine);
+void    fuiEditorSetSelection(fuiEditor *editor, const int32_t anchorOffset, const int32_t caretOffset);
+void    fuiEditorSelectAll(fuiEditor *editor);
+void    fuiEditorClearSelection(fuiEditor *editor);
+bool    fuiEditorHasSelection(const fuiEditor *editor);
+int32_t fuiEditorGetSelectionStart(const fuiEditor *editor);
+int32_t fuiEditorGetSelectionEnd(const fuiEditor *editor);
+int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const int32_t destinationCapacity);
 ```
 
 Zwei Konventionen, die überall gelten:
@@ -277,15 +297,20 @@ Dokument, Zeilenindex, Encoding-Seam, Demo-Gerüst, `--selftest`.
 
 **Was noch aussteht und bewusst liegen bleibt:** Die aktuelle Zeile wird von `fuiEditorSetCaretLine` gesetzt, nicht von Maus oder Tastatur — das ist Iteration 2.
 
-### Iteration 2 — Cursor, Auswahl, Tastatur
+### Iteration 2 — Cursor, Auswahl, Tastatur ✅
 
 - Cursor als Dokumentoffset plus Wunschspalte; Pfeile, Pos1/Ende, Ctrl+Pos1/Ende, Bild auf/ab, Ctrl+Links/Rechts wortweise, über `fuiKeyRepeat`.
-- Maus: Klick, Ziehen über Zeilen, Auto-Scroll am Rand, Doppelklick=Wort, Dreifachklick=Zeile, Shift+Klick erweitert.
-- Ctrl+A, Ctrl+C mit großem Zwischenablagepuffer, an einer Codepoint-Grenze abgeschnitten.
-- Auswahl zeichnen, Cursor blinken, Cursor ins Bild holen — **aber nur wenn er sich wirklich bewegt hat**, sonst reißt es Rad und Scrollbalken zurück (derselbe Fallstrick wie `final_ui.h:9655`).
-- `fuiRegisterFocusable` in `final_ui.h`, Editor in der Tab-Kette.
+- Maus: Klick, Ziehen über Zeilen, Auto-Scroll am Rand, Doppelklick=Wort, Dreifachklick=Zeile, Shift+Klick erweitert. Ein Ziehen, das auf einem Wort oder einer Zeile begann, bleibt auf ganzen.
+- Ctrl+A, Ctrl+C. Der Puffer wird auf die Auswahl genau zugeschnitten alloziert, es wird also gar nichts abgeschnitten — auch nicht in der Mitte eines Codepoints.
+- Auswahl zeichnen (Teilzeilen, ganze Zeilen, und der Zeilenumbruch als Leerzeichenbreite), Cursor blinken, Cursor ins Bild holen — **nur wenn er sich wirklich bewegt hat**.
+- `fuiRegisterFocusable` und `fuiGetFrameTime` in `final_ui.h` (v0.9.8), Editor in der Tab-Kette.
+- `fuiEditorConfig`: `colors.selectionBackground`, `colors.caret`, `metrics.caretWidth`, `toggles.isInteractive`.
 
-**Abnahme:** Über 14 000 Zeilen markieren, kopieren, gegen die Quelldatei diffen — byteweise identisch. **Damit ist die Kerniteration Read-Only fertig.**
+**Abnahme:** *Erfüllt.* Als Prüfung im `--selftest` automatisiert (`[copy against file]`): `final_ui.h` wird geladen, komplett markiert, herauskopiert und byteweise gegen die Datei gehalten — plus eine Auswahl, die nicht bei null anfängt, damit die Offsets und nicht nur die Länge geprüft werden. `[wheel against caret]` fährt den Fallstrick ab: mit dem Rad wegscrollen, drei Frames nichts tun, der Offset muss stehen bleiben; dann eine Pfeiltaste, und er muss zurückkommen. `[keyboard]` drückt Tasten kopflos, `[line geometry]` prüft, dass Offset↔Position über Tabulatoren hinweg zueinander invers sind.
+
+**Damit ist die Kerniteration Read-Only fertig.**
+
+**Was noch aussteht:** Was `fuiSetClipboardText` mit dem Text macht, ist Sache der Plattform — FPLs X11-Backend kopiert ihn in `clipboardOut[FPL_MAX_BUFFER_LENGTH]` (2048 Bytes) und wirft den Rest weg. Der Editor selbst gibt die ganze Auswahl heraus; `fuiEditorCopySelection` ist der Weg, sie vollständig zu bekommen. Siehe Abschnitt 9.
 
 ### Iteration 3 — Whitespace und Einfärben
 
@@ -383,7 +408,7 @@ Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1
 
 Kopflos nach dem Vorbild von `PerfRunBenchmark` (`fui_performance.c:2277`): `fplInitFlags_None`, kein Fenster, kein OpenGL, ein Exit-Code. Prüfmakros wie in `apps/mathtest/mathtest.c`.
 
-Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Dreizehn Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout und leeres Widget.
+Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Einundzwanzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, und Kopieren gegen Datei.
 
 Zu jeder Textprüfung gehören zwei Vergleiche — einmal stückweise über `fuiEditorCopyRange`, einmal zusammenhängend über `fuiEditorGetContiguousText`. Stimmen die nicht überein, sähen ein Lexer und eine Suche zwei verschiedene Dokumente.
 
@@ -419,6 +444,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 - **Mehrfach-Cursor und Spaltenauswahl.** Ändert das Cursormodell von einem Paar auf eine Liste, und damit jede einzelne Bearbeitungsfunktion.
 - **Autovervollständigung.** Wäre ein Callback plus ein Popup; hängt an nichts hier.
 - **Klassisches Mac als Zeilenende im Dokument.** Nur ein Line Feed trennt Zeilen; ein reiner Carriage-Return-Text wird beim Laden normalisiert, nicht im Dokument verstanden.
+- **FPLs Zwischenablage.** `fplSetClipboardText` kopiert unter X11 in einen festen Puffer von 2048 Bytes und schneidet still ab; `fplGetClipboardText` liest aus demselben. Für einen Editor ist das zu klein — eine markierte Datei sind schnell hunderte Kilobyte. Zu lösen ist das in `final_platform_layer.h` mit dynamischem Speicher für den Zwischenablagepuffer, nicht hier. Bewusst ein eigenes Thema: es ist eine Änderung an einer plattformübergreifenden Datei, die nichts mit dem Editor zu tun hat, und beim Setzen großer Selektionen kommt über X11 obendrein das INCR-Protokoll ins Spiel.
 - **X11 PRIMARY selection.** Die mittlere Maustaste fügt aus der normalen Zwischenablage ein, weil FPL nur `CLIPBOARD` kennt und nicht `PRIMARY`. Unter Linux ist das nicht ganz die gewohnte Geste.
 
 ---
@@ -428,7 +454,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 | Risiko | Gegenmaßnahme |
 |---|---|
 | ~~FiraCode bläht `final_fonts.h` auf~~ ✅ | Beide Schnitte sind drin. `final_fonts.h` ist von 2,39 MB auf 3,22 MB gewachsen, also 830 KB für Bitstream Vera Sans Mono (49 KB Fontdaten) und FiraCode (290 KB). Das war tragbar, die befürchteten ~2 MB allein für FiraCode sind es nicht geworden |
-| FPLs Zwischenablage könnte eine feste Puffergrenze haben (`fpl__X11ClipboardState.clipboardOut[FPL_MAX_BUFFER_LENGTH]`) | In Iteration 2 mit einem großen Block prüfen. Notfalls deckelt der Editor und meldet es in der Statusleiste, statt still abzuschneiden |
+| **Bestätigt:** FPLs X11-Zwischenablage hat eine feste Puffergrenze. `fplSetClipboardText` kopiert über `fplCopyString` in `clipboardOut[FPL_MAX_BUFFER_LENGTH]`, also 2048 Bytes, und wirft den Rest weg. Unter Windows gibt es die Grenze nicht, da wird passend alloziert | Der Editor macht seinen Teil vollständig: `fuiEditorCopySelection` gibt die ganze Auswahl heraus, und Ctrl+C alloziert genau dafür. Was die Plattform daraus macht, ist ihre Sache — und `fplSetClipboardText` meldet die Kürzung nicht, kann vom Editor also auch nicht erkannt werden. **Eigenes Thema: FPL braucht dort dynamisches Speichermanagement**, siehe Abschnitt 8 |
 | Nachfärben nach einer Änderung weit über dem Sichtfenster | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen |
 | Viele Style-Läufe je Zeile treiben die Draw-Commands hoch | `fuiSetDrawBatching`, Läufe gleicher Farbe zusammenfassen, in Iteration 8 messen |
 | Rückwärtsscrollen mit Umbruch ist beim alten Textfeld O(Dokument) (`final_ui.h:9258`) | Der zweite Index wird einmal je Breite gebaut und gehalten, nicht je Frame |

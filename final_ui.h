@@ -185,7 +185,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.7
+	@version v0.9.8
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -199,6 +199,16 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.8:
+	The rest of what an outside widget needs in order to be one, and both halves of it are a line of code
+	that was already there behind a name only this file could say.
+
+	- New: fuiRegisterFocusable, the public face of what every focusable widget in here already does at the
+	  top of its own build. Without it a widget written outside the library is the one thing tab skips over.
+	- New: fuiGetFrameTime, which answers what the last frame took - and answers ZERO during a draw pass,
+	  so anything driven off it cannot run at double speed in a two pass caller. Everything in here that is
+	  timed reads the same field; a widget that is not in here had no way to.
 
 	# v0.9.7:
 	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
@@ -575,7 +585,7 @@ SOFTWARE.
 //! Version of this library, so an application can report which build it was compiled against
 #define FUI_VERSION_MAJOR 0
 #define FUI_VERSION_MINOR 9
-#define FUI_VERSION_PATCH 7
+#define FUI_VERSION_PATCH 8
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FUI__STRINGIFY_EXPANDED(value) #value
@@ -2683,6 +2693,16 @@ fui_api fuiId fuiGetFocusedId(const fuiContext *context);
 fui_api void fuiSetFocusedId(fuiContext *context, const fuiId id);
 
 /**
+* @brief Puts one widget into the tab chain, and moves the focus onto it when tab pointed here.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id The widget's identifier, from @ref fuiGetId.
+* @note Call it once per build, in the order the widgets should be tabbed through. The library's own
+*       focusable widgets do this for themselves; this is what lets a widget written OUTSIDE the library
+*       take part in the same chain rather than being the one thing tab skips over.
+*/
+fui_api void fuiRegisterFocusable(fuiContext *context, const fuiId id);
+
+/**
 * @brief Returns where the cursor is this frame.
 * @param[in] context Reference to the context @ref fuiContext.
 * @return Returns the cursor position in pixels.
@@ -2702,6 +2722,16 @@ fui_api fuiVec2 fuiGetMouseDelta(const fuiContext *context);
 * @return Returns the wheel delta, positive away from the user.
 */
 fui_api float fuiGetMouseWheelDelta(const fuiContext *context);
+
+/**
+* @brief Returns how long the frame before this one took, in seconds.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns the delta time, and ZERO during a draw pass.
+* @note Zero in a draw pass on purpose: a two pass caller builds the same tree twice, and anything driven
+*       off this - a blink, a click that counts as a double one, an animation - would otherwise run at
+*       double speed. It is the same rule @ref fuiKeyRepeat is built on.
+*/
+fui_api float fuiGetFrameTime(const fuiContext *context);
 
 /**
 * @brief Tests whether a key is currently held.
@@ -6231,6 +6261,11 @@ fui_api float fuiGetMouseWheelDelta(const fuiContext *context) {
 	return((context != fui_null) ? context->mouseWheelDelta : 0.0f);
 }
 
+fui_api float fuiGetFrameTime(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	return((context != fui_null) ? context->frameTime : 0.0f);
+}
+
 fui_api bool fuiIsKeyDown(const fuiContext *context, const fuiKey key) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null || key <= fuiKey_None || key >= fuiKey_Count) {
@@ -8956,6 +8991,14 @@ fui_inline void fui__RegisterFocusable(fuiContext *context, const fuiId id) {
 		}
 	}
 	context->previousFocusableThisFrame = id;
+}
+
+fui_api void fuiRegisterFocusable(fuiContext *context, const fuiId id) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || id == FUI_ID_NONE) {
+		return;
+	}
+	fui__RegisterFocusable(context, id);
 }
 
 // ----------------------------------------------------------------------------
