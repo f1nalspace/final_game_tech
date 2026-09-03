@@ -185,7 +185,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.5
+	@version v0.9.7
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -199,6 +199,15 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.7:
+	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
+	this file rather than in it, uses nothing but the public api, and this is the first of the two things
+	it could not do without.
+
+	- New: fuiScrollbarHorizontal, the sideways twin of fuiScrollbarVertical. Both have been the same body
+	  behind an axis flag since the list view got a second bar, and only the vertical half was ever public -
+	  so anything scrolling in two directions could have the one bar and not the other.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -566,7 +575,7 @@ SOFTWARE.
 //! Version of this library, so an application can report which build it was compiled against
 #define FUI_VERSION_MAJOR 0
 #define FUI_VERSION_MINOR 9
-#define FUI_VERSION_PATCH 6
+#define FUI_VERSION_PATCH 7
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FUI__STRINGIFY_EXPANDED(value) #value
@@ -3317,6 +3326,20 @@ fui_api bool fuiDragHandle(fuiContext *context, const char *id, const fuiRect ha
 *       layout does not jump the moment one row is added. Wheel handling stays with the caller.
 */
 fui_api float fuiScrollbarVertical(fuiContext *context, const fuiRect track, const char *id, const float scroll, const float viewportLength, const float contentLength);
+
+/**
+* @brief An always visible horizontal scrollbar.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] track The gutter to draw it in, in pixels.
+* @param[in] id Identifies the thumb across frames.
+* @param[in] scroll The current scroll offset in pixels.
+* @param[in] viewportLength How much of the content is visible, in pixels.
+* @param[in] contentLength How long the content is in total, in pixels.
+* @return Returns the new scroll offset, clamped to what there is to scroll.
+* @note The sideways twin of @ref fuiScrollbarVertical, down to the disabled look: no scroll puts the thumb
+*       at the LEFT of its track, and a content that fits draws the bar without letting it be grabbed.
+*/
+fui_api float fuiScrollbarHorizontal(fuiContext *context, const fuiRect track, const char *id, const float scroll, const float viewportLength, const float contentLength);
 
 /**
 * @brief Returns how wide a gutter every scrolling container reserves for its scrollbar, in pixels.
@@ -7645,6 +7668,14 @@ fui_api float fuiScrollbarVertical(fuiContext *context, const fuiRect track, con
 		return(0.0f);
 	}
 	return(fui__Scrollbar(context, track, id, scroll, viewportLength, contentLength, true));
+}
+
+fui_api float fuiScrollbarHorizontal(fuiContext *context, const fuiRect track, const char *id, const float scroll, const float viewportLength, const float contentLength) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(0.0f);
+	}
+	return(fui__Scrollbar(context, track, id, scroll, viewportLength, contentLength, false));
 }
 
 // ----------------------------------------------------------------------------
