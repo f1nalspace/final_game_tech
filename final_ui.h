@@ -185,7 +185,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.8
+	@version v0.9.7
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -200,24 +200,19 @@ SOFTWARE.
 	@page page_changelog Changelog
 	@tableofcontents
 
-	# v0.9.8:
-	The rest of what an outside widget needs in order to be one, and both halves of it are a line of code
-	that was already there behind a name only this file could say.
+	# v0.9.7:
+	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
+	this file rather than in it and uses nothing but the public api, and every one of these is a line of
+	code that was already here behind a name only this file could say.
 
+	- New: fuiScrollbarHorizontal, the sideways twin of fuiScrollbarVertical. Both have been the same body
+	  behind an axis flag since the list view got a second bar, and only the vertical half was ever public -
+	  so anything scrolling in two directions could have the one bar and not the other.
 	- New: fuiRegisterFocusable, the public face of what every focusable widget in here already does at the
 	  top of its own build. Without it a widget written outside the library is the one thing tab skips over.
 	- New: fuiGetFrameTime, which answers what the last frame took - and answers ZERO during a draw pass,
 	  so anything driven off it cannot run at double speed in a two pass caller. Everything in here that is
 	  timed reads the same field; a widget that is not in here had no way to.
-
-	# v0.9.7:
-	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
-	this file rather than in it, uses nothing but the public api, and this is the first of the two things
-	it could not do without.
-
-	- New: fuiScrollbarHorizontal, the sideways twin of fuiScrollbarVertical. Both have been the same body
-	  behind an axis flag since the list view got a second bar, and only the vertical half was ever public -
-	  so anything scrolling in two directions could have the one bar and not the other.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -585,7 +580,7 @@ SOFTWARE.
 //! Version of this library, so an application can report which build it was compiled against
 #define FUI_VERSION_MAJOR 0
 #define FUI_VERSION_MINOR 9
-#define FUI_VERSION_PATCH 8
+#define FUI_VERSION_PATCH 7
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FUI__STRINGIFY_EXPANDED(value) #value
