@@ -21,8 +21,8 @@ the caller would hand over invariants rather than data. Everything ELSE - the
 colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
-Status: under construction. The view is there and can be read, scrolled, selected from and copied
-out of; typing into it, syntax colouring, find and replace and undo are not in yet. See the
+Status: under construction. The view is there and can be read, scrolled, selected from, copied out
+of and coloured by a lexer; typing into it, find and replace and undo are not in yet. See the
 changelog for what is.
 
 -------------------------------------------------------------------------------
@@ -35,6 +35,8 @@ changelog for what is.
 - Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory().
 - Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
 - Read the caret and the selection back with fuiEditorGetCaretOffset() and fuiEditorCopySelection().
+- Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
+  the arrays for everything that needs no history - a diff, an error marker, a search hit.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
 - Release it with fuiEditorRelease().
 
@@ -81,6 +83,7 @@ FUI_TEXTEDITOR_MIN_TEXT_BYTES   Smallest byte capacity a document is ever alloca
 FUI_TEXTEDITOR_MIN_LINE_SLOTS   Smallest number of line slots the line index is ever allocated at (default 256).
 FUI_TEXTEDITOR_MIN_GAP_BYTES    How much room an insert leaves behind for the next one (default 1024).
 FUI_TEXTEDITOR_MIN_GAP_SLOTS    How many line slots an insert leaves behind for the next one (default 64).
+FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME  How many lines one build may colour before leaving the rest for the next (default 50000).
 
 -------------------------------------------------------------------------------
 	License
@@ -113,7 +116,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.3.0
+	@version v0.4.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -127,6 +130,40 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.4.0:
+	Colour, in two layers, because two very different things are meant by it. And whitespace made visible,
+	which is the other thing a code editor is looked at for.
+
+	- New: A LEXER, asked one line at a time and told the state that line starts in - fuiEditorSetLexer,
+	  fuiEditorLexer, fuiEditorLexLine, fuiEditorLexRequest and fuiEditorStyleDef. Whether line five
+	  thousand is inside a block comment is only knowable to somebody who has seen line four thousand nine
+	  hundred and ninety nine, so the state a line ends in is kept, one int32 per line.
+	- New: Those states live in the SAME slots as the line starts do, in the same split array with the same
+	  hole. That is what keeps a line's state attached to the line through every edit: an insert in the
+	  middle pushes the states behind it along with their lines, and one number moves rather than all of them.
+	- New: Colouring stops the moment it can. A recomputed state that comes out equal to the one already
+	  stored says that everything behind it was worked out from an unchanged start and is still right - so
+	  a change at the top of a fourteen thousand line file costs TWO calls into the lexer rather than
+	  fourteen thousand. There is a test that counts them.
+	- New: fuiEditorInvalidateStyles, for a lexer whose answer changed without the text changing.
+	- New: DECORATIONS - fuiEditorSetDecorations, fuiEditorLineDecoration and fuiEditorRangeDecoration.
+	  A whole line gets a wash and a marker in the gutter, a stretch inside one gets a wash. They carry no
+	  state at all, so they are simply arrays the caller owns and keeps sorted, and the visible window is
+	  found in them by binary search rather than by walking them.
+	- New: fuiEditorConfig.toggles.showWhitespace draws a dot in every blank and an arrow across the full
+	  width of every tab - which is what says how far a tab really reached. And .showLineEndings writes LF
+	  or CRLF after every line, which is what makes a file with mixed endings show itself.
+	- New: A line is cut into runs wherever what it is drawn WITH changes, and each run is measured as a
+	  PREFIX of the piece it belongs to rather than on its own, so the widths telescope back to exactly
+	  what the whole piece measures. Without that a coloured line and the caret on it would drift apart by
+	  one kerning pair per style boundary.
+	- New: FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME. A file opened and jumped straight to the end of has to
+	  be walked once; doing that in a single frame is a stall, so it is spread over as many as it takes and
+	  what has not been reached yet is drawn plain. Set high enough that an ordinary file never notices.
+	- Changed: fuiEditorLineIndex carries a second array. A document costs one more int32 per line, whether
+	  it has a lexer or not - four megabytes on a million line file, beside the four the line starts
+	  already take. Paying it always is what keeps every gap operation free of a null check.
 
 	# v0.3.0:
 	A caret in it. The view from v0.2.0 can now be moved through, selected from and copied out of - by the
@@ -253,7 +290,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 3
+#define FUI_TEXTEDITOR_VERSION_MINOR 4
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -289,6 +326,13 @@ fui_api const char *fuiEditorGetVersion(void);
 #if !defined(FUI_TEXTEDITOR_MIN_GAP_SLOTS)
 	//! How many line slots an insert leaves behind, for the same reason
 #	define FUI_TEXTEDITOR_MIN_GAP_SLOTS 64
+#endif
+
+#if !defined(FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME)
+	//! How many lines one build may colour before it leaves the rest for the next one. A file that is
+	//! opened and jumped straight to the end of has to be walked once, and doing that in a single frame
+	//! is a stall - so it is spread over as many frames as it takes, showing plain text until it arrives
+#	define FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME 50000
 #endif
 
 // ****************************************************************************
@@ -417,6 +461,9 @@ typedef struct fuiEditorColors {
 	fuiColor selectionBackground;
 	//! The caret itself
 	fuiColor caret;
+	//! The dots, arrows and line ending marks that make whitespace visible. Faint on purpose - they are
+	//! there to be checked, not to be read
+	fuiColor whitespace;
 	//! Fill behind the editor's own status line
 	fuiColor statusBarBackground;
 	//! Text of the editor's own status line
@@ -459,6 +506,10 @@ typedef struct fuiEditorToggles {
 	bool highlightCurrentLine;
 	//! Let the keyboard and the mouse move the caret and the selection, and put the editor in the tab chain
 	bool isInteractive;
+	//! Draw a dot in every blank and an arrow across every tab
+	bool showWhitespace;
+	//! Write CR, LF or CRLF at the end of every line, which is what tells a mixed file apart from a clean one
+	bool showLineEndings;
 	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode verticalScrollbar;
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
@@ -483,6 +534,128 @@ typedef struct fuiEditorConfig {
 
 // ****************************************************************************
 //
+// > Colouring
+//
+// ****************************************************************************
+
+/*
+	Two layers, because two very different things are meant by "colour this".
+
+	A LEXER carries state: whether line five thousand sits inside a block comment is only knowable to
+	somebody who has seen line four thousand nine hundred and ninety nine. So it is asked line by line,
+	from the last line whose state is known up to the one being drawn, and what it answers is kept.
+
+	A DECORATION carries none: a diff, an error marker, a search hit all know their answer without any
+	history at all. So they are simply handed over as arrays, and the caller owns them.
+*/
+
+//! How many styles a lexer may hand out, which is what fits in the one byte per character it writes
+#define FUI_TEXTEDITOR_MAX_STYLES 256
+
+//! The style a lexer means when it says nothing, drawn in the editor's plain text colour
+#define FUI_TEXTEDITOR_STYLE_DEFAULT 0
+
+/**
+* @struct fuiEditorStyleDef
+* @brief One entry of a lexer's style table, which is what a style byte is looked up in.
+*/
+typedef struct fuiEditorStyleDef {
+	//! What text of this style is drawn in. A zero alpha takes the editor's plain text colour
+	fuiColor color;
+} fuiEditorStyleDef;
+
+/**
+* @struct fuiEditorLexRequest
+* @brief One line handed to a lexer, and the two things it writes back.
+* @note The text is a COPY, so it is contiguous however the document happens to be laid out - and it is
+*       NOT null terminated, because a line that ends the document has nothing after it to terminate with.
+*/
+typedef struct fuiEditorLexRequest {
+	//! The line's bytes, without its line ending
+	const char *text;
+	//! How many bytes there are
+	int32_t textLength;
+	//! Which document line this is, counted from zero
+	int32_t lineIndex;
+	//! The state this line starts in, which is what the line before it answered
+	int32_t startState;
+	//! OUT: one style byte per byte of text, already cleared to @ref FUI_TEXTEDITOR_STYLE_DEFAULT
+	uint8_t *styles;
+	//! Whatever was hung on the lexer
+	void *userData;
+} fuiEditorLexRequest;
+
+/**
+* @brief Colours one line and answers the state the NEXT line starts in.
+* @param[in,out] request Reference to the line @ref fuiEditorLexRequest.
+* @return Returns the parser state the following line begins in. Zero is as good a state as any other.
+* @note The same line and the same start state must always give the same answer. The whole incremental
+*       scheme rests on that: a state that comes out equal to the one already stored is what says that
+*       everything behind it is still right and does not have to be looked at again.
+*/
+typedef int32_t (*fuiEditorLexLine)(fuiEditorLexRequest *request);
+
+/**
+* @struct fuiEditorLexer
+* @brief A lexer and the styles it hands out, owned by the caller.
+*/
+typedef struct fuiEditorLexer {
+	//! Colours one line. Null is no lexer at all
+	fuiEditorLexLine lexLine;
+	//! The style table, indexed by the style bytes lexLine writes
+	const fuiEditorStyleDef *styles;
+	//! How many entries the table has
+	int32_t styleCount;
+	//! Passed back to lexLine
+	void *userData;
+} fuiEditorLexer;
+
+/**
+* @struct fuiEditorLineDecoration
+* @brief What a decoration says about one whole line.
+*/
+typedef struct fuiEditorLineDecoration {
+	//! Which document line, counted from zero
+	int32_t line;
+	//! Wash across the whole line, gutter included. A zero alpha draws none
+	fuiColor background;
+	//! Fill of the marker drawn at the left edge of the gutter. A zero alpha draws none
+	fuiColor gutterMarker;
+} fuiEditorLineDecoration;
+
+/**
+* @struct fuiEditorRangeDecoration
+* @brief What a decoration says about a stretch of text that is not a whole line.
+*/
+typedef struct fuiEditorRangeDecoration {
+	//! First byte it covers
+	int32_t startOffset;
+	//! One past the last byte it covers
+	int32_t endOffset;
+	//! Wash behind those bytes. A zero alpha draws none
+	fuiColor background;
+} fuiEditorRangeDecoration;
+
+/**
+* @struct fuiEditorDecorations
+* @brief The colouring that needs no history, handed over as arrays the CALLER owns.
+* @note Both arrays must be sorted - the lines by their line, the ranges by their startOffset - because
+*       the visible window is found in them by binary search. A diff over a large file is one entry per
+*       changed line, and walking all of them once a frame is the cost this add-on exists to avoid.
+*/
+typedef struct fuiEditorDecorations {
+	//! One entry per decorated line, sorted by line. Null for none
+	const fuiEditorLineDecoration *lines;
+	//! How many there are
+	int32_t lineCount;
+	//! One entry per decorated stretch, sorted by startOffset. Null for none
+	const fuiEditorRangeDecoration *ranges;
+	//! How many there are
+	int32_t rangeCount;
+} fuiEditorDecorations;
+
+// ****************************************************************************
+//
 // > Document
 //
 // ****************************************************************************
@@ -498,6 +671,9 @@ typedef struct fuiEditorConfig {
 typedef struct fuiEditorLineIndex {
 	//! The slots, capacity of them, with a hole between gapStart and gapEnd
 	int32_t *starts;
+	//! What state a lexer STARTS this line in, one per entry and in the same slots as the starts. Only
+	//! entry zero is true by definition; the rest is worked out and tracked by a watermark on the editor
+	int32_t *lexerStates;
 	//! How many slots are allocated in total, holes included
 	int32_t capacity;
 	//! How many entries sit in front of the hole
@@ -544,6 +720,22 @@ typedef struct fuiEditor {
 	fuiEditorEol eol;
 	//! Bumped by every change to the text, so anything worked out from the document can tell that it went stale
 	int32_t version;
+
+	//! The lexer, as the caller gave it. Zeroed means no colouring at all
+	fuiEditorLexer lexer;
+	//! The decorations, as the caller gave them
+	fuiEditorDecorations decorations;
+	//! How many lines have a parser state that is believed. States [0, styledUpToLine) are good
+	int32_t styledUpToLine;
+	//! No re-colouring may stop before it is past this line, because the lines up to here are NEW and
+	//! whatever their state slots happen to hold was never written by a lexer
+	int32_t lexConvergenceFloor;
+	//! One line's bytes, copied out so a lexer gets them in one piece however the hole happens to sit
+	char *lineScratch;
+	//! One style byte per byte of that line
+	uint8_t *styleScratch;
+	//! How much room both of them have
+	int32_t scratchCapacity;
 
 	//! What the widget draws with, as the CALLER gave it - a zeroed field still means "take the default"
 	fuiEditorConfig config;
@@ -792,6 +984,31 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 // > Widget
 //
 // ****************************************************************************
+
+/**
+* @brief Installs a lexer, or takes the current one away.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] lexer Reference to the lexer @ref fuiEditorLexer, or null for none. The caller owns it and everything it points at.
+* @note Everything already coloured is thrown away, so swapping lexers costs one full re-colouring.
+*/
+fui_api void fuiEditorSetLexer(fuiEditor *editor, const fuiEditorLexer *lexer);
+
+/**
+* @brief Throws away what has been coloured from a line onwards, so it is worked out again.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] documentLine The first line to doubt, counted from zero.
+* @note Every edit does this by itself. It is here for a lexer whose ANSWER changed without the text
+*       changing - a keyword list that grew, a preprocessor define that came in from somewhere else.
+*/
+fui_api void fuiEditorInvalidateStyles(fuiEditor *editor, const int32_t documentLine);
+
+/**
+* @brief Installs the decorations, or takes them away.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] decorations Reference to the decorations @ref fuiEditorDecorations, or null for none.
+* @note Only the POINTERS are kept. The arrays stay the caller's, and must outlive the editor's next build.
+*/
+fui_api void fuiEditorSetDecorations(fuiEditor *editor, const fuiEditorDecorations *decorations);
 
 /**
 * @struct fuiEditorAction
@@ -1319,6 +1536,26 @@ fui_inline int32_t fuiEditor__LineIndexGet(const fuiEditorLineIndex *index, cons
 	return(index->starts[physicalSlot] + index->tailDelta);
 }
 
+//! The parser state a line STARTS in, out of the same slot its start offset lives in
+fui_inline int32_t fuiEditor__LineIndexGetLexerState(const fuiEditorLineIndex *index, const int32_t lineIndex) {
+	if(lineIndex < index->gapStart) {
+		return(index->lexerStates[lineIndex]);
+	}
+	int32_t gapSize = index->gapEnd - index->gapStart;
+	int32_t physicalSlot = lineIndex + gapSize;
+	return(index->lexerStates[physicalSlot]);
+}
+
+fui_inline void fuiEditor__LineIndexSetLexerState(fuiEditorLineIndex *index, const int32_t lineIndex, const int32_t state) {
+	if(lineIndex < index->gapStart) {
+		index->lexerStates[lineIndex] = state;
+		return;
+	}
+	int32_t gapSize = index->gapEnd - index->gapStart;
+	int32_t physicalSlot = lineIndex + gapSize;
+	index->lexerStates[physicalSlot] = state;
+}
+
 //! Grows the slot array so that at least wantedFreeSlots sit in the hole, keeping every entry where it belongs
 fui_inline bool fuiEditor__LineIndexReserve(fuiEditor *editor, fuiEditorLineIndex *index, const int32_t wantedFreeSlots) {
 	int32_t gapSize = index->gapEnd - index->gapStart;
@@ -1335,20 +1572,30 @@ fui_inline bool fuiEditor__LineIndexReserve(fuiEditor *editor, fuiEditorLineInde
 	if(newStarts == fui_null) {
 		return(false);
 	}
+	int32_t *newLexerStates = (int32_t *)fuiEditor__Allocate(editor, newByteCount);
+	if(newLexerStates == fui_null) {
+		fuiEditor__Release(editor, newStarts);
+		return(false);
+	}
 
 	// The entries in front of the hole keep their slots; the ones behind it move to the end of the bigger
-	// array, so the hole simply becomes the larger space between them.
+	// array, so the hole simply becomes the larger space between them. The lexer states live in the SAME
+	// slots as the starts do, which is what keeps a line's state attached to the line through every edit.
 	int32_t tailCount = index->capacity - index->gapEnd;
 	if(index->gapStart > 0) {
 		FUI_TEXTEDITOR_MEMCPY(newStarts, index->starts, (size_t)index->gapStart * sizeof(int32_t));
+		FUI_TEXTEDITOR_MEMCPY(newLexerStates, index->lexerStates, (size_t)index->gapStart * sizeof(int32_t));
 	}
 	if(tailCount > 0) {
 		int32_t newTailSlot = newCapacity - tailCount;
 		FUI_TEXTEDITOR_MEMCPY(&newStarts[newTailSlot], &index->starts[index->gapEnd], (size_t)tailCount * sizeof(int32_t));
+		FUI_TEXTEDITOR_MEMCPY(&newLexerStates[newTailSlot], &index->lexerStates[index->gapEnd], (size_t)tailCount * sizeof(int32_t));
 	}
 
 	fuiEditor__Release(editor, index->starts);
+	fuiEditor__Release(editor, index->lexerStates);
 	index->starts = newStarts;
+	index->lexerStates = newLexerStates;
 	index->capacity = newCapacity;
 	index->gapEnd = newCapacity - tailCount;
 	return(true);
@@ -1364,8 +1611,12 @@ fui_inline void fuiEditor__LineIndexMoveGap(fuiEditorLineIndex *index, const int
 	int32_t entryCount = fuiEditor__LineIndexCount(index);
 	int32_t targetGapStart = fuiEditor__ClampI32(wantedGapStart, 0, entryCount);
 
+	// The STARTS change form as they cross - one moving forwards was stored short by tailDelta and has to
+	// be written out in full, one moving backwards is the other way round. The lexer states just ride
+	// along: a parser state is not an offset and nothing about it depends on where the text sits.
 	while(index->gapStart < targetGapStart) {
 		index->starts[index->gapStart] = index->starts[index->gapEnd] + index->tailDelta;
+		index->lexerStates[index->gapStart] = index->lexerStates[index->gapEnd];
 		index->gapStart += 1;
 		index->gapEnd += 1;
 	}
@@ -1373,6 +1624,7 @@ fui_inline void fuiEditor__LineIndexMoveGap(fuiEditorLineIndex *index, const int
 		index->gapStart -= 1;
 		index->gapEnd -= 1;
 		index->starts[index->gapEnd] = index->starts[index->gapStart] - index->tailDelta;
+		index->lexerStates[index->gapEnd] = index->lexerStates[index->gapStart];
 	}
 }
 
@@ -1485,6 +1737,8 @@ fui_inline void fuiEditor__DocumentClear(fuiEditorDocument *document) {
 	// has been typed, and every line query below counts on entry zero being there.
 	if(document->lines.capacity > 0) {
 		document->lines.starts[0] = 0;
+		// The first line's parser state is the only one that is true by definition: nothing came before it.
+		document->lines.lexerStates[0] = 0;
 		document->lines.gapStart = 1;
 	}
 }
@@ -1518,12 +1772,20 @@ fui_api bool fuiEditorInit(fuiEditor *editor, const fuiAllocator *allocator) {
 		fuiEditor__Release(editor, initialBytes);
 		return(false);
 	}
+	int32_t *initialLexerStates = (int32_t *)fuiEditor__Allocate(editor, initialSlotBytes);
+	if(initialLexerStates == fui_null) {
+		fuiEditor__Release(editor, initialBytes);
+		fuiEditor__Release(editor, initialStarts);
+		return(false);
+	}
 
 	editor->document.bytes = initialBytes;
 	editor->document.capacity = FUI_TEXTEDITOR_MIN_TEXT_BYTES;
 	editor->document.lines.starts = initialStarts;
+	editor->document.lines.lexerStates = initialLexerStates;
 	editor->document.lines.capacity = FUI_TEXTEDITOR_MIN_LINE_SLOTS;
 	fuiEditor__DocumentClear(&editor->document);
+	editor->styledUpToLine = 1;
 
 	editor->isInitialized = true;
 	return(true);
@@ -1535,6 +1797,9 @@ fui_api void fuiEditorRelease(fuiEditor *editor) {
 	}
 	fuiEditor__Release(editor, editor->document.bytes);
 	fuiEditor__Release(editor, editor->document.lines.starts);
+	fuiEditor__Release(editor, editor->document.lines.lexerStates);
+	fuiEditor__Release(editor, editor->lineScratch);
+	fuiEditor__Release(editor, editor->styleScratch);
 	FUI_TEXTEDITOR_MEMSET(editor, 0, sizeof(*editor));
 }
 
@@ -1749,6 +2014,248 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 }
 
 // ----------------------------------------------------------------------------
+// > Colouring
+// ----------------------------------------------------------------------------
+
+/*
+	How much of the document is coloured, and when that has to be done again.
+
+	lexerStates[i] is the state a lexer STARTS line i in, and styledUpToLine says how many of them are
+	believed: states [0, styledUpToLine) are good, everything above is whatever was left there. Line zero
+	is the only one that is true without being worked out - nothing came before it.
+
+	An edit drops the watermark to just behind the line it happened on. Everything ABOVE the watermark is
+	not thrown away, because it is what makes the next pass cheap: as soon as a recomputed state comes out
+	equal to the one already stored, the rest of the document was already right and does not have to be
+	looked at at all. That is what keeps "jump to the end of a big file, then change line three" from
+	costing a walk over the whole thing.
+
+	The one case that must NOT converge is a line whose stored state was never written by a lexer - a line
+	that has just been inserted, or a document that has just been filled. Those are held below
+	lexConvergenceFloor, and no pass may stop before it has got past them.
+*/
+
+/*
+	Drops everything believed from a line onwards.
+
+	lastUnwrittenLine is the HIGHEST line index whose state slot holds something no lexer ever put there -
+	a line that has just appeared. Zero means none of them did. A pass may not stop before it is past that
+	line, because a garbage slot that happens to match would look exactly like a state that converged.
+*/
+static void fuiEditor__InvalidateStylesFrom(fuiEditor *editor, const int32_t firstDoubtfulLine, const int32_t lastUnwrittenLine) {
+	int32_t lowestBelievable = fuiEditor__MaxI32(firstDoubtfulLine, 1);
+	editor->styledUpToLine = fuiEditor__MinI32(editor->styledUpToLine, lowestBelievable);
+	editor->lexConvergenceFloor = fuiEditor__MaxI32(editor->lexConvergenceFloor, lastUnwrittenLine);
+}
+
+fui_api void fuiEditorInvalidateStyles(fuiEditor *editor, const int32_t documentLine) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	const int32_t nothingIsUnwritten = 0;
+	fuiEditor__InvalidateStylesFrom(editor, documentLine, nothingIsUnwritten);
+}
+
+fui_api void fuiEditorSetLexer(fuiEditor *editor, const fuiEditorLexer *lexer) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	if(lexer != fui_null) {
+		editor->lexer = *lexer;
+	} else {
+		FUI_TEXTEDITOR_MEMSET(&editor->lexer, 0, sizeof(editor->lexer));
+	}
+
+	// A different lexer answers differently everywhere, and nothing the last one left behind can be
+	// believed - so every state above line zero counts as never written rather than merely doubtful.
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t lastLine = fuiEditor__MaxI32(lineCount - 1, 0);
+	editor->styledUpToLine = 1;
+	editor->lexConvergenceFloor = lastLine;
+}
+
+fui_api void fuiEditorSetDecorations(fuiEditor *editor, const fuiEditorDecorations *decorations) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	if(decorations != fui_null) {
+		editor->decorations = *decorations;
+	} else {
+		FUI_TEXTEDITOR_MEMSET(&editor->decorations, 0, sizeof(editor->decorations));
+	}
+}
+
+//! Makes sure one line's worth of bytes and style bytes fits in the scratch
+static bool fuiEditor__EnsureScratch(fuiEditor *editor, const int32_t wantedCapacity) {
+	if(editor->scratchCapacity >= wantedCapacity && editor->lineScratch != fui_null) {
+		return(true);
+	}
+
+	int32_t newCapacity = fuiEditor__GrowCapacity(editor->scratchCapacity, wantedCapacity, FUI_TEXTEDITOR_MIN_TEXT_BYTES);
+	char *newLineScratch = (char *)fuiEditor__Allocate(editor, newCapacity);
+	if(newLineScratch == fui_null) {
+		return(false);
+	}
+	uint8_t *newStyleScratch = (uint8_t *)fuiEditor__Allocate(editor, newCapacity);
+	if(newStyleScratch == fui_null) {
+		fuiEditor__Release(editor, newLineScratch);
+		return(false);
+	}
+
+	fuiEditor__Release(editor, editor->lineScratch);
+	fuiEditor__Release(editor, editor->styleScratch);
+	editor->lineScratch = newLineScratch;
+	editor->styleScratch = newStyleScratch;
+	editor->scratchCapacity = newCapacity;
+	return(true);
+}
+
+/*
+	Runs the lexer over one line, leaving its style bytes in the scratch.
+
+	The line is COPIED first, because a lexer wants bytes that lie next to each other and a line may sit
+	across the hole. That copy is also what lets a lexer be written against a plain pointer and a length
+	instead of against this file's internals.
+*/
+static int32_t fuiEditor__LexOneLine(fuiEditor *editor, const int32_t lineIndex, const int32_t startState, int32_t *outLineLength) {
+	*outLineLength = 0;
+	int32_t lineStart = fuiEditorGetLineStart(editor, lineIndex);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, lineIndex);
+	int32_t lineLength = fuiEditor__MaxI32(lineEnd - lineStart, 0);
+
+	// One byte more than the line, so an empty line still has somewhere for its terminator to go.
+	if(!fuiEditor__EnsureScratch(editor, lineLength + 1)) {
+		return(startState);
+	}
+	(void)fuiEditorCopyRange(editor, lineStart, lineLength, editor->lineScratch, editor->scratchCapacity);
+	FUI_TEXTEDITOR_MEMSET(editor->styleScratch, FUI_TEXTEDITOR_STYLE_DEFAULT, (size_t)lineLength);
+
+	fuiEditorLexRequest request;
+	FUI_TEXTEDITOR_MEMSET(&request, 0, sizeof(request));
+	request.text = editor->lineScratch;
+	request.textLength = lineLength;
+	request.lineIndex = lineIndex;
+	request.startState = startState;
+	request.styles = editor->styleScratch;
+	request.userData = editor->lexer.userData;
+
+	*outLineLength = lineLength;
+	return(editor->lexer.lexLine(&request));
+}
+
+//! Works the watermark up to a line, stopping early the moment the states agree again
+static void fuiEditor__LexUpToLine(fuiEditor *editor, const int32_t wantedLine) {
+	if(editor->lexer.lexLine == fui_null) {
+		return;
+	}
+
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	if(lineCount <= 0) {
+		return;
+	}
+	int32_t lastLine = lineCount - 1;
+	editor->styledUpToLine = fuiEditor__ClampI32(editor->styledUpToLine, 1, lineCount);
+	editor->lexConvergenceFloor = fuiEditor__ClampI32(editor->lexConvergenceFloor, 0, lastLine);
+
+	int32_t targetLine = fuiEditor__ClampI32(wantedLine, 0, lastLine);
+	int32_t linesLeftThisBuild = FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME;
+	fuiEditorLineIndex *index = &editor->document.lines;
+
+	while((editor->styledUpToLine <= targetLine) && (linesLeftThisBuild > 0)) {
+		int32_t lastKnownLine = editor->styledUpToLine - 1;
+		int32_t startState = fuiEditor__LineIndexGetLexerState(index, lastKnownLine);
+
+		int32_t lineLength = 0;
+		int32_t endState = fuiEditor__LexOneLine(editor, lastKnownLine, startState, &lineLength);
+
+		int32_t nextLine = lastKnownLine + 1;
+		int32_t previouslyStoredState = fuiEditor__LineIndexGetLexerState(index, nextLine);
+		fuiEditor__LineIndexSetLexerState(index, nextLine, endState);
+		editor->styledUpToLine = nextLine + 1;
+		linesLeftThisBuild -= 1;
+
+		bool isPastEverythingUnwritten = (nextLine > editor->lexConvergenceFloor);
+		bool theStateCameOutTheSame = (previouslyStoredState == endState);
+		if(isPastEverythingUnwritten && theStateCameOutTheSame) {
+			// Everything behind this line was worked out from a state that has not changed, so it is still
+			// right. This is the whole reason an edit at the top of a large file is cheap.
+			editor->styledUpToLine = lineCount;
+			editor->lexConvergenceFloor = 0;
+			break;
+		}
+	}
+
+	if(editor->styledUpToLine > editor->lexConvergenceFloor) {
+		editor->lexConvergenceFloor = 0;
+	}
+}
+
+//! What text of one style is drawn in, and what a style byte outside the table means
+fui_inline fuiColor fuiEditor__StyleTextColor(const fuiEditor *editor, const uint8_t style, const fuiColor defaultColor) {
+	bool isInTheTable = (editor->lexer.styles != fui_null) && ((int32_t)style < editor->lexer.styleCount);
+	if(!isInTheTable) {
+		return(defaultColor);
+	}
+	fuiColor styleColor = editor->lexer.styles[style].color;
+	if(styleColor.a <= 0.0f) {
+		return(defaultColor);
+	}
+	return(styleColor);
+}
+
+// ----------------------------------------------------------------------------
+// > Decorations
+// ----------------------------------------------------------------------------
+
+//! The first line decoration that is at or behind a line, by binary search over the sorted array
+static int32_t fuiEditor__FirstLineDecorationFrom(const fuiEditorDecorations *decorations, const int32_t wantedLine) {
+	int32_t low = 0;
+	int32_t high = decorations->lineCount;
+	while(low < high) {
+		int32_t middle = low + (high - low) / 2;
+		if(decorations->lines[middle].line < wantedLine) {
+			low = middle + 1;
+		} else {
+			high = middle;
+		}
+	}
+	return(low);
+}
+
+//! The first range decoration that could still reach into an offset, by the same search
+static int32_t fuiEditor__FirstRangeDecorationFrom(const fuiEditorDecorations *decorations, const int32_t wantedOffset) {
+	int32_t low = 0;
+	int32_t high = decorations->rangeCount;
+	while(low < high) {
+		int32_t middle = low + (high - low) / 2;
+		if(decorations->ranges[middle].startOffset < wantedOffset) {
+			low = middle + 1;
+		} else {
+			high = middle;
+		}
+	}
+	// One back, because a range that STARTED before the offset may still cover it. Ranges are documented
+	// as not overlapping, so one is enough.
+	if(low > 0) {
+		return(low - 1);
+	}
+	return(0);
+}
+
+//! What one line's decoration says, or nothing at all when it has none
+static const fuiEditorLineDecoration *fuiEditor__LineDecorationAt(const fuiEditorDecorations *decorations, int32_t *inOutCursor, const int32_t wantedLine) {
+	int32_t cursor = *inOutCursor;
+	while(cursor < decorations->lineCount && decorations->lines[cursor].line < wantedLine) {
+		cursor += 1;
+	}
+	*inOutCursor = cursor;
+	if(cursor < decorations->lineCount && decorations->lines[cursor].line == wantedLine) {
+		return(&decorations->lines[cursor]);
+	}
+	return(fui_null);
+}
+
+// ----------------------------------------------------------------------------
 // > Editing
 // ----------------------------------------------------------------------------
 
@@ -1814,6 +2321,11 @@ fui_api bool fuiEditorInsert(fuiEditor *editor, const int32_t offset, const char
 		newLineScanOffset = lineFeedIndex + 1;
 	}
 
+	// The line the text landed in has to be looked at again. Only lines that really CAME WITH it have
+	// state slots nothing ever wrote - text without a line feed in it adds none.
+	int32_t lastUnwrittenLine = (addedLineCount > 0) ? (insertedOnLine + addedLineCount) : 0;
+	fuiEditor__InvalidateStylesFrom(editor, insertedOnLine + 1, lastUnwrittenLine);
+
 	editor->version += 1;
 	return(true);
 }
@@ -1847,6 +2359,11 @@ fui_api bool fuiEditorErase(fuiEditor *editor, const int32_t offset, const int32
 	document->lines.gapEnd += removedLineCount;
 	document->lines.tailDelta -= erasedLength;
 
+	// Nothing NEW appeared, so the states behind the erase are still the ones a lexer wrote - only the
+	// line the erase happened on has to be looked at again.
+	const int32_t nothingIsUnwritten = 0;
+	fuiEditor__InvalidateStylesFrom(editor, firstLine + 1, nothingIsUnwritten);
+
 	editor->version += 1;
 	return(true);
 }
@@ -1863,9 +2380,15 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	fuiEditor__DocumentClear(&editor->document);
 	editor->version += 1;
 	editor->caretOffset = 0;
+	editor->selectionAnchor = 0;
 	editor->scrollX = 0.0f;
 	editor->scrollY = 0.0f;
 	editor->hasPendingScroll = false;
+
+	// A brand new document has state slots nothing ever wrote, all the way down. What fills it below sets
+	// the floor to the line count it ends up with.
+	editor->styledUpToLine = 1;
+	editor->lexConvergenceFloor = 0;
 
 	if(text == fui_null) {
 		editor->eol = fuiEditorEol_Lf;
@@ -1961,6 +2484,24 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 
 //! How wide the caret is drawn when the caller named nothing
 #define FUI_TEXTEDITOR__DEFAULT_CARET_WIDTH 2.0f
+
+//! How solid the whitespace marks are drawn when the caller named no color
+#define FUI_TEXTEDITOR__WHITESPACE_ALPHA 0.45f
+
+//! How wide the dot in a blank is, as a fraction of the blank
+#define FUI_TEXTEDITOR__WHITESPACE_DOT_RATIO 0.16f
+
+//! How thick the arrow across a tab is drawn
+#define FUI_TEXTEDITOR__WHITESPACE_ARROW_THICKNESS 1.0f
+
+//! How long the two strokes of the arrow head are, as a fraction of the line height
+#define FUI_TEXTEDITOR__WHITESPACE_ARROW_HEAD_RATIO 0.2f
+
+//! How far the arrow stays clear of both ends of the tab it spans, as a fraction of a blank
+#define FUI_TEXTEDITOR__WHITESPACE_ARROW_INSET_RATIO 0.2f
+
+//! How wide the marker at the left edge of the gutter is drawn
+#define FUI_TEXTEDITOR__GUTTER_MARKER_WIDTH 4.0f
 
 //! How far apart two character widths may measure and still count as the same width
 #define FUI_TEXTEDITOR__MONOSPACE_TOLERANCE 0.01f
@@ -2084,6 +2625,8 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.colors.currentLineBackground = fuiEditor__ResolveColor(editor->config.colors.currentLineBackground, currentLineWash);
 	resolved.colors.selectionBackground = fuiEditor__ResolveColor(editor->config.colors.selectionBackground, theme->textSelectionColor);
 	resolved.colors.caret = fuiEditor__ResolveColor(editor->config.colors.caret, theme->accentColor);
+	fuiColor faintMarkColor = fuiColorWithAlpha(theme->textMutedColor, FUI_TEXTEDITOR__WHITESPACE_ALPHA);
+	resolved.colors.whitespace = fuiEditor__ResolveColor(editor->config.colors.whitespace, faintMarkColor);
 	resolved.colors.statusBarBackground = fuiEditor__ResolveColor(editor->config.colors.statusBarBackground, theme->widgetColor);
 	resolved.colors.statusBarText = fuiEditor__ResolveColor(editor->config.colors.statusBarText, theme->textMutedColor);
 
@@ -2505,21 +3048,144 @@ static bool fuiEditor__NextLineSegment(fuiEditor__LineCursor *cursor, fuiEditor_
 	return(true);
 }
 
-//! Draws one line and answers how wide it came out
-static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float lineLeftX, const float lineTopY, const fuiColor textColor) {
+/**
+* @struct fuiEditor__LinePaint
+* @brief Everything one line is drawn WITH, worked out before it is walked.
+*/
+typedef struct fuiEditor__LinePaint {
+	//! One style byte per byte of the line, or null when nothing coloured it
+	const uint8_t *styles;
+	//! How many of them there are
+	int32_t styleLength;
+	//! What text with nothing said about it is drawn in
+	fuiColor defaultColor;
+	//! What the dots and arrows are drawn in
+	fuiColor whitespaceColor;
+	//! Whether blanks and tabs get a mark of their own
+	bool showWhitespace;
+} fuiEditor__LinePaint;
+
+//! What a lexer said about one byte, or the default for a byte it said nothing about
+fui_inline uint8_t fuiEditor__StyleAt(const fuiEditor__LinePaint *paint, const int32_t offsetIntoTheLine) {
+	bool thereIsOne = (paint->styles != fui_null) && (offsetIntoTheLine >= 0) && (offsetIntoTheLine < paint->styleLength);
+	if(!thereIsOne) {
+		return((uint8_t)FUI_TEXTEDITOR_STYLE_DEFAULT);
+	}
+	return(paint->styles[offsetIntoTheLine]);
+}
+
+//! A small square in the middle of every blank of a run, placed by multiplication rather than by measuring
+static void fuiEditor__DrawBlankMarks(fuiContext *context, const fuiEditor__Render *render, const float runLeftX, const float lineTopY, const int32_t blankCount, const fuiColor color) {
+	float dotSize = render->spaceWidth * FUI_TEXTEDITOR__WHITESPACE_DOT_RATIO;
+	if(dotSize <= 0.0f) {
+		return;
+	}
+	float dotTop = lineTopY + (render->lineHeight - dotSize) * 0.5f;
+	float dotInset = (render->spaceWidth - dotSize) * 0.5f;
+	for(int32_t blankIndex = 0; blankIndex < blankCount; ++blankIndex) {
+		float dotLeft = runLeftX + (float)blankIndex * render->spaceWidth + dotInset;
+		fuiRect dotRect = fuiRectMake(dotLeft, dotTop, dotSize, dotSize);
+		fuiDrawRect(context, dotRect, color);
+	}
+}
+
+//! An arrow across the whole width a tab spans, which is what says how far it really reached
+static void fuiEditor__DrawTabMark(fuiContext *context, const fuiEditor__Render *render, const float tabLeftX, const float tabRightX, const float lineTopY, const fuiColor color) {
+	float arrowInset = render->spaceWidth * FUI_TEXTEDITOR__WHITESPACE_ARROW_INSET_RATIO;
+	float arrowLeft = tabLeftX + arrowInset;
+	float arrowRight = tabRightX - arrowInset;
+	if(arrowRight <= arrowLeft) {
+		return;
+	}
+
+	float arrowY = lineTopY + render->lineHeight * 0.5f;
+	float headSize = render->lineHeight * FUI_TEXTEDITOR__WHITESPACE_ARROW_HEAD_RATIO;
+	fuiVec2 shaftStart = fuiV2(arrowLeft, arrowY);
+	fuiVec2 shaftEnd = fuiV2(arrowRight, arrowY);
+	fuiDrawLine(context, shaftStart, shaftEnd, color, FUI_TEXTEDITOR__WHITESPACE_ARROW_THICKNESS);
+
+	fuiVec2 upperHeadStart = fuiV2(arrowRight - headSize, arrowY - headSize);
+	fuiVec2 lowerHeadStart = fuiV2(arrowRight - headSize, arrowY + headSize);
+	fuiDrawLine(context, upperHeadStart, shaftEnd, color, FUI_TEXTEDITOR__WHITESPACE_ARROW_THICKNESS);
+	fuiDrawLine(context, lowerHeadStart, shaftEnd, color, FUI_TEXTEDITOR__WHITESPACE_ARROW_THICKNESS);
+}
+
+/*
+	Draws one line and answers how wide it came out.
+
+	Every piece the walk hands over is cut again wherever what it is drawn WITH changes: at a style
+	boundary, and - when whitespace is being shown - at the edge of a run of blanks, because a run of
+	blanks gets its dots placed inside it. Each of those runs is measured as a PREFIX of the piece it
+	belongs to rather than on its own, so the widths telescope back to exactly what the whole piece
+	measures. That is what keeps the caret, which measures whole pieces, standing where the glyphs are.
+*/
+static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float lineLeftX, const float lineTopY, const fuiEditor__LinePaint *paint) {
 	float distanceIntoTheLine = 0.0f;
 	fuiEditor__LineCursor cursor = fuiEditor__BeginLineWalk(editor, lineStart, lineEnd);
 	fuiEditor__LineSegment segment;
 	while(fuiEditor__NextLineSegment(&cursor, &segment)) {
 		if(segment.isTab) {
-			distanceIntoTheLine = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+			float stopDistance = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+			if(paint->showWhitespace) {
+				fuiEditor__DrawTabMark(context, render, lineLeftX + distanceIntoTheLine, lineLeftX + stopDistance, lineTopY, paint->whitespaceColor);
+			}
+			distanceIntoTheLine = stopDistance;
 			continue;
 		}
-		fuiVec2 textPosition = fuiV2(lineLeftX + distanceIntoTheLine, lineTopY);
-		fuiDrawText(context, segment.bytes, (size_t)segment.byteCount, textPosition, render->fontHeight, textColor);
-		distanceIntoTheLine += fuiEditor__MeasureRun(context, render, segment.bytes, segment.byteCount);
+
+		float segmentStartDistance = distanceIntoTheLine;
+		float measuredPrefixWidth = 0.0f;
+		int32_t runStart = 0;
+		while(runStart < segment.byteCount) {
+			int32_t styleIndex = (segment.offset - lineStart) + runStart;
+			uint8_t runStyle = fuiEditor__StyleAt(paint, styleIndex);
+			bool runIsBlanks = paint->showWhitespace && (segment.bytes[runStart] == ' ');
+
+			int32_t runEnd = runStart + 1;
+			while(runEnd < segment.byteCount) {
+				uint8_t styleHere = fuiEditor__StyleAt(paint, (segment.offset - lineStart) + runEnd);
+				bool isABlankHere = paint->showWhitespace && (segment.bytes[runEnd] == ' ');
+				if(styleHere != runStyle || isABlankHere != runIsBlanks) {
+					break;
+				}
+				runEnd += 1;
+			}
+
+			float prefixWidth = fuiEditor__MeasureRun(context, render, segment.bytes, runEnd);
+			float runLeftX = lineLeftX + segmentStartDistance + measuredPrefixWidth;
+			int32_t runLength = runEnd - runStart;
+
+			fuiColor runColor = fuiEditor__StyleTextColor(editor, runStyle, paint->defaultColor);
+			fuiVec2 runPosition = fuiV2(runLeftX, lineTopY);
+			fuiDrawText(context, &segment.bytes[runStart], (size_t)runLength, runPosition, render->fontHeight, runColor);
+
+			if(runIsBlanks) {
+				fuiEditor__DrawBlankMarks(context, render, runLeftX, lineTopY, runLength, paint->whitespaceColor);
+			}
+
+			measuredPrefixWidth = prefixWidth;
+			runStart = runEnd;
+		}
+		distanceIntoTheLine = segmentStartDistance + measuredPrefixWidth;
 	}
 	return(distanceIntoTheLine);
+}
+
+//! Which ending a line really carries, which is what tells a mixed file apart from a clean one
+static fuiEditorEol fuiEditor__LineEndingOf(const fuiEditor *editor, const int32_t documentLine) {
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	bool isTheLastLine = (documentLine >= (lineCount - 1));
+	if(isTheLastLine) {
+		return(fuiEditorEol_Lf);
+	}
+
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+	int32_t nextLineStart = fuiEditorGetLineStart(editor, documentLine + 1);
+	int32_t endingLength = nextLineStart - lineEnd;
+	if(endingLength >= 2) {
+		return(fuiEditorEol_CrLf);
+	}
+	return(fuiEditorEol_Lf);
 }
 
 /*
@@ -3576,6 +4242,13 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	editor->firstVisibleScreenLine = firstScreenLine;
 	editor->visibleScreenLineCount = endScreenLine - firstScreenLine;
 
+	// Coloured up to the last line that can be seen, and no further - a lexer is only ever asked for what
+	// is about to be drawn. A build that runs out of budget leaves the rest to the next one and draws
+	// plain text until it arrives, which is a few frames of plain text rather than one long stall.
+	int32_t lastVisibleLine = fuiEditor__DocumentLineOfScreenLine(editor, endScreenLine - 1);
+	fuiEditor__LexUpToLine(editor, lastVisibleLine);
+
+	int32_t firstVisibleDocumentLine = fuiEditor__DocumentLineOfScreenLine(editor, firstScreenLine);
 	int32_t caretDocumentLine = fuiEditorGetCaretLine(editor);
 	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretDocumentLine);
 	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
@@ -3602,6 +4275,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	if(hasLineNumbers) {
 		fuiPushClip(context, layout.gutterRect);
 		float numberRightEdge = layout.gutterRect.x + layout.gutterRect.w - config->metrics.gutterPaddingX - FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS;
+		int32_t gutterDecorationCursor = fuiEditor__FirstLineDecorationFrom(&editor->decorations, firstVisibleDocumentLine);
 		for(int32_t screenLine = firstScreenLine; screenLine < endScreenLine; ++screenLine) {
 			bool carriesItsNumber = fuiEditor__ScreenLineCarriesItsNumber(editor, screenLine);
 			if(!carriesItsNumber) {
@@ -3609,6 +4283,15 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			}
 
 			int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+
+			// The marker sits at the LEFT edge of the gutter, where a breakpoint or a diff bar belongs -
+			// out of the way of the number, which is read.
+			const fuiEditorLineDecoration *lineDecoration = fuiEditor__LineDecorationAt(&editor->decorations, &gutterDecorationCursor, documentLine);
+			if(lineDecoration != fui_null && lineDecoration->gutterMarker.a > 0.0f) {
+				float markerTop = layout.gutterRect.y + (float)screenLine * render.lineHeight - scrollY;
+				fuiRect markerRect = fuiRectMake(layout.gutterRect.x, markerTop, FUI_TEXTEDITOR__GUTTER_MARKER_WIDTH, render.lineHeight);
+				fuiDrawRect(context, markerRect, lineDecoration->gutterMarker);
+			}
 			char numberText[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
 			const int32_t numberCapacity = (int32_t)sizeof(numberText);
 			int32_t numberLength = fuiEditor__FormatInt(numberText, numberCapacity, documentLine + 1);
@@ -3636,11 +4319,20 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	fuiPushClip(context, layout.textRect);
 	float lineLeftX = layout.textRect.x + config->metrics.textPaddingX - scrollX;
 	float widestLineSoFar = editor->widestMeasuredLineWidth;
+	int32_t textDecorationCursor = fuiEditor__FirstLineDecorationFrom(&editor->decorations, firstVisibleDocumentLine);
 	for(int32_t screenLine = firstScreenLine; screenLine < endScreenLine; ++screenLine) {
 		int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
 		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
 		int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
 		float lineTopY = layout.textRect.y + (float)screenLine * render.lineHeight - scrollY;
+
+		// A decoration's wash goes UNDER everything else on the line: it says what the line IS - added,
+		// removed, in error - and the caret and the selection are things that happen on top of that.
+		const fuiEditorLineDecoration *lineDecoration = fuiEditor__LineDecorationAt(&editor->decorations, &textDecorationCursor, documentLine);
+		if(lineDecoration != fui_null && lineDecoration->background.a > 0.0f) {
+			fuiRect decorationRect = fuiRectMake(layout.textRect.x, lineTopY, layout.textRect.w, render.lineHeight);
+			fuiDrawRect(context, decorationRect, lineDecoration->background);
+		}
 
 		if(hasSelection) {
 			int32_t washStart = fuiEditor__ClampI32(selectionStart, lineStart, lineEnd);
@@ -3663,9 +4355,58 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			}
 		}
 
-		float lineWidth = fuiEditor__DrawLine(context, editor, &render, lineStart, lineEnd, lineLeftX, lineTopY, config->colors.text);
+		// The ranges are the decoration that is NOT a whole line - a search hit, a squiggle under one
+		// identifier. Sorted, so only the handful that reach into this line are ever looked at.
+		if(editor->decorations.ranges != fui_null) {
+			int32_t rangeIndex = fuiEditor__FirstRangeDecorationFrom(&editor->decorations, lineStart);
+			while(rangeIndex < editor->decorations.rangeCount) {
+				const fuiEditorRangeDecoration *range = &editor->decorations.ranges[rangeIndex];
+				if(range->startOffset >= lineEnd) {
+					break;
+				}
+				bool reachesThisLine = (range->endOffset > lineStart) && (range->background.a > 0.0f);
+				if(reachesThisLine) {
+					int32_t washStart = fuiEditor__ClampI32(range->startOffset, lineStart, lineEnd);
+					int32_t washEnd = fuiEditor__ClampI32(range->endOffset, lineStart, lineEnd);
+					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
+					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+					fuiRect washRect = fuiRectMake(lineLeftX + washStartDistance, lineTopY, washEndDistance - washStartDistance, render.lineHeight);
+					fuiDrawRect(context, washRect, range->background);
+				}
+				rangeIndex += 1;
+			}
+		}
+
+		// A line is only coloured when its start state is known. One that the colouring has not reached
+		// yet is drawn plain rather than being coloured from a state that was guessed.
+		fuiEditor__LinePaint paint;
+		FUI_TEXTEDITOR_MEMSET(&paint, 0, sizeof(paint));
+		paint.defaultColor = config->colors.text;
+		paint.whitespaceColor = config->colors.whitespace;
+		paint.showWhitespace = config->toggles.showWhitespace;
+		bool thisLineIsColoured = (editor->lexer.lexLine != fui_null) && (documentLine < editor->styledUpToLine);
+		if(thisLineIsColoured) {
+			int32_t startState = fuiEditor__LineIndexGetLexerState(&editor->document.lines, documentLine);
+			int32_t lexedLength = 0;
+			(void)fuiEditor__LexOneLine(editor, documentLine, startState, &lexedLength);
+			paint.styles = editor->styleScratch;
+			paint.styleLength = lexedLength;
+		}
+
+		float lineWidth = fuiEditor__DrawLine(context, editor, &render, lineStart, lineEnd, lineLeftX, lineTopY, &paint);
 		if(lineWidth > widestLineSoFar) {
 			widestLineSoFar = lineWidth;
+		}
+
+		// The ending is written AFTER the line, a blank clear of its last character, because that is where
+		// it actually is - and it is what makes a file with mixed endings show itself.
+		bool hasAnEndingToShow = config->toggles.showLineEndings && (documentLine < (documentLineCount - 1));
+		if(hasAnEndingToShow) {
+			fuiEditorEol lineEnding = fuiEditor__LineEndingOf(editor, documentLine);
+			const char *endingName = fuiEditorEolGetName(lineEnding);
+			size_t endingLength = FUI_TEXTEDITOR_STRLEN(endingName);
+			fuiVec2 endingPosition = fuiV2(lineLeftX + lineWidth + render.spaceWidth, lineTopY);
+			fuiDrawText(context, endingName, endingLength, endingPosition, render.fontHeight, config->colors.whitespace);
 		}
 	}
 

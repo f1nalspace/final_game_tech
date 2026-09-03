@@ -10,12 +10,12 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 ## 1. Stand
 
-**Iterationen 0 bis 2 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert und kopiert werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
+**Iterationen 0 bis 3 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
 
-- `final_ui_texteditor.h` v0.3.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, und Cursor, Auswahl, Tastatur, Maus und Kopieren. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
-- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin.
-- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite und Schriftschnitt, plus Auswahl und Kopieren.
-- `--selftest` läuft mit **308 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
+- `final_ui_texteditor.h` v0.4.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen und sichtbarem Whitespace. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
+- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden und geänderte Zeilen, plus Auswahl und Kopieren.
+- `--selftest` läuft mit **351 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
 
 Was beim Bauen von Iteration 0 anders lief als geplant:
 
@@ -37,6 +37,14 @@ Und was bei Iteration 2 dazukam:
 - **Cursorposition und Zeichnen müssen aus derselben Quelle kommen.** Beides läuft jetzt über denselben Segment-Walk über eine Zeile: dieselben Stücke, dieselbe Tabstopp-Rechnung, dieselbe Messung. Zwei getrennte Rechnungen wären an jedem Tabulator und an jedem Kerning-Paar auseinandergelaufen.
 - **Kerning ist nur als Differenz erreichbar.** `final_ui.h` gibt Messen heraus, nicht die Kerningtabelle. Der Vorschub eines Zeichens ist deshalb `Messung(Paar) − Messung(erstes)` — zwei O(1)-Messungen statt einer Präfixmessung je Kandidat, die quadratisch geworden wäre. Bei Monospace fällt beides weg.
 - **Die Zeile des Cursors wird vor dem Layout gemessen.** Sonst kann eine Pfeiltaste, die in eine lange Zeile hineinläuft, nicht seitwärts zu ihr scrollen: der waagerechte Bereich kennt die Zeile ja noch nicht.
+
+Und was bei Iteration 3 dazukam:
+
+- **Kein Style-Array je Dokumentbyte.** Der Plan sah eins vor, nach Scintillas Vorbild. Gebaut ist stattdessen ein `int32_t` **Parser-Zustand je Zeile**, im selben Split-Array wie die Zeilenanfänge, und die Style-Bytes werden für die sichtbaren Zeilen in einen Scratch gelext. Das Verhalten ist dasselbe — die Inkrementalität hängt an den *Zuständen*, nicht an den Styles — aber es spart einen zweiten Gap-Buffer über 650 KB, der bei jeder Einfügung mitgezogen werden müsste. Scintilla speichert die Styles, weil seine Lexer extern sind; hier ist der Lexer ein Callback, der die sichtbaren Zeilen ohnehin je Frame durchläuft.
+- **Die Konvergenz-Schwelle war zuerst falsch.** Sie stand auf `lineCount` statt auf dem höchsten Zeilenindex, und die Abfrage war `>=` statt `>`. Folge: nach einem vollständigen Durchlauf wurde sie nie zurückgesetzt, und die nächste Änderung hat wieder das ganze Dokument neu gefärbt — genau das, was das Verfahren verhindern soll. Aufgefallen ist es nur, weil der Test die **Anzahl der Lexer-Aufrufe zählt** statt nur das Ergebnis zu prüfen.
+- **Nur wirklich neue Zeilen sind „ungeschrieben".** Eine Einfügung ohne Zeilenvorschub legt keinen neuen Zustandsslot an und darf die Schwelle deshalb auch nicht anheben.
+- **Ein Zeilenstück wird an Stilgrenzen zerschnitten, aber als Präfix gemessen.** Jeder Lauf wird von *Stückanfang* bis Laufende gemessen und die Differenz genommen, sodass die Breiten sich teleskopisch zu genau dem aufsummieren, was das ganze Stück misst. Ohne das liefe eine eingefärbte Zeile pro Stilgrenze um ein Kerning-Paar gegen den Cursor davon.
+- **Ein Marker mit `*` und `/` darin ist ein schlechter Marker.** Der „Zeile 3 ändern"-Knopf hängte zuerst einen Blockkommentar an — der den Kommentar schließt, in dem der Dateikopf von `final_ui.h` steht, und damit den halben Bildschirm umfärbt. Korrektes C, verwirrendes Demo. (Der Kommentar, der das erklärt, musste aus demselben Grund umgeschrieben werden.)
 
 ## 2. Designentscheidungen
 
@@ -179,6 +187,11 @@ bool    fuiEditorHasSelection(const fuiEditor *editor);
 int32_t fuiEditorGetSelectionStart(const fuiEditor *editor);
 int32_t fuiEditorGetSelectionEnd(const fuiEditor *editor);
 int32_t fuiEditorCopySelection(const fuiEditor *editor, char *destination, const int32_t destinationCapacity);
+
+// Einfärben
+void fuiEditorSetLexer(fuiEditor *editor, const fuiEditorLexer *lexer);                     // null nimmt ihn weg
+void fuiEditorInvalidateStyles(fuiEditor *editor, const int32_t documentLine);
+void fuiEditorSetDecorations(fuiEditor *editor, const fuiEditorDecorations *decorations);   // null nimmt sie weg
 ```
 
 Zwei Konventionen, die überall gelten:
@@ -261,9 +274,9 @@ Folge: Ein Text aus reinen Carriage Returns (klassisches Mac) ist genau **eine**
 
 ### 4.4 Was noch kommt
 
-- **Style-Array** (Iteration 3): ein `uint8_t` je Dokumentbyte, plus ein `int32_t` Parser-Zustand je Zeile und ein Wasserstand `styledUpToLine`. Eine Änderung in Zeile L setzt `styledUpToLine = min(styledUpToLine, L)`.
+- **Zustandsarray** (Iteration 3, umgesetzt — ohne das geplante Style-Array): ein `int32_t` Parser-Zustand je Zeile, in denselben Slots wie die Zeilenanfänge, plus ein Wasserstand `styledUpToLine`. Eine Änderung in Zeile L setzt `styledUpToLine = min(styledUpToLine, L+1)`. Die Style-Bytes werden für die sichtbaren Zeilen in einen Scratch gelext statt fürs ganze Dokument gespeichert — die Inkrementalität hängt an den Zuständen, nicht an den Styles.
 
-  Der Fall, an dem so etwas sonst stirbt — Cursor auf Zeile 500 000, Änderung in Zeile 3 — wird über **Zustandskonvergenz** abgefangen: das Nachfärben bricht ab, sobald der neu berechnete Ausgangszustand einer Zeile dem gespeicherten entspricht und man hinter der Änderung ist. Alles danach war schon richtig.
+  Der Fall, an dem so etwas sonst stirbt — Cursor auf Zeile 500 000, Änderung in Zeile 3 — wird über **Zustandskonvergenz** abgefangen: das Nachfärben bricht ab, sobald der neu berechnete Ausgangszustand einer Zeile dem gespeicherten entspricht und man hinter allem ist, was neu dazugekommen ist. Alles danach war schon richtig. `lexConvergenceFloor` hält fest, bis zu welchem Zeilenindex ein Slot noch nie von einem Lexer beschrieben wurde — auf einem solchen darf nicht konvergiert werden, denn ein zufällig passender Müllwert sähe genauso aus wie eine echte Übereinstimmung.
 
 - **Tabulatoren** (Iteration 1): `fuiDrawText` kennt kein `\t`. Der Editor zerlegt jede Zeile an den Tabulatoren und setzt x auf den nächsten Tabstopp. Zusammen mit den Style-Läufen aus Iteration 3 sind die Segmente der Schnitt aus beidem.
 
@@ -312,15 +325,17 @@ Dokument, Zeilenindex, Encoding-Seam, Demo-Gerüst, `--selftest`.
 
 **Was noch aussteht:** Was `fuiSetClipboardText` mit dem Text macht, ist Sache der Plattform — und FPLs X11-Backend macht bei Überlänge gar nichts, hinterlässt aber eine leere Zwischenablage. Der Editor selbst gibt die ganze Auswahl heraus; `fuiEditorCopySelection` ist der Weg, sie vollständig zu bekommen, und die Größengrenze gehört in den Hook. Siehe Abschnitt 8 und 9.
 
-### Iteration 3 — Whitespace und Einfärben
+### Iteration 3 — Whitespace und Einfärben ✅
 
-- Leerzeichen als `·`, Tabulator als Pfeil über die volle Tabstoppbreite, Zeilenende als `CR`/`LF`/`CRLF`. Abschaltbar.
-- Style-Array, `fuiEditorStyleDef`-Tabelle, Lexer-Callback, `styledUpToLine`, Zeilenzustände, Konvergenzabbruch.
-- Dekorationsschicht: Zeilenhintergrund und Randspaltenmarker, plus explizite Bereichsliste für Teilzeilen.
-- Zeichnen in Style-Läufen, an Tabulatoren geschnitten.
-- Demo: kleiner C-Lexer und eine Diff-Ansicht.
+- Leerzeichen als Punkt, Tabulator als Pfeil über die volle Tabstoppbreite, Zeilenende als `LF`/`CRLF`. Abschaltbar über `toggles.showWhitespace` und `toggles.showLineEndings`.
+- Zustandsarray je Zeile, `fuiEditorStyleDef`-Tabelle, Lexer-Callback, `styledUpToLine`, Konvergenzabbruch, `lexConvergenceFloor`.
+- Dekorationsschicht: Zeilenhintergrund und Randspaltenmarker (`fuiEditorLineDecoration`), plus explizite Bereichsliste für Teilzeilen (`fuiEditorRangeDecoration`). Beide Arrays gehören dem Aufrufer, sind sortiert und werden per Binärsuche aufs sichtbare Fenster eingegrenzt.
+- Zeichnen in Style-Läufen, an Tabulatoren und an Leerzeichenläufen geschnitten, als Präfix gemessen.
+- Demo: kleiner C-Lexer (Kommentare über Zeilengrenzen, Strings, Zahlen, Schlüsselwörter, Typen, Präprozessor) und eine Ansicht der geänderten Zeilen gegen die Datei, aus der geladen wurde.
 
-**Abnahme:** Der C-Lexer färbt `final_ui.h`. Ans Dateiende springen, Zeile 3 ändern — das Nachfärben bleibt unter einem Frame.
+**Abnahme:** *Erfüllt.* Der C-Lexer färbt `final_ui.h`, und der Blockkommentar des Dateikopfs trägt korrekt über achtzig Zeilen. Statt „unter einem Frame" wird die härtere Zahl geprüft: `[incremental colouring]` **zählt die Lexer-Aufrufe**. Ein volles Dokument von 2000 Zeilen kostet 2000 Aufrufe, ein zweites Nachfragen null, und eine Änderung in Zeile 3 danach **höchstens zwei** — und die Gegenprobe, dass eine Änderung, die den Zustand wirklich verändert (ein geöffneter Blockkommentar), eben *nicht* früh abbricht.
+
+**Was noch aussteht:** Eine echte Diff-Ansicht braucht zwei Fassungen zum Vergleichen. Das Demo vergleicht positionsweise gegen die geladene Datei, was genau das ist, was es sagt — welche Zeilen sich *verschoben* haben, findet ein Diff heraus, und das ist Sache des Aufrufers. Der Editor nimmt nur die Antwort entgegen.
 
 ### Iteration 4 — Bearbeitungsmodus
 
@@ -408,7 +423,7 @@ Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1
 
 Kopflos nach dem Vorbild von `PerfRunBenchmark` (`fui_performance.c:2277`): `fplInitFlags_None`, kein Fenster, kein OpenGL, ein Exit-Code. Prüfmakros wie in `apps/mathtest/mathtest.c`.
 
-Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Einundzwanzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, und Kopieren gegen Datei.
+Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Fünfundzwanzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, Kopieren gegen Datei, Zustände folgen ihren Zeilen, inkrementelles Einfärben, Dekorations-Nachschlag und Zeilenenden je Zeile.
 
 Zu jeder Textprüfung gehören zwei Vergleiche — einmal stückweise über `fuiEditorCopyRange`, einmal zusammenhängend über `fuiEditorGetContiguousText`. Stimmen die nicht überein, sähen ein Lexer und eine Suche zwei verschiedene Dokumente.
 
@@ -455,7 +470,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 |---|---|
 | ~~FiraCode bläht `final_fonts.h` auf~~ ✅ | Beide Schnitte sind drin. `final_fonts.h` ist von 2,39 MB auf 3,22 MB gewachsen, also 830 KB für Bitstream Vera Sans Mono (49 KB Fontdaten) und FiraCode (290 KB). Das war tragbar, die befürchteten ~2 MB allein für FiraCode sind es nicht geworden |
 | **Bestätigt, und schlimmer als eine Kürzung:** `fplSetClipboardText` kopiert unter X11 über `fplCopyString` in `clipboardOut[FPL_MAX_BUFFER_LENGTH]`. `fplCopyString` schreibt bei zu kleinem Ziel **gar nichts** und liefert null zurück — der Selection-Owner wird trotzdem übernommen und liefert dann null Bytes aus. Die Zwischenablage ist danach also **leer**, samt dem, was vorher darin stand, und der Aufruf meldet Erfolg, weil die Übernahme geklappt hat. Unter Windows gibt es die Grenze nicht | Der Editor macht seinen Teil vollständig: `fuiEditorCopySelection` gibt die ganze Auswahl heraus, und Ctrl+C alloziert genau dafür. Die Größengrenze gehört in den Plattform-Hook, und genau dort setzt das Demo sie: `DemoSetClipboardText` verweigert, was nicht hineinpasst, und lässt die vorhandene Zwischenablage in Ruhe. **Eigenes Thema: FPL braucht dort dynamisches Speichermanagement**, siehe Abschnitt 8 |
-| Nachfärben nach einer Änderung weit über dem Sichtfenster | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen |
+| ~~Nachfärben nach einer Änderung weit über dem Sichtfenster~~ ✅ | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen — und über die **Anzahl der Lexer-Aufrufe** geprüft, nicht über das Ergebnis. Genau das hat den Fehler in der Schwelle gefunden |
 | Viele Style-Läufe je Zeile treiben die Draw-Commands hoch | `fuiSetDrawBatching`, Läufe gleicher Farbe zusammenfassen, in Iteration 8 messen |
 | Rückwärtsscrollen mit Umbruch ist beim alten Textfeld O(Dokument) (`final_ui.h:9258`) | Der zweite Index wird einmal je Breite gebaut und gehalten, nicht je Frame |
 | Die breiteste Zeile ist die breiteste *gesehene* — der waagerechte Bereich wächst also beim Durchscrollen | Bewusst so, und dokumentiert. Scintilla verhält sich genauso. Eine Änderung setzt ihn zurück |

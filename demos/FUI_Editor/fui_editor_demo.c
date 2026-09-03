@@ -164,6 +164,241 @@ static void CheckLineImpl(fuiEditor *editor, const int32_t lineIndex, const char
 
 #define CHECK_LINE(editor, lineIndex, expected, expectedStart) CheckLineImpl((editor), (lineIndex), (expected), (expectedStart), __LINE__)
 
+// ----------------------------------------------------------------------------
+// > A small C lexer
+// ----------------------------------------------------------------------------
+
+/*
+	Enough of C to colour this repository, and no more than that.
+
+	It is one function over one line, which is the whole contract a fuiEditorLexer has: it is given the
+	state the line starts in and answers the state the next one starts in. Only ONE thing here really
+	needs that state - a block comment, which is the only construct in C that survives a line ending.
+*/
+
+//! The styles this lexer hands out, which are what its style table is indexed by
+typedef enum DemoCStyle {
+	DemoCStyle_Default = 0,
+	DemoCStyle_Comment,
+	DemoCStyle_String,
+	DemoCStyle_Number,
+	DemoCStyle_Keyword,
+	DemoCStyle_Type,
+	DemoCStyle_Preprocessor,
+	DemoCStyle_Operator,
+	DemoCStyle_Count,
+} DemoCStyle;
+
+//! What the lexer carries from one line to the next
+typedef enum DemoCLexState {
+	DemoCLexState_Normal = 0,
+	DemoCLexState_InsideBlockComment,
+} DemoCLexState;
+
+static const char *g_demoCKeywords[] = {
+	"auto", "break", "case", "const", "continue", "default", "do", "else", "enum", "extern",
+	"for", "goto", "if", "inline", "register", "restrict", "return", "sizeof", "static",
+	"struct", "switch", "typedef", "union", "volatile", "while", "true", "false", "NULL",
+};
+
+static const char *g_demoCTypes[] = {
+	"bool", "char", "double", "float", "int", "long", "short", "signed", "unsigned", "void",
+	"int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+	"size_t", "wchar_t", "va_list",
+};
+
+//! Whether a word is in one of the two tables, compared by length so no terminator is needed
+static bool DemoWordIsInTable(const char *word, const int32_t wordLength, const char *const *table, const size_t tableCount) {
+	for(size_t entryIndex = 0; entryIndex < tableCount; ++entryIndex) {
+		const char *entry = table[entryIndex];
+		size_t entryLength = strlen(entry);
+		if((int32_t)entryLength != wordLength) {
+			continue;
+		}
+		if(memcmp(entry, word, (size_t)wordLength) == 0) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+static bool DemoIsIdentifierStart(const char byte) {
+	unsigned char value = (unsigned char)byte;
+	bool isLower = (value >= 'a') && (value <= 'z');
+	bool isUpper = (value >= 'A') && (value <= 'Z');
+	return(isLower || isUpper || value == '_');
+}
+
+static bool DemoIsIdentifierPart(const char byte) {
+	unsigned char value = (unsigned char)byte;
+	bool isDigit = (value >= '0') && (value <= '9');
+	return(DemoIsIdentifierStart(byte) || isDigit);
+}
+
+static bool DemoIsDigit(const char byte) {
+	unsigned char value = (unsigned char)byte;
+	return((value >= '0') && (value <= '9'));
+}
+
+//! Paints one stretch of the line with one style
+static void DemoPaintStyle(uint8_t *styles, const int32_t from, const int32_t to, const DemoCStyle style) {
+	for(int32_t offset = from; offset < to; ++offset) {
+		styles[offset] = (uint8_t)style;
+	}
+}
+
+static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
+	const char *text = request->text;
+	int32_t length = request->textLength;
+	uint8_t *styles = request->styles;
+	int32_t state = request->startState;
+	int32_t offset = 0;
+
+	// A block comment that was already open runs on until it is closed, and takes the rest of the line
+	// with it when it is not.
+	if(state == (int32_t)DemoCLexState_InsideBlockComment) {
+		int32_t commentEnd = offset;
+		while(commentEnd < length) {
+			bool isTheClosingPair = (text[commentEnd] == '*') && ((commentEnd + 1) < length) && (text[commentEnd + 1] == '/');
+			if(isTheClosingPair) {
+				commentEnd += 2;
+				state = (int32_t)DemoCLexState_Normal;
+				break;
+			}
+			commentEnd += 1;
+		}
+		DemoPaintStyle(styles, offset, commentEnd, DemoCStyle_Comment);
+		offset = commentEnd;
+	}
+
+	// A preprocessor line is the whole line, whatever else is on it - except a comment, which is why the
+	// scan below keeps running rather than painting to the end here.
+	bool isAPreprocessorLine = false;
+	int32_t firstNonBlank = offset;
+	while(firstNonBlank < length && (text[firstNonBlank] == ' ' || text[firstNonBlank] == '\t')) {
+		firstNonBlank += 1;
+	}
+	if(firstNonBlank < length && text[firstNonBlank] == '#') {
+		isAPreprocessorLine = true;
+	}
+
+	while(offset < length) {
+		char currentByte = text[offset];
+		bool hasANextByte = ((offset + 1) < length);
+		char nextByte = hasANextByte ? text[offset + 1] : '\0';
+
+		if(currentByte == '/' && nextByte == '/') {
+			DemoPaintStyle(styles, offset, length, DemoCStyle_Comment);
+			offset = length;
+			continue;
+		}
+
+		if(currentByte == '/' && nextByte == '*') {
+			int32_t commentStart = offset;
+			int32_t commentEnd = offset + 2;
+			state = (int32_t)DemoCLexState_InsideBlockComment;
+			while(commentEnd < length) {
+				bool isTheClosingPair = (text[commentEnd] == '*') && ((commentEnd + 1) < length) && (text[commentEnd + 1] == '/');
+				if(isTheClosingPair) {
+					commentEnd += 2;
+					state = (int32_t)DemoCLexState_Normal;
+					break;
+				}
+				commentEnd += 1;
+			}
+			DemoPaintStyle(styles, commentStart, commentEnd, DemoCStyle_Comment);
+			offset = commentEnd;
+			continue;
+		}
+
+		if(currentByte == '"' || currentByte == '\'') {
+			char quote = currentByte;
+			int32_t stringStart = offset;
+			int32_t stringEnd = offset + 1;
+			while(stringEnd < length) {
+				if(text[stringEnd] == '\\') {
+					stringEnd += 2;
+					continue;
+				}
+				if(text[stringEnd] == quote) {
+					stringEnd += 1;
+					break;
+				}
+				stringEnd += 1;
+			}
+			// A run of escapes at the very end of the line can push this past it.
+			if(stringEnd > length) {
+				stringEnd = length;
+			}
+			DemoPaintStyle(styles, stringStart, stringEnd, DemoCStyle_String);
+			offset = stringEnd;
+			continue;
+		}
+
+		if(DemoIsDigit(currentByte)) {
+			int32_t numberStart = offset;
+			int32_t numberEnd = offset;
+			// Deliberately generous: hex digits, the suffixes, the dot and the exponent's sign all just
+			// belong to the number. Getting that exactly right is a job for a compiler, not for a colour.
+			while(numberEnd < length && (DemoIsIdentifierPart(text[numberEnd]) || text[numberEnd] == '.')) {
+				numberEnd += 1;
+			}
+			DemoPaintStyle(styles, numberStart, numberEnd, DemoCStyle_Number);
+			offset = numberEnd;
+			continue;
+		}
+
+		if(DemoIsIdentifierStart(currentByte)) {
+			int32_t wordStart = offset;
+			int32_t wordEnd = offset;
+			while(wordEnd < length && DemoIsIdentifierPart(text[wordEnd])) {
+				wordEnd += 1;
+			}
+			int32_t wordLength = wordEnd - wordStart;
+
+			DemoCStyle wordStyle = DemoCStyle_Default;
+			if(isAPreprocessorLine && wordStart <= (firstNonBlank + 1)) {
+				wordStyle = DemoCStyle_Preprocessor;
+			} else if(DemoWordIsInTable(&text[wordStart], wordLength, g_demoCKeywords, fplArrayCount(g_demoCKeywords))) {
+				wordStyle = DemoCStyle_Keyword;
+			} else if(DemoWordIsInTable(&text[wordStart], wordLength, g_demoCTypes, fplArrayCount(g_demoCTypes))) {
+				wordStyle = DemoCStyle_Type;
+			}
+			DemoPaintStyle(styles, wordStart, wordEnd, wordStyle);
+			offset = wordEnd;
+			continue;
+		}
+
+		if(currentByte == '#' && isAPreprocessorLine) {
+			styles[offset] = (uint8_t)DemoCStyle_Preprocessor;
+			offset += 1;
+			continue;
+		}
+
+		bool isAnOperator = (currentByte != ' ') && (currentByte != '\t') && !DemoIsIdentifierPart(currentByte);
+		if(isAnOperator) {
+			styles[offset] = (uint8_t)DemoCStyle_Operator;
+		}
+		offset += 1;
+	}
+
+	return(state);
+}
+
+//! What each of those styles is drawn in
+static fuiEditorStyleDef g_demoCStyleTable[DemoCStyle_Count];
+
+static void DemoBuildCStyleTable(void) {
+	g_demoCStyleTable[DemoCStyle_Default].color = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.0f);
+	g_demoCStyleTable[DemoCStyle_Comment].color = fuiColorRGBA(0.44f, 0.58f, 0.42f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_String].color = fuiColorRGBA(0.82f, 0.62f, 0.44f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_Number].color = fuiColorRGBA(0.70f, 0.78f, 0.56f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_Keyword].color = fuiColorRGBA(0.78f, 0.55f, 0.78f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_Type].color = fuiColorRGBA(0.42f, 0.72f, 0.80f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_Preprocessor].color = fuiColorRGBA(0.72f, 0.72f, 0.48f, 1.0f);
+	g_demoCStyleTable[DemoCStyle_Operator].color = fuiColorRGBA(0.62f, 0.68f, 0.76f, 1.0f);
+}
+
 static void SelfTestEmptyDocument(void) {
 	CheckSection("empty document");
 
@@ -1506,6 +1741,228 @@ static void SelfTestCopyAgainstFile(void) {
 	free(fileData);
 }
 
+//! How many lines the lexer under test was asked about, which is the whole point of the checks below
+static int32_t g_lexCallCount = 0;
+
+//! The C lexer with a counter around it, so it can be asked how much work a change really cost
+static int32_t CountingLexLine(fuiEditorLexRequest *request) {
+	g_lexCallCount += 1;
+	return(DemoLexCLine(request));
+}
+
+/*
+	The incremental colouring, and the one number that says whether it is incremental at all.
+
+	Colouring a document once costs one call per line - there is no way around that. What matters is the
+	SECOND time: a change near the top of a large file has to cost two calls and not fourteen thousand,
+	and that only works if a recomputed state that comes out equal to the stored one is taken as proof
+	that everything behind it is still right.
+*/
+static void SelfTestIncrementalColouring(void) {
+	CheckSection("incremental colouring");
+
+	const int32_t lineCount = 2000;
+	static char documentText[2000 * 24];
+	int32_t documentLength = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t roomLeft = (int32_t)sizeof(documentText) - documentLength;
+		int written = snprintf(&documentText[documentLength], (size_t)roomLeft, "int value%d = %d;\n", (int)lineIndex, (int)lineIndex);
+		if(written <= 0 || written >= roomLeft) {
+			break;
+		}
+		documentLength += written;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, documentText, documentLength);
+
+	DemoBuildCStyleTable();
+	fuiEditorLexer lexer = fplZeroInit;
+	lexer.lexLine = CountingLexLine;
+	lexer.styles = g_demoCStyleTable;
+	lexer.styleCount = (int32_t)DemoCStyle_Count;
+	fuiEditorSetLexer(&editor, &lexer);
+
+	int32_t documentLineCount = fuiEditorGetLineCount(&editor);
+	int32_t lastLine = documentLineCount - 1;
+	CHECK_I(editor.styledUpToLine, 1);
+
+	// Colouring only reaches as far as it is asked to.
+	g_lexCallCount = 0;
+	fuiEditor__LexUpToLine(&editor, 9);
+	CHECK_I(g_lexCallCount, 9);
+	CHECK_I(editor.styledUpToLine, 10);
+
+	// And then the whole way, which is one call per line and no more.
+	g_lexCallCount = 0;
+	fuiEditor__LexUpToLine(&editor, lastLine);
+	CHECK_I(g_lexCallCount, lastLine - 9);
+	CHECK_I(editor.styledUpToLine, documentLineCount);
+
+	// Asking again when nothing has changed costs nothing at all.
+	g_lexCallCount = 0;
+	fuiEditor__LexUpToLine(&editor, lastLine);
+	CHECK_I(g_lexCallCount, 0);
+
+	/*
+		The case this whole scheme exists for: a change at the TOP of the document while the view is at the
+		bottom of it. The state coming out of line two is unchanged, so line three onwards is already right.
+	*/
+	int32_t earlyLineEnd = fuiEditorGetLineEnd(&editor, 2);
+	fuiEditorInsert(&editor, earlyLineEnd, " // touched", 0);
+	CHECK_I(editor.styledUpToLine, 3);
+
+	g_lexCallCount = 0;
+	fuiEditor__LexUpToLine(&editor, lastLine);
+	CHECK(g_lexCallCount <= 2);
+	CHECK_I(editor.styledUpToLine, fuiEditorGetLineCount(&editor));
+
+	/*
+		And the other half of the same rule: a change that really DOES alter the state may not stop early.
+		An unclosed block comment puts every line behind it into a comment, and every one of them has to
+		be looked at. It goes on a line of its own, clear of the one that just got a // comment - a block
+		comment opened behind a line comment is not opened at all.
+	*/
+	int32_t commentLineEnd = fuiEditorGetLineEnd(&editor, 5);
+	fuiEditorInsert(&editor, commentLineEnd, " /* opened", 0);
+
+	g_lexCallCount = 0;
+	fuiEditor__LexUpToLine(&editor, lastLine);
+	CHECK(g_lexCallCount > (lineCount / 2));
+	CHECK_I(editor.styledUpToLine, fuiEditorGetLineCount(&editor));
+
+	// The state really did travel: a line far below now starts inside the comment.
+	int32_t stateFarBelow = fuiEditor__LineIndexGetLexerState(&editor.document.lines, 1500);
+	CHECK_I(stateFarBelow, (int32_t)DemoCLexState_InsideBlockComment);
+
+	// Closing it again lets everything behind the close come back out of the comment.
+	int32_t closingLineEnd = fuiEditorGetLineEnd(&editor, 7);
+	fuiEditorInsert(&editor, closingLineEnd, " */", 0);
+	fuiEditor__LexUpToLine(&editor, lastLine);
+	int32_t stateAfterTheClose = fuiEditor__LineIndexGetLexerState(&editor.document.lines, 1500);
+	CHECK_I(stateAfterTheClose, (int32_t)DemoCLexState_Normal);
+
+	// Taking the lexer away leaves nothing believed, so installing another one starts from scratch.
+	fuiEditorSetLexer(&editor, fpl_null);
+	CHECK_I(editor.styledUpToLine, 1);
+
+	fuiEditorRelease(&editor);
+}
+
+//! That a line's state slot really does travel with the line through an insert
+static void SelfTestLexerStatesFollowTheirLines(void) {
+	CheckSection("lexer states follow lines");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "a\nb\nc\nd\ne\n", 0);
+
+	fuiEditorLineIndex *index = &editor.document.lines;
+	for(int32_t lineIndex = 0; lineIndex < fuiEditorGetLineCount(&editor); ++lineIndex) {
+		fuiEditor__LineIndexSetLexerState(index, lineIndex, 100 + lineIndex);
+	}
+
+	/*
+		A whole line inserted in the middle pushes every state BEHIND it along with its line.
+
+		The line the insert lands in keeps its own slot: inserting "X\n" at the start of line two splits
+		that line, the head of the split ("X") stays in slot two, and the tail (the old "c") gets a fresh
+		slot after it. So slot two keeps 102 and slot three is the new one - which is exactly why the pass
+		below is not allowed to converge on it.
+	*/
+	// Cleared first, as a document that has been coloured all the way through would leave it, so that what
+	// the insert puts there is the insert's own doing and not what filling the document left behind.
+	editor.lexConvergenceFloor = 0;
+	int32_t thirdLineStart = fuiEditorGetLineStart(&editor, 2);
+	fuiEditorInsert(&editor, thirdLineStart, "X\n", 0);
+	CHECK_I(fuiEditorGetLineCount(&editor), 7);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 0), 100);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 1), 101);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 2), 102);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 4), 103);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 5), 104);
+
+	// And the new slot is held below the floor, so nothing may stop on whatever it happens to hold.
+	CHECK_I(editor.lexConvergenceFloor, 3);
+
+	// An erase takes the slot back out again and everything behind it moves back.
+	fuiEditorErase(&editor, thirdLineStart, 2);
+	CHECK_I(fuiEditorGetLineCount(&editor), 6);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 2), 102);
+	CHECK_I(fuiEditor__LineIndexGetLexerState(index, 3), 103);
+
+	fuiEditorRelease(&editor);
+}
+
+//! The two searches the decoration layer is looked up through
+static void SelfTestDecorationLookup(void) {
+	CheckSection("decoration lookup");
+
+	fuiEditorLineDecoration lineDecorations[4];
+	FUI_TEXTEDITOR_MEMSET(lineDecorations, 0, sizeof(lineDecorations));
+	lineDecorations[0].line = 3;
+	lineDecorations[1].line = 10;
+	lineDecorations[2].line = 11;
+	lineDecorations[3].line = 40;
+
+	fuiEditorRangeDecoration rangeDecorations[3];
+	FUI_TEXTEDITOR_MEMSET(rangeDecorations, 0, sizeof(rangeDecorations));
+	rangeDecorations[0].startOffset = 10;
+	rangeDecorations[0].endOffset = 20;
+	rangeDecorations[1].startOffset = 100;
+	rangeDecorations[1].endOffset = 110;
+	rangeDecorations[2].startOffset = 300;
+	rangeDecorations[2].endOffset = 305;
+
+	fuiEditorDecorations decorations = fplZeroInit;
+	decorations.lines = lineDecorations;
+	decorations.lineCount = (int32_t)fplArrayCount(lineDecorations);
+	decorations.ranges = rangeDecorations;
+	decorations.rangeCount = (int32_t)fplArrayCount(rangeDecorations);
+
+	CHECK_I(fuiEditor__FirstLineDecorationFrom(&decorations, 0), 0);
+	CHECK_I(fuiEditor__FirstLineDecorationFrom(&decorations, 3), 0);
+	CHECK_I(fuiEditor__FirstLineDecorationFrom(&decorations, 4), 1);
+	CHECK_I(fuiEditor__FirstLineDecorationFrom(&decorations, 11), 2);
+	CHECK_I(fuiEditor__FirstLineDecorationFrom(&decorations, 41), 4);
+
+	// The cursor walks forward and answers only for the line it was asked about.
+	int32_t cursor = 0;
+	const fuiEditorLineDecoration *found = fuiEditor__LineDecorationAt(&decorations, &cursor, 3);
+	CHECK(found != fpl_null);
+	found = fuiEditor__LineDecorationAt(&decorations, &cursor, 4);
+	CHECK(found == fpl_null);
+	found = fuiEditor__LineDecorationAt(&decorations, &cursor, 11);
+	CHECK(found != fpl_null);
+	CHECK_I(found->line, 11);
+
+	// A range that STARTED before the offset may still reach into it, so the search steps one back.
+	CHECK_I(fuiEditor__FirstRangeDecorationFrom(&decorations, 0), 0);
+	CHECK_I(fuiEditor__FirstRangeDecorationFrom(&decorations, 15), 0);
+	CHECK_I(fuiEditor__FirstRangeDecorationFrom(&decorations, 105), 1);
+	CHECK_I(fuiEditor__FirstRangeDecorationFrom(&decorations, 400), 2);
+}
+
+//! Which ending a line really carries, which is what the CR/LF marks are drawn from
+static void SelfTestLineEndingsOfLines(void) {
+	CheckSection("endings of lines");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "unix\nwindows\r\nunix again\nlast", 0);
+
+	CHECK(fuiEditor__LineEndingOf(&editor, 0) == fuiEditorEol_Lf);
+	CHECK(fuiEditor__LineEndingOf(&editor, 1) == fuiEditorEol_CrLf);
+	CHECK(fuiEditor__LineEndingOf(&editor, 2) == fuiEditorEol_Lf);
+
+	// A carriage return belongs to the line it ends and is not part of what the line SAYS.
+	CHECK_I(fuiEditorGetLineLength(&editor, 1), 7);
+	CHECK(fuiEditorGetEol(&editor) == fuiEditorEol_Mixed);
+
+	fuiEditorRelease(&editor);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -1530,6 +1987,10 @@ static int RunSelfTest(void) {
 	SelfTestKeyboard();
 	SelfTestWheelDoesNotFightTheCaret();
 	SelfTestCopyAgainstFile();
+	SelfTestLexerStatesFollowTheirLines();
+	SelfTestIncrementalColouring();
+	SelfTestDecorationLookup();
+	SelfTestLineEndingsOfLines();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -1565,9 +2026,179 @@ typedef struct EditorDemoState {
 	fuiEditorConfig editorConfig;
 	//! What the last copy came to, since what reaches the SYSTEM clipboard is up to the platform
 	char copyDescription[192];
+	//! Whether the C lexer is installed
+	bool useLexer;
+	//! Whether the changed lines are handed over as decorations
+	bool showChangedLines;
+
+	//! The file exactly as it was read, which is what a changed line is changed AGAINST
+	uint8_t *baselineData;
+	//! How long it is
+	int32_t baselineLength;
+	//! Where every one of its lines begins
+	int32_t *baselineLineStarts;
+	//! How many there are
+	int32_t baselineLineCount;
+	//! One entry per line that no longer matches, sorted by line because that is what the editor searches
+	fuiEditorLineDecoration *changedLines;
+	//! How many of them are filled in
+	int32_t changedLineCount;
+	//! Which document version they were worked out from, so they are only rebuilt when something changed
+	int32_t decoratedVersion;
 	//! Whether the loop keeps going
 	bool isRunning;
 } EditorDemoState;
+
+// ----------------------------------------------------------------------------
+// > Changed lines
+// ----------------------------------------------------------------------------
+
+/*
+	The other colouring layer, which carries no state at all.
+
+	The demo keeps the file exactly as it was read and compares the document against it LINE BY LINE, at
+	the same index. That is not a diff - a diff would have to find out which lines moved - and it is not
+	meant to be one: the point here is that the editor takes the answer as an array and knows nothing
+	about how it was arrived at. A real diff is the caller's business.
+
+	It is rebuilt only when the document's version says something changed, because walking every line of a
+	large file is exactly the cost the editor itself refuses to pay once a frame.
+*/
+
+//! Fill of a line that no longer matches the file it was read from
+#define DEMO_CHANGED_LINE_BACKGROUND fuiColorRGBA(0.55f, 0.42f, 0.20f, 0.28f)
+
+//! And of its marker in the gutter
+#define DEMO_CHANGED_LINE_MARKER fuiColorRGBA(0.85f, 0.65f, 0.25f, 1.0f)
+
+//! How many changed lines the demo is willing to mark
+#define DEMO_MAX_CHANGED_LINES 4096
+
+static void DemoReleaseBaseline(EditorDemoState *demo) {
+	free(demo->baselineData);
+	free(demo->baselineLineStarts);
+	free(demo->changedLines);
+	demo->baselineData = fpl_null;
+	demo->baselineLineStarts = fpl_null;
+	demo->changedLines = fpl_null;
+	demo->baselineLength = 0;
+	demo->baselineLineCount = 0;
+	demo->changedLineCount = 0;
+}
+
+//! Keeps the file as it was read, plus where every one of its lines begins
+static void DemoTakeBaseline(EditorDemoState *demo, const uint8_t *fileData, const int32_t fileLength) {
+	DemoReleaseBaseline(demo);
+
+	demo->baselineData = (uint8_t *)malloc((size_t)fileLength);
+	if(demo->baselineData == fpl_null) {
+		return;
+	}
+	memcpy(demo->baselineData, fileData, (size_t)fileLength);
+	demo->baselineLength = fileLength;
+
+	int32_t lineCount = 1;
+	for(int32_t byteIndex = 0; byteIndex < fileLength; ++byteIndex) {
+		if(fileData[byteIndex] == '\n') {
+			lineCount += 1;
+		}
+	}
+	demo->baselineLineStarts = (int32_t *)malloc((size_t)lineCount * sizeof(int32_t));
+	if(demo->baselineLineStarts == fpl_null) {
+		DemoReleaseBaseline(demo);
+		return;
+	}
+
+	int32_t lineIndex = 0;
+	demo->baselineLineStarts[lineIndex++] = 0;
+	for(int32_t byteIndex = 0; byteIndex < fileLength; ++byteIndex) {
+		if(fileData[byteIndex] == '\n' && lineIndex < lineCount) {
+			demo->baselineLineStarts[lineIndex++] = byteIndex + 1;
+		}
+	}
+	demo->baselineLineCount = lineCount;
+	demo->changedLines = (fuiEditorLineDecoration *)malloc((size_t)DEMO_MAX_CHANGED_LINES * sizeof(fuiEditorLineDecoration));
+}
+
+//! One baseline line, without its ending, the way fuiEditorGetLineEnd answers for the document
+static void DemoBaselineLine(const EditorDemoState *demo, const int32_t lineIndex, int32_t *outStart, int32_t *outLength) {
+	*outStart = 0;
+	*outLength = 0;
+	if(lineIndex < 0 || lineIndex >= demo->baselineLineCount) {
+		return;
+	}
+
+	int32_t lineStart = demo->baselineLineStarts[lineIndex];
+	bool isTheLastLine = (lineIndex >= (demo->baselineLineCount - 1));
+	int32_t lineEnd = isTheLastLine ? demo->baselineLength : (demo->baselineLineStarts[lineIndex + 1] - 1);
+	if(lineEnd > lineStart && demo->baselineData[lineEnd - 1] == '\r') {
+		lineEnd -= 1;
+	}
+
+	*outStart = lineStart;
+	*outLength = lineEnd - lineStart;
+}
+
+static void DemoRebuildChangedLines(EditorDemoState *demo) {
+	demo->changedLineCount = 0;
+	demo->decoratedVersion = demo->editor.version;
+	if(demo->changedLines == fpl_null || demo->baselineData == fpl_null) {
+		return;
+	}
+
+	int32_t documentLineCount = fuiEditorGetLineCount(&demo->editor);
+	int32_t lineCount = (documentLineCount > demo->baselineLineCount) ? documentLineCount : demo->baselineLineCount;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		if(demo->changedLineCount >= DEMO_MAX_CHANGED_LINES) {
+			break;
+		}
+
+		int32_t baselineStart = 0;
+		int32_t baselineLength = 0;
+		DemoBaselineLine(demo, lineIndex, &baselineStart, &baselineLength);
+
+		bool documentHasIt = (lineIndex < documentLineCount);
+		int32_t documentStart = documentHasIt ? fuiEditorGetLineStart(&demo->editor, lineIndex) : 0;
+		int32_t documentLength = documentHasIt ? fuiEditorGetLineLength(&demo->editor, lineIndex) : -1;
+
+		bool isTheSame = (documentLength == baselineLength);
+		if(isTheSame) {
+			for(int32_t byteIndex = 0; byteIndex < baselineLength; ++byteIndex) {
+				char documentByte = fuiEditorGetByte(&demo->editor, documentStart + byteIndex);
+				char baselineByte = (char)demo->baselineData[baselineStart + byteIndex];
+				if(documentByte != baselineByte) {
+					isTheSame = false;
+					break;
+				}
+			}
+		}
+		if(isTheSame) {
+			continue;
+		}
+
+		fuiEditorLineDecoration *decoration = &demo->changedLines[demo->changedLineCount];
+		decoration->line = lineIndex;
+		decoration->background = DEMO_CHANGED_LINE_BACKGROUND;
+		decoration->gutterMarker = DEMO_CHANGED_LINE_MARKER;
+		demo->changedLineCount += 1;
+	}
+}
+
+//! Hands the array over, or takes it away again. The editor only ever holds the pointer
+static void DemoApplyDecorations(EditorDemoState *demo) {
+	if(!demo->showChangedLines) {
+		fuiEditorSetDecorations(&demo->editor, fpl_null);
+		return;
+	}
+	if(demo->decoratedVersion != demo->editor.version) {
+		DemoRebuildChangedLines(demo);
+	}
+
+	fuiEditorDecorations decorations = fplZeroInit;
+	decorations.lines = demo->changedLines;
+	decorations.lineCount = demo->changedLineCount;
+	fuiEditorSetDecorations(&demo->editor, &decorations);
+}
 
 /*
 	Reads a whole file into memory.
@@ -1618,6 +2249,10 @@ static void DemoInit(EditorDemoState *demo) {
 	// one thing does: take the defaults, change the one field, hand the whole thing back.
 	demo->editorConfig = fuiEditorDefaultConfig();
 	fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
+
+	DemoBuildCStyleTable();
+	demo->useLexer = true;
+	demo->decoratedVersion = -1;
 	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
 
 	// Tried from the working directory and from one level up, so running it out of the build folder and
@@ -1638,6 +2273,7 @@ static void DemoInit(EditorDemoState *demo) {
 		if(DemoReadWholeFile(candidatePath, &fileData, &fileLength)) {
 			fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
 			fuiEditorLoadFromMemory(&demo->editor, fileData, fileLength, &utf8Encoding);
+			DemoTakeBaseline(demo, fileData, fileLength);
 			free(fileData);
 			fplStringFormat(demo->sourceDescription, fplArrayCount(demo->sourceDescription), "Loaded %s (%d bytes)", candidatePath, (int)fileLength);
 			return;
@@ -1651,6 +2287,47 @@ static void DemoInit(EditorDemoState *demo) {
 
 static void DemoRelease(EditorDemoState *demo) {
 	fuiEditorRelease(&demo->editor);
+	DemoReleaseBaseline(demo);
+}
+
+//! Installs the C lexer, or takes it away again
+static void DemoApplyLexer(EditorDemoState *demo) {
+	if(!demo->useLexer) {
+		fuiEditorSetLexer(&demo->editor, fpl_null);
+		return;
+	}
+
+	fuiEditorLexer lexer = fplZeroInit;
+	lexer.lexLine = DemoLexCLine;
+	lexer.styles = g_demoCStyleTable;
+	lexer.styleCount = (int32_t)DemoCStyle_Count;
+	fuiEditorSetLexer(&demo->editor, &lexer);
+}
+
+/*
+	Changes a line near the TOP of the document, which is the case the incremental colouring exists for.
+
+	Scroll to the end of a large file, press this, and everything has to stay where it is: the watermark
+	drops to line three, the next build re-colours from there, and the state it arrives at for line four
+	is the one already stored - so it stops after two lines rather than walking fourteen thousand.
+*/
+static void DemoChangeAnEarlyLine(EditorDemoState *demo) {
+	const int32_t theLineToChange = 2;
+	int32_t lineCount = fuiEditorGetLineCount(&demo->editor);
+	if(lineCount <= theLineToChange) {
+		return;
+	}
+
+	// Written at the END of the line so nothing about its indentation moves, and with no line feed in it,
+	// so the lines below keep their numbers and the positional comparison stays meaningful.
+	//
+	// And with no comment characters in it either. A closing block comment marker here would close the
+	// block comment that final_ui.h's own header sits inside of - correct C, and a thoroughly confusing
+	// thing for a demo to do to itself. This very comment had to be rewritten for the same reason.
+	const char *marker = "   <-- changed by the demo";
+	int32_t lineEnd = fuiEditorGetLineEnd(&demo->editor, theLineToChange);
+	(void)fuiEditorInsert(&demo->editor, lineEnd, marker, 0);
+	demo->showChangedLines = true;
 }
 
 /*
@@ -1857,9 +2534,43 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 	}
 	fuiEndStack(ui);
 
+	fuiRect colouringRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "colouring", fuiAxis_Horizontal, colouringRow, rowSpacing);
+	{
+		fuiRect lexerRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, lexerRect, "C lexer", &demo->useLexer)) {
+			DemoApplyLexer(demo);
+		}
+
+		fuiRect whitespaceRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, whitespaceRect, "Whitespace", &demo->editorConfig.toggles.showWhitespace)) {
+			configurationChanged = true;
+		}
+
+		fuiRect endingsRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, endingsRect, "Line endings", &demo->editorConfig.toggles.showLineEndings)) {
+			configurationChanged = true;
+		}
+
+		fuiRect changedRect = fuiLayoutSlot(ui, toggleWidth + toggleWidth / 4.0f);
+		(void)fuiCheckbox(ui, changedRect, "Changed lines", &demo->showChangedLines);
+
+		fuiRect editRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, editRect, "Change line 3")) {
+			DemoChangeAnEarlyLine(demo);
+		}
+
+		fuiRect countRect = fuiLayoutRemaining(ui);
+		char changedText[96];
+		fplStringFormat(changedText, fplArrayCount(changedText), "%d changed", (int)demo->changedLineCount);
+		fuiLabel(ui, countRect, changedText);
+	}
+	fuiEndStack(ui);
+
 	if(configurationChanged) {
 		fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
 	}
+	DemoApplyDecorations(demo);
 
 	fuiRect separatorRow = fuiLayoutSlot(ui, rowHeight);
 	fuiSeparator(ui, separatorRow);
@@ -1980,6 +2691,7 @@ int main(int argc, char **argv) {
 	demo.monoFonts[EditorDemoMonoFace_FiraCode] = &fonts[DEMO_FACE_FIRA_CODE];
 	demo.monoFontNames[EditorDemoMonoFace_VeraMono] = "Bitstream Vera Sans Mono";
 	demo.monoFontNames[EditorDemoMonoFace_FiraCode] = "Fira Code";
+	DemoApplyLexer(&demo);
 
 	// The demo's own clipboard hook rather than fuiFplSetClipboardText, so that every copy - the button
 	// and ctrl+c alike - goes through the size check. It needs the demo state, so it is installed here
