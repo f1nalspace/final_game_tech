@@ -8,6 +8,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FUI_Framework", "FUI_Framew
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FUI_Performance", "FUI_Performance\FUI_Performance.vcxproj", "{509EDC51-8ED5-4103-BF89-D00DD9671A93}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FUI_Editor", "FUI_Editor\FUI_Editor.vcxproj", "{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -40,6 +42,14 @@ Global
 		{509EDC51-8ED5-4103-BF89-D00DD9671A93}.Release|x64.Build.0 = Release|x64
 		{509EDC51-8ED5-4103-BF89-D00DD9671A93}.Release|x86.ActiveCfg = Release|Win32
 		{509EDC51-8ED5-4103-BF89-D00DD9671A93}.Release|x86.Build.0 = Release|Win32
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Debug|x64.ActiveCfg = Debug|x64
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Debug|x64.Build.0 = Debug|x64
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Debug|x86.ActiveCfg = Debug|Win32
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Debug|x86.Build.0 = Debug|Win32
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Release|x64.ActiveCfg = Release|x64
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Release|x64.Build.0 = Release|x64
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Release|x86.ActiveCfg = Release|Win32
+		{D35C9B3C-9E7C-480A-93E5-365EC442F7BB}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
