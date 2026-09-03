@@ -161,9 +161,13 @@ SOFTWARE.
 	- New: The editor is in the tab chain, through fuiRegisterFocusable.
 	- Note: ctrl+c hands the WHOLE selection to fuiSetClipboardText, in one allocation of exactly its size,
 	  so nothing is ever cut off - least of all in the middle of a codepoint. What happens to it after that
-	  is the platform hook's business: FPL's X11 backend currently copies it into a buffer of
-	  FPL_MAX_BUFFER_LENGTH bytes and drops the rest. fuiEditorCopySelection is the way to get all of it.
-	- Changed: final_ui.h v0.9.8 is now the minimum, for fuiRegisterFocusable and fuiGetFrameTime.
+	  is the platform hook's business, and a hook with a size limit is worth writing carefully: FPL's X11
+	  backend copies into a buffer of FPL_MAX_BUFFER_LENGTH bytes through fplCopyString, which writes
+	  NOTHING at all when the text does not fit and then takes the selection ownership anyway - so a big
+	  copy through it leaves the system clipboard EMPTY rather than shortened, and reports success. A hook
+	  that cannot take the whole text should refuse it and answer false. fuiEditorCopySelection is always
+	  the way to get all of it inside the process.
+	- Changed: final_ui.h v0.9.7 also carries fuiRegisterFocusable and fuiGetFrameTime now, which this needs.
 
 	# v0.2.0:
 	Something to look at. The document from v0.1.0 gets a widget over it that can be READ - a gutter with

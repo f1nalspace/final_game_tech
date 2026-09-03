@@ -13,7 +13,7 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 **Iterationen 0 bis 2 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen, gescrollt, markiert und kopiert werden kann. Damit ist der Read-Only-Editor fertig — alles Weitere ändert Text.
 
 - `final_ui_texteditor.h` v0.3.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, und Cursor, Auswahl, Tastatur, Maus und Kopieren. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
-- `final_ui.h` v0.9.8 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable` und `fuiGetFrameTime` sind öffentlich. Damit sind die Zusätze, die dieser Add-on braucht, alle drin.
 - `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite und Schriftschnitt, plus Auswahl und Kopieren.
 - `--selftest` läuft mit **308 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der eine Taste drückt und die Antwort zurückliest.
 
@@ -73,8 +73,8 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 | Was | Warum es fehlte | Wann |
 |---|---|---|
 | `fuiScrollbarHorizontal` ✅ | `fui__Scrollbar(..., false)` gab es intern längst, die ListView ruft es direkt auf; öffentlich war nur die vertikale Fassung | Iteration 1, drin seit `final_ui.h` v0.9.7 |
-| `fuiRegisterFocusable` ✅ | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2, drin seit `final_ui.h` v0.9.8 |
-| `fuiGetFrameTime` ✅ | War nicht geplant. Ein Add-on bekommt nur den Kontext, und ohne Zeitquelle kann es nichts takten — Blinken, Doppelklick, Auto-Scrollen | Iteration 2, drin seit `final_ui.h` v0.9.8 |
+| `fuiRegisterFocusable` ✅ | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
+| `fuiGetFrameTime` ✅ | War nicht geplant. Ein Add-on bekommt nur den Kontext, und ohne Zeitquelle kann es nichts takten — Blinken, Doppelklick, Auto-Scrollen | Iteration 2, drin seit `final_ui.h` v0.9.7 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -303,14 +303,14 @@ Dokument, Zeilenindex, Encoding-Seam, Demo-Gerüst, `--selftest`.
 - Maus: Klick, Ziehen über Zeilen, Auto-Scroll am Rand, Doppelklick=Wort, Dreifachklick=Zeile, Shift+Klick erweitert. Ein Ziehen, das auf einem Wort oder einer Zeile begann, bleibt auf ganzen.
 - Ctrl+A, Ctrl+C. Der Puffer wird auf die Auswahl genau zugeschnitten alloziert, es wird also gar nichts abgeschnitten — auch nicht in der Mitte eines Codepoints.
 - Auswahl zeichnen (Teilzeilen, ganze Zeilen, und der Zeilenumbruch als Leerzeichenbreite), Cursor blinken, Cursor ins Bild holen — **nur wenn er sich wirklich bewegt hat**.
-- `fuiRegisterFocusable` und `fuiGetFrameTime` in `final_ui.h` (v0.9.8), Editor in der Tab-Kette.
+- `fuiRegisterFocusable` und `fuiGetFrameTime` in `final_ui.h` (v0.9.7), Editor in der Tab-Kette.
 - `fuiEditorConfig`: `colors.selectionBackground`, `colors.caret`, `metrics.caretWidth`, `toggles.isInteractive`.
 
 **Abnahme:** *Erfüllt.* Als Prüfung im `--selftest` automatisiert (`[copy against file]`): `final_ui.h` wird geladen, komplett markiert, herauskopiert und byteweise gegen die Datei gehalten — plus eine Auswahl, die nicht bei null anfängt, damit die Offsets und nicht nur die Länge geprüft werden. `[wheel against caret]` fährt den Fallstrick ab: mit dem Rad wegscrollen, drei Frames nichts tun, der Offset muss stehen bleiben; dann eine Pfeiltaste, und er muss zurückkommen. `[keyboard]` drückt Tasten kopflos, `[line geometry]` prüft, dass Offset↔Position über Tabulatoren hinweg zueinander invers sind.
 
 **Damit ist die Kerniteration Read-Only fertig.**
 
-**Was noch aussteht:** Was `fuiSetClipboardText` mit dem Text macht, ist Sache der Plattform — FPLs X11-Backend kopiert ihn in `clipboardOut[FPL_MAX_BUFFER_LENGTH]` (2048 Bytes) und wirft den Rest weg. Der Editor selbst gibt die ganze Auswahl heraus; `fuiEditorCopySelection` ist der Weg, sie vollständig zu bekommen. Siehe Abschnitt 9.
+**Was noch aussteht:** Was `fuiSetClipboardText` mit dem Text macht, ist Sache der Plattform — und FPLs X11-Backend macht bei Überlänge gar nichts, hinterlässt aber eine leere Zwischenablage. Der Editor selbst gibt die ganze Auswahl heraus; `fuiEditorCopySelection` ist der Weg, sie vollständig zu bekommen, und die Größengrenze gehört in den Hook. Siehe Abschnitt 8 und 9.
 
 ### Iteration 3 — Whitespace und Einfärben
 
@@ -444,7 +444,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 - **Mehrfach-Cursor und Spaltenauswahl.** Ändert das Cursormodell von einem Paar auf eine Liste, und damit jede einzelne Bearbeitungsfunktion.
 - **Autovervollständigung.** Wäre ein Callback plus ein Popup; hängt an nichts hier.
 - **Klassisches Mac als Zeilenende im Dokument.** Nur ein Line Feed trennt Zeilen; ein reiner Carriage-Return-Text wird beim Laden normalisiert, nicht im Dokument verstanden.
-- **FPLs Zwischenablage.** `fplSetClipboardText` kopiert unter X11 in einen festen Puffer von 2048 Bytes und schneidet still ab; `fplGetClipboardText` liest aus demselben. Für einen Editor ist das zu klein — eine markierte Datei sind schnell hunderte Kilobyte. Zu lösen ist das in `final_platform_layer.h` mit dynamischem Speicher für den Zwischenablagepuffer, nicht hier. Bewusst ein eigenes Thema: es ist eine Änderung an einer plattformübergreifenden Datei, die nichts mit dem Editor zu tun hat, und beim Setzen großer Selektionen kommt über X11 obendrein das INCR-Protokoll ins Spiel.
+- **FPLs Zwischenablage.** `fplSetClipboardText` kopiert unter X11 in einen festen Puffer von 2048 Bytes; `fplGetClipboardText` liest aus demselben. Es schneidet dabei nicht ab, sondern kopiert bei Überlänge **gar nichts** (`fplCopyString` liefert null und schreibt nicht), übernimmt den Selection-Owner aber trotzdem — die Zwischenablage ist danach leer, das Vorherige ist weg, und der Rückgabewert sagt „erfolgreich". Nachgeprüft: eine große Auswahl in Kate einzufügen liefert nichts, kurze funktionieren. Für einen Editor ist das zu klein — eine markierte Datei sind schnell hunderte Kilobyte. Zu lösen ist das in `final_platform_layer.h` mit dynamischem Speicher für den Zwischenablagepuffer, nicht hier. Bewusst ein eigenes Thema: es ist eine Änderung an einer plattformübergreifenden Datei, die nichts mit dem Editor zu tun hat, und beim Setzen großer Selektionen kommt über X11 obendrein das INCR-Protokoll ins Spiel.
 - **X11 PRIMARY selection.** Die mittlere Maustaste fügt aus der normalen Zwischenablage ein, weil FPL nur `CLIPBOARD` kennt und nicht `PRIMARY`. Unter Linux ist das nicht ganz die gewohnte Geste.
 
 ---
@@ -454,7 +454,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 | Risiko | Gegenmaßnahme |
 |---|---|
 | ~~FiraCode bläht `final_fonts.h` auf~~ ✅ | Beide Schnitte sind drin. `final_fonts.h` ist von 2,39 MB auf 3,22 MB gewachsen, also 830 KB für Bitstream Vera Sans Mono (49 KB Fontdaten) und FiraCode (290 KB). Das war tragbar, die befürchteten ~2 MB allein für FiraCode sind es nicht geworden |
-| **Bestätigt:** FPLs X11-Zwischenablage hat eine feste Puffergrenze. `fplSetClipboardText` kopiert über `fplCopyString` in `clipboardOut[FPL_MAX_BUFFER_LENGTH]`, also 2048 Bytes, und wirft den Rest weg. Unter Windows gibt es die Grenze nicht, da wird passend alloziert | Der Editor macht seinen Teil vollständig: `fuiEditorCopySelection` gibt die ganze Auswahl heraus, und Ctrl+C alloziert genau dafür. Was die Plattform daraus macht, ist ihre Sache — und `fplSetClipboardText` meldet die Kürzung nicht, kann vom Editor also auch nicht erkannt werden. **Eigenes Thema: FPL braucht dort dynamisches Speichermanagement**, siehe Abschnitt 8 |
+| **Bestätigt, und schlimmer als eine Kürzung:** `fplSetClipboardText` kopiert unter X11 über `fplCopyString` in `clipboardOut[FPL_MAX_BUFFER_LENGTH]`. `fplCopyString` schreibt bei zu kleinem Ziel **gar nichts** und liefert null zurück — der Selection-Owner wird trotzdem übernommen und liefert dann null Bytes aus. Die Zwischenablage ist danach also **leer**, samt dem, was vorher darin stand, und der Aufruf meldet Erfolg, weil die Übernahme geklappt hat. Unter Windows gibt es die Grenze nicht | Der Editor macht seinen Teil vollständig: `fuiEditorCopySelection` gibt die ganze Auswahl heraus, und Ctrl+C alloziert genau dafür. Die Größengrenze gehört in den Plattform-Hook, und genau dort setzt das Demo sie: `DemoSetClipboardText` verweigert, was nicht hineinpasst, und lässt die vorhandene Zwischenablage in Ruhe. **Eigenes Thema: FPL braucht dort dynamisches Speichermanagement**, siehe Abschnitt 8 |
 | Nachfärben nach einer Änderung weit über dem Sichtfenster | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen |
 | Viele Style-Läufe je Zeile treiben die Draw-Commands hoch | `fuiSetDrawBatching`, Läufe gleicher Farbe zusammenfassen, in Iteration 8 messen |
 | Rückwärtsscrollen mit Umbruch ist beim alten Textfeld O(Dokument) (`final_ui.h:9258`) | Der zweite Index wird einmal je Breite gebaut und gehalten, nicht je Frame |

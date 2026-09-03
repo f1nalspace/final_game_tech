@@ -1654,13 +1654,38 @@ static void DemoRelease(EditorDemoState *demo) {
 }
 
 /*
-	Copies the selection and says how much of it there was.
+	The clipboard hook the demo installs INSTEAD of handing fuiFplSetClipboardText straight over.
 
-	The editor hands over the whole selection however big it is - it allocates for exactly what is
-	selected. What reaches the SYSTEM clipboard after that is the platform's business, and FPL's X11
-	backend currently caps a selection at FPL_MAX_BUFFER_LENGTH bytes. So the byte count is reported here
-	rather than assumed: whoever pastes it somewhere else can tell at a glance whether it all arrived.
+	fplSetClipboardText copies into a fixed buffer of FPL_MAX_BUFFER_LENGTH bytes through fplCopyString,
+	and fplCopyString writes NOTHING AT ALL when the text does not fit - it answers zero and returns. The
+	selection owner is then taken anyway and serves those zero bytes, so what comes out the other end is
+	not a shortened clipboard but an EMPTY one, and whatever was in it beforehand is gone with it. The
+	call even reports success, because taking the ownership did work.
+
+	So anything that does not fit is refused HERE rather than handed over. Every path through the editor
+	goes through this one hook - the Copy button and ctrl+c alike - which is exactly what the hook is for.
 */
+static bool DemoSetClipboardText(void *userData, const char *text) {
+	EditorDemoState *demo = (EditorDemoState *)userData;
+	size_t textLength = fplGetStringLength(text);
+
+	// One less than the buffer, because the terminator has to fit in it as well.
+	const size_t platformClipboardLimit = FPL_MAX_BUFFER_LENGTH - 1;
+	if(textLength > platformClipboardLimit) {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "%d bytes exceeds the platform clipboard (%d) - not copied", (int)textLength, (int)platformClipboardLimit);
+		return(false);
+	}
+
+	bool didSet = fplSetClipboardText(text);
+	if(didSet) {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes", (int)textLength);
+	} else {
+		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "The platform refused %d bytes", (int)textLength);
+	}
+	return(didSet);
+}
+
+//! Hands the selection to that hook, which is the same thing ctrl+c inside the editor does
 static void DemoCopySelection(fuiContext *ui, EditorDemoState *demo) {
 	char *noBuffer = fpl_null;
 	const int32_t noCapacity = 0;
@@ -1677,17 +1702,8 @@ static void DemoCopySelection(fuiContext *ui, EditorDemoState *demo) {
 		return;
 	}
 	(void)fuiEditorCopySelection(&demo->editor, copiedText, bufferLength);
-	bool didSet = fuiSetClipboardText(ui, copiedText);
+	(void)fuiSetClipboardText(ui, copiedText);
 	free(copiedText);
-
-	const int32_t platformClipboardLimit = FPL_MAX_BUFFER_LENGTH;
-	if(!didSet) {
-		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copy of %d bytes was refused", (int)selectionLength);
-	} else if(selectionLength >= platformClipboardLimit) {
-		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes - the platform clipboard holds %d", (int)selectionLength, (int)platformClipboardLimit);
-	} else {
-		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes", (int)selectionLength);
-	}
 }
 
 /*
@@ -1957,11 +1973,6 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	fuiPlatform platform = fplZeroInit;
-	platform.getClipboardText = fuiFplGetClipboardText;
-	platform.setClipboardText = fuiFplSetClipboardText;
-	fuiSetPlatform(&ui, &platform);
-
 	EditorDemoState demo;
 	DemoInit(&demo);
 	demo.uiFont = &fonts[DEMO_FACE_UI];
@@ -1969,6 +1980,15 @@ int main(int argc, char **argv) {
 	demo.monoFonts[EditorDemoMonoFace_FiraCode] = &fonts[DEMO_FACE_FIRA_CODE];
 	demo.monoFontNames[EditorDemoMonoFace_VeraMono] = "Bitstream Vera Sans Mono";
 	demo.monoFontNames[EditorDemoMonoFace_FiraCode] = "Fira Code";
+
+	// The demo's own clipboard hook rather than fuiFplSetClipboardText, so that every copy - the button
+	// and ctrl+c alike - goes through the size check. It needs the demo state, so it is installed here
+	// rather than before the state exists.
+	fuiPlatform platform = fplZeroInit;
+	platform.getClipboardText = fuiFplGetClipboardText;
+	platform.setClipboardText = DemoSetClipboardText;
+	platform.userData = &demo;
+	fuiSetPlatform(&ui, &platform);
 
 	fuiFplInput bridge;
 	fuiFplInputInit(&bridge);
