@@ -21,7 +21,8 @@ the caller would hand over invariants rather than data. Everything ELSE - the
 colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
-Status: under construction. See the changelog for what is in.
+Status: under construction. The view is there and can be read and scrolled; typing into it,
+syntax colouring, find and replace and undo are not in yet. See the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -31,6 +32,8 @@ Status: under construction. See the changelog for what is in.
 - Define FUI_TEXTEDITOR_IMPLEMENTATION in exactly ONE translation unit before including this file.
 - Create one fuiEditor per document with fuiEditorInit(), pass fui_null as allocator to use malloc/free.
 - Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory().
+- Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
+- Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
 - Release it with fuiEditorRelease().
 
 This file uses only the PUBLIC api of final_ui.h, so its implementation may live
@@ -46,13 +49,18 @@ in a translation unit of its own.
 #define FUI_TEXTEDITOR_IMPLEMENTATION
 #include <final_ui_texteditor.h>
 
+// Once
 fuiEditor editor;
 fuiEditorInit(&editor, fui_null);            // fui_null = default malloc/free
 fuiEditorSetText(&editor, sourceCode, 0);    // 0 = measure up to the terminating zero
 
-// ... once the widget lands in a later iteration, per frame:
-// fuiEditorAction action = fuiTextEditor(&ui, rect, "source", &editor);
+// Per frame. The CONTEXT's font is what the text is drawn in, so a monospace face is swapped in around it
+fuiRect editorRect = fuiLayoutRemaining(&ui);
+fuiSetFont(&ui, &monospaceFont);
+fuiEditorAction action = fuiTextEditor(&ui, editorRect, "source", &editor);
+fuiSetFont(&ui, &interfaceFont);
 
+// Once
 fuiEditorRelease(&editor);
 
 -------------------------------------------------------------------------------
@@ -65,6 +73,7 @@ FUI_TEXTEDITOR_MEMSET(d,v,n)    Override memory set (defaults to memset).
 FUI_TEXTEDITOR_MEMCPY(d,s,n)    Override memory copy (defaults to memcpy).
 FUI_TEXTEDITOR_MEMMOVE(d,s,n)   Override memory move (defaults to memmove).
 FUI_TEXTEDITOR_MEMCHR(p,v,n)    Override memory byte search (defaults to memchr).
+FUI_TEXTEDITOR_MEMCMP(a,b,n)    Override memory compare (defaults to memcmp).
 FUI_TEXTEDITOR_STRLEN(s)        Override string length (defaults to strlen).
 FUI_TEXTEDITOR_MIN_TEXT_BYTES   Smallest byte capacity a document is ever allocated at (default 4096).
 FUI_TEXTEDITOR_MIN_LINE_SLOTS   Smallest number of line slots the line index is ever allocated at (default 256).
@@ -102,7 +111,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.1.0
+	@version v0.2.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -116,6 +125,46 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.2.0:
+	Something to look at. The document from v0.1.0 gets a widget over it that can be READ - a gutter with
+	line numbers, tab stops, two scrollbars and a status line - and nothing that can be typed into yet.
+	final_ui.h itself, at over fourteen thousand lines, is what it is built against, because a line index
+	is only worth having on something that size.
+
+	- New: fuiTextEditor, which lays out and draws only the lines that can be SEEN. Nothing in it is per
+	  document line and everything is per visible line, which is the whole reason a document of a million
+	  lines costs what one of twenty costs. The one exception is the caret's line, which is a binary search.
+	- New: fuiEditorConfig with its colors, metrics and toggles, fuiEditorDefaultConfig and
+	  fuiEditorSetConfig. A zeroed field means "take the default", the same as everywhere else in
+	  final_ui.h - but it is resolved ONCE when the configuration is set rather than at every use, because
+	  forty tests per frame to arrive at the same forty answers is not a bargain. The theme it was resolved
+	  from is kept beside it, so a context that is restyled between two frames is noticed.
+	- New: A gutter whose line numbers are right aligned and NOT padded out with blanks or zeroes, so that
+	  a jump in the numbers reads as a jump rather than as a change of width. It is sized by the widest
+	  number the document can show, and it takes the current line wash with it - a highlight that stopped at
+	  the number would read as two things beside each other rather than as one line.
+	- New: Tab stops. fuiDrawText has no idea what a tab is, so a line is cut at every one of them and the
+	  pen is put on the next stop, counted from the start of the line rather than from the left edge.
+	- New: A monospace fast path. The face is measured once per build - "W" against "i" - and where they
+	  come out the same width, measuring a run becomes counting its codepoints and multiplying. That is the
+	  difference between a long line of code costing what its length is and costing the square of it.
+	- New: Both scrollbars, each Auto, Always or Never. The vertical one is reserved whether it is needed or
+	  not by default, because a document being typed into crosses the "one line more than fits" boundary
+	  constantly and every crossing would shift every line sideways; the horizontal one appears only when it
+	  is needed. The wheel scrolls down and, with shift, sideways - the same gesture the list view uses.
+	- New: The editor's OWN status line, rather than fuiBeginStatusBar, which docks against the bottom of
+	  the window. An editor is rarely the whole window.
+	- New: fuiEditorSetCaretLine, fuiEditorGetCaretLine, fuiEditorScrollToLine, fuiEditorGetFirstVisibleLine
+	  and fuiEditorGetVisibleLineCount. The caret is a line and nothing more so far; moving it by the mouse
+	  and the keyboard is the next iteration.
+	- New: SCREEN lines and DOCUMENT lines are told apart everywhere, although they are still the same
+	  thing. Optional word wrap makes them differ, and introducing that distinction afterwards would mean
+	  touching every line of the widget at once.
+	- New: The horizontal range goes by the widest line SEEN so far, not by the widest line there is.
+	  Measuring every line every frame would be the walk over the whole document this widget exists not to
+	  do. So the range grows as the document is scrolled through, and an edit resets it.
+	- Changed: final_ui.h v0.9.7 is now the minimum, for fuiScrollbarHorizontal.
 
 	# v0.1.0:
 	The foundation, and nothing that can be seen yet. What a real editor is or is not able to do is
@@ -161,7 +210,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 1
+#define FUI_TEXTEDITOR_VERSION_MINOR 2
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -278,6 +327,111 @@ fui_api fuiEditorEncoding fuiEditorEncodingAscii(void);
 
 // ****************************************************************************
 //
+// > Configuration
+//
+// ****************************************************************************
+
+/**
+* @enum fuiEditorScrollbarMode
+* @brief When one of the two scrollbars is there at all.
+* @note Reserving a gutter that is not needed costs a strip of width or height; NOT reserving one costs
+*       every line moving sideways the moment the document grows past the box. Which of those is worse
+*       depends on the axis, so each axis is asked separately.
+*/
+typedef enum fuiEditorScrollbarMode {
+	//! Reserve the gutter and draw the bar only while the content really overflows
+	fuiEditorScrollbarMode_Auto = 0,
+	//! Always reserve the gutter, and draw the bar disabled while the content fits
+	fuiEditorScrollbarMode_Always,
+	//! Never reserve a gutter and never draw a bar. The wheel still scrolls
+	fuiEditorScrollbarMode_Never,
+} fuiEditorScrollbarMode;
+
+/**
+* @struct fuiEditorColors
+* @brief What the editor paints with. Every color left at zero alpha is taken from @ref fuiTheme instead.
+* @note A color that is meant to be invisible is switched off by its toggle rather than by a zero alpha,
+*       because zero alpha is what "the caller named none" is spelled as.
+*/
+typedef struct fuiEditorColors {
+	//! Fill behind the text
+	fuiColor background;
+	//! Outline around the whole widget
+	fuiColor border;
+	//! The text itself, until a lexer has something else to say about a run of it
+	fuiColor text;
+	//! Fill behind the line numbers
+	fuiColor gutterBackground;
+	//! A line number that is not the current one
+	fuiColor gutterText;
+	//! The line number of the line the caret is on
+	fuiColor gutterCurrentLineText;
+	//! The hairline that divides the gutter from the text
+	fuiColor gutterSeparator;
+	//! Wash over the whole width of the line the caret is on, the gutter included
+	fuiColor currentLineBackground;
+	//! Fill behind the editor's own status line
+	fuiColor statusBarBackground;
+	//! Text of the editor's own status line
+	fuiColor statusBarText;
+} fuiEditorColors;
+
+/**
+* @struct fuiEditorMetrics
+* @brief Every measurement the editor lays itself out by. Zero takes the default named on each field.
+*/
+typedef struct fuiEditorMetrics {
+	//! Pixel height the text is drawn at. Zero takes @ref fuiTheme.fontHeight
+	float fontHeight;
+	//! Extra pixels between one line and the next, on top of the font's own line height. Zero is none
+	float lineSpacing;
+	//! Inset of the text from the left edge of its area. Zero takes @ref fuiTheme.widgetPaddingX
+	float textPaddingX;
+	//! Inset of a line number from both edges of the gutter. Zero takes @ref fuiTheme.widgetPaddingX
+	float gutterPaddingX;
+	//! Height of the editor's own status line. Zero takes @ref fuiTheme.menuItemHeight
+	float statusBarHeight;
+	//! How many characters wide one tab stop is. Zero is four
+	int32_t tabSize;
+	//! How many digits the gutter is wide even when the document is shorter than that. Zero is three
+	int32_t gutterMinDigits;
+} fuiEditorMetrics;
+
+/**
+* @struct fuiEditorToggles
+* @brief What the editor shows and what it leaves out. A zeroed one is the plainest editor there is.
+*/
+typedef struct fuiEditorToggles {
+	//! Draw the gutter and the line numbers in it
+	bool showLineNumbers;
+	//! Draw the editor's own status line along the bottom of its rectangle
+	bool showStatusBar;
+	//! Wash the line the caret is on, across the gutter as well as the text
+	bool highlightCurrentLine;
+	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
+	fuiEditorScrollbarMode verticalScrollbar;
+	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
+	fuiEditorScrollbarMode horizontalScrollbar;
+} fuiEditorToggles;
+
+/**
+* @struct fuiEditorConfig
+* @brief Everything about an editor that is the CALLER's rather than the document's.
+* @note Handed to @ref fuiEditorSetConfig, which COPIES it and resolves every zeroed field once. This is
+*       the one place the add-on departs from final_ui.h's "zero means the default, worked out where it is
+*       used" rule: a description of some sixty fields would be sixty tests per frame instead of one.
+*/
+typedef struct fuiEditorConfig {
+	//! What it paints with
+	fuiEditorColors colors;
+	//! What it measures itself by
+	fuiEditorMetrics metrics;
+	//! What it shows and leaves out
+	fuiEditorToggles toggles;
+} fuiEditorConfig;
+
+// ****************************************************************************
+//
 // > Document
 //
 // ****************************************************************************
@@ -337,6 +491,37 @@ typedef struct fuiEditor {
 	fuiEditorEncoding encoding;
 	//! Which line ending the text arrived with, which is what saving it writes
 	fuiEditorEol eol;
+	//! Bumped by every change to the text, so anything worked out from the document can tell that it went stale
+	int32_t version;
+
+	//! What the widget draws with, as the CALLER gave it - a zeroed field still means "take the default"
+	fuiEditorConfig config;
+	//! The same configuration with every zero already filled in, which is what a build actually reads
+	fuiEditorConfig resolvedConfig;
+	//! The theme resolvedConfig was filled in from, so a restyled context is noticed rather than ignored
+	fuiTheme resolvedTheme;
+	//! Whether resolvedConfig has been filled in at all yet
+	bool hasResolvedConfig;
+
+	//! How far the view is scrolled sideways, in pixels
+	float scrollX;
+	//! How far the view is scrolled down, in pixels
+	float scrollY;
+	//! The widest line MEASURED so far, in pixels, which is what the horizontal bar has to go by
+	float widestMeasuredLineWidth;
+	//! Which document version that width was measured against, so an edit throws it away
+	int32_t widestMeasuredVersion;
+	//! Where the caret sits, as a byte offset into the document
+	int32_t caretOffset;
+	//! Which screen line a fuiEditorScrollToLine is waiting to put at the top
+	int32_t pendingScrollScreenLine;
+	//! Whether there is such a request waiting at all
+	bool hasPendingScroll;
+	//! Which screen line the last build had at the top, so the caller can ask about the view
+	int32_t firstVisibleScreenLine;
+	//! How many screen lines the last build had room for
+	int32_t visibleScreenLineCount;
+
 	//! Set once an allocation was refused, and never cleared until the editor is released
 	bool hasOutOfMemory;
 	//! Whether @ref fuiEditorInit has run on this editor
@@ -531,6 +716,99 @@ fui_api int32_t fuiEditorPreviousCodepointOffset(const fuiEditor *editor, const 
 */
 fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int32_t offset);
 
+// ****************************************************************************
+//
+// > Widget
+//
+// ****************************************************************************
+
+/**
+* @struct fuiEditorAction
+* @brief What one build of the editor came to. Read it straight after the call, like a return value.
+*/
+typedef struct fuiEditorAction {
+	//! OUT: The editor has the keyboard
+	bool isFocused;
+	//! OUT: The document was changed by this build
+	bool didChange;
+} fuiEditorAction;
+
+/**
+* @brief Returns the configuration an editor starts life with.
+* @return Returns the configuration @ref fuiEditorConfig.
+* @note Line numbers, a status line and a current line wash are on; everything else is zero, which is to
+*       say every color comes from the theme and every measurement from the theme or from its own default.
+*/
+fui_api fuiEditorConfig fuiEditorDefaultConfig(void);
+
+/**
+* @brief Replaces what an editor draws with.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] config Reference to the configuration @ref fuiEditorConfig, or null to go back to @ref fuiEditorDefaultConfig.
+* @note The configuration is copied. The zeroed fields in it are resolved against the theme on the next
+*       build rather than here, because a theme belongs to a context and a document does not.
+*/
+fui_api void fuiEditorSetConfig(fuiEditor *editor, const fuiEditorConfig *config);
+
+/**
+* @brief Returns the configuration as the caller gave it, zeros and all.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the configuration @ref fuiEditorConfig, or null when there is no editor.
+*/
+fui_api const fuiEditorConfig *fuiEditorGetConfig(const fuiEditor *editor);
+
+/**
+* @brief Draws one editor and lets it be scrolled.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box the editor sits in, in pixels, its own status line included.
+* @param[in] id Identifies the editor's scrollbars across frames.
+* @param[in,out] editor Reference to the editor @ref fuiEditor, which is where everything is remembered.
+* @return Returns what this build came to @ref fuiEditorAction.
+* @note Only the lines that can be seen are laid out and drawn, so a document of a million lines costs
+*       what one of twenty costs.
+* @note The font the CONTEXT carries is what the text is drawn in. Swap in a monospace face around the
+*       call, the way final_ui.h's own widgets are given a face, and swap the old one back afterwards.
+*/
+fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor);
+
+/**
+* @brief Returns which document line the caret sits on.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero based document line index.
+*/
+fui_api int32_t fuiEditorGetCaretLine(const fuiEditor *editor);
+
+/**
+* @brief Puts the caret at the start of a document line, which is what the current line wash follows.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] documentLine The zero based document line, clamped to what there is.
+* @note The stand-in until the caret can be moved by the mouse and the keyboard.
+*/
+fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine);
+
+/**
+* @brief Scrolls a document line to the top of the view.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] documentLine The zero based document line, clamped to what there is.
+* @note Takes effect on the NEXT build, which is the first moment that knows how tall a line is - that
+*       comes from the font the context carries, and a document knows nothing about one.
+*/
+fui_api void fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine);
+
+/**
+* @brief Returns which document line was the topmost one the last time the editor was built.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero based document line index, and zero before the first build.
+*/
+fui_api int32_t fuiEditorGetFirstVisibleLine(const fuiEditor *editor);
+
+/**
+* @brief Returns how many lines fitted in the view the last time the editor was built.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the count, and zero before the first build.
+*/
+fui_api int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor);
+
 #endif // FUI_TEXTEDITOR_INCLUDE_H
 
 // ****************************************************************************
@@ -543,7 +821,7 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 #if (defined(FUI_TEXTEDITOR_IMPLEMENTATION) && !defined(FUI_TEXTEDITOR_IMPLEMENTED)) || (FUI_IS_IDE)
 #define FUI_TEXTEDITOR_IMPLEMENTED
 
-#if !defined(FUI_TEXTEDITOR_MEMSET) || !defined(FUI_TEXTEDITOR_MEMCPY) || !defined(FUI_TEXTEDITOR_MEMMOVE) || !defined(FUI_TEXTEDITOR_MEMCHR) || !defined(FUI_TEXTEDITOR_STRLEN)
+#if !defined(FUI_TEXTEDITOR_MEMSET) || !defined(FUI_TEXTEDITOR_MEMCPY) || !defined(FUI_TEXTEDITOR_MEMMOVE) || !defined(FUI_TEXTEDITOR_MEMCHR) || !defined(FUI_TEXTEDITOR_MEMCMP) || !defined(FUI_TEXTEDITOR_STRLEN)
 #	include <string.h>
 #	if !defined(FUI_TEXTEDITOR_MEMSET)
 		//! Memory set - define all five string overrides before including to skip <string.h>
@@ -560,6 +838,10 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 #	if !defined(FUI_TEXTEDITOR_MEMCHR)
 		//! Memory byte search, which is what finding the next line feed does
 #		define FUI_TEXTEDITOR_MEMCHR(pointer, value, size) memchr(pointer, value, size)
+#	endif
+#	if !defined(FUI_TEXTEDITOR_MEMCMP)
+		//! Memory compare, which is what noticing a restyled theme does
+#		define FUI_TEXTEDITOR_MEMCMP(left, right, size) memcmp(left, right, size)
 #	endif
 #	if !defined(FUI_TEXTEDITOR_STRLEN)
 		//! String length
@@ -1075,6 +1357,7 @@ fui_api bool fuiEditorInit(fuiEditor *editor, const fuiAllocator *allocator) {
 
 	editor->encoding = fuiEditorEncodingUtf8();
 	editor->eol = fuiEditorEol_Lf;
+	editor->config = fuiEditorDefaultConfig();
 
 	char *initialBytes = (char *)fuiEditor__Allocate(editor, FUI_TEXTEDITOR_MIN_TEXT_BYTES);
 	if(initialBytes == fui_null) {
@@ -1381,6 +1664,8 @@ fui_api bool fuiEditorInsert(fuiEditor *editor, const int32_t offset, const char
 		document->lines.gapStart += 1;
 		newLineScanOffset = lineFeedIndex + 1;
 	}
+
+	editor->version += 1;
 	return(true);
 }
 
@@ -1412,6 +1697,8 @@ fui_api bool fuiEditorErase(fuiEditor *editor, const int32_t offset, const int32
 	// stored values do not have to be cleared: nothing behind the hole is ever read as an entry again.
 	document->lines.gapEnd += removedLineCount;
 	document->lines.tailDelta -= erasedLength;
+
+	editor->version += 1;
 	return(true);
 }
 
@@ -1425,6 +1712,11 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	}
 
 	fuiEditor__DocumentClear(&editor->document);
+	editor->version += 1;
+	editor->caretOffset = 0;
+	editor->scrollX = 0.0f;
+	editor->scrollY = 0.0f;
+	editor->hasPendingScroll = false;
 
 	if(text == fui_null) {
 		editor->eol = fuiEditorEol_Lf;
@@ -1491,6 +1783,893 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 	bool didSetText = fuiEditorSetText(editor, convertedText, convertedLength);
 	fuiEditor__Release(editor, convertedText);
 	return(didSetText);
+}
+
+// ----------------------------------------------------------------------------
+// > Configuration
+// ----------------------------------------------------------------------------
+
+//! How many characters wide one tab stop is when the caller named nothing
+#define FUI_TEXTEDITOR__DEFAULT_TAB_SIZE 4
+
+//! How many digits the gutter is wide even for a short document, so its left edge is a straight one
+#define FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS 3
+
+//! How thick the hairline between the gutter and the text is
+#define FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS 1.0f
+
+//! How many lines one notch of the wheel moves the view
+#define FUI_TEXTEDITOR__WHEEL_LINES 3.0f
+
+//! How far apart two character widths may measure and still count as the same width
+#define FUI_TEXTEDITOR__MONOSPACE_TOLERANCE 0.01f
+
+//! How close to a tab stop counts as being ON it, in stops, so that landing on one moves to the next
+#define FUI_TEXTEDITOR__TAB_STOP_EPSILON 0.001f
+
+//! How much lighter than the text background the gutter is drawn when the caller named no color
+#define FUI_TEXTEDITOR__GUTTER_SHADE 0.06f
+
+//! How solid the wash over the current line is when the caller named no color
+#define FUI_TEXTEDITOR__CURRENT_LINE_ALPHA 0.30f
+
+//! What a digit is assumed to be wide, as a fraction of the font height, before one has been measured
+#define FUI_TEXTEDITOR__ASSUMED_DIGIT_WIDTH_RATIO 0.6f
+
+//! How long the editor's own status line may get, which is a handful of numbers and names
+#define FUI_TEXTEDITOR__MAX_STATUS_TEXT 160
+
+//! How long a line number may get, which is the digits of an int32 and its sign
+#define FUI_TEXTEDITOR__MAX_NUMBER_TEXT 16
+
+fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
+	fuiEditorConfig result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	// Everything but the toggles stays at zero, because zero is what "take it from the theme, or take the
+	// default named on the field" is spelled as. Only what an editor is EXPECTED to show is turned on here.
+	result.toggles.showLineNumbers = true;
+	result.toggles.showStatusBar = true;
+	result.toggles.highlightCurrentLine = true;
+
+	// The vertical bar is reserved whether it is needed or not, because a document that is being typed into
+	// crosses the "one line more than fits" boundary constantly, and every crossing would shift every line
+	// of text sideways. The horizontal one appears only when it is needed: a permanent strip along the
+	// bottom of an editor whose lines all fit is a cost paid for a rare case.
+	result.toggles.verticalScrollbar = fuiEditorScrollbarMode_Always;
+	result.toggles.horizontalScrollbar = fuiEditorScrollbarMode_Auto;
+	return(result);
+}
+
+fui_api void fuiEditorSetConfig(fuiEditor *editor, const fuiEditorConfig *config) {
+	if(editor == fui_null) {
+		return;
+	}
+	if(config != fui_null) {
+		editor->config = *config;
+	} else {
+		editor->config = fuiEditorDefaultConfig();
+	}
+	editor->hasResolvedConfig = false;
+}
+
+fui_api const fuiEditorConfig *fuiEditorGetConfig(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(fui_null);
+	}
+	return(&editor->config);
+}
+
+//! A color the caller left at zero alpha is one they did not name, and the theme answers for it instead
+fui_inline fuiColor fuiEditor__ResolveColor(const fuiColor wanted, const fuiColor fallback) {
+	if(wanted.a > 0.0f) {
+		return(wanted);
+	}
+	return(fallback);
+}
+
+//! Same for a measurement, where zero rather than zero alpha is what "not named" looks like
+fui_inline float fuiEditor__ResolveLength(const float wanted, const float fallback) {
+	if(wanted > 0.0f) {
+		return(wanted);
+	}
+	return(fallback);
+}
+
+//! And for a count
+fui_inline int32_t fuiEditor__ResolveCount(const int32_t wanted, const int32_t fallback) {
+	if(wanted > 0) {
+		return(wanted);
+	}
+	return(fallback);
+}
+
+/*
+	Fills every zero in the caller's configuration in from the theme and from the defaults, ONCE.
+
+	The rule everywhere else in final_ui.h is that a zeroed field is worked out where it is used, which is
+	right for a description of four fields and wrong for one of forty: forty tests per frame, every frame,
+	to arrive at the same forty answers. So the answers are worked out here and kept.
+
+	Kept against the theme they were worked out FROM, so that a context which is restyled between two
+	frames is noticed. Comparing the theme costs one memcmp of a few hundred bytes a frame, which is
+	nothing beside the alternative - colors that silently stay the old ones until somebody thinks to call
+	fuiEditorSetConfig again.
+*/
+static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
+	bool themeIsTheSameOne = false;
+	if(editor->hasResolvedConfig) {
+		int themeComparison = FUI_TEXTEDITOR_MEMCMP(&editor->resolvedTheme, theme, sizeof(*theme));
+		themeIsTheSameOne = (themeComparison == 0);
+	}
+	if(themeIsTheSameOne) {
+		return;
+	}
+
+	fuiEditorConfig resolved = editor->config;
+
+	fuiColor textBackground = theme->widgetTrackColor;
+	fuiColor gutterBackground = fuiColorShade(textBackground, FUI_TEXTEDITOR__GUTTER_SHADE);
+	fuiColor currentLineWash = fuiColorWithAlpha(theme->menuHighlightColor, FUI_TEXTEDITOR__CURRENT_LINE_ALPHA);
+
+	resolved.colors.background = fuiEditor__ResolveColor(editor->config.colors.background, textBackground);
+	resolved.colors.border = fuiEditor__ResolveColor(editor->config.colors.border, theme->panelBorderColor);
+	resolved.colors.text = fuiEditor__ResolveColor(editor->config.colors.text, theme->textColor);
+	resolved.colors.gutterBackground = fuiEditor__ResolveColor(editor->config.colors.gutterBackground, gutterBackground);
+	resolved.colors.gutterText = fuiEditor__ResolveColor(editor->config.colors.gutterText, theme->textMutedColor);
+	resolved.colors.gutterCurrentLineText = fuiEditor__ResolveColor(editor->config.colors.gutterCurrentLineText, theme->accentColor);
+	resolved.colors.gutterSeparator = fuiEditor__ResolveColor(editor->config.colors.gutterSeparator, theme->treeGuideColor);
+	resolved.colors.currentLineBackground = fuiEditor__ResolveColor(editor->config.colors.currentLineBackground, currentLineWash);
+	resolved.colors.statusBarBackground = fuiEditor__ResolveColor(editor->config.colors.statusBarBackground, theme->widgetColor);
+	resolved.colors.statusBarText = fuiEditor__ResolveColor(editor->config.colors.statusBarText, theme->textMutedColor);
+
+	resolved.metrics.fontHeight = fuiEditor__ResolveLength(editor->config.metrics.fontHeight, theme->fontHeight);
+	resolved.metrics.lineSpacing = fuiEditor__ResolveLength(editor->config.metrics.lineSpacing, 0.0f);
+	resolved.metrics.textPaddingX = fuiEditor__ResolveLength(editor->config.metrics.textPaddingX, theme->widgetPaddingX);
+	resolved.metrics.gutterPaddingX = fuiEditor__ResolveLength(editor->config.metrics.gutterPaddingX, theme->widgetPaddingX);
+	resolved.metrics.statusBarHeight = fuiEditor__ResolveLength(editor->config.metrics.statusBarHeight, theme->menuItemHeight);
+	resolved.metrics.tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
+	resolved.metrics.gutterMinDigits = fuiEditor__ResolveCount(editor->config.metrics.gutterMinDigits, FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS);
+
+	editor->resolvedConfig = resolved;
+	editor->resolvedTheme = *theme;
+	editor->hasResolvedConfig = true;
+}
+
+// ----------------------------------------------------------------------------
+// > Screen lines
+// ----------------------------------------------------------------------------
+
+/*
+	A SCREEN line is one row of the view; a DOCUMENT line is one line of the text. They are the same thing
+	while nothing wraps, and they are told apart from here on anyway - because turning the one into the
+	other after the fact would mean touching every line of the widget at once.
+*/
+
+//! How many rows the whole document takes up on screen
+fui_inline int32_t fuiEditor__GetScreenLineCount(const fuiEditor *editor) {
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
+	return(documentLineCount);
+}
+
+//! Which document line is drawn on a screen row
+fui_inline int32_t fuiEditor__DocumentLineOfScreenLine(const fuiEditor *editor, const int32_t screenLine) {
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
+	if(documentLineCount <= 0) {
+		return(0);
+	}
+	return(fuiEditor__ClampI32(screenLine, 0, documentLineCount - 1));
+}
+
+//! Which screen row a document line begins on
+fui_inline int32_t fuiEditor__ScreenLineOfDocumentLine(const fuiEditor *editor, const int32_t documentLine) {
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
+	if(documentLineCount <= 0) {
+		return(0);
+	}
+	return(fuiEditor__ClampI32(documentLine, 0, documentLineCount - 1));
+}
+
+//! Whether a screen row is the one its document line STARTS on, which is the only row that gets a number
+fui_inline bool fuiEditor__ScreenLineCarriesItsNumber(const fuiEditor *editor, const int32_t screenLine) {
+	(void)editor;
+	(void)screenLine;
+	return(true);
+}
+
+/*
+	Which screen rows a scroll offset puts inside the view.
+
+	Widened by one row at each end on purpose: the first row is the one the offset lands INSIDE, and the
+	last is the one the bottom edge cuts through. Neither is fully visible and both have to be drawn.
+*/
+static void fuiEditor__VisibleScreenLines(const float scroll, const float viewportHeight, const float lineHeight, const int32_t screenLineCount, int32_t *outFirstScreenLine, int32_t *outEndScreenLine) {
+	*outFirstScreenLine = 0;
+	*outEndScreenLine = screenLineCount;
+	if(lineHeight <= 0.0f) {
+		return;
+	}
+
+	int32_t firstScreenLine = (int32_t)(scroll / lineHeight);
+	firstScreenLine = fuiEditor__ClampI32(firstScreenLine, 0, screenLineCount);
+
+	int32_t rowsThatFit = (int32_t)(viewportHeight / lineHeight) + 2;
+	int32_t endScreenLine = firstScreenLine + rowsThatFit;
+	if(endScreenLine > screenLineCount) {
+		endScreenLine = screenLineCount;
+	}
+
+	*outFirstScreenLine = firstScreenLine;
+	*outEndScreenLine = endScreenLine;
+}
+
+// ----------------------------------------------------------------------------
+// > Reaching the bytes
+// ----------------------------------------------------------------------------
+
+/*
+	Hands back a pointer to as many bytes as lie in ONE unbroken piece of the buffer from offset onwards.
+
+	The hole splits the document in at most two, so any range is at most two of these - which is what lets
+	a line be drawn straight out of the buffer instead of being copied into a scratch buffer first, and
+	means no line is ever too long to draw.
+*/
+static const char *fuiEditor__ContiguousRunAt(const fuiEditor *editor, const int32_t offset, const int32_t limit, int32_t *outRunLength) {
+	*outRunLength = 0;
+	if(editor == fui_null || !editor->isInitialized) {
+		return(fui_null);
+	}
+
+	const fuiEditorDocument *document = &editor->document;
+	int32_t textLength = fuiEditor__DocumentLength(document);
+	int32_t runStart = fuiEditor__ClampI32(offset, 0, textLength);
+	int32_t runLimit = fuiEditor__ClampI32(limit, runStart, textLength);
+	if(runStart >= runLimit) {
+		return(fui_null);
+	}
+
+	int32_t runEnd = runLimit;
+	bool startsInFrontOfTheHole = (runStart < document->gapStart);
+	bool endsBehindTheHole = (runLimit > document->gapStart);
+	if(startsInFrontOfTheHole && endsBehindTheHole) {
+		runEnd = document->gapStart;
+	}
+
+	int32_t physicalStart = fuiEditor__DocumentPhysicalOffset(document, runStart);
+	*outRunLength = runEnd - runStart;
+	return(&document->bytes[physicalStart]);
+}
+
+//! How many codepoints a run of utf-8 holds, which is every byte that is not a continuation of the one before it
+fui_inline int32_t fuiEditor__CountCodepoints(const char *bytes, const int32_t byteCount) {
+	int32_t codepointCount = 0;
+	for(int32_t byteIndex = 0; byteIndex < byteCount; ++byteIndex) {
+		uint8_t currentByte = (uint8_t)bytes[byteIndex];
+		bool isAContinuationByte = ((currentByte & 0xC0u) == 0x80u);
+		if(!isAContinuationByte) {
+			codepointCount += 1;
+		}
+	}
+	return(codepointCount);
+}
+
+// ----------------------------------------------------------------------------
+// > Numbers as text
+// ----------------------------------------------------------------------------
+
+/*
+	The editor writes line numbers and a status line, and that is all the formatting it does. A dependency
+	on <stdio.h> for two integers would be a strange price, and final_ui.h's own FUI_VSNPRINTF lives inside
+	its implementation block - which this add-on is allowed to be compiled apart from.
+*/
+
+//! Writes a number into a buffer, terminator included, and answers how many characters it took
+static int32_t fuiEditor__FormatInt(char *destination, const int32_t destinationCapacity, const int32_t value) {
+	if(destination == fui_null || destinationCapacity <= 1) {
+		return(0);
+	}
+
+	char digitsBackwards[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
+	int32_t digitCount = 0;
+	bool isNegative = (value < 0);
+
+	// Negated as a wider type, because the most negative int32 has no positive counterpart of its own.
+	int64_t remaining = (int64_t)value;
+	if(isNegative) {
+		remaining = -remaining;
+	}
+	if(remaining == 0) {
+		digitsBackwards[digitCount] = '0';
+		digitCount += 1;
+	}
+	const int32_t decimalBase = 10;
+	int32_t maximumDigits = (int32_t)sizeof(digitsBackwards);
+	while(remaining > 0 && digitCount < maximumDigits) {
+		int32_t digit = (int32_t)(remaining % decimalBase);
+		digitsBackwards[digitCount] = (char)('0' + digit);
+		digitCount += 1;
+		remaining /= decimalBase;
+	}
+
+	int32_t writeOffset = 0;
+	int32_t roomForCharacters = destinationCapacity - 1;
+	if(isNegative && writeOffset < roomForCharacters) {
+		destination[writeOffset] = '-';
+		writeOffset += 1;
+	}
+	while(digitCount > 0 && writeOffset < roomForCharacters) {
+		digitCount -= 1;
+		destination[writeOffset] = digitsBackwards[digitCount];
+		writeOffset += 1;
+	}
+	destination[writeOffset] = '\0';
+	return(writeOffset);
+}
+
+//! Appends text at a write offset and answers the new one, terminating whatever it managed to write
+static int32_t fuiEditor__AppendText(char *destination, const int32_t destinationCapacity, const int32_t writeOffset, const char *text) {
+	if(destination == fui_null || destinationCapacity <= 1 || text == fui_null) {
+		return(writeOffset);
+	}
+	int32_t roomForCharacters = destinationCapacity - 1;
+	int32_t currentOffset = fuiEditor__ClampI32(writeOffset, 0, roomForCharacters);
+	int32_t readOffset = 0;
+	while(text[readOffset] != '\0' && currentOffset < roomForCharacters) {
+		destination[currentOffset] = text[readOffset];
+		currentOffset += 1;
+		readOffset += 1;
+	}
+	destination[currentOffset] = '\0';
+	return(currentOffset);
+}
+
+//! The same for a number
+static int32_t fuiEditor__AppendInt(char *destination, const int32_t destinationCapacity, const int32_t writeOffset, const int32_t value) {
+	char numberText[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
+	const int32_t numberCapacity = (int32_t)sizeof(numberText);
+	(void)fuiEditor__FormatInt(numberText, numberCapacity, value);
+	return(fuiEditor__AppendText(destination, destinationCapacity, writeOffset, numberText));
+}
+
+//! How many digits a number is written with, which is what the gutter is sized by
+fui_inline int32_t fuiEditor__DigitCount(const int32_t value) {
+	int32_t digitCount = 1;
+	int32_t remaining = value;
+	if(remaining < 0) {
+		remaining = -remaining;
+	}
+	const int32_t decimalBase = 10;
+	while(remaining >= decimalBase) {
+		remaining /= decimalBase;
+		digitCount += 1;
+	}
+	return(digitCount);
+}
+
+// ----------------------------------------------------------------------------
+// > Measuring text
+// ----------------------------------------------------------------------------
+
+/**
+* @struct fuiEditor__Render
+* @brief The handful of numbers every line of one build is drawn by, worked out once at the top of it.
+*/
+typedef struct fuiEditor__Render {
+	//! Pixel height the text is drawn at
+	float fontHeight;
+	//! How far apart two lines are, the caller's extra spacing included
+	float lineHeight;
+	//! Width of one character, which only means anything when the face is a monospace one
+	float characterWidth;
+	//! How far apart two tab stops are, in pixels
+	float tabWidth;
+	//! Width of a digit, which is what the gutter is sized by
+	float digitWidth;
+	//! Whether every character of the face is the same width, which turns measuring into a multiplication
+	bool isMonospace;
+} fuiEditor__Render;
+
+//! Measures the face once per build and decides whether it is a monospace one
+static fuiEditor__Render fuiEditor__MakeRender(fuiContext *context, const fuiEditorConfig *config) {
+	fuiEditor__Render result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	result.fontHeight = config->metrics.fontHeight;
+
+	float fontLineHeight = fuiGetLineHeight(context, result.fontHeight);
+	result.lineHeight = fontLineHeight + config->metrics.lineSpacing;
+
+	/*
+		A face is a monospace one when its widest and its narrowest character measure the same. That is
+		worth asking, because it turns "how wide is this run" from a walk over it into one multiplication -
+		which is the difference between a long line of code costing what its length is and costing the
+		square of it, once the caret has to be placed inside it.
+	*/
+	const size_t oneCharacter = 1;
+	fuiVec2 wideSize = fuiMeasureText(context, "W", oneCharacter, result.fontHeight);
+	fuiVec2 narrowSize = fuiMeasureText(context, "i", oneCharacter, result.fontHeight);
+	fuiVec2 spaceSize = fuiMeasureText(context, " ", oneCharacter, result.fontHeight);
+	fuiVec2 digitSize = fuiMeasureText(context, "0", oneCharacter, result.fontHeight);
+
+	float widthDifference = wideSize.x - narrowSize.x;
+	if(widthDifference < 0.0f) {
+		widthDifference = -widthDifference;
+	}
+	result.isMonospace = (wideSize.x > 0.0f) && (widthDifference <= FUI_TEXTEDITOR__MONOSPACE_TOLERANCE);
+	result.characterWidth = wideSize.x;
+	result.digitWidth = digitSize.x;
+
+	// A tab stop is measured in SPACES rather than in the widest character, because that is what a tab stop
+	// is taken to be everywhere else. On a monospace face the two are the same number anyway.
+	float tabCharacterWidth = spaceSize.x;
+	if(tabCharacterWidth <= 0.0f) {
+		tabCharacterWidth = result.characterWidth;
+	}
+	result.tabWidth = tabCharacterWidth * (float)config->metrics.tabSize;
+	return(result);
+}
+
+//! How wide a run of text is, by multiplication on a monospace face and by measuring on any other
+fui_inline float fuiEditor__MeasureRun(fuiContext *context, const fuiEditor__Render *render, const char *bytes, const int32_t byteCount) {
+	if(byteCount <= 0) {
+		return(0.0f);
+	}
+	if(render->isMonospace) {
+		int32_t codepointCount = fuiEditor__CountCodepoints(bytes, byteCount);
+		return((float)codepointCount * render->characterWidth);
+	}
+	fuiVec2 measured = fuiMeasureText(context, bytes, (size_t)byteCount, render->fontHeight);
+	return(measured.x);
+}
+
+/*
+	How far into the line the pen lands when it hits a tab, which is the next stop counted from the START.
+
+	Counted on the DISTANCE into the line rather than on the pen's own x, and with a hair of tolerance at
+	the boundary. Both matter: the pen carries the widget's x, which at a few hundred pixels leaves a float
+	too little room to say "exactly one tab along", and a stop that misses its own boundary by a millionth
+	is a stop the pen is judged to be just SHORT of - so it is sent to the stop it is already standing on,
+	and the second tab of a line moves it nowhere at all.
+*/
+fui_inline float fuiEditor__NextTabStopDistance(const fuiEditor__Render *render, const float distanceIntoTheLine) {
+	if(render->tabWidth <= 0.0f) {
+		return(distanceIntoTheLine);
+	}
+	float stopsAlreadyPassed = distanceIntoTheLine / render->tabWidth;
+	int32_t wholeStopsPassed = (int32_t)(stopsAlreadyPassed + FUI_TEXTEDITOR__TAB_STOP_EPSILON);
+	if(wholeStopsPassed < 0) {
+		wholeStopsPassed = 0;
+	}
+	return((float)(wholeStopsPassed + 1) * render->tabWidth);
+}
+
+/*
+	Draws one line and answers how wide it came out.
+
+	Two things cut a line into pieces, and both are handled by the same loop: the HOLE, which may sit
+	anywhere inside it, and the TABS, which are not drawn at all and instead jump the pen to the next stop.
+	fuiDrawText knows about neither - it has no idea what a tab is, and it wants bytes that lie next to
+	each other.
+*/
+static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float lineLeftX, const float lineTopY, const fuiColor textColor) {
+	// The pen is carried as a DISTANCE from the line's own start rather than as an x on the screen, which
+	// is what keeps the tab stops exact however far to the right the editor happens to sit.
+	float distanceIntoTheLine = 0.0f;
+	int32_t offset = lineStart;
+	while(offset < lineEnd) {
+		int32_t runLength = 0;
+		const char *runBytes = fuiEditor__ContiguousRunAt(editor, offset, lineEnd, &runLength);
+		if(runBytes == fui_null || runLength <= 0) {
+			break;
+		}
+
+		int32_t runOffset = 0;
+		while(runOffset < runLength) {
+			int32_t bytesLeftInTheRun = runLength - runOffset;
+			const char *foundTab = (const char *)FUI_TEXTEDITOR_MEMCHR(&runBytes[runOffset], '\t', (size_t)bytesLeftInTheRun);
+			int32_t plainLength = bytesLeftInTheRun;
+			if(foundTab != fui_null) {
+				plainLength = (int32_t)(foundTab - &runBytes[runOffset]);
+			}
+
+			if(plainLength > 0) {
+				fuiVec2 textPosition = fuiV2(lineLeftX + distanceIntoTheLine, lineTopY);
+				fuiDrawText(context, &runBytes[runOffset], (size_t)plainLength, textPosition, render->fontHeight, textColor);
+				distanceIntoTheLine += fuiEditor__MeasureRun(context, render, &runBytes[runOffset], plainLength);
+				runOffset += plainLength;
+			}
+			if(foundTab != fui_null) {
+				distanceIntoTheLine = fuiEditor__NextTabStopDistance(render, distanceIntoTheLine);
+				runOffset += 1;
+			}
+		}
+		offset += runLength;
+	}
+	return(distanceIntoTheLine);
+}
+
+// ----------------------------------------------------------------------------
+// > The view
+// ----------------------------------------------------------------------------
+
+fui_api int32_t fuiEditorGetCaretLine(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(fuiEditorGetLineOfOffset(editor, editor->caretOffset));
+}
+
+fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	if(lineCount <= 0) {
+		editor->caretOffset = 0;
+		return;
+	}
+	int32_t clampedLine = fuiEditor__ClampI32(documentLine, 0, lineCount - 1);
+	editor->caretOffset = fuiEditorGetLineStart(editor, clampedLine);
+}
+
+fui_api void fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	// Recorded rather than worked out here. The offset is in PIXELS, and how tall a line is comes from the
+	// font the CONTEXT carries - which a document knows nothing about. Guessing it from the font height
+	// would be wrong by whatever the face's line spacing is, so the next build, which does know, applies it.
+	editor->pendingScrollScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, documentLine);
+	editor->hasPendingScroll = true;
+}
+
+fui_api int32_t fuiEditorGetFirstVisibleLine(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(0);
+	}
+	return(fuiEditor__DocumentLineOfScreenLine(editor, editor->firstVisibleScreenLine));
+}
+
+fui_api int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(0);
+	}
+	return(editor->visibleScreenLineCount);
+}
+
+/**
+* @struct fuiEditor__Layout
+* @brief Where every part of one build sits, worked out before anything is drawn.
+*/
+typedef struct fuiEditor__Layout {
+	//! The editor without its status line, which is what carries the outline
+	fuiRect frameRect;
+	//! Inside the outline, before the scrollbars are taken off it
+	fuiRect innerRect;
+	//! The strip the line numbers are drawn in, zero wide when there are none
+	fuiRect gutterRect;
+	//! Where the text goes
+	fuiRect textRect;
+	//! Gutter and text together, which is what the wheel is asked over and what the current line wash covers
+	fuiRect bodyRect;
+	//! The vertical scrollbar's track
+	fuiRect verticalTrackRect;
+	//! The horizontal scrollbar's track
+	fuiRect horizontalTrackRect;
+	//! The editor's own status line, below everything else
+	fuiRect statusBarRect;
+	//! Whether there is a vertical bar at all
+	bool hasVerticalBar;
+	//! Whether there is a horizontal bar at all
+	bool hasHorizontalBar;
+} fuiEditor__Layout;
+
+//! Whether an axis gets a gutter, which is what "Auto" answers differently from one frame to the next
+fui_inline bool fuiEditor__ScrollbarIsThere(const fuiEditorScrollbarMode mode, const bool contentOverflows) {
+	if(mode == fuiEditorScrollbarMode_Never) {
+		return(false);
+	}
+	if(mode == fuiEditorScrollbarMode_Always) {
+		return(true);
+	}
+	return(contentOverflows);
+}
+
+//! How wide the gutter has to be for the longest line number in the document, at a given digit width
+fui_inline float fuiEditor__GutterWidthFor(const fuiEditorConfig *config, const int32_t lineCount, const float digitWidth) {
+	int32_t widestNumber = fuiEditor__MaxI32(lineCount, 1);
+	int32_t digitsOfTheLastLine = fuiEditor__DigitCount(widestNumber);
+	int32_t digitCount = fuiEditor__MaxI32(digitsOfTheLastLine, config->metrics.gutterMinDigits);
+	float digitsWidth = (float)digitCount * digitWidth;
+	float paddingWidth = config->metrics.gutterPaddingX * 2.0f;
+	return(digitsWidth + paddingWidth + FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS);
+}
+
+/*
+	Cuts the rectangle up.
+
+	The status line comes off first, then the outline, then the VERTICAL bar against the full inner height,
+	and only then the horizontal one against what is left of the width. Asking both at once would be
+	circular - each takes away the room the other is measured against - so one order has to win. This one
+	does, because a document taller than its box is the common case and a wider one is not.
+*/
+static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEditorConfig *config, const float gutterWidth, const float contentHeight, const float contentWidth, const float borderThickness) {
+	fuiEditor__Layout result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	float statusBarHeight = 0.0f;
+	if(config->toggles.showStatusBar) {
+		statusBarHeight = fuiMinF(config->metrics.statusBarHeight, rect.h);
+	}
+	float frameHeight = fuiMaxF(rect.h - statusBarHeight, 0.0f);
+	result.frameRect = fuiRectMake(rect.x, rect.y, rect.w, frameHeight);
+	result.statusBarRect = fuiRectMake(rect.x, rect.y + frameHeight, rect.w, statusBarHeight);
+
+	float innerX = result.frameRect.x + borderThickness;
+	float innerY = result.frameRect.y + borderThickness;
+	float innerWidth = fuiMaxF(result.frameRect.w - borderThickness * 2.0f, 0.0f);
+	float innerHeight = fuiMaxF(result.frameRect.h - borderThickness * 2.0f, 0.0f);
+	result.innerRect = fuiRectMake(innerX, innerY, innerWidth, innerHeight);
+
+	float scrollbarThickness = fuiScrollGutterWidth();
+
+	bool contentIsTallerThanTheBox = (contentHeight > innerHeight);
+	result.hasVerticalBar = fuiEditor__ScrollbarIsThere(config->toggles.verticalScrollbar, contentIsTallerThanTheBox);
+	float verticalBarWidth = result.hasVerticalBar ? scrollbarThickness : 0.0f;
+
+	float widthForTheText = fuiMaxF(innerWidth - gutterWidth - verticalBarWidth, 0.0f);
+	bool contentIsWiderThanTheBox = (contentWidth > widthForTheText);
+	result.hasHorizontalBar = fuiEditor__ScrollbarIsThere(config->toggles.horizontalScrollbar, contentIsWiderThanTheBox);
+	float horizontalBarHeight = result.hasHorizontalBar ? scrollbarThickness : 0.0f;
+
+	float bodyHeight = fuiMaxF(innerHeight - horizontalBarHeight, 0.0f);
+	float bodyWidth = fuiMaxF(innerWidth - verticalBarWidth, 0.0f);
+	result.bodyRect = fuiRectMake(innerX, innerY, bodyWidth, bodyHeight);
+
+	float cappedGutterWidth = fuiMinF(gutterWidth, bodyWidth);
+	result.gutterRect = fuiRectMake(innerX, innerY, cappedGutterWidth, bodyHeight);
+	float textLeft = innerX + cappedGutterWidth;
+	float textWidth = fuiMaxF(bodyWidth - cappedGutterWidth, 0.0f);
+	result.textRect = fuiRectMake(textLeft, innerY, textWidth, bodyHeight);
+
+	result.verticalTrackRect = fuiRectMake(innerX + bodyWidth, innerY, verticalBarWidth, bodyHeight);
+	result.horizontalTrackRect = fuiRectMake(innerX, innerY + bodyHeight, bodyWidth, horizontalBarHeight);
+	return(result);
+}
+
+//! Fills in the editor's own status line - where the caret is, how big the document is, and how it is written
+static void fuiEditor__BuildStatusText(const fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
+	const char *fieldSeparator = "   |   ";
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	fuiEditorEol documentEol = fuiEditorGetEol(editor);
+	const char *eolName = fuiEditorEolGetName(documentEol);
+	const char *encodingName = (editor->encoding.name != fui_null) ? editor->encoding.name : "?";
+
+	int32_t writeOffset = 0;
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Ln ");
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, caretLine + 1);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " of ");
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, documentLineCount);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, textLength);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " bytes");
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, encodingName);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, eolName);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
+	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, "Tab ");
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, editor->resolvedConfig.metrics.tabSize);
+	(void)writeOffset;
+}
+
+fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor) {
+	fuiEditorAction result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	FUI_TEXTEDITOR_ASSERT(context != fui_null && id != fui_null && editor != fui_null);
+	if(context == fui_null || id == fui_null || editor == fui_null || !editor->isInitialized) {
+		return(result);
+	}
+
+	fuiTheme *theme = fuiGetTheme(context);
+	if(theme == fui_null) {
+		return(result);
+	}
+	fuiEditor__ResolveConfig(editor, theme);
+
+	const fuiEditorConfig *config = &editor->resolvedConfig;
+	fuiEditor__Render render = fuiEditor__MakeRender(context, config);
+	if(render.lineHeight <= 0.0f) {
+		return(result);
+	}
+
+	// An edit throws the widest line away rather than keeping a width that belonged to text which is gone.
+	if(editor->widestMeasuredVersion != editor->version) {
+		editor->widestMeasuredLineWidth = 0.0f;
+		editor->widestMeasuredVersion = editor->version;
+	}
+
+	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
+	float contentHeight = (float)screenLineCount * render.lineHeight;
+	float contentWidth = editor->widestMeasuredLineWidth + config->metrics.textPaddingX * 2.0f;
+
+	float gutterWidth = 0.0f;
+	if(config->toggles.showLineNumbers) {
+		gutterWidth = fuiEditor__GutterWidthFor(config, screenLineCount, render.digitWidth);
+	}
+	fuiEditor__Layout layout = fuiEditor__MakeLayout(rect, config, gutterWidth, contentHeight, contentWidth, theme->widgetBorderThickness);
+
+	fuiId editorId = fuiGetId(context, id);
+	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
+	if(bodyInteraction.wasPressed) {
+		fuiSetFocusedId(context, editorId);
+	}
+	fuiId focusedId = fuiGetFocusedId(context);
+	result.isFocused = (focusedId == editorId);
+
+	// A fuiEditorScrollToLine that has been waiting for a line height is answered here, where there is one.
+	if(editor->hasPendingScroll) {
+		int32_t lastScreenLine = fuiEditor__MaxI32(screenLineCount - 1, 0);
+		int32_t pendingScreenLine = fuiEditor__ClampI32(editor->pendingScrollScreenLine, 0, lastScreenLine);
+		editor->scrollY = (float)pendingScreenLine * render.lineHeight;
+		editor->hasPendingScroll = false;
+	}
+
+	// The wheel over the body moves it down, and sideways while shift is held - the same gesture the list
+	// view uses, so that scrolling one thing in this library feels like scrolling any other.
+	float scrollX = editor->scrollX;
+	float scrollY = editor->scrollY;
+	float wheelDelta = fuiGetMouseWheelDelta(context);
+	if(bodyInteraction.isHovered && wheelDelta != 0.0f) {
+		float wheelDistance = wheelDelta * render.lineHeight * FUI_TEXTEDITOR__WHEEL_LINES;
+		bool wantsSideways = fuiIsShiftDown(context);
+		if(wantsSideways) {
+			scrollX -= wheelDistance;
+		} else {
+			scrollY -= wheelDistance;
+		}
+	}
+
+	// Both bars are resolved BEFORE a line is laid out, so the lines are placed from the offsets the frame
+	// ends on rather than from ones the wheel is about to change.
+	float maxScrollY = fuiMaxF(contentHeight - layout.bodyRect.h, 0.0f);
+	float maxScrollX = fuiMaxF(contentWidth - layout.textRect.w, 0.0f);
+	fuiPushId(context, id);
+	if(layout.hasVerticalBar) {
+		scrollY = fuiScrollbarVertical(context, layout.verticalTrackRect, "__editorScrollbarY", scrollY, layout.bodyRect.h, contentHeight);
+	} else {
+		scrollY = fuiClampF(scrollY, 0.0f, maxScrollY);
+	}
+	if(layout.hasHorizontalBar) {
+		scrollX = fuiScrollbarHorizontal(context, layout.horizontalTrackRect, "__editorScrollbarX", scrollX, layout.textRect.w, contentWidth);
+	} else {
+		scrollX = fuiClampF(scrollX, 0.0f, maxScrollX);
+	}
+	fuiPopId(context);
+	editor->scrollX = scrollX;
+	editor->scrollY = scrollY;
+
+	fuiDrawRect(context, layout.frameRect, config->colors.background);
+
+	int32_t firstScreenLine = 0;
+	int32_t endScreenLine = 0;
+	fuiEditor__VisibleScreenLines(scrollY, layout.bodyRect.h, render.lineHeight, screenLineCount, &firstScreenLine, &endScreenLine);
+	editor->firstVisibleScreenLine = firstScreenLine;
+	editor->visibleScreenLineCount = endScreenLine - firstScreenLine;
+
+	int32_t caretDocumentLine = fuiEditorGetCaretLine(editor);
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretDocumentLine);
+	bool hasLineNumbers = config->toggles.showLineNumbers && (layout.gutterRect.w > 0.0f);
+
+	if(hasLineNumbers) {
+		fuiDrawRect(context, layout.gutterRect, config->colors.gutterBackground);
+	}
+
+	// The wash goes over the gutter as well as the text: a current line that stops at the line number reads
+	// as two things beside each other rather than as one line.
+	bool caretLineIsVisible = (caretScreenLine >= firstScreenLine) && (caretScreenLine < endScreenLine);
+	if(config->toggles.highlightCurrentLine && caretLineIsVisible) {
+		float washTop = layout.bodyRect.y + (float)caretScreenLine * render.lineHeight - scrollY;
+		fuiRect washRect = fuiRectMake(layout.bodyRect.x, washTop, layout.bodyRect.w, render.lineHeight);
+		fuiPushClip(context, layout.bodyRect);
+		fuiDrawRect(context, washRect, config->colors.currentLineBackground);
+		fuiPopClip(context);
+	}
+
+	if(hasLineNumbers) {
+		fuiPushClip(context, layout.gutterRect);
+		float numberRightEdge = layout.gutterRect.x + layout.gutterRect.w - config->metrics.gutterPaddingX - FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS;
+		for(int32_t screenLine = firstScreenLine; screenLine < endScreenLine; ++screenLine) {
+			bool carriesItsNumber = fuiEditor__ScreenLineCarriesItsNumber(editor, screenLine);
+			if(!carriesItsNumber) {
+				continue;
+			}
+
+			int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+			char numberText[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
+			const int32_t numberCapacity = (int32_t)sizeof(numberText);
+			int32_t numberLength = fuiEditor__FormatInt(numberText, numberCapacity, documentLine + 1);
+
+			// Right aligned and NOT padded out with blanks or zeroes, so that a jump in the numbers - which
+			// is what a folded range or a diff makes - reads as a jump rather than as a change of width.
+			fuiVec2 numberSize = fuiMeasureText(context, numberText, (size_t)numberLength, render.fontHeight);
+			float numberLeft = numberRightEdge - numberSize.x;
+			float numberTop = layout.gutterRect.y + (float)screenLine * render.lineHeight - scrollY;
+			bool isTheCaretLine = (screenLine == caretScreenLine);
+			fuiColor numberColor = isTheCaretLine ? config->colors.gutterCurrentLineText : config->colors.gutterText;
+			fuiVec2 numberPosition = fuiV2(numberLeft, numberTop);
+			fuiDrawText(context, numberText, (size_t)numberLength, numberPosition, render.fontHeight, numberColor);
+		}
+		fuiPopClip(context);
+
+		float separatorX = layout.gutterRect.x + layout.gutterRect.w - FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS * 0.5f;
+		fuiVec2 separatorTop = fuiV2(separatorX, layout.gutterRect.y);
+		fuiVec2 separatorBottom = fuiV2(separatorX, layout.gutterRect.y + layout.gutterRect.h);
+		fuiDrawLine(context, separatorTop, separatorBottom, config->colors.gutterSeparator, FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS);
+	}
+
+	// Only the lines that can be seen are touched at all. That is the whole reason a document of a million
+	// lines costs what one of twenty costs: nothing here is per DOCUMENT line, everything is per VISIBLE one.
+	fuiPushClip(context, layout.textRect);
+	float lineLeftX = layout.textRect.x + config->metrics.textPaddingX - scrollX;
+	float widestLineSoFar = editor->widestMeasuredLineWidth;
+	for(int32_t screenLine = firstScreenLine; screenLine < endScreenLine; ++screenLine) {
+		int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+		int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+		float lineTopY = layout.textRect.y + (float)screenLine * render.lineHeight - scrollY;
+		float lineWidth = fuiEditor__DrawLine(context, editor, &render, lineStart, lineEnd, lineLeftX, lineTopY, config->colors.text);
+		if(lineWidth > widestLineSoFar) {
+			widestLineSoFar = lineWidth;
+		}
+	}
+	fuiPopClip(context);
+
+	/*
+		The horizontal bar goes by the widest line SEEN so far rather than by the widest line there is.
+
+		Measuring every line of the document would be a walk over the whole of it every frame, and on a
+		proportional face that walk is a glyph lookup per character - which is exactly the cost this widget
+		exists not to pay. So the range grows as the document is scrolled through, and an edit resets it.
+		That is what scintilla does, and for the same reason.
+	*/
+	editor->widestMeasuredLineWidth = widestLineSoFar;
+
+	fuiDrawRectOutline(context, layout.frameRect, config->colors.border, theme->widgetBorderThickness);
+
+	// The square where the two bars meet. Left unpainted it shows whatever is behind the editor through a
+	// corner that belongs to neither bar, which reads as a hole in the frame.
+	if(layout.hasVerticalBar && layout.hasHorizontalBar) {
+		float cornerX = layout.verticalTrackRect.x;
+		float cornerY = layout.horizontalTrackRect.y;
+		fuiRect cornerRect = fuiRectMake(cornerX, cornerY, layout.verticalTrackRect.w, layout.horizontalTrackRect.h);
+		fuiDrawRect(context, cornerRect, theme->widgetTrackColor);
+	}
+
+	// Its OWN status line, rather than fuiBeginStatusBar - that one docks against the bottom of the window,
+	// and an editor is rarely the whole window.
+	if(config->toggles.showStatusBar && layout.statusBarRect.h > 0.0f) {
+		char statusText[FUI_TEXTEDITOR__MAX_STATUS_TEXT];
+		const int32_t statusCapacity = (int32_t)sizeof(statusText);
+		fuiEditor__BuildStatusText(editor, statusText, statusCapacity);
+		size_t statusLength = FUI_TEXTEDITOR_STRLEN(statusText);
+
+		fuiDrawRect(context, layout.statusBarRect, config->colors.statusBarBackground);
+		fuiDrawRectOutline(context, layout.statusBarRect, config->colors.border, theme->widgetBorderThickness);
+
+		float statusLineHeight = fuiGetLineHeight(context, render.fontHeight);
+		float statusTextLeft = layout.statusBarRect.x + config->metrics.textPaddingX;
+		float statusTextTop = layout.statusBarRect.y + (layout.statusBarRect.h - statusLineHeight) * 0.5f;
+		fuiVec2 statusTextPosition = fuiV2(statusTextLeft, statusTextTop);
+		fuiPushClip(context, layout.statusBarRect);
+		fuiDrawText(context, statusText, statusLength, statusTextPosition, render.fontHeight, config->colors.statusBarText);
+		fuiPopClip(context);
+	}
+
+	return(result);
 }
 
 #endif // FUI_TEXTEDITOR_IMPLEMENTATION

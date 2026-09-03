@@ -10,20 +10,26 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 ## 1. Stand
 
-**Iteration 0 ist umgesetzt.** Was es gibt: das Dokument und nichts darüber.
+**Iteration 0 und Iteration 1 sind umgesetzt.** Was es gibt: das Dokument, und eine Ansicht darauf, die gelesen und gescrollt werden kann.
 
-- `final_ui_texteditor.h` v0.1.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, Lebenszyklus, Einfügen, Löschen, Zeilen- und Codepoint-Abfragen.
-- `demos/FUI_Editor/` — CMake, Presets, vcxproj, Eintrag in `demos_final_ui.sln`, und ein kopfloser `--selftest`-Modus mit **131 Prüfungen**, die unter AddressSanitizer und UndefinedBehaviorSanitizer sauber durchlaufen.
-- `final_ui.h` wurde in dieser Iteration **nicht angefasst**.
+- `final_ui_texteditor.h` v0.2.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit UTF-8- und ASCII-Backend, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken und eigener Statusleiste. `fuiEditorConfig` mit `colors` / `metrics` / `toggles`.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal` ist öffentlich. Das ist der eine der beiden Zusätze, den Iteration 1 gebraucht hat; `fuiRegisterFocusable` folgt in Iteration 2.
+- `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (14 357 Zeilen, 652 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Tabbreite und Schriftschnitt.
+- `--selftest` läuft mit **218 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch.
 
-Was beim Bauen anders lief als geplant:
+Was beim Bauen von Iteration 0 anders lief als geplant:
 
 - **Die Lücke im Textpuffer darf sich nie ganz schließen.** `fuiEditorGetContiguousText` setzt seine terminierende Null an `bytes[textLength]` — steht die Lücke auf null, liegt das eine Stelle hinter dem Array. `fuiEditor__DocumentReserve` fordert deshalb grundsätzlich ein Byte mehr an, als der Aufrufer verlangt hat. Der Fehler wäre erst bei einer Einfügung aufgefallen, die die Lücke exakt auffüllt, also selten und dann unerklärlich.
 - **Beide Reservierungen müssen vor der ersten Bewegung passieren.** `fuiEditorInsert` zählt die neuen Zeilen, reserviert Text *und* Zeilenindex, und fängt erst danach an, Lücken zu schieben. Eine fehlgeschlagene Reservierung mittendrin würde die beiden Indizes gegeneinander verstellt zurücklassen — und das wäre kein Absturz, sondern ein Dokument, das ab da falsche Zeilen meldet.
 - **Reihenfolge von Lückenbewegung und `tailDelta`.** Das Verschieben der Lücke rechnet Einträge zwischen roher und verkürzter Form um, benutzt dabei also `tailDelta`. Es muss deshalb *vor* der Änderung von `tailDelta` laufen, nicht danach. Steht so als Kommentar an beiden Stellen.
-- **Der Prüfrahmen wurde gegengeprüft.** Eine absichtlich falsche Erwartung wurde eingebaut, gemeldet und wieder entfernt — 131 grüne Haken sind sonst kein Beleg.
 
----
+Und was beim Bauen von Iteration 1 anders lief als geplant:
+
+- **Der Tabstopp darf nicht auf dem Stift gerechnet werden.** Der erste Entwurf hat `penX - lineLeftX` durch die Tabbreite geteilt. `lineLeftX` trägt aber das x des Widgets, und bei ein paar hundert Pixeln hat ein `float` nicht mehr genug Stellen, um „genau einen Tabstopp weiter" zu sagen: die Division kommt bei 0,99999 heraus, der Stift wird auf den Stopp geschickt, auf dem er schon steht, und **der zweite Tabulator einer Zeile bewegt ihn gar nicht**. Im Demo war das sofort zu sehen — `final_ui.h` Zeile 12948 hat zwei Tabulatoren und stand eingerückt wie mit einem. Gerechnet wird jetzt auf dem Abstand zum Zeilenanfang, plus einer Toleranz am Stopp selbst. Beides ist nötig, und beides steht als Prüfung im `--selftest`.
+- **`fuiEditorScrollToLine` kann nicht rechnen, wenn es gerufen wird.** Der Offset ist in Pixeln, und wie hoch eine Zeile ist, steht in der Schrift, die der *Kontext* trägt — von der ein Dokument nichts weiß. Aus der Schrifthöhe geraten ist um den Zeilenabstand der Schrift daneben. Der Aufruf merkt sich deshalb nur die Zeile, und der nächste Build löst sie auf.
+- **Die Konfiguration wird gegen das Theme gehalten, aus dem sie aufgelöst wurde.** Geplant war „einmal beim Setzen auflösen". Damit wäre ein Kontext, der zwischen zwei Frames umgestylt wird, unbemerkt geblieben. Ein `memcmp` über das Theme je Frame kostet ein paar hundert Byte und nimmt die Falle ganz weg.
+- **Die Breite für den waagerechten Balken ist die breiteste *gesehene* Zeile.** Jede Zeile jedes Frame zu messen wäre genau der Gang über das ganze Dokument, den das Widget vermeiden soll — bei einer proportionalen Schrift ein Glyphen-Lookup je Zeichen. Der Bereich wächst also beim Durchscrollen, und eine Änderung setzt ihn zurück. Scintilla macht es genauso.
+- **Der Prüfrahmen wurde gegengeprüft, und zwar nicht absichtlich.** Drei echte Fehler und ein Stack-Overflow im Testcode selbst sind in dieser Iteration gemeldet worden, bevor sie behoben wurden. Zusätzlich wurde die Tabstopp-Toleranz einmal auf null gesetzt: die Prüfung wurde rot, wie sie sollte.
 
 ## 2. Designentscheidungen
 
@@ -57,10 +63,10 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 
 `final_ui.h` darf dafür Neues bekommen, aber nur, was auch anderen Widgets nützt. Bisher sind das genau zwei Dinge, beide in späteren Iterationen fällig:
 
-| Was | Warum es fehlt | Wann |
+| Was | Warum es fehlte | Wann |
 |---|---|---|
-| `fuiScrollbarHorizontal` | `fui__Scrollbar(..., false)` gibt es intern längst (`final_ui.h:7604`), die ListView ruft es direkt auf (`final_ui.h:13032`); öffentlich ist nur die vertikale Fassung | Iteration 1 |
-| `fuiRegisterFocusable` | `fui__RegisterFocusable` (`final_ui.h:8915`) hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2 |
+| `fuiScrollbarHorizontal` ✅ | `fui__Scrollbar(..., false)` gab es intern längst, die ListView ruft es direkt auf; öffentlich war nur die vertikale Fassung | Iteration 1, drin seit `final_ui.h` v0.9.7 |
+| `fuiRegisterFocusable` | `fui__RegisterFocusable` hängt ein Widget in die Tab-Kette; ohne öffentliche Fassung kann kein fremdes Widget daran teilnehmen | Iteration 2 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -98,7 +104,7 @@ Wichtig ab Iteration 1, obwohl der Umbruch erst in Iteration 7 kommt: **Dokument
 
 ## 3. Öffentliche API
 
-### 3.1 Was steht (Iteration 0)
+### 3.1 Was steht (Iteration 0 und 1)
 
 ```c
 // Lebenszyklus
@@ -140,6 +146,19 @@ const char  *fuiEditorEolGetName(const fuiEditorEol eol);
 const char  *fuiEditorEolGetBytes(const fuiEditorEol eol, int32_t *outLength);
 fuiEditorEncoding fuiEditorEncodingUtf8(void);
 fuiEditorEncoding fuiEditorEncodingAscii(void);
+
+// Das Widget und seine Konfiguration
+fuiEditorConfig fuiEditorDefaultConfig(void);
+void            fuiEditorSetConfig(fuiEditor *editor, const fuiEditorConfig *config);   // null ist erlaubt
+const fuiEditorConfig *fuiEditorGetConfig(const fuiEditor *editor);
+fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor);
+
+// Die Ansicht
+int32_t fuiEditorGetCaretLine(const fuiEditor *editor);
+void    fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine);
+void    fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine);
+int32_t fuiEditorGetFirstVisibleLine(const fuiEditor *editor);
+int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor);
 ```
 
 Zwei Konventionen, die überall gelten:
@@ -149,19 +168,12 @@ Zwei Konventionen, die überall gelten:
 
 ### 3.2 Was noch kommt
 
-Das Widget selbst, ab Iteration 1:
+Alles Schreibende. Cursor und Auswahl (Iteration 2), Lexer und Dekoration (Iteration 3), Tippen, Undo, Suchen und Ersetzen, weitere Encodings und der Zeilenumbruch (Iterationen 4 bis 7). `fuiEditorConfig` bekommt dabei die beiden noch fehlenden Unterstrukturen `callbacks` (Iteration 4) und `shortcuts` (Iteration 8).
 
-```c
-fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor);
-void            fuiEditorSetConfig(fuiEditor *editor, const fuiEditorConfig *config);   // null ist erlaubt
-fuiEditorConfig fuiEditorDefaultConfig(void);
-```
+Zwei Abweichungen vom ursprünglichen Entwurf sind schon eingetreten und stehen so im Header:
 
-`fuiEditorConfig` bekommt Unterstrukturen `colors` / `metrics` / `toggles` / `callbacks` / `shortcuts`. Genullt ergibt jedes Feld das schlichteste Verhalten und die Farben kommen aus `fuiGetTheme` — dieselbe Regel wie bei `fuiTreeDesc` und `fuiImageDesc`.
-
-Abweichung von der Hausregel, bewusst: die Config wird beim Setzen **kopiert**, und dabei werden die genullten Felder auf ihre Voreinstellung aufgelöst. Bei einem Struct mit rund sechzig Feldern wäre „null heißt Voreinstellung, aufgelöst bei jeder Benutzung" sechzig Abfragen je Frame statt einmal.
-
----
+- **`fuiEditorSetConfig` löst nicht selbst auf.** Es kopiert und markiert; aufgelöst wird beim nächsten Build, weil ein Theme zum *Kontext* gehört und ein Dokument keinen hat. Aufgelöst wird trotzdem nur **einmal** — genau das war der Punkt.
+- **`fuiEditorScrollToLine` merkt sich nur die Zeile.** Aus demselben Grund: die Zeilenhöhe steht in der Schrift des Kontextes.
 
 ## 4. Innerer Aufbau
 
@@ -247,20 +259,23 @@ Jede Iteration ist für sich abnahmefähig: sie compiliert, das Demo läuft, und
 
 Dokument, Zeilenindex, Encoding-Seam, Demo-Gerüst, `--selftest`.
 
-**Abnahme:** `FUI_Editor --selftest` liefert 0. — *Erfüllt: 131 Prüfungen, 0 Fehler, sauber unter ASan und UBSan.*
+**Abnahme:** `FUI_Editor --selftest` liefert 0. — *Erfüllt.*
 
-### Iteration 1 — Read-Only-Ansicht
+### Iteration 1 — Read-Only-Ansicht ✅
 
-- `fuiTextEditor()` zeichnet: Rahmen, Randspalte mit **rechtsbündigen, nicht aufgefüllten** Zeilennummern und Trennstrich, Textbereich, nur die sichtbaren Zeilen (Vorbild `fui__ListVisibleRange`, `final_ui.h:11682`).
-- Vertikaler und horizontaler Scrollbalken, je `Auto` / `Immer` / `Nie`; Rad, Shift+Rad seitwärts. Zwei-Achsen-Muster von `fuiListViewButtons` (`final_ui.h:12998–13040`).
+- `fuiTextEditor()` zeichnet: Rahmen, Randspalte mit **rechtsbündigen, nicht aufgefüllten** Zeilennummern und Trennstrich, Textbereich, nur die sichtbaren Zeilen.
+- Vertikaler und horizontaler Scrollbalken, je `Auto` / `Always` / `Never`; Rad, Shift+Rad seitwärts. Voreinstellung: senkrecht `Always`, waagerecht `Auto`.
 - Aktuelle Zeile mit Hintergrundfarbe, **die Zeilennummer eingeschlossen**.
 - Eigene Statusleiste unter dem Editor — nicht `fuiBeginStatusBar`, die dockt ans Fensterende.
 - `fuiEditorConfig`, `fuiEditorDefaultConfig()`, NULL erlaubt.
 - Tabulator-Zerlegung, Monospace-Erkennung und -Schnellweg.
-- FiraCode über `apps/staticdatamaker` in `demos/additions/final_fonts.h`.
-- `fuiScrollbarHorizontal` in `final_ui.h`.
+- Bitstream Vera Sans Mono **und** FiraCode über `apps/staticdatamaker` in `demos/additions/final_fonts.h`, im Demo umschaltbar.
+- `fuiScrollbarHorizontal` in `final_ui.h` (v0.9.7).
+- Zeilennummern und Text werden aus dem Puffer heraus gezeichnet, ohne Zwischenkopie — eine Zeile kann also nicht zu lang werden.
 
-**Abnahme:** Das Demo zeigt `final_ui.h` selbst — über 14 000 Zeilen — scrollt in beide Richtungen, und die Zeilennummern stimmen an jeder Stelle mit `sed -n 'Np'` überein.
+**Abnahme:** *Erfüllt.* Das Demo zeigt `final_ui.h` selbst — 14 357 Zeilen — und scrollt in beide Richtungen. Die Übereinstimmung der Zeilennummern mit der Datei ist als Prüfung im `--selftest` automatisiert (`[document against file]`): jede einzelne Zeile wird gegen einen rohen Scan der Datei nach Zeilenvorschüben gehalten, Anfang, Ende, Inhalt und der Rückweg über `fuiEditorGetLineOfOffset`. Dazu kommen `[widget layout]` und `[widget empty document]`, die das Widget kopflos gegen eine Schrift bekannter Maße bauen.
+
+**Was noch aussteht und bewusst liegen bleibt:** Die aktuelle Zeile wird von `fuiEditorSetCaretLine` gesetzt, nicht von Maus oder Tastatur — das ist Iteration 2.
 
 ### Iteration 2 — Cursor, Auswahl, Tastatur
 
@@ -368,7 +383,7 @@ Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1
 
 Kopflos nach dem Vorbild von `PerfRunBenchmark` (`fui_performance.c:2277`): `fplInitFlags_None`, kein Fenster, kein OpenGL, ein Exit-Code. Prüfmakros wie in `apps/mathtest/mathtest.c`.
 
-Das ist der Modus, gegen den das Dokument entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist. Sieben Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings.
+Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Dreizehn Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout und leeres Widget.
 
 Zu jeder Textprüfung gehören zwei Vergleiche — einmal stückweise über `fuiEditorCopyRange`, einmal zusammenhängend über `fuiEditorGetContiguousText`. Stimmen die nicht überein, sähen ein Lexer und eine Suche zwei verschiedene Dokumente.
 
@@ -412,10 +427,11 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 
 | Risiko | Gegenmaßnahme |
 |---|---|
-| FiraCode bläht `final_fonts.h` auf — 138 KB gepackt, als C-Hex vermutlich ~2 MB | In Iteration 1 **zuerst** die entpackte Größe prüfen. Ist sie zu groß, bleibt Bitstream Vera und der Monospace-Schnellweg wird trotzdem gebaut |
+| ~~FiraCode bläht `final_fonts.h` auf~~ ✅ | Beide Schnitte sind drin. `final_fonts.h` ist von 2,39 MB auf 3,22 MB gewachsen, also 830 KB für Bitstream Vera Sans Mono (49 KB Fontdaten) und FiraCode (290 KB). Das war tragbar, die befürchteten ~2 MB allein für FiraCode sind es nicht geworden |
 | FPLs Zwischenablage könnte eine feste Puffergrenze haben (`fpl__X11ClipboardState.clipboardOut[FPL_MAX_BUFFER_LENGTH]`) | In Iteration 2 mit einem großen Block prüfen. Notfalls deckelt der Editor und meldet es in der Statusleiste, statt still abzuschneiden |
 | Nachfärben nach einer Änderung weit über dem Sichtfenster | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen |
 | Viele Style-Läufe je Zeile treiben die Draw-Commands hoch | `fuiSetDrawBatching`, Läufe gleicher Farbe zusammenfassen, in Iteration 8 messen |
 | Rückwärtsscrollen mit Umbruch ist beim alten Textfeld O(Dokument) (`final_ui.h:9258`) | Der zweite Index wird einmal je Breite gebaut und gehalten, nicht je Frame |
+| Die breiteste Zeile ist die breiteste *gesehene* — der waagerechte Bereich wächst also beim Durchscrollen | Bewusst so, und dokumentiert. Scintilla verhält sich genauso. Eine Änderung setzt ihn zurück |
 | Der Cursor der Suchfelder und der des Editors stören sich | Der Editor hält seinen eigenen, `fuiTextInput` seinen auf dem Kontext. In Iteration 6 gegeneinander prüfen |
 | Dokumente über 2 GB | `int32_t` durchgängig. Bewusst: die Grenze ist dokumentiert und für einen Texteditor keine |

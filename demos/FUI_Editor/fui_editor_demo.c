@@ -5,14 +5,18 @@ Name:
 Description:
 	An interactive demo for final_ui_texteditor.h, on FPL and legacy OpenGL.
 
-	The editor add-on is built over several iterations, and this demo grows with it. What is in right
-	now is the FOUNDATION: the document itself - a gap buffer, a line index that is a split array of its
-	own, and the encoding seam - with no widget on top of it yet. So the window reports what the document
-	knows about itself rather than drawing it, and the interesting part of this file is the self test.
+	The editor add-on is built over several iterations, and this demo grows with it. What is in right now
+	is the document - a gap buffer, a line index that is a split array of its own, and the encoding seam -
+	and a widget over it that can be READ: a gutter with line numbers, tab stops, two scrollbars and a
+	status line. Nothing types into it yet.
+
+	It fills itself from final_ui.h, because at over fourteen thousand lines that is the largest file to
+	hand and the one the add-on has to hold up against.
 
 	Run it with --selftest to get the headless one: no window, no OpenGL, one exit code. That is the mode
-	the document is developed against, because a gap buffer is exactly the kind of thing that looks right
-	on screen while being wrong across the hole.
+	all of this is developed against - a gap buffer is exactly the kind of thing that looks right on screen
+	while being wrong across the hole, and a line index is exactly the kind of thing that is off by one
+	somewhere in the middle of a file nobody scrolled to.
 
 Requirements:
 	- C99 compiler
@@ -70,12 +74,6 @@ License:
 
 //! Largest file the demo is willing to read into memory
 #define DEMO_MAX_FILE_BYTES (64 * 1024 * 1024)
-
-//! How many document lines the placeholder preview reads back, until the real widget replaces it
-#define DEMO_PREVIEW_LINES 400
-
-//! How much text those lines are allowed to add up to
-#define DEMO_PREVIEW_BYTES (64 * 1024)
 
 //! Slot of the proportional face the interface itself is drawn with
 #define DEMO_FACE_UI 0
@@ -485,6 +483,526 @@ static void SelfTestEncodings(void) {
 	fuiEditorRelease(&editor);
 }
 
+static bool DemoReadWholeFile(const char *filePath, uint8_t **outData, int32_t *outLength);
+
+/*
+	The pieces the widget is built out of, checked where they can be checked without a window.
+
+	Everything here is a pure function of its arguments - how wide a number is written, where the next tab
+	stop is, which rows a scroll offset puts in view - which is exactly the part of a widget that is worth
+	testing headlessly. What is left over is the drawing, and that is what the demo itself is for.
+*/
+static void SelfTestViewHelpers(void) {
+	CheckSection("view helpers");
+
+	CHECK_I(fuiEditor__DigitCount(0), 1);
+	CHECK_I(fuiEditor__DigitCount(9), 1);
+	CHECK_I(fuiEditor__DigitCount(10), 2);
+	CHECK_I(fuiEditor__DigitCount(999), 3);
+	CHECK_I(fuiEditor__DigitCount(14325), 5);
+
+	char numberText[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
+	const int32_t numberCapacity = (int32_t)sizeof(numberText);
+	CHECK_I(fuiEditor__FormatInt(numberText, numberCapacity, 0), 1);
+	CHECK(strcmp(numberText, "0") == 0);
+	CHECK_I(fuiEditor__FormatInt(numberText, numberCapacity, 4711), 4);
+	CHECK(strcmp(numberText, "4711") == 0);
+	CHECK_I(fuiEditor__FormatInt(numberText, numberCapacity, -12), 3);
+	CHECK(strcmp(numberText, "-12") == 0);
+
+	// The most negative int32 has no positive counterpart of its own, which is where a naive negate wraps.
+	CHECK_I(fuiEditor__FormatInt(numberText, numberCapacity, -2147483647 - 1), 11);
+	CHECK(strcmp(numberText, "-2147483648") == 0);
+
+	// Appending stops at the buffer and terminates what it managed, rather than running past it.
+	char shortBuffer[6];
+	const int32_t shortCapacity = (int32_t)sizeof(shortBuffer);
+	int32_t writeOffset = 0;
+	writeOffset = fuiEditor__AppendText(shortBuffer, shortCapacity, writeOffset, "Ln ");
+	writeOffset = fuiEditor__AppendInt(shortBuffer, shortCapacity, writeOffset, 123456);
+	CHECK_I(writeOffset, 5);
+	CHECK(strcmp(shortBuffer, "Ln 12") == 0);
+
+	// A scroll offset of zero starts at the first row, and the range is widened by one row at each end so
+	// that the row the top edge lands inside and the one the bottom edge cuts through are both drawn.
+	const float lineHeight = 20.0f;
+	const float viewportHeight = 100.0f;
+	const int32_t screenLineCount = 1000;
+	int32_t firstScreenLine = 0;
+	int32_t endScreenLine = 0;
+	fuiEditor__VisibleScreenLines(0.0f, viewportHeight, lineHeight, screenLineCount, &firstScreenLine, &endScreenLine);
+	CHECK_I(firstScreenLine, 0);
+	CHECK_I(endScreenLine, 7);
+
+	fuiEditor__VisibleScreenLines(410.0f, viewportHeight, lineHeight, screenLineCount, &firstScreenLine, &endScreenLine);
+	CHECK_I(firstScreenLine, 20);
+	CHECK_I(endScreenLine, 27);
+
+	// And it never runs past the end of the document, however far the offset has been pushed.
+	fuiEditor__VisibleScreenLines(1000000.0f, viewportHeight, lineHeight, screenLineCount, &firstScreenLine, &endScreenLine);
+	CHECK_I(firstScreenLine, screenLineCount);
+	CHECK_I(endScreenLine, screenLineCount);
+
+	/*
+		Tab stops, which is where the arithmetic went wrong once already.
+
+		A pen standing exactly ON a stop has to be sent to the NEXT one, and a pen that measured a
+		millionth short of one has to be sent there too - otherwise the second tab of a line puts the pen
+		back where it already stood, and a line indented twice draws as though it were indented once.
+	*/
+	fuiEditor__Render tabRender = fplZeroInit;
+	tabRender.tabWidth = 32.0f;
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, 0.0f) == 32.0f);
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, 1.0f) == 32.0f);
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, 32.0f) == 64.0f);
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, 63.9f) == 64.0f);
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, 64.0f) == 96.0f);
+
+	// A hair SHORT of a stop is what a float that has been added up across a line actually looks like.
+	float justUnderOneStop = 32.0f - 32.0f * 1.0e-6f;
+	CHECK(fuiEditor__NextTabStopDistance(&tabRender, justUnderOneStop) == 64.0f);
+
+	// A face too small to have measured a tab width at all leaves the pen alone rather than dividing by it.
+	fuiEditor__Render noTabRender = fplZeroInit;
+	CHECK(fuiEditor__NextTabStopDistance(&noTabRender, 17.0f) == 17.0f);
+
+	fuiEditorConfig defaultConfig = fuiEditorDefaultConfig();
+	CHECK(defaultConfig.toggles.showLineNumbers);
+	CHECK(defaultConfig.toggles.showStatusBar);
+	CHECK(defaultConfig.toggles.highlightCurrentLine);
+	CHECK(defaultConfig.toggles.verticalScrollbar == fuiEditorScrollbarMode_Always);
+	CHECK(defaultConfig.toggles.horizontalScrollbar == fuiEditorScrollbarMode_Auto);
+
+	// Zero is what "the caller named none" is spelled as, in both directions.
+	CHECK_I(defaultConfig.metrics.tabSize, 0);
+	CHECK(defaultConfig.colors.text.a == 0.0f);
+}
+
+/*
+	That the bytes can be reached in ONE piece from anywhere, hole or no hole.
+
+	This is what lets a line be drawn straight out of the buffer rather than being copied into a scratch
+	buffer that would put a limit on how long a line may be. Every range is at most two runs, and the two
+	of them together have to be the same bytes fuiEditorCopyRange answers with.
+*/
+static void SelfTestContiguousRuns(void) {
+	CheckSection("contiguous runs");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "one\ntwo\nthree\nfour\n", 0);
+
+	// Puts the hole in the middle of the document rather than at either end of it.
+	const int32_t middleOffset = 8;
+	fuiEditorInsert(&editor, middleOffset, "X", 1);
+
+	int32_t documentLength = fuiEditorGetTextLength(&editor);
+	CHECK(editor.document.gapStart > 0);
+	CHECK(editor.document.gapStart < documentLength);
+
+	char reassembled[64];
+	int32_t writeOffset = 0;
+	int32_t readOffset = 0;
+	int32_t runCount = 0;
+	while(readOffset < documentLength) {
+		int32_t runLength = 0;
+		const char *runBytes = fuiEditor__ContiguousRunAt(&editor, readOffset, documentLength, &runLength);
+		if(runBytes == fpl_null || runLength <= 0) {
+			break;
+		}
+		memcpy(&reassembled[writeOffset], runBytes, (size_t)runLength);
+		writeOffset += runLength;
+		readOffset += runLength;
+		runCount += 1;
+	}
+	reassembled[writeOffset] = '\0';
+
+	// Two of them, because a hole in the middle splits the document in exactly two.
+	CHECK_I(runCount, 2);
+	CHECK_I(writeOffset, documentLength);
+	CHECK(strcmp(reassembled, "one\ntwo\nXthree\nfour\n") == 0);
+
+	// A range that stops IN FRONT of the hole is one run, and one that starts behind it is one as well.
+	int32_t frontRunLength = 0;
+	const char *frontRun = fuiEditor__ContiguousRunAt(&editor, 0, 3, &frontRunLength);
+	CHECK(frontRun != fpl_null);
+	CHECK_I(frontRunLength, 3);
+
+	int32_t backRunLength = 0;
+	const char *backRun = fuiEditor__ContiguousRunAt(&editor, editor.document.gapStart, documentLength, &backRunLength);
+	CHECK(backRun != fpl_null);
+	CHECK_I(backRunLength, documentLength - editor.document.gapStart);
+
+	// An empty range answers nothing at all rather than a pointer to no bytes.
+	int32_t emptyRunLength = 0;
+	const char *emptyRun = fuiEditor__ContiguousRunAt(&editor, documentLength, documentLength, &emptyRunLength);
+	CHECK(emptyRun == fpl_null);
+	CHECK_I(emptyRunLength, 0);
+
+	fuiEditorRelease(&editor);
+}
+
+//! The caret, which so far only decides which line is washed and which number is lit
+static void SelfTestCaretLine(void) {
+	CheckSection("caret line");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "alpha\nbeta\ngamma\n", 0);
+
+	CHECK_I(fuiEditorGetCaretLine(&editor), 0);
+
+	fuiEditorSetCaretLine(&editor, 2);
+	CHECK_I(fuiEditorGetCaretLine(&editor), 2);
+	CHECK_I(editor.caretOffset, fuiEditorGetLineStart(&editor, 2));
+
+	// Out of range in either direction lands on the nearest line there is, rather than nowhere.
+	fuiEditorSetCaretLine(&editor, 9999);
+	int32_t lastLine = fuiEditorGetLineCount(&editor) - 1;
+	CHECK_I(fuiEditorGetCaretLine(&editor), lastLine);
+
+	fuiEditorSetCaretLine(&editor, -5);
+	CHECK_I(fuiEditorGetCaretLine(&editor), 0);
+
+	// A new document is a new view, so the caret goes back to the top with it.
+	fuiEditorSetCaretLine(&editor, 2);
+	fuiEditorSetText(&editor, "one\ntwo\n", 0);
+	CHECK_I(fuiEditorGetCaretLine(&editor), 0);
+	CHECK(editor.scrollY == 0.0f);
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	The acceptance test of this iteration, run headlessly: every line number the gutter would draw has to
+	name the line that is really there.
+
+	final_ui.h itself is the document, because it is the largest file to hand and the one the widget has to
+	hold up against. The reference is a plain scan of the file for line feeds - the same thing "sed -n Np"
+	does, and deliberately nothing the line index is involved in.
+*/
+static void SelfTestDocumentAgainstFile(void) {
+	CheckSection("document against file");
+
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && fileData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], &fileData, &fileLength);
+		candidateIndex += 1;
+	}
+	if(fileData == fpl_null) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
+	CHECK(fuiEditorLoadFromMemory(&editor, fileData, fileLength, &utf8Encoding));
+
+	// The file is valid utf-8, so nothing was replaced on the way in and byte n of the one is byte n of
+	// the other. Everything below rests on that, so it is checked rather than assumed.
+	int32_t documentLength = fuiEditorGetTextLength(&editor);
+	CHECK_I(documentLength, fileLength);
+
+	int32_t referenceLineCount = 1;
+	for(int32_t byteIndex = 0; byteIndex < fileLength; ++byteIndex) {
+		if(fileData[byteIndex] == '\n') {
+			referenceLineCount += 1;
+		}
+	}
+	int32_t documentLineCount = fuiEditorGetLineCount(&editor);
+	CHECK_I(documentLineCount, referenceLineCount);
+	CHECK(documentLineCount > 14000);
+
+	// Every line, not a sample of them: a line index that is wrong is usually wrong in one place only.
+	int32_t firstWrongStart = -1;
+	int32_t firstWrongContent = -1;
+	int32_t firstWrongLineOfOffset = -1;
+	int32_t referenceLineStart = 0;
+	int32_t lineIndex = 0;
+	while(lineIndex < documentLineCount && referenceLineStart <= fileLength) {
+		int32_t referenceLineEnd = referenceLineStart;
+		while(referenceLineEnd < fileLength && fileData[referenceLineEnd] != '\n') {
+			referenceLineEnd += 1;
+		}
+
+		// A carriage return in front of the line feed belongs to the line it ends and is not part of it.
+		int32_t referenceVisibleEnd = referenceLineEnd;
+		bool endsWithCarriageReturn = (referenceVisibleEnd > referenceLineStart) && (fileData[referenceVisibleEnd - 1] == '\r');
+		if(endsWithCarriageReturn) {
+			referenceVisibleEnd -= 1;
+		}
+
+		int32_t documentLineStart = fuiEditorGetLineStart(&editor, lineIndex);
+		int32_t documentLineEnd = fuiEditorGetLineEnd(&editor, lineIndex);
+		if((documentLineStart != referenceLineStart || documentLineEnd != referenceVisibleEnd) && firstWrongStart < 0) {
+			firstWrongStart = lineIndex;
+		}
+
+		int32_t referenceLineLength = referenceVisibleEnd - referenceLineStart;
+		int32_t documentLineLength = documentLineEnd - documentLineStart;
+		if(documentLineLength == referenceLineLength && firstWrongContent < 0) {
+			for(int32_t byteIndex = 0; byteIndex < referenceLineLength; ++byteIndex) {
+				char documentByte = fuiEditorGetByte(&editor, documentLineStart + byteIndex);
+				char referenceByte = (char)fileData[referenceLineStart + byteIndex];
+				if(documentByte != referenceByte) {
+					firstWrongContent = lineIndex;
+					break;
+				}
+			}
+		}
+
+		// And the way back: the offset a line begins at has to answer with that same line.
+		int32_t lineOfItsOwnStart = fuiEditorGetLineOfOffset(&editor, documentLineStart);
+		if(lineOfItsOwnStart != lineIndex && firstWrongLineOfOffset < 0) {
+			firstWrongLineOfOffset = lineIndex;
+		}
+
+		referenceLineStart = referenceLineEnd + 1;
+		lineIndex += 1;
+	}
+
+	CHECK_I(lineIndex, documentLineCount);
+	CHECK_I(firstWrongStart, -1);
+	CHECK_I(firstWrongContent, -1);
+	CHECK_I(firstWrongLineOfOffset, -1);
+
+	fuiEditorRelease(&editor);
+	free(fileData);
+}
+
+//! Advance of every glyph of the stand-in face, in font units where the nominal size is 1.0
+#define DEMO_TEST_FACE_ADVANCE 0.5f
+
+//! Distance from one baseline to the next of the stand-in face, in the same units
+#define DEMO_TEST_FACE_LINE_HEIGHT 1.25f
+
+//! Pixel height the widget tests draw at, so one line is exactly twenty pixels tall
+#define DEMO_TEST_FONT_HEIGHT 16.0f
+
+//! How many lines the document the widget tests are built over has
+#define DEMO_TEST_LINE_COUNT 1000
+
+/*
+	A face of one size, so that the geometry of a build is arithmetic rather than a measurement.
+
+	Every codepoint is the same width, which is also what makes the widget take its monospace path - and
+	that path is worth having under test, since it is the one a code editor actually runs.
+*/
+static bool TestFaceGetGlyph(void *userData, uint32_t codePoint, fuiGlyph *outGlyph) {
+	(void)userData;
+	(void)codePoint;
+	fuiGlyph glyph = fplZeroInit;
+	glyph.advance = DEMO_TEST_FACE_ADVANCE;
+	glyph.size = fuiV2(DEMO_TEST_FACE_ADVANCE, 1.0f);
+	*outGlyph = glyph;
+	return(true);
+}
+
+static fuiFont MakeTestFace(void) {
+	fuiFont result = fuiZeroFont();
+	result.getGlyph = TestFaceGetGlyph;
+	result.metrics.ascent = 1.0f;
+	result.metrics.descent = 0.25f;
+	result.metrics.lineHeight = DEMO_TEST_FACE_LINE_HEIGHT;
+	result.metrics.spaceAdvance = DEMO_TEST_FACE_ADVANCE;
+	return(result);
+}
+
+//! Builds one frame holding nothing but the editor, and answers what it drew
+static const fuiDrawData *BuildOneEditorFrame(fuiContext *ui, fuiEditor *editor, const fuiRect rect) {
+	fuiInput input = fuiZeroInput();
+	input.windowSize = fuiV2i((int32_t)(rect.x + rect.w) + 64, (int32_t)(rect.y + rect.h) + 64);
+
+	fuiBeginFrame(ui, &input, fuiPass_Both);
+	(void)fuiTextEditor(ui, rect, "editor", editor);
+	fuiEndFrame(ui);
+	return(fuiGetDrawData(ui));
+}
+
+/*
+	The widget itself, built headlessly against a face whose every measurement is known.
+
+	A window is not needed to find out whether the right lines are in view, whether the scroll offset is
+	clamped to what there is to scroll, or whether a box too small to hold anything is survived - and those
+	are the three things that go wrong when a layout is changed. What is left over is what it LOOKS like,
+	and no test answers that one.
+*/
+static void SelfTestWidgetLayout(void) {
+	CheckSection("widget layout");
+
+	fuiFont testFace = MakeTestFace();
+	fuiContext ui;
+	if(!fuiInit(&ui, &testFace, fpl_null)) {
+		CHECK(false);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+
+	// One line per number, so that what is on a line says which line it is.
+	const int32_t roomPerLine = 16;
+	char documentText[DEMO_TEST_LINE_COUNT * 16];
+	int32_t documentLength = 0;
+	for(int32_t lineIndex = 0; lineIndex < DEMO_TEST_LINE_COUNT; ++lineIndex) {
+		int32_t roomLeft = (int32_t)sizeof(documentText) - documentLength;
+		int written = snprintf(&documentText[documentLength], (size_t)roomLeft, "line %d\n", (int)lineIndex);
+		if(written <= 0 || written >= roomLeft) {
+			break;
+		}
+		documentLength += written;
+	}
+	CHECK(documentLength < DEMO_TEST_LINE_COUNT * roomPerLine);
+	fuiEditorSetText(&editor, documentText, documentLength);
+	CHECK_I(fuiEditorGetLineCount(&editor), DEMO_TEST_LINE_COUNT + 1);
+
+	fuiEditorConfig config = fuiEditorDefaultConfig();
+	config.metrics.fontHeight = DEMO_TEST_FONT_HEIGHT;
+	config.metrics.textPaddingX = 4.0f;
+	config.metrics.gutterPaddingX = 4.0f;
+	config.metrics.statusBarHeight = 24.0f;
+	config.metrics.tabSize = 4;
+	fuiEditorSetConfig(&editor, &config);
+
+	const float editorLeft = 10.0f;
+	const float editorTop = 10.0f;
+	const float editorWidth = 640.0f;
+	const float editorHeight = 424.0f;
+	fuiRect editorRect = fuiRectMake(editorLeft, editorTop, editorWidth, editorHeight);
+
+	const fuiDrawData *drawData = BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK(drawData->commandCount > 0);
+	CHECK(drawData->vertexCount > 0);
+
+	// A fresh view starts at the top and holds as many rows as the body has room for, widened by the one
+	// the top edge lands inside and the one the bottom edge cuts through.
+	CHECK_I(fuiEditorGetFirstVisibleLine(&editor), 0);
+	CHECK(fuiEditorGetVisibleLineCount(&editor) > 0);
+	CHECK(fuiEditorGetVisibleLineCount(&editor) < DEMO_TEST_LINE_COUNT);
+
+	// Two builds in a row change nothing, which is what says the widget reads its own state back the way
+	// it wrote it rather than drifting a little every frame.
+	int32_t firstVisibleAfterOneFrame = fuiEditorGetFirstVisibleLine(&editor);
+	int32_t visibleCountAfterOneFrame = fuiEditorGetVisibleLineCount(&editor);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK_I(fuiEditorGetFirstVisibleLine(&editor), firstVisibleAfterOneFrame);
+	CHECK_I(fuiEditorGetVisibleLineCount(&editor), visibleCountAfterOneFrame);
+
+	// Somewhere in the middle: the line asked for is the one at the top.
+	const int32_t middleLine = 500;
+	fuiEditorScrollToLine(&editor, middleLine);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK_I(fuiEditorGetFirstVisibleLine(&editor), middleLine);
+
+	// Past the end: the offset is clamped so that the LAST line sits at the bottom, rather than the
+	// document being scrolled off the top of its own box.
+	const int32_t wayPastTheEnd = 999999;
+	fuiEditorScrollToLine(&editor, wayPastTheEnd);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	int32_t lineCount = fuiEditorGetLineCount(&editor);
+	int32_t firstVisibleLine = fuiEditorGetFirstVisibleLine(&editor);
+	int32_t visibleLineCount = fuiEditorGetVisibleLineCount(&editor);
+	CHECK_I(firstVisibleLine + visibleLineCount, lineCount);
+	CHECK(editor.scrollY > 0.0f);
+
+	// And back to the top, where there is nothing to scroll and the offset is exactly zero.
+	fuiEditorScrollToLine(&editor, 0);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK(editor.scrollY == 0.0f);
+	CHECK(editor.scrollX == 0.0f);
+
+	// The widest line SEEN has to have been measured by now, which is what the horizontal bar goes by.
+	CHECK(editor.widestMeasuredLineWidth > 0.0f);
+
+	// An edit throws that width away rather than keeping one that belonged to text which is gone.
+	fuiEditorInsert(&editor, 0, "x", 1);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK_I(editor.widestMeasuredVersion, editor.version);
+
+	// Without a gutter and without a status line the same document still lays out, and holds MORE rows,
+	// because the status line is no longer taking a strip off the bottom.
+	int32_t visibleWithChrome = fuiEditorGetVisibleLineCount(&editor);
+	config.toggles.showLineNumbers = false;
+	config.toggles.showStatusBar = false;
+	config.toggles.highlightCurrentLine = false;
+	fuiEditorSetConfig(&editor, &config);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK(fuiEditorGetVisibleLineCount(&editor) > visibleWithChrome);
+
+	// A box with no room in it at all is survived rather than laid out into the negative.
+	fuiRect emptyRect = fuiRectMake(editorLeft, editorTop, 0.0f, 0.0f);
+	(void)BuildOneEditorFrame(&ui, &editor, emptyRect);
+	CHECK(fuiEditorGetVisibleLineCount(&editor) >= 0);
+
+	// So is one too small to hold even the status line it was asked for.
+	config.toggles.showStatusBar = true;
+	fuiEditorSetConfig(&editor, &config);
+	fuiRect tinyRect = fuiRectMake(editorLeft, editorTop, 12.0f, 6.0f);
+	(void)BuildOneEditorFrame(&ui, &editor, tinyRect);
+	CHECK(fuiEditorGetVisibleLineCount(&editor) >= 0);
+
+	fuiEditorRelease(&editor);
+	fuiRelease(&ui);
+}
+
+//! An empty document is still one empty line, and the widget has to draw that line rather than nothing
+static void SelfTestWidgetEmptyDocument(void) {
+	CheckSection("widget empty document");
+
+	fuiFont testFace = MakeTestFace();
+	fuiContext ui;
+	if(!fuiInit(&ui, &testFace, fpl_null)) {
+		CHECK(false);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+
+	// Asked for by name rather than taken from the theme, because the tab arithmetic below is checked
+	// against exactly this height.
+	fuiEditorConfig config = fuiEditorDefaultConfig();
+	config.metrics.fontHeight = DEMO_TEST_FONT_HEIGHT;
+	config.metrics.tabSize = 4;
+	fuiEditorSetConfig(&editor, &config);
+
+	fuiRect editorRect = fuiRectMake(0.0f, 0.0f, 320.0f, 200.0f);
+	const fuiDrawData *drawData = BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK(drawData->commandCount > 0);
+	CHECK_I(fuiEditorGetLineCount(&editor), 1);
+	CHECK_I(fuiEditorGetFirstVisibleLine(&editor), 0);
+	CHECK_I(fuiEditorGetVisibleLineCount(&editor), 1);
+	CHECK_I(fuiEditorGetCaretLine(&editor), 0);
+
+	// A document of tabs alone is where a line that is cut at every tab stop could come out empty.
+	fuiEditorSetText(&editor, "\t\t\tx\n\ty\n", 0);
+	(void)BuildOneEditorFrame(&ui, &editor, editorRect);
+	CHECK_I(fuiEditorGetLineCount(&editor), 3);
+
+	// Four tab stops of four characters at half the font height, plus the one character behind them.
+	float expectedWidestWidth = (3.0f * 4.0f + 1.0f) * DEMO_TEST_FACE_ADVANCE * DEMO_TEST_FONT_HEIGHT;
+	float measuredWidestWidth = editor.widestMeasuredLineWidth;
+	float widthDifference = measuredWidestWidth - expectedWidestWidth;
+	if(widthDifference < 0.0f) {
+		widthDifference = -widthDifference;
+	}
+	CHECK(widthDifference < 0.01f);
+
+	fuiEditorRelease(&editor);
+	fuiRelease(&ui);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -497,6 +1015,12 @@ static int RunSelfTest(void) {
 	SelfTestLineEndings();
 	SelfTestUtf8();
 	SelfTestEncodings();
+	SelfTestViewHelpers();
+	SelfTestContiguousRuns();
+	SelfTestCaretLine();
+	SelfTestDocumentAgainstFile();
+	SelfTestWidgetLayout();
+	SelfTestWidgetEmptyDocument();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -528,6 +1052,8 @@ typedef struct EditorDemoState {
 	const char *monoFontNames[EditorDemoMonoFace_Count];
 	//! Which one the document is shown in
 	EditorDemoMonoFace activeMonoFace;
+	//! What the editor is configured with, edited in place by the toolbar and pushed on every change
+	fuiEditorConfig editorConfig;
 	//! Whether the loop keeps going
 	bool isRunning;
 } EditorDemoState;
@@ -577,6 +1103,11 @@ static void DemoInit(EditorDemoState *demo) {
 	demo->isRunning = true;
 	fuiEditorInit(&demo->editor, fpl_null);
 
+	// Started from the defaults and then edited by the toolbar, which is what a caller who wants to change
+	// one thing does: take the defaults, change the one field, hand the whole thing back.
+	demo->editorConfig = fuiEditorDefaultConfig();
+	fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
+
 	// Tried from the working directory and from one level up, so running it out of the build folder and
 	// out of the repository root both find something.
 	const char *candidatePaths[] = {
@@ -613,13 +1144,21 @@ static void DemoRelease(EditorDemoState *demo) {
 /*
 	What there is to show at this iteration.
 
-	There is no editor widget yet, so the panel reports what the document knows about itself and shows
-	its first lines through final_ui.h's own read-only text view. Every line of this goes away in the
-	next iteration, when fuiTextEditor draws the document itself.
+	The editor is read only so far - it draws, it scrolls, and nothing types into it yet. So the panel is a
+	toolbar over one fuiTextEditor: the toolbar is there to prove that the configuration really is the whole
+	of what a caller decides about an editor, and the editor below it is there to be scrolled through
+	final_ui.h, which is the largest file to hand and the one this add-on has to hold up against.
 */
 static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 	const float panelPadding = 16.0f;
 	const float rowHeight = 30.0f;
+	const float rowSpacing = 6.0f;
+	const float buttonWidth = 96.0f;
+	const float wideButtonWidth = 340.0f;
+	const float toggleWidth = 150.0f;
+	const int32_t bigJumpLines = 1000;
+	const int32_t smallestTabSize = 1;
+	const int32_t largestTabSize = 16;
 
 	const fuiDrawData *drawData = fuiGetDrawData(ui);
 	float windowWidth = (float)drawData->windowSize.x;
@@ -634,70 +1173,117 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 	fuiRect sourceRow = fuiLayoutSlot(ui, rowHeight);
 	fuiLabel(ui, sourceRow, demo->sourceDescription);
 
-	char statisticsText[256];
-	int32_t documentLength = fuiEditorGetTextLength(&demo->editor);
+	bool configurationChanged = false;
 	int32_t documentLineCount = fuiEditorGetLineCount(&demo->editor);
-	fuiEditorEol documentEol = fuiEditorGetEol(&demo->editor);
-	const char *eolName = fuiEditorEolGetName(documentEol);
-	fplStringFormat(statisticsText, fplArrayCount(statisticsText), "%d bytes, %d lines, %s, %s", (int)documentLength, (int)documentLineCount, demo->editor.encoding.name, eolName);
+	int32_t caretLine = fuiEditorGetCaretLine(&demo->editor);
 
-	fuiRect statisticsRow = fuiLayoutSlot(ui, rowHeight);
-	fuiLabel(ui, statisticsRow, statisticsText);
+	// One row of buttons: which face the code is set in, and where in the document to look.
+	fuiRect navigationRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "navigation", fuiAxis_Horizontal, navigationRow, rowSpacing);
+	{
+		const char *activeMonoName = demo->monoFontNames[demo->activeMonoFace];
+		char faceButtonLabel[128];
+		fplStringFormat(faceButtonLabel, fplArrayCount(faceButtonLabel), "Monospace face: %s", activeMonoName);
 
-	fuiRect versionRow = fuiLayoutSlot(ui, rowHeight);
-	char versionText[128];
-	fplStringFormat(versionText, fplArrayCount(versionText), "final_ui.h v%s, final_ui_texteditor.h v%s", fuiGetVersion(), fuiEditorGetVersion());
-	fuiLabel(ui, versionRow, versionText);
+		fuiRect faceButtonRect = fuiLayoutSlot(ui, wideButtonWidth);
+		if(fuiButton(ui, faceButtonRect, faceButtonLabel)) {
+			int32_t nextFace = ((int32_t)demo->activeMonoFace + 1) % (int32_t)EditorDemoMonoFace_Count;
+			demo->activeMonoFace = (EditorDemoMonoFace)nextFace;
+		}
+
+		fuiRect topButtonRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButton(ui, topButtonRect, "Top")) {
+			const int32_t firstLine = 0;
+			fuiEditorSetCaretLine(&demo->editor, firstLine);
+			fuiEditorScrollToLine(&demo->editor, firstLine);
+		}
+
+		fuiRect backButtonRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButtonRepeat(ui, backButtonRect, "-1000")) {
+			int32_t wantedLine = caretLine - bigJumpLines;
+			fuiEditorSetCaretLine(&demo->editor, wantedLine);
+			fuiEditorScrollToLine(&demo->editor, wantedLine);
+		}
+
+		fuiRect forwardButtonRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButtonRepeat(ui, forwardButtonRect, "+1000")) {
+			int32_t wantedLine = caretLine + bigJumpLines;
+			fuiEditorSetCaretLine(&demo->editor, wantedLine);
+			fuiEditorScrollToLine(&demo->editor, wantedLine);
+		}
+
+		fuiRect bottomButtonRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButton(ui, bottomButtonRect, "Bottom")) {
+			int32_t lastLine = documentLineCount - 1;
+			fuiEditorSetCaretLine(&demo->editor, lastLine);
+			fuiEditorScrollToLine(&demo->editor, lastLine);
+		}
+	}
+	fuiEndStack(ui);
+
+	// And one row of what the configuration can be asked for. Every one of these writes into the caller's
+	// own fuiEditorConfig and hands the whole struct back, which is the only way an editor is configured.
+	fuiRect toggleRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "toggles", fuiAxis_Horizontal, toggleRow, rowSpacing);
+	{
+		fuiRect lineNumbersRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, lineNumbersRect, "Line numbers", &demo->editorConfig.toggles.showLineNumbers)) {
+			configurationChanged = true;
+		}
+
+		fuiRect statusBarRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, statusBarRect, "Status bar", &demo->editorConfig.toggles.showStatusBar)) {
+			configurationChanged = true;
+		}
+
+		fuiRect currentLineRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, currentLineRect, "Current line", &demo->editorConfig.toggles.highlightCurrentLine)) {
+			configurationChanged = true;
+		}
+
+		int32_t shownTabSize = (demo->editorConfig.metrics.tabSize > 0) ? demo->editorConfig.metrics.tabSize : 4;
+		char tabButtonLabel[64];
+		fplStringFormat(tabButtonLabel, fplArrayCount(tabButtonLabel), "Tab width: %d", (int)shownTabSize);
+
+		fuiRect tabDownRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButtonRepeat(ui, tabDownRect, "Tab -")) {
+			int32_t wantedTabSize = shownTabSize - 1;
+			if(wantedTabSize >= smallestTabSize) {
+				demo->editorConfig.metrics.tabSize = wantedTabSize;
+				configurationChanged = true;
+			}
+		}
+
+		fuiRect tabLabelRect = fuiLayoutSlot(ui, toggleWidth);
+		fuiLabel(ui, tabLabelRect, tabButtonLabel);
+
+		fuiRect tabUpRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButtonRepeat(ui, tabUpRect, "Tab +")) {
+			int32_t wantedTabSize = shownTabSize + 1;
+			if(wantedTabSize <= largestTabSize) {
+				demo->editorConfig.metrics.tabSize = wantedTabSize;
+				configurationChanged = true;
+			}
+		}
+	}
+	fuiEndStack(ui);
+
+	if(configurationChanged) {
+		fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
+	}
 
 	fuiRect separatorRow = fuiLayoutSlot(ui, rowHeight);
 	fuiSeparator(ui, separatorRow);
 
-	// Switching the face is the same move the editor widget will make in the next iteration, so wiring
-	// it up now is the first test of that path rather than a demo convenience.
-	const char *activeMonoName = demo->monoFontNames[demo->activeMonoFace];
-	char faceButtonLabel[128];
-	fplStringFormat(faceButtonLabel, fplArrayCount(faceButtonLabel), "Monospace face: %s", activeMonoName);
-
-	fuiRect faceButtonRow = fuiLayoutSlot(ui, rowHeight);
-	if(fuiButton(ui, faceButtonRow, faceButtonLabel)) {
-		int32_t nextFace = ((int32_t)demo->activeMonoFace + 1) % (int32_t)EditorDemoMonoFace_Count;
-		demo->activeMonoFace = (EditorDemoMonoFace)nextFace;
-	}
-
-	fuiRect noteRow = fuiLayoutSlot(ui, rowHeight);
-	fuiLabel(ui, noteRow, "No widget yet - this is the document, read back line by line:");
-
-	// Read the lines back out one at a time, which is the only way to prove from the outside that the
-	// line index and the hole agree with each other. Static rather than automatic because it is far too
-	// big for a stack frame, and there is exactly one of these panels.
-	static char previewText[DEMO_PREVIEW_BYTES];
-	int32_t previewLength = 0;
-	int32_t previewLine = 0;
-	int32_t linesToShow = (documentLineCount < DEMO_PREVIEW_LINES) ? documentLineCount : DEMO_PREVIEW_LINES;
-	while(previewLine < linesToShow) {
-		char lineText[256];
-		(void)fuiEditorCopyLine(&demo->editor, previewLine, lineText, (int32_t)sizeof(lineText));
-		int32_t roomLeft = (int32_t)sizeof(previewText) - previewLength;
-		int written = snprintf(&previewText[previewLength], (size_t)roomLeft, "%5d  %s\n", (int)(previewLine + 1), lineText);
-		if(written <= 0 || written >= roomLeft) {
-			break;
-		}
-		previewLength += written;
-		previewLine += 1;
-	}
-	previewText[previewLength] = '\0';
-
-	fuiRect previewRect = fuiLayoutRemaining(ui);
-	const bool isMultiline = true;
-	const bool wrapsLongLines = false;
-
-	// final_ui.h holds ONE font per context, so a widget that wants a different face swaps it for the
-	// length of its own build and puts the old one back. Code wants a monospace face; the panel around
-	// it does not.
+	// final_ui.h holds ONE font per context, so a widget that wants a different face swaps it in for the
+	// length of its own build and puts the old one back. Code wants a monospace face; the panel around it
+	// does not.
+	fuiRect editorRect = fuiLayoutRemaining(ui);
 	const fuiFont *monoFont = demo->monoFonts[demo->activeMonoFace];
 	fuiSetFont(ui, monoFont);
-	fuiTextView(ui, previewRect, "preview", previewText, isMultiline, wrapsLongLines);
+	fuiEditorAction action = fuiTextEditor(ui, editorRect, "source", &demo->editor);
 	fuiSetFont(ui, demo->uiFont);
+	(void)action;
 
 	fuiEndPanel(ui);
 }
