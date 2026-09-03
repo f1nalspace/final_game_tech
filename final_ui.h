@@ -213,6 +213,13 @@ SOFTWARE.
 	- New: fuiGetFrameTime, which answers what the last frame took - and answers ZERO during a draw pass,
 	  so anything driven off it cannot run at double speed in a two pass caller. Everything in here that is
 	  timed reads the same field; a widget that is not in here had no way to.
+	- New: fuiIsMouseButtonDown and fuiMouseButtonWentDown. fuiInteract answers for the LEFT button and for
+	  nothing else, which is right for everything that is clicked and leaves a widget that means something
+	  by the middle one - a paste, in an editor - with no way to ask at all.
+	- New: fuiConsumeKey, which spends a key's edge so nothing built after it sees the same keystroke. The
+	  multi-line text field has been doing exactly this to the enter it turns into a line break since it
+	  had one, by reaching into the context directly; now it says so by name, and a widget outside this
+	  file can say it too.
 	- New: fuiTheme.scrollTrackColor, and both halves of the scrollbar draw their gutter in it. It used to
 	  be widgetTrackColor, which is also what a scrolling container paints ITSELF with - so the gutter
 	  disappeared into the field beside it and left a thumb apparently floating in the content. It sits
@@ -2730,6 +2737,24 @@ fui_api fuiVec2 fuiGetMouseDelta(const fuiContext *context);
 fui_api float fuiGetMouseWheelDelta(const fuiContext *context);
 
 /**
+* @brief Tests whether a mouse button is currently held.
+* @param[in] context Reference to the context @ref fuiContext.
+* @param[in] button Which button, @ref FUI_MOUSE_LEFT, @ref FUI_MOUSE_MIDDLE or @ref FUI_MOUSE_RIGHT.
+* @return Returns true while the button is down.
+* @note @ref fuiInteract answers for the LEFT button and for nothing else, which is right for everything
+*       that is clicked and not enough for a widget that means something by the other two.
+*/
+fui_api bool fuiIsMouseButtonDown(const fuiContext *context, const int32_t button);
+
+/**
+* @brief Tests whether a mouse button was pressed this frame.
+* @param[in] context Reference to the context @ref fuiContext.
+* @param[in] button Which button, @ref FUI_MOUSE_LEFT, @ref FUI_MOUSE_MIDDLE or @ref FUI_MOUSE_RIGHT.
+* @return Returns true on the press edge, and always false during a draw pass.
+*/
+fui_api bool fuiMouseButtonWentDown(const fuiContext *context, const int32_t button);
+
+/**
 * @brief Returns how long the frame before this one took, in seconds.
 * @param[in] context Reference to the context @ref fuiContext.
 * @return Returns the delta time, and ZERO during a draw pass.
@@ -2764,6 +2789,17 @@ fui_api bool fuiKeyWentDown(const fuiContext *context, const fuiKey key);
 *       field wants. A draw pass advances no timer and reports no edge, so a two-pass caller cannot fire twice.
 */
 fui_api bool fuiKeyRepeat(fuiContext *context, const fuiKey key);
+
+/**
+* @brief Spends a key's edge, so that nothing built after this sees it.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] key The key @ref fuiKey to consume.
+* @note The key stays HELD - what is taken away is only the press edge and the repeat it resolved to this
+*       frame. That is what a widget which answered a key itself owes to whatever hosts it: a multi-line
+*       field takes the plain enter it turned into a line break, so the dialog around it does not also
+*       commit on the same keystroke.
+*/
+fui_api void fuiConsumeKey(fuiContext *context, const fuiKey key);
 
 /**
 * @brief Tests whether either control key is held.
@@ -6270,6 +6306,24 @@ fui_api float fuiGetMouseWheelDelta(const fuiContext *context) {
 	return((context != fui_null) ? context->mouseWheelDelta : 0.0f);
 }
 
+fui_api bool fuiIsMouseButtonDown(const fuiContext *context, const int32_t button) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || button < 0 || button >= FUI_MOUSE_BUTTON_COUNT) {
+		return(false);
+	}
+	bool result = context->mouseIsDown[button];
+	return(result);
+}
+
+fui_api bool fuiMouseButtonWentDown(const fuiContext *context, const int32_t button) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || button < 0 || button >= FUI_MOUSE_BUTTON_COUNT) {
+		return(false);
+	}
+	bool result = context->mouseWentDown[button];
+	return(result);
+}
+
 fui_api float fuiGetFrameTime(const fuiContext *context) {
 	FUI_ASSERT(context != fui_null);
 	return((context != fui_null) ? context->frameTime : 0.0f);
@@ -6302,6 +6356,17 @@ fui_api bool fuiKeyRepeat(fuiContext *context, const fuiKey key) {
 	// and make a held arrow key run at double speed.
 	bool result = context->keyRepeated[key];
 	return(result);
+}
+
+fui_api void fuiConsumeKey(fuiContext *context, const fuiKey key) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || key <= fuiKey_None || key >= fuiKey_Count) {
+		return;
+	}
+	// Both halves of what a key answers have to go, or the edge comes back through the other one: the
+	// transition count fuiKeyWentDown reads, and the repeat that was already resolved for this frame.
+	context->keys[key].halfTransitionCount = 0;
+	context->keyRepeated[key] = false;
 }
 
 fui_api bool fuiIsControlDown(const fuiContext *context) {
@@ -9717,7 +9782,7 @@ fui_inline bool fui__TextInputBuild(fuiContext *context, const fuiRect rect, con
 				if(fui__InsertCodepoint(context, buffer, capacity, &length, (uint32_t)'\n')) {
 					didChange = true;
 				}
-				context->keys[fuiKey_Return].halfTransitionCount = 0;
+				fuiConsumeKey(context, fuiKey_Return);
 			}
 			// Escape is left to the host, which is usually a modal that cancels on it.
 		} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Escape)) {
