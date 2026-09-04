@@ -2,7 +2,7 @@
 
 Übergabe für die nächste Session. Der **Plan** steht in [`fui_texteditor_plan.md`](fui_texteditor_plan.md) — Designentscheidungen, API, innerer Aufbau, alle acht Iterationen samt Abnahmekriterien. Dieses Dokument ergänzt ihn um das, was beim Bauen gelernt wurde und nirgends sonst steht.
 
-**Kurzfassung:** Iterationen 0–4 sind fertig. Damit sind **beide Kerniterationen** durch — der Editor liest und schreibt. Als Nächstes kommt **Iteration 5 — Undo/Redo und Blockoperationen**. Alles ist grün, nichts hängt.
+**Kurzfassung:** Iterationen 0–5 sind fertig. Der Editor liest, schreibt und **nimmt zurück**. Als Nächstes kommt **Iteration 6 — Suchen und Ersetzen**. Alles ist grün, nichts hängt.
 
 ---
 
@@ -11,17 +11,17 @@
 | | |
 |---|---|
 | Branch | `ui/editor-widget`, Basis `develop` |
-| Arbeitsverzeichnis | Iteration 4 ist **nicht committet** — der Nutzer committet selbst |
-| `final_ui.h` | **v0.9.7** (`develop` steht auf v0.9.6) |
-| `final_ui_texteditor.h` | **v0.5.0**, ~4900 Zeilen |
-| `demos/FUI_Editor/` | ~3300 Zeilen, davon der größere Teil Selbsttest |
-| Selbsttest | **486 Prüfungen, 0 Fehler**, sauber unter ASan und UBSan |
+| Arbeitsverzeichnis | Iteration 5 ist **nicht committet** — der Nutzer committet selbst |
+| `final_ui.h` | **v0.9.7** (`develop` steht auf v0.9.6), von Iteration 5 **nicht angefasst** |
+| `final_ui_texteditor.h` | **v0.6.0**, ~6560 Zeilen |
+| `demos/FUI_Editor/` | ~4450 Zeilen, davon der größere Teil Selbsttest |
+| Selbsttest | **809 Prüfungen, 0 Fehler**, sauber unter ASan und UBSan |
 
 ### Was der Editor kann
 
-Dokument (Gap-Buffer, Split-Zeilenindex, Encoding-Seam) · Ansicht mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken und eigener Statusleiste · Cursor, Auswahl, Tastatur, Maus, Kopieren · Lexer mit inkrementellem Nachfärben · Dekorationsschicht · sichtbarer Whitespace und Zeilenenden · **Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen (auch mittlere Maustaste), Zeilenlöschen, Geändert-Flag, `onChange`, `isReadOnly`.**
+Dokument (Gap-Buffer, Split-Zeilenindex, Encoding-Seam) · Ansicht mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken und eigener Statusleiste · Cursor, Auswahl, Tastatur, Maus, Kopieren · Lexer mit inkrementellem Nachfärben · Dekorationsschicht · sichtbarer Whitespace und Zeilenenden · Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen (auch mittlere Maustaste), Zeilenlöschen, Geändert-Flag, `onChange`, `isReadOnly` · **Undo/Redo mit Zusammenfassen, Gruppen, Speicherbudget und Speicherpunkt · Tab/Shift+Tab, Ctrl+Shift+D, Alt+Hoch/Runter, Auto-Einrückung.**
 
-**Was er nicht kann:** rückgängig machen. Undo, Tab-Einrücken, Suchen/Ersetzen, weitere Encodings und Zeilenumbruch sind Iteration 5 bis 8.
+**Was er nicht kann:** suchen und ersetzen, andere Encodings als UTF-8 und ASCII, Zeilenumbruch. Das sind Iteration 6 bis 8.
 
 ---
 
@@ -69,7 +69,7 @@ Vorhanden sind `import` (ImageMagick), `magick`, `xwininfo`, `spectacle`, `ffmpe
 
 ## 3. Arbeitsregeln, die der Nutzer gesetzt hat
 
-1. **Versionen.** Ein Feature-Branch dreht die Version einer Bibliothek **genau einmal** hoch — eine Patch-Stufe über `develop` — und bleibt dort. Alles, was der Branch dazu beiträgt, kommt als weitere `- New:`-Zeile in dieselbe Changelog-Sektion. Keine neue Sektion je Iteration. Gilt für `final_ui.h` (v0.9.7, bleibt — auch die drei Zusätze aus Iteration 4 sind dort einsortiert). `final_ui_texteditor.h` existiert auf `develop` nicht, hat also keine Basis, über der es stehen könnte — dort läuft je Iteration eine Minor-Stufe (aktuell v0.5.0). Bisher unbeanstandet; im Zweifel nachfragen.
+1. **Versionen.** Ein Feature-Branch dreht die Version einer Bibliothek **genau einmal** hoch — eine Patch-Stufe über `develop` — und bleibt dort. Alles, was der Branch dazu beiträgt, kommt als weitere `- New:`-Zeile in dieselbe Changelog-Sektion. Keine neue Sektion je Iteration. Gilt für `final_ui.h` (v0.9.7, bleibt — auch die drei Zusätze aus Iteration 4 sind dort einsortiert). `final_ui_texteditor.h` existiert auf `develop` nicht, hat also keine Basis, über der es stehen könnte — dort läuft je Iteration eine Minor-Stufe (aktuell v0.6.0). Bisher unbeanstandet; im Zweifel nachfragen.
 
 2. **FPLs Zwischenablage ist ein eigenes Thema.** Nicht im Editor umgehen. Details in Abschnitt 6.
 
@@ -105,6 +105,18 @@ Chronologisch. Jeder Punkt ist ein Fehler, der Geld gekostet hat, oder eine Ents
 - **Getippte Zeichen werden zu einem Insert gesammelt** — festgehalten über die **Anzahl der Versionssprünge**, nicht über den Text danach.
 - **Der Überschreib-Cursor ist ein Umriss, kein Block.** Ein gefüllter Kasten deckt genau das Zeichen zu, um das es geht, und eine Glyphe invertieren kann man von hier aus nicht.
 
+### Iteration 5 — Undo/Redo und Blockoperationen
+
+- **`fuiEditorCopyRange` schreibt IMMER eine terminierende Null.** Ein Puffer von genau `byteCount` Bytes bekommt deshalb `byteCount − 1` Bytes und eine Null — bei einem Backspace also null Bytes und eine Null. Der Undo-Stapel legte prompt `\0` statt des Zeichens zurück: Dokument richtig lang, falsch gefüllt. Es gibt jetzt **`fuiEditor__CopyRangeRaw`** ohne Null, und jede Stelle, die Dokumentbytes in einen exakt passenden Puffer kopiert, benutzt sie. Betroffen waren sechs Stellen — alle neu, alle in derselben Stunde geschrieben, alle mit demselben Fehler. **Wer Dokumentbytes in einen exakt passenden Puffer kopiert, nimmt `fuiEditor__CopyRangeRaw`.**
+- **Der vorhergesagte siebte Zusatz zu `final_ui.h` war keiner.** `tabWasConsumedThisFrame` braucht keine öffentliche Fassung: `fui__RegisterFocusable` und der Umlauf in `fuiEndFrame` fragen beide über `fuiKeyWentDown`, und genau das nullt `fuiConsumeKey`. Ein `fuiConsumeKey(context, fuiKey_Tab)` reicht.
+- **Was Tab bedeutet, entscheidet nicht die Taste, sondern wer den Fokus hatte, als der Build anfing.** `fuiRegisterFocusable` kann dem Editor die Tastatur *in diesem Build* geben — danach wäre `isFocused` wahr und die Taste noch ungenutzt, und ein Tab in den Editor hinein hätte gleichzeitig eingerückt. Der Fokus wird deshalb **vor** dem Eintragen in die Kette gelesen (`alreadyHadTheKeyboard`).
+- **Zusammenfassen ist doch keine Zeitfrage.** Der Plan sah Scintillas Pause vor. `fuiEditorInsert`/`fuiEditorErase` sind ohne jeden Frame aufrufbar, ein programmatischer Aufrufer hat also keine Frame-Zeit — der Stapel läge für ihn anders als für die Tastatur. Die Regel ist jetzt: **gleiche Stelle, gleiche Art, klein genug für einen Tastendruck (64 Byte), kein Zeilenvorschub darin, Cursor unbewegt.** Der Cursorsprung ist ohnehin das schärfere Signal.
+- **Der Löschlauf sammelt rückwärts.** Backspace nimmt vor dem Cursor, also gehört das, was der zweite Druck nimmt, **vor** das des ersten. Anhängen dreht den Text beim Zurücknehmen von innen nach außen — richtig lang, falsch sortiert, und erst mit drei Drücken hintereinander zu sehen.
+- **Alt musste den Pfeiltasten weggenommen werden.** Der Cursor-Zweig steht vor dem Zeilen-Zweig, ein Alt+Hoch hätte sonst erst den Cursor bewegt und dann die Zeile unter ihm weggeschoben. Festgehalten über den **Cursor-Offset danach**, nicht über den Text — der stimmt fast.
+- **Der Speicherpunkt ist eine Position im Stapel, keine Fahne.** `fuiEditorClearModified` merkt sich, wo gespeichert wurde; Undo/Redo rechnen `isModified` daraus. Und er wird **ungültig**, sobald der Zweig, auf dem er lag, weggeworfen wird — speichern, ein Schritt zurück, etwas anderes schreiben: gleich lange Historie, andere Schritte.
+- **Das Budget wirft nur ganze Schritte weg**, und auch ein **zusammengefasster** Lauf wird daran gemessen — er legt keinen Datensatz an, wächst aber die Arena.
+- **Zwei Sicherheitsnetze wurden wieder ausgebaut**, weil keine Prüfung sie rot bekommen konnte (`mayCoalesce = false` in `fuiEditorBeginUndoGroup` und `fuiEditorEndUndoGroup` — beide überflüssig neben der Gruppenabfrage in `fuiEditor__UndoTryCoalesce`). Toter Code, den keine Prüfung sehen kann, ist schlechter als kein Code.
+
 ---
 
 ## 5. Zusätze in `final_ui.h` (alle in der v0.9.7-Sektion)
@@ -117,6 +129,8 @@ Chronologisch. Jeder Punkt ist ein Fehler, der Geld gekostet hat, oder eine Ents
 | `fuiTheme.scrollTrackColor` | Die Rinne ging im Feld daneben unter |
 | `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` | `fuiInteract` antwortet nur für links |
 | `fuiConsumeKey` | Eine Taste, die dieses Widget beantwortet hat, muss aufgebraucht werden |
+
+**Iteration 5 hat nichts hinzugefügt.** Erwartet war ein siebter Zusatz für die Tab-Taste; er war nicht nötig (siehe Abschnitt 4).
 
 Der Editor benutzt **ausschließlich** die öffentliche API von `final_ui.h` — kein `fui__`-Interna. Wenn etwas fehlt, kommt es öffentlich dazu, aber nur, wenn es auch anderen Widgets nützt. Das war bisher jedes Mal der Fall.
 
@@ -136,7 +150,7 @@ Solange: Die Größengrenze gehört in den Plattform-Hook. `demos/FUI_Editor` ma
 
 ### Kleinigkeiten
 
-- **Tab rückt nicht ein.** Die Taste gehört bis Iteration 5 der Fokuskette von `final_ui.h`. Wer in Iteration 5 dran geht: `fuiConsumeKey(context, fuiKey_Tab)` ist jetzt da, aber die Fokuskette wird in `fuiEndFrame` über `tabWasConsumedThisFrame` aufgelöst — das ist der Weg, nicht die Taste.
+- ~~Tab rückt nicht ein.~~ Erledigt in Iteration 5. `fuiConsumeKey(context, fuiKey_Tab)` genügt: `tabWasConsumedThisFrame` musste nicht öffentlich werden.
 - Eine **echte Diff-Ansicht** braucht zwei Fassungen. Das Demo vergleicht positionsweise gegen die geladene Datei — welche Zeilen sich *verschoben* haben, findet ein Diff heraus, und das ist Sache des Aufrufers.
 - **`fuiEditorGetCaretColumn` zählt Codepoints**, nicht die Spalten, die ein Tabulator überspannt.
 - **Bildschirmzeile und Dokumentzeile sind überall getrennt benannt**, obwohl sie noch dasselbe sind. Der Zeilenumbruch (Iteration 7) macht sie verschieden.
@@ -146,7 +160,7 @@ Solange: Die Größengrenze gehört in den Plattform-Hook. `demos/FUI_Editor` ma
 
 ## 7. Die Tests
 
-`--selftest` läuft kopflos: kein Fenster, kein OpenGL, ein Exit-Code. 35 Gruppen, 486 Prüfungen. Wichtig sind vor allem:
+`--selftest` läuft kopflos: kein Fenster, kein OpenGL, ein Exit-Code. 42 Gruppen, 809 Prüfungen. Wichtig sind vor allem:
 
 | Gruppe | Was sie festhält |
 |---|---|
@@ -159,29 +173,39 @@ Solange: Die Größengrenze gehört in den Plattform-Hook. `demos/FUI_Editor` ma
 | `[wheel against caret]` | Mit dem Rad wegscrollen, drei Frames nichts tun — der Offset muss stehen bleiben |
 | `[incremental colouring]` | **Zählt die Lexer-Aufrufe.** 2000 Zeilen einmal = 2000, nochmal fragen = 0, Änderung in Zeile 3 danach ≤ 2 |
 | `[scrollbar is not painted over]` | Geht über die **Reihenfolge**, in der die Geometrie ausgegeben wird |
+| `[two hundred steps, back and forward again]` | **Die Abnahme von Iteration 5.** 200 gemischte Schritte über `final_ui.h`, einzeln zurückgenommen und byteweise gegen die Datei gehalten, dann 200-mal vorwärts und byteweise gegen den bearbeiteten Stand. Zählt die Schritte in beide Richtungen mit |
+| `[a run of typing is one step]` | Zählt, **wie oft Ctrl+Z gedrückt werden muss**. Der Text stimmt so oder so; die Anzahl ist das, was Zusammenfassen überhaupt entscheidet |
+| `[tab against the focus chain]` | Baut den Frame **von Hand** mit einem `fuiRegisterFocusable` HINTER dem Editor — nur so ist zu sehen, ob die Taste aufgebraucht wurde oder weitergelaufen ist |
+| `[the undo budget]` | Schritte aus **je zwei** Datensätzen, damit „halb weggeworfen" von „ganz" zu unterscheiden ist. Liest zum Schluss `undo.arenaLength` selbst, weil ein zusammengefasster Lauf am Schrittzähler unsichtbar ist |
+| `[the keys they are on]` | Ctrl+Z/Y/Shift+Z, Ctrl+D gegen Ctrl+Shift+D, Alt+Pfeil gegen Pfeil, Shift+Tab — dass die Funktionen stimmen, sagt nichts darüber, ob die Taste sie erreicht |
 
-Der kopflose Rahmen `EditorTestHarness` kann inzwischen: Tasten mit Modifiern drücken, **tippen** (`HarnessTypeText` füllt `input.textInput`), **mit der mittleren Maustaste klicken** (`HarnessClickMiddleAt` — baut erst einen Frame, weil Hovern gegen den *vorigen* Build aufgelöst wird) und hat eine **eigene Zwischenablage**, die sich auf Kommando weigert.
+Der kopflose Rahmen `EditorTestHarness` kann inzwischen: Tasten mit **allen drei Modifiern** drücken (`HarnessPressChord`, `HarnessPressKey` ist der Aufsatz ohne Alt), **tippen** (`HarnessTypeText` füllt `input.textInput`), **mit der mittleren Maustaste klicken** (`HarnessClickMiddleAt` — baut erst einen Frame, weil Hovern gegen den *vorigen* Build aufgelöst wird) und hat eine **eigene Zwischenablage**, die sich auf Kommando weigert.
 
 **Die Lehre, die sich in Iteration 4 bestätigt hat:** Prüfungen über das *Ergebnis* allein finden zu wenig. Was findet, sind Prüfungen über **Kosten** (wie viele Versionssprünge, wie viele Lexer-Aufrufe), über **Reihenfolge** (welche Geometrie zuletzt) und gegen eine **zweite, dumme Implementierung**.
 
-Und: **jede neue Absicherung wurde absichtlich kaputtgemacht und die Suite dabei rot gesehen** — Cursor-Nachführung (21 Fehler), Ausschneiden ohne Kopie (3), CR vor LF (3), Überschreiben über das Zeilenende hinaus (7), ein Insert je getipptem Zeichen (1). Eine Prüfung, die man nicht rot gesehen hat, prüft nichts. Das gehört zu jeder Iteration dazu.
+Und: **jede neue Absicherung wurde absichtlich kaputtgemacht und die Suite dabei rot gesehen.** Iteration 4: Cursor-Nachführung (21 Fehler), Ausschneiden ohne Kopie (3), CR vor LF (3), Überschreiben über das Zeilenende hinaus (7), ein Insert je getipptem Zeichen (1). Iteration 5: 28 weitere Eingriffe, von der Reihenfolge im Löschlauf (2) über Tab in den Editor hinein (4) und das Zeilenende beim Verschieben am Dateiende (8) bis zur rohen Kopie (9) und dem Aufzeichnen vor dem Löschen (21).
+
+**Das ist nicht Zierrat, das findet etwas.** In Iteration 5 waren **zwei** frisch geschriebene Prüfungen blind — der Speicherpunkt (weil kein Test `fuiEditorClearModified` überhaupt aufrief) und das Budget (weil ein Schritt aus einem Datensatz „halb weggeworfen" nicht von „ganz" unterscheiden kann). Beide wurden erst durch den Eingriff sichtbar und danach geschärft. Eine Prüfung, die man nicht rot gesehen hat, prüft nichts.
+
+**Und wenn ein Eingriff die Suite hängen lässt statt sie rot zu machen** (`fuiEditorUndo`, das zurückgibt „ja" ohne den Cursor zu bewegen, dreht die `while(fuiEditorUndo(...))`-Schleifen endlos), ist das dasselbe Signal — nur mit `timeout` davor laufen lassen.
 
 ---
 
-## 8. Als Nächstes: Iteration 5 — Undo/Redo und Blockoperationen
+## 8. Als Nächstes: Iteration 6 — Suchen und Ersetzen
 
 Aus dem Plan:
 
-- Undo-Stapel mit Zusammenfassen: eine getippte Wortfolge ist ein Schritt. Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Cursor und Auswahl inklusive.
-- Tab/Shift+Tab rücken eine Markierung ein und aus, Ctrl+Shift+D dupliziert, Alt+Hoch/Runter verschiebt, Enter übernimmt die Einrückung.
+- Overlay im Editor (nicht modal), Ctrl+F suchen, Ctrl+R mit ausklappbarer Ersetzen-Zeile, Escape schließt. Die Felder sind `fuiTextInput`.
+- F3 / Shift+F3, alle Treffer markieren, Groß-/Kleinschreibung, ganzes Wort, „Alle ersetzen" als **ein** Undo-Schritt.
+- Gehe-zu-Zeile über Ctrl+G.
 
-**Abnahme:** 200 gemischte Schritte, 200-mal rückgängig — byteweise der Ausgangszustand. Dann 200-mal vorwärts und wieder identisch.
+**Abnahme:** In `final_ui.h` nach `fui__` suchen — die Trefferzahl stimmt mit `grep -o | wc -l`. „Alle ersetzen" geht mit einem Ctrl+Z zurück.
 
 ### Was dabei absehbar wehtut
 
-- **Der Aufhänger steht schon.** Jede Änderung läuft durch `fuiEditor__NoteChange(editor, offset, removedBytes, insertedBytes, firstLine, lineCountDelta)`. Ein Undo-Eintrag ist genau das — plus **die Bytes, die weggegangen sind**, die dort noch nicht mitkommen. Entweder `fuiEditorErase` sichert sie vorher weg, oder der Stapel holt sie sich, bevor die Lücke darüberwächst.
-- **Der Stapel darf nicht auf `fuiEditorInsert`/`fuiEditorErase` selbst aufsetzen wollen**, ohne sich selbst auszunehmen: ein Undo *ist* ein Insert und würde sich sonst gleich wieder aufstapeln. Ein `isUndoing`-Flag neben `isReplacingDocument` ist der offensichtliche Weg.
-- **Was `fuiEditorSetText` mit dem Stapel macht, ist eine Entscheidung.** Ein Laden ist kein Schritt zurück; der Stapel gehört dabei geleert, so wie `isModified` zurückgesetzt wird.
-- **Zusammenfassen ist eine Zeitfrage, keine Textfrage.** `fuiGetFrameTime` ist da. Scintillas Regel: Einfügungen an derselben Stelle, ohne Cursorsprung und ohne Pause dazwischen, sind ein Schritt.
-- **Tab ist die Taste, die `final_ui.h` für den Fokus benutzt.** Der Editor müsste sie beanspruchen, solange er den Fokus hat — aufgelöst wird das in `fuiEndFrame` über `tabWasConsumedThisFrame`, und das ist nicht öffentlich. Vermutlich ein siebter Zusatz.
-- **Das Demo braucht Undo-Knöpfe**, und der Selbsttest die 200-Schritte-Runde. `[edits against a plain buffer]` ist dafür fast fertig: dieselben 400 Schritte, danach 400 Undos, und der Vergleich läuft gegen die Datei statt gegen den Spiegel.
+- **„Alle ersetzen" als ein Schritt ist schon fertig.** `fuiEditorBeginUndoGroup` / `fuiEditorEndUndoGroup` sind genau dafür da und werden von fünf Operationen im Header bereits so benutzt. Von hinten nach vorne ersetzen, dann bleiben die Offsets vor der Schreibstelle stehen.
+- **Zwei Cursor auf einem Kontext.** Der Editor hält seinen eigenen, `fuiTextInput` seinen auf dem Kontext (`caretOwner`, `caretPosition`, `selectionAnchor`). Ein Suchfeld im Overlay hat also den Fokus, und der Editor darf in dem Frame keine Tasten fressen — `result.isFocused` ist die Stelle, an der das entschieden wird. Gegeneinander prüfen, wie im Plan unter Risiken vermerkt.
+- **Escape und Enter im Overlay müssen aufgebraucht werden**, sonst schließt der Dialog darüber mit. `fuiConsumeKey` ist da; der Editor macht es beim Enter bereits vor.
+- **Suchen geht über `fuiEditorGetContiguousText`** — ein `memmem` über den zusammenhängenden Puffer, nicht ein Gang über den Gap-Buffer. Das kostet **eine** Lückenbewegung und danach nichts mehr, solange nicht geschrieben wird.
+- **Die Treffermarkierung ist eine Dekoration**, keine neue Zeichenschicht: `fuiEditorRangeDecoration` gibt es seit Iteration 3, und die Arrays gehören dem Aufrufer. Sortiert und überlappungsfrei übergeben, das ist die Bedingung.
+- **Das Demo braucht die Zeile mit der Trefferzahl** und der Selbsttest den Vergleich gegen `grep -o 'fui__' final_ui.h | wc -l`.

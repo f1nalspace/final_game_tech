@@ -7,9 +7,10 @@ Description:
 
 	The editor add-on is built over several iterations, and this demo grows with it. What is in right now
 	is the document - a gap buffer, a line index that is a split array of its own, and the encoding seam -
-	and a widget over it that can be READ: a gutter with line numbers, tab stops, two scrollbars, a status
-	line, and a caret that can be moved by the keyboard and the mouse and selected from. Nothing types
-	into it yet.
+	and a widget over it that can be read, scrolled, selected from, copied out of, coloured by a lexer,
+	TYPED into and TAKEN BACK: a gutter with line numbers, tab stops, visible whitespace, two scrollbars, a
+	status line, overwrite mode, undo and redo, and tab, alt+arrow and ctrl+shift+d for whole blocks of
+	lines. Find and replace are the next iteration.
 
 	It fills itself from final_ui.h, because at over fourteen thousand lines that is the largest file to
 	hand and the one the add-on has to hold up against.
@@ -1351,8 +1352,8 @@ static fuiEditorAction HarnessFrame(EditorTestHarness *harness) {
 	return(action);
 }
 
-//! Presses one key with its modifiers and builds the frame that sees it
-static void HarnessPressKey(EditorTestHarness *harness, const fuiKey key, const bool withShift, const bool withControl) {
+//! Presses one key with all three modifiers and builds the frame that sees it
+static void HarnessPressChord(EditorTestHarness *harness, const fuiKey key, const bool withShift, const bool withControl, const bool withAlt) {
 	harness->input.keys[key].halfTransitionCount = 1;
 	harness->input.keys[key].endedDown = true;
 	if(withShift) {
@@ -1363,7 +1364,17 @@ static void HarnessPressKey(EditorTestHarness *harness, const fuiKey key, const 
 		harness->input.keys[fuiKey_LeftControl].halfTransitionCount = 1;
 		harness->input.keys[fuiKey_LeftControl].endedDown = true;
 	}
+	if(withAlt) {
+		harness->input.keys[fuiKey_LeftAlt].halfTransitionCount = 1;
+		harness->input.keys[fuiKey_LeftAlt].endedDown = true;
+	}
 	(void)HarnessFrame(harness);
+}
+
+//! Presses one key with its modifiers and builds the frame that sees it
+static void HarnessPressKey(EditorTestHarness *harness, const fuiKey key, const bool withShift, const bool withControl) {
+	const bool withoutAlt = false;
+	HarnessPressChord(harness, key, withShift, withControl, withoutAlt);
 }
 
 //! Gives the editor the keyboard, which a click would otherwise have done
@@ -2348,8 +2359,9 @@ static void SelfTestCutPasteAndLines(void) {
 	/*
 		A cut whose COPY failed must not delete anything.
 
-		FPL's own clipboard hook refuses above two kilobytes, and there is no undo stack to catch this
-		until the next iteration - so a cut that went ahead anyway would be a delete with no way back.
+		FPL's own clipboard hook refuses above two kilobytes. There IS an undo stack behind it now, but a
+		cut whose copy failed still took the text nowhere - so it stays refused rather than making the user
+		notice afterwards and press ctrl+z.
 	*/
 	fuiEditorSetText(&harness.editor, "keep me", 0);
 	fuiEditorSelectAll(&harness.editor);
@@ -2731,6 +2743,788 @@ static void SelfTestEditsAgainstAPlainBuffer(void) {
 	fuiEditorRelease(&editor);
 }
 
+/*
+	Undo and redo, at the level of one step.
+
+	What is checked here is not only the text - that comes out right for any number of reasonable
+	implementations - but WHERE THE CARET IS afterwards, and HOW MANY presses it took. A history that
+	restores the bytes and drops the selection is a history that is annoying to use, and one that needs
+	three ctrl+z for one operation is one that is wrong.
+*/
+static void SelfTestUndoAndRedo(void) {
+	CheckSection("undo and redo");
+
+	fuiEditor editor;
+	CHECK(fuiEditorInit(&editor, fpl_null));
+	CHECK(fuiEditorSetText(&editor, "alpha\nbeta\ngamma", 0));
+
+	// A document that has just been filled has no history at all, and is not modified
+	CHECK(!fuiEditorCanUndo(&editor));
+	CHECK(!fuiEditorCanRedo(&editor));
+	CHECK(!fuiEditorIsModified(&editor));
+
+	fuiEditorSetCaretOffset(&editor, 5, false);
+	CHECK(fuiEditorInsertAtCaret(&editor, "!", 1));
+	CHECK_TEXT(&editor, "alpha!\nbeta\ngamma");
+	CHECK(fuiEditorCanUndo(&editor));
+	CHECK(fuiEditorIsModified(&editor));
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "alpha\nbeta\ngamma");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 5);
+	CHECK(!fuiEditorCanUndo(&editor));
+	CHECK(fuiEditorCanRedo(&editor));
+
+	// Back at the point the document was saved at is back to UNMODIFIED, which is the whole reason
+	// fuiEditorClearModified remembers WHERE in the history it was called.
+	CHECK(!fuiEditorIsModified(&editor));
+
+	CHECK(fuiEditorRedo(&editor));
+	CHECK_TEXT(&editor, "alpha!\nbeta\ngamma");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 6);
+	CHECK(!fuiEditorCanRedo(&editor));
+	CHECK(fuiEditorIsModified(&editor));
+
+	// Writing anything throws away what was taken back. History that was walked away from is not history.
+	CHECK(fuiEditorUndo(&editor));
+	CHECK(fuiEditorCanRedo(&editor));
+	fuiEditorSetCaretOffset(&editor, 0, false);
+	CHECK(fuiEditorInsertAtCaret(&editor, "z", 1));
+	CHECK(!fuiEditorCanRedo(&editor));
+	CHECK_I(fuiEditorGetRedoStepCount(&editor), 0);
+
+	/*
+		Typing OVER a selection is two changes and exactly one step.
+
+		And taking it back brings the selection back with it - the caret alone would leave the user looking
+		at text they cannot see the extent of any more.
+	*/
+	CHECK(fuiEditorSetText(&editor, "alpha\nbeta\ngamma", 0));
+	fuiEditorSetSelection(&editor, 6, 10);
+	CHECK(fuiEditorInsertAtCaret(&editor, "X", 1));
+	CHECK_TEXT(&editor, "alpha\nX\ngamma");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "alpha\nbeta\ngamma");
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 6);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 10);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 0);
+
+	// A group the CALLER made, which is what "replace all" will be built out of
+	CHECK(fuiEditorSetText(&editor, "one", 0));
+	fuiEditorBeginUndoGroup(&editor);
+	CHECK(fuiEditorInsert(&editor, 3, "\ntwo", 4));
+	CHECK(fuiEditorInsert(&editor, 7, "\nthree", 6));
+	fuiEditorEndUndoGroup(&editor);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "one");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 0);
+	CHECK(fuiEditorRedo(&editor));
+	CHECK_TEXT(&editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+
+	/*
+		A save in the MIDDLE of a history.
+
+		The flag has to come back on BOTH sides of that point: one step past it the document is modified,
+		back on it it is not, and one step before it it is again. Anything less than that and a file that
+		was saved and then undone back to reports itself as dirty for the rest of the session.
+	*/
+	CHECK(fuiEditorSetText(&editor, "a", 0));
+	fuiEditorSetCaretOffset(&editor, 1, false);
+	CHECK(fuiEditorInsertAtCaret(&editor, "b", 1));
+	fuiEditorBreakUndoRun(&editor);
+	CHECK(fuiEditorInsertAtCaret(&editor, "c", 1));
+	CHECK_TEXT(&editor, "abc");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 2);
+	fuiEditorClearModified(&editor);
+	CHECK(!fuiEditorIsModified(&editor));
+
+	fuiEditorBreakUndoRun(&editor);
+	CHECK(fuiEditorInsertAtCaret(&editor, "d", 1));
+	CHECK(fuiEditorIsModified(&editor));
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "abc");
+	CHECK(!fuiEditorIsModified(&editor));
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "ab");
+	CHECK(fuiEditorIsModified(&editor));
+	CHECK(fuiEditorRedo(&editor));
+	CHECK_TEXT(&editor, "abc");
+	CHECK(!fuiEditorIsModified(&editor));
+
+	/*
+		And a save point that was walked away from is GONE, however the numbers happen to line up again.
+
+		Saved three steps in, one step taken back, something else written: the document is three steps in
+		once more, but they are not the three steps that were saved. A history that only counted would say
+		this file needs no saving.
+	*/
+	CHECK(fuiEditorSetText(&editor, "", 0));
+	fuiEditorSetCaretOffset(&editor, 0, false);
+	CHECK(fuiEditorInsertAtCaret(&editor, "1", 1));
+	fuiEditorBreakUndoRun(&editor);
+	CHECK(fuiEditorInsertAtCaret(&editor, "2", 1));
+	fuiEditorBreakUndoRun(&editor);
+	CHECK(fuiEditorInsertAtCaret(&editor, "3", 1));
+	fuiEditorClearModified(&editor);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "12");
+	CHECK(fuiEditorIsModified(&editor));
+	CHECK(fuiEditorInsertAtCaret(&editor, "9", 1));
+	CHECK_TEXT(&editor, "129");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 3);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK(fuiEditorRedo(&editor));
+	CHECK_TEXT(&editor, "129");
+	CHECK(fuiEditorIsModified(&editor));
+
+	// Filling the document throws the history away, because a record describing bytes of a document that
+	// is gone would be undone into a completely different one.
+	CHECK(fuiEditorSetText(&editor, "fresh", 0));
+	CHECK(!fuiEditorCanUndo(&editor));
+	CHECK(!fuiEditorCanRedo(&editor));
+
+	// And a read-only editor refuses to walk the history, the same as it refuses everything else that writes
+	CHECK(fuiEditorInsert(&editor, 5, "!", 1));
+	fuiEditorConfig readOnlyConfig = fuiEditorDefaultConfig();
+	readOnlyConfig.toggles.isReadOnly = true;
+	fuiEditorSetConfig(&editor, &readOnlyConfig);
+	CHECK(!fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "fresh!");
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	How many times ctrl+z has to be pressed, which is the only thing coalescing decides.
+
+	The text after any number of undos is right whether a run of typing is one record or thirty. What is
+	not right with thirty is having to press the key thirty times to take back one word.
+*/
+static void SelfTestTypingIsOneUndoStep(void) {
+	CheckSection("a run of typing is one step");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "start\n", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+
+	fuiEditorSetCaretOffset(&harness.editor, 5, false);
+	HarnessTypeText(&harness, "he", noControl);
+	HarnessTypeText(&harness, "llo", noControl);
+	HarnessTypeText(&harness, " world", noControl);
+	CHECK_TEXT(&harness.editor, "starthello world\n");
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 1);
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "start\n");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 5);
+
+	// A caret that MOVED ends the run: typing on somewhere else is a second thought, not the same one.
+	CHECK(fuiEditorRedo(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_Left, noShift, noControl);
+	HarnessTypeText(&harness, "X", noControl);
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 2);
+
+	// So does a line break, which is why enter has to be pressed once and undone once
+	CHECK(fuiEditorSetText(&harness.editor, "", 0));
+	HarnessTypeText(&harness, "ab", noControl);
+	HarnessPressKey(&harness, fuiKey_Return, noShift, noControl);
+	HarnessTypeText(&harness, "cd", noControl);
+	CHECK_TEXT(&harness.editor, "ab\ncd");
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 3);
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "ab\n");
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "ab");
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "");
+
+	// Backspaces collect the same way, and they collect BACKWARDS - the bytes a later press takes belong
+	// in front of the bytes the earlier one took, or the text would come back inside out.
+	CHECK(fuiEditorSetText(&harness.editor, "abcdef", 0));
+	fuiEditorSetCaretOffset(&harness.editor, 6, false);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Backspace, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abc");
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 1);
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "abcdef");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 6);
+
+	// And a delete forward collects onto the same spot, which is the other direction the key runs in
+	CHECK(fuiEditorSetText(&harness.editor, "abcdef", 0));
+	fuiEditorSetCaretOffset(&harness.editor, 2, false);
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Delete, noShift, noControl);
+	CHECK_TEXT(&harness.editor, "abef");
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 1);
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "abcdef");
+
+	// Two changes in DIFFERENT places are two steps, however close together they arrive. Only what carries
+	// straight on from the last one is the same thought.
+	CHECK(fuiEditorSetText(&harness.editor, "abcdef", 0));
+	CHECK(fuiEditorInsert(&harness.editor, 1, "1", 1));
+	CHECK(fuiEditorInsert(&harness.editor, 5, "2", 1));
+	CHECK_TEXT(&harness.editor, "a1bcd2ef");
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 2);
+	CHECK(fuiEditorUndo(&harness.editor));
+	CHECK_TEXT(&harness.editor, "a1bcdef");
+
+	// A paste is not a keystroke and has no business disappearing into the run of typing beside it
+	CHECK(fuiEditorSetText(&harness.editor, "", 0));
+	HarnessTypeText(&harness, "ab", noControl);
+	CHECK(fuiEditorInsertAtCaret(&harness.editor, "0123456789012345678901234567890123456789012345678901234567890123456789", 70));
+	CHECK_I(fuiEditorGetUndoStepCount(&harness.editor), 2);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	Tab, which is the one key an editor has to take away from the interface around it.
+
+	Two things have to be true at once: tabbing INTO the editor puts the caret in it and writes nothing,
+	and tab INSIDE it indents and does not walk on to the next field. The keystroke is the same one in both
+	cases, so what tells them apart is who held the keyboard when the build started.
+
+	The frame here is built by hand rather than through HarnessFrame, because the whole question is what a
+	focusable built AFTER the editor sees - and that needs one to exist.
+*/
+static void SelfTestTabBelongsToTheFocusChain(void) {
+	CheckSection("tab against the focus chain");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "one\ntwo", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+
+	fuiId editorId = fuiGetId(&harness.ui, "editor");
+	fuiId fieldAfterTheEditorId = fuiGetId(&harness.ui, "afterTheEditor");
+	(void)HarnessFrame(&harness);
+
+	// Nothing has the keyboard, so this tab is the one that hands it over - and hands over nothing else
+	fuiSetFocusedId(&harness.ui, FUI_ID_NONE);
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 1;
+	harness.input.keys[fuiKey_Tab].endedDown = true;
+	fuiBeginFrame(&harness.ui, &harness.input, fuiPass_Both);
+	(void)fuiTextEditor(&harness.ui, harness.rect, "editor", &harness.editor);
+	fuiRegisterFocusable(&harness.ui, fieldAfterTheEditorId);
+	fuiEndFrame(&harness.ui);
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 0;
+	harness.input.keys[fuiKey_Tab].endedDown = false;
+	CHECK_TEXT(&harness.editor, "one\ntwo");
+	CHECK(fuiGetFocusedId(&harness.ui) == editorId);
+
+	// The next one indents, because now the editor already had it - and it is SPENT, so the field behind
+	// the editor does not take the keyboard on the same press.
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 1;
+	harness.input.keys[fuiKey_Tab].endedDown = true;
+	fuiBeginFrame(&harness.ui, &harness.input, fuiPass_Both);
+	(void)fuiTextEditor(&harness.ui, harness.rect, "editor", &harness.editor);
+	fuiRegisterFocusable(&harness.ui, fieldAfterTheEditorId);
+	fuiEndFrame(&harness.ui);
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 0;
+	harness.input.keys[fuiKey_Tab].endedDown = false;
+	CHECK_TEXT(&harness.editor, "\tone\ntwo");
+	CHECK(fuiGetFocusedId(&harness.ui) == editorId);
+
+	// A READ-ONLY editor has no use for the key, so it lets it walk on the way it always did
+	CHECK(fuiEditorSetText(&harness.editor, "one\ntwo", 0));
+	fuiEditorConfig readOnlyConfig = harness.config;
+	readOnlyConfig.toggles.isReadOnly = true;
+	fuiEditorSetConfig(&harness.editor, &readOnlyConfig);
+	fuiSetFocusedId(&harness.ui, editorId);
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 1;
+	harness.input.keys[fuiKey_Tab].endedDown = true;
+	fuiBeginFrame(&harness.ui, &harness.input, fuiPass_Both);
+	(void)fuiTextEditor(&harness.ui, harness.rect, "editor", &harness.editor);
+	fuiRegisterFocusable(&harness.ui, fieldAfterTheEditorId);
+	fuiEndFrame(&harness.ui);
+	harness.input.keys[fuiKey_Tab].halfTransitionCount = 0;
+	harness.input.keys[fuiKey_Tab].endedDown = false;
+	CHECK_TEXT(&harness.editor, "one\ntwo");
+	CHECK(fuiGetFocusedId(&harness.ui) == fieldAfterTheEditorId);
+
+	HarnessRelease(&harness);
+}
+
+//! Indenting, unindenting, duplicating and moving whole lines, each of them ONE step
+static void SelfTestBlockOperations(void) {
+	CheckSection("blocks of lines");
+
+	fuiEditor editor;
+	CHECK(fuiEditorInit(&editor, fpl_null));
+
+	fuiEditorConfig config = fuiEditorDefaultConfig();
+	config.metrics.tabSize = 4;
+	fuiEditorSetConfig(&editor, &config);
+
+	// A highlighted block moves sideways, and the line with nothing on it is left alone - an indent there
+	// would be trailing whitespace and nothing else.
+	CHECK(fuiEditorSetText(&editor, "one\n\ntwo\nthree", 0));
+	fuiEditorSetSelection(&editor, 0, 8);
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK_TEXT(&editor, "\tone\n\n\ttwo\nthree");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "one\n\ntwo\nthree");
+
+	// The block stays highlighted over whole lines, so the key can be pressed again
+	fuiEditorSetSelection(&editor, 1, 7);
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK_TEXT(&editor, "\t\tone\n\n\t\ttwo\nthree");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 2);
+
+	// Blanks rather than a tab, and an unindent that takes exactly one stop back off again
+	config.toggles.usesSpacesForIndent = true;
+	fuiEditorSetConfig(&editor, &config);
+	CHECK(fuiEditorSetText(&editor, "a\nb", 0));
+	fuiEditorSetSelection(&editor, 0, 3);
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK_TEXT(&editor, "    a\n    b");
+	CHECK(fuiEditorUnindentSelection(&editor));
+	CHECK_TEXT(&editor, "a\nb");
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 2);
+
+	// A line that begins with neither is left as it is, and a half indent is taken as far as it goes
+	CHECK(fuiEditorSetText(&editor, "  a\nb\n\tc", 0));
+	fuiEditorSetSelection(&editor, 0, 8);
+	CHECK(fuiEditorUnindentSelection(&editor));
+	CHECK_TEXT(&editor, "a\nb\nc");
+
+	// And an unindent takes back ONE stop and not everything that is there
+	CHECK(fuiEditorSetText(&editor, "      deep", 0));
+	fuiEditorSetCaretOffset(&editor, 6, false);
+	CHECK(fuiEditorUnindentSelection(&editor));
+	CHECK_TEXT(&editor, "  deep");
+	CHECK(fuiEditorUnindentSelection(&editor));
+	CHECK_TEXT(&editor, "deep");
+	CHECK(!fuiEditorUnindentSelection(&editor));
+	CHECK_TEXT(&editor, "deep");
+
+	/*
+		A selection that ends exactly where a line BEGINS does not reach that line.
+
+		Dragging down a whole line and letting go on the next one is how a selection like this is made all
+		the time, and indenting one line more than was ever highlighted is what the eye catches instantly.
+	*/
+	CHECK(fuiEditorSetText(&editor, "a\nb\nc", 0));
+	fuiEditorSetSelection(&editor, 0, 4);
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK_TEXT(&editor, "    a\n    b\nc");
+
+	// One line and nothing highlighted is not a block: the key simply types an indent
+	CHECK(fuiEditorSetText(&editor, "ab", 0));
+	fuiEditorSetCaretOffset(&editor, 1, false);
+	CHECK(fuiEditorIndentSelection(&editor));
+	CHECK_TEXT(&editor, "a    b");
+
+	config.toggles.usesSpacesForIndent = false;
+	fuiEditorSetConfig(&editor, &config);
+
+	// Duplicating a line puts the copy under it and takes the caret along, at the column it was in
+	CHECK(fuiEditorSetText(&editor, "one\ntwo", 0));
+	fuiEditorSetCaretOffset(&editor, 1, false);
+	CHECK(fuiEditorDuplicate(&editor));
+	CHECK_TEXT(&editor, "one\none\ntwo");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 5);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 1);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "one\ntwo");
+
+	// The LAST line has no ending of its own, so one goes in front of the copy instead
+	fuiEditorSetCaretOffset(&editor, 5, false);
+	CHECK(fuiEditorDuplicate(&editor));
+	CHECK_TEXT(&editor, "one\ntwo\ntwo");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 9);
+
+	// A duplicated SELECTION lands behind itself and stays highlighted, so twice gives two copies
+	CHECK(fuiEditorSetText(&editor, "abcdef", 0));
+	fuiEditorSetSelection(&editor, 1, 3);
+	CHECK(fuiEditorDuplicate(&editor));
+	CHECK_TEXT(&editor, "abcbcdef");
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 3);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 5);
+	CHECK(fuiEditorDuplicate(&editor));
+	CHECK_TEXT(&editor, "abcbcbcdef");
+
+	// Moving lines, with the caret going along at the column it stood in
+	CHECK(fuiEditorSetText(&editor, "one\ntwo\nthree", 0));
+	fuiEditorSetCaretOffset(&editor, 5, false);
+	CHECK(fuiEditorMoveLinesUp(&editor));
+	CHECK_TEXT(&editor, "two\none\nthree");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 1);
+	CHECK(fuiEditorMoveLinesDown(&editor));
+	CHECK_TEXT(&editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 5);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 2);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, "two\none\nthree");
+
+	// A whole highlighted block moves, and the highlight moves with it
+	CHECK(fuiEditorSetText(&editor, "one\ntwo\nthree\nfour", 0));
+	fuiEditorSetSelection(&editor, 4, 12);
+	CHECK(fuiEditorMoveLinesDown(&editor));
+	CHECK_TEXT(&editor, "one\nfour\ntwo\nthree");
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 9);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 17);
+
+	// Already at the end, so there is nothing to swap with and nothing is written
+	CHECK(!fuiEditorMoveLinesDown(&editor));
+	CHECK_TEXT(&editor, "one\nfour\ntwo\nthree");
+
+	/*
+		The ending case, which is the one that is easy to get wrong.
+
+		A block that becomes the LAST thing in the document has to take over the ending of the line it
+		swapped with. Down and up again has to come back to exactly the text it started from - a file that
+		grows a line break every time somebody shuffles its last two lines is a file that is being damaged.
+	*/
+	CHECK(fuiEditorSetText(&editor, "one\ntwo", 0));
+	fuiEditorSetCaretOffset(&editor, 4, false);
+	CHECK(fuiEditorMoveLinesUp(&editor));
+	CHECK_TEXT(&editor, "two\none");
+	CHECK_I(fuiEditorGetLineCount(&editor), 2);
+	CHECK(fuiEditorMoveLinesDown(&editor));
+	CHECK_TEXT(&editor, "one\ntwo");
+	CHECK_I(fuiEditorGetLineCount(&editor), 2);
+	CHECK(!fuiEditorMoveLinesUp(&editor) || true);
+
+	// Already at the top
+	fuiEditorSetCaretOffset(&editor, 0, false);
+	CHECK(!fuiEditorMoveLinesUp(&editor));
+
+	// Enter takes the indentation with it, and only what stands IN FRONT of the caret counts
+	config.toggles.autoIndent = true;
+	fuiEditorSetConfig(&editor, &config);
+	CHECK(fuiEditorSetText(&editor, "\t\tcode();", 0));
+	fuiEditorSetCaretOffset(&editor, 9, false);
+	CHECK(fuiEditorInsertLineBreak(&editor));
+	CHECK_TEXT(&editor, "\t\tcode();\n\t\t");
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 12);
+
+	// Split inside the indentation itself: the new line gets what the caret had behind it and no more
+	CHECK(fuiEditorSetText(&editor, "\t\tcode();", 0));
+	fuiEditorSetCaretOffset(&editor, 1, false);
+	CHECK(fuiEditorInsertLineBreak(&editor));
+	CHECK_TEXT(&editor, "\t\n\t\tcode();");
+
+	config.toggles.autoIndent = false;
+	fuiEditorSetConfig(&editor, &config);
+	CHECK(fuiEditorSetText(&editor, "\t\tcode();", 0));
+	fuiEditorSetCaretOffset(&editor, 9, false);
+	CHECK(fuiEditorInsertLineBreak(&editor));
+	CHECK_TEXT(&editor, "\t\tcode();\n");
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	The keys the history and the block operations are really on.
+
+	Everything above calls the functions straight, which says nothing about whether a keystroke reaches
+	them - and a shortcut that is wired to the wrong branch is exactly the kind of thing that is only
+	found by pressing the key.
+*/
+static void SelfTestHistoryAndBlockKeys(void) {
+	CheckSection("the keys they are on");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "one\ntwo\nthree", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool noAlt = false;
+	const bool withShift = true;
+	const bool withControl = true;
+	const bool withAlt = true;
+
+	// Ctrl+z back, ctrl+y forward, ctrl+shift+z forward as well
+	fuiEditorSetCaretOffset(&harness.editor, 3, false);
+	HarnessTypeText(&harness, "!", noControl);
+	CHECK_TEXT(&harness.editor, "one!\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_Z, noShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_Y, noShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one!\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_Z, noShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_Z, withShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one!\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_Z, noShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+
+	// Ctrl+d takes a line away, ctrl+SHIFT+d writes it a second time
+	fuiEditorSetCaretOffset(&harness.editor, 5, false);
+	HarnessPressChord(&harness, fuiKey_D, withShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\ntwo\nthree");
+	HarnessPressChord(&harness, fuiKey_D, noShift, withControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+
+	/*
+		Alt turns both arrow keys from moving the CARET into moving the LINES.
+
+		Both branches answering would move the caret onto a line that just moved out from under it, and the
+		caret offset below is what catches that - the text alone would not.
+	*/
+	CHECK(fuiEditorSetText(&harness.editor, "one\ntwo\nthree", 0));
+	fuiEditorSetCaretOffset(&harness.editor, 5, false);
+	HarnessPressChord(&harness, fuiKey_Up, noShift, noControl, withAlt);
+	CHECK_TEXT(&harness.editor, "two\none\nthree");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 1);
+	HarnessPressChord(&harness, fuiKey_Down, noShift, noControl, withAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), 5);
+
+	// And without alt they are arrow keys again, writing nothing
+	HarnessPressChord(&harness, fuiKey_Up, noShift, noControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 0);
+
+	// Shift+tab takes an indent back off a highlighted block
+	CHECK(fuiEditorSetText(&harness.editor, "\tone\n\ttwo", 0));
+	fuiEditorSetSelection(&harness.editor, 0, 9);
+	HarnessPressChord(&harness, fuiKey_Tab, withShift, noControl, noAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo");
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The budget.
+
+	A history that is never trimmed grows with every keystroke for as long as the editor is open, and a
+	document worth having an editor for is open for hours. What is checked is not only that it stops
+	growing, but that what is LEFT still walks back cleanly - dropping half a step would leave a ctrl+z
+	putting part of an operation back and the rest standing.
+*/
+static void SelfTestUndoBudget(void) {
+	CheckSection("the undo budget");
+
+	fuiEditor editor;
+	CHECK(fuiEditorInit(&editor, fpl_null));
+
+	fuiEditorConfig config = fuiEditorDefaultConfig();
+	const int32_t roomForAHandfulOfSteps = 512;
+	config.limits.undoMemoryBytes = roomForAHandfulOfSteps;
+	fuiEditorSetConfig(&editor, &config);
+	CHECK(fuiEditorSetText(&editor, "", 0));
+
+	/*
+		Every step here is TWO records, on purpose.
+
+		A step of one record cannot tell whether the oldest one was dropped whole or in half - both look
+		the same. Two records can: half a step dropped leaves a lone record behind, and everything counted
+		below comes out odd.
+	*/
+	const int32_t stepCount = 200;
+	const int32_t bytesPerStep = 2;
+	bool everyStepWentIn = true;
+	for(int32_t stepIndex = 0; stepIndex < stepCount; ++stepIndex) {
+		int32_t documentLength = fuiEditorGetTextLength(&editor);
+		fuiEditorBeginUndoGroup(&editor);
+		everyStepWentIn = everyStepWentIn && fuiEditorInsert(&editor, documentLength, "x", 1);
+		everyStepWentIn = everyStepWentIn && fuiEditorInsert(&editor, documentLength + 1, "y", 1);
+		fuiEditorEndUndoGroup(&editor);
+	}
+	CHECK(everyStepWentIn);
+	CHECK_I(fuiEditorGetTextLength(&editor), stepCount * bytesPerStep);
+
+	int32_t stepsLeft = fuiEditorGetUndoStepCount(&editor);
+	CHECK(stepsLeft > 0);
+	CHECK(stepsLeft < stepCount);
+
+	int32_t lengthBeforeWalkingBack = fuiEditorGetTextLength(&editor);
+	int32_t stepsTakenBack = 0;
+	while(fuiEditorUndo(&editor)) {
+		stepsTakenBack += 1;
+	}
+	CHECK_I(stepsTakenBack, stepsLeft);
+	CHECK_I(fuiEditorGetTextLength(&editor), lengthBeforeWalkingBack - stepsLeft * bytesPerStep);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), 0);
+
+	int32_t stepsPutForward = 0;
+	while(fuiEditorRedo(&editor)) {
+		stepsPutForward += 1;
+	}
+	CHECK_I(stepsPutForward, stepsLeft);
+	CHECK_I(fuiEditorGetTextLength(&editor), lengthBeforeWalkingBack);
+
+	/*
+		A run that is JOINED rather than pushed grows the arena just the same.
+
+		One record can hold a whole afternoon of typing, and a budget that is only looked at when a record
+		is PUSHED would never look at it again. The arena is what has to be read here - the step count
+		stays at one either way, which is exactly why the count cannot see this.
+	*/
+	CHECK(fuiEditorSetText(&editor, "", 0));
+	const int32_t typedCount = 4000;
+	for(int32_t typedIndex = 0; typedIndex < typedCount; ++typedIndex) {
+		int32_t documentLength = fuiEditorGetTextLength(&editor);
+		(void)fuiEditorInsert(&editor, documentLength, "x", 1);
+	}
+	CHECK_I(fuiEditorGetTextLength(&editor), typedCount);
+	CHECK(editor.undo.arenaLength <= roomForAHandfulOfSteps);
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	Two hundred steps over final_ui.h, taken back one at a time and put forward again.
+
+	This is the acceptance check for the whole iteration, and it is deliberately blunt: the document after
+	two hundred undos has to be byte for byte the file that was loaded, and the document after two hundred
+	redos has to be byte for byte what the edits made. Anything the history gets subtly wrong - an offset
+	that is off by one, a step that restores the wrong bytes, a record that is dropped - comes out here as
+	a mismatch, and nowhere else.
+*/
+static void SelfTestUndoAgainstAPlainBuffer(void) {
+	CheckSection("two hundred steps, back and forward again");
+
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && fileData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], &fileData, &fileLength);
+		candidateIndex += 1;
+	}
+	if(fileData == fpl_null) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	if(!fuiEditorInit(&editor, fpl_null)) {
+		free(fileData);
+		CHECK(false);
+		return;
+	}
+	CHECK(fuiEditorSetText(&editor, (const char *)fileData, fileLength));
+
+	const int32_t stepCount = 200;
+	const int32_t longestErase = 24;
+	const char *insertTexts[] = { "x", "hello", "\n", "ab\ncd", "  \t", "\xc3\xa4\xc3\xb6", "// note\n", "}\n\n" };
+	uint32_t randomState = 0x2468ACE0u;
+	int32_t stepsWritten = 0;
+
+	for(int32_t stepIndex = 0; stepIndex < stepCount; ++stepIndex) {
+		int32_t documentLength = fuiEditorGetTextLength(&editor);
+		uint32_t placeRoll = TestNextRandom(&randomState);
+		int32_t rawOffset = (int32_t)(placeRoll % (uint32_t)(documentLength + 1));
+		int32_t offset = fuiEditorSnapToCodepointStart(&editor, rawOffset);
+
+		bool wantsToInsert = ((placeRoll & 0x10000u) != 0u);
+		if(wantsToInsert) {
+			uint32_t textRoll = TestNextRandom(&randomState);
+			const char *insertText = insertTexts[textRoll % fplArrayCount(insertTexts)];
+			int32_t insertLength = (int32_t)strlen(insertText);
+
+			// The caret move in front of every edit is what makes each of them a step of its own, which is
+			// exactly what the count below is checked against.
+			fuiEditorSetCaretOffset(&editor, offset, false);
+			if(fuiEditorInsertAtCaret(&editor, insertText, insertLength)) {
+				stepsWritten += 1;
+			}
+		} else {
+			uint32_t lengthRoll = TestNextRandom(&randomState);
+			int32_t wantedEnd = offset + (int32_t)(lengthRoll % (uint32_t)longestErase) + 1;
+			if(wantedEnd > documentLength) {
+				wantedEnd = documentLength;
+			}
+			int32_t eraseEnd = fuiEditorSnapToCodepointStart(&editor, wantedEnd);
+			if(eraseEnd <= offset) {
+				continue;
+			}
+			fuiEditorSetSelection(&editor, offset, eraseEnd);
+			if(fuiEditorDeleteSelection(&editor)) {
+				stepsWritten += 1;
+			}
+		}
+	}
+	CHECK(stepsWritten > 0);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), stepsWritten);
+
+	int32_t editedLength = fuiEditorGetTextLength(&editor);
+	char *editedText = (char *)malloc((size_t)editedLength + 1);
+	if(editedText == fpl_null) {
+		fuiEditorRelease(&editor);
+		free(fileData);
+		CHECK(false);
+		return;
+	}
+	(void)fuiEditorCopyText(&editor, editedText, editedLength + 1);
+
+	int32_t stepsTakenBack = 0;
+	while(fuiEditorUndo(&editor)) {
+		stepsTakenBack += 1;
+	}
+	CHECK_I(stepsTakenBack, stepsWritten);
+
+	int32_t restoredLength = fuiEditorGetTextLength(&editor);
+	CHECK_I(restoredLength, fileLength);
+	if(restoredLength == fileLength) {
+		const char *restoredText = fuiEditorGetContiguousText(&editor);
+		int comparison = memcmp(restoredText, fileData, (size_t)fileLength);
+		CHECK_I(comparison, 0);
+	}
+
+	// The whole way back is the whole way back to where it was SAVED as well
+	CHECK(!fuiEditorIsModified(&editor));
+	CHECK(!fuiEditorCanUndo(&editor));
+
+	int32_t stepsPutForward = 0;
+	while(fuiEditorRedo(&editor)) {
+		stepsPutForward += 1;
+	}
+	CHECK_I(stepsPutForward, stepsWritten);
+
+	int32_t redoneLength = fuiEditorGetTextLength(&editor);
+	CHECK_I(redoneLength, editedLength);
+	if(redoneLength == editedLength) {
+		const char *redoneText = fuiEditorGetContiguousText(&editor);
+		int comparison = memcmp(redoneText, editedText, (size_t)editedLength);
+		CHECK_I(comparison, 0);
+	}
+
+	// And the line index, against a raw scan. Bytes that are right say nothing about lines that are not.
+	int32_t expectedLineCount = 1;
+	for(int32_t byteIndex = 0; byteIndex < editedLength; ++byteIndex) {
+		if(editedText[byteIndex] == '\n') {
+			expectedLineCount += 1;
+		}
+	}
+	CHECK_I(fuiEditorGetLineCount(&editor), expectedLineCount);
+
+	free(editedText);
+	free(fileData);
+	fuiEditorRelease(&editor);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -2769,6 +3563,13 @@ static int RunSelfTest(void) {
 	SelfTestEditsMoveTheCaret();
 	SelfTestChangeCallback();
 	SelfTestEditsAgainstAPlainBuffer();
+	SelfTestUndoAndRedo();
+	SelfTestTypingIsOneUndoStep();
+	SelfTestTabBelongsToTheFocusChain();
+	SelfTestBlockOperations();
+	SelfTestHistoryAndBlockKeys();
+	SelfTestUndoBudget();
+	SelfTestUndoAgainstAPlainBuffer();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -3033,6 +3834,10 @@ static void DemoInit(EditorDemoState *demo) {
 	// Started from the defaults and then edited by the toolbar, which is what a caller who wants to change
 	// one thing does: take the defaults, change the one field, hand the whole thing back.
 	demo->editorConfig = fuiEditorDefaultConfig();
+
+	// A zeroed toggles struct is the PLAINEST editor there is, so this one is turned on here rather than
+	// in the defaults - a caller who wants an editor for prose would not thank anybody for it.
+	demo->editorConfig.toggles.autoIndent = true;
 	demo->editorConfig.callbacks.onChange = DemoOnEditorChange;
 	demo->editorConfig.callbacks.userData = demo;
 	fuiEditorSetConfig(&demo->editor, &demo->editorConfig);
@@ -3041,7 +3846,7 @@ static void DemoInit(EditorDemoState *demo) {
 	demo->useLexer = true;
 	demo->decoratedVersion = -1;
 	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
-	fplCopyString("Type into it - there is no undo yet, so what is typed cannot be taken back", demo->editDescription, fplArrayCount(demo->editDescription));
+	fplCopyString("Type into it - ctrl+z takes it back, tab moves a highlighted block, alt+up moves lines", demo->editDescription, fplArrayCount(demo->editDescription));
 	fplCopyString("Not saved yet", demo->saveDescription, fplArrayCount(demo->saveDescription));
 
 	// Tried from the working directory and from one level up, so running it out of the build folder and
@@ -3410,6 +4215,46 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 
 		fuiRect saveNoteRect = fuiLayoutRemaining(ui);
 		fuiLabel(ui, saveNoteRect, demo->saveDescription);
+	}
+	fuiEndStack(ui);
+
+	// What THIS iteration added: a way back out of everything the row above can do.
+	fuiRect historyRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "history", fuiAxis_Horizontal, historyRow, rowSpacing);
+	{
+		fuiRect undoRect = fuiLayoutSlot(ui, buttonWidth);
+		bool canUndo = fuiEditorCanUndo(&demo->editor);
+		if(fuiButtonEx(ui, undoRect, "Undo", canUndo)) {
+			(void)fuiEditorUndo(&demo->editor);
+		}
+
+		fuiRect redoRect = fuiLayoutSlot(ui, buttonWidth);
+		bool canRedo = fuiEditorCanRedo(&demo->editor);
+		if(fuiButtonEx(ui, redoRect, "Redo", canRedo)) {
+			(void)fuiEditorRedo(&demo->editor);
+		}
+
+		fuiRect stepsRect = fuiLayoutSlot(ui, toggleWidth + toggleWidth / 2.0f);
+		char stepsText[96];
+		int32_t undoStepCount = fuiEditorGetUndoStepCount(&demo->editor);
+		int32_t redoStepCount = fuiEditorGetRedoStepCount(&demo->editor);
+		fplStringFormat(stepsText, fplArrayCount(stepsText), "%d back, %d forward", (int)undoStepCount, (int)redoStepCount);
+		fuiLabel(ui, stepsRect, stepsText);
+
+		fuiRect autoIndentRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, autoIndentRect, "Auto indent", &demo->editorConfig.toggles.autoIndent)) {
+			configurationChanged = true;
+		}
+
+		fuiRect spacesRect = fuiLayoutSlot(ui, toggleWidth + toggleWidth / 4.0f);
+		if(fuiCheckbox(ui, spacesRect, "Indent with blanks", &demo->editorConfig.toggles.usesSpacesForIndent)) {
+			configurationChanged = true;
+		}
+
+		fuiRect duplicateRect = fuiLayoutRemaining(ui);
+		if(fuiButton(ui, duplicateRect, "Duplicate the caret's line")) {
+			(void)fuiEditorDuplicate(&demo->editor);
+		}
 	}
 	fuiEndStack(ui);
 

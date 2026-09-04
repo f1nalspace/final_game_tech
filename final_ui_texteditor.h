@@ -22,8 +22,8 @@ colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
 Status: under construction. The view is there and can be read, scrolled, selected from, copied out
-of, coloured by a lexer and TYPED into; find and replace and undo are not in yet - so what is typed
-cannot be taken back yet either. See the changelog for what is.
+of, coloured by a lexer, TYPED into and TAKEN BACK - undo, redo, indenting, duplicating and moving
+lines are in; find and replace are not yet. See the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -36,6 +36,8 @@ cannot be taken back yet either. See the changelog for what is.
 - Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
 - Read the caret and the selection back with fuiEditorGetCaretOffset() and fuiEditorCopySelection().
 - Let it be typed into, or do not - fuiEditorConfig.toggles.isReadOnly locks every writing branch there is.
+- Take a change back with fuiEditorUndo() and put it forward again with fuiEditorRedo(). A run of typing is
+  ONE step; a caller who edits more than once can make their own step with fuiEditorBeginUndoGroup().
 - Hear about every change through fuiEditorConfig.callbacks.onChange, and ask fuiEditorIsModified() whether
   anything was written at all since the document was filled or fuiEditorClearModified() was last called.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
@@ -88,6 +90,7 @@ FUI_TEXTEDITOR_MIN_GAP_BYTES    How much room an insert leaves behind for the ne
 FUI_TEXTEDITOR_MIN_GAP_SLOTS    How many line slots an insert leaves behind for the next one (default 64).
 FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME  How many lines one build may colour before leaving the rest for the next (default 50000).
 FUI_TEXTEDITOR_MAX_PASTE_BYTES  How many bytes one paste may bring in (default 65536).
+FUI_TEXTEDITOR_UNDO_MEMORY_BYTES  How much memory the undo history may hold before its oldest steps are dropped (default 4 MiB).
 
 -------------------------------------------------------------------------------
 	License
@@ -120,7 +123,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.5.0
+	@version v0.6.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -134,6 +137,52 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.6.0:
+	It can be taken back now. Iteration 4 made the caret a place to write at; this is the iteration that
+	makes writing SAFE - every change has a way back, and the operations that move whole blocks of lines
+	around are worth having only because of it.
+
+	- New: UNDO and REDO - fuiEditorUndo, fuiEditorRedo, fuiEditorCanUndo, fuiEditorCanRedo and
+	  fuiEditorClearUndo, on ctrl+z, ctrl+y and ctrl+shift+z. Every call into fuiEditorInsert and
+	  fuiEditorErase writes one record, and both halves of it - the bytes that went and the bytes that came -
+	  live in one arena that is appended to in the same order the records are. The caret and the selection
+	  are part of a record, so taking a change back puts them where they stood before it.
+	- New: A run of typing is ONE step. A record takes the next change into itself when it is the same kind
+	  of change, right where the last one ended and small enough to be a keystroke; a caret that MOVED, a
+	  line break, or anything bigger ends the run. What this pins down is not the text afterwards - that is
+	  right either way - but how many times ctrl+z has to be pressed.
+	- New: fuiEditorBeginUndoGroup and fuiEditorEndUndoGroup, which make one step out of however many
+	  changes happen between them. Everything in here that writes more than once uses them: typing over a
+	  selection, indenting twelve lines, moving a block. So does "replace all", when it arrives.
+	- New: fuiEditorGetUndoStepCount and fuiEditorGetRedoStepCount, kept as counters rather than walked, so
+	  a status bar asking every frame costs nothing.
+	- New: The undo history has a BUDGET - fuiEditorConfig.limits.undoMemoryBytes, four megabytes by
+	  default. Over it, whole steps are dropped from the oldest end, never half of one, and never a step
+	  that redo still needs.
+	- New: fuiEditorClearModified remembers WHERE in the history the document was saved, so undoing back to
+	  that point reports the document as unmodified again rather than as changed forever.
+	- New: TAB and shift+tab move a highlighted block sideways - fuiEditorIndentSelection and
+	  fuiEditorUnindentSelection. Without a highlighted block tab simply types an indent, which is what
+	  every editor does. Blank lines are left alone: an indent on a line with nothing on it is trailing
+	  whitespace and nothing else. fuiEditorConfig.toggles.usesSpacesForIndent decides which of the two
+	  an indent is made of.
+	- New: The editor keeps the tab key only when it ALREADY had the keyboard. Tabbing INTO an editor must
+	  put the caret in it and not an indent, and the key that arrived is the same key either way - so what
+	  tells the two apart is who held the focus when the build started.
+	- New: Ctrl+shift+d duplicates - fuiEditorDuplicate. The selection lands behind itself and stays
+	  selected; without one the caret's line lands under itself and the caret comes with it.
+	- New: Alt+up and alt+down move whole lines - fuiEditorMoveLinesUp and fuiEditorMoveLinesDown. A block
+	  that was the LAST thing in the document takes over the line ending of the line it swapped with, so
+	  moving lines around at the end of a file never grows or loses a break.
+	- New: fuiEditorConfig.toggles.autoIndent, which gives a new line the blanks the old one started with.
+	  Only what stands in FRONT of the caret counts, so splitting a line inside its own indentation does not
+	  hand the new line more than the caret had behind it.
+	- Changed: Ctrl+d still deletes the caret's line; ctrl+SHIFT+d is the duplicate, so the two live on the
+	  same key the way they do elsewhere.
+	- Changed: fuiEditorSetText and fuiEditorLoadFromMemory throw the history away. They replace the
+	  document rather than change it, and a record that describes bytes from a document that is gone would
+	  be undone into a completely different one.
 
 	# v0.5.0:
 	It writes now. Everything up to here was a view onto a document that could not be changed; this is the
@@ -358,7 +407,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 5
+#define FUI_TEXTEDITOR_VERSION_MINOR 6
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -408,6 +457,13 @@ fui_api const char *fuiEditorGetVersion(void);
 	//! into a buffer of a size it is TOLD and cannot be asked how much there really is, so a number has to
 	//! be picked before the clipboard is read rather than after
 #	define FUI_TEXTEDITOR_MAX_PASTE_BYTES 65536
+#endif
+
+#if !defined(FUI_TEXTEDITOR_UNDO_MEMORY_BYTES)
+	//! How much memory the undo history may hold before its oldest steps are dropped. A history that is
+	//! never trimmed grows with every keystroke for as long as the editor is open, and a document worth
+	//! having an editor for is open for hours
+#	define FUI_TEXTEDITOR_UNDO_MEMORY_BYTES (4 * 1024 * 1024)
 #endif
 
 // ****************************************************************************
@@ -569,6 +625,15 @@ typedef struct fuiEditorMetrics {
 } fuiEditorMetrics;
 
 /**
+* @struct fuiEditorLimits
+* @brief What the editor is allowed to spend on itself. Zero takes the default named on each field.
+*/
+typedef struct fuiEditorLimits {
+	//! How many bytes of undo history are kept before the oldest steps are dropped. Zero is four megabytes
+	int32_t undoMemoryBytes;
+} fuiEditorLimits;
+
+/**
 * @struct fuiEditorToggles
 * @brief What the editor shows and what it leaves out. A zeroed one is the plainest editor there is.
 */
@@ -588,6 +653,10 @@ typedef struct fuiEditorToggles {
 	bool showWhitespace;
 	//! Write CR, LF or CRLF at the end of every line, which is what tells a mixed file apart from a clean one
 	bool showLineEndings;
+	//! Give a new line the blanks the line it was split off started with
+	bool autoIndent;
+	//! Make an indent out of @ref fuiEditorMetrics.tabSize blanks rather than out of one tab character
+	bool usesSpacesForIndent;
 	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode verticalScrollbar;
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
@@ -625,6 +694,8 @@ typedef struct fuiEditorChange {
 *       they read is where they really are rather than where they were.
 * @note Not called for @ref fuiEditorSetText or @ref fuiEditorLoadFromMemory - those replace the document
 *       rather than change it, and the caller is the one who did it.
+* @note IS called for @ref fuiEditorUndo and @ref fuiEditorRedo, once per change they walk over. Taking a
+*       change back changes the document, and anything kept in step with it has to hear about that too.
 */
 typedef void (*fuiEditorOnChange)(struct fuiEditor *editor, const fuiEditorChange *change, void *userData);
 
@@ -653,6 +724,8 @@ typedef struct fuiEditorConfig {
 	fuiEditorMetrics metrics;
 	//! What it shows and leaves out
 	fuiEditorToggles toggles;
+	//! What it is allowed to spend on itself
+	fuiEditorLimits limits;
 	//! What it calls back into
 	fuiEditorCallbacks callbacks;
 } fuiEditorConfig;
@@ -829,6 +902,73 @@ typedef struct fuiEditorDocument {
 } fuiEditorDocument;
 
 /**
+* @struct fuiEditorUndoRecord
+* @brief What ONE call into @ref fuiEditorInsert or @ref fuiEditorErase did, and how to walk back out of it.
+* @note Internal. Both halves of the change - the bytes that went away and the bytes that arrived - live in
+*       the stack's arena at @ref arenaStart, the removed ones first.
+*/
+typedef struct fuiEditorUndoRecord {
+	//! The byte offset the change happened at
+	int32_t offset;
+	//! Where this record's bytes begin in the stack's arena
+	int32_t arenaStart;
+	//! How many bytes went away, kept at arenaStart so undo can put them back
+	int32_t removedLength;
+	//! How many bytes arrived, kept behind the removed ones so redo can write them again
+	int32_t insertedLength;
+	//! Where the caret stood before the change, which is where undoing it puts the caret back
+	int32_t caretBefore;
+	//! Where the selection was anchored before the change
+	int32_t anchorBefore;
+	//! Where the caret ended up, which is where redoing the change puts it again
+	int32_t caretAfter;
+	//! Where the selection was anchored afterwards
+	int32_t anchorAfter;
+	//! Which STEP this record belongs to. Records of one step are neighbours and are undone together
+	int32_t groupId;
+} fuiEditorUndoRecord;
+
+/**
+* @struct fuiEditorUndoStack
+* @brief Every change the document has seen, and how far back through them the caller has walked.
+* @note Internal. Records [0, undoCursor) have been applied and can be taken back; records
+*       [undoCursor, recordCount) have been taken back and can be put forward again. A new change throws
+*       the second half away, because history that was walked away from is not history any more.
+*/
+typedef struct fuiEditorUndoStack {
+	//! The records, oldest first
+	fuiEditorUndoRecord *records;
+	//! How many of them are allocated
+	int32_t recordCapacity;
+	//! How many of them are filled in
+	int32_t recordCount;
+	//! How many of them stand APPLIED, which is also the index the next redo reads from
+	int32_t undoCursor;
+	//! Every record's bytes, appended in the same order the records are
+	char *arena;
+	//! How many bytes of it are allocated
+	int32_t arenaCapacity;
+	//! How many bytes of it are used
+	int32_t arenaLength;
+	//! The last group id handed out, so the next one is one higher
+	int32_t lastGroupId;
+	//! How deep the caller is inside @ref fuiEditorBeginUndoGroup
+	int32_t openGroupDepth;
+	//! Which group id everything recorded while that is open joins
+	int32_t openGroupId;
+	//! How many steps can be taken back, kept as a counter so asking every frame costs nothing
+	int32_t undoStepCount;
+	//! How many steps can be put forward again
+	int32_t redoStepCount;
+	//! Whether the newest record may still take the next change into itself, which is what makes a run of
+	//! typing one step
+	bool mayCoalesce;
+	//! Set while a record is being walked back out of or put forward again, which keeps recording OUT -
+	//! an undo that recorded itself would never end
+	bool isApplying;
+} fuiEditorUndoStack;
+
+/**
 * @struct fuiEditor
 * @brief One document, held BY VALUE by the caller and passed to every call below.
 * @note Zero it, hand it to @ref fuiEditorInit, and hand it to @ref fuiEditorRelease when it is done.
@@ -851,6 +991,12 @@ typedef struct fuiEditor {
 	bool isOverwriting;
 	//! Set while the whole document is being REPLACED, which is what keeps onChange out of a load
 	bool isReplacingDocument;
+
+	//! Every change the document has seen, and how far back through them the caller has walked
+	fuiEditorUndoStack undo;
+	//! Where in that history the document was last SAVED, so undoing back to it clears the modified flag
+	//! again. Negative when that point has been dropped and can never be reached
+	int32_t savedUndoCursor;
 
 	//! The lexer, as the caller gave it. Zeroed means no colouring at all
 	fuiEditorLexer lexer;
@@ -1372,6 +1518,143 @@ fui_api bool fuiEditorDeleteForward(fuiEditor *editor);
 *       otherwise removing it would leave the line above it ending in a break and an empty line behind that.
 */
 fui_api bool fuiEditorDeleteLine(fuiEditor *editor, const int32_t documentLine);
+
+/**
+* @brief Moves a highlighted block of lines one indent to the right.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when anything was written.
+* @note With nothing highlighted, or with a selection that stays inside ONE line, this simply types an
+*       indent at the caret - which is what the tab key does in every editor.
+* @note Lines with nothing on them are left alone. An indent on an empty line is trailing whitespace.
+* @note An indent is one tab character, or @ref fuiEditorMetrics.tabSize blanks when
+*       @ref fuiEditorToggles.usesSpacesForIndent says so.
+* @note One undo step, however many lines it wrote to.
+*/
+fui_api bool fuiEditorIndentSelection(fuiEditor *editor);
+
+/**
+* @brief Moves a highlighted block of lines one indent back to the left.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when anything was removed.
+* @note Takes one tab character off a line, or up to @ref fuiEditorMetrics.tabSize blanks - whichever the
+*       line really begins with. A line that begins with neither is left as it is.
+* @note One undo step, however many lines it wrote to.
+*/
+fui_api bool fuiEditorUnindentSelection(fuiEditor *editor);
+
+/**
+* @brief Writes the selection out a second time behind itself, or the caret's line under itself.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when anything was written.
+* @note With a selection the COPY ends up selected, so duplicating twice in a row gives two copies rather
+*       than the same one over and over.
+* @note One undo step.
+*/
+fui_api bool fuiEditorDuplicate(fuiEditor *editor);
+
+/**
+* @brief Swaps the lines the selection touches with the line above them.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when the lines were moved, false when they are already at the top.
+* @note The caret and the selection go with the lines, at the columns they were standing in.
+* @note A block that was the LAST thing in the document takes over the line ending of the line it swapped
+*       with, so a file never grows or loses a break from lines being moved around at its end.
+* @note One undo step.
+*/
+fui_api bool fuiEditorMoveLinesUp(fuiEditor *editor);
+
+/**
+* @brief Swaps the lines the selection touches with the line below them.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when the lines were moved, false when they are already at the bottom.
+* @note Everything @ref fuiEditorMoveLinesUp says applies here, seen from the other side.
+*/
+fui_api bool fuiEditorMoveLinesDown(fuiEditor *editor);
+
+// ****************************************************************************
+//
+// > Undo and redo
+//
+// ****************************************************************************
+
+/**
+* @brief Whether there is a change to take back.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when @ref fuiEditorUndo would do something.
+*/
+fui_api bool fuiEditorCanUndo(const fuiEditor *editor);
+
+/**
+* @brief Whether there is a change to put forward again.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when @ref fuiEditorRedo would do something.
+*/
+fui_api bool fuiEditorCanRedo(const fuiEditor *editor);
+
+/**
+* @brief Takes the newest step back, caret and selection included.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when a step was taken back.
+* @note A STEP is what one press of ctrl+z takes back, and that is not always one change: a run of typing
+*       is one step, and so is everything between @ref fuiEditorBeginUndoGroup and @ref fuiEditorEndUndoGroup.
+* @note Refused while @ref fuiEditorToggles.isReadOnly is set, the same as every other writing branch.
+*/
+fui_api bool fuiEditorUndo(fuiEditor *editor);
+
+/**
+* @brief Puts the newest step that was taken back forward again.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when a step was put forward.
+* @note Writing anything at all throws away every step that was taken back, because history that was
+*       walked away from is not history any more.
+*/
+fui_api bool fuiEditorRedo(fuiEditor *editor);
+
+/**
+* @brief Throws the whole history away, keeping the document exactly as it is.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @note Done for you by @ref fuiEditorSetText and @ref fuiEditorLoadFromMemory: a record describing bytes
+*       of a document that is gone would be undone into a completely different one.
+*/
+fui_api void fuiEditorClearUndo(fuiEditor *editor);
+
+/**
+* @brief Starts collecting every change from here on into ONE undo step.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @note Nests: only the outermost pair opens and closes the step. Every call must be answered by
+*       @ref fuiEditorEndUndoGroup.
+* @note This is what an operation writing more than once uses - typing over a selection, indenting a
+*       block, moving lines, replacing every hit in a document.
+*/
+fui_api void fuiEditorBeginUndoGroup(fuiEditor *editor);
+
+/**
+* @brief Closes the step @ref fuiEditorBeginUndoGroup opened.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+*/
+fui_api void fuiEditorEndUndoGroup(fuiEditor *editor);
+
+/**
+* @brief Ends the run the newest record is collecting, so the next change starts a step of its own.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @note Every caret move does this already. It is here for a caller who moves the caret some way of their
+*       own and does not want the next keystroke joining the last one.
+*/
+fui_api void fuiEditorBreakUndoRun(fuiEditor *editor);
+
+/**
+* @brief How many steps can be taken back.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the number of steps @ref fuiEditorUndo would answer to.
+*/
+fui_api int32_t fuiEditorGetUndoStepCount(const fuiEditor *editor);
+
+/**
+* @brief How many steps can be put forward again.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the number of steps @ref fuiEditorRedo would answer to.
+*/
+fui_api int32_t fuiEditorGetRedoStepCount(const fuiEditor *editor);
 
 /**
 * @brief Scrolls a document line to the top of the view.
@@ -2021,6 +2304,8 @@ fui_api void fuiEditorRelease(fuiEditor *editor) {
 	fuiEditor__Release(editor, editor->document.lines.lexerStates);
 	fuiEditor__Release(editor, editor->lineScratch);
 	fuiEditor__Release(editor, editor->styleScratch);
+	fuiEditor__Release(editor, editor->undo.records);
+	fuiEditor__Release(editor, editor->undo.arena);
 	FUI_TEXTEDITOR_MEMSET(editor, 0, sizeof(*editor));
 }
 
@@ -2081,6 +2366,33 @@ fui_api int32_t fuiEditorCopyRange(const fuiEditor *editor, const int32_t offset
 	}
 	destination[copyLength] = '\0';
 	return(rangeLength);
+}
+
+/*
+	The same copy, without the terminating zero.
+
+	fuiEditorCopyRange always writes one, which is right for a string and wrong for a run of bytes that is
+	about to be handed straight back to fuiEditorInsert: a buffer of exactly byteCount would come back one
+	byte short with a zero on the end of it. Every place in here that copies document bytes into a buffer
+	sized to fit them exactly uses this one.
+*/
+static void fuiEditor__CopyRangeRaw(const fuiEditor *editor, const int32_t offset, const int32_t byteCount, char *destination) {
+	if(byteCount <= 0) {
+		return;
+	}
+	const fuiEditorDocument *document = &editor->document;
+
+	// The range may straddle the hole, in which case it is two runs rather than one.
+	int32_t frontLength = fuiEditor__ClampI32(document->gapStart - offset, 0, byteCount);
+	if(frontLength > 0) {
+		FUI_TEXTEDITOR_MEMCPY(destination, &document->bytes[offset], (size_t)frontLength);
+	}
+	int32_t backLength = byteCount - frontLength;
+	if(backLength > 0) {
+		int32_t backStart = fuiEditor__MaxI32(offset, document->gapStart);
+		int32_t physicalBackStart = fuiEditor__DocumentPhysicalOffset(document, backStart);
+		FUI_TEXTEDITOR_MEMCPY(&destination[frontLength], &document->bytes[physicalBackStart], (size_t)backLength);
+	}
 }
 
 fui_api int32_t fuiEditorCopyText(const fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
@@ -2500,6 +2812,439 @@ static int32_t fuiEditor__PositionAfterChange(const int32_t position, const int3
 	return(position - removedBytes + insertedBytes);
 }
 
+//! Whether a USER may write into this editor. fuiEditorInsert and fuiEditorErase stay open either way
+fui_inline bool fuiEditor__CanWrite(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(!editor->config.toggles.isReadOnly);
+}
+
+// ----------------------------------------------------------------------------
+// > The undo history
+// ----------------------------------------------------------------------------
+
+/*
+	One record is one call into fuiEditorInsert or fuiEditorErase, and it carries BOTH halves of what that
+	call did: the bytes that went away and the bytes that arrived. Undo puts the first back and takes the
+	second out again; redo does the same thing the other way round. Both halves live in one arena that is
+	appended to in exactly the order the records are, which is what makes dropping the oldest record as
+	cheap as shortening the arena from the front.
+
+	A STEP is what one ctrl+z takes back, and a step is a GROUP of records rather than one. Two things make
+	a group: typing collects into a single record by coalescing, and an operation that writes more than
+	once - typing over a selection, indenting twelve lines - opens a group that everything it does joins.
+
+	The records behind undoCursor are the ones that were taken back. Writing anything at all throws them
+	away, because history that was walked away from is not history any more.
+*/
+
+//! The biggest change that may still join the record in front of it. A keystroke is a byte or four; a
+//! paste is not a keystroke and has no business disappearing into the run of typing beside it
+#define FUI_TEXTEDITOR__UNDO_COALESCE_MAX_BYTES 64
+
+//! How many records the history is allocated at, and grows by steps of, at the least
+#define FUI_TEXTEDITOR__UNDO_MIN_RECORDS 64
+
+//! How many bytes the arena is allocated at, at the least
+#define FUI_TEXTEDITOR__UNDO_MIN_ARENA_BYTES 4096
+
+//! What the history is allowed to hold, as the caller asked or as the default says
+fui_inline int32_t fuiEditor__UndoMemoryBudget(const fuiEditor *editor) {
+	int32_t wanted = editor->config.limits.undoMemoryBytes;
+	if(wanted > 0) {
+		return(wanted);
+	}
+	return((int32_t)FUI_TEXTEDITOR_UNDO_MEMORY_BYTES);
+}
+
+//! What it really holds, the records themselves counted in as well as the bytes they point at
+fui_inline int32_t fuiEditor__UndoMemoryInUse(const fuiEditorUndoStack *stack) {
+	int32_t recordBytes = stack->recordCount * (int32_t)sizeof(fuiEditorUndoRecord);
+	return(stack->arenaLength + recordBytes);
+}
+
+fui_api void fuiEditorClearUndo(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	fuiEditorUndoStack *stack = &editor->undo;
+	stack->recordCount = 0;
+	stack->undoCursor = 0;
+	stack->arenaLength = 0;
+	stack->undoStepCount = 0;
+	stack->redoStepCount = 0;
+	stack->mayCoalesce = false;
+	stack->openGroupDepth = 0;
+
+	// The document as it stands right now is the only point the caller can still get back to, so it is the
+	// saved one exactly when nothing has been written since the last save.
+	editor->savedUndoCursor = editor->isModified ? -1 : 0;
+}
+
+fui_inline bool fuiEditor__UndoReserveRecords(fuiEditor *editor, const int32_t wantedCount) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->recordCapacity >= wantedCount) {
+		return(true);
+	}
+	int32_t newCapacity = fuiEditor__GrowCapacity(stack->recordCapacity, wantedCount, FUI_TEXTEDITOR__UNDO_MIN_RECORDS);
+	int32_t newByteCount = newCapacity * (int32_t)sizeof(fuiEditorUndoRecord);
+	fuiEditorUndoRecord *newRecords = (fuiEditorUndoRecord *)fuiEditor__Allocate(editor, newByteCount);
+	if(newRecords == fui_null) {
+		return(false);
+	}
+	if(stack->recordCount > 0) {
+		FUI_TEXTEDITOR_MEMCPY(newRecords, stack->records, (size_t)stack->recordCount * sizeof(fuiEditorUndoRecord));
+	}
+	fuiEditor__Release(editor, stack->records);
+	stack->records = newRecords;
+	stack->recordCapacity = newCapacity;
+	return(true);
+}
+
+fui_inline bool fuiEditor__UndoReserveArena(fuiEditor *editor, const int32_t wantedLength) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->arenaCapacity >= wantedLength) {
+		return(true);
+	}
+	int32_t newCapacity = fuiEditor__GrowCapacity(stack->arenaCapacity, wantedLength, FUI_TEXTEDITOR__UNDO_MIN_ARENA_BYTES);
+	char *newArena = (char *)fuiEditor__Allocate(editor, newCapacity);
+	if(newArena == fui_null) {
+		return(false);
+	}
+	if(stack->arenaLength > 0) {
+		FUI_TEXTEDITOR_MEMCPY(newArena, stack->arena, (size_t)stack->arenaLength);
+	}
+	fuiEditor__Release(editor, stack->arena);
+	stack->arena = newArena;
+	stack->arenaCapacity = newCapacity;
+	return(true);
+}
+
+//! Everything a record spans in the arena, which is both of its halves one behind the other
+fui_inline int32_t fuiEditor__UndoRecordByteCount(const fuiEditorUndoRecord *record) {
+	return(record->removedLength + record->insertedLength);
+}
+
+/*
+	Drops the oldest STEP, which is the only thing that may be dropped at all.
+
+	Half a step would be worse than no history: a ctrl+z would put part of an operation back and leave the
+	rest standing. And a step that redo still needs may not go either - those are the records at and behind
+	undoCursor, and dropping one would leave the ones behind it describing a document that never existed.
+*/
+static bool fuiEditor__UndoDropOldestStep(fuiEditor *editor) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->recordCount <= 0) {
+		return(false);
+	}
+
+	int32_t oldestGroupId = stack->records[0].groupId;
+	int32_t droppedCount = 1;
+	while(droppedCount < stack->recordCount && stack->records[droppedCount].groupId == oldestGroupId) {
+		droppedCount += 1;
+	}
+	// Never a step that redo still needs: those are the records at and behind undoCursor, and dropping one
+	// would leave the ones behind it describing a document that never existed. No caller can reach this
+	// today - recording throws the taken-back steps away before it ever trims - and it stays because the
+	// day one does, silently corrupting the history is not the way to find out.
+	if(droppedCount > stack->undoCursor) {
+		return(false);
+	}
+
+	const fuiEditorUndoRecord *lastDropped = &stack->records[droppedCount - 1];
+	int32_t lastDroppedByteCount = fuiEditor__UndoRecordByteCount(lastDropped);
+	int32_t droppedBytes = lastDropped->arenaStart + lastDroppedByteCount;
+
+	int32_t keptBytes = stack->arenaLength - droppedBytes;
+	if(keptBytes > 0) {
+		FUI_TEXTEDITOR_MEMMOVE(stack->arena, &stack->arena[droppedBytes], (size_t)keptBytes);
+	}
+	stack->arenaLength = keptBytes;
+
+	int32_t keptCount = stack->recordCount - droppedCount;
+	if(keptCount > 0) {
+		FUI_TEXTEDITOR_MEMMOVE(stack->records, &stack->records[droppedCount], (size_t)keptCount * sizeof(fuiEditorUndoRecord));
+	}
+	stack->recordCount = keptCount;
+	for(int32_t recordIndex = 0; recordIndex < keptCount; ++recordIndex) {
+		stack->records[recordIndex].arenaStart -= droppedBytes;
+	}
+
+	stack->undoCursor -= droppedCount;
+	stack->undoStepCount -= 1;
+
+	// A saved point that has just been dropped can never be reached again, and a negative cursor is a
+	// number no undoCursor ever takes - which is exactly what "never again" has to be spelled as.
+	editor->savedUndoCursor -= droppedCount;
+	return(true);
+}
+
+fui_inline void fuiEditor__UndoTrimToBudget(fuiEditor *editor) {
+	int32_t budget = fuiEditor__UndoMemoryBudget(editor);
+	while(fuiEditor__UndoMemoryInUse(&editor->undo) > budget) {
+		if(!fuiEditor__UndoDropOldestStep(editor)) {
+			return;
+		}
+	}
+}
+
+//! Throws away everything that was taken back, because a new change is a branch away from it
+fui_inline void fuiEditor__UndoDropTakenBackSteps(fuiEditor *editor) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->undoCursor >= stack->recordCount) {
+		return;
+	}
+	stack->arenaLength = stack->records[stack->undoCursor].arenaStart;
+	stack->recordCount = stack->undoCursor;
+	stack->redoStepCount = 0;
+
+	// The document was saved somewhere down the branch that is being thrown away, so that point is gone.
+	if(editor->savedUndoCursor > stack->undoCursor) {
+		editor->savedUndoCursor = -1;
+	}
+}
+
+//! Whether a range of the document that is ABOUT to go away has a line feed in it
+static bool fuiEditor__RangeHasLineFeed(const fuiEditor *editor, const int32_t offset, const int32_t byteCount) {
+	for(int32_t scanIndex = 0; scanIndex < byteCount; ++scanIndex) {
+		char byteThere = fuiEditorGetByte(editor, offset + scanIndex);
+		if(byteThere == '\n') {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+/*
+	Whether the newest record can simply take this change into itself.
+
+	Three shapes do: typing on behind what was typed, backspacing back into what was backspaced, and delete
+	after delete at the same spot. Everything else starts a step of its own. What this decides is not the
+	text afterwards - that comes out the same either way - but how many times ctrl+z has to be pressed.
+*/
+static bool fuiEditor__UndoTryCoalesce(fuiEditor *editor, const int32_t offset, const int32_t removedLength, const char *insertedText, const int32_t insertedLength, const int32_t caretAfter, const int32_t anchorAfter) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	bool canJoinAnything = stack->mayCoalesce && (stack->openGroupDepth == 0) && (stack->recordCount > 0) && (stack->undoCursor == stack->recordCount);
+	if(!canJoinAnything) {
+		return(false);
+	}
+
+	fuiEditorUndoRecord *newest = &stack->records[stack->recordCount - 1];
+	bool bothAreInserts = (removedLength == 0) && (newest->removedLength == 0) && (insertedLength > 0) && (newest->insertedLength > 0);
+	if(bothAreInserts) {
+		int32_t newestEnd = newest->offset + newest->insertedLength;
+		if(offset != newestEnd) {
+			return(false);
+		}
+		if(!fuiEditor__UndoReserveArena(editor, stack->arenaLength + insertedLength)) {
+			return(false);
+		}
+		FUI_TEXTEDITOR_MEMCPY(&stack->arena[stack->arenaLength], insertedText, (size_t)insertedLength);
+		stack->arenaLength += insertedLength;
+		newest->insertedLength += insertedLength;
+		newest->caretAfter = caretAfter;
+		newest->anchorAfter = anchorAfter;
+		return(true);
+	}
+
+	bool bothAreErases = (insertedLength == 0) && (newest->insertedLength == 0) && (removedLength > 0) && (newest->removedLength > 0);
+	if(bothAreErases) {
+		bool isBackspacingIntoIt = ((offset + removedLength) == newest->offset);
+		bool isDeletingAtIt = (offset == newest->offset);
+		if(!isBackspacingIntoIt && !isDeletingAtIt) {
+			return(false);
+		}
+		if(!fuiEditor__UndoReserveArena(editor, stack->arenaLength + removedLength)) {
+			return(false);
+		}
+
+		// The bytes are still IN the document at this point, which is the whole reason an erase records
+		// before it erases rather than afterwards.
+		if(isBackspacingIntoIt) {
+			// Backspace goes BACKWARDS, so what it takes belongs in front of what the record already holds.
+			char *keptBytes = &stack->arena[newest->arenaStart];
+			FUI_TEXTEDITOR_MEMMOVE(&keptBytes[removedLength], keptBytes, (size_t)newest->removedLength);
+			fuiEditor__CopyRangeRaw(editor, offset, removedLength, keptBytes);
+			newest->offset = offset;
+		} else {
+			char *behindWhatIsKept = &stack->arena[newest->arenaStart + newest->removedLength];
+			fuiEditor__CopyRangeRaw(editor, offset, removedLength, behindWhatIsKept);
+		}
+		stack->arenaLength += removedLength;
+		newest->removedLength += removedLength;
+		newest->caretAfter = caretAfter;
+		newest->anchorAfter = anchorAfter;
+		return(true);
+	}
+
+	return(false);
+}
+
+/*
+	Writes down one change, BEFORE it happens.
+
+	Before, because the bytes an erase is about to take are only readable while they are still there - and
+	reading them here, out of the document, is what keeps every caller from having to hand them over.
+	Nothing in front of this call may have failed: both reserves an insert needs are done by then, and an
+	erase cannot fail at all.
+*/
+static void fuiEditor__RecordEdit(fuiEditor *editor, const int32_t offset, const int32_t removedLength, const char *insertedText, const int32_t insertedLength) {
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->isApplying || editor->isReplacingDocument) {
+		return;
+	}
+
+	int32_t caretBefore = editor->caretOffset;
+	int32_t anchorBefore = editor->selectionAnchor;
+	int32_t caretAfter = fuiEditor__PositionAfterChange(caretBefore, offset, removedLength, insertedLength);
+	int32_t anchorAfter = fuiEditor__PositionAfterChange(anchorBefore, offset, removedLength, insertedLength);
+
+	fuiEditor__UndoDropTakenBackSteps(editor);
+
+	// Only a change small enough to BE a keystroke is ever looked at for joining the one before it, which
+	// also keeps the scan for a line feed below down to a handful of bytes.
+	int32_t changedByteCount = removedLength + insertedLength;
+	bool isKeystrokeSized = (changedByteCount <= FUI_TEXTEDITOR__UNDO_COALESCE_MAX_BYTES);
+	bool crossesALine = false;
+	if(isKeystrokeSized) {
+		if(insertedLength > 0) {
+			const char *foundLineFeed = (const char *)FUI_TEXTEDITOR_MEMCHR(insertedText, '\n', (size_t)insertedLength);
+			crossesALine = (foundLineFeed != fui_null);
+		}
+		if(!crossesALine && removedLength > 0) {
+			crossesALine = fuiEditor__RangeHasLineFeed(editor, offset, removedLength);
+		}
+	}
+	bool mayJoinTheOneBefore = isKeystrokeSized && !crossesALine;
+
+	if(mayJoinTheOneBefore && fuiEditor__UndoTryCoalesce(editor, offset, removedLength, insertedText, insertedLength, caretAfter, anchorAfter)) {
+		// A run that is joined rather than pushed still grows the arena, so it is held to the budget just
+		// like a new record is. A long enough run would otherwise never be looked at at all.
+		fuiEditor__UndoTrimToBudget(editor);
+		return;
+	}
+
+	bool hasRoomForTheRecord = fuiEditor__UndoReserveRecords(editor, stack->recordCount + 1);
+	bool hasRoomForTheBytes = hasRoomForTheRecord && fuiEditor__UndoReserveArena(editor, stack->arenaLength + changedByteCount);
+	if(!hasRoomForTheBytes) {
+		// A history with a hole in it is worse than none: a ctrl+z would walk over the missing step into
+		// one that describes a document which never existed.
+		fuiEditorClearUndo(editor);
+		return;
+	}
+
+	fuiEditorUndoRecord record;
+	record.offset = offset;
+	record.arenaStart = stack->arenaLength;
+	record.removedLength = removedLength;
+	record.insertedLength = insertedLength;
+	record.caretBefore = caretBefore;
+	record.anchorBefore = anchorBefore;
+	record.caretAfter = caretAfter;
+	record.anchorAfter = anchorAfter;
+
+	bool joinsAnOpenGroup = (stack->openGroupDepth > 0);
+	if(joinsAnOpenGroup) {
+		record.groupId = stack->openGroupId;
+	} else {
+		stack->lastGroupId += 1;
+		record.groupId = stack->lastGroupId;
+	}
+
+	if(removedLength > 0) {
+		fuiEditor__CopyRangeRaw(editor, offset, removedLength, &stack->arena[stack->arenaLength]);
+		stack->arenaLength += removedLength;
+	}
+	if(insertedLength > 0) {
+		FUI_TEXTEDITOR_MEMCPY(&stack->arena[stack->arenaLength], insertedText, (size_t)insertedLength);
+		stack->arenaLength += insertedLength;
+	}
+
+	// Records of one step are neighbours, so whether this one starts a step is a look at the one before it
+	// and nothing more.
+	bool startsAStep = true;
+	if(stack->recordCount > 0) {
+		startsAStep = (stack->records[stack->recordCount - 1].groupId != record.groupId);
+	}
+	stack->records[stack->recordCount] = record;
+	stack->recordCount += 1;
+	stack->undoCursor = stack->recordCount;
+	if(startsAStep) {
+		stack->undoStepCount += 1;
+	}
+
+	/*
+		Only a plain change standing on its own can be joined by the next one.
+
+		This is also what closes a group behind itself: everything recorded inside one leaves the run shut
+		down, so the first keystroke after the group starts a step rather than being taken back together
+		with an operation it has nothing to do with. The other end needs nothing at all, because
+		fuiEditor__UndoTryCoalesce refuses outright while a group is open.
+	*/
+	stack->mayCoalesce = !joinsAnOpenGroup && mayJoinTheOneBefore;
+
+	fuiEditor__UndoTrimToBudget(editor);
+}
+
+fui_api void fuiEditorBeginUndoGroup(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->openGroupDepth == 0) {
+		stack->lastGroupId += 1;
+		stack->openGroupId = stack->lastGroupId;
+	}
+	stack->openGroupDepth += 1;
+}
+
+fui_api void fuiEditorEndUndoGroup(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->openGroupDepth <= 0) {
+		return;
+	}
+	stack->openGroupDepth -= 1;
+}
+
+fui_api void fuiEditorBreakUndoRun(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	editor->undo.mayCoalesce = false;
+}
+
+fui_api bool fuiEditorCanUndo(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(editor->undo.undoCursor > 0);
+}
+
+fui_api bool fuiEditorCanRedo(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(editor->undo.undoCursor < editor->undo.recordCount);
+}
+
+fui_api int32_t fuiEditorGetUndoStepCount(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(editor->undo.undoStepCount);
+}
+
+fui_api int32_t fuiEditorGetRedoStepCount(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	return(editor->undo.redoStepCount);
+}
+
 //! Everything that has to happen after a change, in the one place both fuiEditorInsert and fuiEditorErase reach
 static void fuiEditor__NoteChange(fuiEditor *editor, const int32_t offset, const int32_t removedBytes, const int32_t insertedBytes, const int32_t firstLine, const int32_t lineCountDelta) {
 	editor->version += 1;
@@ -2566,6 +3311,11 @@ fui_api bool fuiEditorInsert(fuiEditor *editor, const int32_t offset, const char
 		return(false);
 	}
 
+	// Written down only once nothing can fail any more. A record of a change that never happened would be
+	// undone into a document it does not describe.
+	const int32_t nothingIsBeingRemoved = 0;
+	fuiEditor__RecordEdit(editor, insertOffset, nothingIsBeingRemoved, text, insertedLength);
+
 	fuiEditor__DocumentMoveGap(document, insertOffset);
 	FUI_TEXTEDITOR_MEMCPY(&document->bytes[document->gapStart], text, (size_t)insertedLength);
 	document->gapStart += insertedLength;
@@ -2614,6 +3364,11 @@ fui_api bool fuiEditorErase(fuiEditor *editor, const int32_t offset, const int32
 		return(false);
 	}
 
+	// Written down BEFORE the bytes go, because afterwards there is nothing left to write down.
+	const char *nothingIsBeingInserted = fui_null;
+	const int32_t noInsertedLength = 0;
+	fuiEditor__RecordEdit(editor, eraseStart, erasedLength, nothingIsBeingInserted, noInsertedLength);
+
 	int32_t eraseEnd = eraseStart + erasedLength;
 	int32_t firstLine = fuiEditor__LineIndexLineOfOffset(&document->lines, eraseStart);
 	int32_t lastLine = fuiEditor__LineIndexLineOfOffset(&document->lines, eraseEnd);
@@ -2639,6 +3394,107 @@ fui_api bool fuiEditorErase(fuiEditor *editor, const int32_t offset, const int32
 	return(true);
 }
 
+
+// ----------------------------------------------------------------------------
+// > Walking the history
+// ----------------------------------------------------------------------------
+
+/*
+	Where the caret goes after a step was taken back or put forward.
+
+	Not through fuiEditor__MoveCaretTo, because that would drop the anchor along with the caret and there
+	is a whole selection to restore here - the one that stood around the change when it was made.
+*/
+static void fuiEditor__PlaceCaretAfterHistory(fuiEditor *editor, const int32_t caretOffset, const int32_t anchorOffset) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	int32_t clampedCaret = fuiEditor__ClampI32(caretOffset, 0, textLength);
+	int32_t clampedAnchor = fuiEditor__ClampI32(anchorOffset, 0, textLength);
+	editor->caretOffset = fuiEditorSnapToCodepointStart(editor, clampedCaret);
+	editor->selectionAnchor = fuiEditorSnapToCodepointStart(editor, clampedAnchor);
+	editor->dragAnchorStart = editor->caretOffset;
+	editor->dragAnchorEnd = editor->caretOffset;
+	editor->hasDesiredDistance = false;
+	editor->caretBlinkTime = 0.0f;
+
+	editor->undo.mayCoalesce = false;
+
+	// Back at the point the document was saved at is back to UNMODIFIED, however many steps it took to get
+	// here and in whichever direction.
+	editor->isModified = (editor->undo.undoCursor != editor->savedUndoCursor);
+}
+
+fui_api bool fuiEditorUndo(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->undoCursor <= 0) {
+		return(false);
+	}
+
+	int32_t stepGroupId = stack->records[stack->undoCursor - 1].groupId;
+	int32_t caretAfterwards = 0;
+	int32_t anchorAfterwards = 0;
+
+	// The records of one step are walked BACKWARDS, because each of them describes a document the one
+	// before it had already made.
+	stack->isApplying = true;
+	while(stack->undoCursor > 0 && stack->records[stack->undoCursor - 1].groupId == stepGroupId) {
+		const fuiEditorUndoRecord *record = &stack->records[stack->undoCursor - 1];
+		if(record->insertedLength > 0) {
+			(void)fuiEditorErase(editor, record->offset, record->insertedLength);
+		}
+		if(record->removedLength > 0) {
+			const char *removedBytes = &stack->arena[record->arenaStart];
+			(void)fuiEditorInsert(editor, record->offset, removedBytes, record->removedLength);
+		}
+		caretAfterwards = record->caretBefore;
+		anchorAfterwards = record->anchorBefore;
+		stack->undoCursor -= 1;
+	}
+	stack->isApplying = false;
+
+	stack->undoStepCount -= 1;
+	stack->redoStepCount += 1;
+	fuiEditor__PlaceCaretAfterHistory(editor, caretAfterwards, anchorAfterwards);
+	return(true);
+}
+
+fui_api bool fuiEditorRedo(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	fuiEditorUndoStack *stack = &editor->undo;
+	if(stack->undoCursor >= stack->recordCount) {
+		return(false);
+	}
+
+	int32_t stepGroupId = stack->records[stack->undoCursor].groupId;
+	int32_t caretAfterwards = 0;
+	int32_t anchorAfterwards = 0;
+
+	stack->isApplying = true;
+	while(stack->undoCursor < stack->recordCount && stack->records[stack->undoCursor].groupId == stepGroupId) {
+		const fuiEditorUndoRecord *record = &stack->records[stack->undoCursor];
+		if(record->removedLength > 0) {
+			(void)fuiEditorErase(editor, record->offset, record->removedLength);
+		}
+		if(record->insertedLength > 0) {
+			const char *insertedBytes = &stack->arena[record->arenaStart + record->removedLength];
+			(void)fuiEditorInsert(editor, record->offset, insertedBytes, record->insertedLength);
+		}
+		caretAfterwards = record->caretAfter;
+		anchorAfterwards = record->anchorAfter;
+		stack->undoCursor += 1;
+	}
+	stack->isApplying = false;
+
+	stack->undoStepCount += 1;
+	stack->redoStepCount -= 1;
+	fuiEditor__PlaceCaretAfterHistory(editor, caretAfterwards, anchorAfterwards);
+	return(true);
+}
+
 // ----------------------------------------------------------------------------
 // > Filling the document
 // ----------------------------------------------------------------------------
@@ -2647,6 +3503,10 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	if(editor == fui_null || !editor->isInitialized) {
 		return(false);
 	}
+
+	// A record describing bytes of a document that is GONE would be undone into a completely different one,
+	// so the history goes with the document it belonged to.
+	fuiEditorClearUndo(editor);
 
 	fuiEditor__DocumentClear(&editor->document);
 	editor->version += 1;
@@ -2672,6 +3532,7 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 		editor->eol = fuiEditorEol_Lf;
 		editor->isReplacingDocument = false;
 		editor->isModified = false;
+		editor->savedUndoCursor = 0;
 		return(true);
 	}
 
@@ -2698,6 +3559,9 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	editor->hasDesiredDistance = false;
 	editor->isReplacingDocument = false;
 	editor->isModified = false;
+
+	// A document that has just been loaded IS the saved one, and there is no history in front of it.
+	editor->savedUndoCursor = 0;
 	return(didFill);
 }
 
@@ -2754,6 +3618,15 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 
 //! How many characters wide one tab stop is when the caller named nothing
 #define FUI_TEXTEDITOR__DEFAULT_TAB_SIZE 4
+
+//! The widest an indent made of blanks may be, which is what a tab size is clamped to for that purpose
+#define FUI_TEXTEDITOR__MAX_INDENT_BLANKS 32
+
+//! How much indentation a new line may inherit. Deeper than this and the rest is simply not carried over
+#define FUI_TEXTEDITOR__MAX_AUTO_INDENT_BYTES 256
+
+//! The longest a line break written into the document can be, which is a carriage return and a line feed
+#define FUI_TEXTEDITOR__MAX_LINE_BREAK_BYTES 2
 
 //! How many digits the gutter is wide even for a short document, so its left edge is a straight one
 #define FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS 3
@@ -2929,6 +3802,8 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.metrics.caretWidth = fuiEditor__ResolveLength(editor->config.metrics.caretWidth, FUI_TEXTEDITOR__DEFAULT_CARET_WIDTH);
 	resolved.metrics.tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
 	resolved.metrics.gutterMinDigits = fuiEditor__ResolveCount(editor->config.metrics.gutterMinDigits, FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS);
+
+	resolved.limits.undoMemoryBytes = fuiEditor__ResolveCount(editor->config.limits.undoMemoryBytes, (int32_t)FUI_TEXTEDITOR_UNDO_MEMORY_BYTES);
 
 	editor->resolvedConfig = resolved;
 	editor->resolvedTheme = *theme;
@@ -3666,6 +4541,10 @@ static void fuiEditor__MoveCaretTo(fuiEditor *editor, const int32_t offset, cons
 		editor->hasDesiredDistance = false;
 	}
 	editor->caretBlinkTime = 0.0f;
+
+	// Typing on somewhere ELSE is a second thought, not the same one - so the run of typing that the newest
+	// record was still collecting ends here.
+	editor->undo.mayCoalesce = false;
 }
 
 fui_api void fuiEditorSetCaretOffset(fuiEditor *editor, const int32_t offset, const bool extendSelection) {
@@ -3755,14 +4634,6 @@ fui_api void fuiEditorSetCaretLine(fuiEditor *editor, const int32_t documentLine
 	reports the wrong lines from that point on - which is the kind of wrong that is found weeks later.
 */
 
-//! Whether a USER may write into this editor. fuiEditorInsert and fuiEditorErase stay open either way
-fui_inline bool fuiEditor__CanWrite(const fuiEditor *editor) {
-	if(editor == fui_null || !editor->isInitialized) {
-		return(false);
-	}
-	return(!editor->config.toggles.isReadOnly);
-}
-
 /*
 	How many bytes overwrite mode would eat to make room for that many codepoints.
 
@@ -3802,6 +4673,10 @@ fui_api void fuiEditorClearModified(fuiEditor *editor) {
 		return;
 	}
 	editor->isModified = false;
+
+	// Where in the history the document was saved, so that undoing back to exactly here reports it as
+	// unmodified again rather than as changed for the rest of the session.
+	editor->savedUndoCursor = editor->undo.undoCursor;
 }
 
 fui_api bool fuiEditorIsOverwriting(const fuiEditor *editor) {
@@ -3828,7 +4703,12 @@ fui_api bool fuiEditorDeleteSelection(fuiEditor *editor) {
 	if(selectionLength <= 0) {
 		return(false);
 	}
-	return(fuiEditorErase(editor, selectionStart, selectionLength));
+	bool didErase = fuiEditorErase(editor, selectionStart, selectionLength);
+
+	// Wiping a whole selection out is a step of its own. Letting the next backspace join it would take
+	// both back on one ctrl+z, which is not what either of the two presses meant.
+	editor->undo.mayCoalesce = false;
+	return(didErase);
 }
 
 fui_api bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const int32_t textLength) {
@@ -3845,12 +4725,21 @@ fui_api bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const i
 		return(false);
 	}
 
+	const char *foundLineBreak = (const char *)FUI_TEXTEDITOR_MEMCHR(text, '\n', (size_t)insertedLength);
+	bool bringsALineBreak = (foundLineBreak != fui_null);
+
+	// Replacing something takes TWO changes to say, and one ctrl+z has to take both of them back. Plain
+	// typing writes once and is deliberately left ungrouped, because that is what a run of typing needs in
+	// order to collect into a single step at all.
+	bool replacesSomething = fuiEditorHasSelection(editor) || (editor->isOverwriting && !bringsALineBreak);
+	if(replacesSomething) {
+		fuiEditorBeginUndoGroup(editor);
+	}
+
 	// The selection goes first, always. Doing it the other way round would write into a range that is
 	// about to be erased, and the erase would take the new text with it.
 	(void)fuiEditorDeleteSelection(editor);
 
-	const char *foundLineBreak = (const char *)FUI_TEXTEDITOR_MEMCHR(text, '\n', (size_t)insertedLength);
-	bool bringsALineBreak = (foundLineBreak != fui_null);
 	if(editor->isOverwriting && !bringsALineBreak) {
 		int32_t codepointCount = fuiEditor__CountCodepoints(text, insertedLength);
 		int32_t overwrittenByteCount = fuiEditor__OverwrittenByteCount(editor, codepointCount);
@@ -3860,7 +4749,28 @@ fui_api bool fuiEditorInsertAtCaret(fuiEditor *editor, const char *text, const i
 	}
 
 	int32_t caretOffset = editor->caretOffset;
-	return(fuiEditorInsert(editor, caretOffset, text, insertedLength));
+	bool didInsert = fuiEditorInsert(editor, caretOffset, text, insertedLength);
+	if(replacesSomething) {
+		fuiEditorEndUndoGroup(editor);
+	}
+	return(didInsert);
+}
+
+/*
+	What a break INSIDE this document is written as.
+
+	Not fuiEditorEolGetBytes: that answers a lone carriage return for a classic mac document, and a LINE
+	FEED and nothing else ends a line in the document model - inserting a carriage return would make no new
+	line at all. So a mixed or classic mac document gets a line feed here, and normalising the rest of it
+	is a later iteration's job.
+*/
+static const char *fuiEditor__LineBreakBytes(const fuiEditor *editor, int32_t *outLength) {
+	if(editor->eol == fuiEditorEol_CrLf) {
+		*outLength = 2;
+		return("\r\n");
+	}
+	*outLength = 1;
+	return("\n");
 }
 
 fui_api bool fuiEditorInsertLineBreak(fuiEditor *editor) {
@@ -3868,16 +4778,41 @@ fui_api bool fuiEditorInsertLineBreak(fuiEditor *editor) {
 		return(false);
 	}
 
-	// A LINE FEED and nothing else ends a line in here, so a break is written as one - with the carriage
-	// return in front of it when that is what the file arrived with. A document written in lone carriage
-	// returns has no lines to speak of yet, and normalising those is a later iteration's job.
-	const char *breakBytes = "\n";
-	int32_t breakLength = 1;
-	if(editor->eol == fuiEditorEol_CrLf) {
-		breakBytes = "\r\n";
-		breakLength = 2;
+	int32_t breakLength = 0;
+	const char *breakBytes = fuiEditor__LineBreakBytes(editor, &breakLength);
+	if(!editor->config.toggles.autoIndent) {
+		return(fuiEditorInsertAtCaret(editor, breakBytes, breakLength));
 	}
-	return(fuiEditorInsertAtCaret(editor, breakBytes, breakLength));
+
+	/*
+		The blanks the old line started with, so a block of code stays where it was put.
+
+		Measured from the line the SELECTION starts on, because that is the line the caret ends up on once
+		fuiEditorInsertAtCaret has wiped the selection out. And only up to that point: splitting a line
+		inside its own indentation must not hand the new line more than the caret had behind it.
+	*/
+	int32_t indentUntil = fuiEditorGetSelectionStart(editor);
+	int32_t indentLine = fuiEditorGetLineOfOffset(editor, indentUntil);
+	int32_t indentStart = fuiEditorGetLineStart(editor, indentLine);
+	int32_t indentEnd = indentStart;
+	while(indentEnd < indentUntil) {
+		char byteThere = fuiEditorGetByte(editor, indentEnd);
+		bool isABlank = (byteThere == ' ') || (byteThere == '\t');
+		if(!isABlank) {
+			break;
+		}
+		indentEnd += 1;
+	}
+	int32_t indentLength = fuiEditor__MinI32(indentEnd - indentStart, FUI_TEXTEDITOR__MAX_AUTO_INDENT_BYTES);
+
+	// The break and what follows it go in as ONE insert, so that a single backspace does not leave the
+	// caret sitting on a line whose indentation has half gone.
+	char breakAndIndent[FUI_TEXTEDITOR__MAX_LINE_BREAK_BYTES + FUI_TEXTEDITOR__MAX_AUTO_INDENT_BYTES];
+	FUI_TEXTEDITOR_MEMCPY(breakAndIndent, breakBytes, (size_t)breakLength);
+	if(indentLength > 0) {
+		fuiEditor__CopyRangeRaw(editor, indentStart, indentLength, &breakAndIndent[breakLength]);
+	}
+	return(fuiEditorInsertAtCaret(editor, breakAndIndent, breakLength + indentLength));
 }
 
 fui_api bool fuiEditorDeleteBackward(fuiEditor *editor) {
@@ -3955,7 +4890,360 @@ fui_api bool fuiEditorDeleteLine(fuiEditor *editor, const int32_t documentLine) 
 	if(erasedLength <= 0) {
 		return(false);
 	}
-	return(fuiEditorErase(editor, eraseStart, erasedLength));
+
+	// A group of one, which is what makes a second ctrl+d a second step rather than more of the first.
+	fuiEditorBeginUndoGroup(editor);
+	bool didErase = fuiEditorErase(editor, eraseStart, erasedLength);
+	fuiEditorEndUndoGroup(editor);
+	return(didErase);
+}
+
+// ----------------------------------------------------------------------------
+// > Block operations
+// ----------------------------------------------------------------------------
+
+/*
+	Which lines an operation on a BLOCK acts on.
+
+	The caret's line when nothing is highlighted, and every line the selection touches when something is.
+	A selection that ends exactly where a line BEGINS does not reach that line: it stops at the break in
+	front of it, and indenting the line below would be one line more than was ever highlighted.
+*/
+static void fuiEditor__BlockLineRange(const fuiEditor *editor, int32_t *outFirstLine, int32_t *outLastLine) {
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t firstLine = fuiEditorGetLineOfOffset(editor, selectionStart);
+	int32_t lastLine = fuiEditorGetLineOfOffset(editor, selectionEnd);
+	if(lastLine > firstLine) {
+		int32_t lastLineStart = fuiEditorGetLineStart(editor, lastLine);
+		if(selectionEnd == lastLineStart) {
+			lastLine -= 1;
+		}
+	}
+	*outFirstLine = firstLine;
+	*outLastLine = lastLine;
+}
+
+//! One indent, as the caller wants it spelled - a tab character, or that many blanks
+static int32_t fuiEditor__BuildIndent(const fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
+	if(!editor->config.toggles.usesSpacesForIndent) {
+		destination[0] = '\t';
+		return(1);
+	}
+	int32_t tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
+	int32_t blankCount = fuiEditor__ClampI32(tabSize, 1, fuiEditor__MinI32(destinationCapacity, FUI_TEXTEDITOR__MAX_INDENT_BLANKS));
+	for(int32_t blankIndex = 0; blankIndex < blankCount; ++blankIndex) {
+		destination[blankIndex] = ' ';
+	}
+	return(blankCount);
+}
+
+//! How many bytes one unindent takes off the front of a line: a tab, or the blanks up to one tab stop
+static int32_t fuiEditor__UnindentByteCount(const fuiEditor *editor, const int32_t documentLine) {
+	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+	if(lineStart >= lineEnd) {
+		return(0);
+	}
+
+	char firstByte = fuiEditorGetByte(editor, lineStart);
+	if(firstByte == '\t') {
+		return(1);
+	}
+
+	int32_t tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
+	int32_t blankCount = 0;
+	while(blankCount < tabSize && (lineStart + blankCount) < lineEnd) {
+		char byteThere = fuiEditorGetByte(editor, lineStart + blankCount);
+		if(byteThere != ' ') {
+			break;
+		}
+		blankCount += 1;
+	}
+	return(blankCount);
+}
+
+fui_api bool fuiEditorIndentSelection(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	int32_t firstLine = 0;
+	int32_t lastLine = 0;
+	fuiEditor__BlockLineRange(editor, &firstLine, &lastLine);
+
+	char indentText[FUI_TEXTEDITOR__MAX_INDENT_BLANKS];
+	int32_t indentLength = fuiEditor__BuildIndent(editor, indentText, (int32_t)sizeof(indentText));
+
+	// One line and nothing else is not a block, and the tab key on it simply types an indent - which is
+	// what it does in every editor there is, and what makes tab usable at all while writing a line.
+	bool isABlock = (lastLine > firstLine);
+	if(!isABlock) {
+		return(fuiEditorInsertAtCaret(editor, indentText, indentLength));
+	}
+
+	fuiEditorBeginUndoGroup(editor);
+	bool didWriteAnything = false;
+	for(int32_t documentLine = firstLine; documentLine <= lastLine; ++documentLine) {
+		// A line with nothing on it is left alone. An indent there is trailing whitespace and nothing else,
+		// and it is not what anybody meant by moving a block sideways.
+		int32_t lineLength = fuiEditorGetLineLength(editor, documentLine);
+		if(lineLength <= 0) {
+			continue;
+		}
+		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+		if(fuiEditorInsert(editor, lineStart, indentText, indentLength)) {
+			didWriteAnything = true;
+		}
+	}
+	fuiEditorEndUndoGroup(editor);
+
+	// The block stays highlighted, over whole lines, so that tab can be pressed again.
+	int32_t blockStart = fuiEditorGetLineStart(editor, firstLine);
+	int32_t blockEnd = fuiEditorGetLineEnd(editor, lastLine);
+	fuiEditorSetSelection(editor, blockStart, blockEnd);
+	return(didWriteAnything);
+}
+
+fui_api bool fuiEditorUnindentSelection(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	int32_t firstLine = 0;
+	int32_t lastLine = 0;
+	fuiEditor__BlockLineRange(editor, &firstLine, &lastLine);
+
+	fuiEditorBeginUndoGroup(editor);
+	bool didRemoveAnything = false;
+	for(int32_t documentLine = firstLine; documentLine <= lastLine; ++documentLine) {
+		int32_t unindentLength = fuiEditor__UnindentByteCount(editor, documentLine);
+		if(unindentLength <= 0) {
+			continue;
+		}
+		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+		if(fuiEditorErase(editor, lineStart, unindentLength)) {
+			didRemoveAnything = true;
+		}
+	}
+	fuiEditorEndUndoGroup(editor);
+
+	bool isABlock = (lastLine > firstLine);
+	if(isABlock) {
+		int32_t blockStart = fuiEditorGetLineStart(editor, firstLine);
+		int32_t blockEnd = fuiEditorGetLineEnd(editor, lastLine);
+		fuiEditorSetSelection(editor, blockStart, blockEnd);
+	}
+	return(didRemoveAnything);
+}
+
+fui_api bool fuiEditorDuplicate(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+
+	if(fuiEditorHasSelection(editor)) {
+		int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+		int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+		int32_t selectionLength = selectionEnd - selectionStart;
+
+		char *copiedText = (char *)fuiEditor__Allocate(editor, selectionLength);
+		if(copiedText == fui_null) {
+			return(false);
+		}
+		fuiEditor__CopyRangeRaw(editor, selectionStart, selectionLength, copiedText);
+
+		fuiEditorBeginUndoGroup(editor);
+		bool didInsert = fuiEditorInsert(editor, selectionEnd, copiedText, selectionLength);
+		fuiEditorEndUndoGroup(editor);
+		fuiEditor__Release(editor, copiedText);
+
+		// The COPY is what stays highlighted, so that duplicating twice gives two copies rather than the
+		// same one over and over.
+		if(didInsert) {
+			fuiEditorSetSelection(editor, selectionEnd, selectionEnd + selectionLength);
+		}
+		return(didInsert);
+	}
+
+	int32_t documentLine = fuiEditorGetCaretLine(editor);
+	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	/*
+		The line goes in behind itself, with an ending between the two of them.
+
+		A line that is not the last one already carries its own ending, so the copy is simply the whole
+		line region written again at the start of the line below. The LAST line has no ending, so one is
+		put in front of the copy instead - and the document grows by exactly one line either way.
+	*/
+	bool isTheLastLine = (documentLine >= (lineCount - 1));
+	int32_t copyStart = lineStart;
+	int32_t copyLength = 0;
+	int32_t insertOffset = 0;
+	const char *leadingBreak = "";
+	int32_t leadingBreakLength = 0;
+	if(isTheLastLine) {
+		copyLength = textLength - lineStart;
+		insertOffset = textLength;
+		leadingBreak = fuiEditor__LineBreakBytes(editor, &leadingBreakLength);
+	} else {
+		int32_t nextLineStart = fuiEditorGetLineStart(editor, documentLine + 1);
+		copyLength = nextLineStart - lineStart;
+		insertOffset = nextLineStart;
+	}
+
+	int32_t writtenLength = leadingBreakLength + copyLength;
+	if(writtenLength <= 0) {
+		return(false);
+	}
+	char *writtenText = (char *)fuiEditor__Allocate(editor, writtenLength);
+	if(writtenText == fui_null) {
+		return(false);
+	}
+	if(leadingBreakLength > 0) {
+		FUI_TEXTEDITOR_MEMCPY(writtenText, leadingBreak, (size_t)leadingBreakLength);
+	}
+	if(copyLength > 0) {
+		fuiEditor__CopyRangeRaw(editor, copyStart, copyLength, &writtenText[leadingBreakLength]);
+	}
+
+	int32_t caretBeforeTheCopy = editor->caretOffset;
+	fuiEditorBeginUndoGroup(editor);
+	bool didInsert = fuiEditorInsert(editor, insertOffset, writtenText, writtenLength);
+	fuiEditorEndUndoGroup(editor);
+	fuiEditor__Release(editor, writtenText);
+
+	// The caret comes along to the copy, at the column it was standing in. Everything written sits behind
+	// it, so the distance it has to move is exactly what was written.
+	if(didInsert) {
+		int32_t caretOnTheCopy = caretBeforeTheCopy + writtenLength;
+		fuiEditorSetCaretOffset(editor, caretOnTheCopy, false);
+	}
+	return(didInsert);
+}
+
+/*
+	Swaps two runs of lines that sit right on top of each other.
+
+	Both moving up and moving down are this, seen from different sides: moving a block up swaps it with the
+	single line above it, and moving it down swaps the single line below it with the block. So there is one
+	piece of code here and not two, and the ending case that is easy to get wrong is only got wrong once.
+
+	That case: the lower run may be the LAST thing in the document and end without a break. Written above
+	the upper run it needs one, and the upper run - now last - has to give up the one it had. Otherwise
+	moving a line up and down again at the end of a file either grows a break or loses one.
+*/
+static bool fuiEditor__SwapAdjacentLineRuns(fuiEditor *editor, const int32_t upperFirstLine, const int32_t upperLastLine, const int32_t lowerLastLine) {
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t upperStart = fuiEditorGetLineStart(editor, upperFirstLine);
+	int32_t upperContentEnd = fuiEditorGetLineEnd(editor, upperLastLine);
+	int32_t lowerStart = fuiEditorGetLineStart(editor, upperLastLine + 1);
+	int32_t lowerEnd = fuiEditorGetTextLength(editor);
+	bool lowerRunCarriesItsOwnEnding = ((lowerLastLine + 1) < lineCount);
+	if(lowerRunCarriesItsOwnEnding) {
+		lowerEnd = fuiEditorGetLineStart(editor, lowerLastLine + 1);
+	}
+
+	int32_t upperContentLength = upperContentEnd - upperStart;
+	int32_t upperEndingLength = lowerStart - upperContentEnd;
+	int32_t lowerLength = lowerEnd - lowerStart;
+	int32_t swappedLength = lowerLength + upperEndingLength + upperContentLength;
+	if(swappedLength <= 0) {
+		return(false);
+	}
+
+	char *swappedText = (char *)fuiEditor__Allocate(editor, swappedLength);
+	if(swappedText == fui_null) {
+		return(false);
+	}
+
+	int32_t writeOffset = 0;
+	fuiEditor__CopyRangeRaw(editor, lowerStart, lowerLength, &swappedText[writeOffset]);
+	writeOffset += lowerLength;
+	if(lowerRunCarriesItsOwnEnding) {
+		fuiEditor__CopyRangeRaw(editor, upperStart, upperContentLength, &swappedText[writeOffset]);
+		writeOffset += upperContentLength;
+		fuiEditor__CopyRangeRaw(editor, upperContentEnd, upperEndingLength, &swappedText[writeOffset]);
+	} else {
+		fuiEditor__CopyRangeRaw(editor, upperContentEnd, upperEndingLength, &swappedText[writeOffset]);
+		writeOffset += upperEndingLength;
+		fuiEditor__CopyRangeRaw(editor, upperStart, upperContentLength, &swappedText[writeOffset]);
+	}
+
+	fuiEditorBeginUndoGroup(editor);
+	bool didErase = fuiEditorErase(editor, upperStart, lowerEnd - upperStart);
+	bool didInsert = fuiEditorInsert(editor, upperStart, swappedText, swappedLength);
+	fuiEditorEndUndoGroup(editor);
+	fuiEditor__Release(editor, swappedText);
+	return(didErase && didInsert);
+}
+
+//! An offset put back together out of the line it was on and how far into that line it stood
+static int32_t fuiEditor__OffsetOfLineAndColumn(const fuiEditor *editor, const int32_t documentLine, const int32_t columnBytes) {
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t clampedLine = fuiEditor__ClampI32(documentLine, 0, lineCount - 1);
+	int32_t lineStart = fuiEditorGetLineStart(editor, clampedLine);
+	int32_t lineLength = fuiEditorGetLineLength(editor, clampedLine);
+	return(lineStart + fuiEditor__MinI32(columnBytes, lineLength));
+}
+
+/*
+	Moving lines carries the caret and the selection with them, and it does that over LINE AND COLUMN
+	rather than over a byte distance. The bytes around the two runs are rearranged, so a distance measured
+	before the move means nothing after it - but the line a position was on moves by exactly one, and how
+	far into that line it stood does not change at all.
+*/
+static bool fuiEditor__MoveLineBlock(fuiEditor *editor, const bool movingUp) {
+	int32_t firstLine = 0;
+	int32_t lastLine = 0;
+	fuiEditor__BlockLineRange(editor, &firstLine, &lastLine);
+
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	if(movingUp && firstLine <= 0) {
+		return(false);
+	}
+	if(!movingUp && (lastLine + 1) >= lineCount) {
+		return(false);
+	}
+
+	int32_t caretLine = fuiEditorGetLineOfOffset(editor, editor->caretOffset);
+	int32_t caretColumn = editor->caretOffset - fuiEditorGetLineStart(editor, caretLine);
+	int32_t anchorLine = fuiEditorGetLineOfOffset(editor, editor->selectionAnchor);
+	int32_t anchorColumn = editor->selectionAnchor - fuiEditorGetLineStart(editor, anchorLine);
+
+	bool didSwap = false;
+	if(movingUp) {
+		didSwap = fuiEditor__SwapAdjacentLineRuns(editor, firstLine - 1, firstLine - 1, lastLine);
+	} else {
+		didSwap = fuiEditor__SwapAdjacentLineRuns(editor, firstLine, lastLine, lastLine + 1);
+	}
+	if(!didSwap) {
+		return(false);
+	}
+
+	int32_t lineDelta = movingUp ? -1 : 1;
+	int32_t movedCaret = fuiEditor__OffsetOfLineAndColumn(editor, caretLine + lineDelta, caretColumn);
+	int32_t movedAnchor = fuiEditor__OffsetOfLineAndColumn(editor, anchorLine + lineDelta, anchorColumn);
+	fuiEditorSetSelection(editor, movedAnchor, movedCaret);
+	return(true);
+}
+
+fui_api bool fuiEditorMoveLinesUp(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	const bool towardsTheTop = true;
+	return(fuiEditor__MoveLineBlock(editor, towardsTheTop));
+}
+
+fui_api bool fuiEditorMoveLinesDown(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	const bool towardsTheTop = false;
+	return(fuiEditor__MoveLineBlock(editor, towardsTheTop));
 }
 
 // ----------------------------------------------------------------------------
@@ -4443,9 +5731,10 @@ static bool fuiEditor__TypeWhatWasTyped(fuiContext *context, fuiEditor *editor) 
 }
 
 //! Every key the editor answers to while it has the keyboard
-static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t linesPerPage, bool *outDidCopy) {
+static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t linesPerPage, const bool mayAnswerTab, bool *outDidCopy) {
 	bool wantsToExtend = fuiIsShiftDown(context);
 	bool wantsToJumpByWord = fuiIsControlDown(context);
+	bool wantsToMoveLines = fuiIsAltDown(context);
 	int32_t textLength = fuiEditorGetTextLength(editor);
 
 	if(fuiKeyRepeat(context, fuiKey_Left)) {
@@ -4476,11 +5765,13 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
 	}
 
-	if(fuiKeyRepeat(context, fuiKey_Up)) {
+	// Alt turns both of these from moving the CARET into moving the LINES, so the caret branch has to stand
+	// aside for it - answering both would move the caret onto a line that just moved out from under it.
+	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Up)) {
 		const int32_t oneLineUp = -1;
 		fuiEditor__MoveCaretByLines(context, editor, render, oneLineUp, wantsToExtend);
 	}
-	if(fuiKeyRepeat(context, fuiKey_Down)) {
+	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Down)) {
 		const int32_t oneLineDown = 1;
 		fuiEditor__MoveCaretByLines(context, editor, render, oneLineDown, wantsToExtend);
 	}
@@ -4587,9 +5878,58 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		editor->caretBlinkTime = 0.0f;
 	}
 	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_D)) {
-		int32_t caretLine = fuiEditorGetCaretLine(editor);
-		(void)fuiEditorDeleteLine(editor, caretLine);
+		if(wantsToExtend) {
+			(void)fuiEditorDuplicate(editor);
+		} else {
+			int32_t caretLine = fuiEditorGetCaretLine(editor);
+			(void)fuiEditorDeleteLine(editor, caretLine);
+		}
 		editor->caretBlinkTime = 0.0f;
+	}
+
+	/*
+		Undo and redo, in all three spellings they have.
+
+		Ctrl+z goes back, ctrl+y and ctrl+shift+z come forward again - the first is what windows has always
+		used, the second what everything that started on unix does. Repeats rather than edges, because
+		holding ctrl+z down to walk a long way back is the whole point of the key.
+	*/
+	if(wantsToJumpByWord && fuiKeyRepeat(context, fuiKey_Z)) {
+		if(wantsToExtend) {
+			(void)fuiEditorRedo(editor);
+		} else {
+			(void)fuiEditorUndo(editor);
+		}
+	}
+	if(wantsToJumpByWord && fuiKeyRepeat(context, fuiKey_Y)) {
+		(void)fuiEditorRedo(editor);
+	}
+
+	if(wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Up)) {
+		(void)fuiEditorMoveLinesUp(editor);
+	}
+	if(wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Down)) {
+		(void)fuiEditorMoveLinesDown(editor);
+	}
+
+	/*
+		Tab, which belongs to the FOCUS CHAIN until an editor that already had the keyboard takes it.
+
+		Tabbing INTO an editor has to put the caret in it and nothing else, and the keystroke that does that
+		is the same keystroke as the one that indents - so what tells them apart is who held the focus when
+		this build started, which is what mayAnswerTab carries in.
+
+		Spent afterwards, so that no field built after this one moves the focus on the same press. A
+		read-only editor never gets here at all, and tab walks past it the way it always did.
+	*/
+	if(mayAnswerTab && fuiKeyRepeat(context, fuiKey_Tab)) {
+		if(wantsToExtend) {
+			(void)fuiEditorUnindentSelection(editor);
+		} else {
+			(void)fuiEditorIndentSelection(editor);
+		}
+		editor->caretBlinkTime = 0.0f;
+		fuiConsumeKey(context, fuiKey_Tab);
 	}
 
 	// Last, so that every key which MEANS something has already had its turn at the characters it would
@@ -4878,6 +6218,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	fuiEditor__Layout layout = fuiEditor__MakeLayout(rect, config, gutterWidth, contentHeight, contentWidth, theme->widgetBorderThickness);
 
 	fuiId editorId = fuiGetId(context, id);
+
+	// Asked BEFORE the editor is put into the tab chain, because that call is what may hand it the focus -
+	// and an editor that tab just moved the keyboard onto must not also answer that same tab with an indent.
+	fuiId focusedBeforeTheTabChain = fuiGetFocusedId(context);
+	bool alreadyHadTheKeyboard = (focusedBeforeTheTabChain == editorId);
+
 	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
 	if(config->toggles.isInteractive) {
 		fuiRegisterFocusable(context, editorId);
@@ -4921,7 +6267,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		if(result.isFocused) {
 			int32_t linesPerPage = (int32_t)(layout.bodyRect.h / render.lineHeight);
 			linesPerPage = fuiEditor__MaxI32(linesPerPage, 1);
-			fuiEditor__HandleKeyboard(context, editor, &render, linesPerPage, &result.didCopy);
+			fuiEditor__HandleKeyboard(context, editor, &render, linesPerPage, alreadyHadTheKeyboard, &result.didCopy);
 		}
 	}
 
