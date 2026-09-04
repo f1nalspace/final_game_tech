@@ -22,8 +22,9 @@ colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
 Status: under construction. The view is there and can be read, scrolled, selected from, copied out
-of, coloured by a lexer, TYPED into and TAKEN BACK - undo, redo, indenting, duplicating and moving
-lines are in; find and replace are not yet. See the changelog for what is.
+of, coloured by a lexer, TYPED into, TAKEN BACK and SEARCHED - undo, redo, indenting, duplicating,
+moving lines, find, replace and go to line are in; other encodings and word wrap are not yet. See
+the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -40,6 +41,9 @@ lines are in; find and replace are not yet. See the changelog for what is.
   ONE step; a caller who edits more than once can make their own step with fuiEditorBeginUndoGroup().
 - Hear about every change through fuiEditorConfig.callbacks.onChange, and ask fuiEditorIsModified() whether
   anything was written at all since the document was filled or fuiEditorClearModified() was last called.
+- Search it with ctrl+f, replace with ctrl+h, go to a line with ctrl+g, and step through the hits with f3 -
+  or drive the same things from code with fuiEditorSetSearchText(), fuiEditorFindNext() and
+  fuiEditorReplaceAll(). fuiEditorFind() is the primitive underneath, and it keeps nothing.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
@@ -91,6 +95,8 @@ FUI_TEXTEDITOR_MIN_GAP_SLOTS    How many line slots an insert leaves behind for 
 FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME  How many lines one build may colour before leaving the rest for the next (default 50000).
 FUI_TEXTEDITOR_MAX_PASTE_BYTES  How many bytes one paste may bring in (default 65536).
 FUI_TEXTEDITOR_UNDO_MEMORY_BYTES  How much memory the undo history may hold before its oldest steps are dropped (default 4 MiB).
+FUI_TEXTEDITOR_MAX_FIND_BYTES   How long the text looked for and the text put in its place may be (default 256).
+FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES  How many characters the go to line field holds (default 16).
 
 -------------------------------------------------------------------------------
 	License
@@ -123,7 +129,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.6.0
+	@version v0.7.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -137,6 +143,60 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.7.0:
+	It can be searched now. The document has been readable since iteration 1 and writable since iteration 4;
+	this is the iteration that lets somebody ASK it something - and "replace all" is the first operation in
+	here that writes thousands of times and still has to be one press of ctrl+z.
+
+	- New: FIND, as a primitive that keeps nothing - fuiEditorFind and fuiEditorCountMatches, over a needle
+	  of bytes, forwards or backwards, with or without case, whole words only or not, going round the end of
+	  the document or stopping at it. The search reads THROUGH the hole in the buffer rather than around it,
+	  and only the sweep for a candidate's first byte runs inside one unbroken run of it.
+	- New: Matches never OVERLAP. Looking for "aa" in "aaaa" finds two, not three - which is what grep -o
+	  counts, and what the count in the bar has to agree with for it to mean anything. Find-next walks the
+	  same matches the count counted, from the far end of the selection rather than one byte past its start.
+	- New: A FIND BAR inside the widget, on ctrl+f, with the row that replaces on ctrl+h or ctrl+r and a go
+	  to line field on ctrl+g. Escape closes it and hands the keyboard back. It floats over the top of the
+	  text rather than taking a strip off it - a document that jumped down two lines the moment it was
+	  searched would be worse than one whose first two lines are covered - and everything that brings the
+	  caret into view is told how tall the bar is, so the caret is never left underneath it.
+	- New: F3 and shift+f3 step through the hits with the bar shut, because what is being looked for is kept
+	  when it closes. Enter in the find field finds the next one and does NOT give the focus up, which is
+	  what a plain enter in a single line field otherwise does.
+	- New: Ctrl+f takes what it looks for FROM the selection when the document had the keyboard, and leaves
+	  the field alone when the field did - so a second press does not overwrite what is standing in it.
+	- New: Every match on screen gets a wash of its own - fuiEditorConfig.colors.findHighlightBackground -
+	  worked out per VISIBLE line rather than kept as a list. A list would be one entry per hit in the whole
+	  document, and this widget exists precisely so that nothing is ever counted per document line. The
+	  current match carries the selection on top of that wash, so the one being stood on reads apart.
+	- New: fuiEditorGetMatchCount and fuiEditorGetCurrentMatchIndex, which give the bar its "n of m". Both
+	  come out of ONE walk, kept against the document version, the search and where the selection stands -
+	  so a bar asking every frame walks the document only when one of those three moved.
+	- New: fuiEditorReplaceCurrent and fuiEditorReplaceAll. Replace all is ONE undo step however many
+	  thousand it makes, and a replacement that CONTAINS what was looked for is stepped over rather than
+	  found again, so replacing "a" with "aa" ends rather than running forever. A press of replace on a
+	  selection that is not a match only FINDS, which is what makes the button safe to press twice.
+	- New: fuiEditorGoToLine, which moves the caret AND brings the line well into view. A jump across the
+	  document is centred rather than nudged: a line that came to rest flush against the edge it arrived at
+	  has nothing around it to read. A caret that was already on screen is still only nudged, so find-next
+	  inside the visible window does not throw the view about.
+	- New: fuiEditorSetSearchText, fuiEditorGetSearchText, fuiEditorSetReplaceText, fuiEditorGetReplaceText,
+	  fuiEditorSetFindFlags, fuiEditorGetFindFlags, fuiEditorFindNext, fuiEditorFindPrevious,
+	  fuiEditorOpenFind, fuiEditorOpenGoToLine, fuiEditorCloseFind and fuiEditorIsFindOpen, so everything
+	  the bar does can be driven from code as well as from the keys.
+	- Fixed: The undo budget could throw away part of the step it was still WRITING. It drops whole steps
+	  from the oldest end and never one redo still needs, but nothing stopped it dropping the open group
+	  itself - and replace all is the first operation that can write enough records in one group to reach
+	  the budget while it is still going. An open group is now off limits to it.
+	- Fixed: fuiEditorAction.didChange and .didMoveCaret are taken at the very END of a build. The bar is
+	  built after everything else so that it takes the cursor from the text underneath it, and its replace
+	  buttons write - read any earlier, a replacement made from the bar was a change nobody was told about,
+	  and the next build compared against the new version and never reported it either.
+	- Changed: Nothing was needed in final_ui.h. The bar is fuiTextInput, fuiButton, fuiCheckbox and
+	  fuiLabel over the public api and nothing else. The one thing that is missing is a way to select a text
+	  field's contents from outside it, which is why ctrl+f puts the caret at the END of the text it seeded
+	  rather than over it.
 
 	# v0.6.0:
 	It can be taken back now. Iteration 4 made the caret a place to write at; this is the iteration that
@@ -407,7 +467,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 6
+#define FUI_TEXTEDITOR_VERSION_MINOR 7
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -457,6 +517,18 @@ fui_api const char *fuiEditorGetVersion(void);
 	//! into a buffer of a size it is TOLD and cannot be asked how much there really is, so a number has to
 	//! be picked before the clipboard is read rather than after
 #	define FUI_TEXTEDITOR_MAX_PASTE_BYTES 65536
+#endif
+
+#if !defined(FUI_TEXTEDITOR_MAX_FIND_BYTES)
+	//! How long the text being looked for and the text put in its place may be, the terminating zero
+	//! included. Fixed rather than allocated because these two are what a fuiTextInput writes into, and a
+	//! text field is handed a buffer and a capacity rather than an allocator
+#	define FUI_TEXTEDITOR_MAX_FIND_BYTES 256
+#endif
+
+#if !defined(FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES)
+	//! How many characters the go to line field holds, which is the digits of an int32 and its sign
+#	define FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES 16
 #endif
 
 #if !defined(FUI_TEXTEDITOR_UNDO_MEMORY_BYTES)
@@ -595,6 +667,9 @@ typedef struct fuiEditorColors {
 	//! The dots, arrows and line ending marks that make whitespace visible. Faint on purpose - they are
 	//! there to be checked, not to be read
 	fuiColor whitespace;
+	//! Wash behind every match of what the find bar is looking for, the current one included - which is
+	//! then drawn over in the selection colour, so the one being stood on reads apart from the rest
+	fuiColor findHighlightBackground;
 	//! Fill behind the editor's own status line
 	fuiColor statusBarBackground;
 	//! Text of the editor's own status line
@@ -854,6 +929,96 @@ typedef struct fuiEditorDecorations {
 
 // ****************************************************************************
 //
+// > Finding
+//
+// ****************************************************************************
+
+/*
+	Everything a search is, in one place: what is being looked for, how it is compared, and how far the
+	answer has already been walked.
+
+	The search is over BYTES rather than over codepoints, and that is not a shortcut - utf-8 has the
+	property that a byte sequence can only ever match at a character boundary, so a byte search over it
+	answers exactly what a codepoint search would. What it does NOT do is fold case above ascii, which
+	would take a unicode table this add-on has no business carrying around.
+
+	Matches never overlap. Looking for "aa" in "aaaa" finds two, not three - which is what grep -o counts,
+	and what the count in the find bar has to agree with for it to mean anything at all.
+*/
+
+/**
+* @enum fuiEditorFindFlags
+* @brief How a search compares, and which way it walks.
+*/
+typedef enum fuiEditorFindFlags {
+	//! Compare without regard to case, walk forwards, and start over at the other end when nothing is left
+	fuiEditorFindFlags_None = 0,
+	//! Upper and lower case are different characters
+	fuiEditorFindFlags_MatchCase = 1 << 0,
+	//! A match only counts when a word character sits on neither side of it
+	fuiEditorFindFlags_WholeWord = 1 << 1,
+	//! Walk towards the start of the document rather than towards its end
+	fuiEditorFindFlags_Backwards = 1 << 2,
+	//! Stop at the end being walked towards rather than starting over at the other one
+	fuiEditorFindFlags_NoWrap = 1 << 3,
+} fuiEditorFindFlags;
+
+/**
+* @struct fuiEditorMatch
+* @brief Where one match sits, and whether there was one at all.
+*/
+typedef struct fuiEditorMatch {
+	//! First byte of the match
+	int32_t startOffset;
+	//! One past its last byte
+	int32_t endOffset;
+	//! Whether anything was found. The two offsets are zero when it was not
+	bool wasFound;
+} fuiEditorMatch;
+
+/**
+* @struct fuiEditorFindState
+* @brief The find bar and what it is looking for.
+* @note Internal. Reached through @ref fuiEditorSetSearchText and its neighbours rather than by hand - the
+*       counts in here are worked out lazily and are stale until something asks for them.
+*/
+typedef struct fuiEditorFindState {
+	//! What is being looked for, zero terminated, as the find field writes it
+	char needle[FUI_TEXTEDITOR_MAX_FIND_BYTES];
+	//! What a replace puts in its place
+	char replacement[FUI_TEXTEDITOR_MAX_FIND_BYTES];
+	//! What the go to line field holds, as digits
+	char lineNumberText[FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES];
+	//! Match case and whole word @ref fuiEditorFindFlags. The direction is asked for per call, not kept
+	uint32_t flags;
+	//! Whether the find bar is showing
+	bool isOpen;
+	//! Whether its second row, the one that replaces, is showing with it
+	bool showsReplace;
+	//! Whether the go to line bar is showing instead of the find bar
+	bool isGoToLineOpen;
+	//! Which of the bar's fields the next build hands the keyboard to, and clears again. Zero for none
+	int32_t fieldWantingTheKeyboard;
+	//! How many matches the whole document holds, worked out lazily
+	int32_t matchCount;
+	//! Which of them the selection stands on, counted from zero, or -1 when it stands on none
+	int32_t currentMatchIndex;
+	//! The document version the two counts above were worked out from
+	int32_t countedVersion;
+	//! The needle they were worked out from, so a changed search is recounted as well as a changed document
+	char countedNeedle[FUI_TEXTEDITOR_MAX_FIND_BYTES];
+	//! And the flags
+	uint32_t countedFlags;
+	//! And where the selection stood, BOTH ends of it, because that is what says which match is the current
+	//! one - and a find that lands on a match starting where the caret already stood moves only the far end
+	int32_t countedSelectionStart;
+	int32_t countedSelectionEnd;
+	//! Whether the counts have ever been worked out at all
+	bool hasCount;
+} fuiEditorFindState;
+
+// ****************************************************************************
+//
 // > Document
 //
 // ****************************************************************************
@@ -1053,6 +1218,12 @@ typedef struct fuiEditor {
 	int32_t dragAnchorEnd;
 	//! Whether the editor is the one holding the press
 	bool isDraggingSelection;
+	//! What the find bar is looking for and how far it has got
+	fuiEditorFindState find;
+	//! Whether the caret is to be brought WELL into view rather than just nudged into it, which is what a
+	//! jump across the document - a find, a go to line - has to do to be followed by the eye
+	bool wantsCaretRevealed;
+
 	//! Which screen line a fuiEditorScrollToLine is waiting to put at the top
 	int32_t pendingScrollScreenLine;
 	//! Whether there is such a request waiting at all
@@ -1655,6 +1826,171 @@ fui_api int32_t fuiEditorGetUndoStepCount(const fuiEditor *editor);
 * @return Returns the number of steps @ref fuiEditorRedo would answer to.
 */
 fui_api int32_t fuiEditorGetRedoStepCount(const fuiEditor *editor);
+
+// ----------------------------------------------------------------------------
+// > Finding and replacing
+// ----------------------------------------------------------------------------
+
+/**
+* @brief Looks for a text in the document, once, keeping nothing.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @param[in] needle The bytes to look for, which do not have to be zero terminated.
+* @param[in] needleLength How many bytes that is, or 0 to measure up to the terminating zero.
+* @param[in] fromOffset Where to start looking. Forwards this is the first offset a match may BEGIN at;
+*            backwards it is the first offset a match must begin BEFORE.
+* @param[in] flags How to compare and which way to walk @ref fuiEditorFindFlags.
+* @return Returns where the match sits @ref fuiEditorMatch, with wasFound false when there was none.
+* @note Unless @ref fuiEditorFindFlags_NoWrap is set, a walk that reaches the end of the document starts
+*       over at the other end, which is what makes a repeated find-next go round rather than stop.
+*/
+fui_api fuiEditorMatch fuiEditorFind(const fuiEditor *editor, const char *needle, const int32_t needleLength, const int32_t fromOffset, const uint32_t flags);
+
+/**
+* @brief Counts every match in the whole document.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @param[in] needle The bytes to look for.
+* @param[in] needleLength How many bytes that is, or 0 to measure up to the terminating zero.
+* @param[in] flags How to compare @ref fuiEditorFindFlags. The direction and wrap flags mean nothing here.
+* @return Returns how many NON-OVERLAPPING matches there are, which is what grep -o counts.
+* @note This walks the whole document. Ask it when the search or the document changed, not once a frame.
+*/
+fui_api int32_t fuiEditorCountMatches(const fuiEditor *editor, const char *needle, const int32_t needleLength, const uint32_t flags);
+
+/**
+* @brief Sets what the editor's own find bar is looking for.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] text The text to look for, or null to look for nothing.
+* @param[in] textLength How many bytes that is, or 0 to measure up to the terminating zero.
+* @note Cut off at @ref FUI_TEXTEDITOR_MAX_FIND_BYTES, terminating zero included.
+*/
+fui_api void fuiEditorSetSearchText(fuiEditor *editor, const char *text, const int32_t textLength);
+
+/**
+* @brief Returns what the find bar is looking for.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero terminated text, which is empty rather than null when nothing is being looked for.
+*/
+fui_api const char *fuiEditorGetSearchText(const fuiEditor *editor);
+
+/**
+* @brief Sets what a replace puts in the place of a match.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] text The replacement, or null for an empty one - which makes a replace a delete.
+* @param[in] textLength How many bytes that is, or 0 to measure up to the terminating zero.
+*/
+fui_api void fuiEditorSetReplaceText(fuiEditor *editor, const char *text, const int32_t textLength);
+
+/**
+* @brief Returns what a replace would put in the place of a match.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero terminated text, empty rather than null when there is none.
+*/
+fui_api const char *fuiEditorGetReplaceText(const fuiEditor *editor);
+
+/**
+* @brief Sets how the find bar compares.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] flags @ref fuiEditorFindFlags_MatchCase and @ref fuiEditorFindFlags_WholeWord. The direction
+*            and wrap flags are asked for per call and are ignored here.
+*/
+fui_api void fuiEditorSetFindFlags(fuiEditor *editor, const uint32_t flags);
+
+/**
+* @brief Returns how the find bar compares.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns the flags @ref fuiEditorFindFlags.
+*/
+fui_api uint32_t fuiEditorGetFindFlags(const fuiEditor *editor);
+
+/**
+* @brief Selects the next match after the selection, going round the end of the document.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when one was found and selected.
+* @note Counted from the END of the selection, so a repeated call walks non-overlapping matches - the same
+*       matches @ref fuiEditorCountMatches counts.
+*/
+fui_api bool fuiEditorFindNext(fuiEditor *editor);
+
+/**
+* @brief Selects the match in front of the selection, going round the start of the document.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when one was found and selected.
+*/
+fui_api bool fuiEditorFindPrevious(fuiEditor *editor);
+
+/**
+* @brief Returns how many matches the whole document holds for what the find bar is looking for.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns the count, and zero when nothing is being looked for.
+* @note Worked out once per document version, search text and selection, and answered from that afterwards
+*       - so a status line asking every frame walks the document only when one of those three moved.
+*/
+fui_api int32_t fuiEditorGetMatchCount(fuiEditor *editor);
+
+/**
+* @brief Returns which match the selection is standing on.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns the zero based index, or -1 when the selection is not exactly a match.
+*/
+fui_api int32_t fuiEditorGetCurrentMatchIndex(fuiEditor *editor);
+
+/**
+* @brief Replaces the selection when it IS a match, and selects the next one either way.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when something was replaced.
+* @note A first press on a selection that is not a match only FINDS - which is what makes it safe to press
+*       twice without looking. Refused outright while @ref fuiEditorToggles.isReadOnly is set.
+*/
+fui_api bool fuiEditorReplaceCurrent(fuiEditor *editor);
+
+/**
+* @brief Replaces every match in the document, as ONE undo step.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @return Returns how many were replaced.
+* @note One step, so one ctrl+z takes the whole of it back. A replacement that CONTAINS what was looked for
+*       is not looked at again, so replacing "a" with "aa" ends rather than running forever.
+*/
+fui_api int32_t fuiEditorReplaceAll(fuiEditor *editor);
+
+/**
+* @brief Opens the editor's find bar.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] withReplace Set to true to show the row that replaces as well as the one that finds.
+* @note The bar is drawn by @ref fuiTextEditor over the top of the text, and the next build hands the
+*       keyboard to its field.
+*/
+fui_api void fuiEditorOpenFind(fuiEditor *editor, const bool withReplace);
+
+/**
+* @brief Opens the editor's go to line bar, which is the find bar's place taken by one field of digits.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+*/
+fui_api void fuiEditorOpenGoToLine(fuiEditor *editor);
+
+/**
+* @brief Closes whichever bar is open, and gives nothing back to the caller.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @note What is being looked for is KEPT, so opening the bar again finds the same thing. The keyboard goes
+*       back to the editor on the next build.
+*/
+fui_api void fuiEditorCloseFind(fuiEditor *editor);
+
+/**
+* @brief Returns whether either of the two bars is showing.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true while one of them is open.
+*/
+fui_api bool fuiEditorIsFindOpen(const fuiEditor *editor);
+
+/**
+* @brief Puts the caret at the start of a line and brings that line well into view.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] documentLine The zero based document line, clamped to what there is.
+* @return Returns true when the line was there to go to, which it is for any document at all.
+* @note Unlike @ref fuiEditorScrollToLine this moves the CARET, and the next build puts the line in the
+*       middle of the view rather than at the top of it when it is a long way from where the view stands.
+*/
+fui_api bool fuiEditorGoToLine(fuiEditor *editor, const int32_t documentLine);
 
 /**
 * @brief Scrolls a document line to the top of the view.
@@ -2940,6 +3276,15 @@ static bool fuiEditor__UndoDropOldestStep(fuiEditor *editor) {
 	}
 
 	int32_t oldestGroupId = stack->records[0].groupId;
+
+	// Never the step that is still being WRITTEN. A group that is open is not finished, so its records are
+	// not a whole step yet - and "replace all" over a big file is the first operation that can write enough
+	// records in one group to reach the budget while it is still going.
+	bool oldestIsTheOpenGroup = (stack->openGroupDepth > 0) && (oldestGroupId == stack->openGroupId);
+	if(oldestIsTheOpenGroup) {
+		return(false);
+	}
+
 	int32_t droppedCount = 1;
 	while(droppedCount < stack->recordCount && stack->records[droppedCount].groupId == oldestGroupId) {
 		droppedCount += 1;
@@ -3679,6 +4024,10 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 //! How solid the wash over the current line is when the caller named no color
 #define FUI_TEXTEDITOR__CURRENT_LINE_ALPHA 0.30f
 
+//! How solid the wash behind a match is when the caller named no color. It lies UNDER the selection, so
+//! it has to read on its own without drowning the one match that carries the selection on top of it
+#define FUI_TEXTEDITOR__FIND_HIGHLIGHT_ALPHA 0.30f
+
 //! What a digit is assumed to be wide, as a fraction of the font height, before one has been measured
 #define FUI_TEXTEDITOR__ASSUMED_DIGIT_WIDTH_RATIO 0.6f
 
@@ -3687,6 +4036,15 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 
 //! How long a line number may get, which is the digits of an int32 and its sign
 #define FUI_TEXTEDITOR__MAX_NUMBER_TEXT 16
+
+//! Which of the find bar's fields a call has asked for the keyboard, which the next build hands over
+#define FUI_TEXTEDITOR__FIELD_NONE 0
+//! The field that says what to look for
+#define FUI_TEXTEDITOR__FIELD_FIND 1
+//! The field that says what to put in its place
+#define FUI_TEXTEDITOR__FIELD_REPLACE 2
+//! The field that takes a line number
+#define FUI_TEXTEDITOR__FIELD_GOTO_LINE 3
 
 fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
 	fuiEditorConfig result;
@@ -3791,6 +4149,8 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.colors.caret = fuiEditor__ResolveColor(editor->config.colors.caret, theme->accentColor);
 	fuiColor faintMarkColor = fuiColorWithAlpha(theme->textMutedColor, FUI_TEXTEDITOR__WHITESPACE_ALPHA);
 	resolved.colors.whitespace = fuiEditor__ResolveColor(editor->config.colors.whitespace, faintMarkColor);
+	fuiColor findHighlightWash = fuiColorWithAlpha(theme->accentColor, FUI_TEXTEDITOR__FIND_HIGHLIGHT_ALPHA);
+	resolved.colors.findHighlightBackground = fuiEditor__ResolveColor(editor->config.colors.findHighlightBackground, findHighlightWash);
 	resolved.colors.statusBarBackground = fuiEditor__ResolveColor(editor->config.colors.statusBarBackground, theme->widgetColor);
 	resolved.colors.statusBarText = fuiEditor__ResolveColor(editor->config.colors.statusBarText, theme->textMutedColor);
 
@@ -4002,6 +4362,43 @@ static int32_t fuiEditor__AppendInt(char *destination, const int32_t destination
 	const int32_t numberCapacity = (int32_t)sizeof(numberText);
 	(void)fuiEditor__FormatInt(numberText, numberCapacity, value);
 	return(fuiEditor__AppendText(destination, destinationCapacity, writeOffset, numberText));
+}
+
+//! Reads a number back out of a buffer of digits, which is what the go to line field holds
+static int32_t fuiEditor__ParseInt(const char *text) {
+	if(text == fui_null) {
+		return(0);
+	}
+	int32_t readOffset = 0;
+	while(text[readOffset] == ' ' || text[readOffset] == '\t') {
+		readOffset += 1;
+	}
+	bool isNegative = false;
+	if(text[readOffset] == '-' || text[readOffset] == '+') {
+		isNegative = (text[readOffset] == '-');
+		readOffset += 1;
+	}
+
+	// Held in a wider type and stopped at the limit, so a field somebody has held a digit key down in
+	// answers the largest line there could be rather than a wrapped negative one.
+	const int64_t largestValue = 2147483647;
+	const int32_t decimalBase = 10;
+	int64_t value = 0;
+	bool sawADigit = false;
+	while(text[readOffset] >= '0' && text[readOffset] <= '9') {
+		value = value * decimalBase + (int64_t)(text[readOffset] - '0');
+		sawADigit = true;
+		if(value > largestValue) {
+			value = largestValue;
+			break;
+		}
+		readOffset += 1;
+	}
+	if(!sawADigit) {
+		return(0);
+	}
+	int32_t result = (int32_t)value;
+	return(isNegative ? -result : result);
 }
 
 //! How many digits a number is written with, which is what the gutter is sized by
@@ -5425,6 +5822,613 @@ static void fuiEditor__LineRangeAt(const fuiEditor *editor, const int32_t offset
 }
 
 // ----------------------------------------------------------------------------
+// > Finding
+// ----------------------------------------------------------------------------
+
+/*
+	The search itself, which is a walk over the bytes and nothing cleverer than that.
+
+	No Boyer-Moore, no table: the needle is a handful of characters, the document is walked ONCE per change
+	rather than per frame, and the inner loop runs over a contiguous run of the buffer with one comparison
+	per byte. A skip table would buy a factor on a long needle and cost a build of the table on a short one,
+	which is the case that actually happens in a find bar.
+
+	What the hole in the buffer costs is a run boundary: a match may straddle it, so the first-byte sweep
+	runs inside a run and the full comparison goes back through fuiEditorGetByte, which knows where the
+	hole is. That is two ways of reaching the same bytes, and the cheap one is only ever used to find
+	CANDIDATES.
+*/
+
+//! Ascii case folding, which is all a case insensitive search does. Bytes above ascii are left alone,
+//! because folding those needs a unicode table this add-on has no business carrying around
+fui_inline char fuiEditor__FoldByte(const char byte, const bool matchCase) {
+	if(matchCase) {
+		return(byte);
+	}
+	unsigned char value = (unsigned char)byte;
+	bool isUpperCase = (value >= (unsigned char)'A') && (value <= (unsigned char)'Z');
+	if(isUpperCase) {
+		const unsigned char caseDistance = (unsigned char)'a' - (unsigned char)'A';
+		return((char)(value + caseDistance));
+	}
+	return(byte);
+}
+
+//! Whether the needle stands at an offset, comparing through the hole rather than around it
+static bool fuiEditor__MatchesAt(const fuiEditor *editor, const int32_t offset, const char *needle, const int32_t needleLength, const bool matchCase) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	if(offset < 0 || (offset + needleLength) > textLength) {
+		return(false);
+	}
+	for(int32_t needleIndex = 0; needleIndex < needleLength; ++needleIndex) {
+		char documentByte = fuiEditorGetByte(editor, offset + needleIndex);
+		char foldedDocumentByte = fuiEditor__FoldByte(documentByte, matchCase);
+		char foldedNeedleByte = fuiEditor__FoldByte(needle[needleIndex], matchCase);
+		if(foldedDocumentByte != foldedNeedleByte) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+/*
+	Whether a match stands on its own as a word.
+
+	Asked of the two characters AROUND the match rather than of the match itself: a needle that begins with
+	a bracket is a perfectly good whole word search, and demanding that the needle look like a word would
+	refuse it for no reason.
+*/
+static bool fuiEditor__IsWholeWordAt(const fuiEditor *editor, const int32_t matchStart, const int32_t matchLength) {
+	if(matchStart > 0) {
+		fuiEditor__CharClass classInFront = fuiEditor__ClassAt(editor, matchStart - 1);
+		if(classInFront == fuiEditor__CharClass_Word) {
+			return(false);
+		}
+	}
+	int32_t matchEnd = matchStart + matchLength;
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	if(matchEnd < textLength) {
+		fuiEditor__CharClass classBehind = fuiEditor__ClassAt(editor, matchEnd);
+		if(classBehind == fuiEditor__CharClass_Word) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+//! Whether a candidate is a match at all, which is the comparison and the whole word test together
+fui_inline bool fuiEditor__IsMatchAt(const fuiEditor *editor, const int32_t offset, const char *needle, const int32_t needleLength, const bool matchCase, const bool wholeWord) {
+	if(!fuiEditor__MatchesAt(editor, offset, needle, needleLength, matchCase)) {
+		return(false);
+	}
+	if(wholeWord && !fuiEditor__IsWholeWordAt(editor, offset, needleLength)) {
+		return(false);
+	}
+	return(true);
+}
+
+/*
+	The first match that BEGINS at or after fromOffset and ENDS at or before limitOffset, or -1 for none.
+
+	The sweep for the first byte runs inside one contiguous run of the buffer, so it never has to ask where
+	the hole is; only a candidate that got past it pays for the full comparison.
+*/
+static int32_t fuiEditor__ScanForward(const fuiEditor *editor, const char *needle, const int32_t needleLength, const int32_t fromOffset, const int32_t limitOffset, const bool matchCase, const bool wholeWord) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	if(needleLength <= 0 || needleLength > textLength) {
+		return(-1);
+	}
+	int32_t highestLimit = fuiEditor__MinI32(limitOffset, textLength);
+	int32_t lastPossibleStart = highestLimit - needleLength;
+	int32_t candidate = fuiEditor__MaxI32(fromOffset, 0);
+	char foldedFirstByte = fuiEditor__FoldByte(needle[0], matchCase);
+
+	while(candidate <= lastPossibleStart) {
+		int32_t runLength = 0;
+		const char *runBytes = fuiEditor__ContiguousRunAt(editor, candidate, lastPossibleStart + 1, &runLength);
+		if(runBytes == fui_null || runLength <= 0) {
+			return(-1);
+		}
+		for(int32_t runIndex = 0; runIndex < runLength; ++runIndex) {
+			char foldedHere = fuiEditor__FoldByte(runBytes[runIndex], matchCase);
+			if(foldedHere != foldedFirstByte) {
+				continue;
+			}
+			int32_t matchStart = candidate + runIndex;
+			if(fuiEditor__IsMatchAt(editor, matchStart, needle, needleLength, matchCase, wholeWord)) {
+				return(matchStart);
+			}
+		}
+		candidate += runLength;
+	}
+	return(-1);
+}
+
+/*
+	The LAST match that begins before fromOffset, or -1 for none.
+
+	Walked one offset at a time rather than run by run: going backwards through the runs would have to turn
+	every run inside out, and this is a keystroke's worth of work rather than a frame's.
+*/
+static int32_t fuiEditor__ScanBackward(const fuiEditor *editor, const char *needle, const int32_t needleLength, const int32_t beforeOffset, const bool matchCase, const bool wholeWord) {
+	int32_t textLength = fuiEditorGetTextLength(editor);
+	if(needleLength <= 0 || needleLength > textLength) {
+		return(-1);
+	}
+	int32_t highestStart = fuiEditor__MinI32(beforeOffset - 1, textLength - needleLength);
+	char foldedFirstByte = fuiEditor__FoldByte(needle[0], matchCase);
+	for(int32_t candidate = highestStart; candidate >= 0; --candidate) {
+		char byteThere = fuiEditorGetByte(editor, candidate);
+		char foldedHere = fuiEditor__FoldByte(byteThere, matchCase);
+		if(foldedHere != foldedFirstByte) {
+			continue;
+		}
+		if(fuiEditor__IsMatchAt(editor, candidate, needle, needleLength, matchCase, wholeWord)) {
+			return(candidate);
+		}
+	}
+	return(-1);
+}
+
+//! How long a needle really is, which is what the caller said or what stands in front of its zero
+fui_inline int32_t fuiEditor__NeedleLength(const char *needle, const int32_t needleLength) {
+	if(needle == fui_null) {
+		return(0);
+	}
+	if(needleLength > 0) {
+		return(needleLength);
+	}
+	size_t measuredLength = FUI_TEXTEDITOR_STRLEN(needle);
+	return((int32_t)measuredLength);
+}
+
+fui_api fuiEditorMatch fuiEditorFind(const fuiEditor *editor, const char *needle, const int32_t needleLength, const int32_t fromOffset, const uint32_t flags) {
+	fuiEditorMatch result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	if(editor == fui_null || !editor->isInitialized) {
+		return(result);
+	}
+	int32_t lengthOfTheNeedle = fuiEditor__NeedleLength(needle, needleLength);
+	if(lengthOfTheNeedle <= 0) {
+		return(result);
+	}
+
+	bool matchCase = ((flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	bool goesBackwards = ((flags & (uint32_t)fuiEditorFindFlags_Backwards) != 0);
+	bool mayWrap = ((flags & (uint32_t)fuiEditorFindFlags_NoWrap) == 0);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	int32_t matchStart = -1;
+	if(goesBackwards) {
+		matchStart = fuiEditor__ScanBackward(editor, needle, lengthOfTheNeedle, fromOffset, matchCase, wholeWord);
+		if(matchStart < 0 && mayWrap) {
+			// Round the start of the document: the last match there is, which is behind everything that
+			// was just walked past.
+			matchStart = fuiEditor__ScanBackward(editor, needle, lengthOfTheNeedle, textLength + 1, matchCase, wholeWord);
+		}
+	} else {
+		matchStart = fuiEditor__ScanForward(editor, needle, lengthOfTheNeedle, fromOffset, textLength, matchCase, wholeWord);
+		if(matchStart < 0 && mayWrap) {
+			// Round the end: the first match there is. It necessarily sits in front of where the walk
+			// started, because nothing at or behind that point was found.
+			matchStart = fuiEditor__ScanForward(editor, needle, lengthOfTheNeedle, 0, textLength, matchCase, wholeWord);
+		}
+	}
+	if(matchStart < 0) {
+		return(result);
+	}
+
+	result.startOffset = matchStart;
+	result.endOffset = matchStart + lengthOfTheNeedle;
+	result.wasFound = true;
+	return(result);
+}
+
+fui_api int32_t fuiEditorCountMatches(const fuiEditor *editor, const char *needle, const int32_t needleLength, const uint32_t flags) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	int32_t lengthOfTheNeedle = fuiEditor__NeedleLength(needle, needleLength);
+	if(lengthOfTheNeedle <= 0) {
+		return(0);
+	}
+
+	bool matchCase = ((flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	// Every match is stepped over WHOLE, so "aa" in "aaaa" is two rather than three. That is what grep -o
+	// counts, and it is what find-next has to walk for the count beside it to mean anything.
+	int32_t matchCount = 0;
+	int32_t searchFrom = 0;
+	while(searchFrom <= (textLength - lengthOfTheNeedle)) {
+		int32_t matchStart = fuiEditor__ScanForward(editor, needle, lengthOfTheNeedle, searchFrom, textLength, matchCase, wholeWord);
+		if(matchStart < 0) {
+			break;
+		}
+		matchCount += 1;
+		searchFrom = matchStart + lengthOfTheNeedle;
+	}
+	return(matchCount);
+}
+
+// ----------------------------------------------------------------------------
+// > The find bar's own search
+// ----------------------------------------------------------------------------
+
+//! Copies a text into one of the bar's fixed buffers, cut off rather than refused
+static void fuiEditor__CopyIntoField(char *destination, const int32_t destinationCapacity, const char *text, const int32_t textLength) {
+	int32_t copiedLength = 0;
+	if(text != fui_null) {
+		int32_t wantedLength = fuiEditor__NeedleLength(text, textLength);
+		int32_t roomForText = destinationCapacity - 1;
+		copiedLength = fuiEditor__ClampI32(wantedLength, 0, roomForText);
+
+		/*
+			A cut is never made in the middle of a character - and it is only made at all when there really
+			was one.
+
+			The byte that says whether the cut lands mid-character is the one BEHIND what is kept, and when
+			nothing was cut that byte is past the end of what the caller handed over. The caller is allowed
+			to pass a length rather than a terminated string, so reading it would be a read past the end.
+		*/
+		bool wasCutShort = (copiedLength < wantedLength);
+		while(wasCutShort && copiedLength > 0 && fuiEditor__IsUtf8Continuation(text[copiedLength])) {
+			copiedLength -= 1;
+		}
+		if(copiedLength > 0) {
+			FUI_TEXTEDITOR_MEMCPY(destination, text, (size_t)copiedLength);
+		}
+	}
+	destination[copiedLength] = '\0';
+}
+
+fui_api void fuiEditorSetSearchText(fuiEditor *editor, const char *text, const int32_t textLength) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	fuiEditor__CopyIntoField(editor->find.needle, FUI_TEXTEDITOR_MAX_FIND_BYTES, text, textLength);
+	editor->find.hasCount = false;
+}
+
+fui_api const char *fuiEditorGetSearchText(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return("");
+	}
+	return(editor->find.needle);
+}
+
+fui_api void fuiEditorSetReplaceText(fuiEditor *editor, const char *text, const int32_t textLength) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	fuiEditor__CopyIntoField(editor->find.replacement, FUI_TEXTEDITOR_MAX_FIND_BYTES, text, textLength);
+}
+
+fui_api const char *fuiEditorGetReplaceText(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return("");
+	}
+	return(editor->find.replacement);
+}
+
+fui_api void fuiEditorSetFindFlags(fuiEditor *editor, const uint32_t flags) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	// Only the two that say how to COMPARE are kept. A direction that lived on the state would make
+	// find-next mean different things at different times, which is the one thing a find key may not do.
+	const uint32_t flagsThatAreKept = (uint32_t)fuiEditorFindFlags_MatchCase | (uint32_t)fuiEditorFindFlags_WholeWord;
+	editor->find.flags = flags & flagsThatAreKept;
+	editor->find.hasCount = false;
+}
+
+fui_api uint32_t fuiEditorGetFindFlags(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return((uint32_t)fuiEditorFindFlags_None);
+	}
+	return(editor->find.flags);
+}
+
+//! How long what the bar is looking for is, which is what every branch below starts by asking
+fui_inline int32_t fuiEditor__SearchTextLength(const fuiEditor *editor) {
+	size_t measuredLength = FUI_TEXTEDITOR_STRLEN(editor->find.needle);
+	return((int32_t)measuredLength);
+}
+
+/*
+	Finds from an offset and SELECTS what it found.
+
+	The selection is what says which match is the current one - to the count in the bar, to the next press
+	of the key, and to the eye. So there is one place that makes a match current, and it is this one.
+*/
+static bool fuiEditor__SelectMatchFrom(fuiEditor *editor, const int32_t fromOffset, const bool goesBackwards) {
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+	if(needleLength <= 0) {
+		return(false);
+	}
+
+	uint32_t flags = editor->find.flags;
+	if(goesBackwards) {
+		flags |= (uint32_t)fuiEditorFindFlags_Backwards;
+	}
+	fuiEditorMatch match = fuiEditorFind(editor, editor->find.needle, needleLength, fromOffset, flags);
+	if(!match.wasFound) {
+		return(false);
+	}
+
+	// Anchored at the START and carrying the caret to the END, so that shift and an arrow key afterwards
+	// grows the selection from where the eye is rather than shrinking it.
+	fuiEditorSetSelection(editor, match.startOffset, match.endOffset);
+	editor->wantsCaretRevealed = true;
+	return(true);
+}
+
+fui_api bool fuiEditorFindNext(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	// From the END of the selection, so a repeated press walks the same non-overlapping matches the count
+	// beside it is counting.
+	bool hasSomethingSelected = fuiEditorHasSelection(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t searchFrom = hasSomethingSelected ? selectionEnd : editor->caretOffset;
+	const bool forwards = false;
+	return(fuiEditor__SelectMatchFrom(editor, searchFrom, forwards));
+}
+
+fui_api bool fuiEditorFindPrevious(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	bool hasSomethingSelected = fuiEditorHasSelection(editor);
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t searchFrom = hasSomethingSelected ? selectionStart : editor->caretOffset;
+	const bool backwards = true;
+	return(fuiEditor__SelectMatchFrom(editor, searchFrom, backwards));
+}
+
+/*
+	Works out how many matches there are and which of them is the current one, ONCE.
+
+	Both come out of the same walk, because both are the same walk: the count is how many matches were
+	stepped over, and the current index is how many of them were stepped over before reaching the one the
+	selection is sitting on. Doing them separately would walk the document twice for one answer.
+
+	Kept against the document version, the search and where the selection stands, so a status line asking
+	every frame walks the document only when one of those three moved.
+*/
+static void fuiEditor__UpdateMatchCounts(fuiEditor *editor) {
+	fuiEditorFindState *find = &editor->find;
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+
+	bool answerIsStillGood = find->hasCount;
+	answerIsStillGood = answerIsStillGood && (find->countedVersion == editor->version);
+	answerIsStillGood = answerIsStillGood && (find->countedFlags == find->flags);
+	answerIsStillGood = answerIsStillGood && (find->countedSelectionStart == selectionStart);
+	answerIsStillGood = answerIsStillGood && (find->countedSelectionEnd == selectionEnd);
+	if(answerIsStillGood) {
+		int comparison = FUI_TEXTEDITOR_MEMCMP(find->countedNeedle, find->needle, (size_t)needleLength + 1);
+		if(comparison == 0) {
+			return;
+		}
+	}
+
+	find->hasCount = true;
+	find->countedVersion = editor->version;
+	find->countedFlags = find->flags;
+	find->countedSelectionStart = selectionStart;
+	find->countedSelectionEnd = selectionEnd;
+	FUI_TEXTEDITOR_MEMCPY(find->countedNeedle, find->needle, (size_t)needleLength + 1);
+	find->matchCount = 0;
+	find->currentMatchIndex = -1;
+	if(needleLength <= 0) {
+		return;
+	}
+
+	bool matchCase = ((find->flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((find->flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	bool selectionCouldBeAMatch = ((selectionEnd - selectionStart) == needleLength);
+	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	int32_t searchFrom = 0;
+	while(searchFrom <= (textLength - needleLength)) {
+		int32_t matchStart = fuiEditor__ScanForward(editor, find->needle, needleLength, searchFrom, textLength, matchCase, wholeWord);
+		if(matchStart < 0) {
+			break;
+		}
+		if(selectionCouldBeAMatch && (matchStart == selectionStart)) {
+			find->currentMatchIndex = find->matchCount;
+		}
+		find->matchCount += 1;
+		searchFrom = matchStart + needleLength;
+	}
+}
+
+fui_api int32_t fuiEditorGetMatchCount(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(0);
+	}
+	fuiEditor__UpdateMatchCounts(editor);
+	return(editor->find.matchCount);
+}
+
+fui_api int32_t fuiEditorGetCurrentMatchIndex(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(-1);
+	}
+	fuiEditor__UpdateMatchCounts(editor);
+	return(editor->find.currentMatchIndex);
+}
+
+//! Whether the selection is exactly a match of what the bar is looking for, which is what a replace needs
+static bool fuiEditor__SelectionIsAMatch(const fuiEditor *editor) {
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+	if(needleLength <= 0) {
+		return(false);
+	}
+	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+	if((selectionEnd - selectionStart) != needleLength) {
+		return(false);
+	}
+	bool matchCase = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	return(fuiEditor__IsMatchAt(editor, selectionStart, editor->find.needle, needleLength, matchCase, wholeWord));
+}
+
+fui_api bool fuiEditorReplaceCurrent(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+	if(needleLength <= 0) {
+		return(false);
+	}
+
+	/*
+		A press on a selection that is not a match only FINDS.
+
+		That is what makes the key safe to press twice without looking: the first press puts the selection
+		on a match, and only the second one writes. Replacing whatever happened to be selected would turn a
+		mistyped search into a change nobody asked for.
+	*/
+	if(!fuiEditor__SelectionIsAMatch(editor)) {
+		(void)fuiEditorFindNext(editor);
+		return(false);
+	}
+
+	int32_t matchStart = fuiEditorGetSelectionStart(editor);
+	size_t replacementLength = FUI_TEXTEDITOR_STRLEN(editor->find.replacement);
+
+	// One step, because taking back half a replacement - the erase without the insert - would leave a hole
+	// where a word stood.
+	fuiEditorBeginUndoGroup(editor);
+	bool didErase = fuiEditorErase(editor, matchStart, needleLength);
+	bool didInsert = true;
+	if(didErase && replacementLength > 0) {
+		didInsert = fuiEditorInsert(editor, matchStart, editor->find.replacement, (int32_t)replacementLength);
+	}
+	fuiEditorEndUndoGroup(editor);
+	if(!didErase) {
+		return(false);
+	}
+
+	// The caret lands behind what was written, and the search goes on from there rather than from where it
+	// started - or a replacement holding the needle would be found again immediately.
+	int32_t writtenLength = didInsert ? (int32_t)replacementLength : 0;
+	int32_t offsetBehindTheReplacement = matchStart + writtenLength;
+	fuiEditorSetCaretOffset(editor, offsetBehindTheReplacement, false);
+	const bool forwards = false;
+	(void)fuiEditor__SelectMatchFrom(editor, offsetBehindTheReplacement, forwards);
+	return(true);
+}
+
+fui_api int32_t fuiEditorReplaceAll(fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(0);
+	}
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+	if(needleLength <= 0) {
+		return(0);
+	}
+
+	bool matchCase = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	size_t measuredReplacementLength = FUI_TEXTEDITOR_STRLEN(editor->find.replacement);
+	int32_t replacementLength = (int32_t)measuredReplacementLength;
+
+	// The whole run is ONE step. Half of it taken back would be a document with some of the old word and
+	// some of the new in it, which is worse than either.
+	fuiEditorBeginUndoGroup(editor);
+	int32_t replacedCount = 0;
+	int32_t searchFrom = 0;
+	while(true) {
+		int32_t textLength = fuiEditorGetTextLength(editor);
+		if(searchFrom > (textLength - needleLength)) {
+			break;
+		}
+		int32_t matchStart = fuiEditor__ScanForward(editor, editor->find.needle, needleLength, searchFrom, textLength, matchCase, wholeWord);
+		if(matchStart < 0) {
+			break;
+		}
+		if(!fuiEditorErase(editor, matchStart, needleLength)) {
+			break;
+		}
+		if(replacementLength > 0) {
+			if(!fuiEditorInsert(editor, matchStart, editor->find.replacement, replacementLength)) {
+				break;
+			}
+		}
+		replacedCount += 1;
+
+		// On past what was just written, never into it. A replacement that CONTAINS what was looked for
+		// would otherwise be found again, and again, and the loop would never end.
+		searchFrom = matchStart + replacementLength;
+	}
+	fuiEditorEndUndoGroup(editor);
+	editor->find.hasCount = false;
+	return(replacedCount);
+}
+
+fui_api void fuiEditorOpenFind(fuiEditor *editor, const bool withReplace) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	editor->find.isOpen = true;
+	editor->find.isGoToLineOpen = false;
+	if(withReplace) {
+		editor->find.showsReplace = true;
+	}
+	editor->find.fieldWantingTheKeyboard = withReplace ? FUI_TEXTEDITOR__FIELD_REPLACE : FUI_TEXTEDITOR__FIELD_FIND;
+}
+
+fui_api void fuiEditorOpenGoToLine(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	editor->find.isGoToLineOpen = true;
+	editor->find.isOpen = false;
+	editor->find.fieldWantingTheKeyboard = FUI_TEXTEDITOR__FIELD_GOTO_LINE;
+}
+
+fui_api void fuiEditorCloseFind(fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+	// What is being looked for is KEPT. Opening the bar again to find the same thing is the common case,
+	// and retyping it is what makes a find bar annoying.
+	editor->find.isOpen = false;
+	editor->find.isGoToLineOpen = false;
+	editor->find.fieldWantingTheKeyboard = FUI_TEXTEDITOR__FIELD_NONE;
+}
+
+fui_api bool fuiEditorIsFindOpen(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(editor->find.isOpen || editor->find.isGoToLineOpen);
+}
+
+fui_api bool fuiEditorGoToLine(fuiEditor *editor, const int32_t documentLine) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t wantedLine = fuiEditor__ClampI32(documentLine, 0, lineCount - 1);
+	int32_t lineStart = fuiEditorGetLineStart(editor, wantedLine);
+	const bool dropTheSelection = false;
+	const bool dropTheDesiredDistance = false;
+	fuiEditor__MoveCaretTo(editor, lineStart, dropTheSelection, dropTheDesiredDistance);
+	editor->wantsCaretRevealed = true;
+	return(true);
+}
+
+// ----------------------------------------------------------------------------
 // > The view
 // ----------------------------------------------------------------------------
 
@@ -6051,15 +7055,18 @@ static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const
 	off a comparison against where the caret stood at the top of the build, and the wheel and the
 	scrollbars, which move the view without moving the caret, are left alone.
 */
-static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, float *inOutScrollX, float *inOutScrollY) {
+static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float topInset, float *inOutScrollX, float *inOutScrollY) {
 	const fuiEditorConfig *config = &editor->resolvedConfig;
 	int32_t caretLine = fuiEditorGetCaretLine(editor);
 	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretLine);
 
+	// The find bar floats over the top of the text, so the top of the VIEW is not the top of the body while
+	// it is open. Without this the caret would come to rest underneath it and be invisible exactly while
+	// the thing that put it there was being used.
 	float caretTop = (float)caretScreenLine * render->lineHeight;
 	float caretBottom = caretTop + render->lineHeight;
-	if(caretTop < *inOutScrollY) {
-		*inOutScrollY = caretTop;
+	if(caretTop < (*inOutScrollY + topInset)) {
+		*inOutScrollY = caretTop - topInset;
 	} else if(caretBottom > (*inOutScrollY + layout->bodyRect.h)) {
 		*inOutScrollY = caretBottom - layout->bodyRect.h;
 	}
@@ -6078,6 +7085,496 @@ static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor
 	} else if(caretContentX > (rightEdge - margin)) {
 		*inOutScrollX = caretContentX - layout->textRect.w + margin;
 	}
+}
+
+/*
+	Brings the caret WELL into view after a jump across the document.
+
+	A nudge is right for an arrow key and wrong for a find: the line that was jumped to would come to rest
+	flush against whichever edge it arrived at, with nothing of what surrounds it to read. So a caret that
+	was already on screen is nudged as usual - a find-next inside the visible window must not throw the
+	view about - and one that was not is put in the MIDDLE, where a jump lands everywhere else.
+*/
+static void fuiEditor__RevealCaret(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float topInset, float *inOutScrollX, float *inOutScrollY) {
+	int32_t caretLine = fuiEditorGetCaretLine(editor);
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretLine);
+	float caretTop = (float)caretScreenLine * render->lineHeight;
+	float caretBottom = caretTop + render->lineHeight;
+
+	bool wasAlreadyInView = (caretTop >= (*inOutScrollY + topInset)) && (caretBottom <= (*inOutScrollY + layout->bodyRect.h));
+	if(!wasAlreadyInView) {
+		float roomForLines = fuiMaxF(layout->bodyRect.h - topInset, render->lineHeight);
+		float halfOfTheRoom = (roomForLines - render->lineHeight) * 0.5f;
+		*inOutScrollY = caretTop - topInset - halfOfTheRoom;
+	}
+
+	// Sideways is nudged either way. A long line has no middle worth centring on, and the column the match
+	// sits in is what has to be readable.
+	fuiEditor__EnsureCaretVisible(context, editor, render, layout, topInset, inOutScrollX, inOutScrollY);
+}
+
+// ----------------------------------------------------------------------------
+// > The find bar
+// ----------------------------------------------------------------------------
+
+/*
+	The bar FLOATS over the top of the text rather than taking a strip off it.
+
+	Taking the room would push every line down the moment ctrl+f is pressed and pull them back up on
+	escape, and a document that jumps under the eye while it is being searched is worse than one whose
+	first two lines are covered. What is done about the covering is that the caret is kept out from under
+	the bar: everything that brings the caret into view is told how tall the bar is and treats that as the
+	top edge of the view.
+*/
+
+//! Ids of the bar's own widgets, scoped inside the editor's id so two editors beside each other keep theirs apart
+#define FUI_TEXTEDITOR__FIND_BAR_ID "__editorFindBar"
+#define FUI_TEXTEDITOR__FIND_FIELD_ID "__editorFindText"
+#define FUI_TEXTEDITOR__REPLACE_FIELD_ID "__editorReplaceText"
+#define FUI_TEXTEDITOR__GOTO_FIELD_ID "__editorGoToLine"
+
+//! Inset of the bar's content from its own edges
+#define FUI_TEXTEDITOR__FIND_BAR_PADDING 4.0f
+
+//! Gap between two things standing beside each other in the bar
+#define FUI_TEXTEDITOR__FIND_BAR_SPACING 4.0f
+
+/*
+	Everything in the bar is MEASURED rather than given a width in pixels.
+
+	The face the bar is drawn in is whatever the caller swapped in around the editor, and for a code editor
+	that is a monospace one - where "Match case" is half again as wide as it is in the interface face the
+	rest of final_ui.h is drawn in. A pixel width picked against one of them cuts the label in half in the
+	other, and there is no face this add-on may assume.
+*/
+
+//! The captions in front of the fields. All three are measured and the widest wins, so the fields on both
+//! rows begin at the same x and read as one column rather than as two rows that happen to be near each other
+#define FUI_TEXTEDITOR__FIND_CAPTION "Find"
+#define FUI_TEXTEDITOR__REPLACE_CAPTION "Replace"
+#define FUI_TEXTEDITOR__GOTO_CAPTION "Go to line"
+
+//! What the bar's buttons say
+#define FUI_TEXTEDITOR__PREVIOUS_LABEL "Prev"
+#define FUI_TEXTEDITOR__NEXT_LABEL "Next"
+#define FUI_TEXTEDITOR__CLOSE_LABEL "Close"
+#define FUI_TEXTEDITOR__GO_LABEL "Go"
+#define FUI_TEXTEDITOR__REPLACE_ONE_LABEL "Replace one"
+#define FUI_TEXTEDITOR__REPLACE_ALL_LABEL "Replace all"
+
+//! And its two option checkboxes
+#define FUI_TEXTEDITOR__MATCH_CASE_LABEL "Match case"
+#define FUI_TEXTEDITOR__WHOLE_WORD_LABEL "Whole word"
+
+//! What the readout is measured against rather than what it says. Measuring the text it really carries
+//! would make the whole row shift sideways every time the number of digits changed
+#define FUI_TEXTEDITOR__COUNT_SAMPLE_TEXT "88888 of 88888"
+
+//! And what the go to line field is measured against, which is the longest line number there could be
+#define FUI_TEXTEDITOR__GOTO_SAMPLE_TEXT "8888888888"
+
+//! The narrowest a text field in the bar is ever squeezed to before the rest of the row is simply clipped
+#define FUI_TEXTEDITOR__FIND_FIELD_MIN_WIDTH 90.0f
+
+//! And the widest, in characters. A field that swallowed a whole wide editor would be a bar that is mostly
+//! one empty box, and nobody searches for a hundred characters
+#define FUI_TEXTEDITOR__FIND_FIELD_MAX_CHARACTERS 40
+
+//! How long the "n of m" readout may get
+#define FUI_TEXTEDITOR__MAX_COUNT_TEXT 64
+
+/**
+* @struct fuiEditor__FindBarResult
+* @brief What one build of the bar was asked for, acted on by the caller rather than by the bar itself.
+*/
+typedef struct fuiEditor__FindBarResult {
+	//! The find field was typed into, so the search starts again from where the current match begins
+	bool searchTextChanged;
+	//! Escape, or the close button
+	bool wantsToClose;
+	//! The next button
+	bool wantsFindNext;
+	//! The previous button
+	bool wantsFindPrevious;
+	//! The replace button
+	bool wantsToReplace;
+	//! The replace all button
+	bool wantsToReplaceAll;
+	//! The go button, or enter in the line number field
+	bool wantsToGoToLine;
+} fuiEditor__FindBarResult;
+
+//! How wide a text is in the face the context is carrying right now
+fui_inline float fuiEditor__MeasureLabel(fuiContext *context, const fuiTheme *theme, const char *text) {
+	size_t textLength = FUI_TEXTEDITOR_STRLEN(text);
+	fuiVec2 measured = fuiMeasureText(context, text, textLength, theme->fontHeight);
+	return(measured.x);
+}
+
+//! How wide a button has to be to hold its own caption, which is the caption plus the inset on both sides
+fui_inline float fuiEditor__ButtonWidthFor(fuiContext *context, const fuiTheme *theme, const char *label) {
+	float labelWidth = fuiEditor__MeasureLabel(context, theme, label);
+	return(labelWidth + theme->widgetPaddingX * 2.0f);
+}
+
+/*
+	And a checkbox, which is the box, the gap behind it and the label.
+
+	The gap final_ui.h really leaves lives inside its implementation block, and this add-on only uses the
+	public api - so the widget padding stands in for it. Being a hair too wide costs a hair of the bar; being
+	too narrow cuts the label off.
+*/
+fui_inline float fuiEditor__CheckboxWidthFor(fuiContext *context, const fuiTheme *theme, const char *label) {
+	float labelWidth = fuiEditor__MeasureLabel(context, theme, label);
+	float boxWidth = theme->fontHeight;
+	return(theme->widgetPaddingX * 3.0f + boxWidth + labelWidth);
+}
+
+//! The widest of the three captions, so the fields on both rows begin at the same x
+static float fuiEditor__FindCaptionWidth(fuiContext *context, const fuiTheme *theme) {
+	float findWidth = fuiEditor__MeasureLabel(context, theme, FUI_TEXTEDITOR__FIND_CAPTION);
+	float replaceWidth = fuiEditor__MeasureLabel(context, theme, FUI_TEXTEDITOR__REPLACE_CAPTION);
+	float goToLineWidth = fuiEditor__MeasureLabel(context, theme, FUI_TEXTEDITOR__GOTO_CAPTION);
+	float widerOfTheTwoShortOnes = fuiMaxF(findWidth, replaceWidth);
+	float widestCaption = fuiMaxF(widerOfTheTwoShortOnes, goToLineWidth);
+	return(widestCaption + theme->widgetPaddingX * 2.0f);
+}
+
+//! How many rows the bar has right now, which is what it is measured by before anything is laid out
+static int32_t fuiEditor__FindBarRowCount(const fuiEditor *editor) {
+	if(editor->find.isGoToLineOpen) {
+		return(1);
+	}
+	if(!editor->find.isOpen) {
+		return(0);
+	}
+	return(editor->find.showsReplace ? 2 : 1);
+}
+
+//! How tall it is, which is also how far down the caret has to be kept to stay out from under it
+static float fuiEditor__FindBarHeight(const fuiEditor *editor, const fuiTheme *theme) {
+	int32_t rowCount = fuiEditor__FindBarRowCount(editor);
+	if(rowCount <= 0) {
+		return(0.0f);
+	}
+	float rowHeight = theme->menuItemHeight;
+	float rowGaps = (float)(rowCount - 1) * FUI_TEXTEDITOR__FIND_BAR_SPACING;
+	return((float)rowCount * rowHeight + rowGaps + FUI_TEXTEDITOR__FIND_BAR_PADDING * 2.0f);
+}
+
+//! Where it sits, which is along the top of the body and across the whole of it
+static fuiRect fuiEditor__FindBarRect(const fuiEditor *editor, const fuiEditor__Layout *layout, const fuiTheme *theme) {
+	float barHeight = fuiEditor__FindBarHeight(editor, theme);
+	float cappedHeight = fuiMinF(barHeight, layout->bodyRect.h);
+	return(fuiRectMake(layout->bodyRect.x, layout->bodyRect.y, layout->bodyRect.w, cappedHeight));
+}
+
+//! Takes a slot of a given width off the left of a row and leaves the rest behind
+fui_inline fuiRect fuiEditor__TakeFromLeft(fuiRect *inOutRow, const float wantedWidth) {
+	float takenWidth = fuiMinF(wantedWidth, inOutRow->w);
+	fuiRect result = fuiRectMake(inOutRow->x, inOutRow->y, takenWidth, inOutRow->h);
+	inOutRow->x += takenWidth + FUI_TEXTEDITOR__FIND_BAR_SPACING;
+	inOutRow->w = fuiMaxF(inOutRow->w - takenWidth - FUI_TEXTEDITOR__FIND_BAR_SPACING, 0.0f);
+	return(result);
+}
+
+//! And off its right, which is where the row is built from when the field in the middle takes what is left
+fui_inline fuiRect fuiEditor__TakeFromRight(fuiRect *inOutRow, const float wantedWidth) {
+	float takenWidth = fuiMinF(wantedWidth, inOutRow->w);
+	float takenLeft = inOutRow->x + inOutRow->w - takenWidth;
+	fuiRect result = fuiRectMake(takenLeft, inOutRow->y, takenWidth, inOutRow->h);
+	inOutRow->w = fuiMaxF(inOutRow->w - takenWidth - FUI_TEXTEDITOR__FIND_BAR_SPACING, 0.0f);
+	return(result);
+}
+
+//! Writes the "n of m" the bar shows beside its field, and what it shows instead when there is no n
+static void fuiEditor__BuildCountText(fuiEditor *editor, char *destination, const int32_t destinationCapacity) {
+	destination[0] = '\0';
+	int32_t needleLength = fuiEditor__SearchTextLength(editor);
+	if(needleLength <= 0) {
+		return;
+	}
+
+	int32_t matchCount = fuiEditorGetMatchCount(editor);
+	if(matchCount <= 0) {
+		(void)fuiEditor__AppendText(destination, destinationCapacity, 0, "No results");
+		return;
+	}
+
+	int32_t currentIndex = fuiEditorGetCurrentMatchIndex(editor);
+	int32_t writeOffset = 0;
+	if(currentIndex >= 0) {
+		// Counted from one, because the number is read beside the count of all of them rather than beside
+		// an array index.
+		writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, currentIndex + 1);
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " of ");
+	}
+	writeOffset = fuiEditor__AppendInt(destination, destinationCapacity, writeOffset, matchCount);
+	if(currentIndex < 0) {
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " found");
+	}
+	(void)writeOffset;
+}
+
+/*
+	Every key the bar answers to, asked BEFORE its fields are built.
+
+	Before, for two reasons. Opening it here means the field it opens can take the keyboard in the same
+	build rather than in the next one - so ctrl+f is followed by a character that lands in the field.
+	And enter is answered here and SPENT here, so that the field, which gives the focus up on a plain
+	enter, never sees the one that meant "find the next".
+
+	The whole of it is gated on the editor OR one of the bar's own widgets having had the keyboard when
+	this build started, so that ctrl+f in one editor does not open the bar of another.
+*/
+static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, const bool hasTheKeyboard, const fuiId editorId, const fuiId findFieldId, const fuiId replaceFieldId, const fuiId goToLineFieldId) {
+	if(!hasTheKeyboard) {
+		return;
+	}
+
+	fuiId focusedId = fuiGetFocusedId(context);
+	bool wantsToExtend = fuiIsShiftDown(context);
+	bool wantsAChord = fuiIsControlDown(context);
+	bool canWrite = fuiEditor__CanWrite(editor);
+
+	if(wantsAChord && fuiKeyWentDown(context, fuiKey_F)) {
+		/*
+			Seeded from the SELECTION, but only when the selection is the document's rather than a field's.
+
+			Pressing ctrl+f with a word highlighted and having to type it out again is the thing that makes
+			a find bar feel like a form. Pressing it a second time, with the field already focused, must not
+			overwrite what is standing in the field with whatever the document still has selected.
+		*/
+		bool cameFromTheDocument = (focusedId == editorId);
+		if(cameFromTheDocument && fuiEditorHasSelection(editor)) {
+			int32_t selectionStart = fuiEditorGetSelectionStart(editor);
+			int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
+			int32_t selectedLength = selectionEnd - selectionStart;
+			bool fitsInTheField = (selectedLength > 0) && (selectedLength < FUI_TEXTEDITOR_MAX_FIND_BYTES);
+			bool isOneLine = fitsInTheField && !fuiEditor__RangeHasLineFeed(editor, selectionStart, selectedLength);
+			if(isOneLine) {
+				char selectedText[FUI_TEXTEDITOR_MAX_FIND_BYTES];
+				fuiEditor__CopyRangeRaw(editor, selectionStart, selectedLength, selectedText);
+				fuiEditorSetSearchText(editor, selectedText, selectedLength);
+			}
+		}
+		const bool withoutTheReplaceRow = false;
+		fuiEditorOpenFind(editor, withoutTheReplaceRow);
+	}
+
+	// Ctrl+h is what windows has always used for replace and ctrl+r is what the editors that grew up on
+	// unix use. Both, because a key nobody can remember is a key nobody presses.
+	bool wantsReplaceRow = wantsAChord && (fuiKeyWentDown(context, fuiKey_H) || fuiKeyWentDown(context, fuiKey_R));
+	if(wantsReplaceRow && canWrite) {
+		const bool withTheReplaceRow = true;
+		fuiEditorOpenFind(editor, withTheReplaceRow);
+	}
+
+	if(wantsAChord && fuiKeyWentDown(context, fuiKey_G)) {
+		fuiEditorOpenGoToLine(editor);
+	}
+
+	// F3 finds without the bar being open at all, which is what makes it worth having beside enter.
+	if(fuiKeyWentDown(context, fuiKey_F3)) {
+		if(wantsToExtend) {
+			(void)fuiEditorFindPrevious(editor);
+		} else {
+			(void)fuiEditorFindNext(editor);
+		}
+	}
+
+	if(!fuiEditorIsFindOpen(editor)) {
+		return;
+	}
+
+	if(fuiKeyWentDown(context, fuiKey_Escape)) {
+		fuiEditorCloseFind(editor);
+		// The keyboard goes back where it came from. Leaving it on a field that is no longer drawn would
+		// leave the whole editor deaf until something else was clicked.
+		fuiSetFocusedId(context, editorId);
+		fuiConsumeKey(context, fuiKey_Escape);
+		return;
+	}
+
+	bool aFieldHasTheKeyboard = (focusedId == findFieldId) || (focusedId == replaceFieldId) || (focusedId == goToLineFieldId);
+	if(!aFieldHasTheKeyboard || !fuiKeyWentDown(context, fuiKey_Return)) {
+		return;
+	}
+
+	if(focusedId == goToLineFieldId) {
+		int32_t wantedLineNumber = fuiEditor__ParseInt(editor->find.lineNumberText);
+		if(wantedLineNumber > 0) {
+			// Typed counting from one, held counting from zero, which is the one place those two meet.
+			(void)fuiEditorGoToLine(editor, wantedLineNumber - 1);
+		}
+		fuiEditorCloseFind(editor);
+		fuiSetFocusedId(context, editorId);
+	} else if(focusedId == replaceFieldId) {
+		(void)fuiEditorReplaceCurrent(editor);
+	} else if(wantsToExtend) {
+		(void)fuiEditorFindPrevious(editor);
+	} else {
+		(void)fuiEditorFindNext(editor);
+	}
+
+	// Spent, so the field - which gives the focus up on a plain enter - never sees it, and neither does a
+	// dialog hosting the editor.
+	fuiConsumeKey(context, fuiKey_Return);
+}
+
+//! Draws the bar and answers what was pressed on it
+static fuiEditor__FindBarResult fuiEditor__BuildFindBar(fuiContext *context, fuiEditor *editor, const fuiEditorConfig *config, const fuiTheme *theme, const fuiRect barRect, const fuiId barId) {
+	fuiEditor__FindBarResult result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+
+	// The bar takes the cursor before anything in it does, so that a click on the gaps BETWEEN its widgets
+	// lands on the bar rather than on the line of text underneath it.
+	(void)fuiInteract(context, barId, barRect);
+	fuiBlockMouse(context, barRect);
+	fuiDrawRect(context, barRect, config->colors.statusBarBackground);
+	fuiDrawRectOutline(context, barRect, config->colors.border, theme->widgetBorderThickness);
+
+	float rowHeight = theme->menuItemHeight;
+	float contentLeft = barRect.x + FUI_TEXTEDITOR__FIND_BAR_PADDING;
+	float contentWidth = fuiMaxF(barRect.w - FUI_TEXTEDITOR__FIND_BAR_PADDING * 2.0f, 0.0f);
+	float firstRowTop = barRect.y + FUI_TEXTEDITOR__FIND_BAR_PADDING;
+
+	float captionWidth = fuiEditor__FindCaptionWidth(context, theme);
+	float closeButtonWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__CLOSE_LABEL);
+
+	fuiPushClip(context, barRect);
+	if(editor->find.isGoToLineOpen) {
+		fuiRect row = fuiRectMake(contentLeft, firstRowTop, contentWidth, rowHeight);
+		fuiRect captionRect = fuiEditor__TakeFromLeft(&row, captionWidth);
+		fuiLabel(context, captionRect, FUI_TEXTEDITOR__GOTO_CAPTION);
+
+		float longestLineNumberWidth = fuiEditor__MeasureLabel(context, theme, FUI_TEXTEDITOR__GOTO_SAMPLE_TEXT);
+		float goToLineFieldWidth = longestLineNumberWidth + theme->widgetPaddingX * 2.0f;
+		fuiRect fieldRect = fuiEditor__TakeFromLeft(&row, goToLineFieldWidth);
+		(void)fuiTextInput(context, fieldRect, FUI_TEXTEDITOR__GOTO_FIELD_ID, editor->find.lineNumberText, FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES);
+
+		float goButtonWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__GO_LABEL);
+		fuiRect goRect = fuiEditor__TakeFromLeft(&row, goButtonWidth);
+		if(fuiButton(context, goRect, FUI_TEXTEDITOR__GO_LABEL)) {
+			result.wantsToGoToLine = true;
+		}
+
+		fuiRect closeRect = fuiEditor__TakeFromLeft(&row, closeButtonWidth);
+		if(fuiButton(context, closeRect, FUI_TEXTEDITOR__CLOSE_LABEL)) {
+			result.wantsToClose = true;
+		}
+
+		int32_t documentLineCount = fuiEditorGetLineCount(editor);
+		char rangeText[FUI_TEXTEDITOR__MAX_COUNT_TEXT];
+		const int32_t rangeCapacity = (int32_t)sizeof(rangeText);
+		int32_t writeOffset = fuiEditor__AppendText(rangeText, rangeCapacity, 0, "1 to ");
+		writeOffset = fuiEditor__AppendInt(rangeText, rangeCapacity, writeOffset, documentLineCount);
+		(void)writeOffset;
+		fuiLabel(context, row, rangeText);
+
+		fuiPopClip(context);
+		return(result);
+	}
+
+	fuiRect findRow = fuiRectMake(contentLeft, firstRowTop, contentWidth, rowHeight);
+	fuiRect findCaptionRect = fuiEditor__TakeFromLeft(&findRow, captionWidth);
+	fuiLabel(context, findCaptionRect, FUI_TEXTEDITOR__FIND_CAPTION);
+
+	// Everything of a known width comes off the RIGHT first, and the field takes what is left in the middle.
+	fuiRect closeRect = fuiEditor__TakeFromRight(&findRow, closeButtonWidth);
+	float wholeWordWidth = fuiEditor__CheckboxWidthFor(context, theme, FUI_TEXTEDITOR__WHOLE_WORD_LABEL);
+	fuiRect wholeWordRect = fuiEditor__TakeFromRight(&findRow, wholeWordWidth);
+	float matchCaseWidth = fuiEditor__CheckboxWidthFor(context, theme, FUI_TEXTEDITOR__MATCH_CASE_LABEL);
+	fuiRect matchCaseRect = fuiEditor__TakeFromRight(&findRow, matchCaseWidth);
+	float nextButtonWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__NEXT_LABEL);
+	fuiRect nextRect = fuiEditor__TakeFromRight(&findRow, nextButtonWidth);
+	float previousButtonWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__PREVIOUS_LABEL);
+	fuiRect previousRect = fuiEditor__TakeFromRight(&findRow, previousButtonWidth);
+	float countSampleWidth = fuiEditor__MeasureLabel(context, theme, FUI_TEXTEDITOR__COUNT_SAMPLE_TEXT);
+	float countWidth = countSampleWidth + theme->widgetPaddingX * 2.0f;
+	fuiRect countRect = fuiEditor__TakeFromRight(&findRow, countWidth);
+
+	// Capped rather than given all of what is left. A field that swallowed a whole wide editor would be a
+	// bar that is mostly one empty box, and nobody searches for forty characters.
+	float widestCharacter = fuiEditor__MeasureLabel(context, theme, "W");
+	float widestField = widestCharacter * (float)FUI_TEXTEDITOR__FIND_FIELD_MAX_CHARACTERS;
+	float fieldWidthBeforeTheFloor = fuiMinF(findRow.w, widestField);
+	float fieldWidth = fuiMaxF(fieldWidthBeforeTheFloor, FUI_TEXTEDITOR__FIND_FIELD_MIN_WIDTH);
+	fuiRect findFieldRect = fuiRectMake(findRow.x, findRow.y, fieldWidth, findRow.h);
+
+	if(fuiTextInput(context, findFieldRect, FUI_TEXTEDITOR__FIND_FIELD_ID, editor->find.needle, FUI_TEXTEDITOR_MAX_FIND_BYTES)) {
+		editor->find.hasCount = false;
+		result.searchTextChanged = true;
+	}
+
+	char countText[FUI_TEXTEDITOR__MAX_COUNT_TEXT];
+	fuiEditor__BuildCountText(editor, countText, (int32_t)sizeof(countText));
+	fuiLabel(context, countRect, countText);
+
+	bool thereIsSomethingToFind = (fuiEditor__SearchTextLength(editor) > 0);
+	if(fuiButtonEx(context, previousRect, FUI_TEXTEDITOR__PREVIOUS_LABEL, thereIsSomethingToFind)) {
+		result.wantsFindPrevious = true;
+	}
+	if(fuiButtonEx(context, nextRect, FUI_TEXTEDITOR__NEXT_LABEL, thereIsSomethingToFind)) {
+		result.wantsFindNext = true;
+	}
+
+	bool matchCase = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	bool wholeWord = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	bool optionsChanged = false;
+	if(fuiCheckbox(context, matchCaseRect, FUI_TEXTEDITOR__MATCH_CASE_LABEL, &matchCase)) {
+		optionsChanged = true;
+	}
+	if(fuiCheckbox(context, wholeWordRect, FUI_TEXTEDITOR__WHOLE_WORD_LABEL, &wholeWord)) {
+		optionsChanged = true;
+	}
+	if(optionsChanged) {
+		uint32_t wantedFlags = 0;
+		if(matchCase) {
+			wantedFlags |= (uint32_t)fuiEditorFindFlags_MatchCase;
+		}
+		if(wholeWord) {
+			wantedFlags |= (uint32_t)fuiEditorFindFlags_WholeWord;
+		}
+		fuiEditorSetFindFlags(editor, wantedFlags);
+
+		// A changed comparison is a changed search: what was standing selected may not be a match any more.
+		result.searchTextChanged = true;
+	}
+
+	if(fuiButton(context, closeRect, FUI_TEXTEDITOR__CLOSE_LABEL)) {
+		result.wantsToClose = true;
+	}
+
+	if(!editor->find.showsReplace) {
+		fuiPopClip(context);
+		return(result);
+	}
+
+	float replaceRowTop = firstRowTop + rowHeight + FUI_TEXTEDITOR__FIND_BAR_SPACING;
+	fuiRect replaceRow = fuiRectMake(contentLeft, replaceRowTop, contentWidth, rowHeight);
+	fuiRect replaceCaptionRect = fuiEditor__TakeFromLeft(&replaceRow, captionWidth);
+	fuiLabel(context, replaceCaptionRect, FUI_TEXTEDITOR__REPLACE_CAPTION);
+
+	// The field is given the SAME width the find field got rather than what is left of this row, so the two
+	// of them line up under each other and read as one column.
+	float replaceAllWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__REPLACE_ALL_LABEL);
+	fuiRect replaceAllRect = fuiEditor__TakeFromRight(&replaceRow, replaceAllWidth);
+	float replaceOneWidth = fuiEditor__ButtonWidthFor(context, theme, FUI_TEXTEDITOR__REPLACE_ONE_LABEL);
+	fuiRect replaceOneRect = fuiEditor__TakeFromRight(&replaceRow, replaceOneWidth);
+	fuiRect replaceFieldRect = fuiRectMake(replaceRow.x, replaceRow.y, fieldWidth, replaceRow.h);
+	(void)fuiTextInput(context, replaceFieldRect, FUI_TEXTEDITOR__REPLACE_FIELD_ID, editor->find.replacement, FUI_TEXTEDITOR_MAX_FIND_BYTES);
+
+	bool mayWrite = fuiEditor__CanWrite(editor) && thereIsSomethingToFind;
+	if(fuiButtonEx(context, replaceOneRect, FUI_TEXTEDITOR__REPLACE_ONE_LABEL, mayWrite)) {
+		result.wantsToReplace = true;
+	}
+	if(fuiButtonEx(context, replaceAllRect, FUI_TEXTEDITOR__REPLACE_ALL_LABEL, mayWrite)) {
+		result.wantsToReplaceAll = true;
+	}
+
+	fuiPopClip(context);
+	return(result);
 }
 
 // ----------------------------------------------------------------------------
@@ -6219,10 +7716,30 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	fuiId editorId = fuiGetId(context, id);
 
+	// The bar's widgets are BUILT at the end of this function and asked about at the start of it, so their
+	// ids are worked out here, once, in the same scope the build will use.
+	fuiPushId(context, id);
+	fuiId findBarId = fuiGetId(context, FUI_TEXTEDITOR__FIND_BAR_ID);
+	fuiId findFieldId = fuiGetId(context, FUI_TEXTEDITOR__FIND_FIELD_ID);
+	fuiId replaceFieldId = fuiGetId(context, FUI_TEXTEDITOR__REPLACE_FIELD_ID);
+	fuiId goToLineFieldId = fuiGetId(context, FUI_TEXTEDITOR__GOTO_FIELD_ID);
+	fuiPopId(context);
+
 	// Asked BEFORE the editor is put into the tab chain, because that call is what may hand it the focus -
 	// and an editor that tab just moved the keyboard onto must not also answer that same tab with an indent.
 	fuiId focusedBeforeTheTabChain = fuiGetFocusedId(context);
 	bool alreadyHadTheKeyboard = (focusedBeforeTheTabChain == editorId);
+
+	/*
+		Whether the keyboard is anywhere in THIS editor, the bar counted in.
+
+		Ctrl+f, escape and f3 belong to the editor as a whole rather than to the document alone: pressed
+		while the find field has the focus they still mean what they mean. So they are gated on this rather
+		than on the document having the keyboard, and two editors beside each other still keep them apart.
+	*/
+	bool aFieldHadTheKeyboard = (focusedBeforeTheTabChain == findFieldId) || (focusedBeforeTheTabChain == replaceFieldId) || (focusedBeforeTheTabChain == goToLineFieldId);
+	bool theBarHadTheKeyboard = aFieldHadTheKeyboard || (focusedBeforeTheTabChain == findBarId);
+	bool theEditorHadTheKeyboardSomewhere = alreadyHadTheKeyboard || theBarHadTheKeyboard;
 
 	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
 	if(config->toggles.isInteractive) {
@@ -6269,16 +7786,34 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			linesPerPage = fuiEditor__MaxI32(linesPerPage, 1);
 			fuiEditor__HandleKeyboard(context, editor, &render, linesPerPage, alreadyHadTheKeyboard, &result.didCopy);
 		}
+
+		// After the document's own keys, so that nothing here answers a keystroke the document has already
+		// spent - and before the bar is built, so that a bar this press OPENS is drawn in the same frame.
+		fuiEditor__HandleFindKeys(context, editor, theEditorHadTheKeyboardSomewhere, editorId, findFieldId, replaceFieldId, goToLineFieldId);
+		if(editor->find.fieldWantingTheKeyboard != FUI_TEXTEDITOR__FIELD_NONE) {
+			fuiId wantedFieldId = findFieldId;
+			if(editor->find.fieldWantingTheKeyboard == FUI_TEXTEDITOR__FIELD_REPLACE) {
+				wantedFieldId = replaceFieldId;
+			} else if(editor->find.fieldWantingTheKeyboard == FUI_TEXTEDITOR__FIELD_GOTO_LINE) {
+				wantedFieldId = goToLineFieldId;
+			}
+			fuiSetFocusedId(context, wantedFieldId);
+			editor->find.fieldWantingTheKeyboard = FUI_TEXTEDITOR__FIELD_NONE;
+
+			// Read again, because the editor may have just LOST the keyboard to a field of its own - and
+			// what follows draws a caret off it.
+			result.isFocused = false;
+		}
 	}
 
-	// Taken from the document's VERSION across the whole build rather than from any one branch reporting
-	// itself, so an edit that arrived some way nobody thought of still says so.
-	result.didChange = (editor->version != versionBeforeThisBuild);
+	float findBarHeight = fuiEditor__FindBarHeight(editor, theme);
 
 	bool caretMoved = (editor->caretOffset != caretBeforeThisBuild) || (editor->selectionAnchor != anchorBeforeThisBuild);
-	result.didMoveCaret = caretMoved;
-	if(caretMoved) {
-		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, &scrollX, &scrollY);
+	if(editor->wantsCaretRevealed) {
+		fuiEditor__RevealCaret(context, editor, &render, &layout, findBarHeight, &scrollX, &scrollY);
+		editor->wantsCaretRevealed = false;
+	} else if(caretMoved) {
+		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, findBarHeight, &scrollX, &scrollY);
 	}
 
 	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
@@ -6384,6 +7919,30 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	// Only the lines that can be seen are touched at all. That is the whole reason a document of a million
 	// lines costs what one of twenty costs: nothing here is per DOCUMENT line, everything is per VISIBLE one.
+	/*
+		What the find bar is looking for, in the form the drawing below needs it.
+
+		Every match gets a wash, and they are worked out PER VISIBLE LINE rather than kept as a list. A list
+		would be one entry per hit in the whole document - and this widget exists precisely so that nothing
+		is ever counted per document line. A line's worth of scanning is a line's worth of bytes.
+	*/
+	int32_t documentTextLength = fuiEditorGetTextLength(editor);
+	int32_t findNeedleLength = 0;
+	bool findMatchCase = false;
+	bool findWholeWord = false;
+	bool findNeedleCrossesLines = false;
+	bool highlightsTheMatches = false;
+	if(editor->find.isOpen) {
+		findNeedleLength = fuiEditor__SearchTextLength(editor);
+		findMatchCase = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+		findWholeWord = ((editor->find.flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+		if(findNeedleLength > 0) {
+			const char *foundLineFeed = (const char *)FUI_TEXTEDITOR_MEMCHR(editor->find.needle, '\n', (size_t)findNeedleLength);
+			findNeedleCrossesLines = (foundLineFeed != fui_null);
+		}
+		highlightsTheMatches = (findNeedleLength > 0) && (config->colors.findHighlightBackground.a > 0.0f);
+	}
+
 	fuiPushClip(context, layout.textRect);
 	float lineLeftX = layout.textRect.x + config->metrics.textPaddingX - scrollX;
 	float widestLineSoFar = editor->widestMeasuredLineWidth;
@@ -6400,6 +7959,37 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		if(lineDecoration != fui_null && lineDecoration->background.a > 0.0f) {
 			fuiRect decorationRect = fuiRectMake(layout.textRect.x, lineTopY, layout.textRect.w, render.lineHeight);
 			fuiDrawRect(context, decorationRect, lineDecoration->background);
+		}
+
+		/*
+			Every match, washed UNDER the selection.
+
+			The current one carries the selection on top of it, so the two colours together are what say
+			"this one of these". Drawing only the others would make the current match the one thing on
+			screen that is not marked as a match.
+		*/
+		if(highlightsTheMatches) {
+			int32_t scanFrom = lineStart;
+			int32_t scanLimit = lineEnd;
+			if(findNeedleCrossesLines) {
+				// A needle with a line break in it can only be seen at all by looking across the line's
+				// own edges, and what falls outside them is clipped away below.
+				scanFrom = fuiEditor__MaxI32(lineStart - findNeedleLength + 1, 0);
+				scanLimit = fuiEditor__MinI32(lineEnd + findNeedleLength - 1, documentTextLength);
+			}
+			int32_t matchStart = fuiEditor__ScanForward(editor, editor->find.needle, findNeedleLength, scanFrom, scanLimit, findMatchCase, findWholeWord);
+			while(matchStart >= 0 && matchStart < lineEnd) {
+				int32_t washStart = fuiEditor__ClampI32(matchStart, lineStart, lineEnd);
+				int32_t washEnd = fuiEditor__ClampI32(matchStart + findNeedleLength, lineStart, lineEnd);
+				if(washEnd > washStart) {
+					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
+					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+					fuiRect washRect = fuiRectMake(lineLeftX + washStartDistance, lineTopY, washEndDistance - washStartDistance, render.lineHeight);
+					fuiDrawRect(context, washRect, config->colors.findHighlightBackground);
+				}
+				// Stepped over WHOLE, so the hits drawn here are the same hits the count in the bar counted.
+				matchStart = fuiEditor__ScanForward(editor, editor->find.needle, findNeedleLength, matchStart + findNeedleLength, scanLimit, findMatchCase, findWholeWord);
+			}
 		}
 
 		if(hasSelection) {
@@ -6567,6 +8157,64 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		fuiDrawText(context, statusText, statusLength, statusTextPosition, render.fontHeight, config->colors.statusBarText);
 		fuiPopClip(context);
 	}
+
+	/*
+		The bar is built LAST of everything in here.
+
+		`hot` goes to whatever asked for the cursor most recently, which is how this library stacks one
+		thing over another without a z order - so a bar built last takes the click that would otherwise
+		have moved the caret in the line underneath it.
+	*/
+	if(config->toggles.isInteractive && fuiEditorIsFindOpen(editor)) {
+		fuiRect barRect = fuiEditor__FindBarRect(editor, &layout, theme);
+		fuiPushId(context, id);
+		fuiEditor__FindBarResult barResult = fuiEditor__BuildFindBar(context, editor, config, theme, barRect, findBarId);
+		fuiPopId(context);
+
+		if(barResult.searchTextChanged) {
+			// Typing in the field searches again from where the current match BEGINS rather than from
+			// behind it, so growing "fui" into "fui_" keeps the same hit instead of skipping to the next.
+			int32_t searchFrom = fuiEditorGetSelectionStart(editor);
+			const bool forwards = false;
+			(void)fuiEditor__SelectMatchFrom(editor, searchFrom, forwards);
+		}
+		if(barResult.wantsFindPrevious) {
+			(void)fuiEditorFindPrevious(editor);
+		}
+		if(barResult.wantsFindNext) {
+			(void)fuiEditorFindNext(editor);
+		}
+		if(barResult.wantsToReplace) {
+			(void)fuiEditorReplaceCurrent(editor);
+		}
+		if(barResult.wantsToReplaceAll) {
+			(void)fuiEditorReplaceAll(editor);
+		}
+		if(barResult.wantsToGoToLine) {
+			int32_t wantedLineNumber = fuiEditor__ParseInt(editor->find.lineNumberText);
+			if(wantedLineNumber > 0) {
+				// Typed counting from one and held counting from zero, which is the one place the two meet.
+				(void)fuiEditorGoToLine(editor, wantedLineNumber - 1);
+			}
+			fuiEditorCloseFind(editor);
+			fuiSetFocusedId(context, editorId);
+		}
+		if(barResult.wantsToClose) {
+			fuiEditorCloseFind(editor);
+			fuiSetFocusedId(context, editorId);
+		}
+	}
+
+	/*
+		Both of these are taken at the very END of the build, from the document's VERSION and from where the
+		caret stands rather than from any one branch reporting itself.
+
+		At the end, because the find bar is built after everything else and its replace buttons WRITE. Read
+		any earlier and a replacement made from the bar would be a change nobody was ever told about - and
+		the next build compares against the new version, so it would never be reported at all.
+	*/
+	result.didChange = (editor->version != versionBeforeThisBuild);
+	result.didMoveCaret = (editor->caretOffset != caretBeforeThisBuild) || (editor->selectionAnchor != anchorBeforeThisBuild);
 
 	return(result);
 }

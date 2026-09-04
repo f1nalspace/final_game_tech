@@ -8,9 +8,10 @@ Description:
 	The editor add-on is built over several iterations, and this demo grows with it. What is in right now
 	is the document - a gap buffer, a line index that is a split array of its own, and the encoding seam -
 	and a widget over it that can be read, scrolled, selected from, copied out of, coloured by a lexer,
-	TYPED into and TAKEN BACK: a gutter with line numbers, tab stops, visible whitespace, two scrollbars, a
-	status line, overwrite mode, undo and redo, and tab, alt+arrow and ctrl+shift+d for whole blocks of
-	lines. Find and replace are the next iteration.
+	TYPED into, TAKEN BACK and SEARCHED: a gutter with line numbers, tab stops, visible whitespace, two
+	scrollbars, a status line, overwrite mode, undo and redo, tab, alt+arrow and ctrl+shift+d for whole
+	blocks of lines, and a find bar on ctrl+f with replace on ctrl+h and go to line on ctrl+g. Other
+	encodings and word wrap are the next iteration.
 
 	It fills itself from final_ui.h, because at over fourteen thousand lines that is the largest file to
 	hand and the one the add-on has to hold up against.
@@ -1402,6 +1403,23 @@ static void HarnessTypeText(EditorTestHarness *harness, const char *utf8Text, co
 		harness->input.keys[fuiKey_LeftControl].endedDown = true;
 	}
 	(void)HarnessFrame(harness);
+}
+
+//! Clicks the LEFT button at a point, which takes three frames: hover, press, release
+static fuiEditorAction HarnessClickLeftAt(EditorTestHarness *harness, const float x, const float y) {
+	// Hovering is resolved against the PREVIOUS build, so the pointer has to stand there for a frame
+	// before the press can be seen as happening over anything at all.
+	harness->input.mousePosition = fuiV2(x, y);
+	(void)HarnessFrame(harness);
+
+	harness->input.mouseButtons[FUI_MOUSE_LEFT].halfTransitionCount = 1;
+	harness->input.mouseButtons[FUI_MOUSE_LEFT].endedDown = true;
+	(void)HarnessFrame(harness);
+
+	// A button fires on the RELEASE, which is what lets a user change their mind after pressing one.
+	harness->input.mouseButtons[FUI_MOUSE_LEFT].halfTransitionCount = 1;
+	harness->input.mouseButtons[FUI_MOUSE_LEFT].endedDown = false;
+	return(HarnessFrame(harness));
 }
 
 //! Presses the middle mouse button at a point in the widget, which is what pastes there
@@ -3525,6 +3543,822 @@ static void SelfTestUndoAgainstAPlainBuffer(void) {
 	fuiEditorRelease(&editor);
 }
 
+// ----------------------------------------------------------------------------
+// > Finding
+// ----------------------------------------------------------------------------
+
+//! Reads final_ui.h from wherever the test happens to have been started, or answers null
+static bool TestReadSourceFile(uint8_t **outData, int32_t *outLength) {
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+	*outData = fpl_null;
+	*outLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && *outData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], outData, outLength);
+		candidateIndex += 1;
+	}
+	return(*outData != fpl_null);
+}
+
+/*
+	A second, dumb implementation of the count, run over a flat buffer.
+
+	The editor searches through a hole in the middle of its bytes; this walks a plain array and knows
+	nothing about one. Where the two disagree, the hole is what did it - and that is the one thing about a
+	gap buffer that looks right on screen right up until it does not.
+
+	The demo's own readout uses it too, which is what puts the two numbers side by side on screen rather
+	than only in the exit code.
+*/
+static char FoldByteForSearch(const char byte, const bool matchCase) {
+	if(matchCase) {
+		return(byte);
+	}
+	unsigned char value = (unsigned char)byte;
+	if(value >= (unsigned char)'A' && value <= (unsigned char)'Z') {
+		return((char)(value + ((unsigned char)'a' - (unsigned char)'A')));
+	}
+	return(byte);
+}
+
+static int32_t CountMatchesInBuffer(const uint8_t *data, const int32_t dataLength, const char *needle, const bool matchCase) {
+	int32_t needleLength = (int32_t)strlen(needle);
+	if(needleLength <= 0) {
+		return(0);
+	}
+	int32_t matchCount = 0;
+	int32_t scanOffset = 0;
+	while(scanOffset <= (dataLength - needleLength)) {
+		bool isAMatch = true;
+		for(int32_t needleIndex = 0; needleIndex < needleLength && isAMatch; ++needleIndex) {
+			char documentByte = FoldByteForSearch((char)data[scanOffset + needleIndex], matchCase);
+			char needleByte = FoldByteForSearch(needle[needleIndex], matchCase);
+			isAMatch = (documentByte == needleByte);
+		}
+		if(isAMatch) {
+			// Stepped over WHOLE, which is what grep -o counts and what the editor has to agree with.
+			matchCount += 1;
+			scanOffset += needleLength;
+		} else {
+			scanOffset += 1;
+		}
+	}
+	return(matchCount);
+}
+
+static void SelfTestFinding(void) {
+	CheckSection("finding");
+
+	/*
+		           1111111111222222222233333
+		 01234567890123456789012345678901234
+		"one two One TWO one\nstone alone one"
+	*/
+	const char *haystack = "one two One TWO one\nstone alone one";
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, haystack, 0);
+
+	const uint32_t plainSearch = (uint32_t)fuiEditorFindFlags_None;
+	const uint32_t caseSensitive = (uint32_t)fuiEditorFindFlags_MatchCase;
+	const uint32_t wholeWord = (uint32_t)fuiEditorFindFlags_WholeWord;
+	const uint32_t backwards = (uint32_t)fuiEditorFindFlags_Backwards;
+	const uint32_t withoutWrapping = (uint32_t)fuiEditorFindFlags_NoWrap;
+	const int32_t fromTheStart = 0;
+
+	fuiEditorMatch match = fuiEditorFind(&editor, "one", 0, fromTheStart, caseSensitive);
+	CHECK(match.wasFound);
+	CHECK_I(match.startOffset, 0);
+	CHECK_I(match.endOffset, 3);
+
+	// "One" at 8 is only a match when case is ignored, and it is the FIRST one that differs between the two.
+	match = fuiEditorFind(&editor, "one", 0, 1, caseSensitive);
+	CHECK_I(match.startOffset, 16);
+	match = fuiEditorFind(&editor, "one", 0, 1, plainSearch);
+	CHECK_I(match.startOffset, 8);
+
+	// Case sensitive: 0, 16, 22 (stONE), 28 (alONE), 32. Ignoring case adds 8.
+	CHECK_I(fuiEditorCountMatches(&editor, "one", 0, caseSensitive), 5);
+	CHECK_I(fuiEditorCountMatches(&editor, "one", 0, plainSearch), 6);
+
+	// Whole words only: the two inside "stone" and "alone" fall away.
+	CHECK_I(fuiEditorCountMatches(&editor, "one", 0, caseSensitive | wholeWord), 3);
+	CHECK_I(fuiEditorCountMatches(&editor, "one", 0, wholeWord), 4);
+	match = fuiEditorFind(&editor, "one", 0, 17, caseSensitive | wholeWord);
+	CHECK_I(match.startOffset, 32);
+
+	// "two" at 4 and "TWO" at 12
+	CHECK_I(fuiEditorCountMatches(&editor, "two", 0, caseSensitive), 1);
+	CHECK_I(fuiEditorCountMatches(&editor, "two", 0, plainSearch), 2);
+
+	// Backwards, which answers the last match that BEGINS in front of where it was asked
+	match = fuiEditorFind(&editor, "one", 0, 35, caseSensitive | backwards);
+	CHECK_I(match.startOffset, 32);
+	match = fuiEditorFind(&editor, "one", 0, 32, caseSensitive | backwards);
+	CHECK_I(match.startOffset, 28);
+
+	// Round the ends, in both directions, and what happens when it is refused
+	match = fuiEditorFind(&editor, "one", 0, 33, caseSensitive);
+	CHECK(match.wasFound);
+	CHECK_I(match.startOffset, 0);
+	match = fuiEditorFind(&editor, "one", 0, 33, caseSensitive | withoutWrapping);
+	CHECK(!match.wasFound);
+	match = fuiEditorFind(&editor, "one", 0, 0, caseSensitive | backwards);
+	CHECK_I(match.startOffset, 32);
+	match = fuiEditorFind(&editor, "one", 0, 0, caseSensitive | backwards | withoutWrapping);
+	CHECK(!match.wasFound);
+
+	// Nothing to look for, and more to look for than there is document
+	match = fuiEditorFind(&editor, "", 0, fromTheStart, plainSearch);
+	CHECK(!match.wasFound);
+	CHECK_I(fuiEditorCountMatches(&editor, "", 0, plainSearch), 0);
+	match = fuiEditorFind(&editor, "one two One TWO one\nstone alone one and more", 0, fromTheStart, plainSearch);
+	CHECK(!match.wasFound);
+
+	// A line feed in the needle, which is the one thing a match can cross a line on
+	match = fuiEditorFind(&editor, "one\nstone", 0, fromTheStart, caseSensitive);
+	CHECK(match.wasFound);
+	CHECK_I(match.startOffset, 16);
+
+	fuiEditorRelease(&editor);
+
+	// Overlapping matches are counted the way grep -o counts them: stepped over whole.
+	fuiEditor overlapping;
+	fuiEditorInit(&overlapping, fpl_null);
+	fuiEditorSetText(&overlapping, "aaaa", 0);
+	CHECK_I(fuiEditorCountMatches(&overlapping, "aa", 0, plainSearch), 2);
+	fuiEditorMatch first = fuiEditorFind(&overlapping, "aa", 0, 0, plainSearch | withoutWrapping);
+	CHECK_I(first.startOffset, 0);
+	fuiEditorMatch second = fuiEditorFind(&overlapping, "aa", 0, first.endOffset, plainSearch | withoutWrapping);
+	CHECK_I(second.startOffset, 2);
+	fuiEditorRelease(&overlapping);
+
+	/*
+		And a match that lies ACROSS the hole.
+
+		An insert leaves the hole standing where it happened, so a needle that spans that offset is read out
+		of two pieces of the buffer rather than one. That is the case a search written against a flat array
+		gets wrong, and it looks perfectly fine on screen.
+	*/
+	fuiEditor acrossTheHole;
+	fuiEditorInit(&acrossTheHole, fpl_null);
+	fuiEditorSetText(&acrossTheHole, "onetwothree", 0);
+	CHECK(fuiEditorInsert(&acrossTheHole, 3, "XX", 2));
+	CHECK_TEXT(&acrossTheHole, "oneXXtwothree");
+	match = fuiEditorFind(&acrossTheHole, "XXtwo", 0, fromTheStart, caseSensitive);
+	CHECK(match.wasFound);
+	CHECK_I(match.startOffset, 3);
+	match = fuiEditorFind(&acrossTheHole, "twothree", 0, fromTheStart, caseSensitive);
+	CHECK_I(match.startOffset, 5);
+	CHECK_I(fuiEditorCountMatches(&acrossTheHole, "e", 0, caseSensitive), 3);
+	fuiEditorRelease(&acrossTheHole);
+}
+
+/*
+	The count over a real file, held against a count worked out the dumb way over its bytes.
+
+	This is the acceptance check for the iteration: searching final_ui.h for fui__ has to come to the same
+	number grep -o | wc -l comes to.
+*/
+static void SelfTestFindAgainstFile(void) {
+	CheckSection("finding in a real file");
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	if(!TestReadSourceFile(&fileData, &fileLength)) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
+	CHECK(fuiEditorLoadFromMemory(&editor, fileData, fileLength, &utf8Encoding));
+
+	const uint32_t caseSensitive = (uint32_t)fuiEditorFindFlags_MatchCase;
+	const uint32_t ignoringCase = (uint32_t)fuiEditorFindFlags_None;
+
+	const bool matchingCase = true;
+	const bool ignoringItsCase = false;
+	int32_t expectedSensitive = CountMatchesInBuffer(fileData, fileLength, "fui__", matchingCase);
+	int32_t expectedInsensitive = CountMatchesInBuffer(fileData, fileLength, "fui__", ignoringItsCase);
+	CHECK(expectedSensitive > 0);
+	CHECK(expectedInsensitive > expectedSensitive);
+	CHECK_I(fuiEditorCountMatches(&editor, "fui__", 0, caseSensitive), expectedSensitive);
+	CHECK_I(fuiEditorCountMatches(&editor, "fui__", 0, ignoringCase), expectedInsensitive);
+
+	// And a needle that OVERLAPS itself, over a whole file of indented code. "fui__" has no prefix that is
+	// also a suffix of it, so it can never be found inside its own match - which means counting it proves
+	// nothing about whether matches are stepped over whole. Two blanks prove it thousands of times over.
+	const char *twoBlanks = "  ";
+	int32_t expectedBlankRuns = CountMatchesInBuffer(fileData, fileLength, twoBlanks, matchingCase);
+	CHECK(expectedBlankRuns > 0);
+	CHECK_I(fuiEditorCountMatches(&editor, twoBlanks, 0, caseSensitive), expectedBlankRuns);
+
+	// And once more with the hole standing in the MIDDLE of the file rather than at its end, because an
+	// edit is what puts it there and a search after an edit is the normal case rather than the odd one.
+	int32_t halfWayIn = fileLength / 2;
+	CHECK(fuiEditorInsert(&editor, halfWayIn, "fui__", 5));
+	CHECK_I(fuiEditorCountMatches(&editor, "fui__", 0, caseSensitive), expectedSensitive + 1);
+	CHECK(fuiEditorErase(&editor, halfWayIn, 5));
+	CHECK_I(fuiEditorCountMatches(&editor, "fui__", 0, caseSensitive), expectedSensitive);
+
+	// Walking every one of them forwards has to arrive at the same number the count did.
+	int32_t walkedCount = 0;
+	int32_t searchFrom = 0;
+	const uint32_t withoutWrapping = caseSensitive | (uint32_t)fuiEditorFindFlags_NoWrap;
+	while(true) {
+		fuiEditorMatch match = fuiEditorFind(&editor, "fui__", 0, searchFrom, withoutWrapping);
+		if(!match.wasFound) {
+			break;
+		}
+		walkedCount += 1;
+		searchFrom = match.endOffset;
+	}
+	CHECK_I(walkedCount, expectedSensitive);
+
+	fuiEditorRelease(&editor);
+	free(fileData);
+}
+
+static void SelfTestFindNextWalksEveryMatch(void) {
+	CheckSection("find next and previous");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "one two one three one", 0);
+	fuiEditorSetSearchText(&editor, "one", 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+	fuiEditorSetCaretOffset(&editor, 0, false);
+
+	CHECK_I(fuiEditorGetMatchCount(&editor), 3);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), -1);
+
+	// 0, 8 and 18, and then round the end again
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(&editor), 3);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 0);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 8);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 1);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 18);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 2);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 0);
+
+	// Backwards walks the same three the other way round
+	CHECK(fuiEditorFindPrevious(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 18);
+	CHECK(fuiEditorFindPrevious(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 8);
+	CHECK(fuiEditorFindPrevious(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+
+	// The count follows the document rather than being worked out once and kept
+	CHECK(fuiEditorInsert(&editor, 0, "one ", 4));
+	CHECK_I(fuiEditorGetMatchCount(&editor), 4);
+	CHECK(fuiEditorErase(&editor, 0, 4));
+	CHECK_I(fuiEditorGetMatchCount(&editor), 3);
+
+	// And it follows the FLAGS too
+	fuiEditorSetSearchText(&editor, "ONE", 0);
+	CHECK_I(fuiEditorGetMatchCount(&editor), 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_None);
+	CHECK_I(fuiEditorGetMatchCount(&editor), 3);
+
+	// Find-next walks the SAME matches the count counts, overlapping needles included: "aa" in "aaaa" is
+	// two of them, at 0 and at 2, and never the one at 1 that lies inside the first.
+	fuiEditorSetText(&editor, "aaaa", 0);
+	fuiEditorSetSearchText(&editor, "aa", 0);
+	fuiEditorSetCaretOffset(&editor, 0, false);
+	CHECK_I(fuiEditorGetMatchCount(&editor), 2);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 0);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 2);
+	CHECK_I(fuiEditorGetCurrentMatchIndex(&editor), 1);
+	CHECK(fuiEditorFindNext(&editor));
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+
+	/*
+		A search text handed over as a LENGTH rather than as a terminated string is read exactly that far.
+
+		What is kept is only ever pulled back onto a character boundary when something was really cut off,
+		because the byte that decides that is the one BEHIND what is kept - and when nothing was cut, that
+		byte is past the end of what the caller handed over.
+	*/
+	char unterminatedText[8];
+	unterminatedText[0] = 'o';
+	unterminatedText[1] = 'n';
+	unterminatedText[2] = 'e';
+	// A continuation byte right behind it, which is what a read past the end would trip over
+	unterminatedText[3] = (char)0x80;
+	fuiEditorSetSearchText(&editor, unterminatedText, 3);
+	const char *searchTextFromALength = fuiEditorGetSearchText(&editor);
+	CHECK(strcmp(searchTextFromALength, "one") == 0);
+
+	// And one that really IS cut off mid-character keeps whole characters only
+	char tooLongForTheField[FUI_TEXTEDITOR_MAX_FIND_BYTES + 8];
+	int32_t writtenLength = 0;
+	while(writtenLength < (int32_t)sizeof(tooLongForTheField) - 3) {
+		// Two bytes per character, so the cut lands inside one of them whatever the capacity happens to be
+		tooLongForTheField[writtenLength] = (char)0xC3;
+		tooLongForTheField[writtenLength + 1] = (char)0xA4;
+		writtenLength += 2;
+	}
+	fuiEditorSetSearchText(&editor, tooLongForTheField, writtenLength);
+	const char *keptSearchText = fuiEditorGetSearchText(&editor);
+	int32_t keptLength = (int32_t)strlen(keptSearchText);
+	CHECK(keptLength < FUI_TEXTEDITOR_MAX_FIND_BYTES);
+	CHECK_I(keptLength % 2, 0);
+
+	// Nothing to look for is not the same thing as nothing to find
+	fuiEditorSetText(&editor, "one two one three one", 0);
+	fuiEditorSetSearchText(&editor, "", 0);
+	CHECK_I(fuiEditorGetMatchCount(&editor), 0);
+	CHECK(!fuiEditorFindNext(&editor));
+
+	fuiEditorRelease(&editor);
+}
+
+static void SelfTestReplacing(void) {
+	CheckSection("replacing");
+
+	const char *original = "one two one three one";
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, original, 0);
+	fuiEditorSetSearchText(&editor, "one", 0);
+	fuiEditorSetReplaceText(&editor, "1", 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+
+	int32_t stepsBefore = fuiEditorGetUndoStepCount(&editor);
+	CHECK_I(fuiEditorReplaceAll(&editor), 3);
+	CHECK_TEXT(&editor, "1 two 1 three 1");
+
+	// ONE step, which is the whole reason replace all is worth having
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), stepsBefore + 1);
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, original);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), stepsBefore);
+	CHECK(fuiEditorRedo(&editor));
+	CHECK_TEXT(&editor, "1 two 1 three 1");
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_TEXT(&editor, original);
+
+	// A replacement that CONTAINS what was looked for has to end rather than find itself again
+	fuiEditorSetText(&editor, "aaa", 0);
+	fuiEditorSetSearchText(&editor, "a", 0);
+	fuiEditorSetReplaceText(&editor, "aa", 0);
+	CHECK_I(fuiEditorReplaceAll(&editor), 3);
+	CHECK_TEXT(&editor, "aaaaaa");
+
+	// An empty replacement is a delete, and that is a perfectly good thing to ask for
+	fuiEditorSetText(&editor, "a-b-c", 0);
+	fuiEditorSetSearchText(&editor, "-", 0);
+	fuiEditorSetReplaceText(&editor, "", 0);
+	CHECK_I(fuiEditorReplaceAll(&editor), 2);
+	CHECK_TEXT(&editor, "abc");
+
+	// Whole words only, over a text where it makes the difference
+	fuiEditorSetText(&editor, "one stone one", 0);
+	fuiEditorSetSearchText(&editor, "one", 0);
+	fuiEditorSetReplaceText(&editor, "1", 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_MatchCase | (uint32_t)fuiEditorFindFlags_WholeWord);
+	CHECK_I(fuiEditorReplaceAll(&editor), 2);
+	CHECK_TEXT(&editor, "1 stone 1");
+
+	/*
+		Replace one, which only FINDS on a selection that is not a match.
+
+		That is what makes the button safe to press twice without looking: the first press puts the
+		selection on a match, and only the second one writes.
+	*/
+	fuiEditorSetText(&editor, "one two one", 0);
+	fuiEditorSetSearchText(&editor, "one", 0);
+	fuiEditorSetReplaceText(&editor, "1", 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+	fuiEditorSetCaretOffset(&editor, 0, false);
+	CHECK(!fuiEditorReplaceCurrent(&editor));
+	CHECK_TEXT(&editor, "one two one");
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 0);
+	CHECK(fuiEditorReplaceCurrent(&editor));
+	CHECK_TEXT(&editor, "1 two one");
+
+	// And it left the selection on the NEXT match, so pressing it again carries on
+	CHECK_I(fuiEditorGetSelectionStart(&editor), 6);
+	CHECK(fuiEditorReplaceCurrent(&editor));
+	CHECK_TEXT(&editor, "1 two 1");
+
+	// A read only editor refuses both of them outright
+	fuiEditorSetText(&editor, original, 0);
+	fuiEditorConfig readOnlyConfig = fuiEditorDefaultConfig();
+	readOnlyConfig.toggles.isReadOnly = true;
+	fuiEditorSetConfig(&editor, &readOnlyConfig);
+	fuiEditorSetSearchText(&editor, "one", 0);
+	fuiEditorSetReplaceText(&editor, "1", 0);
+	CHECK_I(fuiEditorReplaceAll(&editor), 0);
+	CHECK(!fuiEditorReplaceCurrent(&editor));
+	CHECK_TEXT(&editor, original);
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	Replace all over a real file, taken back with ONE ctrl+z and compared byte for byte.
+
+	Thousands of records in one group is also what the undo budget has never seen before: it drops whole
+	steps from the oldest end, and the step being written is not a whole one yet.
+*/
+static void SelfTestReplaceAllAgainstFile(void) {
+	CheckSection("replace all over a file");
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	if(!TestReadSourceFile(&fileData, &fileLength)) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
+	CHECK(fuiEditorLoadFromMemory(&editor, fileData, fileLength, &utf8Encoding));
+
+	const bool matchingCase = true;
+	int32_t expectedCount = CountMatchesInBuffer(fileData, fileLength, "fui__", matchingCase);
+	CHECK(expectedCount > 0);
+
+	fuiEditorSetSearchText(&editor, "fui__", 0);
+	fuiEditorSetReplaceText(&editor, "fuiXX__", 0);
+	fuiEditorSetFindFlags(&editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+
+	int32_t stepsBefore = fuiEditorGetUndoStepCount(&editor);
+	int32_t replacedCount = fuiEditorReplaceAll(&editor);
+	CHECK_I(replacedCount, expectedCount);
+	CHECK_I(fuiEditorGetUndoStepCount(&editor), stepsBefore + 1);
+
+	// Two bytes longer per replacement, and none of the old spelling left anywhere
+	int32_t expectedLength = fileLength + expectedCount * 2;
+	CHECK_I(fuiEditorGetTextLength(&editor), expectedLength);
+	CHECK_I(fuiEditorCountMatches(&editor, "fui__", 0, (uint32_t)fuiEditorFindFlags_MatchCase), 0);
+	CHECK_I(fuiEditorCountMatches(&editor, "fuiXX__", 0, (uint32_t)fuiEditorFindFlags_MatchCase), expectedCount);
+
+	// ONE ctrl+z, and the file is back exactly as it was read
+	CHECK(fuiEditorUndo(&editor));
+	CHECK_I(fuiEditorGetTextLength(&editor), fileLength);
+	const char *restoredText = fuiEditorGetContiguousText(&editor);
+	CHECK(memcmp(restoredText, fileData, (size_t)fileLength) == 0);
+	CHECK(!fuiEditorCanUndo(&editor));
+
+	// And the line index survived a few thousand edits in a row
+	int32_t expectedLineCount = 1;
+	for(int32_t byteIndex = 0; byteIndex < fileLength; ++byteIndex) {
+		if(fileData[byteIndex] == '\n') {
+			expectedLineCount += 1;
+		}
+	}
+	CHECK_I(fuiEditorGetLineCount(&editor), expectedLineCount);
+
+	fuiEditorRelease(&editor);
+	free(fileData);
+}
+
+/*
+	The bar's keys, through the headless frame - which is the only way to press one at all.
+
+	The point of most of these is not what the text ends up as but WHERE the keystroke went: a character
+	typed into the find field must not reach the document, and the field's caret and the editor's must not
+	move each other.
+*/
+static void SelfTestFindKeys(void) {
+	CheckSection("the find bar's keys");
+
+	EditorTestHarness harness;
+	const float wideEnoughForTheBar = 800.0f;
+	const float tallEnoughForTenLines = 300.0f;
+	if(!HarnessInit(&harness, "one two one\nthree one four\nfive six\nseven one eight", wideEnoughForTheBar, tallEnoughForTenLines)) {
+		CHECK(false);
+		return;
+	}
+	fuiEditor *editor = &harness.editor;
+	HarnessFocusTheEditor(&harness);
+
+	const bool withShift = true;
+	const bool withoutShift = false;
+	const bool withControl = true;
+	const bool withoutControl = false;
+
+	// Ctrl+f opens the bar and hands it the keyboard, in the same frame
+	CHECK(!fuiEditorIsFindOpen(editor));
+	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+
+	fuiId editorId = fuiGetId(&harness.ui, "editor");
+	fuiPushId(&harness.ui, "editor");
+	fuiId findFieldId = fuiGetId(&harness.ui, "__editorFindText");
+	fuiPopId(&harness.ui);
+	CHECK(fuiGetFocusedId(&harness.ui) == findFieldId);
+
+	// What is typed goes into the FIELD, and the document is not touched by it
+	int32_t documentVersionBeforeTyping = fuiEditorGetTextLength(editor);
+	HarnessTypeText(&harness, "one", withoutControl);
+	const char *typedSearchText = fuiEditorGetSearchText(editor);
+	CHECK(strcmp(typedSearchText, "one") == 0);
+	CHECK_I(fuiEditorGetTextLength(editor), documentVersionBeforeTyping);
+	CHECK_TEXT(editor, "one two one\nthree one four\nfive six\nseven one eight");
+
+	// Typing in the field searched as it went, so the first match is already selected
+	CHECK_I(fuiEditorGetSelectionStart(editor), 0);
+	CHECK_I(fuiEditorGetSelectionEnd(editor), 3);
+	CHECK_I(fuiEditorGetMatchCount(editor), 4);
+
+	// Enter in the field finds the next one, and does NOT give the focus up the way a plain enter would
+	HarnessPressKey(&harness, fuiKey_Return, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 8);
+	CHECK(fuiGetFocusedId(&harness.ui) == findFieldId);
+	HarnessPressKey(&harness, fuiKey_Return, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 18);
+	HarnessPressKey(&harness, fuiKey_Return, withShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 8);
+
+	/*
+		The two carets do not fight.
+
+		The editor holds its own; a fuiTextInput holds the context's. An arrow key while the field has the
+		keyboard belongs to the field, so the document's caret may not move a byte.
+	*/
+	int32_t caretBeforeTheArrow = fuiEditorGetCaretOffset(editor);
+	HarnessPressKey(&harness, fuiKey_Left, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetCaretOffset(editor), caretBeforeTheArrow);
+	HarnessPressKey(&harness, fuiKey_End, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetCaretOffset(editor), caretBeforeTheArrow);
+	// Backspace belongs to the field as well - it takes a character out of what is being looked for and
+	// leaves the document alone, which is the whole difference between the two carets.
+	HarnessPressKey(&harness, fuiKey_Backspace, withoutShift, withoutControl);
+	const char *shortenedSearchText = fuiEditorGetSearchText(editor);
+	CHECK(strcmp(shortenedSearchText, "on") == 0);
+	CHECK_TEXT(editor, "one two one\nthree one four\nfive six\nseven one eight");
+	fuiEditorSetSearchText(editor, "one", 0);
+
+	// Escape closes it and gives the keyboard back, or the editor would be deaf from here on
+	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	CHECK(fuiGetFocusedId(&harness.ui) == editorId);
+
+	// What was being looked for is kept, so f3 works with the bar shut
+	const char *keptSearchText = fuiEditorGetSearchText(editor);
+	CHECK(strcmp(keptSearchText, "one") == 0);
+	fuiEditorSetCaretOffset(editor, 0, false);
+	HarnessPressKey(&harness, fuiKey_F3, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 0);
+	HarnessPressKey(&harness, fuiKey_F3, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 8);
+	HarnessPressKey(&harness, fuiKey_F3, withShift, withoutControl);
+	CHECK_I(fuiEditorGetSelectionStart(editor), 0);
+
+	// Ctrl+f with something highlighted takes the search text FROM the highlight. "five" opens the third
+	// line, which begins at 27 because the two lines above it are 11 and 14 characters plus their endings.
+	fuiEditorSetSelection(editor, 27, 31);
+	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
+	const char *seededSearchText = fuiEditorGetSearchText(editor);
+	CHECK(strcmp(seededSearchText, "five") == 0);
+	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+
+	// Ctrl+h brings the row that replaces with it
+	HarnessPressKey(&harness, fuiKey_H, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+	fuiPushId(&harness.ui, "editor");
+	fuiId replaceFieldId = fuiGetId(&harness.ui, "__editorReplaceText");
+	fuiPopId(&harness.ui);
+	CHECK(fuiGetFocusedId(&harness.ui) == replaceFieldId);
+	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+
+	// Ctrl+g, a line number typed into it, and enter
+	HarnessPressKey(&harness, fuiKey_G, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+	HarnessTypeText(&harness, "3", withoutControl);
+	HarnessPressKey(&harness, fuiKey_Return, withoutShift, withoutControl);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	CHECK_I(fuiEditorGetCaretLine(editor), 2);
+	CHECK_I(fuiEditorGetCaretOffset(editor), fuiEditorGetLineStart(editor, 2));
+	CHECK(fuiGetFocusedId(&harness.ui) == editorId);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The bar under the MOUSE, which is the half of it no key can reach.
+
+	Two things are only true on this path. A click on the bar has to land on the BAR rather than on the
+	line of text underneath it, and a replacement made by one of its buttons has to be reported by the
+	build that made it - the bar is built after everything else, so an action read any earlier would have
+	been read before the button was even pressed.
+*/
+static void SelfTestFindBarMouse(void) {
+	CheckSection("the find bar under the mouse");
+
+	EditorTestHarness harness;
+	const float wideEnoughForTheBar = 800.0f;
+	const float tallEnoughForTenLines = 300.0f;
+	if(!HarnessInit(&harness, "one two one\nthree one four\nfive six\nseven one eight", wideEnoughForTheBar, tallEnoughForTenLines)) {
+		CHECK(false);
+		return;
+	}
+	fuiEditor *editor = &harness.editor;
+	fuiEditorSetSearchText(editor, "one", 0);
+	fuiEditorSetReplaceText(editor, "1", 0);
+	fuiEditorSetFindFlags(editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+	const bool withTheReplaceRow = true;
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	(void)HarnessFrame(&harness);
+
+	/*
+		Where the replace all button sits, worked out here rather than asked of the widget.
+
+		A test that asked the code under test where its own button was would agree with it however wrong
+		both of them were.
+	*/
+	const fuiTheme *theme = fuiGetTheme(&harness.ui);
+	float borderThickness = theme->widgetBorderThickness;
+	float rowHeight = theme->menuItemHeight;
+	float innerX = harness.rect.x + borderThickness;
+	float innerY = harness.rect.y + borderThickness;
+	float innerWidth = harness.rect.w - borderThickness * 2.0f;
+	float bodyWidth = innerWidth - fuiScrollGutterWidth();
+	float contentLeft = innerX + FUI_TEXTEDITOR__FIND_BAR_PADDING;
+	float contentWidth = bodyWidth - FUI_TEXTEDITOR__FIND_BAR_PADDING * 2.0f;
+	float replaceRowTop = innerY + FUI_TEXTEDITOR__FIND_BAR_PADDING + rowHeight + FUI_TEXTEDITOR__FIND_BAR_SPACING;
+	const char *replaceAllLabel = "Replace all";
+	size_t replaceAllLabelLength = strlen(replaceAllLabel);
+	fuiVec2 replaceAllLabelSize = fuiMeasureText(&harness.ui, replaceAllLabel, replaceAllLabelLength, theme->fontHeight);
+	float replaceAllWidth = replaceAllLabelSize.x + theme->widgetPaddingX * 2.0f;
+	float replaceAllCentreX = contentLeft + contentWidth - replaceAllWidth * 0.5f;
+	float replaceRowCentreY = replaceRowTop + rowHeight * 0.5f;
+
+	/*
+		A click on the bar's own background must not move the caret in the line it is covering.
+
+		Aimed at the padding strip along the TOP of the bar, which is bar and nothing else at any width -
+		and far enough to the RIGHT that the offset it would land on in the document is not the one the
+		caret is already standing at. A check that clicks where the caret already is proves nothing.
+	*/
+	const int32_t middleOfTheFirstLine = 4;
+	fuiEditorSetCaretOffset(editor, middleOfTheFirstLine, false);
+	int32_t caretBeforeTheClick = fuiEditorGetCaretOffset(editor);
+	float wellIntoTheText = innerX + bodyWidth * 0.75f;
+	float insideTheBarsTopPadding = innerY + FUI_TEXTEDITOR__FIND_BAR_PADDING * 0.5f;
+	(void)HarnessClickLeftAt(&harness, wellIntoTheText, insideTheBarsTopPadding);
+	CHECK_I(fuiEditorGetCaretOffset(editor), caretBeforeTheClick);
+	CHECK_TEXT(editor, "one two one\nthree one four\nfive six\nseven one eight");
+
+	// And the replace all button, whose whole run has to be reported by the build that ran it
+	int32_t stepsBefore = fuiEditorGetUndoStepCount(editor);
+	fuiEditorAction action = HarnessClickLeftAt(&harness, replaceAllCentreX, replaceRowCentreY);
+	CHECK(action.didChange);
+	CHECK_TEXT(editor, "1 two 1\nthree 1 four\nfive six\nseven 1 eight");
+	CHECK_I(fuiEditorGetUndoStepCount(editor), stepsBefore + 1);
+
+	// One step, taken back with one press
+	CHECK(fuiEditorUndo(editor));
+	CHECK_TEXT(editor, "one two one\nthree one four\nfive six\nseven one eight");
+
+	HarnessRelease(&harness);
+}
+
+/*
+	Where the view ends up after a jump, and where it ends up with the bar in the way.
+
+	Two separate things. A jump across the document has to land in the MIDDLE of the view - a match that
+	came to rest flush against the top or the bottom edge has nothing around it to read. And the bar floats
+	over the top of the text, so the top of the view is not the top of the body while it is open: a caret
+	that came to rest under the bar would be invisible exactly while the thing that put it there was in use.
+*/
+static void SelfTestTheViewFollowsAJump(void) {
+	CheckSection("the view follows a jump");
+
+	// Sixty numbered lines, so which one is on screen can be read straight off the line index
+	char manyLines[16 * 64];
+	int32_t writeOffset = 0;
+	const int32_t lineCount = 60;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		size_t roomLeft = sizeof(manyLines) - (size_t)writeOffset;
+		int writtenLength = snprintf(&manyLines[writeOffset], roomLeft, "line %d\n", (int)lineIndex);
+		writeOffset += writtenLength;
+	}
+
+	EditorTestHarness harness;
+	const float wideEnoughForTheBar = 800.0f;
+	const float tallEnoughForAJump = 300.0f;
+	if(!HarnessInit(&harness, manyLines, wideEnoughForTheBar, tallEnoughForAJump)) {
+		CHECK(false);
+		return;
+	}
+	fuiEditor *editor = &harness.editor;
+	(void)HarnessFrame(&harness);
+
+	int32_t visibleLineCount = fuiEditorGetVisibleLineCount(editor);
+	CHECK(visibleLineCount > 6);
+
+	// A jump lands in the middle, which means clear of BOTH edges by more than a line or two
+	const int32_t aLongWayDown = 40;
+	const int32_t marginOfLines = 3;
+	CHECK(fuiEditorGoToLine(editor, aLongWayDown));
+	(void)HarnessFrame(&harness);
+	int32_t firstVisibleLine = fuiEditorGetFirstVisibleLine(editor);
+	CHECK(firstVisibleLine <= (aLongWayDown - marginOfLines));
+	CHECK((firstVisibleLine + visibleLineCount) >= (aLongWayDown + marginOfLines));
+
+	// A jump BACK, the other way, is centred just as well - which near the top of the document means the
+	// view goes all the way to it rather than stopping with the line flush against the upper edge.
+	const int32_t backNearTheTop = 5;
+	CHECK(fuiEditorGoToLine(editor, backNearTheTop));
+	(void)HarnessFrame(&harness);
+	CHECK_I(fuiEditorGetFirstVisibleLine(editor), 0);
+
+	/*
+		And now the bar, which covers the top of the text.
+
+		The caret is walked UP onto the line that is currently the first visible one - the line sitting
+		underneath the bar. It is on screen by every measure the view has, so a plain "bring it into view"
+		does nothing at all; only a top edge that knows about the bar scrolls any further.
+
+		Walked with the ARROW key rather than set from outside, because what brings the caret into view is
+		gated on it having moved DURING the build. A caret moved between two builds is the wheel's case, and
+		dragging the view back to it is exactly what must not happen there.
+	*/
+	CHECK(fuiEditorGoToLine(editor, aLongWayDown));
+	(void)HarnessFrame(&harness);
+	int32_t lineUnderTheBar = fuiEditorGetFirstVisibleLine(editor);
+	CHECK(lineUnderTheBar > 0);
+
+	const bool withTheReplaceRow = true;
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	(void)HarnessFrame(&harness);
+
+	/*
+		A jump made while the bar is OPEN has to clear the bar too.
+
+		Centring puts the line in the middle of what is left BELOW the bar, so the check is that the caret's
+		row ends up at least as far down as the bar is tall. Anything less and it is sitting behind it.
+	*/
+	float lineHeight = fuiGetLineHeight(&harness.ui, DEMO_TEST_FONT_HEIGHT);
+	const fuiTheme *harnessTheme = fuiGetTheme(&harness.ui);
+	float twoRowsAndTheirPadding = FUI_TEXTEDITOR__FIND_BAR_PADDING * 2.0f + FUI_TEXTEDITOR__FIND_BAR_SPACING + harnessTheme->menuItemHeight * 2.0f;
+	int32_t rowsTheBarCovers = (int32_t)(twoRowsAndTheirPadding / lineHeight) + 1;
+	CHECK(fuiEditorGoToLine(editor, aLongWayDown));
+	(void)HarnessFrame(&harness);
+	int32_t firstLineWithTheBarOpen = fuiEditorGetFirstVisibleLine(editor);
+	CHECK((aLongWayDown - firstLineWithTheBarOpen) >= rowsTheBarCovers);
+
+	// The bar took the keyboard when it opened; the document needs it back to answer an arrow key
+	HarnessFocusTheEditor(&harness);
+	fuiEditorSetCaretLine(editor, lineUnderTheBar + 1);
+	(void)HarnessFrame(&harness);
+	CHECK_I(fuiEditorGetFirstVisibleLine(editor), lineUnderTheBar);
+
+	const bool withoutShift = false;
+	const bool withoutControl = false;
+	HarnessPressKey(&harness, fuiKey_Up, withoutShift, withoutControl);
+	CHECK_I(fuiEditorGetCaretLine(editor), lineUnderTheBar);
+	CHECK(fuiEditorGetFirstVisibleLine(editor) < lineUnderTheBar);
+
+	HarnessRelease(&harness);
+}
+
+static void SelfTestGoToLine(void) {
+	CheckSection("go to line");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorSetText(&editor, "one\ntwo\nthree\nfour\nfive", 0);
+
+	CHECK(fuiEditorGoToLine(&editor, 2));
+	CHECK_I(fuiEditorGetCaretLine(&editor), 2);
+	CHECK_I(fuiEditorGetCaretOffset(&editor), 8);
+	CHECK(!fuiEditorHasSelection(&editor));
+
+	// Clamped at both ends rather than refused, because a line number typed by hand is often neither
+	CHECK(fuiEditorGoToLine(&editor, 9999));
+	CHECK_I(fuiEditorGetCaretLine(&editor), 4);
+	CHECK(fuiEditorGoToLine(&editor, -5));
+	CHECK_I(fuiEditorGetCaretLine(&editor), 0);
+
+	fuiEditorRelease(&editor);
+}
+
 static int RunSelfTest(void) {
 	printf("final_ui_texteditor.h v%s self test\n", fuiEditorGetVersion());
 
@@ -3570,6 +4404,15 @@ static int RunSelfTest(void) {
 	SelfTestHistoryAndBlockKeys();
 	SelfTestUndoBudget();
 	SelfTestUndoAgainstAPlainBuffer();
+	SelfTestFinding();
+	SelfTestFindAgainstFile();
+	SelfTestFindNextWalksEveryMatch();
+	SelfTestReplacing();
+	SelfTestReplaceAllAgainstFile();
+	SelfTestFindKeys();
+	SelfTestFindBarMouse();
+	SelfTestTheViewFollowsAJump();
+	SelfTestGoToLine();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
 	return((g_checkFailed == 0) ? 0 : 1);
@@ -3609,6 +4452,8 @@ typedef struct EditorDemoState {
 	char editDescription[192];
 	//! What the last save came to, and whether what was written read back identical
 	char saveDescription[256];
+	//! What the last search came to, worked out over the baseline the same way grep would
+	char searchDescription[192];
 	//! Whether the C lexer is installed
 	bool useLexer;
 	//! Whether the changed lines are handed over as decorations
@@ -3848,6 +4693,12 @@ static void DemoInit(EditorDemoState *demo) {
 	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
 	fplCopyString("Type into it - ctrl+z takes it back, tab moves a highlighted block, alt+up moves lines", demo->editDescription, fplArrayCount(demo->editDescription));
 	fplCopyString("Not saved yet", demo->saveDescription, fplArrayCount(demo->saveDescription));
+	fplCopyString("Ctrl+F to find, Ctrl+H to replace, Ctrl+G to go to a line, F3 for the next hit", demo->searchDescription, fplArrayCount(demo->searchDescription));
+
+	// The bar opens looking for what the editor is written in, so the count on screen has something to say
+	// the moment the demo starts rather than only after somebody types into it.
+	fuiEditorSetSearchText(&demo->editor, "fui__", 0);
+	fuiEditorSetReplaceText(&demo->editor, "fuiXX__", 0);
 
 	// Tried from the working directory and from one level up, so running it out of the build folder and
 	// out of the repository root both find something.
@@ -4027,6 +4878,47 @@ static bool DemoSetClipboardText(void *userData, const char *text) {
 }
 
 //! Hands the selection to that hook, which is the same thing ctrl+c inside the editor does
+/*
+	Counts what the find bar is looking for a SECOND time, over the file exactly as it was read.
+
+	The editor searches through a hole in the middle of its bytes and answers from a count it keeps; this
+	walks a flat array with nothing kept at all. Where the two disagree, the editor is wrong - and the
+	number the flat walk arrives at is the number grep -o | wc -l arrives at, which is what makes it worth
+	putting on screen beside the other one.
+*/
+static void DemoCountAgainstTheBaseline(EditorDemoState *demo) {
+	const char *needle = fuiEditorGetSearchText(&demo->editor);
+	size_t needleLength = fplGetStringLength(needle);
+	if(needleLength == 0) {
+		fplCopyString("Nothing to look for", demo->searchDescription, fplArrayCount(demo->searchDescription));
+		return;
+	}
+	if(demo->baselineData == fpl_null) {
+		fplCopyString("No file to count against", demo->searchDescription, fplArrayCount(demo->searchDescription));
+		return;
+	}
+
+	uint32_t flags = fuiEditorGetFindFlags(&demo->editor);
+	bool matchCase = ((flags & (uint32_t)fuiEditorFindFlags_MatchCase) != 0);
+	int32_t editorCount = fuiEditorCountMatches(&demo->editor, needle, 0, flags);
+
+	// The flat walk knows nothing about whole words, so it is only comparable while that is off.
+	bool wholeWord = ((flags & (uint32_t)fuiEditorFindFlags_WholeWord) != 0);
+	if(wholeWord) {
+		fplStringFormat(demo->searchDescription, fplArrayCount(demo->searchDescription), "\"%s\": %d in the document (whole words, nothing to hold it against)", needle, (int)editorCount);
+		return;
+	}
+
+	int32_t baselineCount = CountMatchesInBuffer(demo->baselineData, demo->baselineLength, needle, matchCase);
+	bool documentIsUnchanged = !fuiEditorIsModified(&demo->editor);
+	if(!documentIsUnchanged) {
+		fplStringFormat(demo->searchDescription, fplArrayCount(demo->searchDescription), "\"%s\": %d in the document, %d in the file as it was read", needle, (int)editorCount, (int)baselineCount);
+		return;
+	}
+	const char *verdict = (editorCount == baselineCount) ? "agrees with a flat walk over the file" : "DISAGREES with a flat walk over the file";
+	fplStringFormat(demo->searchDescription, fplArrayCount(demo->searchDescription), "\"%s\": %d, %s (%d)", needle, (int)editorCount, verdict, (int)baselineCount);
+}
+
 static void DemoCopySelection(fuiContext *ui, EditorDemoState *demo) {
 	char *noBuffer = fpl_null;
 	const int32_t noCapacity = 0;
@@ -4260,6 +5152,38 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 
 	fuiRect changeRow = fuiLayoutSlot(ui, rowHeight);
 	fuiLabel(ui, changeRow, demo->editDescription);
+
+	// What THIS iteration added. The bar itself lives INSIDE the editor and is opened with a key; these are
+	// the same three calls that key makes, so that the buttons and the shortcuts cannot drift apart.
+	fuiRect searchRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "search", fuiAxis_Horizontal, searchRow, rowSpacing);
+	{
+		fuiRect findRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, findRect, "Find (Ctrl+F)")) {
+			const bool withoutTheReplaceRow = false;
+			fuiEditorOpenFind(&demo->editor, withoutTheReplaceRow);
+		}
+
+		fuiRect replaceRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, replaceRect, "Replace (Ctrl+H)")) {
+			const bool withTheReplaceRow = true;
+			fuiEditorOpenFind(&demo->editor, withTheReplaceRow);
+		}
+
+		fuiRect goToLineRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, goToLineRect, "Go to line (Ctrl+G)")) {
+			fuiEditorOpenGoToLine(&demo->editor);
+		}
+
+		fuiRect countRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
+		if(fuiButton(ui, countRect, "Count against the file")) {
+			DemoCountAgainstTheBaseline(demo);
+		}
+
+		fuiRect searchNoteRect = fuiLayoutRemaining(ui);
+		fuiLabel(ui, searchNoteRect, demo->searchDescription);
+	}
+	fuiEndStack(ui);
 
 	fuiRect colouringRow = fuiLayoutSlot(ui, rowHeight);
 	fuiBeginStackAt(ui, "colouring", fuiAxis_Horizontal, colouringRow, rowSpacing);
