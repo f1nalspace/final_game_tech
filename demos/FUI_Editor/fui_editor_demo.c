@@ -10,8 +10,9 @@ Description:
 	and a widget over it that can be read, scrolled, selected from, copied out of, coloured by a lexer,
 	TYPED into, TAKEN BACK and SEARCHED: a gutter with line numbers, tab stops, visible whitespace, two
 	scrollbars, a status line, overwrite mode, undo and redo, tab, alt+arrow and ctrl+shift+d for whole
-	blocks of lines, and a find bar on ctrl+f with replace on ctrl+h and go to line on ctrl+g. Other
-	encodings and word wrap are the next iteration.
+	blocks of lines, and a find bar on ctrl+f with replace on ctrl+h and go to line on ctrl+g - each of the
+	three switchable off on its own, which is what a read-only diff dialog needs. Other encodings and word
+	wrap are the next iteration.
 
 	It fills itself from final_ui.h, because at over fourteen thousand lines that is the largest file to
 	hand and the one the add-on has to hold up against.
@@ -4338,6 +4339,149 @@ static void SelfTestTheViewFollowsAJump(void) {
 	HarnessRelease(&harness);
 }
 
+/*
+	The three gates in front of the bar, which is what a host that is not a text editor needs.
+
+	The case this exists for is a read-only diff dialog: it wants a way to SEARCH what it is showing and
+	has no business offering a way to change it. So find, replace and go to line are three switches rather
+	than one, and read-only takes the replace row away whatever the switch says.
+*/
+static void SelfTestFindCanBeSwitchedOff(void) {
+	CheckSection("switching the bar off");
+
+	EditorTestHarness harness;
+	const float wideEnoughForTheBar = 800.0f;
+	const float tallEnoughForTenLines = 300.0f;
+	if(!HarnessInit(&harness, "one two one\nthree one four\nfive six\nseven one eight", wideEnoughForTheBar, tallEnoughForTenLines)) {
+		CHECK(false);
+		return;
+	}
+	fuiEditor *editor = &harness.editor;
+	fuiEditorSetSearchText(editor, "one", 0);
+	fuiEditorSetReplaceText(editor, "1", 0);
+	fuiEditorSetFindFlags(editor, (uint32_t)fuiEditorFindFlags_MatchCase);
+
+	fuiId editorId = fuiGetId(&harness.ui, "editor");
+	fuiPushId(&harness.ui, "editor");
+	fuiId findFieldId = fuiGetId(&harness.ui, "__editorFindText");
+	fuiId replaceFieldId = fuiGetId(&harness.ui, "__editorReplaceText");
+	fuiPopId(&harness.ui);
+
+	const bool withShift = true;
+	const bool withoutShift = false;
+	const bool withControl = true;
+	const bool withoutControl = false;
+	const bool withTheReplaceRow = true;
+
+	// All three on is what fuiEditorDefaultConfig hands out, and it is what the harness started from
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_H, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+	CHECK_I(fuiEditor__FindBarRowCount(editor), 2);
+	CHECK(fuiGetFocusedId(&harness.ui) == replaceFieldId);
+	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+
+	/*
+		The read-only diff dialog: searching yes, replacing no.
+
+		The row does not appear even though the bar was opened asking for it - and the keyboard goes to the
+		field that IS there rather than to one that is not.
+	*/
+	harness.config.toggles.canReplace = false;
+	fuiEditorSetConfig(editor, &harness.config);
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_H, withoutShift, withControl);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+	CHECK_I(fuiEditor__FindBarRowCount(editor), 1);
+	CHECK(fuiGetFocusedId(&harness.ui) == findFieldId);
+
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	(void)HarnessFrame(&harness);
+	CHECK_I(fuiEditor__FindBarRowCount(editor), 1);
+	CHECK(fuiGetFocusedId(&harness.ui) == findFieldId);
+
+	// And neither replace call writes a byte, however it is reached
+	CHECK_I(fuiEditorReplaceAll(editor), 0);
+	CHECK(!fuiEditorReplaceCurrent(editor));
+	CHECK_TEXT(editor, "one two one\nthree one four\nfive six\nseven one eight");
+
+	// Read only takes the row away as well, whatever the switch says
+	harness.config.toggles.canReplace = true;
+	harness.config.toggles.isReadOnly = true;
+	fuiEditorSetConfig(editor, &harness.config);
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	(void)HarnessFrame(&harness);
+	CHECK(fuiEditorIsFindOpen(editor));
+	CHECK_I(fuiEditor__FindBarRowCount(editor), 1);
+	CHECK_I(fuiEditorReplaceAll(editor), 0);
+	harness.config.toggles.isReadOnly = false;
+
+	/*
+		Find switched off while the bar is OPEN shuts it, and the keyboard comes back with it.
+
+		Left standing, the bar would answer keys nobody can see the effect of; left on a field that is no
+		longer drawn, the keyboard would go nowhere at all.
+	*/
+	fuiEditorSetConfig(editor, &harness.config);
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	(void)HarnessFrame(&harness);
+	CHECK(fuiGetFocusedId(&harness.ui) == replaceFieldId);
+	harness.config.toggles.canFind = false;
+	fuiEditorSetConfig(editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	CHECK(fuiGetFocusedId(&harness.ui) == editorId);
+
+	// With find off the keys do nothing at all
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	fuiEditorSetCaretOffset(editor, 0, false);
+	HarnessPressKey(&harness, fuiKey_F3, withoutShift, withoutControl);
+	CHECK(!fuiEditorHasSelection(editor));
+	HarnessPressKey(&harness, fuiKey_F3, withShift, withoutControl);
+	CHECK(!fuiEditorHasSelection(editor));
+	fuiEditorOpenFind(editor, withTheReplaceRow);
+	CHECK(!fuiEditorIsFindOpen(editor));
+
+	/*
+		But the api behind the gate stays open.
+
+		Same reason fuiEditorInsert stays open in a read-only editor: a host that switched this bar off did
+		so to put its OWN in front of the same document, not to lose the search.
+	*/
+	const uint32_t caseSensitive = (uint32_t)fuiEditorFindFlags_MatchCase;
+	CHECK_I(fuiEditorCountMatches(editor, "one", 0, caseSensitive), 4);
+	CHECK(fuiEditorFindNext(editor));
+	CHECK_I(fuiEditorGetSelectionStart(editor), 0);
+	CHECK(fuiEditorGoToLine(editor, 2));
+	CHECK_I(fuiEditorGetCaretLine(editor), 2);
+
+	// Go to line is its own switch, and it is still on here
+	harness.config.toggles.canFind = true;
+	fuiEditorSetConfig(editor, &harness.config);
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_G, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+
+	harness.config.toggles.canGoToLine = false;
+	fuiEditorSetConfig(editor, &harness.config);
+	HarnessFocusTheEditor(&harness);
+	HarnessPressKey(&harness, fuiKey_G, withoutShift, withControl);
+	CHECK(!fuiEditorIsFindOpen(editor));
+	fuiEditorOpenGoToLine(editor);
+	CHECK(!fuiEditorIsFindOpen(editor));
+
+	// Ctrl+f still opens, because the two are not the same switch
+	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
+	CHECK(fuiEditorIsFindOpen(editor));
+
+	HarnessRelease(&harness);
+}
+
 static void SelfTestGoToLine(void) {
 	CheckSection("go to line");
 
@@ -4412,6 +4556,7 @@ static int RunSelfTest(void) {
 	SelfTestFindKeys();
 	SelfTestFindBarMouse();
 	SelfTestTheViewFollowsAJump();
+	SelfTestFindCanBeSwitchedOff();
 	SelfTestGoToLine();
 
 	printf("\n%d checks, %d failed\n", g_checkTotal, g_checkFailed);
@@ -5158,20 +5303,20 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 	fuiRect searchRow = fuiLayoutSlot(ui, rowHeight);
 	fuiBeginStackAt(ui, "search", fuiAxis_Horizontal, searchRow, rowSpacing);
 	{
-		fuiRect findRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
-		if(fuiButton(ui, findRect, "Find (Ctrl+F)")) {
+		fuiRect findRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButton(ui, findRect, "Find")) {
 			const bool withoutTheReplaceRow = false;
 			fuiEditorOpenFind(&demo->editor, withoutTheReplaceRow);
 		}
 
-		fuiRect replaceRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
-		if(fuiButton(ui, replaceRect, "Replace (Ctrl+H)")) {
+		fuiRect replaceRect = fuiLayoutSlot(ui, buttonWidth);
+		if(fuiButton(ui, replaceRect, "Replace")) {
 			const bool withTheReplaceRow = true;
 			fuiEditorOpenFind(&demo->editor, withTheReplaceRow);
 		}
 
-		fuiRect goToLineRect = fuiLayoutSlot(ui, wideButtonWidth / 2.0f);
-		if(fuiButton(ui, goToLineRect, "Go to line (Ctrl+G)")) {
+		fuiRect goToLineRect = fuiLayoutSlot(ui, buttonWidth + buttonWidth / 4.0f);
+		if(fuiButton(ui, goToLineRect, "Go to line")) {
 			fuiEditorOpenGoToLine(&demo->editor);
 		}
 
@@ -5180,10 +5325,32 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 			DemoCountAgainstTheBaseline(demo);
 		}
 
-		fuiRect searchNoteRect = fuiLayoutRemaining(ui);
-		fuiLabel(ui, searchNoteRect, demo->searchDescription);
+		/*
+			The three switches in front of the bar, which is what a host that is not a text editor needs.
+
+			Turn "Allow replace" off and ctrl+h stops answering and the second row of the bar stops being
+			drawn - a read-only diff dialog wants a way to search what it is showing and no way to change
+			it. "Read only" alone does the same to the row, which is why the two are next to each other.
+		*/
+		fuiRect allowFindRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, allowFindRect, "Allow find", &demo->editorConfig.toggles.canFind)) {
+			configurationChanged = true;
+		}
+
+		fuiRect allowReplaceRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, allowReplaceRect, "Allow replace", &demo->editorConfig.toggles.canReplace)) {
+			configurationChanged = true;
+		}
+
+		fuiRect allowGoToLineRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, allowGoToLineRect, "Allow go to line", &demo->editorConfig.toggles.canGoToLine)) {
+			configurationChanged = true;
+		}
 	}
 	fuiEndStack(ui);
+
+	fuiRect searchNoteRow = fuiLayoutSlot(ui, rowHeight);
+	fuiLabel(ui, searchNoteRow, demo->searchDescription);
 
 	fuiRect colouringRow = fuiLayoutSlot(ui, rowHeight);
 	fuiBeginStackAt(ui, "colouring", fuiAxis_Horizontal, colouringRow, rowSpacing);

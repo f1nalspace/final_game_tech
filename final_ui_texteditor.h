@@ -44,6 +44,8 @@ the changelog for what is.
 - Search it with ctrl+f, replace with ctrl+h, go to a line with ctrl+g, and step through the hits with f3 -
   or drive the same things from code with fuiEditorSetSearchText(), fuiEditorFindNext() and
   fuiEditorReplaceAll(). fuiEditorFind() is the primitive underneath, and it keeps nothing.
+- Take any of those three away with fuiEditorConfig.toggles.canFind, .canReplace and .canGoToLine - a
+  read-only view of a diff wants to be searched and does not want to be replaced in.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
@@ -185,6 +187,18 @@ SOFTWARE.
 	  fuiEditorSetFindFlags, fuiEditorGetFindFlags, fuiEditorFindNext, fuiEditorFindPrevious,
 	  fuiEditorOpenFind, fuiEditorOpenGoToLine, fuiEditorCloseFind and fuiEditorIsFindOpen, so everything
 	  the bar does can be driven from code as well as from the keys.
+	- New: THREE SWITCHES in front of all of it - fuiEditorConfig.toggles.canFind, .canReplace and
+	  .canGoToLine, all three on in fuiEditorDefaultConfig. The case they exist for is a read-only diff
+	  dialog: it wants a way to SEARCH what it is showing and has no business offering a way to change it,
+	  so find and replace are two switches rather than one. A read-only editor has no replace row whatever
+	  .canReplace says, because a row whose buttons can never be pressed is noise rather than information.
+	  What they gate is what a USER can reach - the keys and the bar. fuiEditorFind, fuiEditorFindNext,
+	  fuiEditorReplaceAll and fuiEditorGoToLine stay open behind them, for the same reason fuiEditorInsert
+	  stays open in a read-only editor: a host that switches this bar off did so to put its OWN in front of
+	  the same document, not to lose the search.
+	- New: A bar the configuration no longer allows is SHUT rather than left standing, and the keyboard
+	  comes back with it. Switching find off while it is open means it to go away, not to stay until
+	  somebody presses escape - and a keyboard left on a field that is not drawn any more goes nowhere.
 	- Fixed: The undo budget could throw away part of the step it was still WRITING. It drops whole steps
 	  from the oldest end and never one redo still needs, but nothing stopped it dropping the open group
 	  itself - and replace all is the first operation that can write enough records in one group to reach
@@ -732,6 +746,15 @@ typedef struct fuiEditorToggles {
 	bool autoIndent;
 	//! Make an indent out of @ref fuiEditorMetrics.tabSize blanks rather than out of one tab character
 	bool usesSpacesForIndent;
+	//! Answer ctrl+f and f3, and let the find bar be opened at all. @ref fuiEditorFind,
+	//! @ref fuiEditorFindNext and their neighbours stay open, so a host that wants its OWN find bar can
+	//! switch this one off and still drive the search
+	bool canFind;
+	//! Show the row of the find bar that replaces, and answer ctrl+h and ctrl+r. Off in a read-only editor
+	//! whatever this says - a row whose buttons can never be pressed is noise rather than information
+	bool canReplace;
+	//! Answer ctrl+g and let the go to line bar be opened. @ref fuiEditorGoToLine stays open either way
+	bool canGoToLine;
 	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode verticalScrollbar;
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
@@ -3156,6 +3179,40 @@ fui_inline bool fuiEditor__CanWrite(const fuiEditor *editor) {
 	return(!editor->config.toggles.isReadOnly);
 }
 
+/*
+	The three gates in front of the find bar, each of which the caller opens and shuts on its own.
+
+	They gate what a USER can reach - the keys and the bar - and nothing else. fuiEditorFind,
+	fuiEditorFindNext, fuiEditorReplaceAll and fuiEditorGoToLine stay open behind them for exactly the
+	reason fuiEditorInsert stays open in a read-only editor: a host that wants its own find bar has to be
+	able to switch this one off and still drive the search.
+*/
+
+//! Whether a USER may reach the find bar
+fui_inline bool fuiEditor__CanFind(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(editor->config.toggles.canFind);
+}
+
+//! Whether the row that replaces may be there. A read-only editor never has one, whatever the toggle says -
+//! a row whose buttons can never be pressed is noise rather than information
+fui_inline bool fuiEditor__CanReplace(const fuiEditor *editor) {
+	if(!fuiEditor__CanWrite(editor)) {
+		return(false);
+	}
+	return(editor->config.toggles.canReplace);
+}
+
+//! Whether a USER may reach the go to line bar
+fui_inline bool fuiEditor__CanGoToLine(const fuiEditor *editor) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return(false);
+	}
+	return(editor->config.toggles.canGoToLine);
+}
+
 // ----------------------------------------------------------------------------
 // > The undo history
 // ----------------------------------------------------------------------------
@@ -4056,6 +4113,9 @@ fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
 	result.toggles.showStatusBar = true;
 	result.toggles.highlightCurrentLine = true;
 	result.toggles.isInteractive = true;
+	result.toggles.canFind = true;
+	result.toggles.canReplace = true;
+	result.toggles.canGoToLine = true;
 
 	// The vertical bar is reserved whether it is needed or not, because a document that is being typed into
 	// crosses the "one line more than fits" boundary constantly, and every crossing would shift every line
@@ -6282,7 +6342,7 @@ static bool fuiEditor__SelectionIsAMatch(const fuiEditor *editor) {
 }
 
 fui_api bool fuiEditorReplaceCurrent(fuiEditor *editor) {
-	if(!fuiEditor__CanWrite(editor)) {
+	if(!fuiEditor__CanReplace(editor)) {
 		return(false);
 	}
 	int32_t needleLength = fuiEditor__SearchTextLength(editor);
@@ -6329,7 +6389,7 @@ fui_api bool fuiEditorReplaceCurrent(fuiEditor *editor) {
 }
 
 fui_api int32_t fuiEditorReplaceAll(fuiEditor *editor) {
-	if(!fuiEditor__CanWrite(editor)) {
+	if(!fuiEditor__CanReplace(editor)) {
 		return(0);
 	}
 	int32_t needleLength = fuiEditor__SearchTextLength(editor);
@@ -6376,19 +6436,23 @@ fui_api int32_t fuiEditorReplaceAll(fuiEditor *editor) {
 }
 
 fui_api void fuiEditorOpenFind(fuiEditor *editor, const bool withReplace) {
-	if(editor == fui_null || !editor->isInitialized) {
+	if(!fuiEditor__CanFind(editor)) {
 		return;
 	}
 	editor->find.isOpen = true;
 	editor->find.isGoToLineOpen = false;
-	if(withReplace) {
+
+	// Asking for the replace row where there may not be one opens the FIND bar rather than nothing at all.
+	// What the caller wanted was a way to search, and there is one.
+	bool showsTheReplaceRow = withReplace && fuiEditor__CanReplace(editor);
+	if(showsTheReplaceRow) {
 		editor->find.showsReplace = true;
 	}
-	editor->find.fieldWantingTheKeyboard = withReplace ? FUI_TEXTEDITOR__FIELD_REPLACE : FUI_TEXTEDITOR__FIELD_FIND;
+	editor->find.fieldWantingTheKeyboard = showsTheReplaceRow ? FUI_TEXTEDITOR__FIELD_REPLACE : FUI_TEXTEDITOR__FIELD_FIND;
 }
 
 fui_api void fuiEditorOpenGoToLine(fuiEditor *editor) {
-	if(editor == fui_null || !editor->isInitialized) {
+	if(!fuiEditor__CanGoToLine(editor)) {
 		return;
 	}
 	editor->find.isGoToLineOpen = true;
@@ -7248,7 +7312,8 @@ static int32_t fuiEditor__FindBarRowCount(const fuiEditor *editor) {
 	if(!editor->find.isOpen) {
 		return(0);
 	}
-	return(editor->find.showsReplace ? 2 : 1);
+	bool hasTheReplaceRow = editor->find.showsReplace && fuiEditor__CanReplace(editor);
+	return(hasTheReplaceRow ? 2 : 1);
 }
 
 //! How tall it is, which is also how far down the caret has to be kept to stay out from under it
@@ -7335,9 +7400,9 @@ static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, co
 	fuiId focusedId = fuiGetFocusedId(context);
 	bool wantsToExtend = fuiIsShiftDown(context);
 	bool wantsAChord = fuiIsControlDown(context);
-	bool canWrite = fuiEditor__CanWrite(editor);
 
-	if(wantsAChord && fuiKeyWentDown(context, fuiKey_F)) {
+	bool mayFind = fuiEditor__CanFind(editor);
+	if(mayFind && wantsAChord && fuiKeyWentDown(context, fuiKey_F)) {
 		/*
 			Seeded from the SELECTION, but only when the selection is the document's rather than a field's.
 
@@ -7364,8 +7429,9 @@ static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, co
 
 	// Ctrl+h is what windows has always used for replace and ctrl+r is what the editors that grew up on
 	// unix use. Both, because a key nobody can remember is a key nobody presses.
-	bool wantsReplaceRow = wantsAChord && (fuiKeyWentDown(context, fuiKey_H) || fuiKeyWentDown(context, fuiKey_R));
-	if(wantsReplaceRow && canWrite) {
+	bool pressedAReplaceKey = wantsAChord && (fuiKeyWentDown(context, fuiKey_H) || fuiKeyWentDown(context, fuiKey_R));
+	bool mayReplace = mayFind && fuiEditor__CanReplace(editor);
+	if(pressedAReplaceKey && mayReplace) {
 		const bool withTheReplaceRow = true;
 		fuiEditorOpenFind(editor, withTheReplaceRow);
 	}
@@ -7375,7 +7441,7 @@ static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, co
 	}
 
 	// F3 finds without the bar being open at all, which is what makes it worth having beside enter.
-	if(fuiKeyWentDown(context, fuiKey_F3)) {
+	if(mayFind && fuiKeyWentDown(context, fuiKey_F3)) {
 		if(wantsToExtend) {
 			(void)fuiEditorFindPrevious(editor);
 		} else {
@@ -7546,7 +7612,8 @@ static fuiEditor__FindBarResult fuiEditor__BuildFindBar(fuiContext *context, fui
 		result.wantsToClose = true;
 	}
 
-	if(!editor->find.showsReplace) {
+	bool hasTheReplaceRow = editor->find.showsReplace && fuiEditor__CanReplace(editor);
+	if(!hasTheReplaceRow) {
 		fuiPopClip(context);
 		return(result);
 	}
@@ -7565,7 +7632,7 @@ static fuiEditor__FindBarResult fuiEditor__BuildFindBar(fuiContext *context, fui
 	fuiRect replaceFieldRect = fuiRectMake(replaceRow.x, replaceRow.y, fieldWidth, replaceRow.h);
 	(void)fuiTextInput(context, replaceFieldRect, FUI_TEXTEDITOR__REPLACE_FIELD_ID, editor->find.replacement, FUI_TEXTEDITOR_MAX_FIND_BYTES);
 
-	bool mayWrite = fuiEditor__CanWrite(editor) && thereIsSomethingToFind;
+	bool mayWrite = thereIsSomethingToFind;
 	if(fuiButtonEx(context, replaceOneRect, FUI_TEXTEDITOR__REPLACE_ONE_LABEL, mayWrite)) {
 		result.wantsToReplace = true;
 	}
@@ -7740,6 +7807,22 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	bool aFieldHadTheKeyboard = (focusedBeforeTheTabChain == findFieldId) || (focusedBeforeTheTabChain == replaceFieldId) || (focusedBeforeTheTabChain == goToLineFieldId);
 	bool theBarHadTheKeyboard = aFieldHadTheKeyboard || (focusedBeforeTheTabChain == findBarId);
 	bool theEditorHadTheKeyboardSomewhere = alreadyHadTheKeyboard || theBarHadTheKeyboard;
+
+	/*
+		A bar the configuration no longer allows is SHUT rather than left standing.
+
+		A caller who switches find off while it is open means it to go away, not to stay until somebody
+		presses escape. And the keyboard has to come back with it: leaving it on a field that is not drawn
+		any more would leave the whole editor deaf.
+	*/
+	bool findIsNoLongerAllowed = editor->find.isOpen && !fuiEditor__CanFind(editor);
+	bool goToLineIsNoLongerAllowed = editor->find.isGoToLineOpen && !fuiEditor__CanGoToLine(editor);
+	if(findIsNoLongerAllowed || goToLineIsNoLongerAllowed) {
+		fuiEditorCloseFind(editor);
+		if(theBarHadTheKeyboard) {
+			fuiSetFocusedId(context, editorId);
+		}
+	}
 
 	fuiInteraction bodyInteraction = fuiInteract(context, editorId, layout.bodyRect);
 	if(config->toggles.isInteractive) {
