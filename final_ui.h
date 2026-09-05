@@ -22,10 +22,10 @@ and no projection: what the library emits is where it goes on screen.
 
 Status: feature complete and in use. Everything the library set out to do is in -
 the draw data and its tessellator, text, input, the interaction core, the layout
-engine, the widgets, text input, the color picker, tooltips, commands and their
-shortcuts, menus, tool strips, the status bar, modal dialogs, the list box, the list
-view, the tree view, tabs and images - and it carries the entire interface of a game,
-its level editor and its tools.
+engine, the widgets, text input, numbers typed and dragged, progress bars, the combo
+box, the color picker, tooltips, commands and their shortcuts, menus, tool strips, the
+status bar, modal dialogs, the list box, the list view, the tree view, tabs and images
+- and it carries the entire interface of a game, its level editor and its tools.
 
 What it is not yet is v1.0.0, and the reason is rendering QUALITY rather than
 features: the tessellator emits hard edges and nothing in it is anti-aliased, so a
@@ -146,6 +146,8 @@ FUI_LIST_SORT_VERIFY_ROWS Up to this many rows, a sorted list notices edited cel
 FUI_MAX_TEXT_INPUT        Maximum number of codepoints typed in one frame (default 32).
 FUI_MAX_TOOLTIP_TEXT      Maximum number of bytes one hover tooltip may say (default 256).
 FUI_MAX_CLIPBOARD_TEXT    Maximum number of bytes one clipboard transfer may carry (default 1024).
+FUI_MAX_NUMERIC_TEXT      Maximum number of bytes a numeric widget is typed into (default 32).
+FUI_COMBO_VISIBLE_ROWS    How many rows a combo box drops open at before its list scrolls (default 10).
 FUI_MAX_DIALOGS           Maximum number of modal dialogs open on top of each other (default 8).
 FUI_MAX_MENU_DEPTH        Maximum number of menus open inside each other (default 8).
 FUI_MAX_SHORTCUT_TEXT     Maximum number of bytes one shortcut spells out to (default 32).
@@ -204,6 +206,69 @@ SOFTWARE.
 	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
 	this file rather than in it and uses nothing but the public api, and every one of these is a line of
 	code that was already here behind a name only this file could say.
+
+	And then three widgets that were missing, which is what one runs into within the hour of building an
+	ordinary settings sheet with this: pick one of a list, type a number, and say how far along something is.
+
+	- New: fuiComboBox and fuiComboBoxEx, a closed box that says what is picked and a list that drops out of
+	  it. It is the widget for "one of these" wherever a column of radio buttons or a list box would take
+	  more room than the answer is worth, which in a settings sheet or a property inspector is almost
+	  everywhere. The list drops below the box or above it when there is more room up there, scrolls when it
+	  is longer than it opens at, opens already showing whatever is picked, and answers the arrow keys, home,
+	  end, enter, the space bar and escape. With the list SHUT the arrow keys still step through the entries,
+	  which is how a form is filled in without the hands leaving the keys.
+	  A combo with NO entries does not open at all, an empty box being one more thing to dismiss and saying
+	  nothing the closed box did not already say.
+	- New: fuiComboIsOpen and fuiCloseCombo, the counterparts of fuiIsMenuOpen and fuiCloseMenus, and they
+	  mean the same things. While a list is open the interface owns the cursor and the keyboard everywhere,
+	  so a caller reading either for itself asks first; and a caller that has to take over - a dialog going
+	  up, a tool being picked - shuts the list rather than fighting it.
+	- New: The OVERLAY, which is what makes a combo possible at all and is entirely internal. Everything the
+	  library draws goes into one command buffer in the order it was built, and that order is the z order -
+	  which is why a menu bar is built last and floats over the panels. A combo cannot ask that of anybody:
+	  it belongs to a row halfway down a panel whose other rows go on being built after it. So the commands
+	  its list writes are marked as they go in and lifted to the end of the buffer once the frame is
+	  finished. Only the ORDER moves. Every command already names its vertices and its indices by absolute
+	  offset, so not one of them is rewritten and not one vertex is touched, and the whole thing is a
+	  rotation of the tail of an array once a frame.
+	- New: fuiSliderInt, fuiSliderIntEx, fuiDragInt, fuiInputInt and fuiInputFloat. Every one of them used to
+	  be a char buffer and a round trip through atoi at the call site, which is a lot of ceremony for the
+	  single most common row in a property inspector. The whole number slider lands on whole numbers and on
+	  a step grid, and the whole number drag field BANKS the fraction of a unit each frame earns - a field
+	  that rounded every frame would never move at all below one unit a pixel, however far it was pulled.
+	- New: A number can be TYPED into a slider and a drag field as well as dragged, with ctrl and a click.
+	  There is always a moment where the answer is 0.35 exactly and no amount of pixel hunting will land on
+	  it. The widget turns into a text field for as long as it takes, and the text is the truth while it is
+	  being typed while the number is the truth the rest of the time - so what was typed is only read back
+	  on enter, on tab, or when the focus goes anywhere else. Parsing every keystroke would fight the user:
+	  "-" on its own, "1." and "1e" are each halfway to a number and not one of them is one yet. Escape
+	  gives the edit up and keeps the number, and text that is not a number at all does the same.
+	- New: fuiIsTypingANumber, for a caller that would otherwise act on the same digits - a viewport bound to
+	  the number keys, which must not jump to camera four while somebody is typing 42 into a field.
+	- New: fuiProgressBar, fuiProgressBarEx and fuiBusyBar. Nothing here is interactive and nothing is
+	  remembered, so none of the three takes an identifier - and the busy bar's block runs off the context's
+	  own clock, which also means it stands still during a draw pass the way every other timed thing does.
+	  Its block sweeps a whole block's width past EACH end, so the bar is empty for a moment in between: a
+	  block that turned round at the edge reads as something stuck rather than as work still going on.
+	- New: fuiTheme.progressFillColor. Deliberately not accentColor, which marks what the user is pointing
+	  at - a focus ring, a held knob - where a bar filling up is the one thing on screen nobody is touching.
+	- Note: A combo list is painted OPAQUE however translucent the panel colour it takes is, because
+	  everything it drops over is a widget of the very panel it belongs to and an entry read through a
+	  checkbox behind it is an entry nobody can read. A menu popup keeps the translucency; it opens over a
+	  title bar and empty background, where a list never does.
+	- Fixed: A caption was only centred in its widget when it fitted the box LESS twice the side padding,
+	  though the centring itself uses no padding at all - so the test asked about a layout that was never
+	  going to be used, and anything wider fell back to the left inset. On a wide button the two answers
+	  agree and nobody ever saw it. On a narrow one they do not: the step buttons at the ends of a numeric
+	  field are a couple of characters across, the padding is most of the box, and so a plus "did not fit"
+	  and was inset to sit visibly right of centre while the narrower minus beside it still fitted and did
+	  not move. The fallback now triggers where it was always meant to - when the centred caption does not
+	  fit the box at all - and everything between the two widths is centred and fully visible rather than
+	  offset and cropped.
+	- Changed: fuiSliderFloat, fuiSliderFloatEx and fuiDragFloat moved, unaltered, into a numeric widget
+	  section of their own beside the five new ones - so the dragging, the type-in and the clamping are
+	  written once rather than twice. Nothing about any of them changed except that ctrl and a click now
+	  types the value in instead of starting a drag.
 
 	- New: fuiScrollbarHorizontal, the sideways twin of fuiScrollbarVertical. Both have been the same body
 	  behind an axis flag since the list view got a second bar, and only the vertical half was ever public -
@@ -682,6 +747,16 @@ fui_api const char *fuiGetVersion(void);
 #if !defined(FUI_MAX_CLIPBOARD_TEXT)
 	//! Maximum number of bytes one clipboard transfer may carry
 #	define FUI_MAX_CLIPBOARD_TEXT 1024
+#endif
+
+#if !defined(FUI_MAX_NUMERIC_TEXT)
+	//! Maximum number of bytes a numeric widget is typed into, which has to hold the longest number one of them prints
+#	define FUI_MAX_NUMERIC_TEXT 32
+#endif
+
+#if !defined(FUI_COMBO_VISIBLE_ROWS)
+	//! How many rows a combo box drops open at before its list starts scrolling, when the caller did not say
+#	define FUI_COMBO_VISIBLE_ROWS 10
 #endif
 
 #if !defined(FUI_MAX_MENU_DEPTH)
@@ -1842,6 +1917,10 @@ typedef struct fuiTheme {
 	fuiColor textSelectionColor;
 	//! Slider knob and checkbox check mark
 	fuiColor knobColor;
+	//! Fill of the done part of a progress bar, and of the block a busy bar sweeps across. Deliberately NOT
+	//! accentColor: the accent marks what the user is POINTING AT - a focus ring, a held knob - and a bar
+	//! filling up on its own is the one thing on screen nobody is touching
+	fuiColor progressFillColor;
 	//! Fill behind a hovered menu title or menu row
 	fuiColor menuHighlightColor;
 	//! Guide lines drawn from a tree node down to its children. Faint on purpose - they are there to be followed, not read
@@ -2010,6 +2089,10 @@ typedef struct fuiWidgetState {
 	float scrollX;
 	//! Hue a color picker last showed, kept because rgb cannot express one at zero saturation or value
 	float pickerHue;
+	//! Motion a whole number drag field has earned but not yet been paid in whole units, in fractions of one.
+	//! Without it a drag slower than one unit a pixel would round its own contribution away every frame and
+	//! never move at all, however far it was pulled
+	float dragRemainder;
 	//! Size a menu popup measured itself at the last time it was open, zero until it has been open once
 	fuiVec2 menuSize;
 	//! When the last row of a list was clicked, which is what a second click is timed against
@@ -2252,6 +2335,15 @@ typedef struct fuiContext {
 	bool indexRangeExceeded;
 	//! Whether consecutive commands sharing a clip and a texture are merged into one, see @ref fuiSetDrawBatching
 	bool drawBatchingIsOn;
+	//! Where the OVERLAY's run of draw commands begins, and one past where it ends. A combo list dropped open
+	//! halfway down a panel is built where it stands and would be painted over by everything built after it,
+	//! so its commands are lifted to the end of the buffer once the frame is finished. Only the ORDER moves:
+	//! every command names its own indices absolutely, so not one vertex is touched by the lift
+	uint32_t overlayCommandStart;
+	uint32_t overlayCommandEnd;
+	//! No draw command merges into one that lies before this point in the buffer, which is what keeps an
+	//! overlay's run unbroken while it is lifted. Only ever consulted by a caller that turned batching on
+	uint32_t drawMergeBarrier;
 
 	//! What the current build is for
 	fuiPass pass;
@@ -2323,6 +2415,13 @@ typedef struct fuiContext {
 	//! Seconds since the caret last moved, which restarts the blink so the caret is solid while typing
 	float caretBlinkTime;
 
+	//! Text a numeric widget is being typed into. The library owns this one buffer, because what the caller
+	//! holds is a NUMBER and there is nothing to point a text field at - and one buffer is enough, since the
+	//! keyboard is in one place at a time
+	char numericEditText[FUI_MAX_NUMERIC_TEXT];
+	//! Which numeric widget that text belongs to, zero while nothing is being typed into
+	fuiId numericEditId;
+
 	//! First focusable widget built this frame, which is where a tab off the last one wraps back to
 	fuiId firstFocusableThisFrame;
 	//! Focusable widget built just before the current one, so tab knows what comes next
@@ -2371,6 +2470,26 @@ typedef struct fuiContext {
 	fuiMenuFrame menuStack[FUI_MAX_MENU_DEPTH];
 	//! How many entries of menuStack are in use
 	uint32_t menuStackDepth;
+
+	//! The combo box whose list is dropped open right now, zero when none is. Exactly one list is open at a
+	//! time, the same way exactly one menu tree is, which is why everything about the open one lives here
+	//! rather than in a retained slot of its own
+	fuiId comboOpenId;
+	//! Which row of the open list the keyboard is on, minus one until something has settled on one
+	int32_t comboHighlightRow;
+	//! How far the open list is scrolled, in pixels from the top of its rows
+	float comboScroll;
+	//! Whether the open list blocks every other widget from the cursor, which it does for the whole frame
+	//! and not just from the point it is built at. Lifted for as long as the list builds a widget of its
+	//! OWN, so its scrollbar stays live while everything underneath it is frozen
+	bool comboBlocksInput;
+	//! Set once the cursor was over the open list or the box it hangs from this build, which is what tells
+	//! a press that landed anywhere else that it is a dismissal
+	bool comboOwnsTheMouse;
+	//! Set once the open combo was really built this frame. A list whose caller stopped building it - its
+	//! panel folded away, its tab switched behind it - is closed at the end of the frame, rather than left
+	//! open where nobody can see it and blocking the interface for good
+	bool comboWasBuiltThisFrame;
 
 	//! Dialogs open right now, the front one last. While this holds anything the interface is modal
 	fuiId modalStack[FUI_MAX_DIALOGS];
@@ -3581,6 +3700,135 @@ fui_api bool fuiSliderFloatEx(fuiContext *context, const fuiRect rect, const cha
 fui_api bool fuiDragFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float speed, const float minValue, const float maxValue);
 
 /**
+* @brief A horizontal slider bound to a whole number.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the slider, which carries no caption of its own.
+* @param[in,out] value Reference to the value to drag, clamped to the range.
+* @param[in] minValue Lowest value, at the left end of the track.
+* @param[in] maxValue Highest value, at the right end of the track.
+* @return Returns true on the frame the value changed.
+* @note The knob lands on whole numbers only, so a slider over a short range steps between them rather than
+*       sliding through values it would round away. The value it shows is the value the caller gets.
+* @note Ctrl and a click types the number in instead, see @ref fuiInputInt.
+* @see @ref fuiSliderIntEx, @ref fuiDragInt, @ref fuiInputInt
+*/
+fui_api bool fuiSliderInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue);
+
+/**
+* @brief A whole number slider with a step, a disabled state and a caption of its own.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the slider.
+* @param[in,out] value Reference to the value to drag, clamped to the range.
+* @param[in] minValue Lowest value, at the left end of the track.
+* @param[in] maxValue Highest value, at the right end of the track.
+* @param[in] step Increment to snap to, counted from minValue. Pass 0 or 1 for every whole number.
+* @param[in] enabled Set to false to draw it muted and ignore all input.
+* @param[in] displayText Caption drawn over the track, or null to print the number itself.
+* @return Returns true on the frame the value changed.
+* @see @ref fuiSliderInt
+*/
+fui_api bool fuiSliderIntEx(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue, const int32_t step, const bool enabled, const char *displayText);
+
+/**
+* @brief A drag field bound to a whole number: horizontal cursor motion changes it, and it prints itself.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the field.
+* @param[in,out] value Reference to the value to drag, clamped to the range.
+* @param[in] speed How many units one pixel of cursor motion is worth.
+* @param[in] minValue Lowest value the drag may reach.
+* @param[in] maxValue Highest value the drag may reach.
+* @return Returns true on the frame the value changed.
+* @note The motion is accumulated in FRACTIONS of a unit and only whole ones are handed over, so a speed
+*       below one unit a pixel still moves - a drag field that rounded every frame would never move at all.
+* @note Ctrl and a click types the number in instead, see @ref fuiInputInt.
+* @see @ref fuiDragFloat, @ref fuiSliderInt
+*/
+fui_api bool fuiDragInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const float speed, const int32_t minValue, const int32_t maxValue);
+
+/**
+* @brief A whole number typed into a field, with a step button at each end.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the field.
+* @param[in,out] value Reference to the value, clamped to the range.
+* @param[in] minValue Lowest value the field accepts.
+* @param[in] maxValue Highest value the field accepts.
+* @param[in] step What one press of a step button is worth. Pass 0 for 1, and pass a negative number for no buttons at all.
+* @return Returns true on the frame the value changed.
+* @note The TEXT is the truth while it is being typed and the NUMBER is the truth the rest of the time, so
+*       what was typed is only read back on enter, on tab, or when the focus goes anywhere else. Parsing
+*       every keystroke would fight the user: "-" on its own, "1." and "1e" are each halfway to a number
+*       and not one of them is one yet.
+* @note Text that is not a number at all leaves the value alone, and the field goes back to showing it.
+* @note The step buttons repeat while they are held, the way every other stepper in the library does.
+* @see @ref fuiInputFloat, @ref fuiSliderInt
+*/
+fui_api bool fuiInputInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue, const int32_t step);
+
+/**
+* @brief A float typed into a field, with a step button at each end.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] id Identifies the field.
+* @param[in,out] value Reference to the value, clamped to the range.
+* @param[in] minValue Lowest value the field accepts.
+* @param[in] maxValue Highest value the field accepts.
+* @param[in] step What one press of a step button is worth. Pass 0 for one tenth, and pass a negative number for no buttons at all.
+* @param[in] decimals How many places the value is PRINTED to. What is typed keeps every digit it was given.
+* @return Returns true on the frame the value changed.
+* @note Accepts a leading sign, a decimal point and an exponent, so 1.5, -.25 and 2e-3 all read. Anything
+*       else leaves the value alone and the field goes back to showing it.
+* @see @ref fuiInputInt
+*/
+fui_api bool fuiInputFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue, const float step, const int32_t decimals);
+
+/**
+* @brief Whether a numeric widget is being typed into right now.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns true while a field, a slider or a drag field has the keyboard and a half typed number in it.
+* @note For a caller that would otherwise act on the same digits, such as a viewport bound to the number keys.
+*/
+fui_api bool fuiIsTypingANumber(const fuiContext *context);
+
+/**
+* @brief A bar that fills up to say how far along something is.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] fraction How far along, from 0 to 1. Anything outside that is clamped.
+* @note Nothing here is interactive and nothing is remembered, so a progress bar needs no identifier.
+* @see @ref fuiProgressBarEx, @ref fuiBusyBar
+*/
+fui_api void fuiProgressBar(fuiContext *context, const fuiRect rect, const float fraction);
+
+/**
+* @brief A progress bar that says in words what it is at.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @param[in] fraction How far along, from 0 to 1. Anything outside that is clamped.
+* @param[in] text What to write across it, or null to write the percentage.
+* @note The caption is drawn CENTRED and in one colour over the whole bar, rather than switching colour at
+*       the fill edge. A percentage that changes colour halfway through a digit is harder to read than one
+*       that does not, and the fill is dark enough behind it either way.
+* @see @ref fuiProgressBar
+*/
+fui_api void fuiProgressBarEx(fuiContext *context, const fuiRect rect, const float fraction, const char *text);
+
+/**
+* @brief A bar with a block sweeping across it, for work whose end is not known.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area to draw in, in pixels.
+* @note The sweep runs off the context's own clock, so it needs no identifier and no state - and two of
+*       them on screen move together, which is what says they are waiting on the same thing.
+* @note It stands still during a draw pass, exactly as every other timed thing in the library does, so a
+*       two pass caller does not run it at double speed.
+* @see @ref fuiProgressBar
+*/
+fui_api void fuiBusyBar(fuiContext *context, const fuiRect rect);
+
+/**
 * @brief An editable single line text field.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] rect The area to draw in, in pixels.
@@ -3661,6 +3909,76 @@ fui_api fuiVec3 fuiRgbToHsv(const fuiVec3 rgb);
 *       that, dragging into the black corner would snap the hue strip back to red.
 */
 fui_api bool fuiColorPicker(fuiContext *context, const fuiRect rect, const char *id, fuiColor *color, const bool hasAlpha, const bool enabled, bool *outDidBegin, bool *outDidEnd);
+
+// ****************************************************************************
+//
+// > Combo box
+//
+// A closed box that says what is picked, and a list that drops out of it when it is clicked. It is the
+// widget for "one of these" wherever a column of radio buttons or a list box would take more room than the
+// answer is worth - which, in a settings sheet or a property inspector, is almost everywhere.
+//
+// A combo is the one ordinary widget that draws OUTSIDE its own rectangle, so two things about it differ
+// from everything else in this file. Its list is lifted above whatever is built after it, rather than
+// relying on the caller to build it last the way a menu bar does. And while a list is open it owns the
+// cursor everywhere, exactly as an open menu does, so the click that dismisses it never also lands on
+// what is behind it.
+//
+// ****************************************************************************
+
+/**
+* @brief A closed box that says what is picked, and a list that drops out of it.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area the CLOSED box sits in, in pixels. The list is placed against it.
+* @param[in] id Identifies the combo, and is what remembers whether its list is open.
+* @param[in] items One label per entry.
+* @param[in] count How many entries there are.
+* @param[in,out] selectedIndex Which entry is picked, changed in place. Minus one for none.
+* @return Returns true on the frame the selection changed.
+* @note The list drops BELOW the box, or above it when there is more room up there - a combo near the
+*       bottom of the window opens upwards rather than off the screen.
+* @note With the keyboard: up and down step through the entries while the list is shut, enter and the space
+*       bar drop it open, and escape shuts it again without changing anything.
+* @see @ref fuiComboBoxEx
+*/
+fui_api bool fuiComboBox(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex);
+
+/**
+* @brief A combo box that says how tall its list may get, may be disabled, and may say what "nothing" reads as.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area the CLOSED box sits in, in pixels.
+* @param[in] id Identifies the combo.
+* @param[in] items One label per entry.
+* @param[in] count How many entries there are.
+* @param[in,out] selectedIndex Which entry is picked, changed in place. Minus one for none.
+* @param[in] maxVisibleRows How many rows drop open before the list scrolls. Pass 0 for @ref FUI_COMBO_VISIBLE_ROWS.
+* @param[in] enabled Set to false to draw it muted and ignore all input. A disabled combo still says what is picked.
+* @param[in] emptyText What the box reads when nothing is picked, or null for an empty box.
+* @return Returns true on the frame the selection changed.
+* @note A list longer than maxVisibleRows scrolls, by the wheel and by a scrollbar of its own, and opens
+*       already scrolled to whatever is picked rather than at the top.
+* @note A combo with NO entries does not open at all: an empty box hanging under the widget is one more
+*       thing to dismiss and says nothing the closed box did not already say.
+* @see @ref fuiComboBox
+*/
+fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows, const bool enabled, const char *emptyText);
+
+/**
+* @brief Whether any combo box has its list dropped open.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns true while one is open.
+* @note The counterpart of @ref fuiIsMenuOpen, and it means the same thing: the interface owns the cursor
+*       and the keyboard, so a caller reading either for itself should keep its hands off this frame.
+*/
+fui_api bool fuiComboIsOpen(const fuiContext *context);
+
+/**
+* @brief Shuts whichever combo box is open, changing nothing.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @note What a caller reaches for when something else has to take over - a dialog going up, a tool being
+*       picked. Doing nothing when no list is open, so it never has to be guarded.
+*/
+fui_api void fuiCloseCombo(fuiContext *context);
 
 // ****************************************************************************
 //
@@ -5212,6 +5530,156 @@ fui_inline size_t fui__FormatString(char *destination, const size_t destinationC
 	return(result);
 }
 
+/*
+	Reads a number out of a string, and says whether the WHOLE string was one.
+
+	Written out rather than handed to strtod, because there is no override for that the way there is for
+	printing, and a numeric field that silently read "12abc" as twelve would be worse than one that refuses
+	the text and keeps the number it had. So the parse is strict: leading and trailing spaces are allowed
+	and nothing else is, and anything left over makes the whole thing fail.
+
+	Accepted is a sign, digits, a decimal point and an exponent - so "1.5", "-.25", "+2" and "2e-3" all
+	read. The exponent is applied by multiplying or dividing by ten that many times, which needs no math
+	header and is exact enough for a value somebody typed by hand into a box.
+*/
+fui_inline bool fui__IsDigit(const char byte) {
+	bool result = (byte >= '0') && (byte <= '9');
+	return(result);
+}
+
+fui_inline bool fui__IsSpace(const char byte) {
+	bool result = (byte == ' ') || (byte == '\t');
+	return(result);
+}
+
+fui_inline bool fui__ParseFloat(const char *text, float *outValue) {
+	if(text == fui_null || outValue == fui_null) {
+		return(false);
+	}
+	const char *cursor = text;
+	while(fui__IsSpace(*cursor)) {
+		++cursor;
+	}
+
+	bool isNegative = false;
+	if(*cursor == '-' || *cursor == '+') {
+		isNegative = (*cursor == '-');
+		++cursor;
+	}
+
+	// Both halves are counted, because "." on its own is not a number and neither is "-".
+	int32_t digitsBeforeThePoint = 0;
+	int32_t digitsAfterThePoint = 0;
+	double magnitude = 0.0;
+	while(fui__IsDigit(*cursor)) {
+		magnitude = magnitude * 10.0 + (double)(*cursor - '0');
+		++digitsBeforeThePoint;
+		++cursor;
+	}
+	if(*cursor == '.') {
+		++cursor;
+		double placeValue = 0.1;
+		while(fui__IsDigit(*cursor)) {
+			magnitude += placeValue * (double)(*cursor - '0');
+			placeValue *= 0.1;
+			++digitsAfterThePoint;
+			++cursor;
+		}
+	}
+	if((digitsBeforeThePoint + digitsAfterThePoint) == 0) {
+		return(false);
+	}
+
+	if(*cursor == 'e' || *cursor == 'E') {
+		++cursor;
+		bool exponentIsNegative = false;
+		if(*cursor == '-' || *cursor == '+') {
+			exponentIsNegative = (*cursor == '-');
+			++cursor;
+		}
+		if(!fui__IsDigit(*cursor)) {
+			return(false);
+		}
+		// Bounded, because an exponent nobody meant - a hundred digits of it - would otherwise spin here
+		// for as long as it takes to reach infinity one multiplication at a time.
+		const int32_t largestExponent = 38;
+		int32_t exponent = 0;
+		while(fui__IsDigit(*cursor)) {
+			if(exponent < largestExponent) {
+				exponent = exponent * 10 + (int32_t)(*cursor - '0');
+			}
+			++cursor;
+		}
+		if(exponent > largestExponent) {
+			exponent = largestExponent;
+		}
+		for(int32_t stepIndex = 0; stepIndex < exponent; ++stepIndex) {
+			magnitude = exponentIsNegative ? (magnitude * 0.1) : (magnitude * 10.0);
+		}
+	}
+
+	while(fui__IsSpace(*cursor)) {
+		++cursor;
+	}
+	if(*cursor != 0) {
+		return(false);
+	}
+
+	*outValue = (float)(isNegative ? -magnitude : magnitude);
+	return(true);
+}
+
+//! Reads a whole number the same way, saturating rather than wrapping around on something far too long
+fui_inline bool fui__ParseInt(const char *text, int32_t *outValue) {
+	if(text == fui_null || outValue == fui_null) {
+		return(false);
+	}
+	const char *cursor = text;
+	while(fui__IsSpace(*cursor)) {
+		++cursor;
+	}
+
+	bool isNegative = false;
+	if(*cursor == '-' || *cursor == '+') {
+		isNegative = (*cursor == '-');
+		++cursor;
+	}
+	if(!fui__IsDigit(*cursor)) {
+		return(false);
+	}
+
+	// Accumulated as a 64-bit magnitude, so the clamp below sees the real number rather than one that
+	// already wrapped. A field is bounded by its own range afterwards anyway; this only keeps the parse honest.
+	const int64_t largestMagnitude = (int64_t)2147483648;
+	int64_t magnitude = 0;
+	while(fui__IsDigit(*cursor)) {
+		if(magnitude < largestMagnitude) {
+			magnitude = magnitude * 10 + (int64_t)(*cursor - '0');
+		}
+		if(magnitude > largestMagnitude) {
+			magnitude = largestMagnitude;
+		}
+		++cursor;
+	}
+
+	while(fui__IsSpace(*cursor)) {
+		++cursor;
+	}
+	if(*cursor != 0) {
+		return(false);
+	}
+
+	int64_t signedValue = isNegative ? -magnitude : magnitude;
+	if(signedValue > (int64_t)INT32_MAX) {
+		signedValue = (int64_t)INT32_MAX;
+	}
+	if(signedValue < (int64_t)INT32_MIN) {
+		signedValue = (int64_t)INT32_MIN;
+	}
+	*outValue = (int32_t)signedValue;
+	return(true);
+}
+
 // ----------------------------------------------------------------------------
 // > Font
 // ----------------------------------------------------------------------------
@@ -5249,6 +5717,7 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 	result.widgetBevelShadowColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.38f);
 	result.textSelectionColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 0.75f);
 	result.knobColor = fuiColorRGBA(0.85f, 0.88f, 0.92f, 1.0f);
+	result.progressFillColor = fuiColorRGBA(0.32f, 0.58f, 0.42f, 1.0f);
 	result.menuHighlightColor = fuiColorRGBA(0.24f, 0.38f, 0.60f, 1.0f);
 	result.treeGuideColor = fuiColorRGBA(0.45f, 0.52f, 0.62f, 0.45f);
 	result.modalBackdropColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.55f);
@@ -5554,7 +6023,11 @@ fui_inline fui__GeometryWriter fui__BeginGeometry(fuiContext *context, const fui
 	*/
 	fuiDrawCommand *command = fui_null;
 	bool wasMerged = false;
-	if(context->drawBatchingIsOn && context->commandBuffer.count > 0) {
+	// The barrier is what keeps an overlay whole. Its commands are lifted to the end of the buffer as ONE
+	// run, so the first of them must not be swallowed by the panel's last command and the next command after
+	// it must not be swallowed by the overlay's.
+	bool thereIsSomethingToMergeInto = (context->commandBuffer.count > 0) && (context->commandBuffer.count > context->drawMergeBarrier);
+	if(context->drawBatchingIsOn && thereIsSomethingToMergeInto) {
 		fuiDrawCommand *previous = &commandArray[context->commandBuffer.count - 1u];
 		bool sameClip = fui__RectEquals(previous->clipRect, clipRect);
 		bool sameTexture = (previous->texture == texture);
@@ -5885,6 +6358,9 @@ static void fui__ApplyCursor(fuiContext *context);
 //! and that is here, well above where the widget state table itself is written
 fui_inline void fui__WidgetStateMapGrow(fuiContext *context);
 
+//! Written with the clipping it is built out of, and called from the two ends of a frame and nowhere else
+static void fui__LiftOverlayCommands(fuiContext *context);
+
 fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fuiPass pass) {
 	FUI_ASSERT(context != fui_null && input != fui_null);
 	if(context == fui_null || input == fui_null || !context->isInitialized) {
@@ -6007,6 +6483,26 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		}
 	}
 
+	if(context->comboOpenId != FUI_ID_NONE) {
+		// Everything an open menu is dismissed by dismisses an open list too, for the same reason and in the
+		// same place: "outside the list" is only knowable once the whole build is done.
+		bool anyButtonWentDown = context->mouseWentDown[FUI_MOUSE_LEFT] || context->mouseWentDown[FUI_MOUSE_MIDDLE] || context->mouseWentDown[FUI_MOUSE_RIGHT];
+		bool dismissedByAPress = anyButtonWentDown && !context->comboOwnsTheMouse;
+		// A list whose caller stopped building it - its panel folded shut, its tab switched behind it - is
+		// shut HERE. Left open it would go on freezing an interface that no longer shows it anywhere.
+		bool itsCallerIsGone = !context->comboWasBuiltThisFrame;
+		if(itsCallerIsGone || fuiKeyWentDown(context, fuiKey_Escape) || dismissedByAPress) {
+			context->comboOpenId = FUI_ID_NONE;
+		}
+
+		context->mouseIsOverUi = true;
+		for(uint32_t buttonIndex = 0; buttonIndex < (uint32_t)FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
+			if(context->mouseWentDown[buttonIndex]) {
+				context->mouseDownConsumed[buttonIndex] = true;
+			}
+		}
+	}
+
 	// A press that no widget took is a click on the background, which gives the keyboard back. Without
 	// this a text field would keep swallowing keystrokes long after the user clicked away from it.
 	if(context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT]) {
@@ -6032,6 +6528,10 @@ fui_api void fuiEndFrame(fuiContext *context) {
 			}
 		}
 	}
+
+	// Before the tooltip rather than after it: an open combo list is lifted over the panels it covers, and
+	// the tooltip box goes over everything including the list.
+	fui__LiftOverlayCommands(context);
 
 	fui__DrawPendingTooltip(context);
 	fui__ApplyCursor(context);
@@ -6066,6 +6566,18 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 	context->modalScopeId = FUI_ID_NONE;
 	context->stripIsActive = false;
 
+	// WHICH combo is open survives the frame the way an open menu does; everything else about it is
+	// answered by this build. The block is latched from the open list rather than from the build, because
+	// a widget built BEFORE the combo has to be frozen just as much as one built after it.
+	context->comboBlocksInput = (context->comboOpenId != FUI_ID_NONE);
+	context->comboOwnsTheMouse = false;
+	context->comboWasBuiltThisFrame = false;
+
+	// The overlay is a run of commands inside the buffer this just emptied, so both markers go with it.
+	context->overlayCommandStart = 0;
+	context->overlayCommandEnd = 0;
+	context->drawMergeBarrier = 0;
+
 	// Default to the one-pass contract. fuiBeginFrame calls this first and then says what the pass really
 	// is, so a caller reaching for the drawing half on its own can never land in a pass that draws nothing.
 	context->pass = fuiPass_Both;
@@ -6091,6 +6603,10 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	if(context == fui_null || !context->isInitialized) {
 		return;
 	}
+
+	// Does nothing when fuiEndFrame already lifted, and is what a caller reaching for the drawing half on
+	// its own relies on. Ahead of the clip stack going, since the lift touches no clip of its own.
+	fui__LiftOverlayCommands(context);
 
 	// An unbalanced push must not leak into the next frame, so both stacks are emptied rather than trusted.
 	// The root container goes with them: the next frame opens its own.
@@ -6171,6 +6687,98 @@ fui_api void fuiPopClip(fuiContext *context) {
 	}
 }
 
+//! Pushes a clip that IGNORES whatever is clipping right now, bounded only by the window
+fui_inline void fui__PushClipAbsolute(fuiContext *context, const fuiRect rect) {
+	fuiRect wholeWindow = fuiRectMake(0.0f, 0.0f, (float)context->windowSize.x, (float)context->windowSize.y);
+	fuiRect clipped = fuiRectIntersect(wholeWindow, rect);
+	if(context->clipDepth < (uint32_t)FUI_MAX_CLIP_DEPTH) {
+		context->clipStack[context->clipDepth] = clipped;
+	}
+	context->clipDepth += 1u;
+}
+
+// ----------------------------------------------------------------------------
+// > Overlay
+//
+// Everything the library draws goes into ONE command buffer in the order it was built, and that order is
+// the z order: what is written later covers what was written before it. It is the whole of how a menu
+// popup floats over a panel - the caller is told to build its menu bar last, and does.
+//
+// A combo list cannot ask that of anybody. It belongs to a widget sitting halfway down a panel, and the
+// rows of that panel go on being built after it. So the commands its list writes are marked as they go in
+// and lifted to the END of the buffer once the frame is finished. What moves is the ORDER and nothing
+// else: every command names its vertices and its indices by absolute offset, so not one of them has to be
+// rewritten to be drawn somewhere else in the sequence.
+//
+// One overlay is open at a time, which is all a combo needs and the reason this is three fields rather
+// than a stack of layers.
+// ----------------------------------------------------------------------------
+
+//! Reverses one half open range of draw commands in place
+fui_inline void fui__ReverseCommands(fuiDrawCommand *commands, const uint32_t firstIndex, const uint32_t onePastLastIndex) {
+	uint32_t lowIndex = firstIndex;
+	uint32_t highIndex = onePastLastIndex;
+	while((lowIndex + 1u) < highIndex) {
+		highIndex -= 1u;
+		fuiDrawCommand swapped = commands[lowIndex];
+		commands[lowIndex] = commands[highIndex];
+		commands[highIndex] = swapped;
+		lowIndex += 1u;
+	}
+}
+
+//! Starts recording geometry that belongs above everything, clipped by the WINDOW rather than by whatever was clipping the widget that opened it
+fui_inline void fui__BeginOverlay(fuiContext *context, const fuiRect rect) {
+	context->overlayCommandStart = context->commandBuffer.count;
+	context->overlayCommandEnd = context->commandBuffer.count;
+	context->drawMergeBarrier = context->commandBuffer.count;
+	fui__PushClipAbsolute(context, rect);
+}
+
+//! Closes the recording, marking everything written since the begin as the run to lift
+fui_inline void fui__EndOverlay(fuiContext *context) {
+	fuiPopClip(context);
+	context->overlayCommandEnd = context->commandBuffer.count;
+	context->drawMergeBarrier = context->commandBuffer.count;
+}
+
+/*
+	Moves the overlay's run of commands to the end of the buffer.
+
+	A rotation of the tail rather than a copy through scratch memory: the run and everything behind it are
+	each reversed in place and then the whole tail is reversed again, which leaves the two swapped over and
+	every command still whole. It runs once a frame over the commands built AFTER the list was opened,
+	which in a real interface is a few hundred at the very most.
+
+	Both markers are cleared FIRST, so calling this twice in one frame does nothing the second time.
+	fuiEndFrame lifts before it draws the tooltip, so a tooltip box still lands on top of an open list, and
+	fuiEndDrawFrame lifts again for a caller that built a frame with no input at all.
+*/
+static void fui__LiftOverlayCommands(fuiContext *context) {
+	uint32_t firstOverlayCommand = context->overlayCommandStart;
+	uint32_t onePastLastOverlayCommand = context->overlayCommandEnd;
+	uint32_t commandCount = context->commandBuffer.count;
+	context->overlayCommandStart = 0;
+	context->overlayCommandEnd = 0;
+	context->drawMergeBarrier = 0;
+
+	bool runIsEmpty = (onePastLastOverlayCommand <= firstOverlayCommand);
+	bool runRanPastTheBuffer = (onePastLastOverlayCommand > commandCount);
+	// Nothing was built after it, so it is already the last thing drawn and the rotation would be a no-op.
+	bool runIsAlreadyLast = (onePastLastOverlayCommand >= commandCount);
+	if(runIsEmpty || runRanPastTheBuffer || runIsAlreadyLast) {
+		return;
+	}
+
+	fuiDrawCommand *commands = (fuiDrawCommand *)context->commandBuffer.items;
+	if(commands == fui_null) {
+		return;
+	}
+	fui__ReverseCommands(commands, firstOverlayCommand, onePastLastOverlayCommand);
+	fui__ReverseCommands(commands, onePastLastOverlayCommand, commandCount);
+	fui__ReverseCommands(commands, firstOverlayCommand, commandCount);
+}
+
 // ----------------------------------------------------------------------------
 // > Interaction
 // ----------------------------------------------------------------------------
@@ -6203,6 +6811,12 @@ fui_inline bool fui__CursorIsOver(const fuiContext *context, const fuiRect rect)
 	// leaves the menu live. It is what every desktop menu does: while one is open, a click anywhere else
 	// only dismisses it.
 	if(context->menuOpenDepth > 0) {
+		return(false);
+	}
+	// An open combo list owns the cursor for exactly the reasons an open menu does, and it is lifted over
+	// the panels rather than built after them - so without this the widget it is DRAWN on top of would
+	// still take the click meant for a row. The list lifts the block while it builds a widget of its own.
+	if(context->comboBlocksInput) {
 		return(false);
 	}
 	fuiRect clip = fuiGetClipRect(context);
@@ -7501,6 +8115,12 @@ fui_inline fuiWidgetState *fui__WidgetStateGet(fuiContext *context, const fuiId 
 // > Shared widget helpers
 // ----------------------------------------------------------------------------
 
+//! Rounds to the nearest whole number, away from zero at the halfway point
+fui_inline int32_t fui__RoundToInt(const float value) {
+	float rounded = (value >= 0.0f) ? (value + 0.5f) : (value - 0.5f);
+	return((int32_t)rounded);
+}
+
 //! Marks a rectangle as claimed by a widget when the cursor is over it, without any interaction
 fui_inline bool fui__ClaimCursor(fuiContext *context, const fuiId id, const fuiRect rect) {
 	bool cursorIsOver = fui__CursorIsOver(context, rect);
@@ -7643,10 +8263,19 @@ fui_inline void fui__DrawTextCenteredInRect(fuiContext *context, const fuiRect r
 	}
 	float pixelHeight = context->theme.fontHeight;
 	fuiVec2 textSize = fuiMeasureText(context, text, 0, pixelHeight);
-	// A caption too wide for its box falls back to the left inset, so it is cropped at the far edge rather
-	// than losing the same amount off BOTH ends and becoming unreadable from either side.
+	/*
+		A caption too wide for its box falls back to the left inset, so that it is cropped at the far edge
+		rather than losing the same amount off BOTH ends and becoming unreadable from either side.
+
+		What decides that is whether the CENTRED caption fits, which is a question about the box itself and
+		not about the box less its side padding: centring uses no padding at all, so measuring against it
+		asked about a layout that was never going to be used. On a wide button the two answers agree. On a
+		narrow one they do not - the step buttons at the ends of a numeric field are a couple of characters
+		across, the padding is most of the box, and so every glyph "did not fit" and was inset instead. A
+		plus then sat visibly right of centre while a narrower minus beside it still fitted and did not.
+	*/
 	float textX = rect.x + context->theme.widgetPaddingX;
-	if(textSize.x < (rect.w - context->theme.widgetPaddingX * 2.0f)) {
+	if(textSize.x < rect.w) {
 		textX = rect.x + (rect.w - textSize.x) * 0.5f;
 	}
 	fui__DrawTextLeftAligned(context, rect, textX, text, color);
@@ -8828,142 +9457,102 @@ fui_api bool fuiRadio(fuiContext *context, const fuiRect rect, const char *label
 	return(didChange);
 }
 
-//! Sets a value from where the cursor sits across a track. Returns true when it moved
-fui_inline bool fui__SliderSetFromCursor(fuiContext *context, const fuiRect rect, float *value, const float minValue, const float maxValue) {
-	if(rect.w <= 0.0f) {
-		return(false);
-	}
-	float fraction = fuiClampF((context->mousePosition.x - rect.x) / rect.w, 0.0f, 1.0f);
-	float newValue = minValue + fraction * (maxValue - minValue);
-	if(newValue != *value) {
-		*value = newValue;
-		return(true);
-	}
-	return(false);
-}
+//! How much of a busy bar's length the block sweeping across it covers
+#define FUI__BUSY_BAR_BLOCK_FRACTION 0.25f
+//! Seconds one sweep of that block takes, from off one end to off the other
+#define FUI__BUSY_BAR_SWEEP_SECONDS 1.4f
 
-//! The track, its knob and the caption over it
-fui_inline void fui__DrawSlider(fuiContext *context, const fuiRect rect, const float value, const float minValue, const float maxValue, const char *displayText, const fuiColor textColor, const fuiInteraction interaction) {
+//! The well a progress bar is drawn into, inside its frame and its bevel rather than over them
+fui_inline fuiRect fui__ProgressWell(const fuiContext *context, const fuiRect rect) {
 	const fuiTheme *theme = &context->theme;
-	fuiDrawRect(context, rect, theme->widgetTrackColor);
-	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
-
-	float range = maxValue - minValue;
-	float clampedValue = fuiClampF(value, minValue, maxValue);
-	float fraction = (range != 0.0f) ? ((clampedValue - minValue) / range) : 0.0f;
-	fuiRect knob = fuiRectMake(rect.x + fraction * (rect.w - FUI__SLIDER_KNOB_WIDTH), rect.y, FUI__SLIDER_KNOB_WIDTH, rect.h);
-	fuiColor knobColor = interaction.isHeld ? theme->accentColor : (interaction.isHovered ? theme->widgetHoveredColor : theme->knobColor);
-	fuiDrawRect(context, knob, knobColor);
-
-	if(displayText != fui_null) {
-		fui__DrawTextInRect(context, rect, displayText, textColor);
-	}
+	float chromeThickness = theme->widgetBorderThickness + theme->widgetBevelThickness;
+	fuiRect result = fuiRectInflate(rect, -chromeThickness);
+	return(result);
 }
 
-fui_api bool fuiSliderFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue) {
-	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
-	if(context == fui_null || id == fui_null || value == fui_null) {
-		return(false);
-	}
-
-	fuiId sliderId = fuiGetId(context, id);
-	fuiInteraction interaction = fuiInteract(context, sliderId, rect);
-	bool didChange = false;
-	if(interaction.isHeld) {
-		// Pressing anywhere on the track jumps the knob there, rather than only the knob being grabbable.
-		didChange = fui__SliderSetFromCursor(context, rect, value, minValue, maxValue);
-	}
-
-	const char *noDisplayText = fui_null;
-	fui__DrawSlider(context, rect, *value, minValue, maxValue, noDisplayText, context->theme.textColor, interaction);
-	return(didChange);
-}
-
-fui_api bool fuiSliderFloatEx(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue, const float step, const bool liveUpdate, const bool enabled, const char *displayText, bool *outDidBegin, bool *outDidEnd) {
-	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
-	if(outDidBegin != fui_null) {
-		*outDidBegin = false;
-	}
-	if(outDidEnd != fui_null) {
-		*outDidEnd = false;
-	}
-	if(context == fui_null || id == fui_null || value == fui_null) {
-		return(false);
-	}
-
+//! One progress bar, with a caption over it or with none
+fui_inline void fui__DrawProgressBar(fuiContext *context, const fuiRect rect, const float fraction, const char *caption) {
 	const fuiTheme *theme = &context->theme;
-	if(!enabled) {
-		// Drawn so the row still shows its value, but with no interaction at all - which is what a caller
-		// relies on to keep a mixed selection from being edited by a control that shows only one of them.
-		fuiDrawRect(context, rect, theme->widgetTrackColor);
-		fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
-		if(displayText != fui_null) {
-			fui__DrawTextInRect(context, rect, displayText, theme->textMutedColor);
-		}
-		return(false);
-	}
+	// A WELL rather than a face: a bar is something being filled up, and the shape says so before the fill
+	// does. It is bevelled the same way round a checkbox box and a text field are, for the same reason.
+	fui__DrawBevelBox(context, rect, theme->widgetTrackColor, fui__Relief_Sunken);
 
-	fuiId sliderId = fuiGetId(context, id);
-	// Captured on either side of the interaction, because a drag that ends with the cursor OFF the track
-	// still ends - so "released" cannot be read off wasClicked, which asks whether it ended ON the widget.
-	bool wasHeldBefore = (context->active == sliderId);
-	fuiInteraction interaction = fuiInteract(context, sliderId, rect);
-	bool isHeldNow = (context->active == sliderId);
-
-	bool didChange = false;
-	if(interaction.isHeld) {
-		didChange = fui__SliderSetFromCursor(context, rect, value, minValue, maxValue);
-	}
-
-	// Snap onto the step grid, so the value lands on discrete increments instead of wherever the pixel fell.
-	if(didChange && step > 0.0f) {
-		float stepsFromMinimum = (*value - minValue) / step;
-		float roundedSteps = (float)(int32_t)(stepsFromMinimum + 0.5f);
-		*value = fuiClampF(minValue + roundedSteps * step, minValue, maxValue);
-	}
-
-	bool dragDidBegin = (!wasHeldBefore && isHeldNow);
-	bool dragDidEnd = (wasHeldBefore && !isHeldNow);
-	if(outDidBegin != fui_null) {
-		*outDidBegin = dragDidBegin;
-	}
-	if(outDidEnd != fui_null) {
-		*outDidEnd = dragDidEnd;
-	}
-
-	// A deferred slider keeps tracking the cursor - the knob and the caption follow it - and only the
-	// caller's apply waits for the release, which is what makes one drag ONE undoable edit.
-	bool shouldApply = liveUpdate ? didChange : dragDidEnd;
-	fui__DrawSlider(context, rect, *value, minValue, maxValue, displayText, theme->textColor, interaction);
-	return(shouldApply);
-}
-
-fui_api bool fuiDragFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float speed, const float minValue, const float maxValue) {
-	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
-	if(context == fui_null || id == fui_null || value == fui_null) {
-		return(false);
-	}
-
-	fuiId dragId = fuiGetId(context, id);
-	fuiInteraction interaction = fuiInteract(context, dragId, rect);
-	bool didChange = false;
-	if(interaction.isHeld && context->mouseDelta.x != 0.0f) {
-		float newValue = fuiClampF(*value + context->mouseDelta.x * speed, minValue, maxValue);
-		if(newValue != *value) {
-			*value = newValue;
-			didChange = true;
+	float clampedFraction = fuiClampF(fraction, 0.0f, 1.0f);
+	fuiRect well = fui__ProgressWell(context, rect);
+	if(well.w > 0.0f && well.h > 0.0f) {
+		float filledWidth = well.w * clampedFraction;
+		if(filledWidth > 0.0f) {
+			fuiRect filled = fuiRectMake(well.x, well.y, filledWidth, well.h);
+			fuiDrawRect(context, filled, theme->progressFillColor);
 		}
 	}
 
-	const fuiTheme *theme = &context->theme;
-	fuiColor fill = fui__WidgetFillColor(context, interaction);
-	fuiDrawRect(context, rect, fill);
-	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+	if(caption != fui_null) {
+		// One colour across the whole bar rather than one either side of the fill edge. A percentage that
+		// changes colour halfway through a digit is harder to read than one that does not, and the fill is
+		// dark enough behind it for the light text to hold either way.
+		fui__DrawTextCenteredInRect(context, rect, caption, theme->textColor);
+	}
+}
 
-	char valueText[FUI__VALUE_TEXT_CAPACITY];
-	(void)fui__FormatString(valueText, sizeof(valueText), "%.3f", (double)*value);
-	fui__DrawTextInRect(context, rect, valueText, theme->textColor);
-	return(didChange);
+fui_api void fuiProgressBar(fuiContext *context, const fuiRect rect, const float fraction) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	const char *noCaption = fui_null;
+	fui__DrawProgressBar(context, rect, fraction, noCaption);
+}
+
+fui_api void fuiProgressBarEx(fuiContext *context, const fuiRect rect, const float fraction, const char *text) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	char percentageText[FUI__VALUE_TEXT_CAPACITY];
+	const char *caption = text;
+	if(caption == fui_null) {
+		float clampedFraction = fuiClampF(fraction, 0.0f, 1.0f);
+		int32_t wholePercent = fui__RoundToInt(clampedFraction * 100.0f);
+		(void)fui__FormatString(percentageText, sizeof(percentageText), "%d%%", (int)wholePercent);
+		caption = percentageText;
+	}
+	fui__DrawProgressBar(context, rect, fraction, caption);
+}
+
+fui_api void fuiBusyBar(fuiContext *context, const fuiRect rect) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	const fuiTheme *theme = &context->theme;
+	fui__DrawBevelBox(context, rect, theme->widgetTrackColor, fui__Relief_Sunken);
+
+	fuiRect well = fui__ProgressWell(context, rect);
+	if(well.w <= 0.0f || well.h <= 0.0f) {
+		return;
+	}
+
+	/*
+		The block sweeps a whole block's width past EACH end.
+
+		So it leaves one side completely before it reappears at the other, and the bar is empty for a moment
+		in between. A block that turned round at the edge instead reads as something that got stuck and is
+		trying to get out, rather than as work still going on somewhere out of sight.
+
+		It runs off the context's own clock, which is why this needs no identifier and nothing remembered -
+		and which is also why it stands still during a draw pass, exactly as every other timed thing here does.
+	*/
+	float blockWidth = well.w * FUI__BUSY_BAR_BLOCK_FRACTION;
+	float sweepLength = well.w + blockWidth;
+	float sweepsSoFar = context->timeSeconds / FUI__BUSY_BAR_SWEEP_SECONDS;
+	float phase = FUI_FMODF(sweepsSoFar, 1.0f);
+	float blockLeft = well.x - blockWidth + phase * sweepLength;
+	fuiRect block = fuiRectMake(blockLeft, well.y, blockWidth, well.h);
+	fuiRect visible = fuiRectIntersect(well, block);
+	if(!fuiRectIsEmpty(visible)) {
+		fuiDrawRect(context, visible, theme->progressFillColor);
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -9988,6 +10577,638 @@ fui_api bool fuiTextInput(fuiContext *context, const fuiRect rect, const char *i
 }
 
 // ----------------------------------------------------------------------------
+// > Numeric widgets
+//
+// A slider, a drag field and a typed field over the same number, and one thing they all share: the value
+// can be TYPED as well as dragged. A slider is quick and imprecise, and there is always a moment where the
+// answer is 0.35 exactly and no amount of pixel hunting will land on it. Ctrl and a click turns any of
+// them into a text field for as long as it takes to type the number in.
+//
+// Everything here is written against a float and the whole number widgets round at their own edge, so the
+// dragging, the type-in and the clamping exist once rather than twice.
+// ----------------------------------------------------------------------------
+
+//! Width of one of the step buttons at the ends of a numeric input field
+#define FUI__NUMERIC_STEP_BUTTON_WIDTH 22.0f
+//! How much of a narrow field the two step buttons may take between them, so a short one is not all buttons
+#define FUI__NUMERIC_STEP_BUTTON_MAX_SHARE 0.3f
+//! What the step down button says
+#define FUI__NUMERIC_STEP_DOWN_LABEL "-"
+//! What the step up button says
+#define FUI__NUMERIC_STEP_UP_LABEL "+"
+//! What one press of a float field's step button is worth when the caller did not say
+#define FUI__NUMERIC_DEFAULT_FLOAT_STEP 0.1f
+//! How many places a float field prints to when the caller did not say
+#define FUI__NUMERIC_DEFAULT_DECIMALS 3
+
+//! What one numeric widget is: whole numbers or not, what it is bounded by, and how many places it prints
+typedef struct fui__NumericSpec {
+	//! Lowest value the widget accepts
+	float minValue;
+	//! Highest value the widget accepts
+	float maxValue;
+	//! How many places a float widget prints to, ignored by a whole number one
+	int32_t decimals;
+	//! Whether every value this widget carries is a whole number
+	bool isInteger;
+} fui__NumericSpec;
+
+//! The description a whole number widget works from. Its bounds are ordered here, so a caller may hand them over either way round
+fui_inline fui__NumericSpec fui__NumericSpecForInt(const int32_t minValue, const int32_t maxValue) {
+	fui__NumericSpec result;
+	result.minValue = (float)fuiMinI(minValue, maxValue);
+	result.maxValue = (float)fuiMaxI(minValue, maxValue);
+	result.decimals = 0;
+	result.isInteger = true;
+	return(result);
+}
+
+//! The description a float widget works from
+fui_inline fui__NumericSpec fui__NumericSpecForFloat(const float minValue, const float maxValue, const int32_t decimals) {
+	fui__NumericSpec result;
+	result.minValue = fuiMinF(minValue, maxValue);
+	result.maxValue = fuiMaxF(minValue, maxValue);
+	result.decimals = fuiClampI(decimals, 0, 9);
+	result.isInteger = false;
+	return(result);
+}
+
+//! Prints a value the way its own widget shows it
+fui_inline void fui__NumericFormat(const fui__NumericSpec *spec, const float value, char *destination, const size_t destinationCapacity) {
+	if(spec->isInteger) {
+		int32_t wholeValue = fui__RoundToInt(value);
+		(void)fui__FormatString(destination, destinationCapacity, "%d", (int)wholeValue);
+	} else {
+		(void)fui__FormatString(destination, destinationCapacity, "%.*f", (int)spec->decimals, (double)value);
+	}
+}
+
+//! Puts a whole number onto the step grid its widget counts in, measured from the low end of the range
+fui_inline int32_t fui__SnapIntToStep(const int32_t value, const int32_t lowestValue, const int32_t highestValue, const int32_t step) {
+	int32_t result = value;
+	if(step > 1) {
+		int32_t distanceFromTheLowEnd = fuiMaxI(value - lowestValue, 0);
+		int32_t stepsFromTheLowEnd = (distanceFromTheLowEnd + step / 2) / step;
+		result = lowestValue + stepsFromTheLowEnd * step;
+	}
+	return(fuiClampI(result, lowestValue, highestValue));
+}
+
+//! Whether this widget is the one being typed into right now
+fui_inline bool fui__NumericEditIsActive(const fuiContext *context, const fuiId widgetId) {
+	bool result = (widgetId != FUI_ID_NONE) && (context->numericEditId == widgetId);
+	return(result);
+}
+
+//! Puts a widget into type-in mode, seeded with the number it is showing and with that number selected whole
+fui_inline void fui__NumericEditBegin(fuiContext *context, const fuiId widgetId, const char *seedText) {
+	context->numericEditId = widgetId;
+	(void)fui__FormatString(context->numericEditText, sizeof(context->numericEditText), "%s", seedText);
+	context->focused = widgetId;
+	// Selected WHOLE, so the first keystroke replaces the number instead of landing beside it - which is
+	// the entire reason somebody opened the field.
+	int32_t seedLength = (int32_t)fui__StringLength(context->numericEditText);
+	fuiSelectTextInputContent(context, widgetId, seedLength);
+}
+
+//! Gives a type-in up without reading it back, for a widget that was disabled while it was open
+fui_inline void fui__NumericEditAbandon(fuiContext *context, const fuiId widgetId) {
+	if(!fui__NumericEditIsActive(context, widgetId)) {
+		return;
+	}
+	context->numericEditId = FUI_ID_NONE;
+	if(context->focused == widgetId) {
+		context->focused = FUI_ID_NONE;
+	}
+}
+
+//! Reads back what was typed and closes the edit. Text that is not a number leaves the value exactly as it was
+fui_inline bool fui__NumericEditCommit(fuiContext *context, const fui__NumericSpec *spec, float *value) {
+	bool didChange = false;
+	if(spec->isInteger) {
+		int32_t typedValue = 0;
+		if(fui__ParseInt(context->numericEditText, &typedValue)) {
+			float clampedValue = fuiClampF((float)typedValue, spec->minValue, spec->maxValue);
+			if(clampedValue != *value) {
+				*value = clampedValue;
+				didChange = true;
+			}
+		}
+	} else {
+		float typedValue = 0.0f;
+		if(fui__ParseFloat(context->numericEditText, &typedValue)) {
+			float clampedValue = fuiClampF(typedValue, spec->minValue, spec->maxValue);
+			if(clampedValue != *value) {
+				*value = clampedValue;
+				didChange = true;
+			}
+		}
+	}
+	context->numericEditId = FUI_ID_NONE;
+	return(didChange);
+}
+
+//! Whether the press that just landed on a slider or a drag field is the one that opens its type-in rather than a drag
+fui_inline bool fui__NumericTypeInWasAsked(const fuiContext *context, const fuiInteraction interaction) {
+	bool result = interaction.wasPressed && fuiIsControlDown(context);
+	return(result);
+}
+
+/*
+	The type-in half of every numeric widget.
+
+	Returns true when it TOOK OVER the build, in which case the field has been drawn and the caller is
+	finished for this frame. Returns false when there is nothing being typed into this widget - and the
+	caller then draws its slider, its drag field or its box as usual.
+
+	The TEXT is the truth while it is being typed and the NUMBER is the truth the rest of the time, so what
+	was typed is only read back when the edit ends. Parsing every keystroke instead would fight the user:
+	"-" on its own, "1." and "1e" are each halfway to a number and not one of them is one yet.
+*/
+fui_inline bool fui__NumericTypeIn(fuiContext *context, const fuiRect rect, const char *id, const fuiId widgetId, const fui__NumericSpec *spec, float *value, bool *outDidChange) {
+	bool editIsActive = fui__NumericEditIsActive(context, widgetId);
+
+	// Escape gives the edit up and keeps the number. It is taken BEFORE the field can see it, because a
+	// single line field drops the focus on escape and on enter alike, and here the two mean opposite things.
+	if(editIsActive && fuiKeyWentDown(context, fuiKey_Escape)) {
+		fuiConsumeKey(context, fuiKey_Escape);
+		fui__NumericEditAbandon(context, widgetId);
+		editIsActive = false;
+	}
+	if(!editIsActive) {
+		return(false);
+	}
+
+	// The focus already went somewhere else - tab, or a click on something else that fuiEndFrame resolved
+	// after this widget had been built. That ENDS the edit, and what was typed is read back exactly as it
+	// is on enter. Nothing is drawn here: the caller draws its own widget again on this very frame.
+	if(context->focused != widgetId) {
+		*outDidChange = fui__NumericEditCommit(context, spec, value);
+		return(false);
+	}
+
+	const bool notMultiline = false;
+	const bool noWordWrap = false;
+	const bool isReadOnly = false;
+	int32_t editCapacity = (int32_t)sizeof(context->numericEditText);
+	(void)fui__TextInputBuild(context, rect, id, context->numericEditText, editCapacity, notMultiline, noWordWrap, isReadOnly);
+
+	// Enter drops the focus inside the field itself, so the commit lands on the very frame it was pressed
+	// rather than on the one after it.
+	if(context->focused != widgetId) {
+		*outDidChange = fui__NumericEditCommit(context, spec, value);
+	}
+	return(true);
+}
+
+//! Sets a value from where the cursor sits across a track. Returns true when it moved
+fui_inline bool fui__SliderSetFromCursor(fuiContext *context, const fuiRect rect, float *value, const float minValue, const float maxValue) {
+	if(rect.w <= 0.0f) {
+		return(false);
+	}
+	float fraction = fuiClampF((context->mousePosition.x - rect.x) / rect.w, 0.0f, 1.0f);
+	float newValue = minValue + fraction * (maxValue - minValue);
+	if(newValue != *value) {
+		*value = newValue;
+		return(true);
+	}
+	return(false);
+}
+
+//! The track, its knob and the caption over it
+fui_inline void fui__DrawSlider(fuiContext *context, const fuiRect rect, const float value, const float minValue, const float maxValue, const char *displayText, const fuiColor textColor, const fuiInteraction interaction) {
+	const fuiTheme *theme = &context->theme;
+	fuiDrawRect(context, rect, theme->widgetTrackColor);
+	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	float range = maxValue - minValue;
+	float clampedValue = fuiClampF(value, minValue, maxValue);
+	float fraction = (range != 0.0f) ? ((clampedValue - minValue) / range) : 0.0f;
+	fuiRect knob = fuiRectMake(rect.x + fraction * (rect.w - FUI__SLIDER_KNOB_WIDTH), rect.y, FUI__SLIDER_KNOB_WIDTH, rect.h);
+	fuiColor knobColor = interaction.isHeld ? theme->accentColor : (interaction.isHovered ? theme->widgetHoveredColor : theme->knobColor);
+	fuiDrawRect(context, knob, knobColor);
+
+	if(displayText != fui_null) {
+		fui__DrawTextInRect(context, rect, displayText, textColor);
+	}
+}
+
+fui_api bool fuiSliderFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	fuiId sliderId = fuiGetId(context, id);
+	fui__NumericSpec spec = fui__NumericSpecForFloat(minValue, maxValue, FUI__NUMERIC_DEFAULT_DECIMALS);
+	bool didChange = false;
+	if(fui__NumericTypeIn(context, rect, id, sliderId, &spec, value, &didChange)) {
+		return(didChange);
+	}
+
+	fuiInteraction interaction = fuiInteract(context, sliderId, rect);
+	if(fui__NumericTypeInWasAsked(context, interaction)) {
+		// The press opened a type-in rather than a drag, so the slider lets that press go again - held on
+		// to, it would drag the knob under the field the moment the button came back up.
+		context->active = FUI_ID_NONE;
+		char seedText[FUI_MAX_NUMERIC_TEXT];
+		fui__NumericFormat(&spec, *value, seedText, sizeof(seedText));
+		fui__NumericEditBegin(context, sliderId, seedText);
+	} else if(interaction.isHeld) {
+		// Pressing anywhere on the track jumps the knob there, rather than only the knob being grabbable.
+		didChange = fui__SliderSetFromCursor(context, rect, value, minValue, maxValue);
+	}
+
+	const char *noDisplayText = fui_null;
+	fui__DrawSlider(context, rect, *value, minValue, maxValue, noDisplayText, context->theme.textColor, interaction);
+	return(didChange);
+}
+
+fui_api bool fuiSliderFloatEx(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue, const float step, const bool liveUpdate, const bool enabled, const char *displayText, bool *outDidBegin, bool *outDidEnd) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(outDidBegin != fui_null) {
+		*outDidBegin = false;
+	}
+	if(outDidEnd != fui_null) {
+		*outDidEnd = false;
+	}
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	const fuiTheme *theme = &context->theme;
+	fuiId sliderId = fuiGetId(context, id);
+	if(!enabled) {
+		// Drawn so the row still shows its value, but with no interaction at all - which is what a caller
+		// relies on to keep a mixed selection from being edited by a control that shows only one of them.
+		// A type-in left open on it is dropped, or it would keep the keyboard from behind a dead widget.
+		fui__NumericEditAbandon(context, sliderId);
+		fuiDrawRect(context, rect, theme->widgetTrackColor);
+		fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+		if(displayText != fui_null) {
+			fui__DrawTextInRect(context, rect, displayText, theme->textMutedColor);
+		}
+		return(false);
+	}
+
+	fui__NumericSpec spec = fui__NumericSpecForFloat(minValue, maxValue, FUI__NUMERIC_DEFAULT_DECIMALS);
+	bool didChange = false;
+	if(fui__NumericTypeIn(context, rect, id, sliderId, &spec, value, &didChange)) {
+		return(didChange);
+	}
+
+	// Captured on either side of the interaction, because a drag that ends with the cursor OFF the track
+	// still ends - so "released" cannot be read off wasClicked, which asks whether it ended ON the widget.
+	bool wasHeldBefore = (context->active == sliderId);
+	fuiInteraction interaction = fuiInteract(context, sliderId, rect);
+	bool isHeldNow = (context->active == sliderId);
+
+	if(fui__NumericTypeInWasAsked(context, interaction)) {
+		context->active = FUI_ID_NONE;
+		isHeldNow = false;
+		char seedText[FUI_MAX_NUMERIC_TEXT];
+		fui__NumericFormat(&spec, *value, seedText, sizeof(seedText));
+		fui__NumericEditBegin(context, sliderId, seedText);
+	} else if(interaction.isHeld) {
+		didChange = fui__SliderSetFromCursor(context, rect, value, minValue, maxValue);
+	}
+
+	// Snap onto the step grid, so the value lands on discrete increments instead of wherever the pixel fell.
+	if(didChange && step > 0.0f) {
+		float stepsFromMinimum = (*value - minValue) / step;
+		float roundedSteps = (float)(int32_t)(stepsFromMinimum + 0.5f);
+		*value = fuiClampF(minValue + roundedSteps * step, minValue, maxValue);
+	}
+
+	bool dragDidBegin = (!wasHeldBefore && isHeldNow);
+	bool dragDidEnd = (wasHeldBefore && !isHeldNow);
+	if(outDidBegin != fui_null) {
+		*outDidBegin = dragDidBegin;
+	}
+	if(outDidEnd != fui_null) {
+		*outDidEnd = dragDidEnd;
+	}
+
+	// A deferred slider keeps tracking the cursor - the knob and the caption follow it - and only the
+	// caller's apply waits for the release, which is what makes one drag ONE undoable edit.
+	bool shouldApply = liveUpdate ? didChange : dragDidEnd;
+	fui__DrawSlider(context, rect, *value, minValue, maxValue, displayText, theme->textColor, interaction);
+	return(shouldApply);
+}
+
+fui_api bool fuiDragFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float speed, const float minValue, const float maxValue) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	fuiId dragId = fuiGetId(context, id);
+	fui__NumericSpec spec = fui__NumericSpecForFloat(minValue, maxValue, FUI__NUMERIC_DEFAULT_DECIMALS);
+	bool didChange = false;
+	if(fui__NumericTypeIn(context, rect, id, dragId, &spec, value, &didChange)) {
+		return(didChange);
+	}
+
+	fuiInteraction interaction = fuiInteract(context, dragId, rect);
+	if(fui__NumericTypeInWasAsked(context, interaction)) {
+		context->active = FUI_ID_NONE;
+		char seedText[FUI_MAX_NUMERIC_TEXT];
+		fui__NumericFormat(&spec, *value, seedText, sizeof(seedText));
+		fui__NumericEditBegin(context, dragId, seedText);
+	} else if(interaction.isHeld && context->mouseDelta.x != 0.0f) {
+		float newValue = fuiClampF(*value + context->mouseDelta.x * speed, minValue, maxValue);
+		if(newValue != *value) {
+			*value = newValue;
+			didChange = true;
+		}
+	}
+
+	const fuiTheme *theme = &context->theme;
+	fuiColor fill = fui__WidgetFillColor(context, interaction);
+	fuiDrawRect(context, rect, fill);
+	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	char valueText[FUI__VALUE_TEXT_CAPACITY];
+	(void)fui__FormatString(valueText, sizeof(valueText), "%.3f", (double)*value);
+	fui__DrawTextInRect(context, rect, valueText, theme->textColor);
+	return(didChange);
+}
+
+fui_api bool fuiSliderIntEx(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue, const int32_t step, const bool enabled, const char *displayText) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	const fuiTheme *theme = &context->theme;
+	fuiId sliderId = fuiGetId(context, id);
+	fui__NumericSpec spec = fui__NumericSpecForInt(minValue, maxValue);
+	int32_t lowestValue = (int32_t)spec.minValue;
+	int32_t highestValue = (int32_t)spec.maxValue;
+
+	char valueText[FUI_MAX_NUMERIC_TEXT];
+	int32_t shownValue = fuiClampI(*value, lowestValue, highestValue);
+	(void)fui__FormatString(valueText, sizeof(valueText), "%d", (int)shownValue);
+	const char *caption = (displayText != fui_null) ? displayText : valueText;
+
+	if(!enabled) {
+		fui__NumericEditAbandon(context, sliderId);
+		fuiDrawRect(context, rect, theme->widgetTrackColor);
+		fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+		fui__DrawTextInRect(context, rect, caption, theme->textMutedColor);
+		return(false);
+	}
+
+	float workingValue = (float)shownValue;
+	bool didChange = false;
+	bool typeInDrewIt = fui__NumericTypeIn(context, rect, id, sliderId, &spec, &workingValue, &didChange);
+	if(didChange) {
+		*value = fui__RoundToInt(workingValue);
+	}
+	if(typeInDrewIt) {
+		return(didChange);
+	}
+
+	fuiInteraction interaction = fuiInteract(context, sliderId, rect);
+	if(fui__NumericTypeInWasAsked(context, interaction)) {
+		context->active = FUI_ID_NONE;
+		fui__NumericEditBegin(context, sliderId, valueText);
+	} else if(interaction.isHeld) {
+		float draggedValue = (float)shownValue;
+		if(fui__SliderSetFromCursor(context, rect, &draggedValue, spec.minValue, spec.maxValue)) {
+			int32_t roundedValue = fui__RoundToInt(draggedValue);
+			int32_t steppedValue = fui__SnapIntToStep(roundedValue, lowestValue, highestValue, step);
+			if(steppedValue != *value) {
+				*value = steppedValue;
+				didChange = true;
+			}
+		}
+	}
+
+	// Re-read and reprinted AFTER the drag, so the caption says the number the caller is being handed
+	// rather than the one the frame started with.
+	shownValue = fuiClampI(*value, lowestValue, highestValue);
+	if(displayText == fui_null) {
+		(void)fui__FormatString(valueText, sizeof(valueText), "%d", (int)shownValue);
+	}
+	fui__DrawSlider(context, rect, (float)shownValue, spec.minValue, spec.maxValue, caption, theme->textColor, interaction);
+	return(didChange);
+}
+
+fui_api bool fuiSliderInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue) {
+	const int32_t everyWholeNumber = 1;
+	const bool enabled = true;
+	const char *printTheNumberItself = fui_null;
+	return(fuiSliderIntEx(context, rect, id, value, minValue, maxValue, everyWholeNumber, enabled, printTheNumberItself));
+}
+
+fui_api bool fuiDragInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const float speed, const int32_t minValue, const int32_t maxValue) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	const fuiTheme *theme = &context->theme;
+	fuiId dragId = fuiGetId(context, id);
+	fui__NumericSpec spec = fui__NumericSpecForInt(minValue, maxValue);
+	int32_t lowestValue = (int32_t)spec.minValue;
+	int32_t highestValue = (int32_t)spec.maxValue;
+
+	char valueText[FUI_MAX_NUMERIC_TEXT];
+	int32_t shownValue = fuiClampI(*value, lowestValue, highestValue);
+	(void)fui__FormatString(valueText, sizeof(valueText), "%d", (int)shownValue);
+
+	float workingValue = (float)shownValue;
+	bool didChange = false;
+	bool typeInDrewIt = fui__NumericTypeIn(context, rect, id, dragId, &spec, &workingValue, &didChange);
+	if(didChange) {
+		*value = fui__RoundToInt(workingValue);
+	}
+	if(typeInDrewIt) {
+		return(didChange);
+	}
+
+	fuiWidgetState *state = fui__WidgetStateGet(context, dragId);
+	fuiInteraction interaction = fuiInteract(context, dragId, rect);
+	if(fui__NumericTypeInWasAsked(context, interaction)) {
+		context->active = FUI_ID_NONE;
+		fui__NumericEditBegin(context, dragId, valueText);
+	} else if(interaction.isHeld && context->mouseDelta.x != 0.0f) {
+		/*
+			The motion is banked in FRACTIONS of a unit and only whole ones are handed over.
+
+			A drag field over whole numbers that rounded every frame would never move at all below one unit
+			a pixel: each frame's contribution rounds back to the number it started from, and the remainder
+			is thrown away as fast as it is earned. So the remainder is kept, and the field steps whenever
+			enough of it has piled up to be worth a whole number.
+		*/
+		float bankedMotion = (state != fui_null) ? state->dragRemainder : 0.0f;
+		bankedMotion += context->mouseDelta.x * speed;
+		int32_t wholeUnitsEarned = (int32_t)bankedMotion;
+		bankedMotion -= (float)wholeUnitsEarned;
+		if(state != fui_null) {
+			state->dragRemainder = bankedMotion;
+		}
+		if(wholeUnitsEarned != 0) {
+			int32_t newValue = fuiClampI(*value + wholeUnitsEarned, lowestValue, highestValue);
+			if(newValue != *value) {
+				*value = newValue;
+				didChange = true;
+			}
+		}
+	} else if(state != fui_null && !interaction.isHeld) {
+		// Let go of, the drag starts its next one from nothing rather than from whatever was left over.
+		state->dragRemainder = 0.0f;
+	}
+
+	fuiColor fill = fui__WidgetFillColor(context, interaction);
+	fuiDrawRect(context, rect, fill);
+	fuiDrawRectOutline(context, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	shownValue = fuiClampI(*value, lowestValue, highestValue);
+	(void)fui__FormatString(valueText, sizeof(valueText), "%d", (int)shownValue);
+	fui__DrawTextInRect(context, rect, valueText, theme->textColor);
+	return(didChange);
+}
+
+//! Splits a numeric input field's box into its step down button, its text and its step up button
+fui_inline void fui__NumericFieldLayout(const fuiRect rect, const bool hasStepButtons, fuiRect *outDownButton, fuiRect *outTextBox, fuiRect *outUpButton) {
+	if(!hasStepButtons) {
+		*outDownButton = fuiRectMake(rect.x, rect.y, 0.0f, rect.h);
+		*outTextBox = rect;
+		*outUpButton = fuiRectMake(rect.x + rect.w, rect.y, 0.0f, rect.h);
+		return;
+	}
+	// A button at each END rather than two little arrows stacked in one corner. Nothing the library draws
+	// is anti-aliased yet, and an arrow in half a row's height comes out as a smudge where a full height
+	// minus and plus stay legible at whatever size the field was given.
+	float widestAllowed = rect.w * FUI__NUMERIC_STEP_BUTTON_MAX_SHARE;
+	float buttonWidth = fuiMaxF(fuiMinF(FUI__NUMERIC_STEP_BUTTON_WIDTH, widestAllowed), 0.0f);
+	*outDownButton = fuiRectMake(rect.x, rect.y, buttonWidth, rect.h);
+	*outTextBox = fuiRectMake(rect.x + buttonWidth, rect.y, rect.w - buttonWidth * 2.0f, rect.h);
+	*outUpButton = fuiRectMake(rect.x + rect.w - buttonWidth, rect.y, buttonWidth, rect.h);
+}
+
+//! One numeric input field: the two step buttons, the number between them, and everything that reads it back
+fui_inline bool fui__NumericFieldBuild(fuiContext *context, const fuiRect rect, const char *id, const fui__NumericSpec *spec, const float step, float *value) {
+	const fuiTheme *theme = &context->theme;
+	fuiId fieldId = fuiGetId(context, id);
+
+	bool hasStepButtons = (step >= 0.0f);
+	fuiRect downButton;
+	fuiRect textBox;
+	fuiRect upButton;
+	fui__NumericFieldLayout(rect, hasStepButtons, &downButton, &textBox, &upButton);
+
+	/*
+		The buttons go FIRST, and that ordering is load bearing.
+
+		Pressing one of them takes the keyboard off the field, so by the time the field is built a few lines
+		below it already knows it lost the focus and reads back whatever was half typed into it. The step
+		then lands on THAT number. Built the other way round, the step would be applied to the old value and
+		the commit arriving afterwards would quietly undo it.
+	*/
+	bool stepWentUp = false;
+	bool stepWentDown = false;
+	if(hasStepButtons) {
+		fuiPushId(context, id);
+		stepWentDown = fuiButtonRepeat(context, downButton, FUI__NUMERIC_STEP_DOWN_LABEL);
+		stepWentUp = fuiButtonRepeat(context, upButton, FUI__NUMERIC_STEP_UP_LABEL);
+		fuiPopId(context);
+	}
+
+	float workingValue = fuiClampF(*value, spec->minValue, spec->maxValue);
+	char valueText[FUI_MAX_NUMERIC_TEXT];
+	fui__NumericFormat(spec, workingValue, valueText, sizeof(valueText));
+
+	// The box claims the cursor whether it is being typed into or not, so that `hot` already names it on
+	// the frame the press arrives and the text field it turns into can take that very press itself.
+	bool cursorIsOverField = fui__ClaimCursor(context, fieldId, textBox);
+	fui__RegisterFocusable(context, fieldId);
+	if(!fui__NumericEditIsActive(context, fieldId)) {
+		bool pressLanded = cursorIsOverField && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT];
+		// Typing at a field that has the keyboard opens it too, so tabbing onto one and starting to type
+		// does what it does in every other form on every other screen.
+		bool typingStarted = (context->focused == fieldId) && (context->textInputLength > 0);
+		if(pressLanded || typingStarted) {
+			fui__NumericEditBegin(context, fieldId, valueText);
+		}
+	}
+
+	bool didChange = false;
+	bool typeInDrewIt = fui__NumericTypeIn(context, textBox, id, fieldId, spec, &workingValue, &didChange);
+
+	if(stepWentUp || stepWentDown) {
+		float stepAmount = stepWentUp ? step : -step;
+		float steppedValue = fuiClampF(workingValue + stepAmount, spec->minValue, spec->maxValue);
+		if(spec->isInteger) {
+			steppedValue = (float)fui__RoundToInt(steppedValue);
+		}
+		if(steppedValue != workingValue) {
+			workingValue = steppedValue;
+			didChange = true;
+		}
+	}
+
+	if(!typeInDrewIt) {
+		// The field at rest wears exactly the box a text field wears, because that is what it becomes the
+		// moment it is clicked - a resting field that looked like anything else would be a promise broken.
+		fuiDrawRect(context, textBox, theme->widgetTrackColor);
+		bool fieldHasTheKeyboard = (context->focused == fieldId);
+		fuiColor borderColor = fieldHasTheKeyboard ? theme->accentColor : theme->panelBorderColor;
+		fuiDrawRectOutline(context, textBox, borderColor, theme->widgetBorderThickness);
+		fui__NumericFormat(spec, workingValue, valueText, sizeof(valueText));
+		fui__DrawTextInRect(context, textBox, valueText, theme->textColor);
+		if(cursorIsOverField) {
+			fuiSetCursor(context, fuiCursor_Text);
+		}
+	}
+
+	if(didChange) {
+		*value = workingValue;
+	}
+	return(didChange);
+}
+
+fui_api bool fuiInputInt(fuiContext *context, const fuiRect rect, const char *id, int32_t *value, const int32_t minValue, const int32_t maxValue, const int32_t step) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	fui__NumericSpec spec = fui__NumericSpecForInt(minValue, maxValue);
+	// A step of zero means the ordinary one, and a negative one means a field with no buttons at all.
+	float stepAmount = (step == 0) ? 1.0f : (float)step;
+	float workingValue = (float)*value;
+	bool didChange = fui__NumericFieldBuild(context, rect, id, &spec, stepAmount, &workingValue);
+	if(didChange) {
+		*value = fui__RoundToInt(workingValue);
+	}
+	return(didChange);
+}
+
+fui_api bool fuiInputFloat(fuiContext *context, const fuiRect rect, const char *id, float *value, const float minValue, const float maxValue, const float step, const int32_t decimals) {
+	FUI_ASSERT(context != fui_null && id != fui_null && value != fui_null);
+	if(context == fui_null || id == fui_null || value == fui_null) {
+		return(false);
+	}
+
+	fui__NumericSpec spec = fui__NumericSpecForFloat(minValue, maxValue, decimals);
+	float stepAmount = (step == 0.0f) ? FUI__NUMERIC_DEFAULT_FLOAT_STEP : step;
+	bool didChange = fui__NumericFieldBuild(context, rect, id, &spec, stepAmount, value);
+	return(didChange);
+}
+
+fui_api bool fuiIsTypingANumber(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(false);
+	}
+	bool result = (context->numericEditId != FUI_ID_NONE);
+	return(result);
+}
+
+// ----------------------------------------------------------------------------
 // > Color picker
 // ----------------------------------------------------------------------------
 
@@ -10569,16 +11790,6 @@ fui_inline void fui__PopMenu(fuiContext *context) {
 	if(context->menuStackDepth > 0) {
 		context->menuStackDepth -= 1u;
 	}
-}
-
-//! Pushes a clip that IGNORES whatever is clipping right now, bounded only by the window
-fui_inline void fui__PushClipAbsolute(fuiContext *context, const fuiRect rect) {
-	fuiRect wholeWindow = fuiRectMake(0.0f, 0.0f, (float)context->windowSize.x, (float)context->windowSize.y);
-	fuiRect clipped = fuiRectIntersect(wholeWindow, rect);
-	if(context->clipDepth < (uint32_t)FUI_MAX_CLIP_DEPTH) {
-		context->clipStack[context->clipDepth] = clipped;
-	}
-	context->clipDepth += 1u;
 }
 
 //! The height of one menu row, which the popup's whole geometry is derived from
@@ -11558,8 +12769,11 @@ fui_api bool fuiDialogTakeKey(fuiContext *context, const fuiKey key) {
 		return(false);
 	}
 	// An open menu is what escape closes first, and a menu opened from inside a dialog is exactly the case
-	// where both would otherwise answer the same press.
+	// where both would otherwise answer the same press. An open combo list is the same case again.
 	if(context->menuOpenDepth > 0) {
+		return(false);
+	}
+	if(context->comboOpenId != FUI_ID_NONE) {
 		return(false);
 	}
 	if(!fuiKeyWentDown(context, key)) {
@@ -12080,6 +13294,410 @@ fui_api bool fuiListBox(fuiContext *context, const fuiRect rect, const char *id,
 	const fuiListIcons *noIcons = fui_null;
 	bool *noActivation = fui_null;
 	return(fuiListBoxEx(context, rect, id, items, count, selectedIndex, noIcons, noActivation));
+}
+
+// ----------------------------------------------------------------------------
+// > Combo box
+//
+// A list box in a box that opens, and two things about it are unlike every other widget in this file.
+//
+// It DRAWS outside its own rectangle, and it cannot ask the caller to build it last the way a menu bar is
+// asked to - it belongs to a row halfway down a panel whose other rows go on being built after it. So its
+// list goes into the overlay and is lifted over everything at the end of the frame.
+//
+// And while a list is open it OWNS the cursor everywhere, exactly as an open menu does, so that the click
+// which dismisses it never also lands on whatever it was covering. Its own rows therefore ask with the
+// cursor directly rather than through fui__CursorIsOver, which its own open list blocks.
+// ----------------------------------------------------------------------------
+
+//! Width of the square the drop arrow sits in, at the right of a closed combo box
+#define FUI__COMBO_ARROW_BOX_WIDTH 20.0f
+//! Side of the arrow itself, as a fraction of the square it is centred in
+#define FUI__COMBO_ARROW_FRACTION 0.45f
+//! How close to a window edge an open list may ever come
+#define FUI__COMBO_SCREEN_MARGIN 4.0f
+
+//! The combo's OWN hit test. It never asks through fui__CursorIsOver, which its own open list blocks
+fui_inline bool fui__ComboCursorIsOver(const fuiContext *context, const fuiRect rect) {
+	if(!context->inputIsActive) {
+		return(false);
+	}
+	if(fui__ModalBlocksInput(context)) {
+		return(false);
+	}
+	// A menu opened over a combo owns the cursor, exactly as it owns it over everything else on screen.
+	if(context->menuOpenDepth > 0) {
+		return(false);
+	}
+	bool result = fuiPointInRect(context->mousePosition, rect);
+	return(result);
+}
+
+//! Everything the mouse touching a combo means: the interface owns the cursor, and this press is not a dismissal
+fui_inline void fui__ComboTakeTheMouse(fuiContext *context) {
+	context->mouseIsOverUi = true;
+	context->comboOwnsTheMouse = true;
+}
+
+//! Drops a list open, with the keyboard already on whatever is picked and the rows scrolled to show it
+fui_inline void fui__ComboOpen(fuiContext *context, const fuiId comboId, const int32_t pickedIndex) {
+	context->comboOpenId = comboId;
+	context->comboHighlightRow = pickedIndex;
+	context->comboScroll = 0.0f;
+	// From this point in the build onwards nothing else may take the cursor. Widgets built BEFORE it this
+	// frame have had their hover already, which costs nothing - the press that opened the list is spent.
+	context->comboBlocksInput = true;
+	context->comboWasBuiltThisFrame = true;
+	// The press that OPENED the list belongs to the combo, or the dismissal rule at the end of this very
+	// frame would read it as a click that landed outside and shut the list again before it was ever seen.
+	context->comboOwnsTheMouse = true;
+}
+
+//! Shuts whichever list is open, from inside the build rather than at the end of the frame
+fui_inline void fui__ComboClose(fuiContext *context) {
+	context->comboOpenId = FUI_ID_NONE;
+	context->comboBlocksInput = false;
+}
+
+//! The closed box: a face, the picked label inset in it, and the drop arrow in a square at its right edge
+fui_inline void fui__DrawComboBox(fuiContext *context, const fuiRect rect, const char *label, const bool enabled, const bool listIsOpen, const fuiInteraction interaction) {
+	const fuiTheme *theme = &context->theme;
+	fuiColor fill = enabled ? fui__WidgetFillColor(context, interaction) : theme->widgetTrackColor;
+	// An open box is drawn PUSHED IN and stays that way for as long as its list is down, the way every drop
+	// down in every toolbar does. It is the one thing on screen saying which box the floating list belongs to.
+	fui__Relief relief = listIsOpen ? fui__Relief_Sunken : fui__Relief_Raised;
+	fui__DrawBevelBox(context, rect, fill, relief);
+
+	float arrowBoxWidth = fuiMinF(FUI__COMBO_ARROW_BOX_WIDTH, rect.w);
+	fuiRect arrowBox = fuiRectMake(rect.x + rect.w - arrowBoxWidth, rect.y, arrowBoxWidth, rect.h);
+	fuiRect labelBox = fuiRectMake(rect.x, rect.y, rect.w - arrowBoxWidth, rect.h);
+	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
+	if(label != fui_null) {
+		fui__DrawTextInRect(context, labelBox, label, labelColor);
+	}
+
+	float arrowSide = fuiMinF(arrowBox.w, arrowBox.h) * FUI__COMBO_ARROW_FRACTION;
+	float arrowLeft = arrowBox.x + (arrowBox.w - arrowSide) * 0.5f;
+	float arrowTop = arrowBox.y + (arrowBox.h - arrowSide) * 0.5f;
+	fuiRect arrowGlyph = fuiRectMake(arrowLeft, arrowTop, arrowSide, arrowSide);
+	// The collapse glyph's NOT-collapsed shape is the down pointing triangle, which is exactly what a box
+	// that drops a list open out of its bottom edge wears.
+	const bool arrowIsCollapsed = false;
+	fuiDrawCollapseGlyph(context, arrowGlyph, arrowIsCollapsed, labelColor);
+}
+
+//! Where an open list goes: below its box when it fits there, above it when it does not, and never off the window
+fui_inline fuiRect fui__ComboListRect(const fuiContext *context, const fuiRect boxRect, const int32_t rowCount, const int32_t maxVisibleRows, const float rowHeight) {
+	const fuiTheme *theme = &context->theme;
+	float frameThickness = theme->panelBorderThickness;
+	int32_t rowsShown = fuiClampI(rowCount, 1, fuiMaxI(maxVisibleRows, 1));
+	float wantedHeight = (float)rowsShown * rowHeight + frameThickness * 2.0f;
+
+	float windowHeight = (float)context->windowSize.y;
+	float roomBelow = windowHeight - (boxRect.y + boxRect.h) - FUI__COMBO_SCREEN_MARGIN;
+	float roomAbove = boxRect.y - FUI__COMBO_SCREEN_MARGIN;
+	// Downwards unless there is genuinely more room the other way, which is what a combo sitting near the
+	// bottom edge needs: it opens upwards rather than off the screen where its rows cannot be reached.
+	bool dropsDownwards = (wantedHeight <= roomBelow) || (roomBelow >= roomAbove);
+	float availableHeight = dropsDownwards ? roomBelow : roomAbove;
+	float listHeight = fuiMinF(wantedHeight, fuiMaxF(availableHeight, rowHeight));
+	float listTop = dropsDownwards ? (boxRect.y + boxRect.h) : (boxRect.y - listHeight);
+
+	float listWidth = boxRect.w;
+	float windowWidth = (float)context->windowSize.x;
+	float furthestRight = fuiMaxF(windowWidth - FUI__COMBO_SCREEN_MARGIN - listWidth, FUI__COMBO_SCREEN_MARGIN);
+	float listLeft = fuiClampF(boxRect.x, FUI__COMBO_SCREEN_MARGIN, furthestRight);
+
+	fuiRect result = fuiRectMake(listLeft, listTop, listWidth, listHeight);
+	return(result);
+}
+
+//! One build of an open list, from its frame down to the row a click landed on. Returns true when the selection changed
+fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, const char *id, const fuiId comboId, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows) {
+	const fuiTheme *theme = &context->theme;
+	float rowHeight = theme->menuItemHeight;
+	fuiRect listRect = fui__ComboListRect(context, boxRect, count, maxVisibleRows, rowHeight);
+
+	fui__BeginOverlay(context, listRect);
+	/*
+		The list is painted OPAQUE, however translucent the panel colour it takes is.
+
+		Everything a list drops over is a widget - the very rows of the panel it belongs to - and an entry
+		read through a checkbox behind it is an entry nobody can read. A menu popup gets away with the
+		translucency because it opens over a title bar and empty background; a list never does.
+
+		Derived from the theme rather than being a colour of its own, so restyling the panels restyles the
+		lists with them and there is no second knob to keep in step.
+	*/
+	fuiColor panelFill = theme->panelBackgroundColor;
+	fuiColor listFill = fuiColorRGBA(panelFill.r, panelFill.g, panelFill.b, 1.0f);
+	fuiDrawRect(context, listRect, listFill);
+
+	float frameThickness = theme->panelBorderThickness;
+	fuiRect rowsBox = fuiRectInflate(listRect, -frameThickness);
+	float contentLength = (float)count * rowHeight;
+	bool needsAScrollbar = (contentLength > rowsBox.h);
+	float gutterWidth = needsAScrollbar ? fuiScrollGutterWidth() : 0.0f;
+	float rowWidth = fuiMaxF(rowsBox.w - gutterWidth, 0.0f);
+
+	bool cursorIsOverList = fui__ComboCursorIsOver(context, listRect);
+	if(cursorIsOverList) {
+		fui__ComboTakeTheMouse(context);
+		if(context->mouseWheelDelta != 0.0f) {
+			context->comboScroll -= context->mouseWheelDelta * rowHeight * FUI__SCROLL_WHEEL_ROWS;
+		}
+	}
+
+	// Resolved and drawn BEFORE the rows, exactly as a list box does it, so the rows are laid out from the
+	// offset the bar has already had its say in rather than from one the wheel is about to change.
+	if(needsAScrollbar) {
+		fuiRect scrollTrack = fuiRectMake(rowsBox.x + rowsBox.w - gutterWidth, rowsBox.y, gutterWidth, rowsBox.h);
+		fuiPushId(context, id);
+		// The block is lifted for exactly this one call. The bar belongs TO the list, so it is the single
+		// widget on screen that has to stay live while the list freezes everything else.
+		context->comboBlocksInput = false;
+		context->comboScroll = fuiScrollbarVertical(context, scrollTrack, "__comboScrollbar", context->comboScroll, rowsBox.h, contentLength);
+		context->comboBlocksInput = true;
+		fuiPopId(context);
+	} else {
+		context->comboScroll = 0.0f;
+	}
+
+	/*
+		Which row is lit, resolved BEFORE anything is drawn.
+
+		The keyboard has one and the pointer has one and there is only ever the one highlight, because two
+		rows lit at once is two answers to what enter would pick. Working the pointer's row out inside the
+		draw loop instead would light the keyboard's row on every row drawn ahead of it, for one frame,
+		every time the two disagreed.
+	*/
+	int32_t lastRow = fuiMaxI(count - 1, 0);
+	int32_t highlightBeforeTheKeys = fuiClampI(context->comboHighlightRow, -1, lastRow);
+	int32_t highlightRow = highlightBeforeTheKeys;
+	bool commitWanted = false;
+	if(fuiKeyRepeat(context, fuiKey_Down)) {
+		highlightRow = (highlightRow < 0) ? 0 : (highlightRow + 1);
+	} else if(fuiKeyRepeat(context, fuiKey_Up)) {
+		highlightRow = (highlightRow < 0) ? lastRow : (highlightRow - 1);
+	} else if(fuiKeyWentDown(context, fuiKey_Home)) {
+		highlightRow = 0;
+	} else if(fuiKeyWentDown(context, fuiKey_End)) {
+		highlightRow = lastRow;
+	} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Space)) {
+		commitWanted = true;
+	}
+	highlightRow = fuiClampI(highlightRow, 0, lastRow);
+
+	// A row the arrow keys walked onto is scrolled into view, since the keyboard can walk right off the
+	// bottom of a list that only shows ten of its two hundred rows.
+	bool highlightMovedByAKey = (highlightRow != highlightBeforeTheKeys);
+	if(highlightMovedByAKey) {
+		float rowTopInContent = (float)highlightRow * rowHeight;
+		float rowBottomInContent = rowTopInContent + rowHeight;
+		if(rowTopInContent < context->comboScroll) {
+			context->comboScroll = rowTopInContent;
+		} else if(rowBottomInContent > (context->comboScroll + rowsBox.h)) {
+			context->comboScroll = rowBottomInContent - rowsBox.h;
+		}
+	}
+
+	fuiRect rowsUnderTheCursor = fuiRectMake(rowsBox.x, rowsBox.y, rowWidth, rowsBox.h);
+	bool cursorIsOnARow = fui__ComboCursorIsOver(context, rowsUnderTheCursor);
+	if(cursorIsOnARow && rowHeight > 0.0f) {
+		float cursorOffsetInContent = (context->mousePosition.y - rowsBox.y) + context->comboScroll;
+		int32_t rowUnderTheCursor = (int32_t)(cursorOffsetInContent / rowHeight);
+		if(rowUnderTheCursor >= 0 && rowUnderTheCursor < count) {
+			// Pointing at a row takes the keyboard's place on it, so the two can never disagree about which
+			// row enter is about to pick.
+			highlightRow = rowUnderTheCursor;
+		} else {
+			cursorIsOnARow = false;
+		}
+	}
+	context->comboHighlightRow = highlightRow;
+
+	if(cursorIsOnARow && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT]) {
+		context->mouseDownConsumed[FUI_MOUSE_LEFT] = true;
+		commitWanted = true;
+	}
+
+	fuiPushClip(context, rowsBox);
+	int32_t firstVisibleRow = 0;
+	int32_t endVisibleRow = count;
+	fui__ListVisibleRange(context->comboScroll, rowsBox.h, rowHeight, count, &firstVisibleRow, &endVisibleRow);
+	for(int32_t rowIndex = firstVisibleRow; rowIndex < endVisibleRow; ++rowIndex) {
+		float rowTop = rowsBox.y - context->comboScroll + (float)rowIndex * rowHeight;
+		bool isAboveTheBox = (rowTop + rowHeight) < rowsBox.y;
+		bool isBelowTheBox = rowTop > (rowsBox.y + rowsBox.h);
+		if(isAboveTheBox || isBelowTheBox) {
+			continue;
+		}
+
+		fuiRect rowRect = fuiRectMake(rowsBox.x, rowTop, rowWidth, rowHeight);
+		bool rowIsHighlighted = (rowIndex == highlightRow);
+		bool rowIsPicked = (rowIndex == *selectedIndex);
+		if(rowIsHighlighted) {
+			fuiDrawRect(context, rowRect, theme->menuHighlightColor);
+		} else if(rowIsPicked) {
+			// What is picked is marked even while the highlight is somewhere else, so walking the list with
+			// the arrow keys never loses sight of where it started.
+			fuiDrawRect(context, rowRect, theme->widgetActiveColor);
+		}
+		fui__DrawTextInRect(context, rowRect, items[rowIndex], theme->textColor);
+	}
+	fuiPopClip(context);
+
+	// The frame goes on LAST, so a row's highlight wash cannot paint over the box's own outline.
+	fuiDrawRectOutline(context, listRect, theme->panelBorderColor, frameThickness);
+	fui__EndOverlay(context);
+
+	bool selectionChanged = false;
+	// A list with no entries has nothing to pick, so a press inside it only shuts it again. Without this
+	// the commit would write row zero into a selection that indexes an empty array.
+	bool thereIsSomethingToPick = (count > 0);
+	if(commitWanted && thereIsSomethingToPick) {
+		if(*selectedIndex != highlightRow) {
+			*selectedIndex = highlightRow;
+			selectionChanged = true;
+		}
+	}
+	if(commitWanted) {
+		fui__ComboClose(context);
+		// The keyboard goes back to the box, so the arrow keys go on stepping through the entries where
+		// they left off rather than falling through to whatever had the focus before.
+		context->focused = comboId;
+	}
+	return(selectionChanged);
+}
+
+fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows, const bool enabled, const char *emptyText) {
+	FUI_ASSERT(context != fui_null && id != fui_null && selectedIndex != fui_null);
+	if(context == fui_null || id == fui_null || selectedIndex == fui_null) {
+		return(false);
+	}
+	if(items == fui_null && count > 0) {
+		return(false);
+	}
+
+	fuiId comboId = fuiGetId(context, id);
+	bool listIsOpen = (context->comboOpenId == comboId);
+	if(listIsOpen) {
+		context->comboWasBuiltThisFrame = true;
+	}
+
+	// A disabled combo still SAYS what is picked and simply cannot be opened. One that was open when it was
+	// disabled is shut here, or it would go on owning the cursor from behind a widget nobody can reach.
+	if(!enabled && listIsOpen) {
+		fui__ComboClose(context);
+		listIsOpen = false;
+	}
+
+	int32_t pickedIndex = *selectedIndex;
+	bool somethingIsPicked = (pickedIndex >= 0) && (pickedIndex < count) && (items != fui_null);
+	const char *boxLabel = somethingIsPicked ? items[pickedIndex] : emptyText;
+
+	/*
+		The box asks with the cursor while its OWN list is open.
+
+		The block that freezes every other widget this frame would otherwise freeze the one box the list
+		hangs from as well - and clicking the box is how a list is shut again.
+	*/
+	fuiInteraction interaction;
+	fui__ClearMemory(&interaction, sizeof(interaction));
+	bool boxWasPressed = false;
+	if(listIsOpen) {
+		if(fui__ComboCursorIsOver(context, rect)) {
+			fui__ComboTakeTheMouse(context);
+			interaction.isHovered = true;
+			if(context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT]) {
+				context->mouseDownConsumed[FUI_MOUSE_LEFT] = true;
+				boxWasPressed = true;
+			}
+		}
+	} else if(enabled) {
+		interaction = fuiInteract(context, comboId, rect);
+		fui__RegisterFocusable(context, comboId);
+		// On the PRESS rather than on the release, which is what every drop down anywhere does - and what
+		// lets a press, a drag down the list and a release on a row be one gesture.
+		boxWasPressed = interaction.wasPressed;
+	}
+
+	bool selectionChanged = false;
+	if(boxWasPressed) {
+		// A combo with nothing in it does not open at all. An empty box hanging under the widget is one more
+		// thing for the user to dismiss and it says nothing that the closed box did not already say.
+		bool thereIsSomethingToShow = (count > 0);
+		if(listIsOpen) {
+			fui__ComboClose(context);
+			listIsOpen = false;
+		} else if(thereIsSomethingToShow) {
+			fui__ComboOpen(context, comboId, pickedIndex);
+			listIsOpen = true;
+		}
+	}
+
+	// With the keyboard and the list shut, the arrow keys step straight through the entries without opening
+	// anything - which is how a form is filled in without the hands leaving the keys.
+	bool comboHasTheKeyboard = (context->focused == comboId);
+	if(enabled && !listIsOpen && comboHasTheKeyboard && count > 0) {
+		int32_t steppedIndex = pickedIndex;
+		if(fuiKeyRepeat(context, fuiKey_Down)) {
+			steppedIndex = (pickedIndex < 0) ? 0 : (pickedIndex + 1);
+		} else if(fuiKeyRepeat(context, fuiKey_Up)) {
+			steppedIndex = (pickedIndex < 0) ? 0 : (pickedIndex - 1);
+		} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Space)) {
+			// Spent, or the list built a few lines below would read the same press as its own commit and
+			// shut again on the very frame it opened.
+			fuiConsumeKey(context, fuiKey_Return);
+			fuiConsumeKey(context, fuiKey_Space);
+			fui__ComboOpen(context, comboId, pickedIndex);
+			listIsOpen = true;
+		}
+		steppedIndex = fuiClampI(steppedIndex, 0, count - 1);
+		if(steppedIndex != pickedIndex) {
+			*selectedIndex = steppedIndex;
+			pickedIndex = steppedIndex;
+			somethingIsPicked = (items != fui_null);
+			boxLabel = somethingIsPicked ? items[pickedIndex] : emptyText;
+			selectionChanged = true;
+		}
+	}
+
+	// Drawn AFTER the keys have had their turn, so the box says what was just picked rather than what it
+	// said when the frame began.
+	fui__DrawComboBox(context, rect, boxLabel, enabled, listIsOpen, interaction);
+
+	if(listIsOpen) {
+		int32_t visibleRows = (maxVisibleRows > 0) ? maxVisibleRows : (int32_t)FUI_COMBO_VISIBLE_ROWS;
+		if(fui__ComboBuildList(context, rect, id, comboId, items, count, selectedIndex, visibleRows)) {
+			selectionChanged = true;
+		}
+	}
+	return(selectionChanged);
+}
+
+fui_api bool fuiComboBox(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex) {
+	const int32_t theThemeDefaultRowCount = 0;
+	const bool enabled = true;
+	const char *noEmptyText = fui_null;
+	return(fuiComboBoxEx(context, rect, id, items, count, selectedIndex, theThemeDefaultRowCount, enabled, noEmptyText));
+}
+
+fui_api bool fuiComboIsOpen(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(false);
+	}
+	bool result = (context->comboOpenId != FUI_ID_NONE);
+	return(result);
+}
+
+fui_api void fuiCloseCombo(fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	fui__ComboClose(context);
 }
 
 // ----------------------------------------------------------------------------
