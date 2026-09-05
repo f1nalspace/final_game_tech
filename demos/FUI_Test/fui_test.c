@@ -140,6 +140,14 @@ typedef struct DemoState {
 	float zoom;
 	float gridSize;
 	float dragValue;
+	//! What the combo box picks out of g_demoQualityChoices, and the numbers the numeric widgets carry
+	int32_t qualityChoice;
+	int32_t layerCount;
+	int32_t seedValue;
+	float exposureValue;
+	//! A pretend job, so the two bars have something real to say. It runs off the frame time like everything else
+	float jobProgress;
+	bool jobIsRunning;
 	fuiColor tint;
 	char nameField[DEMO_NAME_FIELD_MAX];
 	int32_t selectedRow;
@@ -233,6 +241,12 @@ static void DemoSayFormat(DemoState *demo, const char *format, ...) {
 // The vocabulary the two hundred generated rows are built out of. A row's kind decides its icon, so the
 // four cells of the sheet and the four kinds line up.
 static const char *const g_demoTableKinds[] = { "Solid", "Prop", "Trigger", "Light" };
+
+//! What the combo box offers. Deliberately longer than the ten rows a list drops open at, so that the
+//! scrolling, the wheel and the scrollbar inside an open list are all exercised by simply opening it.
+static const char *const g_demoQualityChoices[] = {
+	"Off", "Lowest", "Low", "Medium", "High", "Very high", "Ultra", "Cinematic", "Reference", "Debug", "Everything at once",
+};
 
 /*
 	The project tree, written out in PREORDER - which is the order the rows come out in when everything is open,
@@ -603,6 +617,12 @@ static void DemoInit(DemoState *demo) {
 	demo->zoom = 1.4f;
 	demo->gridSize = 16.0f;
 	demo->dragValue = 42.0f;
+	demo->qualityChoice = 4;
+	demo->layerCount = 8;
+	demo->seedValue = 1337;
+	demo->exposureValue = 1.25f;
+	demo->jobProgress = 0.0f;
+	demo->jobIsRunning = false;
 	demo->tint = fuiColorRGBA(0.35f, 0.62f, 0.95f, 1.0f);
 	demo->selectedRow = 3;
 	demo->dialogColor = fuiColorRGBA(0.92f, 0.55f, 0.20f, 1.0f);
@@ -826,6 +846,63 @@ static void BuildWidgetsPanel(fuiContext *ui, DemoState *demo) {
 		fuiRect dragRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
 		(void)fuiDragFloat(ui, dragRow, "drag", &demo->dragValue, 0.25f, -100.0f, 100.0f);
 		DemoTooltip(ui, demo, dragRow, "Drag left and right on the field to change the number.");
+
+		fuiSeparator(ui, fuiLayoutSlot(ui, 12.0f));
+
+		/*
+			The combo is built in the MIDDLE of a scrolling panel with more rows underneath it.
+
+			That is exactly the case its list has to survive: it hangs out of the panel that clips it and
+			over every widget built after it, and neither the clip nor the drawing order is anything the
+			caller had to arrange.
+		*/
+		fuiRect qualityRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		int32_t qualityCount = (int32_t)fplArrayCount(g_demoQualityChoices);
+		if(fuiComboBox(ui, qualityRow, "quality", g_demoQualityChoices, qualityCount, &demo->qualityChoice)) {
+			DemoSayFormat(demo, "Quality is now %s.", g_demoQualityChoices[demo->qualityChoice]);
+		}
+		DemoTooltip(ui, demo, qualityRow, "Click to drop the list open.\nUp and down step through it with the list shut too.\nEscape shuts it and changes nothing.");
+
+		fuiBeginGroupBox(ui, "Numbers", fuiGroupBoxContentHeight(ui, 4, DEMO_ROW_HEIGHT));
+		char layerText[32];
+		fplStringFormat(layerText, fplArrayCount(layerText), "%d layers", demo->layerCount);
+		fuiRect layerRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		(void)fuiSliderIntEx(ui, layerRow, "layers", &demo->layerCount, 1, 32, 1, true, layerText);
+		DemoTooltip(ui, demo, layerRow, "Whole numbers only, so the knob lands on one.\nCtrl and a click types the number in instead.");
+
+		fuiRect seedRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		(void)fuiDragInt(ui, seedRow, "seed", &demo->seedValue, 0.25f, 0, 9999);
+		DemoTooltip(ui, demo, seedRow, "Drag sideways for whole numbers.\nA quarter of a unit per pixel still moves: the remainder is banked.");
+
+		// The SAME number the slider above edits, to show two widgets over one value the way an inspector does.
+		fuiRect countRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		(void)fuiInputInt(ui, countRow, "count", &demo->layerCount, 1, 32, 1);
+		DemoTooltip(ui, demo, countRow, "The same number as the slider above it.\nType into it, or hold one of the buttons at its ends.");
+
+		fuiRect exposureRow = fuiLayoutSlot(ui, DEMO_ROW_HEIGHT);
+		(void)fuiInputFloat(ui, exposureRow, "exposure", &demo->exposureValue, -8.0f, 8.0f, 0.25f, 2);
+		DemoTooltip(ui, demo, exposureRow, "Accepts 1.5, -.25 and 2e-3.\nText that is not a number at all leaves the value alone.");
+		fuiEndGroupBox(ui);
+
+		// A pretend job, so both bars have something real to say rather than a number typed in by hand.
+		if(demo->jobIsRunning) {
+			const float jobSecondsToFinish = 6.0f;
+			float frameTime = fuiGetFrameTime(ui);
+			demo->jobProgress += frameTime / jobSecondsToFinish;
+			if(demo->jobProgress >= 1.0f) {
+				demo->jobProgress = 1.0f;
+				demo->jobIsRunning = false;
+				DemoSay(demo, "The pretend job finished. Press Bake to run it again.");
+			}
+		}
+		const char *sayThePercentage = fpl_null;
+		fuiProgressBarEx(ui, fuiLayoutSlot(ui, DEMO_ROW_HEIGHT), demo->jobProgress, sayThePercentage);
+		fuiBusyBar(ui, fuiLayoutSlot(ui, DEMO_ROW_HEIGHT));
+		if(fuiButton(ui, fuiLayoutSlot(ui, DEMO_ROW_HEIGHT + 4.0f), "Bake")) {
+			demo->jobProgress = 0.0f;
+			demo->jobIsRunning = true;
+			DemoSay(demo, "Baking. The upper bar knows how far along it is, the lower one does not.");
+		}
 
 		fuiSeparator(ui, fuiLayoutSlot(ui, 12.0f));
 		char commandText[96];
