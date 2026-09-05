@@ -68,6 +68,9 @@ License:
 #define FUI_IMPLEMENTATION
 #include <final_ui.h>
 
+#define FUI_TEXTEDITOR_IMPLEMENTATION
+#include <final_ui_texteditor.h>
+
 #define FUI_STBTT_IMPLEMENTATION
 #include <fui_font_stbtt.h>
 
@@ -1130,6 +1133,16 @@ typedef struct PerfState {
 	bool drawBatchingIsOn;
 	bool sortIsEnabled;
 	bool wordWrapIsOn;
+	//! The editor widget the benchmark measures, filled from the same lines the text box holds
+	fuiEditor editor;
+	//! Whether that editor has been initialised at all yet
+	bool editorIsReady;
+	//! Which text step its document was filled from, so a step that did not move costs no refill
+	int32_t editorTextStepIndex;
+	//! Whether a lexer is hung on it right now
+	bool editorLexerIsOn;
+	//! Whether it is breaking lines to the width of the view right now
+	bool editorWordWrapIsOn;
 	//! Whether both list widgets draw a row icon, which is the second draw command per visible row
 	bool iconsAreOn;
 	//! The sheet those icons come out of, zero until it is uploaded
@@ -1218,6 +1231,7 @@ static void PerfInit(PerfState *state) {
 	state->drawBatchingIsOn = true;
 	state->sortIsEnabled = true;
 	state->wordWrapIsOn = false;
+	state->editorTextStepIndex = -1;
 	state->iconsAreOn = false;
 	state->isRunning = true;
 	PerfSay(state, "Step the scale up with the tool strip and watch what build time does.");
@@ -1560,6 +1574,7 @@ static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
 #define PERF_TABLE_ID "perftable"
 #define PERF_LIST_ID "perflist"
 #define PERF_TEXT_ID "perftext"
+#define PERF_EDITOR_ID "perfeditor"
 #define PERF_TREE_ID "perftree"
 #define PERF_DEEP_TREE_ID "perfdeeptree"
 #define PERF_NOTE_HEIGHT 28.0f
@@ -1633,6 +1648,148 @@ static void PerfBuildListBoxTab(fuiContext *ui, PerfState *state, const fuiRect 
 		fplStringFormat(message, fplArrayCount(message), "List row %d of %d picked", state->listSelection + 1, state->data.listItemCount);
 		PerfSay(state, message);
 	}
+}
+
+/*
+	The editor widget, which is what final_ui_texteditor.h costs against the same text the text box holds.
+
+	Both widgets are handed the SAME generated lines, so the pair of readings differ in the widget and in
+	nothing else. What the editor adds on top is a gutter, a caret, a status line, a colouring pass and -
+	when it is asked for - a second index that breaks every line to the width of the view.
+
+	Measured only, with no tab of its own in the window: demos/FUI_Editor is that demo already, and a
+	second copy of it here would be a thing to keep in step rather than a thing to learn from.
+*/
+
+//! What the workbench lexer hands out. Not a language, on purpose - see the note on the lexer below
+typedef enum PerfEditorStyle {
+	PerfEditorStyle_Default = 0,
+	PerfEditorStyle_Number,
+	PerfEditorStyle_Word,
+	PerfEditorStyle_Separator,
+	PerfEditorStyle_Count,
+} PerfEditorStyle;
+
+/*
+	A lexer that colours by CHARACTER CLASS rather than by language.
+
+	What is being measured is not whether a keyword came out purple - it is what a colouring pass costs
+	and, more to the point, what the STYLE RUNS it produces cost, because a line is cut into a piece of
+	geometry wherever what it is drawn with changes. Digits, letters and punctuation each getting their own
+	colour puts a boundary at every token of a log line, which is about what a code lexer does to a line of
+	C and is the case the "many runs per line" risk is really about.
+*/
+static int32_t PerfLexEditorLine(fuiEditorLexRequest *request) {
+	const char *text = request->text;
+	int32_t length = request->textLength;
+	uint8_t *styles = request->styles;
+
+	for(int32_t offset = 0; offset < length; ++offset) {
+		unsigned char currentByte = (unsigned char)text[offset];
+		bool isADigit = (currentByte >= '0') && (currentByte <= '9');
+		bool isALowerLetter = (currentByte >= 'a') && (currentByte <= 'z');
+		bool isAnUpperLetter = (currentByte >= 'A') && (currentByte <= 'Z');
+		bool isABlank = (currentByte == ' ') || (currentByte == '\t');
+
+		PerfEditorStyle style = PerfEditorStyle_Separator;
+		if(isADigit) {
+			style = PerfEditorStyle_Number;
+		} else if(isALowerLetter || isAnUpperLetter || currentByte == '_') {
+			style = PerfEditorStyle_Word;
+		} else if(isABlank) {
+			style = PerfEditorStyle_Default;
+		}
+		styles[offset] = (uint8_t)style;
+	}
+
+	// Nothing here survives a line ending, so every line starts in the same state and the incremental
+	// machinery converges on the very first one.
+	const int32_t oneStateOnly = 0;
+	return(oneStateOnly);
+}
+
+static fuiEditorStyleDef g_perfEditorStyleTable[PerfEditorStyle_Count];
+
+static void PerfBuildEditorStyleTable(void) {
+	g_perfEditorStyleTable[PerfEditorStyle_Default].color = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Number].color = fuiColorRGBA(0.70f, 0.78f, 0.56f, 1.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Word].color = fuiColorRGBA(0.42f, 0.72f, 0.80f, 1.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Separator].color = fuiColorRGBA(0.62f, 0.68f, 0.76f, 1.0f);
+}
+
+//! Puts the generated lines into the editor's document, and only when they are not the ones already in it
+static void PerfSyncEditorDocument(PerfState *state) {
+	bool documentIsUpToDate = state->editorIsReady && (state->editorTextStepIndex == state->textStepIndex);
+	if(documentIsUpToDate) {
+		return;
+	}
+	if(!state->editorIsReady) {
+		if(!fuiEditorInit(&state->editor, fpl_null)) {
+			return;
+		}
+		state->editorIsReady = true;
+	}
+	if(state->data.textBuffer == fpl_null) {
+		return;
+	}
+
+	// Filling it is an EDIT of tens of megabytes and has no business inside a measured frame, which is why
+	// this is called from the runner rather than from the build below.
+	const int32_t untilTheTerminator = 0;
+	fuiEditorSetText(&state->editor, state->data.textBuffer, untilTheTerminator);
+	fuiEditorSetScrollOffset(&state->editor, 0.0f, 0.0f);
+	state->editorTextStepIndex = state->textStepIndex;
+}
+
+//! Hangs the lexer on or takes it off, and turns the breaking on or off - and does neither when nothing changed
+static void PerfConfigureEditor(PerfState *state, const bool wantsTheLexer, const bool wantsWordWrap) {
+	if(!state->editorIsReady) {
+		return;
+	}
+
+	bool lexerIsAlreadyRight = (state->editorLexerIsOn == wantsTheLexer);
+	bool wrapIsAlreadyRight = (state->editorWordWrapIsOn == wantsWordWrap);
+	if(lexerIsAlreadyRight && wrapIsAlreadyRight) {
+		return;
+	}
+
+	if(!lexerIsAlreadyRight) {
+		if(wantsTheLexer) {
+			PerfBuildEditorStyleTable();
+			fuiEditorLexer lexer = fplZeroInit;
+			lexer.lexLine = PerfLexEditorLine;
+			lexer.styles = g_perfEditorStyleTable;
+			lexer.styleCount = (int32_t)PerfEditorStyle_Count;
+			fuiEditorSetLexer(&state->editor, &lexer);
+		} else {
+			fuiEditorSetLexer(&state->editor, fpl_null);
+		}
+		state->editorLexerIsOn = wantsTheLexer;
+	}
+
+	if(!wrapIsAlreadyRight) {
+		// Set only when it really changed: every fuiEditorSetConfig throws the resolved configuration away,
+		// and doing that per frame would put a resolve into every reading taken here.
+		fuiEditorConfig config = fuiEditorDefaultConfig();
+		config.toggles.wordWrap = wantsWordWrap;
+		fuiEditorSetConfig(&state->editor, &config);
+		state->editorWordWrapIsOn = wantsWordWrap;
+	}
+}
+
+//! A view far too narrow for the generated lines, centred so the wheel still lands inside it
+static fuiRect PerfNarrowRect(const fuiRect rect) {
+	const float narrowFraction = 0.2f;
+	float narrowWidth = rect.w * narrowFraction;
+	float narrowX = rect.x + (rect.w - narrowWidth) * 0.5f;
+	return(fuiRectMake(narrowX, rect.y, narrowWidth, rect.h));
+}
+
+static void PerfBuildEditorTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	if(!state->editorIsReady) {
+		return;
+	}
+	(void)fuiTextEditor(ui, rect, PERF_EDITOR_ID, &state->editor);
 }
 
 static void PerfBuildTextBoxTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
@@ -1976,6 +2133,11 @@ typedef enum PerfSubject {
 	PerfSubject_ListBoxIcons,
 	PerfSubject_TextBox,
 	PerfSubject_TextBoxWrapped,
+	PerfSubject_Editor,
+	PerfSubject_EditorLexed,
+	PerfSubject_EditorWrapped,
+	PerfSubject_EditorNarrow,
+	PerfSubject_EditorNarrowWrapped,
 	PerfSubject_TreeFolded,
 	PerfSubject_TreeOpen,
 	PerfSubject_TreeToggling,
@@ -2027,6 +2189,16 @@ static const PerfCase g_perfCases[] = {
 	{ "textbox 200K wrapped", PerfSubject_TextBoxWrapped, 0, 3, 0, false, 0.0f },
 	{ "textbox 200K at end",  PerfSubject_TextBox,        0, 3, 0, false, -1000000.0f },
 	{ "textbox 200K wrap end", PerfSubject_TextBoxWrapped, 0, 3, 0, false, -1000000.0f },
+	{ "editor 5K",            PerfSubject_Editor,         0, 1, 0, false, 0.0f },
+	{ "editor 50K",           PerfSubject_Editor,         0, 2, 0, false, 0.0f },
+	{ "editor 200K",          PerfSubject_Editor,         0, 3, 0, false, 0.0f },
+	{ "editor 200K at end",   PerfSubject_Editor,         0, 3, 0, false, -1000000.0f },
+	{ "editor 200K lexed",    PerfSubject_EditorLexed,    0, 3, 0, false, 0.0f },
+	{ "editor 200K lexed bat", PerfSubject_EditorLexed,   0, 3, 0, true,  0.0f },
+	{ "editor 200K wrapped",  PerfSubject_EditorWrapped,  0, 3, 0, false, 0.0f },
+	{ "editor 200K wrap end", PerfSubject_EditorWrapped,  0, 3, 0, false, -1000000.0f },
+	{ "editor 200K narrow",   PerfSubject_EditorNarrow,   0, 3, 0, false, 0.0f },
+	{ "editor 200K nrw wrap", PerfSubject_EditorNarrowWrapped, 0, 3, 0, false, 0.0f },
 	{ "tree 1K folded",       PerfSubject_TreeFolded,     0, 0, 0, false, 0.0f },
 	{ "tree 10K folded",      PerfSubject_TreeFolded,     1, 0, 0, false, 0.0f },
 	{ "tree 100K folded",     PerfSubject_TreeFolded,     2, 0, 0, false, 0.0f },
@@ -2108,6 +2280,61 @@ static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const Perf
 			state->wordWrapIsOn = true;
 			PerfBuildTextBoxTab(ui, state, rect);
 			state->wordWrapIsOn = wrapWasOn;
+		} break;
+
+		case PerfSubject_Editor:
+		{
+			// The same lines the text box above holds, in the editor widget instead. Plain: no colouring,
+			// no breaking, which is the reading the two below are to be judged against.
+			const bool withoutALexer = false;
+			const bool withoutWordWrap = false;
+			PerfConfigureEditor(state, withoutALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorLexed:
+		{
+			// A style boundary at every token of every visible line, which is what cuts a line into
+			// separate pieces of geometry - and so the case the batched twin of this one is measured
+			// against.
+			const bool withALexer = true;
+			const bool withoutWordWrap = false;
+			PerfConfigureEditor(state, withALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorWrapped:
+		{
+			// The second index carried along rather than rebuilt: the warmup frames pay for building it
+			// once, and what is measured after them is what a frame costs with it standing. At this width
+			// nothing actually BREAKS - the generated lines all fit - so this is the cost of carrying the
+			// index and nothing else. The narrow pair below is the one where lines really come apart.
+			const bool withoutALexer = false;
+			const bool withWordWrap = true;
+			PerfConfigureEditor(state, withoutALexer, withWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorNarrow:
+		{
+			// A view too narrow for the lines, WITHOUT breaking - the reading its twin below is judged
+			// against, so the pair differ in the wrapping and not in the width.
+			const bool withoutALexer = false;
+			const bool withoutWordWrap = false;
+			fuiRect narrowRect = PerfNarrowRect(rect);
+			PerfConfigureEditor(state, withoutALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, narrowRect);
+		} break;
+
+		case PerfSubject_EditorNarrowWrapped:
+		{
+			// And the same view with the breaking on, where every line really does come apart into several
+			// rows. This is what says whether the index costs anything once it has work to do.
+			const bool withoutALexer = false;
+			const bool withWordWrap = true;
+			fuiRect narrowRect = PerfNarrowRect(rect);
+			PerfConfigureEditor(state, withoutALexer, withWordWrap);
+			PerfBuildEditorTab(ui, state, narrowRect);
 		} break;
 
 		case PerfSubject_TreeFolded:
@@ -2211,6 +2438,17 @@ static void PerfRunBenchmarkCase(fuiContext *ui, PerfState *state, const PerfCas
 	if(!state->data.isComplete) {
 		printf("%-22s  out of memory\n", benchmarkCase->name);
 		return;
+	}
+
+	// Tens of megabytes into a gap buffer, once per text step and never inside a frame that is timed.
+	bool wantsTheEditor = (benchmarkCase->subject == PerfSubject_Editor) || (benchmarkCase->subject == PerfSubject_EditorLexed) || (benchmarkCase->subject == PerfSubject_EditorWrapped) || (benchmarkCase->subject == PerfSubject_EditorNarrow) || (benchmarkCase->subject == PerfSubject_EditorNarrowWrapped);
+	if(wantsTheEditor) {
+		PerfSyncEditorDocument(state);
+
+		// Back to the top for every case, because the widget is the SAME one from case to case and a
+		// reading taken at the end of the document is a different reading. The cases that want it there
+		// spin the wheel during the warmup and get there on their own.
+		fuiEditorSetScrollOffset(&state->editor, 0.0f, 0.0f);
 	}
 
 	fuiRect contentRect = fuiRectMake(PERF_BENCHMARK_MARGIN, PERF_BENCHMARK_MARGIN, (float)PERF_BENCHMARK_WIDTH - PERF_BENCHMARK_MARGIN * 2.0f, (float)PERF_BENCHMARK_HEIGHT - PERF_BENCHMARK_MARGIN * 2.0f);
@@ -2330,6 +2568,9 @@ static int PerfRunBenchmark(void) {
 
 	printf("\nmilliseconds per frame, arena %zu bytes\n", fuiGetAllocatedSize(&ui));
 
+	if(state.editorIsReady) {
+		fuiEditorRelease(&state.editor);
+	}
 	PerfDataSetRelease(&state.data);
 	fuiRelease(&ui);
 	fuiStbttFontRelease(&bakedFont);
@@ -2490,6 +2731,9 @@ int main(int argc, char **argv) {
 		PerfApplyRequestedScale(&state);
 	}
 
+	if(state.editorIsReady) {
+		fuiEditorRelease(&state.editor);
+	}
 	PerfDataSetRelease(&state.data);
 	fuiRelease(&ui);
 	if(iconTexture != 0) {

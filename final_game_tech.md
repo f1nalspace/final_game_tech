@@ -15,6 +15,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── final_memory.h                  # Single-header-file custom memory allocator (C99)
 ├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
 ├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
+├── final_ui_texteditor.h           # Single-header-file code and text editor widget for final_ui.h (C99)
 ├── apps/
 │   ├── EnumToSwitchConverter/      # C# GUI tool to convert enums to switch statements
 │   ├── FontRendering/              # C++ font rendering tool using stb_truetype
@@ -28,8 +29,10 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FMEM_Test/                  # Tests for final_memory.h
 │   ├── FOGL_Test/                  # Tests for final_dynamic_opengl.h
 │   ├── FTT_TileTracingDemo/        # Demo for final_tiletrace.hpp
+│   ├── FUI_Diff/                   # Diff viewer built on final_ui_texteditor.h, unified and side by side
+│   ├── FUI_Editor/                 # Demo for final_ui_texteditor.h, the code and text editor widget
 │   ├── FUI_Framework/              # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
-│   ├── FUI_Performance/            # Performance workbench for final_ui.h
+│   ├── FUI_Performance/            # Performance workbench for final_ui.h and final_ui_texteditor.h
 │   ├── FUI_Test/                   # Demo for final_ui.h on FPL and legacy OpenGL
 │   ├── FXML_Test/                  # Tests for final_xml.h
 │   ├── Final_AudioTest/            # Audio format conversion testing
@@ -346,6 +349,19 @@ A workbench measuring what final_ui.h COSTS, on FPL and legacy OpenGL:
 - Fills the list view, the list box, the text box, the tree view and the menus with far more data than any hand written demo would carry
 - Splits a frame into build, submit and total, with draw command and vertex counters and a frame time graph
 - `--benchmark` runs every case headless and prints a table of medians, which is what a change is judged against
+- The editor widget is measured there too, over the same generated lines the text box holds: plain, scrolled to the end, with a lexer, and with word wrap
+
+#### FUI_Editor
+Demonstrates final_ui_texteditor.h, the code and text editor widget, on FPL and legacy OpenGL:
+- Shows final_ui.h itself - over 14000 lines and 654 KB - with line numbers, a status bar, tab stops, visible whitespace and line endings
+- A small C lexer for the colouring, plus find, replace, go to line, undo/redo, block operations, word wrap and seven text encodings
+- `--selftest` runs the whole suite headless, including a keyboard and mouse harness with no window at all
+
+#### FUI_Diff
+A diff viewer built on the same widget, showing one difference two ways:
+- Unified in ONE editor, red for what went and green for what came, and side by side in TWO with exactly as many lines each
+- Myers over whole lines in its linear space form, checked in `--selftest` against a brute force table over 3000 random pairs
+- Nothing in the add-on had to change for it: it is line and range decorations, a gutter callback and two editors sharing a scroll offset
 
 #### FUI_Framework
 The same interface as FUI_Test - including the project tree - built on the Final Framework:
@@ -364,6 +380,7 @@ The same interface as FUI_Test - including the project tree - built on the Final
 - **final_memory.h**: Custom memory allocator with debugging features
 - **final_tiletrace.hpp**: C++/11 contour tile tracing for solid tilemaps
 - **final_ui.h**: Immediate mode user interface library, renderer agnostic
+- **final_ui_texteditor.h**: Code and text editor widget for final_ui.h - gap buffer, line index, lexer, undo, find and replace, encodings and word wrap
 
 ### demos/additions/
 

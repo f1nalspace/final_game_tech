@@ -2339,6 +2339,131 @@ static void SelfTestKeyboard(void) {
 }
 
 /*
+	The shortcut table, which is the difference between an editor's keys and THIS editor's keys.
+
+	Three things have to hold and only the first is obvious. An action follows the key it was moved to, and
+	stops answering the one it left. An action that was taken away answers nothing at all - which is not
+	the same as being moved, and is why a shortcut needs a spelling for "off" beside the zero that means
+	"say nothing and get the default". And the modifiers have to match EXACTLY, or a table could not hold
+	ctrl+z and ctrl+shift+z at once.
+*/
+static void SelfTestShortcuts(void) {
+	CheckSection("shortcuts");
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, "one\ntwo\nthree", 640.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	const bool withShift = true;
+	const bool withControl = true;
+	const bool withAlt = true;
+
+	// What the built-in table says, since everything below is stated against it.
+	fuiEditorShortcuts builtInShortcuts = fuiEditorDefaultShortcuts();
+	CHECK_I(builtInShortcuts.selectAll.key, fuiKey_A);
+	CHECK_I(builtInShortcuts.selectAll.modifiers, (uint32_t)fuiModifier_Control);
+	CHECK_I(builtInShortcuts.redo.key, fuiKey_Y);
+	CHECK_I(builtInShortcuts.redoAlternate.key, fuiKey_Z);
+	CHECK_I(builtInShortcuts.redoAlternate.modifiers, (uint32_t)fuiModifier_Control | (uint32_t)fuiModifier_Shift);
+	CHECK_I(builtInShortcuts.moveLinesUp.key, fuiKey_Up);
+	CHECK_I(builtInShortcuts.moveLinesUp.modifiers, (uint32_t)fuiModifier_Alt);
+
+	// Exactly, which is what says ctrl+shift+a is not ctrl+a with something extra held down.
+	HarnessPressKey(&harness, fuiKey_A, withShift, withControl);
+	CHECK(!fuiEditorHasSelection(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_A, noShift, withControl);
+	CHECK(fuiEditorHasSelection(&harness.editor));
+
+	// Moved onto another key, select all follows the key - and ctrl+a stops meaning anything.
+	fuiEditorConfig remappedConfig = harness.config;
+	remappedConfig.shortcuts = fuiEditorDefaultShortcuts();
+	remappedConfig.shortcuts.selectAll.key = fuiKey_L;
+	fuiEditorSetConfig(&harness.editor, &remappedConfig);
+	(void)HarnessFrame(&harness);
+
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	CHECK(!fuiEditorHasSelection(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_A, noShift, withControl);
+	CHECK(!fuiEditorHasSelection(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_L, noShift, withControl);
+	CHECK(fuiEditorHasSelection(&harness.editor));
+
+	// A table with ONE entry named in it gets the built-in ones for all the others, because that is what
+	// "zero means the default" has to mean for a description nobody fills in completely.
+	fuiEditorConfig oneEntryNamed = harness.config;
+	FUI_TEXTEDITOR_MEMSET(&oneEntryNamed.shortcuts, 0, sizeof(oneEntryNamed.shortcuts));
+	oneEntryNamed.shortcuts.selectAll.key = fuiKey_L;
+	oneEntryNamed.shortcuts.selectAll.modifiers = (uint32_t)fuiModifier_Control;
+	fuiEditorSetConfig(&harness.editor, &oneEntryNamed);
+	(void)HarnessFrame(&harness);
+
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_L, noShift, withControl);
+	CHECK(fuiEditorHasSelection(&harness.editor));
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_D, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "two\nthree");
+
+	// Taken AWAY rather than moved, and the press that used to undo does nothing at all. Checked against
+	// the same press with the table put back, or "nothing happened" would prove nothing.
+	fuiEditorConfig withoutUndo = harness.config;
+	withoutUndo.shortcuts = fuiEditorDefaultShortcuts();
+	withoutUndo.shortcuts.undo.key = fuiKey_None;
+	withoutUndo.shortcuts.undo.modifiers = FUI_TEXTEDITOR_SHORTCUT_OFF;
+	fuiEditorSetConfig(&harness.editor, &withoutUndo);
+	(void)HarnessFrame(&harness);
+
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessTypeText(&harness, "X", false);
+	CHECK_TEXT(&harness.editor, "Xtwo\nthree");
+	HarnessPressKey(&harness, fuiKey_Z, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "Xtwo\nthree");
+
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	HarnessPressKey(&harness, fuiKey_Z, noShift, withControl);
+	CHECK_TEXT(&harness.editor, "two\nthree");
+
+	/*
+		And the one that is not just a lookup: moving LINES sits on the same two keys as moving the CARET,
+		so the caret branch stands aside for whichever press the line shortcut claimed. Move the line
+		shortcut elsewhere and alt with an arrow has to go back to moving the caret.
+	*/
+	fuiEditorSetText(&harness.editor, "one\ntwo\nthree", 0);
+	(void)HarnessFrame(&harness);
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 2);
+	HarnessPressChord(&harness, fuiKey_Up, noShift, noControl, withAlt);
+	CHECK_TEXT(&harness.editor, "one\nthree\ntwo");
+
+	fuiEditorConfig movedLineKeys = harness.config;
+	movedLineKeys.shortcuts = fuiEditorDefaultShortcuts();
+	movedLineKeys.shortcuts.moveLinesUp.modifiers = (uint32_t)fuiModifier_Control | (uint32_t)fuiModifier_Shift;
+	fuiEditorSetConfig(&harness.editor, &movedLineKeys);
+	(void)HarnessFrame(&harness);
+
+	fuiEditorSetText(&harness.editor, "one\ntwo\nthree", 0);
+	HarnessPressKey(&harness, fuiKey_Home, noShift, withControl);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	HarnessPressChord(&harness, fuiKey_Up, noShift, noControl, withAlt);
+	CHECK_TEXT(&harness.editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 1);
+	HarnessPressChord(&harness, fuiKey_Up, withShift, withControl, false);
+	CHECK_TEXT(&harness.editor, "two\none\nthree");
+
+	HarnessRelease(&harness);
+}
+
+/*
 	The wheel against the caret.
 
 	Scrolling away from the caret and then doing nothing has to LEAVE the view where it was put. Bringing
@@ -5258,7 +5383,22 @@ static void SelfTestFindKeys(void) {
 	HarnessPressKey(&harness, fuiKey_F, withoutShift, withControl);
 	const char *seededSearchText = fuiEditorGetSearchText(editor);
 	CHECK(strcmp(seededSearchText, "five") == 0);
+
+	/*
+		And what was seeded stands SELECTED in the field, which is the half of it a caret cannot show.
+
+		A field anchors the caret to the end of its text when the focus first lands on it, so without
+		fuiSelectTextInputContent the word would be in the field with the caret behind it - and the next
+		character typed would extend the search rather than start a new one. Checked both ways: the two
+		ends of the field's selection, and then what typing actually does to it.
+	*/
+	CHECK_I(harness.ui.selectionAnchor, 0);
+	CHECK_I(harness.ui.caretPosition, 4);
+	HarnessTypeText(&harness, "six", withoutControl);
+	const char *retypedSearchText = fuiEditorGetSearchText(editor);
+	CHECK(strcmp(retypedSearchText, "six") == 0);
 	HarnessPressKey(&harness, fuiKey_Escape, withoutShift, withoutControl);
+	fuiEditorSetSearchText(editor, "one", 0);
 
 	// Ctrl+h brings the row that replaces with it
 	HarnessPressKey(&harness, fuiKey_H, withoutShift, withControl);
@@ -5655,6 +5795,7 @@ static int RunSelfTest(void) {
 	SelfTestSelection();
 	SelfTestScrollbarSurvivesTheBackground();
 	SelfTestKeyboard();
+	SelfTestShortcuts();
 	SelfTestWordWrap();
 	SelfTestWordWrapAndTheCaret();
 	SelfTestWordWrapSurvivesEdits();
@@ -6000,6 +6141,41 @@ static void DemoSyncEncodingChoices(EditorDemoState *demo) {
 	}
 }
 
+/*
+	The three hints under the editor, spelled out of the shortcut TABLE rather than typed out by hand.
+
+	The keys are the caller's since iteration 8, so a hint that says "Ctrl+Z" because somebody wrote
+	"Ctrl+Z" is a hint that goes wrong the moment anybody moves one. fuiShortcutToText writes a keystroke
+	the way every desktop writes one, and that is the only thing on screen that can be trusted to match
+	what the editor really answers to.
+*/
+static void DemoWriteShortcutHints(EditorDemoState *demo) {
+	const fuiEditorShortcuts *shortcuts = &demo->editorConfig.shortcuts;
+	char selectAllText[FUI_MAX_SHORTCUT_TEXT];
+	char undoText[FUI_MAX_SHORTCUT_TEXT];
+	char indentText[FUI_MAX_SHORTCUT_TEXT];
+	char moveLinesText[FUI_MAX_SHORTCUT_TEXT];
+	char findText[FUI_MAX_SHORTCUT_TEXT];
+	char replaceText[FUI_MAX_SHORTCUT_TEXT];
+	char goToLineText[FUI_MAX_SHORTCUT_TEXT];
+	char findNextText[FUI_MAX_SHORTCUT_TEXT];
+
+	const char *selectAllName = fuiShortcutToText(shortcuts->selectAll, selectAllText, sizeof(selectAllText));
+	const char *undoName = fuiShortcutToText(shortcuts->undo, undoText, sizeof(undoText));
+	const char *indentName = fuiShortcutToText(shortcuts->indent, indentText, sizeof(indentText));
+	const char *moveLinesName = fuiShortcutToText(shortcuts->moveLinesUp, moveLinesText, sizeof(moveLinesText));
+	const char *findName = fuiShortcutToText(shortcuts->find, findText, sizeof(findText));
+	const char *replaceName = fuiShortcutToText(shortcuts->replace, replaceText, sizeof(replaceText));
+	const char *goToLineName = fuiShortcutToText(shortcuts->goToLine, goToLineText, sizeof(goToLineText));
+	const char *findNextName = fuiShortcutToText(shortcuts->findNext, findNextText, sizeof(findNextText));
+
+	// Copy and paste are NOT in the table and are written out here, which is what saying they are fixed
+	// looks like from the outside.
+	fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Click, drag, double click, arrows, %s, Ctrl+C", selectAllName);
+	fplStringFormat(demo->editDescription, fplArrayCount(demo->editDescription), "Type into it - %s takes it back, %s moves a highlighted block, %s moves lines", undoName, indentName, moveLinesName);
+	fplStringFormat(demo->searchDescription, fplArrayCount(demo->searchDescription), "%s to find, %s to replace, %s to go to a line, %s for the next hit", findName, replaceName, goToLineName, findNextName);
+}
+
 static void DemoInit(EditorDemoState *demo) {
 	fplClearStruct(demo);
 	demo->isRunning = true;
@@ -6019,10 +6195,8 @@ static void DemoInit(EditorDemoState *demo) {
 	DemoBuildCStyleTable();
 	demo->useLexer = true;
 	demo->decoratedVersion = -1;
-	fplCopyString("Click, drag, double click, arrows, Ctrl+A, Ctrl+C", demo->copyDescription, fplArrayCount(demo->copyDescription));
-	fplCopyString("Type into it - ctrl+z takes it back, tab moves a highlighted block, alt+up moves lines", demo->editDescription, fplArrayCount(demo->editDescription));
 	fplCopyString("Not saved yet", demo->saveDescription, fplArrayCount(demo->saveDescription));
-	fplCopyString("Ctrl+F to find, Ctrl+H to replace, Ctrl+G to go to a line, F3 for the next hit", demo->searchDescription, fplArrayCount(demo->searchDescription));
+	DemoWriteShortcutHints(demo);
 
 	// The bar opens looking for what the editor is written in, so the count on screen has something to say
 	// the moment the demo starts rather than only after somebody types into it.

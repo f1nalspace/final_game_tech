@@ -27,6 +27,7 @@ set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	"../../final_dynamic_opengl.h"
 	"../../final_ui.h"
+	"../../final_ui_texteditor.h"
 	"../additions/fui_font_stbtt.h"
 	"../additions/final_fonts.h"
 	"../additions/fui_backend_gl1.h"

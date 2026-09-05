@@ -220,6 +220,12 @@ SOFTWARE.
 	  multi-line text field has been doing exactly this to the enter it turns into a line break since it
 	  had one, by reaching into the context directly; now it says so by name, and a widget outside this
 	  file can say it too.
+	- New: fuiSelectTextInputContent, which puts the caret and the selection of a text field around its
+	  whole content. A field anchors the caret to the END of its text the first time the focus lands on it,
+	  which is right for a field somebody clicked into and wrong for one that was just filled in FOR them -
+	  a find bar seeded from what was selected in the document wants that text selected, so that typing
+	  replaces it. It claims the caret as well as setting it, or the field's own build would anchor it away
+	  again on the very next frame.
 	- New: fuiTheme.scrollTrackColor, and both halves of the scrollbar draw their gutter in it. It used to
 	  be widgetTrackColor, which is also what a scrolling container paints ITSELF with - so the gutter
 	  disappeared into the field beside it and left a thumb apparently floating in the content. It sits
@@ -2704,6 +2710,18 @@ fui_api fuiId fuiGetFocusedId(const fuiContext *context);
 * @param[in] id The widget to focus, or @ref FUI_ID_NONE to focus nothing.
 */
 fui_api void fuiSetFocusedId(fuiContext *context, const fuiId id);
+
+/**
+* @brief Selects the whole content of one text field, so what is typed next replaces it.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] fieldId The field's identifier, from @ref fuiGetId.
+* @param[in] contentLength How many bytes stand in that field's buffer.
+* @note Also hands the field the caret. A field takes it on its own the first time the focus lands there
+*       and anchors it to the END of its text - so a caller that only moved the focus and then set this
+*       would be overruled by the field's own build. Call it after @ref fuiSetFocusedId and BEFORE the
+*       field is built, which is where a find bar seeded from a selection wants it.
+*/
+fui_api void fuiSelectTextInputContent(fuiContext *context, const fuiId fieldId, const int32_t contentLength);
 
 /**
 * @brief Puts one widget into the tab chain, and moves the focus onto it when tab pointed here.
@@ -6281,6 +6299,20 @@ fui_api fuiId fuiGetActiveId(const fuiContext *context) {
 fui_api fuiId fuiGetFocusedId(const fuiContext *context) {
 	FUI_ASSERT(context != fui_null);
 	return((context != fui_null) ? context->focused : FUI_ID_NONE);
+}
+
+fui_api void fuiSelectTextInputContent(fuiContext *context, const fuiId fieldId, const int32_t contentLength) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || fieldId == FUI_ID_NONE) {
+		return;
+	}
+	int32_t safeLength = (contentLength > 0) ? contentLength : 0;
+	// Claiming the caret is the whole point: a field re-anchors it to the end of its text whenever it finds
+	// the focus on itself and the caret somewhere else, which would undo this on the very next build.
+	context->caretOwner = fieldId;
+	context->selectionAnchor = 0;
+	context->caretPosition = safeLength;
+	context->caretBlinkTime = 0.0f;
 }
 
 fui_api void fuiSetFocusedId(fuiContext *context, const fuiId id) {

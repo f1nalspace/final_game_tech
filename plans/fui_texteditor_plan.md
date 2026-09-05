@@ -10,13 +10,13 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 ## 1. Stand
 
-**Iterationen 0 bis 7 sind umgesetzt.** Was es gibt: das Dokument, eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann, die seit Iteration 4 auch schreibt, seit Iteration 5 einen Weg zurück aus allem hat, was sie schreibt — und seit Iteration 6 gefragt werden kann, wo etwas steht. Damit sind **beide Kerniterationen** und **beide Komfortiterationen** fertig.
+**Alle Iterationen sind umgesetzt.** Was es gibt: das Dokument, eine Ansicht darauf, die gelesen, gescrollt, markiert, kopiert und eingefärbt werden kann, die seit Iteration 4 auch schreibt, seit Iteration 5 einen Weg zurück aus allem hat, was sie schreibt — und seit Iteration 6 gefragt werden kann, wo etwas steht. Damit sind **beide Kerniterationen** und **beide Komfortiterationen** fertig.
 
-- `final_ui_texteditor.h` v0.8.0 — Gap-Buffer, Split-Zeilenindex, **zweiter Index für den Zeilenumbruch**, Encoding-Vtable mit **sieben** Backends (UTF-8, ASCII, UTF-16LE, UTF-16BE, UTF-7, Latin-1, CP1252), `fuiEditorSaveToMemory` und `fuiEditorDetectEncoding`, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen, sichtbarem Whitespace, Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen, Zeilenlöschen, Geändert-Flag, `onChange`, Undo/Redo mit Zusammenfassen, Gruppen, Speicherbudget und Speicherpunkt, Tab/Shift+Tab, Ctrl+Shift+D, Alt+Hoch/Runter und Auto-Einrückung — und **Suchen, Ersetzen und Gehe-zu-Zeile**: eine Suchleiste im Widget, alle Treffer markiert, „n von m", Groß-/Kleinschreibung, ganzes Wort, F3, „Alle ersetzen" als ein Undo-Schritt — jedes der drei über `toggles.canFind` / `canReplace` / `canGoToLine` **einzeln abschaltbar**. `fuiEditorConfig` mit `colors` / `metrics` / `toggles` / `limits` / `callbacks`.
-- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable`, `fuiGetFrameTime`, `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` und `fuiConsumeKey` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. **Iteration 5 und Iteration 6 haben nichts hinzugefügt** — die ganze Suchleiste ist `fuiTextInput`, `fuiButton`, `fuiCheckbox` und `fuiLabel` über die öffentliche API. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
+- `final_ui_texteditor.h` v1.0.0 — Gap-Buffer, Split-Zeilenindex, **zweiter Index für den Zeilenumbruch**, Encoding-Vtable mit **sieben** Backends (UTF-8, ASCII, UTF-16LE, UTF-16BE, UTF-7, Latin-1, CP1252), `fuiEditorSaveToMemory` und `fuiEditorDetectEncoding`, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen, sichtbarem Whitespace, Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen, Zeilenlöschen, Geändert-Flag, `onChange`, Undo/Redo mit Zusammenfassen, Gruppen, Speicherbudget und Speicherpunkt, Tab/Shift+Tab, Ctrl+Shift+D, Alt+Hoch/Runter und Auto-Einrückung — und **Suchen, Ersetzen und Gehe-zu-Zeile**: eine Suchleiste im Widget, alle Treffer markiert, „n von m", Groß-/Kleinschreibung, ganzes Wort, F3, „Alle ersetzen" als ein Undo-Schritt — jedes der drei über `toggles.canFind` / `canReplace` / `canGoToLine` **einzeln abschaltbar**. `fuiEditorConfig` mit `colors` / `metrics` / `toggles` / `limits` / `shortcuts` / `callbacks` — die Tastenbelegung ist seit Iteration 8 **umbelegbar**, achtzehn Aktionen, fest bleiben nur Enter, Backspace, Entf, Kopieren, Einfügen und die Cursorbewegung.
+- `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable`, `fuiGetFrameTime`, `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` und `fuiConsumeKey` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. Iteration 8 hat `fuiSelectTextInputContent` nachgelegt, den einen Zusatz, den Iteration 6 als fehlend notiert hatte. **Iteration 5 und Iteration 6 selbst haben nichts hinzugefügt** — die ganze Suchleiste ist `fuiTextInput`, `fuiButton`, `fuiCheckbox` und `fuiLabel` über die öffentliche API. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
 - `demos/FUI_Diff/` — ein Diff-Betrachter über beide Ansichten (unified in einem Editor, nebeneinander in zweien mit gleich vielen Zeilen), Myers über ganze Zeilen, `--selftest` mit **164 Prüfungen** gegen eine Brute-Force-Tabelle.
 - `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden, geänderte Zeilen, Nur-Lesen, Auto-Einrückung und Einrücken mit Leerzeichen, plus Auswahl, Kopieren, Undo/Redo mit Schrittzähler, Duplizieren, einer Zeile, die jede Änderung meldet, einem **„Save & verify"**, das schreibt und byteweise zurückliest — und **Knöpfen für Suchen, Ersetzen und Gehe-zu-Zeile samt einem „Count against the file"**, das die Trefferzahl des Editors gegen einen flachen Lauf über die gelesene Datei hält.
-- `--selftest` läuft mit **1269 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der Tasten mit allen drei Modifiern drückt, tippt, mit der mittleren und mit der linken Maustaste klickt und die Antwort zurückliest.
+- `--selftest` läuft mit **1312 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der Tasten mit allen drei Modifiern drückt, tippt, mit der mittleren und mit der linken Maustaste klickt und die Antwort zurückliest.
 
 Was beim Bauen von Iteration 0 anders lief als geplant:
 
@@ -137,6 +137,7 @@ Der Zustand liegt aber trotzdem beim Aufrufer, nur eben als **undurchsichtiges `
 | `fuiConsumeKey` ✅ | Braucht ein Widget, das eine Taste selbst beantwortet hat. Das mehrzeilige Textfeld macht das seit jeher über `context->keys[...]` direkt; öffentlich gab es das nicht, und ohne es committet der Dialog auf demselben Enter, das gerade eine Zeile umgebrochen hat | Iteration 4, drin seit `final_ui.h` v0.9.7 |
 | *(nichts)* | Iteration 5 hat die Tab-Taste beansprucht und dafür **keinen** Zusatz gebraucht. Erwartet war eine öffentliche Fassung von `tabWasConsumedThisFrame`; sie ist überflüssig, weil sowohl `fui__RegisterFocusable` als auch der Umlauf am Frameende über `fuiKeyWentDown` fragen — und genau das nullt `fuiConsumeKey` bereits | Iteration 5 |
 | *(nichts)* | Iteration 6 hat eine ganze Suchleiste gebaut und dafür **keinen** Zusatz gebraucht: `fuiTextInput`, `fuiButton`, `fuiCheckbox`, `fuiLabel`, `fuiInteract`, `fuiBlockMouse` und `fuiMeasureText` reichen. Was wirklich fehlt, ist ein öffentliches „markiere den Inhalt dieses Feldes" — die Folge ist, dass Ctrl+F den Cursor **hinter** den übernommenen Suchtext setzt statt darauf. Klein genug, um auf Iteration 8 zu warten | Iteration 6 |
+| `fuiSelectTextInputContent` ✅ | Genau das aus der Zeile darüber: „markiere den Inhalt dieses Feldes“. Ein Feld verankert den Cursor beim ersten Fokus am **Ende** seines Textes — richtig für eines, in das jemand geklickt hat, falsch für eines, das gerade für ihn gefüllt wurde. Es beansprucht den Cursor mit, sonst würde der eigene Build des Feldes es im nächsten Frame wieder überschreiben | Iteration 8, drin seit `final_ui.h` v0.9.7 |
 
 `FUI_MAX_CLIPBOARD_TEXT` (1024) bleibt, wie es ist — das ist der Stapelpuffer des alten Textfelds. `fuiGetClipboardText`/`fuiSetClipboardText` nehmen die Puffergröße als Parameter, der Editor gibt einfach einen großen mit.
 
@@ -271,7 +272,9 @@ Zwei Konventionen, die überall gelten:
 
 ### 3.2 Was noch kommt
 
-`fuiEditorConfig` hat seit Iteration 4 auch `callbacks` und seit Iteration 5 `limits`; `shortcuts` fehlt noch und kommt in Iteration 8.
+`fuiEditorConfig` hat seit Iteration 4 auch `callbacks`, seit Iteration 5 `limits` und seit Iteration 8 `shortcuts`. Damit ist die Beschreibung vollständig — es fehlt nichts mehr.
+
+Iteration 8 hat dazugelegt: `fuiEditorConfig.shortcuts`, `fuiEditorShortcuts`, `fuiEditorDefaultShortcuts` und `FUI_TEXTEDITOR_SHORTCUT_OFF`.
 
 Iteration 7 hat dazugelegt: `toggles.wordWrap`, `callbacks.formatGutterText`, `fuiEditorGetScrollOffset` und `fuiEditorSetScrollOffset` — und aus dem Encoding-Teil: `fuiEditorEncodingUtf16Le`, `fuiEditorEncodingUtf16Be`, `fuiEditorEncodingUtf7`, `fuiEditorEncodingLatin1`, `fuiEditorEncodingCp1252`, `fuiEditorDetectEncoding`, `fuiEditorSaveToMemory`, `fuiEditorGetEncoding`, `fuiEditorSetEncoding`, `fuiEditorHasByteOrderMark` und `fuiEditorSetByteOrderMark` — und `fuiEditorEncoding.getBomLength` ist `getBomBytes` gewichen.
 
@@ -510,14 +513,37 @@ Und was dabei gefunden wurde:
 
 ### Iteration 8 — Shortcuts, Performance, Doku
 
-- Shortcut-Tabelle in der Config, umbelegbar; fest bleiben nur Enter, Backspace, Entf und Ctrl+C/Ctrl+V. Vokabular von `fuiShortcut`/`fuiModifier` (`final_ui.h:3565–3585`).
-- `PerfSubject_Editor` in `FUI_Performance`, im `--benchmark`-Modus messbar: Anzeigen, Scrollen, mit Lexer, mit Umbruch. Zahlen in Abschnitt 7.
-- Changelog `v1.0.0` im Header, im Ton der bestehenden Einträge, mit den gemessenen Zahlen.
-- `final_ui.h`: Changelog für die zwei Zusätze, Status-Absatz, und das stehengebliebene `@version v0.9.5` (`final_ui.h:185`) auf `FUI_VERSION_PATCH` bringen.
-- `README.md`: Zeile für `final_ui_texteditor.h`, Versionsspalte von `final_ui.h` (steht auf `0.9.5-beta`). `FUI_Editor` und `FUI_Diff` sind dort beide noch nicht genannt.
-- `final_game_tech.md`: Ordnerliste, Demoliste, Beschreibungen um `FUI_Editor` **und `FUI_Diff`**.
+**Umgesetzt.**
 
-**Abnahme:** `--benchmark` liefert eine Zahlentabelle, alle Dokumentationsstellen stimmen.
+- Shortcut-Tabelle in der Config, umbelegbar; fest bleiben nur Enter, Backspace, Entf und Ctrl+C/Ctrl+V. Vokabular von `fuiShortcut`/`fuiModifier`. ✅
+- `PerfSubject_Editor` in `FUI_Performance`, im `--benchmark`-Modus messbar: Anzeigen, Scrollen, mit Lexer, mit Umbruch. Zahlen in Abschnitt 7. ✅
+- Changelog `v1.0.0` im Header, im Ton der bestehenden Einträge, mit den gemessenen Zahlen. ✅
+- `final_ui.h`: Changelog, Status-Absatz und `@version` — war schon in Iteration 1–4 miterledigt; dazugekommen ist der letzte offene Zusatz `fuiSelectTextInputContent`. ✅
+- `README.md`: Zeile für `final_ui_texteditor.h`, Versionsspalte von `final_ui.h` auf `0.9.7-beta`. ✅
+- `final_game_tech.md`: Ordnerliste, Demoliste, Beschreibungen um `FUI_Editor` **und `FUI_Diff`**. ✅
+
+**Abnahme:** *Erfüllt.* `--benchmark` liefert die Tabelle in Abschnitt 7.3, `--selftest` läuft mit **1312 Prüfungen** unter AddressSanitizer und UndefinedBehaviorSanitizer durch, und alle vier Dokumentationsstellen (`README.md`, `final_game_tech.md`, `CLAUDE.md`, der Header selbst) nennen dieselben Namen und dieselbe Version.
+
+**Was bei den Shortcuts anders lief als geplant:**
+
+- **Achtzehn Aktionen, nicht „alle Tasten".** Der Plan sagt „fest bleiben nur Enter, Backspace, Entf und Ctrl+C/Ctrl+V", und beim Bauen zeigte sich, dass das eine vierte Gruppe übersieht: die **Cursorbewegung**. Pfeile, Pos1, Ende und die beiden Bild-Tasten sind keine Tabelle, sondern eine **Grammatik** — Shift erweitert, was die nackte Taste bewegt, Strg verbreitert, was sie schrittweise tut. Da gibt es keine einzelne Tastenkombination, die man in ein Feld schreiben könnte, ohne aus einer Taste vier zu machen. Steht so als Anmerkung an `fuiEditorShortcuts`.
+- **Ein Shortcut braucht eine Schreibweise für „aus".** Er besteht aus zwei Zahlen, und dass beide null sind, ist das Einzige, was „der Aufrufer hat nichts gesagt" heißen kann — `fuiKey_None` ohne Modifier ist keine Taste, die jemand drücken könnte. Eine *absichtlich weggenommene* Aktion sähe damit genauso aus wie eine ungenannte und bekäme beim nächsten Auflösen ihren Default zurück. Deshalb `FUI_TEXTEDITOR_SHORTCUT_OFF`, ein Bit in den Modifiern, das nie zu dem passt, was auf der Tastatur steht. Die Prüfung dazu wird rot, sobald „genannt" nur noch an der Taste hängt (4 Fehler).
+- **Exakter Modifier-Vergleich nimmt Zufälle weg, die nie gemeint waren.** Der alte Code fragte `wantsToJumpByWord && Taste` — also eine Teilmenge. Ctrl+Shift+A hat damit alles markiert und Ctrl+Shift+F die Suchleiste geöffnet. Exakt zu vergleichen ist ohnehin die einzige Regel, unter der eine Tabelle Ctrl+Z **und** Ctrl+Shift+Z gleichzeitig halten kann, und es ist die, nach der `fuiDispatchShortcuts` seit v0.6.0 arbeitet.
+- **Modifier werden VOR der Taste gefragt.** `fuiKeyRepeat` führt einen Timer mit. Erst die Taste zu fragen und dann die Modifier hieße, den Wiederholungstakt einer Kombination von einem Druck weiterzudrehen, der einer ganz anderen galt.
+- **Einrücken und die Tab-Taste sind zwei Dinge.** Die Fokusketten-Regel — Tab gehört ihr, bis ein Editor sie beansprucht, der die Tastatur schon hatte, und der Druck ist danach aufgebraucht — gilt der **Taste**, nicht dem Einrücken. Wer das Einrücken woanders hinlegt, bekommt jetzt einen gewöhnlichen Shortcut und eine Tab-Taste, die nur noch den Fokus weiterschiebt.
+- **Zeilen verschieben und den Cursor bewegen liegen auf denselben zwei Tasten.** Der Cursor-Zweig stand vorher mit `!fuiIsAltDown()` beiseite. Das ist falsch, sobald Alt+Hoch nicht mehr „Zeile verschieben" heißt: dann bewegt Alt+Hoch gar nichts mehr. Gefragt wird jetzt, ob der Shortcut **diesen** Druck beansprucht hat, und mit dem Verschieben auf Ctrl+Shift+Hoch geben Alt und Pfeil den Cursor wieder frei. Genau diese Prüfung wird rot, wenn man auf das nackte Alt zurückgeht (1 Fehler).
+- **Ctrl+V und Shift+Einfg waren zwei Zweige auf verschiedenen Seiten des Nur-Lese-Gatters.** Aufgefallen beim Zusammenlegen: das Einfügen auf der Einfg-Taste stand *über* dem Gatter und lief in sein eigenes hinein, das auf V stand darunter. Jetzt ist es ein Zweig, und dasselbe gilt für Ctrl+C und Ctrl+Einfg.
+- **Und wieder wurde jede neue Absicherung absichtlich kaputtgemacht und die Suite dabei rot gesehen** — Modifier als Teilmenge verglichen (5 Fehler), die Tabelle des Aufrufers ignoriert (10), ein abgeschalteter Shortcut auf seinen Default zurückgefallen (4), und der Cursor, der vor dem nackten Alt statt vor dem Shortcut beiseitegeht (1).
+
+**Was bei Performance und Doku dazukam:**
+
+- **Der Editor wird gegen das Textfeld gemessen, nicht gegen sich selbst.** `FUI_Performance` füllt beide Widgets aus **demselben** erzeugten Text, sodass sich die zwei Messungen im Widget unterscheiden und in nichts sonst. Herausgekommen ist, dass der Editor mit Randspalte, Cursor, Statusleiste und Lexer-Durchgang **zwei bis dreimal billiger** ist als das Feld aus `final_ui.h`, das er ablösen soll — was am Zeilenindex liegt und nicht an weniger Arbeit.
+- **Der Lexer der Werkbank färbt nach Zeichenklasse, nicht nach Sprache.** Gemessen wird nicht, ob ein Schlüsselwort lila herauskommt, sondern was ein Färbedurchgang kostet und was die **Stilläufe** kosten, die er erzeugt. Ziffern, Buchstaben und Satzzeichen je in einer eigenen Farbe setzen eine Grenze an jedes Token einer Logzeile — ungefähr das, was ein C-Lexer mit einer Zeile C macht.
+- **Das Füllen des Dokuments gehört nicht in einen gemessenen Frame.** 25 MB in einen Gap-Buffer sind eine Änderung wie jede andere und wären als Ausreißer in der ersten Messung gelandet. Es passiert jetzt im Runner vor der Schleife, einmal je Textstufe.
+- **Und der Scrollstand muss zwischen den Fällen zurückgesetzt werden.** Es ist **dasselbe** Widget von Fall zu Fall, und „editor 200K at end" hätte jeden Fall danach still zu einem gescrollten gemacht.
+- **Der Umbruch-Fall hat zuerst gar nichts umgebrochen.** `editor 200K wrapped` lief auf voller Breite, und die erzeugten Logzeilen passen dort alle hinein — der Index stand, hatte aber keine einzige Zeile zu teilen. Gemerkt hat es nicht die Zeit, sondern der Blick auf `wrap.screenLineCount`: 200 000 Bildschirmzeilen bei 200 000 Dokumentzeilen. Dazu gibt es jetzt ein **Paar** in einer fünfmal schmaleren Ansicht, mit und ohne Umbruch, das sich im Umbruch unterscheidet und nicht in der Breite — dort werden 470 183 Bildschirmzeilen daraus.
+- **Das Risiko „viele Stilläufe treiben die Draw-Commands hoch" ist bestätigt und beantwortet.** Gemessen: 121 Draw-Commands ohne Lexer, **836** mit. Mit `fuiSetDrawBatching` sind es **sieben** — bei gleicher Bauzeit. Läufe gleicher Farbe verschmelzen, und das Einfärben kostet auf der Submit-Seite gar nichts mehr.
+- **Der letzte offene Punkt aus Iteration 6 ist zu.** `fuiSelectTextInputContent` gibt es jetzt in `final_ui.h`, und Ctrl+F lässt den übernommenen Suchtext **markiert** im Feld stehen statt den Cursor dahinterzusetzen. Die Prüfung geht über beide Enden der Feldauswahl **und** darüber, was Tippen danach wirklich tut — ohne die Absicherung: 3 Fehler.
 
 ---
 
@@ -558,13 +584,15 @@ Eigenes Demo statt eines Panels in `FUI_Test`, weil ein Editor mit Randspalte, S
 
 Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1.h`, `fui_input_fpl.h`. Es füllt sein Dokument aus `final_ui.h` selbst — die größte Datei zur Hand und zugleich das, wogegen der Editor sich messen lassen muss.
 
+`FUI_Performance` misst das Widget mit, ohne es zu zeigen: es bekommt **dieselben** erzeugten Zeilen wie das Textfeld daneben, sodass sich die zwei Messungen im Widget unterscheiden und in nichts sonst. Ein eigener Reiter im Fenster wäre eine zweite Fassung von `FUI_Editor` und damit etwas zum Nachziehen statt etwas zum Lernen — die Zahlen stehen in 7.3.
+
 `FUI_Diff` steht daneben und zeigt dasselbe Widget als Diff-Betrachter: `FUI_Diff` allein nimmt eine eingebaute Vorher/Nachher-Fassung, `FUI_Diff <alt> <neu>` zwei Dateien, `--side-by-side` startet in der Zwei-Spalten-Ansicht, `--selftest` läuft kopflos. Der Punkt daran ist, dass **nichts** am Add-on dafür geändert werden musste, was ein Diff-Modus wäre: es sind Zeilen-Dekorationen für den Zeilenhintergrund, Bereichs-Dekorationen für das, was sich *innerhalb* einer Zeile geändert hat, ein Gutter-Callback für die zwei Nummernspalten, und zwei Editoren, die über den Pixel-Scrolloffset aneinander hängen.
 
 ### 7.2 Der `--selftest`-Modus
 
 Kopflos nach dem Vorbild von `PerfRunBenchmark` (`fui_performance.c:2277`): `fplInitFlags_None`, kein Fenster, kein OpenGL, ein Exit-Code. Prüfmakros wie in `apps/mathtest/mathtest.c`.
 
-Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Dreiundsechzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Scrollbalken nicht übermalt, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, Kopieren gegen Datei, Zustände folgen ihren Zeilen, inkrementelles Einfärben, Dekorations-Nachschlag, Zeilenenden je Zeile, Tippen, Enter/Backspace/Entf, Überschreiben, Ausschneiden/Einfügen/Zeilen, mittlere Maustaste, Nur-Lesen, Cursor folgt der Änderung, Änderungs-Callback, Änderungen gegen einen flachen Puffer, Undo/Redo, Tipplauf als ein Schritt, Tab gegen die Fokuskette, Zeilenblöcke, die Tasten dazu, das Undo-Budget, 200 Schritte hin und zurück, Suchen, Suchen in einer echten Datei, Vor und Zurück, Ersetzen, Alles ersetzen über eine Datei, die Tasten der Suchleiste, die Suchleiste unter der Maus, die Ansicht nach einem Sprung, das Abschalten der Leiste, Gehe-zu-Zeile, UTF-16, UTF-7, Latin-1 und CP1252, das Erkennen eines Encodings, Zeilenenden über Laden und Speichern, jedes Encoding hinaus und wieder herein, eine echte Datei durch UTF-16 und zurück, Zeilen auf Breite brechen, der Cursor auf Bildschirmzeilen, der Umbruchindex über eine Änderung hinweg, und eine echte Datei umgebrochen.
+Das ist der Modus, gegen den entwickelt wird, denn ein Gap-Buffer ist genau die Art Sache, die auf dem Bildschirm richtig aussieht und über der Lücke falsch ist — und ein Zeilenindex genau die Art Sache, die irgendwo in der Mitte einer Datei um eins danebenliegt, zu der niemand gescrollt hat. Fünfundsechzig Gruppen: leeres Dokument, Zeilenindex, Einfügen, Löschen, Lückenbewegung, Wachstum, Zeilenenden, UTF-8, Encodings, Ansichtshelfer, zusammenhängende Läufe, Cursorzeile, Dokument gegen Datei, Widget-Layout, leeres Widget, Scrollbalken nicht übermalt, Zeilengeometrie, Wörter, Auswahl, Tastatur, Rad gegen Cursor, Kopieren gegen Datei, Zustände folgen ihren Zeilen, inkrementelles Einfärben, Dekorations-Nachschlag, Zeilenenden je Zeile, Tippen, Enter/Backspace/Entf, Überschreiben, Ausschneiden/Einfügen/Zeilen, mittlere Maustaste, Nur-Lesen, Cursor folgt der Änderung, Änderungs-Callback, Änderungen gegen einen flachen Puffer, Undo/Redo, Tipplauf als ein Schritt, Tab gegen die Fokuskette, Zeilenblöcke, die Tasten dazu, das Undo-Budget, 200 Schritte hin und zurück, Suchen, Suchen in einer echten Datei, Vor und Zurück, Ersetzen, Alles ersetzen über eine Datei, die Tasten der Suchleiste, die Suchleiste unter der Maus, die Ansicht nach einem Sprung, das Abschalten der Leiste, Gehe-zu-Zeile, UTF-16, UTF-7, Latin-1 und CP1252, das Erkennen eines Encodings, Zeilenenden über Laden und Speichern, jedes Encoding hinaus und wieder herein, eine echte Datei durch UTF-16 und zurück, Zeilen auf Breite brechen, der Cursor auf Bildschirmzeilen, der Umbruchindex über eine Änderung hinweg, eine echte Datei umgebrochen, die Shortcut-Tabelle, und was der Preprocessor im C-Lexer einfärbt.
 
 Zu jeder Textprüfung gehören zwei Vergleiche — einmal stückweise über `fuiEditorCopyRange`, einmal zusammenhängend über `fuiEditorGetContiguousText`. Stimmen die nicht überein, sähen ein Lexer und eine Suche zwei verschiedene Dokumente.
 
@@ -585,11 +613,30 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 
 ### 7.3 Gemessen
 
-*Wird in Iteration 8 gefüllt.*
+`FUI_Performance --benchmark`, 8 Aufwärmframes und 41 gemessene je Fall, Median, 1600x940, GCC Release. Die erzeugten Zeilen sind dieselben, die das Textfeld daneben bekommt — die zwei Widgets unterscheiden sich in der Messung also im Widget und in nichts sonst.
 
 | Fall | Zeilen | ms/Frame | Draw-Commands |
 |---|---|---|---|
-| — | — | — | — |
+| `editor 5K` | 5 000 | 0,039 | 121 |
+| `editor 50K` | 50 000 | 0,040 | 121 |
+| `editor 200K` | 200 000 | 0,039 | 121 |
+| `editor 200K at end` | 200 000 | 0,043 | 120 |
+| `editor 200K lexed` | 200 000 | 0,156 | 836 |
+| `editor 200K lexed bat` | 200 000 | 0,156 | **7** |
+| `editor 200K wrapped` | 200 000 | 0,054 | 121 |
+| `editor 200K wrap end` | 200 000 | 0,058 | 120 |
+| `editor 200K narrow` | 200 000 | 0,029 | 123 |
+| `editor 200K nrw wrap` | 200 000 → 470 183 Zeilen | 0,043 | 90 |
+| `textbox 200K` (`fuiTextInputEx`) | 200 000 | 0,102 | 59 |
+| `textbox 200K wrapped` | 200 000 | 0,163 | 59 |
+
+Was daran zu lesen ist:
+
+- **Flach von fünftausend auf zweihunderttausend Zeilen.** Das ist die ganze Zusage des Zeilenindex: gebaut wird ein Fenster, nicht ein Dokument.
+- **Flach auch am ENDE des Dokuments.** 0,043 gegen 0,039 ms. Zeile N ist ohne Umbruch in O(1) erreichbar, mit Umbruch über eine Binärsuche in den Blocksummen — nicht über einen Lauf von vorne.
+- **Der zweite Index kostet ungefähr dasselbe, ob er Arbeit hat oder nicht.** Auf voller Breite bricht bei diesen Zeilen gar nichts, und er kostet 0,015 ms je Frame; in einer fünfmal schmaleren Ansicht, wo aus 200 000 Zeilen wirklich **470 183** Bildschirmzeilen werden, kostet er 0,014 ms gegenüber derselben schmalen Ansicht ohne ihn. Genau deshalb sind `narrow` und `nrw wrap` ein Paar: sie unterscheiden sich im Umbruch und nicht in der Breite. Sein **Bau** wird davon getrennt und einmal bezahlt (über `final_ui.h` gemessen: 1,8 ms für 14 474 → 26 556 Zeilen), und danach wird er nachgeführt statt neu gerechnet — der Frame nach einem Tastendruck kostet 0,012 ms.
+- **Ein Lexer kostet 0,117 ms je Frame** über einen vollen Bildschirm Zeilen und treibt die Draw-Commands von 121 auf 836, weil eine Zeile an jeder Stilgrenze zerschnitten wird. `fuiSetDrawBatching` beantwortet genau das: **sieben** Commands bei gleicher Bauzeit.
+- **Der Editor ist zwei- bis dreimal billiger als das Textfeld**, das er ablösen soll, und das mit Randspalte, Cursor, Statusleiste und Färbedurchgang obendrauf.
 
 ---
 
@@ -612,7 +659,7 @@ gcc -std=c99 -g -fsanitize=address,undefined demos/FUI_Editor/fui_editor_demo.c 
 | ~~FiraCode bläht `final_fonts.h` auf~~ ✅ | Beide Schnitte sind drin. `final_fonts.h` ist von 2,39 MB auf 3,22 MB gewachsen, also 830 KB für Bitstream Vera Sans Mono (49 KB Fontdaten) und FiraCode (290 KB). Das war tragbar, die befürchteten ~2 MB allein für FiraCode sind es nicht geworden |
 | **Bestätigt, und schlimmer als eine Kürzung:** `fplSetClipboardText` kopiert unter X11 über `fplCopyString` in `clipboardOut[FPL_MAX_BUFFER_LENGTH]`. `fplCopyString` schreibt bei zu kleinem Ziel **gar nichts** und liefert null zurück — der Selection-Owner wird trotzdem übernommen und liefert dann null Bytes aus. Die Zwischenablage ist danach also **leer**, samt dem, was vorher darin stand, und der Aufruf meldet Erfolg, weil die Übernahme geklappt hat. Unter Windows gibt es die Grenze nicht | Der Editor macht seinen Teil vollständig: `fuiEditorCopySelection` gibt die ganze Auswahl heraus, und Ctrl+C alloziert genau dafür. Die Größengrenze gehört in den Plattform-Hook, und genau dort setzt das Demo sie: `DemoSetClipboardText` verweigert, was nicht hineinpasst, und lässt die vorhandene Zwischenablage in Ruhe. **Eigenes Thema: FPL braucht dort dynamisches Speichermanagement**, siehe Abschnitt 8 |
 | ~~Nachfärben nach einer Änderung weit über dem Sichtfenster~~ ✅ | Zustandskonvergenz-Abbruch, in Iteration 3 mit genau diesem Fall abgenommen — und über die **Anzahl der Lexer-Aufrufe** geprüft, nicht über das Ergebnis. Genau das hat den Fehler in der Schwelle gefunden |
-| Viele Style-Läufe je Zeile treiben die Draw-Commands hoch | `fuiSetDrawBatching`, Läufe gleicher Farbe zusammenfassen, in Iteration 8 messen |
+| ~~Viele Style-Läufe je Zeile treiben die Draw-Commands hoch~~ ✅ | Bestätigt und beantwortet. Gemessen über 200 000 Zeilen: **121** Draw-Commands ohne Lexer, **836** mit — eine Zeile wird an jeder Stilgrenze zerschnitten. Mit `fuiSetDrawBatching` sind es **sieben**, bei unveränderter Bauzeit von 0,156 ms. Läufe gleicher Farbe verschmelzen, und das Einfärben kostet auf der Submit-Seite gar nichts mehr |
 | ~~Rückwärtsscrollen mit Umbruch ist beim alten Textfeld O(Dokument)~~ ✅ | Der zweite Index wird einmal je Breite gebaut und danach von den Änderungen *nachgeführt*, nicht je Frame und nicht je Tastendruck. Gemessen über `final_ui.h`: 1,8 ms einmal, 0,012 ms für den Frame nach einem Tastendruck |
 | Die breiteste Zeile ist die breiteste *gesehene* — der waagerechte Bereich wächst also beim Durchscrollen | Bewusst so, und dokumentiert. Scintilla verhält sich genauso. Eine Änderung setzt ihn zurück |
 | ~~Ein Undo-Stapel über einem 650-KB-Dokument wächst mit jedem Tastendruck~~ ✅ | `limits.undoMemoryBytes`, per Default vier Megabyte. Darüber fallen am ältesten Ende **ganze Schritte** weg. Geprüft mit einem Budget von 512 Byte und Schritten aus je zwei Datensätzen — und einmal über `undo.arenaLength` selbst, weil ein zusammengefasster Tipplauf am Schrittzähler nicht zu sehen ist |

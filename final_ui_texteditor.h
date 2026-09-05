@@ -52,6 +52,9 @@ all in. What is left is the shortcut table and the documentation. See the change
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
 - Break long lines to fit with fuiEditorConfig.toggles.wordWrap, which turns one document line into several
   SCREEN lines - only the first of which carries a number.
+- Move a keystroke somewhere else with fuiEditorConfig.shortcuts, or take it off the keyboard entirely with
+  FUI_TEXTEDITOR_SHORTCUT_OFF. What is NOT in that table is fixed: enter, backspace and delete, copy and
+  paste, and moving the caret - see fuiEditorShortcuts for why each of those stays where it is.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
 - Release it with fuiEditorRelease().
 
@@ -135,7 +138,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui_texteditor.h
-	@version v0.7.0
+	@version v1.0.0
 	@author Torsten Spaete
 	@brief Final UI Text Editor - A code and text editor widget add-on for final_ui.h.
 */
@@ -149,6 +152,74 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v1.0.0:
+	The keys stop being this file's opinion, and the widget gets measured against the one it sits beside.
+	Everything an editor DOES has been here since iteration seven; what was still missing was a way for the
+	caller to say what a keystroke means, and a number saying what any of it costs.
+
+	- New: fuiEditorConfig.shortcuts and fuiEditorShortcuts - eighteen actions, each on a fuiShortcut, each
+	  remappable. Select all, cut, undo, both spellings of redo, delete line, duplicate, moving lines up and
+	  down, indent and unindent, the overwrite toggle, find, both spellings of replace, go to line, and
+	  find next and previous. A zeroed entry takes the built-in keystroke, which is what "zero means the
+	  default" means everywhere else in the configuration.
+	- New: fuiEditorDefaultShortcuts, which hands the built-in table over so that remapping ONE key is
+	  three lines rather than eighteen - and so that a caller building a key configuration screen has
+	  something to print.
+	- New: FUI_TEXTEDITOR_SHORTCUT_OFF, because a shortcut is two numbers and both of them being zero is
+	  the only thing that can mean "the caller said nothing". Taking an action off the keyboard needs a
+	  spelling of its own, or it would be handed its default straight back at the next resolve.
+	- New: What is NOT in that table, and why. Enter, backspace and delete are the keys that MAKE text, and
+	  an editor whose typing can be remapped away is an editor that cannot be typed in. Ctrl+C and Ctrl+V -
+	  and the older spelling of the same two on the insert key - are what every program on the desktop
+	  answers to, and shift and delete cuts beside them. Moving the caret is not a table at all but a
+	  GRAMMAR: shift extends what the bare key moves, control widens what it steps by, and there is no
+	  single keystroke in any of it to put in a field.
+	- Changed: A shortcut's modifiers now match EXACTLY, the rule fuiDispatchShortcuts has always gone by.
+	  It is what lets one table hold ctrl+z and ctrl+shift+z at once, and it takes away a handful of
+	  accidents that were never meant: ctrl+shift+a no longer selects all, and ctrl+shift+f no longer opens
+	  the find bar.
+	- Changed: Ctrl+V and shift+insert are ONE branch now, and so are ctrl+C and ctrl+insert. They were two
+	  each, on opposite sides of the read-only gate, which had the paste on the insert key reaching a gate
+	  of its own while the one on V never got that far.
+	- Changed: Indenting knows the difference between the ACTION and the tab key. The focus chain rule -
+	  tab belongs to it until an editor that already had the keyboard claims it, and the press is spent
+	  afterwards - applies to the tab key, so moving indenting to some other keystroke now leaves tab
+	  walking the focus on and gives the new key no focus rule at all.
+	- New: Ctrl+F leaves the text it seeded SELECTED in the find field rather than putting the caret behind
+	  it, so the next character typed starts a new search instead of extending the old one. That needed
+	  fuiSelectTextInputContent in final_ui.h - a field anchors the caret to the end of its text the first
+	  time the focus lands on it, which is right for one somebody clicked into and wrong for one that was
+	  just filled in for them. It is the last of the things earlier iterations noted as missing.
+	- Measured: demos/FUI_Performance has editor cases now, over the same generated lines its text box
+	  holds, so the two widgets are compared on the same document rather than on two different ones.
+	  200 000 lines, 25 MB, at 1600x940:
+
+	      editor 5K                0.039 ms      121 draw commands
+	      editor 50K               0.040 ms      121
+	      editor 200K              0.039 ms      121
+	      editor 200K at end       0.043 ms      120
+	      editor 200K lexed        0.156 ms      836
+	      editor 200K lexed bat    0.155 ms        7
+	      editor 200K wrapped      0.054 ms      121
+	      editor 200K wrap end     0.058 ms      120
+	      editor 200K narrow       0.029 ms      123
+	      editor 200K nrw wrap     0.043 ms       90
+
+	  Flat from five thousand lines to two hundred thousand, which is the whole claim of the line index,
+	  and flat again at the far END of the document, which is the claim of the second one. final_ui.h's own
+	  text box over the same lines costs 0.102 ms and 0.163 ms wrapped, so this widget is two to three
+	  times cheaper than the field it was written to replace.
+	- Measured: the second index costs about the same whether it has work to do or not. At the full width
+	  nothing actually breaks and it costs 0.015 ms a frame; in a view a fifth as wide, where 200 000 lines
+	  really do come apart into 470 183 rows, it costs 0.014 ms over the same narrow view without it. That
+	  is what "only the visible window is measured" comes to as a number - the building of the index is
+	  paid once and separately.
+	- Measured: a lexer costs 0.117 ms a frame over a full screen of lines and takes the draw commands from
+	  121 to 836, because a line is cut into a piece of geometry wherever what it is drawn with changes -
+	  the risk this was written down as. fuiSetDrawBatching answers it completely: the same frame, the same
+	  build time, and SEVEN draw commands. Runs of one colour merge, and the colouring stops costing
+	  anything at all on the submit side.
 
 	# v0.8.0:
 	It can be read from and written back to something other than utf-8 now. Everything up to here treated
@@ -558,8 +629,8 @@ SOFTWARE.
 //
 
 //! Version of this add-on, so an application can report which build it was compiled against
-#define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 8
+#define FUI_TEXTEDITOR_VERSION_MAJOR 1
+#define FUI_TEXTEDITOR_VERSION_MINOR 0
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -855,6 +926,79 @@ typedef struct fuiEditorLimits {
 	int32_t undoMemoryBytes;
 } fuiEditorLimits;
 
+/*
+	Which keystroke means which action, and what "not named" looks like for one.
+
+	A shortcut is two numbers, and BOTH of them being zero is the only thing that can mean "the caller did
+	not mention this one" - fuiKey_None with no modifiers is not a keystroke anybody can press. So a
+	shortcut that is deliberately taken AWAY needs a spelling of its own, or it would be handed its default
+	right back at the next resolve.
+*/
+
+//! Written into a shortcut's modifiers to take that action off the keyboard, as against a zeroed shortcut which takes its default
+#define FUI_TEXTEDITOR_SHORTCUT_OFF ((uint32_t)0x80000000u)
+
+/**
+* @struct fuiEditorShortcuts
+* @brief Which keystroke means which action. A zeroed entry takes the one named on its field.
+* @note What is NOT in here is fixed on purpose. Enter, backspace and delete are the keys that make text,
+*       and an editor whose typing can be remapped away is an editor that cannot be typed in. Ctrl+C and
+*       Ctrl+V - and the older spelling of the same two, Ctrl+Insert and Shift+Insert - are what every
+*       program on the desktop answers to, and Shift+Delete cuts beside them. Moving the caret is not in
+*       here either: the arrows, home, end and the two page keys are a GRAMMAR rather than a table, where
+*       shift extends what the bare key moves and control widens what it steps by.
+* @note Modifiers must match EXACTLY, the same rule @ref fuiDispatchShortcuts goes by, which is what lets
+*       Ctrl+Z and Ctrl+Shift+Z mean two different things.
+* @note To take a shortcut away rather than to rename it, write @ref FUI_TEXTEDITOR_SHORTCUT_OFF into it -
+*       a zeroed one is one the caller did not mention, and gets its default.
+*/
+typedef struct fuiEditorShortcuts {
+	//! Select the whole document. Zero is Ctrl+A
+	fuiShortcut selectAll;
+	//! Cut the selection to the clipboard. Zero is Ctrl+X, and Shift+Delete always does it too
+	fuiShortcut cut;
+	//! Take the last change back. Zero is Ctrl+Z. Answers a HELD key, because walking a long way back is what it is for
+	fuiShortcut undo;
+	//! Put a taken back change forward again. Zero is Ctrl+Y, what windows has always used. Held as well
+	fuiShortcut redo;
+	//! The other spelling of redo, for the editors that grew up on unix. Zero is Ctrl+Shift+Z. Held as well
+	fuiShortcut redoAlternate;
+	//! Delete the line the caret is on. Zero is Ctrl+D
+	fuiShortcut deleteLine;
+	//! Copy the line or the selection and put the copy underneath it. Zero is Ctrl+Shift+D
+	fuiShortcut duplicate;
+	//! Swap the line or the selection with what is above it. Zero is Alt+Up. Held as well
+	fuiShortcut moveLinesUp;
+	//! Swap it with what is below it instead. Zero is Alt+Down. Held as well
+	fuiShortcut moveLinesDown;
+	//! Indent the selection by one step. Zero is Tab, which is ALSO the focus key - see the note below. Held as well
+	fuiShortcut indent;
+	//! Take one step of indentation off again. Zero is Shift+Tab, and the same note applies. Held as well
+	fuiShortcut unindent;
+	//! Switch between inserting and overwriting. Zero is Insert
+	fuiShortcut toggleOverwrite;
+	//! Open the find bar, seeded from the selection. Zero is Ctrl+F
+	fuiShortcut find;
+	//! Open it with its replace row showing. Zero is Ctrl+H, what windows has always used
+	fuiShortcut replace;
+	//! The other spelling of that, for the editors that grew up on unix. Zero is Ctrl+R
+	fuiShortcut replaceAlternate;
+	//! Open the go to line bar. Zero is Ctrl+G
+	fuiShortcut goToLine;
+	//! Jump to the next match without the bar being open at all. Zero is F3
+	fuiShortcut findNext;
+	//! Jump to the one before it. Zero is Shift+F3
+	fuiShortcut findPrevious;
+} fuiEditorShortcuts;
+
+/**
+* @brief The keystrokes an editor answers to when nothing else was said.
+* @return Returns the built-in table @ref fuiEditorShortcuts, every field filled in.
+* @note Handy for remapping ONE of them: take this, change the field, and hand the result to
+*       @ref fuiEditorSetConfig - which a zeroed table would do just as well, only less readably.
+*/
+fui_api fuiEditorShortcuts fuiEditorDefaultShortcuts(void);
+
 /**
 * @struct fuiEditorToggles
 * @brief What the editor shows and what it leaves out. A zeroed one is the plainest editor there is.
@@ -979,6 +1123,8 @@ typedef struct fuiEditorConfig {
 	fuiEditorToggles toggles;
 	//! What it is allowed to spend on itself
 	fuiEditorLimits limits;
+	//! Which keystroke means which action
+	fuiEditorShortcuts shortcuts;
 	//! What it calls back into
 	fuiEditorCallbacks callbacks;
 } fuiEditorConfig;
@@ -5376,6 +5522,44 @@ fui_api void fuiEditorSetByteOrderMark(fuiEditor *editor, const bool hasByteOrde
 //! The field that takes a line number
 #define FUI_TEXTEDITOR__FIELD_GOTO_LINE 3
 
+//! One entry of the shortcut table, so writing the table below reads as a table
+fui_inline fuiShortcut fuiEditor__MakeShortcut(const fuiKey key, const uint32_t modifiers) {
+	fuiShortcut result;
+	result.key = key;
+	result.modifiers = modifiers;
+	return(result);
+}
+
+fui_api fuiEditorShortcuts fuiEditorDefaultShortcuts(void) {
+	const uint32_t noModifier = (uint32_t)fuiModifier_None;
+	const uint32_t control = (uint32_t)fuiModifier_Control;
+	const uint32_t shift = (uint32_t)fuiModifier_Shift;
+	const uint32_t alt = (uint32_t)fuiModifier_Alt;
+	const uint32_t controlAndShift = control | shift;
+
+	fuiEditorShortcuts result;
+	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
+	result.selectAll = fuiEditor__MakeShortcut(fuiKey_A, control);
+	result.cut = fuiEditor__MakeShortcut(fuiKey_X, control);
+	result.undo = fuiEditor__MakeShortcut(fuiKey_Z, control);
+	result.redo = fuiEditor__MakeShortcut(fuiKey_Y, control);
+	result.redoAlternate = fuiEditor__MakeShortcut(fuiKey_Z, controlAndShift);
+	result.deleteLine = fuiEditor__MakeShortcut(fuiKey_D, control);
+	result.duplicate = fuiEditor__MakeShortcut(fuiKey_D, controlAndShift);
+	result.moveLinesUp = fuiEditor__MakeShortcut(fuiKey_Up, alt);
+	result.moveLinesDown = fuiEditor__MakeShortcut(fuiKey_Down, alt);
+	result.indent = fuiEditor__MakeShortcut(fuiKey_Tab, noModifier);
+	result.unindent = fuiEditor__MakeShortcut(fuiKey_Tab, shift);
+	result.toggleOverwrite = fuiEditor__MakeShortcut(fuiKey_Insert, noModifier);
+	result.find = fuiEditor__MakeShortcut(fuiKey_F, control);
+	result.replace = fuiEditor__MakeShortcut(fuiKey_H, control);
+	result.replaceAlternate = fuiEditor__MakeShortcut(fuiKey_R, control);
+	result.goToLine = fuiEditor__MakeShortcut(fuiKey_G, control);
+	result.findNext = fuiEditor__MakeShortcut(fuiKey_F3, noModifier);
+	result.findPrevious = fuiEditor__MakeShortcut(fuiKey_F3, shift);
+	return(result);
+}
+
 fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
 	fuiEditorConfig result;
 	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
@@ -5396,6 +5580,10 @@ fui_api fuiEditorConfig fuiEditorDefaultConfig(void) {
 	// bottom of an editor whose lines all fit is a cost paid for a rare case.
 	result.toggles.verticalScrollbar = fuiEditorScrollbarMode_Always;
 	result.toggles.horizontalScrollbar = fuiEditorScrollbarMode_Auto;
+
+	// Spelled out rather than left at zero, so that a caller who takes this apart to remap ONE key reads
+	// the real keystrokes instead of eighteen zeroes that only mean something after a resolve.
+	result.shortcuts = fuiEditorDefaultShortcuts();
 	return(result);
 }
 
@@ -5437,6 +5625,15 @@ fui_inline float fuiEditor__ResolveLength(const float wanted, const float fallba
 //! And for a count
 fui_inline int32_t fuiEditor__ResolveCount(const int32_t wanted, const int32_t fallback) {
 	if(wanted > 0) {
+		return(wanted);
+	}
+	return(fallback);
+}
+
+//! And for a keystroke, where a shortcut with no key AND no modifier is the one nobody named
+fui_inline fuiShortcut fuiEditor__ResolveShortcut(const fuiShortcut wanted, const fuiShortcut fallback) {
+	bool wasNamed = (wanted.key != fuiKey_None) || (wanted.modifiers != 0u);
+	if(wasNamed) {
 		return(wanted);
 	}
 	return(fallback);
@@ -5497,6 +5694,26 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.metrics.gutterMinDigits = fuiEditor__ResolveCount(editor->config.metrics.gutterMinDigits, FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS);
 
 	resolved.limits.undoMemoryBytes = fuiEditor__ResolveCount(editor->config.limits.undoMemoryBytes, (int32_t)FUI_TEXTEDITOR_UNDO_MEMORY_BYTES);
+
+	fuiEditorShortcuts builtInShortcuts = fuiEditorDefaultShortcuts();
+	resolved.shortcuts.selectAll = fuiEditor__ResolveShortcut(editor->config.shortcuts.selectAll, builtInShortcuts.selectAll);
+	resolved.shortcuts.cut = fuiEditor__ResolveShortcut(editor->config.shortcuts.cut, builtInShortcuts.cut);
+	resolved.shortcuts.undo = fuiEditor__ResolveShortcut(editor->config.shortcuts.undo, builtInShortcuts.undo);
+	resolved.shortcuts.redo = fuiEditor__ResolveShortcut(editor->config.shortcuts.redo, builtInShortcuts.redo);
+	resolved.shortcuts.redoAlternate = fuiEditor__ResolveShortcut(editor->config.shortcuts.redoAlternate, builtInShortcuts.redoAlternate);
+	resolved.shortcuts.deleteLine = fuiEditor__ResolveShortcut(editor->config.shortcuts.deleteLine, builtInShortcuts.deleteLine);
+	resolved.shortcuts.duplicate = fuiEditor__ResolveShortcut(editor->config.shortcuts.duplicate, builtInShortcuts.duplicate);
+	resolved.shortcuts.moveLinesUp = fuiEditor__ResolveShortcut(editor->config.shortcuts.moveLinesUp, builtInShortcuts.moveLinesUp);
+	resolved.shortcuts.moveLinesDown = fuiEditor__ResolveShortcut(editor->config.shortcuts.moveLinesDown, builtInShortcuts.moveLinesDown);
+	resolved.shortcuts.indent = fuiEditor__ResolveShortcut(editor->config.shortcuts.indent, builtInShortcuts.indent);
+	resolved.shortcuts.unindent = fuiEditor__ResolveShortcut(editor->config.shortcuts.unindent, builtInShortcuts.unindent);
+	resolved.shortcuts.toggleOverwrite = fuiEditor__ResolveShortcut(editor->config.shortcuts.toggleOverwrite, builtInShortcuts.toggleOverwrite);
+	resolved.shortcuts.find = fuiEditor__ResolveShortcut(editor->config.shortcuts.find, builtInShortcuts.find);
+	resolved.shortcuts.replace = fuiEditor__ResolveShortcut(editor->config.shortcuts.replace, builtInShortcuts.replace);
+	resolved.shortcuts.replaceAlternate = fuiEditor__ResolveShortcut(editor->config.shortcuts.replaceAlternate, builtInShortcuts.replaceAlternate);
+	resolved.shortcuts.goToLine = fuiEditor__ResolveShortcut(editor->config.shortcuts.goToLine, builtInShortcuts.goToLine);
+	resolved.shortcuts.findNext = fuiEditor__ResolveShortcut(editor->config.shortcuts.findNext, builtInShortcuts.findNext);
+	resolved.shortcuts.findPrevious = fuiEditor__ResolveShortcut(editor->config.shortcuts.findPrevious, builtInShortcuts.findPrevious);
 
 	editor->resolvedConfig = resolved;
 	editor->resolvedTheme = *theme;
@@ -8542,11 +8759,81 @@ static bool fuiEditor__TypeWhatWasTyped(fuiContext *context, fuiEditor *editor) 
 }
 
 //! Every key the editor answers to while it has the keyboard
+/*
+	How a configured keystroke is asked about.
+
+	Modifiers match EXACTLY, which is the rule fuiDispatchShortcuts goes by and the only one under which a
+	table can hold Ctrl+Z and Ctrl+Shift+Z at once. They are checked BEFORE the key, so that a repeat timer
+	belonging to some other combination is never advanced by a press that was not meant for it.
+*/
+
+//! Exactly which modifiers are held, as @ref fuiModifier flags
+fui_inline uint32_t fuiEditor__HeldModifiers(const fuiContext *context) {
+	uint32_t heldModifiers = (uint32_t)fuiModifier_None;
+	if(fuiIsControlDown(context)) {
+		heldModifiers |= (uint32_t)fuiModifier_Control;
+	}
+	if(fuiIsShiftDown(context)) {
+		heldModifiers |= (uint32_t)fuiModifier_Shift;
+	}
+	if(fuiIsAltDown(context)) {
+		heldModifiers |= (uint32_t)fuiModifier_Alt;
+	}
+	return(heldModifiers);
+}
+
+//! Whether the modifiers standing on the keyboard are the ones this shortcut wants
+fui_inline bool fuiEditor__ShortcutModifiersMatch(const fuiContext *context, const fuiShortcut shortcut) {
+	if(shortcut.key == fuiKey_None) {
+		return(false);
+	}
+	uint32_t heldModifiers = fuiEditor__HeldModifiers(context);
+	return(shortcut.modifiers == heldModifiers);
+}
+
+//! Whether this keystroke is the one the shortcut names, without asking whether the key went down at all
+fui_inline bool fuiEditor__ShortcutClaimsKey(const fuiContext *context, const fuiShortcut shortcut, const fuiKey key) {
+	if(shortcut.key != key) {
+		return(false);
+	}
+	return(fuiEditor__ShortcutModifiersMatch(context, shortcut));
+}
+
+//! The shortcut was pressed this frame - one press, one answer
+fui_inline bool fuiEditor__ShortcutWentDown(fuiContext *context, const fuiShortcut shortcut) {
+	bool modifiersMatch = fuiEditor__ShortcutModifiersMatch(context, shortcut);
+	if(!modifiersMatch) {
+		return(false);
+	}
+	return(fuiKeyWentDown(context, shortcut.key));
+}
+
+//! The shortcut was pressed or is being HELD, for the actions worth holding a key down for
+fui_inline bool fuiEditor__ShortcutRepeats(fuiContext *context, const fuiShortcut shortcut) {
+	bool modifiersMatch = fuiEditor__ShortcutModifiersMatch(context, shortcut);
+	if(!modifiersMatch) {
+		return(false);
+	}
+	return(fuiKeyRepeat(context, shortcut.key));
+}
+
 static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth, const int32_t linesPerPage, const bool mayAnswerTab, bool *outDidCopy) {
-	bool wantsToExtend = fuiIsShiftDown(context);
-	bool wantsToJumpByWord = fuiIsControlDown(context);
-	bool wantsToMoveLines = fuiIsAltDown(context);
+	const fuiEditorShortcuts *shortcuts = &editor->resolvedConfig.shortcuts;
+
+	// What the two modifiers ARE, and what they MEAN where the caret is moved. The fixed clipboard keys
+	// below want the first pair; the arrows, home and end want the second.
+	bool controlIsHeld = fuiIsControlDown(context);
+	bool shiftIsHeld = fuiIsShiftDown(context);
+	bool wantsToExtend = shiftIsHeld;
+	bool wantsToJumpByWord = controlIsHeld;
 	int32_t textLength = fuiEditorGetTextLength(editor);
+
+	// Moving LINES is on the same two keys as moving the CARET by default, so the caret branch has to know
+	// whether this particular press was claimed by the other one - and it stays right when the two line
+	// shortcuts are remapped somewhere else entirely, at which point alt and the arrows go back to moving
+	// the caret the way every other modifier does.
+	bool upWasClaimedByMovingLines = fuiEditor__ShortcutClaimsKey(context, shortcuts->moveLinesUp, fuiKey_Up);
+	bool downWasClaimedByMovingLines = fuiEditor__ShortcutClaimsKey(context, shortcuts->moveLinesDown, fuiKey_Down);
 
 	if(fuiKeyRepeat(context, fuiKey_Left)) {
 		int32_t wantedOffset;
@@ -8576,13 +8863,13 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
 	}
 
-	// Alt turns both of these from moving the CARET into moving the LINES, so the caret branch has to stand
-	// aside for it - answering both would move the caret onto a line that just moved out from under it.
-	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Up)) {
+	// Answering both would move the caret onto a line that just moved out from under it, so the caret
+	// stands aside for the press that means "move the line".
+	if(!upWasClaimedByMovingLines && fuiKeyRepeat(context, fuiKey_Up)) {
 		const int32_t oneLineUp = -1;
 		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, oneLineUp, wantsToExtend);
 	}
-	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Down)) {
+	if(!downWasClaimedByMovingLines && fuiKeyRepeat(context, fuiKey_Down)) {
 		const int32_t oneLineDown = 1;
 		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, oneLineDown, wantsToExtend);
 	}
@@ -8628,36 +8915,40 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		editor->caretIsAtARowEnd = landsOnABreak;
 	}
 
-	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_A)) {
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->selectAll)) {
 		fuiEditorSelectAll(editor);
 		editor->caretBlinkTime = 0.0f;
 	}
-	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_C)) {
+
+	/*
+		Copy and paste, in both spellings each of them has, and neither spelling is in the shortcut table.
+
+		Ctrl+C and Ctrl+V are what every program on this desktop answers to, and Ctrl+Insert and
+		Shift+Insert are what the same two were called before that - which is why they are on the key
+		beside delete rather than anywhere sensible. Remapping them would only ever make an editor that
+		behaves like nothing else on the machine.
+
+		The copy is not a writing branch, so it works in a read-only editor as well - which is why both are
+		answered ABOVE the read-only gate rather than below it. The paste has a gate of its own.
+	*/
+	bool pressedACopyKey = controlIsHeld && (fuiKeyWentDown(context, fuiKey_C) || fuiKeyWentDown(context, fuiKey_Insert));
+	if(pressedACopyKey) {
 		bool didCopy = fuiEditor__CopySelectionToClipboard(context, editor);
 		if(didCopy && outDidCopy != fui_null) {
 			*outDidCopy = true;
 		}
 	}
-
-	/*
-		The insert key, in the three meanings it has had since before ctrl+c existed.
-
-		Plain, it switches between inserting and overwriting; with control it copies; with shift it pastes.
-		The copy is not a writing branch, so it works in a read-only editor as well - which is why the whole
-		key is answered ABOVE the read-only gate rather than below it.
-	*/
-	if(fuiKeyWentDown(context, fuiKey_Insert)) {
-		if(wantsToJumpByWord) {
-			bool didCopy = fuiEditor__CopySelectionToClipboard(context, editor);
-			if(didCopy && outDidCopy != fui_null) {
-				*outDidCopy = true;
-			}
-		} else if(wantsToExtend) {
-			(void)fuiEditor__PasteFromClipboard(context, editor);
-		} else {
-			editor->isOverwriting = !editor->isOverwriting;
+	bool pressedAPasteKey = (controlIsHeld && fuiKeyWentDown(context, fuiKey_V)) || (shiftIsHeld && fuiKeyWentDown(context, fuiKey_Insert));
+	if(pressedAPasteKey) {
+		bool didPaste = fuiEditor__PasteFromClipboard(context, editor);
+		if(didPaste) {
 			editor->caretBlinkTime = 0.0f;
 		}
+	}
+
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->toggleOverwrite)) {
+		editor->isOverwriting = !editor->isOverwriting;
+		editor->caretBlinkTime = 0.0f;
 	}
 
 	// Everything from here on WRITES, and there is exactly one gate in front of all of it.
@@ -8673,7 +8964,7 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 
 	// Shift and delete is the other spelling of cut, and it is an EDGE rather than a repeat - a held one
 	// would cut line after line into a clipboard that only keeps the last of them.
-	bool wantsToCutWithDelete = wantsToExtend && fuiKeyWentDown(context, fuiKey_Delete);
+	bool wantsToCutWithDelete = shiftIsHeld && fuiKeyWentDown(context, fuiKey_Delete);
 	if(wantsToCutWithDelete) {
 		bool didCut = fuiEditor__CutToClipboard(context, editor);
 		if(didCut && outDidCopy != fui_null) {
@@ -8694,24 +8985,23 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		fuiConsumeKey(context, fuiKey_Return);
 	}
 
-	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_V)) {
-		(void)fuiEditor__PasteFromClipboard(context, editor);
-		editor->caretBlinkTime = 0.0f;
-	}
-	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_X)) {
+	// The OTHER spelling of cut, shift and delete, was answered with the delete key above - it sits on a
+	// fixed key for the same reason ctrl+insert does, and this is the one that can be remapped.
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->cut)) {
 		bool didCut = fuiEditor__CutToClipboard(context, editor);
 		if(didCut && outDidCopy != fui_null) {
 			*outDidCopy = true;
 		}
 		editor->caretBlinkTime = 0.0f;
 	}
-	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_D)) {
-		if(wantsToExtend) {
-			(void)fuiEditorDuplicate(editor);
-		} else {
-			int32_t caretLine = fuiEditorGetCaretLine(editor);
-			(void)fuiEditorDeleteLine(editor, caretLine);
-		}
+
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->deleteLine)) {
+		int32_t caretLine = fuiEditorGetCaretLine(editor);
+		(void)fuiEditorDeleteLine(editor, caretLine);
+		editor->caretBlinkTime = 0.0f;
+	}
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->duplicate)) {
+		(void)fuiEditorDuplicate(editor);
 		editor->caretBlinkTime = 0.0f;
 	}
 
@@ -8722,42 +9012,48 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 		used, the second what everything that started on unix does. Repeats rather than edges, because
 		holding ctrl+z down to walk a long way back is the whole point of the key.
 	*/
-	if(wantsToJumpByWord && fuiKeyRepeat(context, fuiKey_Z)) {
-		if(wantsToExtend) {
-			(void)fuiEditorRedo(editor);
-		} else {
-			(void)fuiEditorUndo(editor);
-		}
+	if(fuiEditor__ShortcutRepeats(context, shortcuts->undo)) {
+		(void)fuiEditorUndo(editor);
 	}
-	if(wantsToJumpByWord && fuiKeyRepeat(context, fuiKey_Y)) {
+	if(fuiEditor__ShortcutRepeats(context, shortcuts->redo) || fuiEditor__ShortcutRepeats(context, shortcuts->redoAlternate)) {
 		(void)fuiEditorRedo(editor);
 	}
 
-	if(wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Up)) {
+	if(fuiEditor__ShortcutRepeats(context, shortcuts->moveLinesUp)) {
 		(void)fuiEditorMoveLinesUp(editor);
 	}
-	if(wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Down)) {
+	if(fuiEditor__ShortcutRepeats(context, shortcuts->moveLinesDown)) {
 		(void)fuiEditorMoveLinesDown(editor);
 	}
 
 	/*
-		Tab, which belongs to the FOCUS CHAIN until an editor that already had the keyboard takes it.
+		Indenting, which by default sits on the key that belongs to the FOCUS CHAIN.
 
-		Tabbing INTO an editor has to put the caret in it and nothing else, and the keystroke that does that
-		is the same keystroke as the one that indents - so what tells them apart is who held the focus when
-		this build started, which is what mayAnswerTab carries in.
+		Tabbing INTO an editor has to put the caret in it and nothing else, and by default the keystroke
+		that does that is the same keystroke as the one that indents - so what tells them apart is who held
+		the focus when this build started, which is what mayAnswerTab carries in. Spent afterwards, so that
+		no field built after this one moves the focus on the same press. A read-only editor never gets here
+		at all, and tab walks past it the way it always did.
 
-		Spent afterwards, so that no field built after this one moves the focus on the same press. A
-		read-only editor never gets here at all, and tab walks past it the way it always did.
+		Both halves of that apply to the TAB KEY and not to indenting, so a caller who moves indenting onto
+		some other key gets a plain shortcut and a tab that only ever walks the focus on.
 	*/
-	if(mayAnswerTab && fuiKeyRepeat(context, fuiKey_Tab)) {
-		if(wantsToExtend) {
-			(void)fuiEditorUnindentSelection(editor);
-		} else {
-			(void)fuiEditorIndentSelection(editor);
-		}
+	bool indentUsesTheFocusKey = (shortcuts->indent.key == fuiKey_Tab);
+	bool unindentUsesTheFocusKey = (shortcuts->unindent.key == fuiKey_Tab);
+	bool mayIndent = mayAnswerTab || !indentUsesTheFocusKey;
+	bool mayUnindent = mayAnswerTab || !unindentUsesTheFocusKey;
+	if(mayUnindent && fuiEditor__ShortcutRepeats(context, shortcuts->unindent)) {
+		(void)fuiEditorUnindentSelection(editor);
 		editor->caretBlinkTime = 0.0f;
-		fuiConsumeKey(context, fuiKey_Tab);
+		if(unindentUsesTheFocusKey) {
+			fuiConsumeKey(context, fuiKey_Tab);
+		}
+	} else if(mayIndent && fuiEditor__ShortcutRepeats(context, shortcuts->indent)) {
+		(void)fuiEditorIndentSelection(editor);
+		editor->caretBlinkTime = 0.0f;
+		if(indentUsesTheFocusKey) {
+			fuiConsumeKey(context, fuiKey_Tab);
+		}
 	}
 
 	// Last, so that every key which MEANS something has already had its turn at the characters it would
@@ -9163,12 +9459,12 @@ static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, co
 		return;
 	}
 
+	const fuiEditorShortcuts *shortcuts = &editor->resolvedConfig.shortcuts;
 	fuiId focusedId = fuiGetFocusedId(context);
 	bool wantsToExtend = fuiIsShiftDown(context);
-	bool wantsAChord = fuiIsControlDown(context);
 
 	bool mayFind = fuiEditor__CanFind(editor);
-	if(mayFind && wantsAChord && fuiKeyWentDown(context, fuiKey_F)) {
+	if(mayFind && fuiEditor__ShortcutWentDown(context, shortcuts->find)) {
 		/*
 			Seeded from the SELECTION, but only when the selection is the document's rather than a field's.
 
@@ -9195,24 +9491,22 @@ static void fuiEditor__HandleFindKeys(fuiContext *context, fuiEditor *editor, co
 
 	// Ctrl+h is what windows has always used for replace and ctrl+r is what the editors that grew up on
 	// unix use. Both, because a key nobody can remember is a key nobody presses.
-	bool pressedAReplaceKey = wantsAChord && (fuiKeyWentDown(context, fuiKey_H) || fuiKeyWentDown(context, fuiKey_R));
+	bool pressedAReplaceKey = fuiEditor__ShortcutWentDown(context, shortcuts->replace) || fuiEditor__ShortcutWentDown(context, shortcuts->replaceAlternate);
 	bool mayReplace = mayFind && fuiEditor__CanReplace(editor);
 	if(pressedAReplaceKey && mayReplace) {
 		const bool withTheReplaceRow = true;
 		fuiEditorOpenFind(editor, withTheReplaceRow);
 	}
 
-	if(wantsAChord && fuiKeyWentDown(context, fuiKey_G)) {
+	if(fuiEditor__ShortcutWentDown(context, shortcuts->goToLine)) {
 		fuiEditorOpenGoToLine(editor);
 	}
 
 	// F3 finds without the bar being open at all, which is what makes it worth having beside enter.
-	if(mayFind && fuiKeyWentDown(context, fuiKey_F3)) {
-		if(wantsToExtend) {
-			(void)fuiEditorFindPrevious(editor);
-		} else {
-			(void)fuiEditorFindNext(editor);
-		}
+	if(mayFind && fuiEditor__ShortcutWentDown(context, shortcuts->findPrevious)) {
+		(void)fuiEditorFindPrevious(editor);
+	} else if(mayFind && fuiEditor__ShortcutWentDown(context, shortcuts->findNext)) {
+		(void)fuiEditorFindNext(editor);
 	}
 
 	if(!fuiEditorIsFindOpen(editor)) {
@@ -9675,6 +9969,24 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 				wantedFieldId = goToLineFieldId;
 			}
 			fuiSetFocusedId(context, wantedFieldId);
+
+			/*
+				And its content SELECTED, so that typing replaces what is standing there.
+
+				A field anchors the caret to the end of its text the first time the focus lands on it, which
+				is right for one somebody clicked into and wrong for one that was just filled in for them:
+				ctrl+f with a word highlighted would put the word in the field and the caret behind it, and
+				the next character typed would extend the search rather than start a new one.
+			*/
+			const char *wantedFieldText = editor->find.needle;
+			if(editor->find.fieldWantingTheKeyboard == FUI_TEXTEDITOR__FIELD_REPLACE) {
+				wantedFieldText = editor->find.replacement;
+			} else if(editor->find.fieldWantingTheKeyboard == FUI_TEXTEDITOR__FIELD_GOTO_LINE) {
+				wantedFieldText = editor->find.lineNumberText;
+			}
+			size_t wantedFieldLength = FUI_TEXTEDITOR_STRLEN(wantedFieldText);
+			fuiSelectTextInputContent(context, wantedFieldId, (int32_t)wantedFieldLength);
+
 			editor->find.fieldWantingTheKeyboard = FUI_TEXTEDITOR__FIELD_NONE;
 
 			// Read again, because the editor may have just LOST the keyboard to a field of its own - and

@@ -19,7 +19,8 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 | [final_xml.h](final_xml.h)                       | Single file xml parser library              | Independent      | C99      | 0.3.2-alpha    | Finished | 33 KB   |
 | [final_tiletrace.h](final_tiletrace.h)           | Single file tilemap contour tracing library | Independent      | C17      | 2.0.1          | Finished | 49 KB   |
 | [final_tiletrace.hpp](final_tiletrace.hpp)       | Single file tilemap contour tracing library | Independent      | C++/11   | 1.02           | Obsolete | 34 KB   |
-| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.5-beta     | Beta     | 611 KB  |
+| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.7-beta     | Beta     | 642 KB  |
+| [final_ui_texteditor.h](final_ui_texteditor.h)   | Single file code and text editor widget for final_ui.h | Independent      | C99      | 1.0.0          | Finished | 460 KB  |
 
 * All libraries written in C99/C17 are fully C++ compatible.
 * Few libraries are still in beta/alpha, even though they are finished.
@@ -38,6 +39,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── final_tiletrace.h               # Single-header-file contour tile tracing library (C17)
 ├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11, obsolete)
 ├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
+├── final_ui_texteditor.h           # Single-header-file code and text editor widget for final_ui.h (C99)
 ├── LICENSE                         # MIT License-file
 ├── README.md                       # This file
 ├── final_game_tech.md              # Detailed description of the repository and its libraries
