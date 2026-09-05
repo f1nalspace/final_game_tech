@@ -254,6 +254,28 @@ static void DemoPaintStyle(uint8_t *styles, const int32_t from, const int32_t to
 	}
 }
 
+//! Where the quoted run beginning at @p from ends, one past its closing quote or at the line's end
+static int32_t DemoScanQuoted(const char *text, const int32_t length, const int32_t from) {
+	char quote = text[from];
+	int32_t stringEnd = from + 1;
+	while(stringEnd < length) {
+		if(text[stringEnd] == '\\') {
+			stringEnd += 2;
+			continue;
+		}
+		if(text[stringEnd] == quote) {
+			stringEnd += 1;
+			break;
+		}
+		stringEnd += 1;
+	}
+	// A run of escapes at the very end of the line can push this past it.
+	if(stringEnd > length) {
+		stringEnd = length;
+	}
+	return(stringEnd);
+}
+
 static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
 	const char *text = request->text;
 	int32_t length = request->textLength;
@@ -278,8 +300,11 @@ static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
 		offset = commentEnd;
 	}
 
-	// A preprocessor line is the whole line, whatever else is on it - except a comment, which is why the
-	// scan below keeps running rather than painting to the end here.
+	// What gets the preprocessor colour is the hash, whatever blanks sit between it and the directive, and
+	// the directive itself - a hash and a tabbed define are ONE thing and are painted as one. What follows
+	// the directive is not painted at all: a macro body is not C, so the rest of the line keeps the default
+	// colour, which is what CLion, MSVC and the rest do. Only a comment on such a line is still a comment,
+	// which is why the scan below keeps running rather than finishing the line off here.
 	bool isAPreprocessorLine = false;
 	int32_t firstNonBlank = offset;
 	while(firstNonBlank < length && (text[firstNonBlank] == ' ' || text[firstNonBlank] == '\t')) {
@@ -287,6 +312,21 @@ static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
 	}
 	if(firstNonBlank < length && text[firstNonBlank] == '#') {
 		isAPreprocessorLine = true;
+		int32_t directiveEnd = firstNonBlank + 1;
+		int32_t directiveWordStart = directiveEnd;
+		while(directiveWordStart < length && (text[directiveWordStart] == ' ' || text[directiveWordStart] == '\t')) {
+			directiveWordStart += 1;
+		}
+		// A hash with no directive behind it is just the hash - the blanks after it are only swallowed when
+		// there is a word for them to lead to.
+		if(directiveWordStart < length && DemoIsIdentifierStart(text[directiveWordStart])) {
+			directiveEnd = directiveWordStart;
+			while(directiveEnd < length && DemoIsIdentifierPart(text[directiveEnd])) {
+				directiveEnd += 1;
+			}
+		}
+		DemoPaintStyle(styles, firstNonBlank, directiveEnd, DemoCStyle_Preprocessor);
+		offset = directiveEnd;
 	}
 
 	while(offset < length) {
@@ -318,25 +358,21 @@ static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
 			continue;
 		}
 
+		// Past its directive a preprocessor line is left plain, and the two comments above have already had
+		// their say on it. A quoted run is still RUN OVER rather than walked through byte by byte, because
+		// the // in "http://host" does not start a comment - it simply is not painted as a string either.
+		if(isAPreprocessorLine) {
+			if(currentByte == '"' || currentByte == '\'') {
+				offset = DemoScanQuoted(text, length, offset);
+			} else {
+				offset += 1;
+			}
+			continue;
+		}
+
 		if(currentByte == '"' || currentByte == '\'') {
-			char quote = currentByte;
 			int32_t stringStart = offset;
-			int32_t stringEnd = offset + 1;
-			while(stringEnd < length) {
-				if(text[stringEnd] == '\\') {
-					stringEnd += 2;
-					continue;
-				}
-				if(text[stringEnd] == quote) {
-					stringEnd += 1;
-					break;
-				}
-				stringEnd += 1;
-			}
-			// A run of escapes at the very end of the line can push this past it.
-			if(stringEnd > length) {
-				stringEnd = length;
-			}
+			int32_t stringEnd = DemoScanQuoted(text, length, stringStart);
 			DemoPaintStyle(styles, stringStart, stringEnd, DemoCStyle_String);
 			offset = stringEnd;
 			continue;
@@ -364,21 +400,13 @@ static int32_t DemoLexCLine(fuiEditorLexRequest *request) {
 			int32_t wordLength = wordEnd - wordStart;
 
 			DemoCStyle wordStyle = DemoCStyle_Default;
-			if(isAPreprocessorLine && wordStart <= (firstNonBlank + 1)) {
-				wordStyle = DemoCStyle_Preprocessor;
-			} else if(DemoWordIsInTable(&text[wordStart], wordLength, g_demoCKeywords, fplArrayCount(g_demoCKeywords))) {
+			if(DemoWordIsInTable(&text[wordStart], wordLength, g_demoCKeywords, fplArrayCount(g_demoCKeywords))) {
 				wordStyle = DemoCStyle_Keyword;
 			} else if(DemoWordIsInTable(&text[wordStart], wordLength, g_demoCTypes, fplArrayCount(g_demoCTypes))) {
 				wordStyle = DemoCStyle_Type;
 			}
 			DemoPaintStyle(styles, wordStart, wordEnd, wordStyle);
 			offset = wordEnd;
-			continue;
-		}
-
-		if(currentByte == '#' && isAPreprocessorLine) {
-			styles[offset] = (uint8_t)DemoCStyle_Preprocessor;
-			offset += 1;
 			continue;
 		}
 
@@ -2922,6 +2950,100 @@ static int32_t g_lexCallCount = 0;
 static int32_t CountingLexLine(fuiEditorLexRequest *request) {
 	g_lexCallCount += 1;
 	return(DemoLexCLine(request));
+}
+
+//! How long a line the style checks can spell out, one letter per byte
+#define DEMO_MAX_STYLE_CHECK_LENGTH 255
+
+//! Turns a style byte back into the one letter an expected line is spelled out in
+static char DemoStyleLetter(const uint8_t style) {
+	switch((DemoCStyle)style) {
+		case DemoCStyle_Comment:
+			return('C');
+		case DemoCStyle_String:
+			return('S');
+		case DemoCStyle_Number:
+			return('N');
+		case DemoCStyle_Keyword:
+			return('K');
+		case DemoCStyle_Type:
+			return('T');
+		case DemoCStyle_Preprocessor:
+			return('P');
+		case DemoCStyle_Operator:
+			return('O');
+		default:
+			return('.');
+	}
+}
+
+//! Lexes one line on its own and checks what every one of its bytes came out painted with
+static void CheckStylesImpl(const char *lineText, const char *expectedLetters, const int line) {
+	uint8_t styles[DEMO_MAX_STYLE_CHECK_LENGTH + 1];
+	char actualLetters[DEMO_MAX_STYLE_CHECK_LENGTH + 1];
+
+	int32_t lineLength = (int32_t)strlen(lineText);
+	if(lineLength > DEMO_MAX_STYLE_CHECK_LENGTH) {
+		lineLength = DEMO_MAX_STYLE_CHECK_LENGTH;
+	}
+	// The editor hands the lexer a cleared run of styles, so a check that did not would be testing a
+	// contract nobody has.
+	FUI_TEXTEDITOR_MEMSET(styles, FUI_TEXTEDITOR_STYLE_DEFAULT, (size_t)lineLength);
+
+	fuiEditorLexRequest request = fplZeroInit;
+	request.text = lineText;
+	request.textLength = lineLength;
+	request.styles = styles;
+	DemoLexCLine(&request);
+
+	for(int32_t offset = 0; offset < lineLength; ++offset) {
+		actualLetters[offset] = DemoStyleLetter(styles[offset]);
+	}
+	actualLetters[lineLength] = '\0';
+
+	bool isEqual = (strcmp(actualLetters, expectedLetters) == 0);
+	++g_checkTotal;
+	if(isEqual) {
+		printf("  ok   \"%s\" -> %s\n", lineText, expectedLetters);
+	} else {
+		++g_checkFailed;
+		printf("  FAIL \"%s\" -> %s, got %s  (%s:%d)\n", lineText, expectedLetters, actualLetters, g_checkSection, line);
+	}
+}
+
+#define CHECK_STYLES(lineText, expectedLetters) CheckStylesImpl((lineText), (expectedLetters), __LINE__)
+
+/*
+	What a preprocessor line is coloured as, which is the hash and its directive and nothing else.
+
+	The directive does not have to sit flush against the hash - a blank or a tab between the two is still
+	one directive, and that is the case this exists for. Everything after it is a macro body rather than
+	C, so it stays in the default colour the way every editor draws it, and only a comment on the line
+	still counts as one.
+*/
+static void SelfTestPreprocessorColouring(void) {
+	CheckSection("preprocessor colouring");
+
+	CHECK_STYLES("#define FOO 1", "PPPPPPP......");
+	CHECK_STYLES("#\tdefine FOO", "PPPPPPPP....");
+	CHECK_STYLES("#   include", "PPPPPPPPPPP");
+	CHECK_STYLES("  #  if defined(X)", "..PPPPP...........");
+
+	// The body is left alone whatever is in it - a type, a keyword, a number and a bracket all stay plain.
+	CHECK_STYLES("#define SIZE (int)sizeof(void *) + 4", "PPPPPPP.............................");
+
+	// A comment on a preprocessor line is still a comment, and a quoted run is still run OVER, so the two
+	// slashes in a URL do not start one.
+	CHECK_STYLES("#endif // FOO", "PPPPPP.CCCCCC");
+	CHECK_STYLES("#define URL \"http://host\"", "PPPPPPP..................");
+
+	// A hash on its own keeps only itself, because there is no directive for the blanks to lead to.
+	CHECK_STYLES("#", "P");
+	CHECK_STYLES("#  ", "P..");
+
+	// And a line that is not a preprocessor line at all is coloured exactly as it was before.
+	CHECK_STYLES("int value = 42;", "TTT.......O.NNO");
+	CHECK_STYLES("a # b", "..O..");
 }
 
 /*
@@ -5540,6 +5662,7 @@ static int RunSelfTest(void) {
 	SelfTestWheelDoesNotFightTheCaret();
 	SelfTestCopyAgainstFile();
 	SelfTestLexerStatesFollowTheirLines();
+	SelfTestPreprocessorColouring();
 	SelfTestIncrementalColouring();
 	SelfTestDecorationLookup();
 	SelfTestLineEndingsOfLines();
