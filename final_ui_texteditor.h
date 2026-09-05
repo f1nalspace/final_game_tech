@@ -185,6 +185,17 @@ SOFTWARE.
 	  they pick one. So fuiEditorSetEol is now "convert line endings" as well as "remember what to write".
 	- Changed: The editor's own status line says BOM beside the encoding when there is one, because a mark
 	  is not so much a thing a document has as a way the encoding in front of it is written down.
+	- New: fuiEditorConfig.callbacks.formatGutterText, which writes what stands beside a line in place of
+	  its number - and writes NOTHING to leave a line without one. What it is for is a view whose rows are
+	  not the document's own lines: a side by side diff numbers a row by where it sits in each of the two
+	  FILES, and its filler rows stand for lines that are not there and must not be numbered as though they
+	  were. How wide the gutter is comes from metrics.gutterMinDigits, which is a character budget when this
+	  is set rather than a digit count - the editor cannot ask every line in the document what it is going
+	  to write without doing the one thing this widget exists to avoid.
+	- New: fuiEditorGetScrollOffset and fuiEditorSetScrollOffset, in PIXELS rather than in lines, so two
+	  editors can be kept scrolled as one thing. Lines were already reachable through fuiEditorScrollToLine
+	  and are the wrong unit for it: a wheel moves the view smoothly, and a second pane following it a whole
+	  line at a time judders against the first.
 	- Changed: Nothing was needed in final_ui.h.
 
 	# v0.7.0:
@@ -894,12 +905,30 @@ typedef struct fuiEditorChange {
 typedef void (*fuiEditorOnChange)(struct fuiEditor *editor, const fuiEditorChange *change, void *userData);
 
 /**
+* @brief Writes what stands in the gutter beside one line, in place of its number.
+* @param[in,out] editor Reference to the editor @ref fuiEditor the line belongs to.
+* @param[in] documentLine Which document line, counted from zero.
+* @param[out] destination Receives the text, which is NOT zero terminated.
+* @param[in] destinationCapacity How much room there is, in bytes.
+* @param[in] userData Whatever was hung on the callbacks.
+* @return Returns how many bytes were written. ZERO leaves the line without a number at all, which is what
+*         the filler line of a side by side diff wants - it stands for a line that is not there.
+* @note Right aligned against the separator, exactly the way a line number is.
+* @note How WIDE the gutter is comes from @ref fuiEditorMetrics.gutterMinDigits, which is a character
+*       budget here rather than a digit count: the editor cannot ask this for every line in the document to
+*       find the longest answer without doing the one thing it exists to avoid.
+*/
+typedef int32_t (*fuiEditorFormatGutterText)(struct fuiEditor *editor, const int32_t documentLine, char *destination, const int32_t destinationCapacity, void *userData);
+
+/**
 * @struct fuiEditorCallbacks
 * @brief What the editor calls back into, all of it optional.
 */
 typedef struct fuiEditorCallbacks {
 	//! Told about every change to the document. Null for none
 	fuiEditorOnChange onChange;
+	//! Writes the gutter text of one line. Null draws the line's own number, which is the usual thing
+	fuiEditorFormatGutterText formatGutterText;
 	//! Passed back to every callback above
 	void *userData;
 } fuiEditorCallbacks;
@@ -2186,6 +2215,27 @@ fui_api int32_t fuiEditorGetFirstVisibleLine(const fuiEditor *editor);
 * @return Returns the count, and zero before the first build.
 */
 fui_api int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor);
+
+/**
+* @brief Reads how far the view is scrolled, in pixels.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @param[out] outScrollX Receives the sideways offset, or null when it is not wanted.
+* @param[out] outScrollY Receives the downwards offset, or null when it is not wanted.
+* @note In PIXELS rather than in lines, because that is what the wheel and the scrollbars move it by. The
+*       case this exists for is two editors that have to scroll as one - a side by side diff - and lines
+*       would make that jump a whole line at a time while a wheel moves it smoothly.
+*/
+fui_api void fuiEditorGetScrollOffset(const fuiEditor *editor, float *outScrollX, float *outScrollY);
+
+/**
+* @brief Scrolls the view to a pixel offset.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] scrollX How far sideways.
+* @param[in] scrollY How far down.
+* @note Clamped by the next build, which is the only thing that knows how tall a line is and therefore how
+*       far there is to scroll. An offset past the end is not refused here, it is pulled back there.
+*/
+fui_api void fuiEditorSetScrollOffset(fuiEditor *editor, const float scrollX, const float scrollY);
 
 #endif // FUI_TEXTEDITOR_INCLUDE_H
 
@@ -5093,6 +5143,10 @@ fui_api void fuiEditorSetByteOrderMark(fuiEditor *editor, const bool hasByteOrde
 //! How long a line number may get, which is the digits of an int32 and its sign
 #define FUI_TEXTEDITOR__MAX_NUMBER_TEXT 16
 
+//! How much room a gutter text callback is given, which is more than a number takes because the case it
+//! exists for - a diff showing the line it was and the line it became - writes two of them side by side
+#define FUI_TEXTEDITOR__MAX_GUTTER_TEXT 48
+
 //! Which of the find bar's fields a call has asked for the keyboard, which the next build hands over
 #define FUI_TEXTEDITOR__FIELD_NONE 0
 //! The field that says what to look for
@@ -7520,6 +7574,30 @@ fui_api int32_t fuiEditorGetVisibleLineCount(const fuiEditor *editor) {
 	return(editor->visibleScreenLineCount);
 }
 
+fui_api void fuiEditorGetScrollOffset(const fuiEditor *editor, float *outScrollX, float *outScrollY) {
+	if(editor == fui_null) {
+		return;
+	}
+	if(outScrollX != fui_null) {
+		*outScrollX = editor->scrollX;
+	}
+	if(outScrollY != fui_null) {
+		*outScrollY = editor->scrollY;
+	}
+}
+
+fui_api void fuiEditorSetScrollOffset(fuiEditor *editor, const float scrollX, const float scrollY) {
+	if(editor == fui_null || !editor->isInitialized) {
+		return;
+	}
+
+	// A scroll that was asked for by LINE is dropped here, because this is the more precise of the two and
+	// answering both would mean the pixel one being overwritten by the line one at the next build.
+	editor->hasPendingScroll = false;
+	editor->scrollX = scrollX;
+	editor->scrollY = scrollY;
+}
+
 /**
 * @struct fuiEditor__Layout
 * @brief Where every part of one build sits, worked out before anything is drawn.
@@ -8982,9 +9060,21 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 				fuiRect markerRect = fuiRectMake(layout.gutterRect.x, markerTop, FUI_TEXTEDITOR__GUTTER_MARKER_WIDTH, render.lineHeight);
 				fuiDrawRect(context, markerRect, lineDecoration->gutterMarker);
 			}
-			char numberText[FUI_TEXTEDITOR__MAX_NUMBER_TEXT];
+			char numberText[FUI_TEXTEDITOR__MAX_GUTTER_TEXT];
 			const int32_t numberCapacity = (int32_t)sizeof(numberText);
-			int32_t numberLength = fuiEditor__FormatInt(numberText, numberCapacity, documentLine + 1);
+			int32_t numberLength = 0;
+			if(config->callbacks.formatGutterText != fui_null) {
+				numberLength = config->callbacks.formatGutterText(editor, documentLine, numberText, numberCapacity, config->callbacks.userData);
+				numberLength = fuiEditor__ClampI32(numberLength, 0, numberCapacity);
+			} else {
+				numberLength = fuiEditor__FormatInt(numberText, numberCapacity, documentLine + 1);
+			}
+
+			// Nothing written means the line has no number to show. A filler line of a side by side diff
+			// stands for a line that is not there, and numbering it would be numbering a line that is not.
+			if(numberLength <= 0) {
+				continue;
+			}
 
 			// Right aligned and NOT padded out with blanks or zeroes, so that a jump in the numbers - which
 			// is what a folded range or a diff makes - reads as a jump rather than as a change of width.

@@ -14,6 +14,7 @@ Der Auslöser steht in `docs_fpl/editor-widget.md`.
 
 - `final_ui_texteditor.h` v0.8.0 — Gap-Buffer, Split-Zeilenindex, Encoding-Vtable mit **sieben** Backends (UTF-8, ASCII, UTF-16LE, UTF-16BE, UTF-7, Latin-1, CP1252), `fuiEditorSaveToMemory` und `fuiEditorDetectEncoding`, dazu `fuiTextEditor` mit Randspalte, Zeilennummern, Tabstopps, Monospace-Schnellweg, beiden Scrollbalken, eigener Statusleiste, Cursor, Auswahl, Tastatur, Maus, Kopieren, Lexer, Dekorationen, sichtbarem Whitespace, Tippen, Enter, Backspace, Entf, Überschreibmodus, Ausschneiden, Einfügen, Zeilenlöschen, Geändert-Flag, `onChange`, Undo/Redo mit Zusammenfassen, Gruppen, Speicherbudget und Speicherpunkt, Tab/Shift+Tab, Ctrl+Shift+D, Alt+Hoch/Runter und Auto-Einrückung — und **Suchen, Ersetzen und Gehe-zu-Zeile**: eine Suchleiste im Widget, alle Treffer markiert, „n von m", Groß-/Kleinschreibung, ganzes Wort, F3, „Alle ersetzen" als ein Undo-Schritt — jedes der drei über `toggles.canFind` / `canReplace` / `canGoToLine` **einzeln abschaltbar**. `fuiEditorConfig` mit `colors` / `metrics` / `toggles` / `limits` / `callbacks`.
 - `final_ui.h` v0.9.7 — `fuiScrollbarHorizontal`, `fuiRegisterFocusable`, `fuiGetFrameTime`, `fuiIsMouseButtonDown`, `fuiMouseButtonWentDown` und `fuiConsumeKey` sind öffentlich, und `fuiTheme.scrollTrackColor` gibt der Scrollrinne eine eigene Farbe. **Iteration 5 und Iteration 6 haben nichts hinzugefügt** — die ganze Suchleiste ist `fuiTextInput`, `fuiButton`, `fuiCheckbox` und `fuiLabel` über die öffentliche API. Die Version bleibt bei einer Patch-Stufe über `develop` und wird nicht je Iteration weitergedreht.
+- `demos/FUI_Diff/` — ein Diff-Betrachter über beide Ansichten (unified in einem Editor, nebeneinander in zweien mit gleich vielen Zeilen), Myers über ganze Zeilen, `--selftest` mit **164 Prüfungen** gegen eine Brute-Force-Tabelle.
 - `demos/FUI_Editor/` — zeigt `final_ui.h` selbst (über 14 000 Zeilen, 654 KB), mit Umschaltern für Zeilennummern, Statusleiste, aktuelle Zeile, Interaktivität, Tabbreite, Schriftschnitt, C-Lexer, Whitespace, Zeilenenden, geänderte Zeilen, Nur-Lesen, Auto-Einrückung und Einrücken mit Leerzeichen, plus Auswahl, Kopieren, Undo/Redo mit Schrittzähler, Duplizieren, einer Zeile, die jede Änderung meldet, einem **„Save & verify"**, das schreibt und byteweise zurückliest — und **Knöpfen für Suchen, Ersetzen und Gehe-zu-Zeile samt einem „Count against the file"**, das die Trefferzahl des Editors gegen einen flachen Lauf über die gelesene Datei hält.
 - `--selftest` läuft mit **1200 Prüfungen** sauber unter AddressSanitizer und UndefinedBehaviorSanitizer durch, davon ein kopfloser Rahmen, der Tasten mit allen drei Modifiern drückt, tippt, mit der mittleren und mit der linken Maustaste klickt und die Antwort zurückliest.
 
@@ -470,6 +471,20 @@ Nachgeprüft wurde außerdem von Hand, was keine kopflose Prüfung zeigt: beide 
 
 **Abnahme des Umbruchs:** Umbruch an/aus, ohne dass Cursor oder Auswahl springen. — offen
 
+**Dazu ungeplant, auf Nachfrage: `demos/FUI_Diff`.** Ein Diff-Betrachter, der dieselbe Differenz auf zwei Arten zeigt — **unified** in *einem* Editor, rot für das Gegangene und grün für das Gekommene, ohne Plus und ohne Minus, und **nebeneinander** in zwei Editoren mit *exakt gleich vielen Zeilen*, blau links und grün rechts, und einer Füllzeile in eigenem Stil, wo die eine Seite eine Zeile hat und die andere nicht. Beides ist das schlichte Widget mit Dekorationen daran — kein Diff-Modus im Add-on, kein zweites Widget. Die Differenz selbst ist Myers über ganze Zeilen in der Linearspeicher-Form; `--selftest` hält sie über 3000 Zufallspaare gegen eine Brute-Force-Tabelle: das Skript muss den neuen Text wiederherstellen **und** so kurz sein wie das kürzeste, das es gibt.
+
+Dafür brauchte `final_ui_texteditor.h` zwei Zusätze:
+
+- **`callbacks.formatGutterText`.** Eine Ansicht, deren Zeilen nicht die des Dokuments sind, muss die Randspalte selbst beschriften — und eine Füllzeile darf *gar keine* Nummer bekommen, denn sie steht für eine Zeile, die es nicht gibt. Schreibt der Callback nichts, wird nichts gezeichnet.
+- **`fuiEditorGetScrollOffset` / `fuiEditorSetScrollOffset`** in Pixeln. Zwei Panes, die als eines scrollen, gehen über Zeilen nicht: das Rad bewegt die Ansicht stufenlos, und ein zweites Pane, das ihr zeilenweise folgt, ruckelt gegen das erste.
+
+Und was dabei gefunden wurde:
+
+- **Je Seite die eigene Dateizeile ist zu wenig.** Erst so gebaut — links die Zeile der alten Datei, rechts die der neuen, wie GitHub und Gittyup es im Split-View machen. Vom Nutzer als Fehler gemeldet, und zu Recht: die beiden Spalten laufen auseinander, sobald oben etwas eingefügt wurde, und dieselbe Zeile trägt dann links und rechts zwei verschiedene Nummern. **Beide Gutter tragen jetzt beide Nummern** und sind zeichengleich. Die Prüfung dazu vergleicht die zwei *gerenderten* Randspalten byteweise gegeneinander — die einzige, die das sehen kann; jede Prüfung über ein Pane allein war grün.
+- **„Swap the two" las freigegebenen Speicher.** Es reichte dem Laden die Texte, die das Laden gerade selbst freigibt. Geschnitten wird jetzt, *bevor* das alte Paar losgelassen wird. Gegengeprüft: mit der alten Reihenfolge meldet AddressSanitizer ein `heap-use-after-free`.
+- **Zwei Prüfungen waren blind.** Das Weglassen des gemeinsamen Endes vor der Teilung und das Gruppieren der Hunks bekam keine rot. Beim Ersten war der Kommentar zu stark — es ist eine Abkürzung, und nur der *Anfang* ist es, der die Rekursion enden lässt; der Kommentar sagt das jetzt. Beim Zweiten fehlte die Prüfung schlicht: sie geht jetzt über jedes der 3000 Zufallspaare und wird ohne die Gruppierung rot (5 Fehler).
+- **Ein UTF-7-Rundlauf über Text mit Leerzeichen dahinter prüft nichts.** Ein Leerzeichen beendet einen Base64-Lauf ohnehin. Erst mit einem Buchstaben direkt hinter dem Sonderzeichen wird sichtbar, dass der Lauf mit einem Strich geschlossen werden muss.
+
 **Was beim Encoding-Teil anders lief als geplant:**
 
 - **Der BOM wird als Codepoint abgeschnitten, nicht als Bytes.** Geplant war `getBomLength` je Encoding, also ein Byte-Muster je Encoding vor der Konvertierung. Jede Marke, die es gibt, ist aber **dieselbe** — das Zero Width No-Break Space, nur im Alphabet des jeweiligen Encodings buchstabiert. Nach der Konvertierung gibt es also genau eine Sache zu suchen und genau eine Stelle, an der gesucht wird. Bei UTF-7 ist das nicht nur bequemer, sondern der einzige Weg: `+/v8-` ist nur *eine* der erlaubten Schreibweisen, und ein `+/v8`, das direkt in weiteren Base64 übergeht, hat gar keine feste Bytelänge. In der Vtable steht deshalb `getBomBytes` statt `getBomLength` — nur zum Schreiben, denn zum Lesen braucht es sie nicht mehr.
@@ -487,8 +502,8 @@ Nachgeprüft wurde außerdem von Hand, was keine kopflose Prüfung zeigt: beide 
 - `PerfSubject_Editor` in `FUI_Performance`, im `--benchmark`-Modus messbar: Anzeigen, Scrollen, mit Lexer, mit Umbruch. Zahlen in Abschnitt 7.
 - Changelog `v1.0.0` im Header, im Ton der bestehenden Einträge, mit den gemessenen Zahlen.
 - `final_ui.h`: Changelog für die zwei Zusätze, Status-Absatz, und das stehengebliebene `@version v0.9.5` (`final_ui.h:185`) auf `FUI_VERSION_PATCH` bringen.
-- `README.md`: Zeile für `final_ui_texteditor.h`, Versionsspalte von `final_ui.h` (steht auf `0.9.5-beta`).
-- `final_game_tech.md`: Ordnerliste, Demoliste, Beschreibungen um `FUI_Editor`.
+- `README.md`: Zeile für `final_ui_texteditor.h`, Versionsspalte von `final_ui.h` (steht auf `0.9.5-beta`). `FUI_Editor` und `FUI_Diff` sind dort beide noch nicht genannt.
+- `final_game_tech.md`: Ordnerliste, Demoliste, Beschreibungen um `FUI_Editor` **und `FUI_Diff`**.
 
 **Abnahme:** `--benchmark` liefert eine Zahlentabelle, alle Dokumentationsstellen stimmen.
 
@@ -525,11 +540,13 @@ Der Editor gehört dem Aufrufer und wird nicht in `fuiWidgetState` gesucht — z
 
 ## 7. Demo und Performance
 
-### 7.1 `demos/FUI_Editor`
+### 7.1 `demos/FUI_Editor` und `demos/FUI_Diff`
 
 Eigenes Demo statt eines Panels in `FUI_Test`, weil ein Editor mit Randspalte, Statusleiste, Encoding-Umschalter, Lexer-Auswahl und Diff-Ansicht auf ein paar hundert Pixel nicht vorführbar ist.
 
 Aufbau wie `FUI_Test`: FPL + legacy OpenGL, `fui_font_stbtt.h`, `fui_backend_gl1.h`, `fui_input_fpl.h`. Es füllt sein Dokument aus `final_ui.h` selbst — die größte Datei zur Hand und zugleich das, wogegen der Editor sich messen lassen muss.
+
+`FUI_Diff` steht daneben und zeigt dasselbe Widget als Diff-Betrachter: `FUI_Diff` allein nimmt eine eingebaute Vorher/Nachher-Fassung, `FUI_Diff <alt> <neu>` zwei Dateien, `--side-by-side` startet in der Zwei-Spalten-Ansicht, `--selftest` läuft kopflos. Der Punkt daran ist, dass **nichts** am Add-on dafür geändert werden musste, was ein Diff-Modus wäre: es sind Zeilen-Dekorationen für den Zeilenhintergrund, Bereichs-Dekorationen für das, was sich *innerhalb* einer Zeile geändert hat, ein Gutter-Callback für die zwei Nummernspalten, und zwei Editoren, die über den Pixel-Scrolloffset aneinander hängen.
 
 ### 7.2 Der `--selftest`-Modus
 
