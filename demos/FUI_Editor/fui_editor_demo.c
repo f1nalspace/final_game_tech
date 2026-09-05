@@ -735,6 +735,506 @@ static bool DemoReadWholeFile(const char *filePath, uint8_t **outData, int32_t *
 	stop is, which rows a scroll offset puts in view - which is exactly the part of a widget that is worth
 	testing headlessly. What is left over is the drawing, and that is what the demo itself is for.
 */
+/*
+	Reads final_ui.h from wherever the working directory happens to be.
+
+	The build puts the binary anywhere between the repository root and four levels under it depending on
+	the generator, and a check that reads the repository's own source has to find it from all of them.
+*/
+static bool DemoReadSourceFile(uint8_t **outData, int32_t *outLength) {
+	const char *candidatePaths[] = {
+		DEMO_SOURCE_FILE_PATH,
+		"../" DEMO_SOURCE_FILE_PATH,
+		"../../" DEMO_SOURCE_FILE_PATH,
+		"../../../" DEMO_SOURCE_FILE_PATH,
+		"../../../../" DEMO_SOURCE_FILE_PATH,
+	};
+
+	*outData = fpl_null;
+	*outLength = 0;
+	size_t candidateIndex = 0;
+	while(candidateIndex < fplArrayCount(candidatePaths) && *outData == fpl_null) {
+		(void)DemoReadWholeFile(candidatePaths[candidateIndex], outData, outLength);
+		candidateIndex += 1;
+	}
+	return(*outData != fpl_null);
+}
+
+//! Compares two byte runs and says where they first differ, because "not equal" over 600 kilobytes is
+//! not something anybody can act on
+static int32_t FirstDifferingByte(const uint8_t *left, const uint8_t *right, const int32_t byteCount) {
+	for(int32_t byteIndex = 0; byteIndex < byteCount; ++byteIndex) {
+		if(left[byteIndex] != right[byteIndex]) {
+			return(byteIndex);
+		}
+	}
+	return(-1);
+}
+
+static void SelfTestUtf16(void) {
+	CheckSection("utf-16");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+
+	fuiEditorEncoding utf16LeEncoding = fuiEditorEncodingUtf16Le();
+	fuiEditorEncoding utf16BeEncoding = fuiEditorEncodingUtf16Be();
+
+	// A byte order mark, an ascii letter, an umlaut, and a codepoint that only fits in a surrogate pair.
+	const uint8_t littleEndianBytes[] = {
+		0xFFu, 0xFEu,
+		'h', 0x00u,
+		0xE4u, 0x00u,
+		0x3Du, 0xD8u, 0x00u, 0xDEu,
+	};
+	const char *expectedText = "h\xC3\xA4\xF0\x9F\x98\x80";
+	CHECK(fuiEditorLoadFromMemory(&editor, littleEndianBytes, (int32_t)sizeof(littleEndianBytes), &utf16LeEncoding));
+	CHECK_TEXT(&editor, expectedText);
+	CHECK(fuiEditorHasByteOrderMark(&editor));
+
+	// And back out again, mark included, byte for byte.
+	uint8_t savedBytes[32];
+	uint8_t *noDestination = fpl_null;
+	const int32_t noCapacity = 0;
+	int32_t savedLength = fuiEditorSaveToMemory(&editor, noDestination, noCapacity);
+	CHECK_I(savedLength, (int32_t)sizeof(littleEndianBytes));
+	int32_t writtenLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(writtenLength, savedLength);
+	CHECK_I(FirstDifferingByte(savedBytes, littleEndianBytes, savedLength), -1);
+
+	// A buffer that is too small is written NOTHING into, and still told how much it would have needed.
+	uint8_t tooSmallBuffer[4] = { 0xCCu, 0xCCu, 0xCCu, 0xCCu };
+	int32_t neededLength = fuiEditorSaveToMemory(&editor, tooSmallBuffer, (int32_t)sizeof(tooSmallBuffer));
+	CHECK_I(neededLength, savedLength);
+	CHECK(tooSmallBuffer[0] == 0xCCu && tooSmallBuffer[3] == 0xCCu);
+
+	// The same text the other way round, which is the only difference between the two.
+	const uint8_t bigEndianBytes[] = {
+		0xFEu, 0xFFu,
+		0x00u, 'h',
+		0x00u, 0xE4u,
+		0xD8u, 0x3Du, 0xDEu, 0x00u,
+	};
+	CHECK(fuiEditorLoadFromMemory(&editor, bigEndianBytes, (int32_t)sizeof(bigEndianBytes), &utf16BeEncoding));
+	CHECK_TEXT(&editor, expectedText);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)sizeof(bigEndianBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, bigEndianBytes, savedLength), -1);
+
+	// A high half whose partner never comes is not a character, and neither is a low half on its own.
+	const uint8_t orphanedHighBytes[] = { 0x3Du, 0xD8u, 'a', 0x00u };
+	CHECK(fuiEditorLoadFromMemory(&editor, orphanedHighBytes, (int32_t)sizeof(orphanedHighBytes), &utf16LeEncoding));
+	CHECK_TEXT(&editor, "\xEF\xBF\xBD" "a");
+
+	const uint8_t orphanedLowBytes[] = { 0x00u, 0xDEu, 'a', 0x00u };
+	CHECK(fuiEditorLoadFromMemory(&editor, orphanedLowBytes, (int32_t)sizeof(orphanedLowBytes), &utf16LeEncoding));
+	CHECK_TEXT(&editor, "\xEF\xBF\xBD" "a");
+
+	// An odd byte at the end is half a unit, which is no more a character than half a pair is.
+	const uint8_t oddLengthBytes[] = { 'a', 0x00u, 0x21u };
+	CHECK(fuiEditorLoadFromMemory(&editor, oddLengthBytes, (int32_t)sizeof(oddLengthBytes), &utf16LeEncoding));
+	CHECK_TEXT(&editor, "a\xEF\xBF\xBD");
+
+	fuiEditorRelease(&editor);
+}
+
+static void SelfTestUtf7(void) {
+	CheckSection("utf-7");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf7Encoding = fuiEditorEncodingUtf7();
+
+	// The example out of rfc 2152 itself, both ways round.
+	const char *rfcExampleBytes = "Hi Mom -+Jjo--!";
+	const char *rfcExampleText = "Hi Mom -\xE2\x98\xBA-!";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)rfcExampleBytes, (int32_t)strlen(rfcExampleBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, rfcExampleText);
+
+	uint8_t savedBytes[64];
+	int32_t savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(rfcExampleBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)rfcExampleBytes, savedLength), -1);
+
+	// Three codepoints in ONE run, which is where the bits of a unit stop lining up with characters.
+	const char *japaneseBytes = "+ZeVnLIqe-";
+	const char *japaneseText = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)japaneseBytes, (int32_t)strlen(japaneseBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, japaneseText);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(japaneseBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)japaneseBytes, savedLength), -1);
+
+	// The plus is the one plain ascii character that cannot stand for itself, because it opens a run.
+	const char *escapedPlusBytes = "1 +- 1";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)escapedPlusBytes, (int32_t)strlen(escapedPlusBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, "1 + 1");
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(escapedPlusBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)escapedPlusBytes, savedLength), -1);
+
+	// A run may be ended by any character that is not base64 at all, and that character then stands for
+	// itself rather than being swallowed the way the dash is.
+	const char *unterminatedRunBytes = "+AKM 1";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)unterminatedRunBytes, (int32_t)strlen(unterminatedRunBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, "\xC2\xA3 1");
+
+	// A surrogate pair straddling base64 characters, which is the case the pairing has to survive.
+	const char *pairBytes = "+2D3eAA-";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)pairBytes, (int32_t)strlen(pairBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, "\xF0\x9F\x98\x80");
+
+	// The mark, which utf-7 spells in its own alphabet rather than in raw bytes.
+	const char *markedBytes = "+/v8-hi";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)markedBytes, (int32_t)strlen(markedBytes), &utf7Encoding));
+	CHECK_TEXT(&editor, "hi");
+	CHECK(fuiEditorHasByteOrderMark(&editor));
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(markedBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)markedBytes, savedLength), -1);
+
+	fuiEditorRelease(&editor);
+}
+
+static void SelfTestSingleByteEncodings(void) {
+	CheckSection("latin-1 and windows-1252");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+
+	fuiEditorEncoding latin1Encoding = fuiEditorEncodingLatin1();
+	fuiEditorEncoding cp1252Encoding = fuiEditorEncodingCp1252();
+
+	// In latin-1 byte n IS codepoint n, so nothing can fail on the way in.
+	const uint8_t latin1Bytes[] = { 'a', 0xE4u, 0xFFu };
+	CHECK(fuiEditorLoadFromMemory(&editor, latin1Bytes, (int32_t)sizeof(latin1Bytes), &latin1Encoding));
+	CHECK_TEXT(&editor, "a\xC3\xA4\xC3\xBF");
+	CHECK(!fuiEditorHasByteOrderMark(&editor));
+
+	uint8_t savedBytes[16];
+	int32_t savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)sizeof(latin1Bytes));
+	CHECK_I(FirstDifferingByte(savedBytes, latin1Bytes, savedLength), -1);
+
+	// Windows-1252 fills the block latin-1 leaves as control codes - and five of the thirty two are
+	// unassigned even there.
+	const uint8_t windowsBytes[] = { 0x80u, 0x92u, 0x81u };
+	CHECK(fuiEditorLoadFromMemory(&editor, windowsBytes, (int32_t)sizeof(windowsBytes), &cp1252Encoding));
+	CHECK_TEXT(&editor, "\xE2\x82\xAC\xE2\x80\x99\xEF\xBF\xBD");
+
+	// The euro sign and the right single quote go back to the bytes they came from; the replacement
+	// character has no byte of its own and becomes a question mark.
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, 3);
+	CHECK_I(savedBytes[0], 0x80u);
+	CHECK_I(savedBytes[1], 0x92u);
+	CHECK_I(savedBytes[2], '?');
+
+	// The same euro sign is not in latin-1 at all, so writing it there is a question mark.
+	const char *euroSign = "\xE2\x82\xAC";
+	uint8_t *noDestination = fpl_null;
+	const int32_t noCapacity = 0;
+	int32_t latin1Length = latin1Encoding.fromUtf8(latin1Encoding.userData, euroSign, 3, noDestination, noCapacity);
+	CHECK_I(latin1Length, 1);
+	uint8_t latin1Out[2];
+	(void)latin1Encoding.fromUtf8(latin1Encoding.userData, euroSign, 3, latin1Out, (int32_t)sizeof(latin1Out));
+	CHECK_I(latin1Out[0], '?');
+
+	// And in windows-1252 the raw control block is spoken for, so a codepoint that lands IN it has no byte
+	// of its own however well it would fit in one.
+	const char *controlCodePoint = "\xC2\x81";
+	uint8_t windowsOut[2];
+	int32_t windowsLength = cp1252Encoding.fromUtf8(cp1252Encoding.userData, controlCodePoint, 2, windowsOut, (int32_t)sizeof(windowsOut));
+	CHECK_I(windowsLength, 1);
+	CHECK_I(windowsOut[0], '?');
+
+	fuiEditorRelease(&editor);
+}
+
+static void SelfTestEncodingDetection(void) {
+	CheckSection("detecting an encoding");
+
+	fuiEditorEncoding detectedEncoding;
+	const uint8_t utf8Marked[] = { 0xEFu, 0xBBu, 0xBFu, 'a' };
+	CHECK(fuiEditorDetectEncoding(utf8Marked, (int32_t)sizeof(utf8Marked), &detectedEncoding));
+	CHECK(strcmp(detectedEncoding.name, "UTF-8") == 0);
+
+	const uint8_t utf16LeMarked[] = { 0xFFu, 0xFEu, 'a', 0x00u };
+	CHECK(fuiEditorDetectEncoding(utf16LeMarked, (int32_t)sizeof(utf16LeMarked), &detectedEncoding));
+	CHECK(strcmp(detectedEncoding.name, "UTF-16 LE") == 0);
+
+	const uint8_t utf16BeMarked[] = { 0xFEu, 0xFFu, 0x00u, 'a' };
+	CHECK(fuiEditorDetectEncoding(utf16BeMarked, (int32_t)sizeof(utf16BeMarked), &detectedEncoding));
+	CHECK(strcmp(detectedEncoding.name, "UTF-16 BE") == 0);
+
+	const uint8_t utf7Marked[] = { '+', '/', 'v', '8', '-', 'a' };
+	CHECK(fuiEditorDetectEncoding(utf7Marked, (int32_t)sizeof(utf7Marked), &detectedEncoding));
+	CHECK(strcmp(detectedEncoding.name, "UTF-7") == 0);
+
+	// A plus that is not the start of a mark is just a plus, and a file with no mark at all is not guessed
+	// at - which is the whole point of answering false rather than picking something.
+	const uint8_t plainPlus[] = { '+', 'A', 'K', 'M', '-' };
+	CHECK(!fuiEditorDetectEncoding(plainPlus, (int32_t)sizeof(plainPlus), &detectedEncoding));
+
+	const uint8_t plainText[] = { 'h', 'e', 'l', 'l', 'o' };
+	CHECK(!fuiEditorDetectEncoding(plainText, (int32_t)sizeof(plainText), &detectedEncoding));
+
+	const uint8_t nothingAtAll[] = { 0x00u };
+	CHECK(!fuiEditorDetectEncoding(nothingAtAll, 0, &detectedEncoding));
+}
+
+static void SelfTestLineEndingsOnLoadAndSave(void) {
+	CheckSection("line endings through a load and a save");
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
+
+	/*
+		A classic macintosh text is carriage returns and nothing else. The document knows only the line
+		feed as an ending, so it would otherwise be ONE line - and a hundred thousand character line is
+		not a document anybody can work in.
+	*/
+	const char *macintoshBytes = "one\rtwo\rthree";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)macintoshBytes, (int32_t)strlen(macintoshBytes), &utf8Encoding));
+	CHECK_TEXT(&editor, "one\ntwo\nthree");
+	CHECK_I(fuiEditorGetLineCount(&editor), 3);
+	CHECK_I(fuiEditorGetEol(&editor), fuiEditorEol_Cr);
+
+	// What it arrived as is what it goes back out as.
+	uint8_t savedBytes[64];
+	int32_t savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(macintoshBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)macintoshBytes, savedLength), -1);
+
+	// Windows endings are left in the document as they are, because a carriage return in front of a line
+	// feed is part of the line it ends and the widget shows it as such.
+	const char *windowsBytes = "one\r\ntwo\r\n";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)windowsBytes, (int32_t)strlen(windowsBytes), &utf8Encoding));
+	CHECK_TEXT(&editor, "one\r\ntwo\r\n");
+	CHECK_I(fuiEditorGetLineCount(&editor), 3);
+	CHECK_I(fuiEditorGetEol(&editor), fuiEditorEol_CrLf);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen(windowsBytes));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)windowsBytes, savedLength), -1);
+
+	// Asked for unix endings, the same document writes them - which is what "convert line endings" is.
+	fuiEditorSetEol(&editor, fuiEditorEol_Lf);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, 8);
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)"one\ntwo\n", savedLength), -1);
+
+	// And the other way round.
+	const char *unixBytes = "one\ntwo\n";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)unixBytes, (int32_t)strlen(unixBytes), &utf8Encoding));
+	CHECK_I(fuiEditorGetEol(&editor), fuiEditorEol_Lf);
+	fuiEditorSetEol(&editor, fuiEditorEol_CrLf);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, 10);
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)"one\r\ntwo\r\n", savedLength), -1);
+
+	/*
+		Mixed is the one answer that does not name an ending to write, so it writes what is there.
+
+		Everything else makes all the lines agree - which is exactly what a status bar saying "Mixed" is
+		telling the caller will happen if they pick one.
+	*/
+	const char *mixedBytes = "one\r\ntwo\nthree\rfour";
+	CHECK(fuiEditorLoadFromMemory(&editor, (const uint8_t *)mixedBytes, (int32_t)strlen(mixedBytes), &utf8Encoding));
+	CHECK_I(fuiEditorGetEol(&editor), fuiEditorEol_Mixed);
+	CHECK_I(fuiEditorGetLineCount(&editor), 4);
+	savedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(savedLength, (int32_t)strlen("one\r\ntwo\nthree\nfour"));
+	CHECK_I(FirstDifferingByte(savedBytes, (const uint8_t *)"one\r\ntwo\nthree\nfour", savedLength), -1);
+
+	// A mark can be asked for on a document that arrived without one, and taken off one that did.
+	CHECK(!fuiEditorHasByteOrderMark(&editor));
+	fuiEditorSetByteOrderMark(&editor, true);
+	int32_t markedLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(markedLength, savedLength + 3);
+	CHECK_I(savedBytes[0], 0xEFu);
+
+	// An encoding with no mark of its own writes none whatever the flag says.
+	fuiEditorEncoding asciiEncoding = fuiEditorEncodingAscii();
+	fuiEditorSetEncoding(&editor, &asciiEncoding);
+	int32_t asciiLength = fuiEditorSaveToMemory(&editor, savedBytes, (int32_t)sizeof(savedBytes));
+	CHECK_I(asciiLength, savedLength);
+
+	fuiEditorRelease(&editor);
+}
+
+/*
+	Every encoding that can carry all of unicode, over a text that uses all of it.
+
+	final_ui.h is pure ascii, so the check that runs a real file through utf-16 never touches a multi byte
+	character or a surrogate pair at all. This one is built to: one line per plane's worth of codepoint,
+	thousands of them, out and back in again through each encoding in turn. Both directions are compared,
+	because a converter that is wrong in the SAME way both ways round would round trip perfectly and still
+	hand the document something nobody else can read.
+*/
+static void SelfTestEncodingRoundTrip(void) {
+	CheckSection("every encoding, out and back");
+
+	/*
+		Ascii, a latin letter, a codepoint that takes three bytes of utf-8, and one that takes a surrogate
+		pair - plus the line endings, the plus sign that utf-7 has to escape, and the backslash and tilde
+		that utf-7 does not let stand as themselves at all.
+
+		Every one of those is followed IMMEDIATELY by a letter, which is the case that a utf-7 run has to
+		be closed with a dash for: a letter is a base64 character, so a run that simply stopped would take
+		the letter after it into itself and hand back a different text entirely.
+	*/
+	const char *repeatedUnit = "ab \xC3\xA4x \xE2\x82\xACy \xE2\x98\xBAz \xF0\x9F\x98\x80w + \\q ~e\n";
+	const int32_t repeatCount = 500;
+	int32_t unitLength = (int32_t)strlen(repeatedUnit);
+	int32_t sourceLength = unitLength * repeatCount;
+	char *sourceText = (char *)malloc((size_t)sourceLength);
+	CHECK(sourceText != fpl_null);
+	if(sourceText == fpl_null) {
+		return;
+	}
+	for(int32_t repeatIndex = 0; repeatIndex < repeatCount; ++repeatIndex) {
+		memcpy(&sourceText[repeatIndex * unitLength], repeatedUnit, (size_t)unitLength);
+	}
+
+	fuiEditorEncoding encodings[4];
+	encodings[0] = fuiEditorEncodingUtf8();
+	encodings[1] = fuiEditorEncodingUtf16Le();
+	encodings[2] = fuiEditorEncodingUtf16Be();
+	encodings[3] = fuiEditorEncodingUtf7();
+
+	uint8_t *noDestination = fpl_null;
+	const int32_t noCapacity = 0;
+	for(size_t encodingIndex = 0; encodingIndex < fplArrayCount(encodings); ++encodingIndex) {
+		fuiEditorEncoding encoding = encodings[encodingIndex];
+		printf("  -- %s\n", encoding.name);
+
+		int32_t encodedLength = encoding.fromUtf8(encoding.userData, sourceText, sourceLength, noDestination, noCapacity);
+		CHECK(encodedLength > 0);
+		uint8_t *encodedBytes = (uint8_t *)malloc((size_t)encodedLength);
+		CHECK(encodedBytes != fpl_null);
+		if(encodedBytes == fpl_null) {
+			continue;
+		}
+		int32_t writtenLength = encoding.fromUtf8(encoding.userData, sourceText, sourceLength, encodedBytes, encodedLength);
+		CHECK_I(writtenLength, encodedLength);
+
+		// Through the editor rather than through the converter alone, so the load path is in the loop too.
+		fuiEditor editor;
+		fuiEditorInit(&editor, fpl_null);
+		CHECK(fuiEditorLoadFromMemory(&editor, encodedBytes, encodedLength, &encoding));
+		CHECK_I(fuiEditorGetTextLength(&editor), sourceLength);
+		const char *documentText = fuiEditorGetContiguousText(&editor);
+		CHECK_I(FirstDifferingByte((const uint8_t *)documentText, (const uint8_t *)sourceText, sourceLength), -1);
+
+		// And out again, which has to land on the very bytes it was loaded from.
+		int32_t savedLength = fuiEditorSaveToMemory(&editor, noDestination, noCapacity);
+		CHECK_I(savedLength, encodedLength);
+		uint8_t *savedBytes = (uint8_t *)malloc((size_t)savedLength);
+		CHECK(savedBytes != fpl_null);
+		if(savedBytes != fpl_null) {
+			(void)fuiEditorSaveToMemory(&editor, savedBytes, savedLength);
+			CHECK_I(FirstDifferingByte(savedBytes, encodedBytes, savedLength), -1);
+			free(savedBytes);
+		}
+
+		fuiEditorRelease(&editor);
+		free(encodedBytes);
+	}
+
+	free(sourceText);
+}
+
+/*
+	The acceptance check of iteration 7: a real file through utf-16 and back.
+
+	final_ui.h is encoded to utf-16 little endian with a mark - using the encoding's own writer, so the
+	bytes on the way in are the ones it would produce - loaded, and written back out. Nothing may differ.
+	Then one line is written into it, and NOTHING but that line may differ.
+*/
+static void SelfTestSavingAgainstFile(void) {
+	CheckSection("a file through utf-16 and back");
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	if(!DemoReadSourceFile(&fileData, &fileLength)) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	fuiEditorEncoding utf16LeEncoding = fuiEditorEncodingUtf16Le();
+	uint8_t *noDestination = fpl_null;
+	const int32_t noCapacity = 0;
+	const char *fileText = (const char *)fileData;
+	int32_t bodyLength = utf16LeEncoding.fromUtf8(utf16LeEncoding.userData, fileText, fileLength, noDestination, noCapacity);
+
+	const int32_t markLength = 2;
+	int32_t markedLength = markLength + bodyLength;
+	uint8_t *markedBytes = (uint8_t *)malloc((size_t)markedLength);
+	CHECK(markedBytes != fpl_null);
+	if(markedBytes == fpl_null) {
+		free(fileData);
+		return;
+	}
+	markedBytes[0] = 0xFFu;
+	markedBytes[1] = 0xFEu;
+	(void)utf16LeEncoding.fromUtf8(utf16LeEncoding.userData, fileText, fileLength, &markedBytes[markLength], bodyLength);
+
+	fuiEditor editor;
+	fuiEditorInit(&editor, fpl_null);
+	CHECK(fuiEditorLoadFromMemory(&editor, markedBytes, markedLength, &utf16LeEncoding));
+	CHECK(fuiEditorHasByteOrderMark(&editor));
+
+	// The document is the file again, byte for byte - the conversion went both ways without losing one.
+	CHECK_I(fuiEditorGetTextLength(&editor), fileLength);
+	const char *documentText = fuiEditorGetContiguousText(&editor);
+	CHECK_I(FirstDifferingByte((const uint8_t *)documentText, fileData, fileLength), -1);
+
+	int32_t savedLength = fuiEditorSaveToMemory(&editor, noDestination, noCapacity);
+	CHECK_I(savedLength, markedLength);
+	uint8_t *savedBytes = (uint8_t *)malloc((size_t)savedLength);
+	CHECK(savedBytes != fpl_null);
+	if(savedBytes != fpl_null) {
+		int32_t writtenLength = fuiEditorSaveToMemory(&editor, savedBytes, savedLength);
+		CHECK_I(writtenLength, savedLength);
+		CHECK_I(FirstDifferingByte(savedBytes, markedBytes, savedLength), -1);
+
+		// One line written into it, and nothing but that line may move.
+		const char *addedLine = "// a line that was not here before\n";
+		int32_t addedLength = (int32_t)strlen(addedLine);
+		const int32_t lineToWriteOn = 100;
+		int32_t insertOffset = fuiEditorGetLineStart(&editor, lineToWriteOn);
+		CHECK(fuiEditorInsert(&editor, insertOffset, addedLine, addedLength));
+
+		int32_t addedEncodedLength = utf16LeEncoding.fromUtf8(utf16LeEncoding.userData, addedLine, addedLength, noDestination, noCapacity);
+		int32_t changedLength = fuiEditorSaveToMemory(&editor, noDestination, noCapacity);
+		CHECK_I(changedLength, savedLength + addedEncodedLength);
+
+		uint8_t *changedBytes = (uint8_t *)malloc((size_t)changedLength);
+		CHECK(changedBytes != fpl_null);
+		if(changedBytes != fpl_null) {
+			(void)fuiEditorSaveToMemory(&editor, changedBytes, changedLength);
+
+			// Where the insert lands in the ENCODED bytes is not its document offset doubled - the file has
+			// characters in it that are more than one byte of utf-8 - so it is measured rather than guessed.
+			int32_t prefixEncodedLength = utf16LeEncoding.fromUtf8(utf16LeEncoding.userData, fileText, insertOffset, noDestination, noCapacity);
+			int32_t insertByteOffset = markLength + prefixEncodedLength;
+			CHECK_I(FirstDifferingByte(changedBytes, savedBytes, insertByteOffset), -1);
+
+			const uint8_t *changedTail = &changedBytes[insertByteOffset + addedEncodedLength];
+			const uint8_t *savedTail = &savedBytes[insertByteOffset];
+			int32_t tailLength = savedLength - insertByteOffset;
+			CHECK_I(FirstDifferingByte(changedTail, savedTail, tailLength), -1);
+			free(changedBytes);
+		}
+		free(savedBytes);
+	}
+
+	fuiEditorRelease(&editor);
+	free(markedBytes);
+	free(fileData);
+}
+
 static void SelfTestViewHelpers(void) {
 	CheckSection("view helpers");
 
@@ -4515,6 +5015,13 @@ static int RunSelfTest(void) {
 	SelfTestLineEndings();
 	SelfTestUtf8();
 	SelfTestEncodings();
+	SelfTestUtf16();
+	SelfTestUtf7();
+	SelfTestSingleByteEncodings();
+	SelfTestEncodingDetection();
+	SelfTestLineEndingsOnLoadAndSave();
+	SelfTestEncodingRoundTrip();
+	SelfTestSavingAgainstFile();
 	SelfTestViewHelpers();
 	SelfTestContiguousRuns();
 	SelfTestCaretLine();
@@ -4577,6 +5084,31 @@ typedef enum EditorDemoMonoFace {
 	EditorDemoMonoFace_Count,
 } EditorDemoMonoFace;
 
+/*
+	Every encoding the demo can write the document out in.
+
+	The document itself is utf-8 whichever of these is picked - an encoding runs when text is loaded and
+	when it is saved and at no other moment, which is exactly what makes a list like this a one line change
+	rather than a mode the whole editor has to know about.
+*/
+static fuiEditorEncoding DemoGetEncoding(const int32_t encodingIndex) {
+	switch(encodingIndex) {
+		case 1: return(fuiEditorEncodingAscii());
+		case 2: return(fuiEditorEncodingUtf16Le());
+		case 3: return(fuiEditorEncodingUtf16Be());
+		case 4: return(fuiEditorEncodingUtf7());
+		case 5: return(fuiEditorEncodingLatin1());
+		case 6: return(fuiEditorEncodingCp1252());
+		default: return(fuiEditorEncodingUtf8());
+	}
+}
+
+//! How many of them there are
+#define DEMO_ENCODING_COUNT 7
+
+//! Which line endings the demo can write, in the order the button walks them
+static const fuiEditorEol DemoEolChoices[4] = { fuiEditorEol_Lf, fuiEditorEol_CrLf, fuiEditorEol_Cr, fuiEditorEol_Mixed };
+
 typedef struct EditorDemoState {
 	//! The document, which is all there is of the editor so far
 	fuiEditor editor;
@@ -4597,6 +5129,12 @@ typedef struct EditorDemoState {
 	char editDescription[192];
 	//! What the last save came to, and whether what was written read back identical
 	char saveDescription[256];
+	//! Which of the encodings above the document is written out in
+	int32_t activeEncodingIndex;
+	//! Which of the line endings above saving spells, as an index into DemoEolChoices
+	int32_t activeEolIndex;
+	//! Whether saving puts a byte order mark in front, mirrored onto the editor whenever it is clicked
+	bool wantsByteOrderMark;
 	//! What the last search came to, worked out over the baseline the same way grep would
 	char searchDescription[192];
 	//! Whether the C lexer is installed
@@ -4816,6 +5354,25 @@ static bool DemoReadWholeFile(const char *filePath, uint8_t **outData, int32_t *
 //! Defined below, beside the saving it keeps the description for
 static void DemoOnEditorChange(fuiEditor *editor, const fuiEditorChange *change, void *userData);
 
+/*
+	Puts the three encoding buttons on what the document actually arrived with.
+
+	The load is what decides these, not the toolbar - so a document that came in as windows text with a
+	mark in front of it has to have the buttons SAYING so before anybody presses save.
+*/
+static void DemoSyncEncodingChoices(EditorDemoState *demo) {
+	demo->wantsByteOrderMark = fuiEditorHasByteOrderMark(&demo->editor);
+
+	fuiEditorEol documentEol = fuiEditorGetEol(&demo->editor);
+	int32_t choiceCount = (int32_t)fplArrayCount(DemoEolChoices);
+	for(int32_t choiceIndex = 0; choiceIndex < choiceCount; ++choiceIndex) {
+		if(DemoEolChoices[choiceIndex] == documentEol) {
+			demo->activeEolIndex = choiceIndex;
+			break;
+		}
+	}
+}
+
 static void DemoInit(EditorDemoState *demo) {
 	fplClearStruct(demo);
 	demo->isRunning = true;
@@ -4863,6 +5420,7 @@ static void DemoInit(EditorDemoState *demo) {
 		if(DemoReadWholeFile(candidatePath, &fileData, &fileLength)) {
 			fuiEditorEncoding utf8Encoding = fuiEditorEncodingUtf8();
 			fuiEditorLoadFromMemory(&demo->editor, fileData, fileLength, &utf8Encoding);
+			DemoSyncEncodingChoices(demo);
 			DemoTakeBaseline(demo, fileData, fileLength);
 			free(fileData);
 			fplStringFormat(demo->sourceDescription, fplArrayCount(demo->sourceDescription), "Loaded %s (%d bytes)", candidatePath, (int)fileLength);
@@ -4949,9 +5507,14 @@ static bool DemoWriteWholeFile(const char *filePath, const void *data, const int
 	The acceptance criterion of this iteration, as a button.
 
 	"It saved" and "what came out is what was in there" are two different claims, and only the second one is
-	worth making - so what was written is read straight back in and compared byte for byte. It goes to a
-	file of its OWN rather than back over the source: the document on screen is this repository's own
-	final_ui.h, and a demo that overwrites the file it is showing is a demo nobody runs twice.
+	worth making - so what was written is read straight back in, compared byte for byte against what the
+	editor produced, and then loaded into a SECOND editor through the same encoding and compared against the
+	document itself. The middle step catches a file that was written wrong; the last one catches an encoding
+	that is wrong in the same way in both directions, which a round trip alone would never notice.
+
+	It goes to a file of its OWN rather than back over the source: the document on screen is this
+	repository's own final_ui.h, and a demo that overwrites the file it is showing is a demo nobody runs
+	twice.
 */
 static void DemoSaveAndVerify(EditorDemoState *demo) {
 	int32_t documentLength = fuiEditorGetTextLength(&demo->editor);
@@ -4960,9 +5523,25 @@ static void DemoSaveAndVerify(EditorDemoState *demo) {
 		return;
 	}
 
-	const char *documentText = fuiEditorGetContiguousText(&demo->editor);
-	if(!DemoWriteWholeFile(DEMO_SAVE_FILE_PATH, documentText, documentLength)) {
+	uint8_t *noDestination = fpl_null;
+	const int32_t noCapacity = 0;
+	int32_t encodedLength = fuiEditorSaveToMemory(&demo->editor, noDestination, noCapacity);
+	if(encodedLength <= 0) {
+		fplCopyString("The encoding wrote nothing at all", demo->saveDescription, fplArrayCount(demo->saveDescription));
+		return;
+	}
+
+	uint8_t *encodedBytes = (uint8_t *)malloc((size_t)encodedLength);
+	if(encodedBytes == fpl_null) {
+		fplCopyString("Out of memory while encoding", demo->saveDescription, fplArrayCount(demo->saveDescription));
+		return;
+	}
+	(void)fuiEditorSaveToMemory(&demo->editor, encodedBytes, encodedLength);
+
+	const char *encodedText = (const char *)encodedBytes;
+	if(!DemoWriteWholeFile(DEMO_SAVE_FILE_PATH, encodedText, encodedLength)) {
 		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Could not write %s", DEMO_SAVE_FILE_PATH);
+		free(encodedBytes);
 		return;
 	}
 
@@ -4970,24 +5549,57 @@ static void DemoSaveAndVerify(EditorDemoState *demo) {
 	int32_t savedLength = 0;
 	if(!DemoReadWholeFile(DEMO_SAVE_FILE_PATH, &savedData, &savedLength)) {
 		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Wrote %s but could not read it back", DEMO_SAVE_FILE_PATH);
+		free(encodedBytes);
 		return;
 	}
 
-	bool lengthsMatch = (savedLength == documentLength);
+	bool lengthsMatch = savedLength == encodedLength;
 	bool bytesMatch = false;
 	if(lengthsMatch) {
-		int comparison = memcmp(savedData, documentText, (size_t)documentLength);
-		bytesMatch = (comparison == 0);
+		int comparison = memcmp(savedData, encodedBytes, (size_t)encodedLength);
+		bytesMatch = comparison == 0;
 	}
-	free(savedData);
+	free(encodedBytes);
 
 	if(!lengthsMatch || !bytesMatch) {
-		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "MISMATCH: wrote %d bytes, read back %d", (int)documentLength, (int)savedLength);
+		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "MISMATCH: wrote %d bytes, read back %d", (int)encodedLength, (int)savedLength);
+		free(savedData);
+		return;
+	}
+
+	// And the other way round: the file is read as the encoding it was written in, and what comes out has
+	// to be the document again.
+	fuiEditorEncoding encoding = DemoGetEncoding(demo->activeEncodingIndex);
+	fuiEditor readBackEditor;
+	bool didInit = fuiEditorInit(&readBackEditor, fpl_null);
+	bool didLoad = didInit && fuiEditorLoadFromMemory(&readBackEditor, savedData, savedLength, &encoding);
+	free(savedData);
+
+	bool documentsMatch = false;
+	int32_t readBackLength = 0;
+	if(didLoad) {
+		readBackLength = fuiEditorGetTextLength(&readBackEditor);
+		if(readBackLength == documentLength) {
+			const char *readBackText = fuiEditorGetContiguousText(&readBackEditor);
+			const char *documentText = fuiEditorGetContiguousText(&demo->editor);
+			int comparison = memcmp(readBackText, documentText, (size_t)documentLength);
+			documentsMatch = comparison == 0;
+		}
+	}
+	if(didInit) {
+		fuiEditorRelease(&readBackEditor);
+	}
+
+	if(!documentsMatch) {
+		fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Wrote %d bytes, but reading them back gave %d characters instead of %d", (int)encodedLength, (int)readBackLength, (int)documentLength);
 		return;
 	}
 
 	fuiEditorClearModified(&demo->editor);
-	fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Saved %d bytes to %s and read them back identical", (int)documentLength, DEMO_SAVE_FILE_PATH);
+	const char *encodingName = encoding.name;
+	fuiEditorEol documentEol = fuiEditorGetEol(&demo->editor);
+	const char *eolName = fuiEditorEolGetName(documentEol);
+	fplStringFormat(demo->saveDescription, fplArrayCount(demo->saveDescription), "Saved %d characters as %d bytes of %s with %s endings, and read them back identical", (int)documentLength, (int)encodedLength, encodingName, eolName);
 }
 
 /*
@@ -5252,6 +5864,44 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 
 		fuiRect saveNoteRect = fuiLayoutRemaining(ui);
 		fuiLabel(ui, saveNoteRect, demo->saveDescription);
+	}
+	fuiEndStack(ui);
+
+	// What THIS iteration added: the document is utf-8 whatever is picked here, and these three say only
+	// what SAVING writes - which is why none of them touches the text on screen.
+	fuiRect encodingRow = fuiLayoutSlot(ui, rowHeight);
+	fuiBeginStackAt(ui, "encoding", fuiAxis_Horizontal, encodingRow, rowSpacing);
+	{
+		fuiEditorEncoding activeEncoding = DemoGetEncoding(demo->activeEncodingIndex);
+		char encodingButtonLabel[128];
+		fplStringFormat(encodingButtonLabel, fplArrayCount(encodingButtonLabel), "Save as: %s", activeEncoding.name);
+
+		fuiRect encodingRect = fuiLayoutSlot(ui, wideButtonWidth / 1.5f);
+		if(fuiButton(ui, encodingRect, encodingButtonLabel)) {
+			demo->activeEncodingIndex = (demo->activeEncodingIndex + 1) % DEMO_ENCODING_COUNT;
+			fuiEditorEncoding pickedEncoding = DemoGetEncoding(demo->activeEncodingIndex);
+			fuiEditorSetEncoding(&demo->editor, &pickedEncoding);
+		}
+
+		fuiEditorEol activeEol = DemoEolChoices[demo->activeEolIndex];
+		const char *activeEolName = fuiEditorEolGetName(activeEol);
+		char eolButtonLabel[128];
+		fplStringFormat(eolButtonLabel, fplArrayCount(eolButtonLabel), "Line endings: %s", activeEolName);
+
+		fuiRect eolRect = fuiLayoutSlot(ui, wideButtonWidth / 1.5f);
+		if(fuiButton(ui, eolRect, eolButtonLabel)) {
+			int32_t choiceCount = (int32_t)fplArrayCount(DemoEolChoices);
+			demo->activeEolIndex = (demo->activeEolIndex + 1) % choiceCount;
+			fuiEditorSetEol(&demo->editor, DemoEolChoices[demo->activeEolIndex]);
+		}
+
+		fuiRect markRect = fuiLayoutSlot(ui, toggleWidth + rowSpacing);
+		if(fuiCheckbox(ui, markRect, "Byte order mark", &demo->wantsByteOrderMark)) {
+			fuiEditorSetByteOrderMark(&demo->editor, demo->wantsByteOrderMark);
+		}
+
+		fuiRect encodingNoteRect = fuiLayoutRemaining(ui);
+		fuiLabel(ui, encodingNoteRect, "The document stays utf-8 - only what is written out changes");
 	}
 	fuiEndStack(ui);
 

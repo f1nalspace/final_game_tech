@@ -22,9 +22,9 @@ colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
 Status: under construction. The view is there and can be read, scrolled, selected from, copied out
-of, coloured by a lexer, TYPED into, TAKEN BACK and SEARCHED - undo, redo, indenting, duplicating,
-moving lines, find, replace and go to line are in; other encodings and word wrap are not yet. See
-the changelog for what is.
+of, coloured by a lexer, TYPED into, TAKEN BACK, SEARCHED and SAVED - undo, redo, indenting,
+duplicating, moving lines, find, replace, go to line and seven encodings are in; word wrap is not
+yet. See the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -33,7 +33,9 @@ the changelog for what is.
 - Include final_ui.h BEFORE this file. It is a hard prerequisite.
 - Define FUI_TEXTEDITOR_IMPLEMENTATION in exactly ONE translation unit before including this file.
 - Create one fuiEditor per document with fuiEditorInit(), pass fui_null as allocator to use malloc/free.
-- Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory().
+- Fill it with fuiEditorSetText() or fuiEditorLoadFromMemory(), and write it back out with
+  fuiEditorSaveToMemory() - which puts the encoding, the byte order mark and the line endings it arrived
+  with back, so a file that was not touched comes out of it byte for byte.
 - Draw it once a frame with fuiTextEditor(), which is where everything about the view is remembered.
 - Read the caret and the selection back with fuiEditorGetCaretOffset() and fuiEditorCopySelection().
 - Let it be typed into, or do not - fuiEditorConfig.toggles.isReadOnly locks every writing branch there is.
@@ -145,6 +147,45 @@ SOFTWARE.
 /*!
 	@page page_texteditor_changelog Changelog
 	@tableofcontents
+
+	# v0.8.0:
+	It can be read from and written back to something other than utf-8 now. Everything up to here treated
+	the outside world as though it spelled text the way the document does; this is the iteration that puts a
+	converter at each end and leaves everything in between exactly as it was.
+
+	- New: FIVE MORE ENCODINGS - fuiEditorEncodingUtf16Le, fuiEditorEncodingUtf16Be, fuiEditorEncodingUtf7,
+	  fuiEditorEncodingLatin1 and fuiEditorEncodingCp1252, beside the utf-8 and ascii that were already
+	  there. The document is still ALWAYS utf-8: an encoding runs when text is loaded and when it is saved
+	  and at no other moment, which is what keeps measuring, drawing, searching and moving the caret from
+	  ever having to know one exists.
+	- New: fuiEditorSaveToMemory, which writes the whole document out through the encoding it was loaded
+	  with - the byte order mark included when there was one, and every line ending spelled the way
+	  fuiEditorGetEol says. A file that is loaded and saved without being touched comes back byte for byte;
+	  one that is loaded and CHANGED differs only where it was changed.
+	- New: fuiEditorGetEncoding, fuiEditorSetEncoding, fuiEditorHasByteOrderMark and
+	  fuiEditorSetByteOrderMark, so what a save writes can be picked rather than only inherited. None of
+	  them moves a byte of the document - they say what LEAVING it looks like and nothing else.
+	- New: fuiEditorDetectEncoding, which reads a byte order mark and answers which encoding wrote it. A
+	  mark and nothing else: guessing an encoding from the content of a file that carries none is a
+	  statistics problem rather than a lookup, and a caller who wants one is better served writing it than
+	  being handed a guess dressed up as an answer.
+	- Changed: A byte order mark is now dropped as a CODEPOINT after the conversion rather than as bytes
+	  before it. Every mark there is - the three bytes of utf-8, the two of utf-16, the base64 run of utf-7 -
+	  is one and the same zero width no-break space spelled in the encoding's own alphabet, so once the
+	  conversion is through there is exactly one thing to look for and one place to look for it. That took
+	  fuiEditorEncoding.getBomLength out of the vtable and put getBomBytes in its place, which is only ever
+	  written with. It also settles utf-7, whose mark is not a fixed byte pattern at all.
+	- Changed: A CARRIAGE RETURN that is not followed by a line feed becomes one on the way in. Only a line
+	  feed ends a line in the document and a carriage return in front of one belongs to the line it ends, so
+	  a classic macintosh text would otherwise arrive as a single line of however many thousand characters
+	  it holds. What it arrived AS is kept, so saving puts the carriage returns back. Windows endings are
+	  left alone, because the document understands those as they stand and shows them per line.
+	- Changed: fuiEditorEol_Mixed writes the endings exactly as they stand, and every other setting makes
+	  all the lines agree - which is what a status bar saying "Mixed" is telling the caller will happen if
+	  they pick one. So fuiEditorSetEol is now "convert line endings" as well as "remember what to write".
+	- Changed: The editor's own status line says BOM beside the encoding when there is one, because a mark
+	  is not so much a thing a document has as a way the encoding in front of it is written down.
+	- Changed: Nothing was needed in final_ui.h.
 
 	# v0.7.0:
 	It can be searched now. The document has been readable since iteration 1 and writable since iteration 4;
@@ -481,7 +522,7 @@ SOFTWARE.
 
 //! Version of this add-on, so an application can report which build it was compiled against
 #define FUI_TEXTEDITOR_VERSION_MAJOR 0
-#define FUI_TEXTEDITOR_VERSION_MINOR 7
+#define FUI_TEXTEDITOR_VERSION_MINOR 8
 #define FUI_TEXTEDITOR_VERSION_PATCH 0
 
 //! Full version as a string literal, in the form of "major.minor.patch"
@@ -599,12 +640,16 @@ fui_api const char *fuiEditorEolGetBytes(const fuiEditorEol eol, int32_t *outLen
 * @note Both converters follow the same sizing rule: when destination is null, or destinationCapacity is
 *       too small, they write NOTHING and still return how many bytes the whole result would take. So a
 *       caller asks once with no buffer, allocates, and asks again.
+* @note A converter does NOT have to know about byte order marks. Every mark there is spells the SAME
+*       codepoint - the zero width no-break space - so a mark at the front comes out of any converter as
+*       that codepoint, and @ref fuiEditorLoadFromMemory drops it there, once, for all of them.
 */
 typedef struct fuiEditorEncoding {
 	//! What this encoding is called, for a status bar and for a menu
 	const char *name;
-	//! How many bytes of byte order mark sit at the front of the data, zero when there is none
-	int32_t (*getBomLength)(void *userData, const uint8_t *data, const int32_t dataLength);
+	//! The byte order mark this encoding spells the zero width no-break space as, or null when it has
+	//! none of its own. Only ever WRITTEN with - a mark on the way IN is dropped as a codepoint
+	const uint8_t *(*getBomBytes)(void *userData, int32_t *outLength);
 	//! Converts data into utf-8, returning how many bytes the result takes
 	int32_t (*toUtf8)(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity);
 	//! Converts utf-8 back into data, returning how many bytes the result takes
@@ -628,6 +673,57 @@ fui_api fuiEditorEncoding fuiEditorEncodingUtf8(void);
 *       above 127 becomes a question mark on the way out.
 */
 fui_api fuiEditorEncoding fuiEditorEncodingAscii(void);
+
+/**
+* @brief Returns the utf-16 little endian encoding.
+* @return Returns the encoding @ref fuiEditorEncoding.
+* @note A surrogate half with nothing to pair with becomes the replacement character rather than being
+*       carried through, because half a pair is not a character and utf-8 has no way to spell one.
+*/
+fui_api fuiEditorEncoding fuiEditorEncodingUtf16Le(void);
+
+/**
+* @brief Returns the utf-16 big endian encoding.
+* @return Returns the encoding @ref fuiEditorEncoding.
+*/
+fui_api fuiEditorEncoding fuiEditorEncodingUtf16Be(void);
+
+/**
+* @brief Returns the utf-7 encoding, the seven bit one that spells everything else in base64.
+* @return Returns the encoding @ref fuiEditorEncoding.
+* @note Writing it back out is not byte for byte what was read: a run may legally end without its dash
+*       and the optional direct characters may legally be shifted, and this one always writes the dash
+*       and never shifts what it does not have to. What comes out reads back as the same text.
+*/
+fui_api fuiEditorEncoding fuiEditorEncodingUtf7(void);
+
+/**
+* @brief Returns the latin-1 encoding, in which byte n is codepoint n and nothing else.
+* @return Returns the encoding @ref fuiEditorEncoding.
+* @note Every one of the 256 bytes means something here, so nothing can fail on the way IN. On the way
+*       out a codepoint above 255 becomes a question mark.
+*/
+fui_api fuiEditorEncoding fuiEditorEncodingLatin1(void);
+
+/**
+* @brief Returns the windows-1252 encoding, which is latin-1 with the control block filled in.
+* @return Returns the encoding @ref fuiEditorEncoding.
+* @note The 0x80 to 0x9F block holds the quotes, dashes and the euro sign that latin-1 leaves as control
+*       codes. Five of the thirty two are unassigned and become the replacement character.
+*/
+fui_api fuiEditorEncoding fuiEditorEncodingCp1252(void);
+
+/**
+* @brief Works out which encoding wrote a byte order mark at the front of some data.
+* @param[in] data The bytes to look at.
+* @param[in] dataLength Length of the data in bytes.
+* @param[out] outEncoding Receives the encoding @ref fuiEditorEncoding, untouched when there is no mark.
+* @return Returns true when a byte order mark was found and named an encoding.
+* @note A mark and nothing else. Guessing an encoding from the CONTENT of a file that carries no mark is
+*       a statistics problem rather than a lookup, and is the caller's to solve - which is why a file
+*       without one answers false here rather than being guessed at.
+*/
+fui_api bool fuiEditorDetectEncoding(const uint8_t *data, const int32_t dataLength, fuiEditorEncoding *outEncoding);
 
 // ****************************************************************************
 //
@@ -1171,6 +1267,8 @@ typedef struct fuiEditor {
 	fuiEditorEncoding encoding;
 	//! Which line ending the text arrived with, which is what saving it writes
 	fuiEditorEol eol;
+	//! Whether the text arrived with a byte order mark, which is what saving it puts back
+	bool hasByteOrderMark;
 	//! Bumped by every change to the text, so anything worked out from the document can tell that it went stale
 	int32_t version;
 	//! Whether anything has been written since the document was filled or the flag was last cleared
@@ -1295,8 +1393,59 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 * @param[in] encoding Reference to the encoding @ref fuiEditorEncoding to read it with, or null for utf-8.
 * @return Returns true when the text was converted and fit.
 * @note The encoding is remembered on the editor, so saving converts back to what was loaded.
+* @note A byte order mark is dropped, and remembered - every encoding spells the same codepoint for it, so
+*       it is looked for as that CODEPOINT once the conversion is through rather than as bytes beforehand.
+* @note A carriage return that is NOT followed by a line feed becomes one, because the document knows only
+*       the line feed as an ending and a classic macintosh text would otherwise be one enormous line.
+*       @ref fuiEditorGetEol still reports the CR it arrived as, and saving writes it back that way.
 */
 fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, const int32_t dataLength, const fuiEditorEncoding *encoding);
+
+/**
+* @brief Writes the whole document out in the encoding it is to be saved with.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[out] destination Receives the bytes, or null to only ask for the length.
+* @param[in] destinationCapacity Size of the destination in bytes.
+* @return Returns how many bytes the whole result takes, whether or not it fit.
+* @note Follows the same sizing rule the converters do: with no buffer, or with one that is too small,
+*       NOTHING is written and the length still comes back. So a caller asks once, allocates, asks again.
+* @note What comes out is the byte order mark the document arrived with, if it had one, and every line
+*       ending spelled the way @ref fuiEditorGetEol says - so a file that is loaded and saved without being
+*       touched comes back byte for byte, and one that is loaded and CHANGED differs only where it was.
+* @note @ref fuiEditorEol_Mixed writes the endings exactly as they stand, because "mixed" is the one
+*       answer that does not name an ending to write. Every other one makes all the lines agree.
+*/
+fui_api int32_t fuiEditorSaveToMemory(fuiEditor *editor, uint8_t *destination, const int32_t destinationCapacity);
+
+/**
+* @brief Returns which encoding the document is to be saved with.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns a reference to the encoding @ref fuiEditorEncoding, which lives on the editor, or null.
+*/
+fui_api const fuiEditorEncoding *fuiEditorGetEncoding(const fuiEditor *editor);
+
+/**
+* @brief Sets which encoding the document is to be saved with.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] encoding Reference to the encoding @ref fuiEditorEncoding, or null for utf-8.
+* @note The document itself does not move - it is utf-8 whatever this says. Only saving is affected.
+*/
+fui_api void fuiEditorSetEncoding(fuiEditor *editor, const fuiEditorEncoding *encoding);
+
+/**
+* @brief Returns whether the document arrived with a byte order mark, which is what saving puts back.
+* @param[in] editor Reference to the editor @ref fuiEditor.
+* @return Returns true when there was one.
+*/
+fui_api bool fuiEditorHasByteOrderMark(const fuiEditor *editor);
+
+/**
+* @brief Sets whether saving writes a byte order mark in front of the document.
+* @param[in,out] editor Reference to the editor @ref fuiEditor.
+* @param[in] hasByteOrderMark True to write one, false to leave it off.
+* @note An encoding with no mark of its own - ascii, latin-1 - writes none whatever this says.
+*/
+fui_api void fuiEditorSetByteOrderMark(fuiEditor *editor, const bool hasByteOrderMark);
 
 /**
 * @brief Returns how many bytes the document holds.
@@ -2237,23 +2386,111 @@ fui_inline fuiEditorEol fuiEditor__DetectEol(const char *text, const int32_t tex
 	return(fuiEditorEol_Lf);
 }
 
+/*
+	Turns every carriage return that is NOT followed by a line feed into one, in place and in one pass.
+
+	The document understands exactly one ending, the line feed, and treats a carriage return in front of
+	one as part of the line it ends. A classic macintosh text - carriage returns and nothing else - would
+	therefore arrive as one single line of a hundred thousand characters, which is not a document anybody
+	can work in. What it ARRIVED as is kept on the editor, so saving puts the carriage returns back.
+*/
+fui_inline void fuiEditor__NormalizeLoneCarriageReturns(char *text, const int32_t textLength) {
+	int32_t scanOffset = 0;
+	while(scanOffset < textLength) {
+		bool isCarriageReturn = text[scanOffset] == '\r';
+		if(isCarriageReturn) {
+			bool isFollowedByLineFeed = ((scanOffset + 1) < textLength) && (text[scanOffset + 1] == '\n');
+			if(!isFollowedByLineFeed) {
+				text[scanOffset] = '\n';
+			}
+		}
+		scanOffset += 1;
+	}
+}
+
+/*
+	Writes a utf-8 text out with every line ending spelled the way it is to be saved with.
+
+	Same sizing rule as the converters: with no buffer, or one too small, nothing is written and the length
+	still comes back. outIsUnchanged says whether the counting pass found anything to change at all - which
+	is what lets a save of the common case go straight out of the document without a copy in between.
+*/
+static int32_t fuiEditor__RewriteEol(const char *text, const int32_t textLength, const fuiEditorEol eol, char *destination, const int32_t destinationCapacity, bool *outIsUnchanged) {
+	bool isUnchanged = true;
+	if(outIsUnchanged != fui_null) {
+		*outIsUnchanged = true;
+	}
+	if(text == fui_null || textLength <= 0) {
+		return(0);
+	}
+
+	// "Mixed" is the one answer that does not name an ending to write, so it writes what is there.
+	if(eol == fuiEditorEol_Mixed) {
+		bool thereIsRoom = (destination != fui_null) && (textLength <= destinationCapacity);
+		if(thereIsRoom) {
+			FUI_TEXTEDITOR_MEMCPY(destination, text, (size_t)textLength);
+		}
+		return(textLength);
+	}
+
+	int32_t endingLength = 0;
+	const char *endingBytes = fuiEditorEolGetBytes(eol, &endingLength);
+
+	int32_t writtenLength = 0;
+	int32_t readOffset = 0;
+	while(readOffset < textLength) {
+		char currentByte = text[readOffset];
+		bool isCarriageReturnLineFeed = (currentByte == '\r') && ((readOffset + 1) < textLength) && (text[readOffset + 1] == '\n');
+		bool isLineFeed = currentByte == '\n';
+		if(!isCarriageReturnLineFeed && !isLineFeed) {
+			bool thereIsRoom = (destination != fui_null) && ((writtenLength + 1) <= destinationCapacity);
+			if(thereIsRoom) {
+				destination[writtenLength] = currentByte;
+			}
+			writtenLength += 1;
+			readOffset += 1;
+			continue;
+		}
+
+		int32_t wasSpelledIn = isCarriageReturnLineFeed ? 2 : 1;
+		bool isAlreadyRight = false;
+		if(wasSpelledIn == endingLength) {
+			int32_t difference = FUI_TEXTEDITOR_MEMCMP(&text[readOffset], endingBytes, (size_t)endingLength);
+			isAlreadyRight = difference == 0;
+		}
+		if(!isAlreadyRight) {
+			isUnchanged = false;
+		}
+		bool thereIsRoom = (destination != fui_null) && ((writtenLength + endingLength) <= destinationCapacity);
+		if(thereIsRoom) {
+			FUI_TEXTEDITOR_MEMCPY(&destination[writtenLength], endingBytes, (size_t)endingLength);
+		}
+		writtenLength += endingLength;
+		readOffset += wasSpelledIn;
+	}
+
+	if(outIsUnchanged != fui_null) {
+		*outIsUnchanged = isUnchanged;
+	}
+	return(writtenLength);
+}
+
 // ----------------------------------------------------------------------------
 // > Encodings
 // ----------------------------------------------------------------------------
 
-//! The utf-8 byte order mark, which is legal but carries no information and is dropped on the way in
+//! The byte order marks, which are one and the same codepoint spelled in each encoding's own way
 static const uint8_t fuiEditor__Utf8ByteOrderMark[3] = { 0xEFu, 0xBBu, 0xBFu };
+static const uint8_t fuiEditor__Utf16LeByteOrderMark[2] = { 0xFFu, 0xFEu };
+static const uint8_t fuiEditor__Utf16BeByteOrderMark[2] = { 0xFEu, 0xFFu };
+static const uint8_t fuiEditor__Utf7ByteOrderMark[5] = { '+', '/', 'v', '8', '-' };
 
-fui_inline int32_t fuiEditor__Utf8GetBomLength(void *userData, const uint8_t *data, const int32_t dataLength) {
+fui_inline const uint8_t *fuiEditor__Utf8GetBomBytes(void *userData, int32_t *outLength) {
 	(void)userData;
-	if(data == fui_null || dataLength < 3) {
-		return(0);
+	if(outLength != fui_null) {
+		*outLength = (int32_t)sizeof(fuiEditor__Utf8ByteOrderMark);
 	}
-	bool startsWithMark = (data[0] == fuiEditor__Utf8ByteOrderMark[0]) && (data[1] == fuiEditor__Utf8ByteOrderMark[1]) && (data[2] == fuiEditor__Utf8ByteOrderMark[2]);
-	if(startsWithMark) {
-		return(3);
-	}
-	return(0);
+	return(fuiEditor__Utf8ByteOrderMark);
 }
 
 /*
@@ -2308,18 +2545,11 @@ fui_inline int32_t fuiEditor__Utf8FromUtf8(void *userData, const char *source, c
 fui_api fuiEditorEncoding fuiEditorEncodingUtf8(void) {
 	fuiEditorEncoding result;
 	result.name = "UTF-8";
-	result.getBomLength = fuiEditor__Utf8GetBomLength;
+	result.getBomBytes = fuiEditor__Utf8GetBomBytes;
 	result.toUtf8 = fuiEditor__Utf8ToUtf8;
 	result.fromUtf8 = fuiEditor__Utf8FromUtf8;
 	result.userData = fui_null;
 	return(result);
-}
-
-fui_inline int32_t fuiEditor__AsciiGetBomLength(void *userData, const uint8_t *data, const int32_t dataLength) {
-	(void)userData;
-	(void)data;
-	(void)dataLength;
-	return(0);
 }
 
 fui_inline int32_t fuiEditor__AsciiToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
@@ -2365,11 +2595,673 @@ fui_inline int32_t fuiEditor__AsciiFromUtf8(void *userData, const char *source, 
 fui_api fuiEditorEncoding fuiEditorEncodingAscii(void) {
 	fuiEditorEncoding result;
 	result.name = "ASCII";
-	result.getBomLength = fuiEditor__AsciiGetBomLength;
+	result.getBomBytes = fui_null;
 	result.toUtf8 = fuiEditor__AsciiToUtf8;
 	result.fromUtf8 = fuiEditor__AsciiFromUtf8;
 	result.userData = fui_null;
 	return(result);
+}
+
+/*
+	The surrogate range, which is how utf-16 spells everything above the first plane.
+
+	Named here rather than spelled out at every use, because the two halves are told apart by which THIRD
+	of the range a unit falls in and that is not readable as three bare hex numbers in a condition.
+*/
+#define FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE 0xD800u
+#define FUI_TEXTEDITOR__FIRST_LOW_SURROGATE 0xDC00u
+#define FUI_TEXTEDITOR__LAST_LOW_SURROGATE 0xDFFFu
+#define FUI_TEXTEDITOR__FIRST_SURROGATE_PAIR_CODEPOINT 0x10000u
+
+//! The largest codepoint one utf-16 unit can hold on its own
+#define FUI_TEXTEDITOR__LARGEST_SINGLE_UTF16_UNIT 0xFFFFu
+
+fui_inline uint32_t fuiEditor__ReadUtf16Unit(const uint8_t *source, const int32_t offset, const bool isBigEndian) {
+	uint32_t firstByte = (uint32_t)source[offset];
+	uint32_t secondByte = (uint32_t)source[offset + 1];
+	if(isBigEndian) {
+		return((firstByte << 8) | secondByte);
+	}
+	return((secondByte << 8) | firstByte);
+}
+
+//! Writes one 16 bit unit the right way round, or only counts it when there is nowhere to put it
+fui_inline int32_t fuiEditor__AppendUtf16Unit(const uint32_t unit, uint8_t *destination, const int32_t destinationCapacity, const int32_t writeOffset, const bool isBigEndian) {
+	const int32_t bytesPerUnit = 2;
+	bool thereIsRoom = (destination != fui_null) && ((writeOffset + bytesPerUnit) <= destinationCapacity);
+	if(thereIsRoom) {
+		uint8_t highByte = (uint8_t)((unit >> 8) & 0xFFu);
+		uint8_t lowByte = (uint8_t)(unit & 0xFFu);
+		if(isBigEndian) {
+			destination[writeOffset + 0] = highByte;
+			destination[writeOffset + 1] = lowByte;
+		} else {
+			destination[writeOffset + 0] = lowByte;
+			destination[writeOffset + 1] = highByte;
+		}
+	}
+	return(bytesPerUnit);
+}
+
+/*
+	Both ends of utf-16 in one function each, told apart by a flag rather than written out twice.
+
+	The byte order is the ONLY difference between the two, and two copies of the surrogate pairing would
+	be two places for the same mistake to be made in one of them.
+*/
+fui_inline int32_t fuiEditor__Utf16ToUtf8(const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity, const bool isBigEndian) {
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	const int32_t bytesPerUnit = 2;
+	int32_t writtenLength = 0;
+	int32_t readOffset = 0;
+	while((readOffset + bytesPerUnit) <= sourceLength) {
+		uint32_t firstUnit = fuiEditor__ReadUtf16Unit(source, readOffset, isBigEndian);
+		readOffset += bytesPerUnit;
+
+		uint32_t codePoint = firstUnit;
+		bool isHighSurrogate = (firstUnit >= FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE) && (firstUnit < FUI_TEXTEDITOR__FIRST_LOW_SURROGATE);
+		bool isLowSurrogate = (firstUnit >= FUI_TEXTEDITOR__FIRST_LOW_SURROGATE) && (firstUnit <= FUI_TEXTEDITOR__LAST_LOW_SURROGATE);
+		if(isHighSurrogate) {
+			bool thereIsASecondUnit = (readOffset + bytesPerUnit) <= sourceLength;
+			uint32_t secondUnit = 0;
+			if(thereIsASecondUnit) {
+				secondUnit = fuiEditor__ReadUtf16Unit(source, readOffset, isBigEndian);
+			}
+			bool isPaired = thereIsASecondUnit && (secondUnit >= FUI_TEXTEDITOR__FIRST_LOW_SURROGATE) && (secondUnit <= FUI_TEXTEDITOR__LAST_LOW_SURROGATE);
+			if(isPaired) {
+				uint32_t highBits = (firstUnit - FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE) << 10;
+				uint32_t lowBits = secondUnit - FUI_TEXTEDITOR__FIRST_LOW_SURROGATE;
+				codePoint = FUI_TEXTEDITOR__FIRST_SURROGATE_PAIR_CODEPOINT + highBits + lowBits;
+				readOffset += bytesPerUnit;
+			} else {
+				// Half a pair is not a character, and there is no utf-8 that spells one - so it becomes
+				// the replacement rather than bytes a decoder would refuse.
+				codePoint = FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT;
+			}
+		} else if(isLowSurrogate) {
+			codePoint = FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT;
+		}
+
+		int32_t appendedLength = fuiEditor__AppendUtf8(codePoint, destination, destinationCapacity, writtenLength);
+		writtenLength += appendedLength;
+	}
+
+	// An odd byte left over is half a unit, which is no more a character than half a pair is.
+	bool thereIsAStrayByte = readOffset < sourceLength;
+	if(thereIsAStrayByte) {
+		int32_t appendedLength = fuiEditor__AppendUtf8(FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT, destination, destinationCapacity, writtenLength);
+		writtenLength += appendedLength;
+	}
+	return(writtenLength);
+}
+
+fui_inline int32_t fuiEditor__Utf16FromUtf8(const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity, const bool isBigEndian) {
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	int32_t writtenLength = 0;
+	size_t readOffset = 0;
+	while(readOffset < (size_t)sourceLength) {
+		uint32_t codePoint = fuiDecodeUtf8(source, (size_t)sourceLength, &readOffset);
+		if(codePoint <= FUI_TEXTEDITOR__LARGEST_SINGLE_UTF16_UNIT) {
+			int32_t appendedLength = fuiEditor__AppendUtf16Unit(codePoint, destination, destinationCapacity, writtenLength, isBigEndian);
+			writtenLength += appendedLength;
+			continue;
+		}
+
+		uint32_t shiftedCodePoint = codePoint - FUI_TEXTEDITOR__FIRST_SURROGATE_PAIR_CODEPOINT;
+		uint32_t highUnit = FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE + (shiftedCodePoint >> 10);
+		uint32_t lowUnit = FUI_TEXTEDITOR__FIRST_LOW_SURROGATE + (shiftedCodePoint & 0x3FFu);
+		int32_t highLength = fuiEditor__AppendUtf16Unit(highUnit, destination, destinationCapacity, writtenLength, isBigEndian);
+		writtenLength += highLength;
+		int32_t lowLength = fuiEditor__AppendUtf16Unit(lowUnit, destination, destinationCapacity, writtenLength, isBigEndian);
+		writtenLength += lowLength;
+	}
+	return(writtenLength);
+}
+
+fui_inline int32_t fuiEditor__Utf16LeToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool isBigEndian = false;
+	return(fuiEditor__Utf16ToUtf8(source, sourceLength, destination, destinationCapacity, isBigEndian));
+}
+
+fui_inline int32_t fuiEditor__Utf16LeFromUtf8(void *userData, const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool isBigEndian = false;
+	return(fuiEditor__Utf16FromUtf8(source, sourceLength, destination, destinationCapacity, isBigEndian));
+}
+
+fui_inline const uint8_t *fuiEditor__Utf16LeGetBomBytes(void *userData, int32_t *outLength) {
+	(void)userData;
+	if(outLength != fui_null) {
+		*outLength = (int32_t)sizeof(fuiEditor__Utf16LeByteOrderMark);
+	}
+	return(fuiEditor__Utf16LeByteOrderMark);
+}
+
+fui_api fuiEditorEncoding fuiEditorEncodingUtf16Le(void) {
+	fuiEditorEncoding result;
+	result.name = "UTF-16 LE";
+	result.getBomBytes = fuiEditor__Utf16LeGetBomBytes;
+	result.toUtf8 = fuiEditor__Utf16LeToUtf8;
+	result.fromUtf8 = fuiEditor__Utf16LeFromUtf8;
+	result.userData = fui_null;
+	return(result);
+}
+
+fui_inline int32_t fuiEditor__Utf16BeToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool isBigEndian = true;
+	return(fuiEditor__Utf16ToUtf8(source, sourceLength, destination, destinationCapacity, isBigEndian));
+}
+
+fui_inline int32_t fuiEditor__Utf16BeFromUtf8(void *userData, const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool isBigEndian = true;
+	return(fuiEditor__Utf16FromUtf8(source, sourceLength, destination, destinationCapacity, isBigEndian));
+}
+
+fui_inline const uint8_t *fuiEditor__Utf16BeGetBomBytes(void *userData, int32_t *outLength) {
+	(void)userData;
+	if(outLength != fui_null) {
+		*outLength = (int32_t)sizeof(fuiEditor__Utf16BeByteOrderMark);
+	}
+	return(fuiEditor__Utf16BeByteOrderMark);
+}
+
+fui_api fuiEditorEncoding fuiEditorEncodingUtf16Be(void) {
+	fuiEditorEncoding result;
+	result.name = "UTF-16 BE";
+	result.getBomBytes = fuiEditor__Utf16BeGetBomBytes;
+	result.toUtf8 = fuiEditor__Utf16BeToUtf8;
+	result.fromUtf8 = fuiEditor__Utf16BeFromUtf8;
+	result.userData = fui_null;
+	return(result);
+}
+
+/*
+	utf-7: seven bit bytes throughout, with everything that does not fit spelled out in base64 between a
+	plus and a dash.
+
+	Two things make it awkward, and both are dealt with here rather than at the call site. A shifted run is
+	a BIT stream rather than a byte stream, so a utf-16 unit routinely begins in the middle of a base64
+	character - and a run is ended by ANY character that is not base64 at all, in which case that character
+	stands for itself and has to be read a second time with the shift off.
+*/
+
+//! What a shifted run spells its bits in
+static const char fuiEditor__Utf7Base64Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+//! The characters utf-7 lets stand as themselves on top of the letters and the digits - the set rfc 2152
+//! calls D, the whitespace of rule 3, and the optional set O. The plus is deliberately not among them
+static const char fuiEditor__Utf7DirectPunctuation[] = "'(),-./:? \t\r\n" "!\"#$%&*;<=>@[]^_`{|}";
+
+//! How many bits one character of a shifted run carries
+#define FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER 6
+
+//! How many bits one utf-16 unit takes out of that stream
+#define FUI_TEXTEDITOR__UTF7_BITS_PER_UNIT 16
+
+//! The largest byte utf-7 can carry outside a shifted run
+#define FUI_TEXTEDITOR__HIGHEST_SEVEN_BIT_BYTE 0x7Fu
+
+fui_inline int32_t fuiEditor__Utf7Base64Value(const uint8_t character) {
+	if((character >= 'A') && (character <= 'Z')) {
+		return((int32_t)(character - 'A'));
+	}
+	if((character >= 'a') && (character <= 'z')) {
+		const int32_t lowerCaseBase = 26;
+		return(lowerCaseBase + (int32_t)(character - 'a'));
+	}
+	if((character >= '0') && (character <= '9')) {
+		const int32_t digitBase = 52;
+		return(digitBase + (int32_t)(character - '0'));
+	}
+	if(character == '+') {
+		return(62);
+	}
+	if(character == '/') {
+		return(63);
+	}
+	return(-1);
+}
+
+fui_inline bool fuiEditor__Utf7IsDirect(const uint32_t codePoint) {
+	bool isLetter = ((codePoint >= 'A') && (codePoint <= 'Z')) || ((codePoint >= 'a') && (codePoint <= 'z'));
+	if(isLetter) {
+		return(true);
+	}
+	bool isDigit = (codePoint >= '0') && (codePoint <= '9');
+	if(isDigit) {
+		return(true);
+	}
+	if(codePoint > FUI_TEXTEDITOR__HIGHEST_SEVEN_BIT_BYTE) {
+		return(false);
+	}
+
+	int32_t punctuationIndex = 0;
+	while(fuiEditor__Utf7DirectPunctuation[punctuationIndex] != '\0') {
+		uint32_t punctuationCharacter = (uint32_t)(uint8_t)fuiEditor__Utf7DirectPunctuation[punctuationIndex];
+		if(punctuationCharacter == codePoint) {
+			return(true);
+		}
+		punctuationIndex += 1;
+	}
+	return(false);
+}
+
+//! Writes one seven bit byte, or only counts it when there is nowhere to put it
+fui_inline int32_t fuiEditor__AppendByte(const uint8_t value, uint8_t *destination, const int32_t destinationCapacity, const int32_t writeOffset) {
+	bool thereIsRoom = (destination != fui_null) && ((writeOffset + 1) <= destinationCapacity);
+	if(thereIsRoom) {
+		destination[writeOffset] = value;
+	}
+	return(1);
+}
+
+/*
+	Feeds one utf-16 unit of a shifted run into the output, pairing surrogates ACROSS calls.
+
+	A pair can straddle any number of base64 characters, so the high half has to be held until the unit
+	after it turns up - and a high half whose partner never comes has to be written out as the replacement
+	rather than quietly disappearing with the run it was in.
+*/
+static int32_t fuiEditor__Utf7AppendUnit(const uint32_t unit, char *destination, const int32_t destinationCapacity, const int32_t writeOffset, uint32_t *inOutPendingHighSurrogate, bool *inOutHasPendingHighSurrogate) {
+	bool isHighSurrogate = (unit >= FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE) && (unit < FUI_TEXTEDITOR__FIRST_LOW_SURROGATE);
+	bool isLowSurrogate = (unit >= FUI_TEXTEDITOR__FIRST_LOW_SURROGATE) && (unit <= FUI_TEXTEDITOR__LAST_LOW_SURROGATE);
+
+	int32_t writtenLength = 0;
+	if(*inOutHasPendingHighSurrogate) {
+		*inOutHasPendingHighSurrogate = false;
+		if(isLowSurrogate) {
+			uint32_t highBits = (*inOutPendingHighSurrogate - FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE) << 10;
+			uint32_t lowBits = unit - FUI_TEXTEDITOR__FIRST_LOW_SURROGATE;
+			uint32_t pairedCodePoint = FUI_TEXTEDITOR__FIRST_SURROGATE_PAIR_CODEPOINT + highBits + lowBits;
+			int32_t pairedLength = fuiEditor__AppendUtf8(pairedCodePoint, destination, destinationCapacity, writeOffset);
+			return(pairedLength);
+		}
+		int32_t orphanLength = fuiEditor__AppendUtf8(FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT, destination, destinationCapacity, writeOffset);
+		writtenLength += orphanLength;
+	}
+
+	if(isHighSurrogate) {
+		*inOutPendingHighSurrogate = unit;
+		*inOutHasPendingHighSurrogate = true;
+		return(writtenLength);
+	}
+
+	uint32_t codePoint = unit;
+	if(isLowSurrogate) {
+		codePoint = FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT;
+	}
+	int32_t appendedLength = fuiEditor__AppendUtf8(codePoint, destination, destinationCapacity, writeOffset + writtenLength);
+	writtenLength += appendedLength;
+	return(writtenLength);
+}
+
+//! Writes out a high half that never got its partner, which is what ending a run has to do
+static int32_t fuiEditor__Utf7FlushPendingUnit(char *destination, const int32_t destinationCapacity, const int32_t writeOffset, bool *inOutHasPendingHighSurrogate) {
+	if(!*inOutHasPendingHighSurrogate) {
+		return(0);
+	}
+	*inOutHasPendingHighSurrogate = false;
+	int32_t appendedLength = fuiEditor__AppendUtf8(FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT, destination, destinationCapacity, writeOffset);
+	return(appendedLength);
+}
+
+fui_inline int32_t fuiEditor__Utf7ToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	int32_t writtenLength = 0;
+	int32_t readOffset = 0;
+	bool isInsideBase64Run = false;
+	int32_t charactersInRun = 0;
+	uint32_t bitBuffer = 0;
+	int32_t bitCount = 0;
+	uint32_t pendingHighSurrogate = 0;
+	bool hasPendingHighSurrogate = false;
+
+	while(readOffset < sourceLength) {
+		uint8_t currentByte = source[readOffset];
+
+		if(!isInsideBase64Run) {
+			readOffset += 1;
+			if(currentByte == '+') {
+				isInsideBase64Run = true;
+				charactersInRun = 0;
+				bitBuffer = 0;
+				bitCount = 0;
+				continue;
+			}
+			uint32_t codePoint = (uint32_t)currentByte;
+			if(currentByte > FUI_TEXTEDITOR__HIGHEST_SEVEN_BIT_BYTE) {
+				// utf-7 is seven bit by definition, so a byte with its top bit set was never one of its own.
+				codePoint = FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT;
+			}
+			int32_t appendedLength = fuiEditor__AppendUtf8(codePoint, destination, destinationCapacity, writtenLength);
+			writtenLength += appendedLength;
+			continue;
+		}
+
+		int32_t sixBits = fuiEditor__Utf7Base64Value(currentByte);
+		if(sixBits >= 0) {
+			readOffset += 1;
+			charactersInRun += 1;
+			bitBuffer = (bitBuffer << FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER) | (uint32_t)sixBits;
+			bitCount += FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER;
+			if(bitCount >= FUI_TEXTEDITOR__UTF7_BITS_PER_UNIT) {
+				bitCount -= FUI_TEXTEDITOR__UTF7_BITS_PER_UNIT;
+				// The bits still owed are the LOW ones, so the buffer running off the top of a uint32 over a
+				// long run carries nothing away - which is why it is never cleared down between units.
+				uint32_t unit = (bitBuffer >> bitCount) & 0xFFFFu;
+				int32_t appendedLength = fuiEditor__Utf7AppendUnit(unit, destination, destinationCapacity, writtenLength, &pendingHighSurrogate, &hasPendingHighSurrogate);
+				writtenLength += appendedLength;
+			}
+			continue;
+		}
+
+		// Anything that is not base64 ends the run. A dash is part of how a run is spelled and goes away
+		// with it; everything else stands for itself and is read once more with the shift off.
+		isInsideBase64Run = false;
+		int32_t flushedLength = fuiEditor__Utf7FlushPendingUnit(destination, destinationCapacity, writtenLength, &hasPendingHighSurrogate);
+		writtenLength += flushedLength;
+		if(currentByte == '-') {
+			readOffset += 1;
+			bool isAPlusInDisguise = charactersInRun == 0;
+			if(isAPlusInDisguise) {
+				int32_t appendedLength = fuiEditor__AppendUtf8((uint32_t)'+', destination, destinationCapacity, writtenLength);
+				writtenLength += appendedLength;
+			}
+		}
+	}
+
+	int32_t flushedLength = fuiEditor__Utf7FlushPendingUnit(destination, destinationCapacity, writtenLength, &hasPendingHighSurrogate);
+	writtenLength += flushedLength;
+
+	// A plus that the data simply ran out behind is a plus, not the start of something.
+	bool endedOnAnEmptyRun = isInsideBase64Run && (charactersInRun == 0);
+	if(endedOnAnEmptyRun) {
+		int32_t appendedLength = fuiEditor__AppendUtf8((uint32_t)'+', destination, destinationCapacity, writtenLength);
+		writtenLength += appendedLength;
+	}
+	return(writtenLength);
+}
+
+fui_inline int32_t fuiEditor__Utf7FromUtf8(void *userData, const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	int32_t writtenLength = 0;
+	uint32_t bitBuffer = 0;
+	int32_t bitCount = 0;
+	bool isInsideBase64Run = false;
+
+	size_t readOffset = 0;
+	while(readOffset < (size_t)sourceLength) {
+		uint32_t codePoint = fuiDecodeUtf8(source, (size_t)sourceLength, &readOffset);
+		bool isDirect = fuiEditor__Utf7IsDirect(codePoint);
+		bool isAPlus = codePoint == (uint32_t)'+';
+
+		if(isDirect || isAPlus) {
+			if(isInsideBase64Run) {
+				if(bitCount > 0) {
+					uint32_t lastIndex = (bitBuffer << (FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER - bitCount)) & 0x3Fu;
+					uint8_t lastCharacter = (uint8_t)fuiEditor__Utf7Base64Alphabet[lastIndex];
+					int32_t lastLength = fuiEditor__AppendByte(lastCharacter, destination, destinationCapacity, writtenLength);
+					writtenLength += lastLength;
+					bitBuffer = 0;
+					bitCount = 0;
+				}
+				int32_t dashLength = fuiEditor__AppendByte((uint8_t)'-', destination, destinationCapacity, writtenLength);
+				writtenLength += dashLength;
+				isInsideBase64Run = false;
+			}
+			int32_t characterLength = fuiEditor__AppendByte((uint8_t)codePoint, destination, destinationCapacity, writtenLength);
+			writtenLength += characterLength;
+			if(isAPlus) {
+				// The one character that has to be escaped even though it is plain ascii, because it is
+				// what opens a run.
+				int32_t dashLength = fuiEditor__AppendByte((uint8_t)'-', destination, destinationCapacity, writtenLength);
+				writtenLength += dashLength;
+			}
+			continue;
+		}
+
+		if(!isInsideBase64Run) {
+			int32_t plusLength = fuiEditor__AppendByte((uint8_t)'+', destination, destinationCapacity, writtenLength);
+			writtenLength += plusLength;
+			isInsideBase64Run = true;
+			bitBuffer = 0;
+			bitCount = 0;
+		}
+
+		uint32_t units[2];
+		int32_t unitCount = 1;
+		units[0] = codePoint;
+		if(codePoint > FUI_TEXTEDITOR__LARGEST_SINGLE_UTF16_UNIT) {
+			uint32_t shiftedCodePoint = codePoint - FUI_TEXTEDITOR__FIRST_SURROGATE_PAIR_CODEPOINT;
+			units[0] = FUI_TEXTEDITOR__FIRST_HIGH_SURROGATE + (shiftedCodePoint >> 10);
+			units[1] = FUI_TEXTEDITOR__FIRST_LOW_SURROGATE + (shiftedCodePoint & 0x3FFu);
+			unitCount = 2;
+		}
+
+		for(int32_t unitIndex = 0; unitIndex < unitCount; ++unitIndex) {
+			bitBuffer = (bitBuffer << FUI_TEXTEDITOR__UTF7_BITS_PER_UNIT) | units[unitIndex];
+			bitCount += FUI_TEXTEDITOR__UTF7_BITS_PER_UNIT;
+			while(bitCount >= FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER) {
+				bitCount -= FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER;
+				uint32_t alphabetIndex = (bitBuffer >> bitCount) & 0x3Fu;
+				uint8_t base64Character = (uint8_t)fuiEditor__Utf7Base64Alphabet[alphabetIndex];
+				int32_t characterLength = fuiEditor__AppendByte(base64Character, destination, destinationCapacity, writtenLength);
+				writtenLength += characterLength;
+			}
+		}
+	}
+
+	if(isInsideBase64Run) {
+		if(bitCount > 0) {
+			uint32_t lastIndex = (bitBuffer << (FUI_TEXTEDITOR__UTF7_BITS_PER_CHARACTER - bitCount)) & 0x3Fu;
+			uint8_t lastCharacter = (uint8_t)fuiEditor__Utf7Base64Alphabet[lastIndex];
+			int32_t lastLength = fuiEditor__AppendByte(lastCharacter, destination, destinationCapacity, writtenLength);
+			writtenLength += lastLength;
+		}
+		int32_t dashLength = fuiEditor__AppendByte((uint8_t)'-', destination, destinationCapacity, writtenLength);
+		writtenLength += dashLength;
+	}
+	return(writtenLength);
+}
+
+fui_inline const uint8_t *fuiEditor__Utf7GetBomBytes(void *userData, int32_t *outLength) {
+	(void)userData;
+	if(outLength != fui_null) {
+		*outLength = (int32_t)sizeof(fuiEditor__Utf7ByteOrderMark);
+	}
+	return(fuiEditor__Utf7ByteOrderMark);
+}
+
+fui_api fuiEditorEncoding fuiEditorEncodingUtf7(void) {
+	fuiEditorEncoding result;
+	result.name = "UTF-7";
+	result.getBomBytes = fuiEditor__Utf7GetBomBytes;
+	result.toUtf8 = fuiEditor__Utf7ToUtf8;
+	result.fromUtf8 = fuiEditor__Utf7FromUtf8;
+	result.userData = fui_null;
+	return(result);
+}
+
+/*
+	Latin-1 and windows-1252, which are the same encoding apart from thirty two bytes.
+
+	Latin-1 is the identity: byte n is codepoint n, all 256 of them, so nothing can fail on the way in.
+	Windows-1252 fills the block latin-1 leaves as control codes with the quotes, dashes and the euro sign
+	that a text file from Windows is actually full of - which is why a file labelled latin-1 so often is
+	one of these instead.
+*/
+
+//! The first byte of the block the two disagree over
+#define FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE 0x80u
+
+//! The last byte of it
+#define FUI_TEXTEDITOR__LAST_HIGH_BLOCK_BYTE 0x9Fu
+
+//! The largest codepoint one byte can hold
+#define FUI_TEXTEDITOR__LARGEST_SINGLE_BYTE_CODEPOINT 0xFFu
+
+//! What windows-1252 puts in that block. A zero is one of the five entries the code page leaves unassigned
+static const uint16_t fuiEditor__Cp1252HighBlock[32] = {
+	0x20ACu, 0x0000u, 0x201Au, 0x0192u, 0x201Eu, 0x2026u, 0x2020u, 0x2021u,
+	0x02C6u, 0x2030u, 0x0160u, 0x2039u, 0x0152u, 0x0000u, 0x017Du, 0x0000u,
+	0x0000u, 0x2018u, 0x2019u, 0x201Cu, 0x201Du, 0x2022u, 0x2013u, 0x2014u,
+	0x02DCu, 0x2122u, 0x0161u, 0x203Au, 0x0153u, 0x0000u, 0x017Eu, 0x0178u,
+};
+
+fui_inline int32_t fuiEditor__SingleByteToUtf8(const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity, const bool usesWindowsHighBlock) {
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	int32_t writtenLength = 0;
+	int32_t readOffset = 0;
+	while(readOffset < sourceLength) {
+		uint8_t currentByte = source[readOffset];
+		uint32_t codePoint = (uint32_t)currentByte;
+		bool isInTheHighBlock = usesWindowsHighBlock && (currentByte >= FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE) && (currentByte <= FUI_TEXTEDITOR__LAST_HIGH_BLOCK_BYTE);
+		if(isInTheHighBlock) {
+			uint16_t mappedCodePoint = fuiEditor__Cp1252HighBlock[currentByte - FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE];
+			codePoint = (mappedCodePoint != 0) ? (uint32_t)mappedCodePoint : (uint32_t)FUI_TEXTEDITOR__REPLACEMENT_CODEPOINT;
+		}
+		int32_t appendedLength = fuiEditor__AppendUtf8(codePoint, destination, destinationCapacity, writtenLength);
+		writtenLength += appendedLength;
+		readOffset += 1;
+	}
+	return(writtenLength);
+}
+
+fui_inline int32_t fuiEditor__SingleByteFromUtf8(const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity, const bool usesWindowsHighBlock) {
+	if(source == fui_null || sourceLength <= 0) {
+		return(0);
+	}
+
+	const int32_t highBlockLength = (int32_t)(FUI_TEXTEDITOR__LAST_HIGH_BLOCK_BYTE - FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE) + 1;
+	int32_t writtenLength = 0;
+	size_t readOffset = 0;
+	while(readOffset < (size_t)sourceLength) {
+		uint32_t codePoint = fuiDecodeUtf8(source, (size_t)sourceLength, &readOffset);
+
+		int32_t encodedByte = -1;
+		if(usesWindowsHighBlock) {
+			for(int32_t blockIndex = 0; blockIndex < highBlockLength; ++blockIndex) {
+				uint16_t mappedCodePoint = fuiEditor__Cp1252HighBlock[blockIndex];
+				bool isTheOne = (mappedCodePoint != 0) && ((uint32_t)mappedCodePoint == codePoint);
+				if(isTheOne) {
+					encodedByte = (int32_t)FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE + blockIndex;
+					break;
+				}
+			}
+		}
+		if(encodedByte < 0) {
+			// In windows-1252 the raw control block is spoken for, so a codepoint that lands IN it has no
+			// byte of its own however well it would fit in one.
+			bool isInTheHighBlock = usesWindowsHighBlock && (codePoint >= FUI_TEXTEDITOR__FIRST_HIGH_BLOCK_BYTE) && (codePoint <= FUI_TEXTEDITOR__LAST_HIGH_BLOCK_BYTE);
+			bool fitsInOneByte = (codePoint <= FUI_TEXTEDITOR__LARGEST_SINGLE_BYTE_CODEPOINT) && !isInTheHighBlock;
+			encodedByte = fitsInOneByte ? (int32_t)codePoint : (int32_t)FUI_TEXTEDITOR__SUBSTITUTE_BYTE;
+		}
+
+		int32_t appendedLength = fuiEditor__AppendByte((uint8_t)encodedByte, destination, destinationCapacity, writtenLength);
+		writtenLength += appendedLength;
+	}
+	return(writtenLength);
+}
+
+fui_inline int32_t fuiEditor__Latin1ToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool usesWindowsHighBlock = false;
+	return(fuiEditor__SingleByteToUtf8(source, sourceLength, destination, destinationCapacity, usesWindowsHighBlock));
+}
+
+fui_inline int32_t fuiEditor__Latin1FromUtf8(void *userData, const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool usesWindowsHighBlock = false;
+	return(fuiEditor__SingleByteFromUtf8(source, sourceLength, destination, destinationCapacity, usesWindowsHighBlock));
+}
+
+fui_api fuiEditorEncoding fuiEditorEncodingLatin1(void) {
+	fuiEditorEncoding result;
+	result.name = "Latin-1";
+	result.getBomBytes = fui_null;
+	result.toUtf8 = fuiEditor__Latin1ToUtf8;
+	result.fromUtf8 = fuiEditor__Latin1FromUtf8;
+	result.userData = fui_null;
+	return(result);
+}
+
+fui_inline int32_t fuiEditor__Cp1252ToUtf8(void *userData, const uint8_t *source, const int32_t sourceLength, char *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool usesWindowsHighBlock = true;
+	return(fuiEditor__SingleByteToUtf8(source, sourceLength, destination, destinationCapacity, usesWindowsHighBlock));
+}
+
+fui_inline int32_t fuiEditor__Cp1252FromUtf8(void *userData, const char *source, const int32_t sourceLength, uint8_t *destination, const int32_t destinationCapacity) {
+	(void)userData;
+	const bool usesWindowsHighBlock = true;
+	return(fuiEditor__SingleByteFromUtf8(source, sourceLength, destination, destinationCapacity, usesWindowsHighBlock));
+}
+
+fui_api fuiEditorEncoding fuiEditorEncodingCp1252(void) {
+	fuiEditorEncoding result;
+	result.name = "Windows-1252";
+	result.getBomBytes = fui_null;
+	result.toUtf8 = fuiEditor__Cp1252ToUtf8;
+	result.fromUtf8 = fuiEditor__Cp1252FromUtf8;
+	result.userData = fui_null;
+	return(result);
+}
+
+fui_api bool fuiEditorDetectEncoding(const uint8_t *data, const int32_t dataLength, fuiEditorEncoding *outEncoding) {
+	if(data == fui_null || dataLength <= 0 || outEncoding == fui_null) {
+		return(false);
+	}
+
+	bool startsWithUtf8Mark = (dataLength >= 3) && (data[0] == fuiEditor__Utf8ByteOrderMark[0]) && (data[1] == fuiEditor__Utf8ByteOrderMark[1]) && (data[2] == fuiEditor__Utf8ByteOrderMark[2]);
+	if(startsWithUtf8Mark) {
+		*outEncoding = fuiEditorEncodingUtf8();
+		return(true);
+	}
+
+	// The first three characters of utf-7's mark, which is the only one that is spelled in the encoding's
+	// own alphabet rather than in raw bytes. What follows them says WHICH bits of it are set, and every
+	// one of those spellings means the same codepoint - so three characters is all this has to look at.
+	bool startsWithUtf7Mark = (dataLength >= 4) && (data[0] == fuiEditor__Utf7ByteOrderMark[0]) && (data[1] == fuiEditor__Utf7ByteOrderMark[1]) && (data[2] == fuiEditor__Utf7ByteOrderMark[2]);
+	if(startsWithUtf7Mark) {
+		bool hasABitsCharacter = (data[3] == '8') || (data[3] == '9') || (data[3] == '+') || (data[3] == '/');
+		if(hasABitsCharacter) {
+			*outEncoding = fuiEditorEncodingUtf7();
+			return(true);
+		}
+	}
+
+	bool startsWithUtf16LeMark = (dataLength >= 2) && (data[0] == fuiEditor__Utf16LeByteOrderMark[0]) && (data[1] == fuiEditor__Utf16LeByteOrderMark[1]);
+	if(startsWithUtf16LeMark) {
+		*outEncoding = fuiEditorEncodingUtf16Le();
+		return(true);
+	}
+
+	bool startsWithUtf16BeMark = (dataLength >= 2) && (data[0] == fuiEditor__Utf16BeByteOrderMark[0]) && (data[1] == fuiEditor__Utf16BeByteOrderMark[1]);
+	if(startsWithUtf16BeMark) {
+		*outEncoding = fuiEditorEncodingUtf16Be();
+		return(true);
+	}
+	return(false);
 }
 
 // ----------------------------------------------------------------------------
@@ -3977,19 +4869,9 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 		resolvedEncoding = *encoding;
 	}
 	editor->encoding = resolvedEncoding;
+	editor->hasByteOrderMark = false;
 
 	if(data == fui_null || dataLength <= 0) {
-		const char *nothingAtAll = fui_null;
-		return(fuiEditorSetText(editor, nothingAtAll, 0));
-	}
-
-	int32_t byteOrderMarkLength = 0;
-	if(resolvedEncoding.getBomLength != fui_null) {
-		byteOrderMarkLength = resolvedEncoding.getBomLength(resolvedEncoding.userData, data, dataLength);
-	}
-	const uint8_t *payload = &data[byteOrderMarkLength];
-	int32_t payloadLength = dataLength - byteOrderMarkLength;
-	if(payloadLength <= 0) {
 		const char *nothingAtAll = fui_null;
 		return(fuiEditorSetText(editor, nothingAtAll, 0));
 	}
@@ -3997,7 +4879,7 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 	// Asked once for the length, then once more to fill - which is the contract every converter follows.
 	char *noDestinationYet = fui_null;
 	const int32_t noCapacityYet = 0;
-	int32_t convertedLength = resolvedEncoding.toUtf8(resolvedEncoding.userData, payload, payloadLength, noDestinationYet, noCapacityYet);
+	int32_t convertedLength = resolvedEncoding.toUtf8(resolvedEncoding.userData, data, dataLength, noDestinationYet, noCapacityYet);
 	if(convertedLength <= 0) {
 		const char *nothingAtAll = fui_null;
 		return(fuiEditorSetText(editor, nothingAtAll, 0));
@@ -4007,11 +4889,128 @@ fui_api bool fuiEditorLoadFromMemory(fuiEditor *editor, const uint8_t *data, con
 	if(convertedText == fui_null) {
 		return(false);
 	}
-	(void)resolvedEncoding.toUtf8(resolvedEncoding.userData, payload, payloadLength, convertedText, convertedLength);
+	(void)resolvedEncoding.toUtf8(resolvedEncoding.userData, data, dataLength, convertedText, convertedLength);
 
-	bool didSetText = fuiEditorSetText(editor, convertedText, convertedLength);
+	/*
+		The byte order mark is dropped HERE, as a codepoint, rather than as bytes before the conversion.
+
+		Every mark there is - the three bytes of utf-8, the two of utf-16, the base64 run of utf-7 - is one
+		and the same codepoint spelled in the encoding's own alphabet, so once the conversion is through
+		there is exactly one thing to look for and one place to look for it. Doing it beforehand would mean
+		every encoding carrying its own byte pattern, and utf-7's would not even be a fixed one.
+	*/
+	char *payload = convertedText;
+	int32_t payloadLength = convertedLength;
+	const int32_t markLength = (int32_t)sizeof(fuiEditor__Utf8ByteOrderMark);
+	bool startsWithMark = (payloadLength >= markLength) && (FUI_TEXTEDITOR_MEMCMP(payload, fuiEditor__Utf8ByteOrderMark, (size_t)markLength) == 0);
+	if(startsWithMark) {
+		editor->hasByteOrderMark = true;
+		payload += markLength;
+		payloadLength -= markLength;
+	}
+
+	// What the text ARRIVED as, read before the carriage returns are normalized away - afterwards there
+	// would be nothing left to tell a classic macintosh text from a unix one.
+	fuiEditorEol arrivedEol = fuiEditor__DetectEol(payload, payloadLength);
+	fuiEditor__NormalizeLoneCarriageReturns(payload, payloadLength);
+
+	bool didSetText = fuiEditorSetText(editor, payload, payloadLength);
+	editor->eol = arrivedEol;
 	fuiEditor__Release(editor, convertedText);
 	return(didSetText);
+}
+
+fui_api int32_t fuiEditorSaveToMemory(fuiEditor *editor, uint8_t *destination, const int32_t destinationCapacity) {
+	if(editor == fui_null || !editor->isInitialized || editor->encoding.fromUtf8 == fui_null) {
+		return(0);
+	}
+
+	/*
+		The line endings are put back first and the encoding runs over the result, in that order.
+
+		An encoding converts CHARACTERS: by the time the bytes are utf-16 a line feed is no longer one byte
+		to find, and in utf-7 it is not even a fixed number of them.
+	*/
+	const char *documentText = fuiEditorGetContiguousText(editor);
+	int32_t documentLength = fuiEditorGetTextLength(editor);
+
+	char *noDestinationYet = fui_null;
+	const int32_t noCapacityYet = 0;
+	bool everyEndingIsAlreadyRight = true;
+	int32_t outgoingLength = fuiEditor__RewriteEol(documentText, documentLength, editor->eol, noDestinationYet, noCapacityYet, &everyEndingIsAlreadyRight);
+
+	// The common case - a document whose endings are already spelled the way they are to be written - goes
+	// straight out of the buffer, and a copy of the whole document is not made at all.
+	const char *outgoingText = documentText;
+	char *rewrittenText = fui_null;
+	bool needsARewrite = !everyEndingIsAlreadyRight && (outgoingLength > 0);
+	if(needsARewrite) {
+		rewrittenText = (char *)fuiEditor__Allocate(editor, outgoingLength);
+		if(rewrittenText == fui_null) {
+			return(0);
+		}
+		(void)fuiEditor__RewriteEol(documentText, documentLength, editor->eol, rewrittenText, outgoingLength, fui_null);
+		outgoingText = rewrittenText;
+	}
+
+	int32_t byteOrderMarkLength = 0;
+	const uint8_t *byteOrderMarkBytes = fui_null;
+	bool writesAByteOrderMark = editor->hasByteOrderMark && (editor->encoding.getBomBytes != fui_null);
+	if(writesAByteOrderMark) {
+		byteOrderMarkBytes = editor->encoding.getBomBytes(editor->encoding.userData, &byteOrderMarkLength);
+		if(byteOrderMarkBytes == fui_null) {
+			byteOrderMarkLength = 0;
+		}
+	}
+
+	uint8_t *noBytesYet = fui_null;
+	int32_t encodedLength = editor->encoding.fromUtf8(editor->encoding.userData, outgoingText, outgoingLength, noBytesYet, noCapacityYet);
+	int32_t totalLength = byteOrderMarkLength + encodedLength;
+
+	bool thereIsRoom = (destination != fui_null) && (totalLength <= destinationCapacity);
+	if(thereIsRoom) {
+		if(byteOrderMarkLength > 0) {
+			FUI_TEXTEDITOR_MEMCPY(destination, byteOrderMarkBytes, (size_t)byteOrderMarkLength);
+		}
+		uint8_t *encodedDestination = &destination[byteOrderMarkLength];
+		int32_t encodedCapacity = destinationCapacity - byteOrderMarkLength;
+		(void)editor->encoding.fromUtf8(editor->encoding.userData, outgoingText, outgoingLength, encodedDestination, encodedCapacity);
+	}
+
+	fuiEditor__Release(editor, rewrittenText);
+	return(totalLength);
+}
+
+fui_api const fuiEditorEncoding *fuiEditorGetEncoding(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(fui_null);
+	}
+	return(&editor->encoding);
+}
+
+fui_api void fuiEditorSetEncoding(fuiEditor *editor, const fuiEditorEncoding *encoding) {
+	if(editor == fui_null) {
+		return;
+	}
+	if(encoding != fui_null && encoding->toUtf8 != fui_null && encoding->fromUtf8 != fui_null) {
+		editor->encoding = *encoding;
+		return;
+	}
+	editor->encoding = fuiEditorEncodingUtf8();
+}
+
+fui_api bool fuiEditorHasByteOrderMark(const fuiEditor *editor) {
+	if(editor == fui_null) {
+		return(false);
+	}
+	return(editor->hasByteOrderMark);
+}
+
+fui_api void fuiEditorSetByteOrderMark(fuiEditor *editor, const bool hasByteOrderMark) {
+	if(editor == fui_null) {
+		return;
+	}
+	editor->hasByteOrderMark = hasByteOrderMark;
 }
 
 // ----------------------------------------------------------------------------
@@ -7682,6 +8681,11 @@ static void fuiEditor__BuildStatusText(const fuiEditor *editor, char *destinatio
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " bytes");
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, encodingName);
+	if(editor->hasByteOrderMark) {
+		// Said right beside the encoding rather than as a field of its own, because a mark is not a thing a
+		// document HAS so much as a way the encoding in front of it is written down.
+		writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, " BOM");
+	}
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, eolName);
 	writeOffset = fuiEditor__AppendText(destination, destinationCapacity, writeOffset, fieldSeparator);
