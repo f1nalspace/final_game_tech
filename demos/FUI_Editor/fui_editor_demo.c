@@ -1757,6 +1757,10 @@ typedef struct EditorTestHarness {
 	fuiInput input;
 	fuiRect rect;
 	fuiEditorConfig config;
+	//! The measurements one build works from, worked out again here so a check can ask about a screen row
+	fuiEditor__Render render;
+	//! And the width the lines are broken at, which is the one number the whole breaking hangs on
+	float wrapWidth;
 } EditorTestHarness;
 
 /*
@@ -2170,6 +2174,25 @@ static void SelfTestScrollbarSurvivesTheBackground(void) {
 }
 
 //! Every key the editor answers to, pressed against a document whose lines say which line they are
+/*
+	Works out the same numbers a build does, so a check can ask where a screen row begins.
+
+	Nothing here is a second implementation of anything: it calls the very functions the widget calls, with
+	the very configuration the widget resolved. What it saves is having to reach into the middle of a build.
+*/
+static void HarnessReadRenderState(EditorTestHarness *harness) {
+	fuiTheme *theme = fuiGetTheme(&harness->ui);
+	const fuiEditorConfig *resolvedConfig = &harness->editor.resolvedConfig;
+	harness->render = fuiEditor__MakeRender(&harness->ui, resolvedConfig);
+
+	float gutterWidth = 0.0f;
+	if(resolvedConfig->toggles.showLineNumbers) {
+		int32_t lineCount = fuiEditorGetLineCount(&harness->editor);
+		gutterWidth = fuiEditor__GutterWidthFor(resolvedConfig, lineCount, harness->render.digitWidth);
+	}
+	harness->wrapWidth = fuiEditor__WrapWidthFor(harness->rect, resolvedConfig, gutterWidth, theme->widgetBorderThickness);
+}
+
 static void SelfTestKeyboard(void) {
 	CheckSection("keyboard");
 
@@ -2294,6 +2317,464 @@ static void SelfTestKeyboard(void) {
 	the caret back into view unconditionally is the classic way to nail a document down: the wheel moves
 	it, the next frame drags it back, and it looks like the wheel is broken.
 */
+//! Whether the rows of every line really cover that line, end to end and without a gap
+static bool RowsCoverEveryLine(EditorTestHarness *harness, int32_t *outFirstWrongLine) {
+	*outFirstWrongLine = -1;
+	fuiEditor *editor = &harness->editor;
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t lineStart = fuiEditorGetLineStart(editor, lineIndex);
+		int32_t lineEnd = fuiEditorGetLineEnd(editor, lineIndex);
+		int32_t rowCount = editor->wrap.rowCounts[lineIndex];
+		if(rowCount < 1) {
+			*outFirstWrongLine = lineIndex;
+			return(false);
+		}
+
+		int32_t expectedRowStart = lineStart;
+		for(int32_t rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+			int32_t rowStart = 0;
+			int32_t rowEnd = 0;
+			fuiEditor__RowRange(&harness->ui, editor, &harness->render, lineIndex, rowIndex, harness->wrapWidth, &rowStart, &rowEnd);
+			bool isTheOneExpected = (rowStart == expectedRowStart) && (rowEnd > rowStart || lineEnd == lineStart);
+			bool isTheLastRow = (rowIndex + 1) == rowCount;
+			if(isTheLastRow && rowEnd != lineEnd) {
+				isTheOneExpected = false;
+			}
+			if(!isTheOneExpected) {
+				*outFirstWrongLine = lineIndex;
+				return(false);
+			}
+			expectedRowStart = rowEnd;
+		}
+	}
+	return(true);
+}
+
+/*
+	Lines broken to fit, checked against the one thing that cannot be argued with: the text.
+
+	Every row of a line has to begin where the row in front of it ended, the last one has to end where the
+	line does, and no row may be wider than the width it was broken at unless it holds a single character
+	that is wider than that all by itself. Get any of those wrong and the document on screen is not the
+	document any more.
+*/
+static void SelfTestWordWrap(void) {
+	CheckSection("breaking lines to fit");
+
+	// One line that fits, one that has to be broken at a blank, and one long word with no blank in it at
+	// all - which is the case a greedy wrap has to cut rather than leave standing.
+	const char *documentText =
+		"short\n"
+		"the quick brown fox jumps over the lazy dog and keeps on running for a good while yet\n"
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+		"last";
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, documentText, 400.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+
+	// Without the breaking a document line IS a screen line, whatever else is going on.
+	(void)HarnessFrame(&harness);
+	int32_t lineCount = fuiEditorGetLineCount(&harness.editor);
+	CHECK_I(lineCount, 4);
+	CHECK_I(fuiEditor__GetScreenLineCount(&harness.editor), lineCount);
+	CHECK(!fuiEditor__IsWrapping(&harness.editor));
+
+	harness.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	HarnessReadRenderState(&harness);
+
+	CHECK(fuiEditor__IsWrapping(&harness.editor));
+	CHECK(harness.wrapWidth > 0.0f);
+	CHECK_I(harness.editor.wrap.lineCount, lineCount);
+
+	// The two long lines are broken; the short ones are not.
+	CHECK_I(harness.editor.wrap.rowCounts[0], 1);
+	CHECK(harness.editor.wrap.rowCounts[1] > 1);
+	CHECK(harness.editor.wrap.rowCounts[2] > 1);
+	CHECK_I(harness.editor.wrap.rowCounts[3], 1);
+
+	int32_t summedRows = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		summedRows += harness.editor.wrap.rowCounts[lineIndex];
+	}
+	CHECK_I(fuiEditor__GetScreenLineCount(&harness.editor), summedRows);
+	CHECK(summedRows > lineCount);
+
+	int32_t firstWrongLine = -1;
+	CHECK(RowsCoverEveryLine(&harness, &firstWrongLine));
+	CHECK_I(firstWrongLine, -1);
+
+	// No row is wider than the width it was broken at, unless it holds one character and that character is
+	// wider than the whole width - which cannot happen here and is checked for anyway.
+	int32_t rowsThatAreTooWide = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t rowCount = harness.editor.wrap.rowCounts[lineIndex];
+		for(int32_t rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+			int32_t rowStart = 0;
+			int32_t rowEnd = 0;
+			fuiEditor__RowRange(&harness.ui, &harness.editor, &harness.render, lineIndex, rowIndex, harness.wrapWidth, &rowStart, &rowEnd);
+			float rowWidth = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &harness.render, rowStart, rowEnd, rowEnd);
+
+			// The blanks a row ends with are allowed past the edge: they are what the row was broken AT,
+			// and moving them to the next row would start it with a space.
+			int32_t lastVisibleEnd = rowEnd;
+			while(lastVisibleEnd > rowStart && fuiEditorGetByte(&harness.editor, lastVisibleEnd - 1) == ' ') {
+				lastVisibleEnd -= 1;
+			}
+			float visibleWidth = fuiEditor__DistanceOfOffset(&harness.ui, &harness.editor, &harness.render, rowStart, rowEnd, lastVisibleEnd);
+			bool holdsOneCharacter = (rowEnd - rowStart) <= 1;
+			if((visibleWidth > harness.wrapWidth) && !holdsOneCharacter) {
+				rowsThatAreTooWide += 1;
+			}
+			(void)rowWidth;
+		}
+	}
+	CHECK_I(rowsThatAreTooWide, 0);
+
+	/*
+		A row of a line that HAS blanks in it begins right behind one.
+
+		Without this everything above still passes: rows that cover the line and are not too wide is exactly
+		what cutting every word in half also gives. What says the wrap is a WORD wrap is where it cut.
+	*/
+	int32_t rowsThatCutAWordInHalf = 0;
+	int32_t rowsOfTheWordyLine = harness.editor.wrap.rowCounts[1];
+	for(int32_t rowIndex = 1; rowIndex < rowsOfTheWordyLine; ++rowIndex) {
+		int32_t rowStart = 0;
+		int32_t rowEnd = 0;
+		fuiEditor__RowRange(&harness.ui, &harness.editor, &harness.render, 1, rowIndex, harness.wrapWidth, &rowStart, &rowEnd);
+		char byteInFrontOfTheRow = fuiEditorGetByte(&harness.editor, rowStart - 1);
+		if(byteInFrontOfTheRow != ' ') {
+			rowsThatCutAWordInHalf += 1;
+		}
+	}
+	CHECK_I(rowsThatCutAWordInHalf, 0);
+
+	// And the line with no blank in it at all is cut wherever it ran out of room, because a row that held
+	// nothing would be a row the walk could never get past.
+	int32_t rowsOfTheUnbrokenWord = harness.editor.wrap.rowCounts[2];
+	CHECK(rowsOfTheUnbrokenWord > 1);
+
+	// A line broken over several rows is still ONE line, and carries its number once.
+	int32_t firstRowOfTheSecondLine = fuiEditor__WrapFirstRowOfLine(&harness.editor, 1);
+	CHECK(fuiEditor__ScreenLineCarriesItsNumber(&harness.editor, firstRowOfTheSecondLine));
+	CHECK(!fuiEditor__ScreenLineCarriesItsNumber(&harness.editor, firstRowOfTheSecondLine + 1));
+
+	// And the way back: every row of it answers with the line it belongs to.
+	int32_t rowsOfTheSecondLine = harness.editor.wrap.rowCounts[1];
+	int32_t rowsThatNameTheWrongLine = 0;
+	for(int32_t rowIndex = 0; rowIndex < rowsOfTheSecondLine; ++rowIndex) {
+		int32_t namedLine = fuiEditor__DocumentLineOfScreenLine(&harness.editor, firstRowOfTheSecondLine + rowIndex);
+		if(namedLine != 1) {
+			rowsThatNameTheWrongLine += 1;
+		}
+	}
+	CHECK_I(rowsThatNameTheWrongLine, 0);
+
+	// There is nothing to the side any more, so there is no bar for it and nothing to scroll.
+	CHECK(harness.editor.scrollX == 0.0f);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The caret walks ROWS while the lines are broken, and the switch itself moves nothing.
+
+	Down means the row under this one, which is usually the same line still going - that is what the eye
+	follows. And turning the breaking on or off is a change to the VIEW: the caret and the selection are
+	where they were, whatever the text looks like around them.
+*/
+static void SelfTestWordWrapAndTheCaret(void) {
+	CheckSection("the caret follows the rows");
+
+	const char *documentText =
+		"first\n"
+		"the quick brown fox jumps over the lazy dog and keeps on running for a good while yet\n"
+		"last";
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, documentText, 400.0f, 424.0f)) {
+		CHECK(false);
+		return;
+	}
+	harness.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	HarnessReadRenderState(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool noControl = false;
+	int32_t rowsOfTheLongLine = harness.editor.wrap.rowCounts[1];
+	CHECK(rowsOfTheLongLine >= 3);
+
+	// One press of down out of the first line lands on the long line, and the next presses walk its rows
+	// rather than jumping over the whole of it.
+	HarnessPressKey(&harness, fuiKey_Home, noShift, true);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 1);
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretLine(&harness.editor), 1);
+	int32_t offsetOnTheSecondRow = fuiEditorGetCaretOffset(&harness.editor);
+	CHECK(offsetOnTheSecondRow > fuiEditorGetLineStart(&harness.editor, 1));
+
+	// And back up again, to where it came from.
+	HarnessPressKey(&harness, fuiKey_Up, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), fuiEditorGetLineStart(&harness.editor, 1));
+
+	// Home and end go to the ends of the ROW, not of the line.
+	HarnessPressKey(&harness, fuiKey_Down, noShift, noControl);
+	HarnessPressKey(&harness, fuiKey_End, noShift, noControl);
+	int32_t endOfTheSecondRow = fuiEditorGetCaretOffset(&harness.editor);
+	CHECK(endOfTheSecondRow > offsetOnTheSecondRow);
+	CHECK(endOfTheSecondRow < fuiEditorGetLineEnd(&harness.editor, 1));
+	HarnessPressKey(&harness, fuiKey_Home, noShift, noControl);
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), offsetOnTheSecondRow);
+
+	/*
+		The acceptance of this iteration: the switch moves neither the caret nor the selection.
+
+		What it changes is how many rows there are and where they sit - and nothing at all about the
+		document, which is what the caret and the selection are offsets into.
+	*/
+	fuiEditorSetSelection(&harness.editor, 8, 30);
+	int32_t caretBefore = fuiEditorGetCaretOffset(&harness.editor);
+	int32_t selectionStartBefore = fuiEditorGetSelectionStart(&harness.editor);
+	int32_t selectionEndBefore = fuiEditorGetSelectionEnd(&harness.editor);
+
+	harness.config.toggles.wordWrap = false;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	CHECK(!fuiEditor__IsWrapping(&harness.editor));
+	CHECK_I(fuiEditor__GetScreenLineCount(&harness.editor), fuiEditorGetLineCount(&harness.editor));
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), caretBefore);
+	CHECK_I(fuiEditorGetSelectionStart(&harness.editor), selectionStartBefore);
+	CHECK_I(fuiEditorGetSelectionEnd(&harness.editor), selectionEndBefore);
+
+	harness.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+	(void)HarnessFrame(&harness);
+	CHECK(fuiEditor__IsWrapping(&harness.editor));
+	CHECK_I(fuiEditorGetCaretOffset(&harness.editor), caretBefore);
+	CHECK_I(fuiEditorGetSelectionStart(&harness.editor), selectionStartBefore);
+	CHECK_I(fuiEditorGetSelectionEnd(&harness.editor), selectionEndBefore);
+
+	HarnessRelease(&harness);
+}
+
+/*
+	The index is kept up to date by the EDITS rather than being worked out again.
+
+	Which is the whole reason it is written the way it is - and the only way to see whether it really is up
+	to date is to hold it against one that WAS worked out from scratch. A second editor is filled with the
+	same text and its row counts compared entry by entry.
+*/
+static void SelfTestWordWrapSurvivesEdits(void) {
+	CheckSection("the wrap index across an edit");
+
+	/*
+		Long enough to reach across several blocks of the index.
+
+		A five line document never leaves the first block, and the sums per block are then all zero and all
+		right whatever the code does. At eight hundred lines they are neither, and an edit near the top has
+		to walk every block behind it.
+	*/
+	const int32_t lineCountToBuild = 800;
+	const int32_t everyNthLineIsLong = 5;
+	int32_t documentCapacity = lineCountToBuild * 128;
+	char *documentText = (char *)malloc((size_t)documentCapacity);
+	CHECK(documentText != fpl_null);
+	if(documentText == fpl_null) {
+		return;
+	}
+	int32_t documentLength = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCountToBuild; ++lineIndex) {
+		int32_t roomLeft = documentCapacity - documentLength;
+		const char *lineShape = "line %d\n";
+		if((lineIndex % everyNthLineIsLong) == 0) {
+			lineShape = "line %d that is long enough to be broken over several rows of its own and then some more\n";
+		}
+		int written = snprintf(&documentText[documentLength], (size_t)roomLeft, lineShape, (int)lineIndex);
+		if(written <= 0 || written >= roomLeft) {
+			break;
+		}
+		documentLength += written;
+	}
+	CHECK(documentLength > 0);
+	CHECK(lineCountToBuild > FUI_TEXTEDITOR__WRAP_BLOCK_LINES * 2);
+
+	EditorTestHarness edited;
+	if(!HarnessInit(&edited, documentText, 400.0f, 424.0f)) {
+		CHECK(false);
+		free(documentText);
+		return;
+	}
+	free(documentText);
+	edited.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&edited.editor, &edited.config);
+	(void)HarnessFrame(&edited);
+	int32_t rowsBefore = fuiEditor__GetScreenLineCount(&edited.editor);
+	CHECK(rowsBefore > fuiEditorGetLineCount(&edited.editor));
+
+	// Four edits of different shapes, and a build after each so the index is brought up to date the way it
+	// would be while somebody types.
+	// Near the TOP, so that every block behind it has to move.
+	int32_t startOfTheThirdLine = fuiEditorGetLineStart(&edited.editor, 2);
+	CHECK(fuiEditorInsert(&edited.editor, startOfTheThirdLine, "a much longer piece of text right here so that this line has to be broken too\n", 0));
+	(void)HarnessFrame(&edited);
+	CHECK(fuiEditorInsert(&edited.editor, 3, "XYZ", 3));
+	(void)HarnessFrame(&edited);
+	int32_t endOfTheSecondLine = fuiEditorGetLineEnd(&edited.editor, 1);
+	CHECK(endOfTheSecondLine > 20);
+	CHECK(fuiEditorErase(&edited.editor, endOfTheSecondLine - 20, 20));
+	(void)HarnessFrame(&edited);
+	CHECK(fuiEditorErase(&edited.editor, 0, 4));
+	(void)HarnessFrame(&edited);
+
+	// The same text again, from nothing.
+	int32_t finalLength = fuiEditorGetTextLength(&edited.editor);
+	char *finalText = (char *)malloc((size_t)finalLength + 1);
+	CHECK(finalText != fpl_null);
+	if(finalText == fpl_null) {
+		HarnessRelease(&edited);
+		return;
+	}
+	(void)fuiEditorCopyText(&edited.editor, finalText, finalLength + 1);
+
+	EditorTestHarness fresh;
+	if(!HarnessInit(&fresh, finalText, 400.0f, 424.0f)) {
+		CHECK(false);
+		free(finalText);
+		HarnessRelease(&edited);
+		return;
+	}
+	fresh.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&fresh.editor, &fresh.config);
+	(void)HarnessFrame(&fresh);
+
+	CHECK_I(fuiEditorGetLineCount(&edited.editor), fuiEditorGetLineCount(&fresh.editor));
+	CHECK_I(fuiEditor__GetScreenLineCount(&edited.editor), fuiEditor__GetScreenLineCount(&fresh.editor));
+
+	int32_t linesWithADifferentRowCount = 0;
+	int32_t lineCount = fuiEditorGetLineCount(&edited.editor);
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		if(edited.editor.wrap.rowCounts[lineIndex] != fresh.editor.wrap.rowCounts[lineIndex]) {
+			linesWithADifferentRowCount += 1;
+		}
+	}
+	CHECK_I(linesWithADifferentRowCount, 0);
+
+	// And the block sums that are worked out from those counts, which are what finding a row goes through.
+	int32_t rowsThatNameADifferentLine = 0;
+	int32_t screenLineCount = fuiEditor__GetScreenLineCount(&edited.editor);
+	for(int32_t screenLine = 0; screenLine < screenLineCount; ++screenLine) {
+		int32_t editedLine = fuiEditor__DocumentLineOfScreenLine(&edited.editor, screenLine);
+		int32_t freshLine = fuiEditor__DocumentLineOfScreenLine(&fresh.editor, screenLine);
+		if(editedLine != freshLine) {
+			rowsThatNameADifferentLine += 1;
+		}
+	}
+	CHECK_I(rowsThatNameADifferentLine, 0);
+
+	// The two ways round the index, over every line there is: the row a line starts on has to name that
+	// line back. That is the pair of lookups the block sums exist for.
+	int32_t linesThatDoNotComeBack = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t firstRow = fuiEditor__WrapFirstRowOfLine(&edited.editor, lineIndex);
+		if(fuiEditor__DocumentLineOfScreenLine(&edited.editor, firstRow) != lineIndex) {
+			linesThatDoNotComeBack += 1;
+		}
+	}
+	CHECK_I(linesThatDoNotComeBack, 0);
+
+	HarnessReadRenderState(&edited);
+	int32_t firstWrongLine = -1;
+	CHECK(RowsCoverEveryLine(&edited, &firstWrongLine));
+	CHECK_I(firstWrongLine, -1);
+
+	free(finalText);
+	HarnessRelease(&fresh);
+	HarnessRelease(&edited);
+}
+
+/*
+	The breaking, over a file that is really that big.
+
+	Everything above is built out of a handful of lines, which says nothing about what the index COSTS. This
+	one loads final_ui.h - fourteen thousand lines, six hundred kilobytes - breaks all of it, and then types
+	one character into it to see what a keystroke comes to once the index is standing. The two numbers are
+	printed rather than checked: what a machine takes is not something to fail a build over.
+*/
+static void SelfTestWordWrapOverARealFile(void) {
+	CheckSection("breaking a real file");
+
+	uint8_t *fileData = fpl_null;
+	int32_t fileLength = 0;
+	if(!DemoReadSourceFile(&fileData, &fileLength)) {
+		printf("  skipped, %s was not found from here\n", DEMO_SOURCE_FILE_PATH);
+		return;
+	}
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, fpl_null, 400.0f, 424.0f)) {
+		CHECK(false);
+		free(fileData);
+		return;
+	}
+	CHECK(fuiEditorSetText(&harness.editor, (const char *)fileData, fileLength));
+	free(fileData);
+
+	int32_t lineCount = fuiEditorGetLineCount(&harness.editor);
+	CHECK(lineCount > 14000);
+
+	harness.config.toggles.wordWrap = true;
+	fuiEditorSetConfig(&harness.editor, &harness.config);
+
+	fplTimestamp beforeTheFirstBuild = fplTimestampQuery();
+	(void)HarnessFrame(&harness);
+	fplTimestamp afterTheFirstBuild = fplTimestampQuery();
+	HarnessReadRenderState(&harness);
+
+	int32_t screenLineCount = fuiEditor__GetScreenLineCount(&harness.editor);
+	CHECK(screenLineCount > lineCount);
+	CHECK_I(harness.editor.wrap.lineCount, lineCount);
+
+	// Every line of it, both ways round - which is the pair of lookups the whole index exists to answer.
+	int32_t linesThatDoNotComeBack = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		int32_t firstRow = fuiEditor__WrapFirstRowOfLine(&harness.editor, lineIndex);
+		if(fuiEditor__DocumentLineOfScreenLine(&harness.editor, firstRow) != lineIndex) {
+			linesThatDoNotComeBack += 1;
+		}
+	}
+	CHECK_I(linesThatDoNotComeBack, 0);
+
+	int32_t firstWrongLine = -1;
+	CHECK(RowsCoverEveryLine(&harness, &firstWrongLine));
+	CHECK_I(firstWrongLine, -1);
+
+	// And one keystroke on top of that, which is what the index is kept incrementally FOR.
+	int32_t rowsBeforeTheEdit = screenLineCount;
+	CHECK(fuiEditorInsert(&harness.editor, fuiEditorGetLineStart(&harness.editor, 3), "x", 1));
+	fplTimestamp beforeTheSecondBuild = fplTimestampQuery();
+	(void)HarnessFrame(&harness);
+	fplTimestamp afterTheSecondBuild = fplTimestampQuery();
+	CHECK_I(harness.editor.wrap.lineCount, fuiEditorGetLineCount(&harness.editor));
+
+	// One character on a short line changes no row counts at all, and the index has to say so rather than
+	// quietly rebuilding itself into the same answer.
+	CHECK_I(fuiEditor__GetScreenLineCount(&harness.editor), rowsBeforeTheEdit);
+
+	fplSeconds firstBuildSeconds = fplTimestampElapsed(beforeTheFirstBuild, afterTheFirstBuild);
+	fplSeconds secondBuildSeconds = fplTimestampElapsed(beforeTheSecondBuild, afterTheSecondBuild);
+	printf("  -- %d lines became %d rows: %.2f ms to break all of it, %.3f ms for the frame after one keystroke\n", (int)lineCount, (int)screenLineCount, (double)firstBuildSeconds * 1000.0, (double)secondBuildSeconds * 1000.0);
+
+	HarnessRelease(&harness);
+}
+
 static void SelfTestWheelDoesNotFightTheCaret(void) {
 	CheckSection("wheel against caret");
 
@@ -5033,6 +5514,10 @@ static int RunSelfTest(void) {
 	SelfTestSelection();
 	SelfTestScrollbarSurvivesTheBackground();
 	SelfTestKeyboard();
+	SelfTestWordWrap();
+	SelfTestWordWrapAndTheCaret();
+	SelfTestWordWrapSurvivesEdits();
+	SelfTestWordWrapOverARealFile();
 	SelfTestWheelDoesNotFightTheCaret();
 	SelfTestCopyAgainstFile();
 	SelfTestLexerStatesFollowTheirLines();
@@ -5794,6 +6279,11 @@ static void BuildUserInterface(fuiContext *ui, EditorDemoState *demo) {
 
 		fuiRect currentLineRect = fuiLayoutSlot(ui, toggleWidth);
 		if(fuiCheckbox(ui, currentLineRect, "Current line", &demo->editorConfig.toggles.highlightCurrentLine)) {
+			configurationChanged = true;
+		}
+
+		fuiRect wordWrapRect = fuiLayoutSlot(ui, toggleWidth);
+		if(fuiCheckbox(ui, wordWrapRect, "Word wrap", &demo->editorConfig.toggles.wordWrap)) {
 			configurationChanged = true;
 		}
 

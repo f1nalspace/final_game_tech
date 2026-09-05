@@ -22,9 +22,9 @@ colours, the metrics, the callbacks, the shortcuts - is a config struct the
 caller fills in, and passing none is allowed.
 
 Status: under construction. The view is there and can be read, scrolled, selected from, copied out
-of, coloured by a lexer, TYPED into, TAKEN BACK, SEARCHED and SAVED - undo, redo, indenting,
-duplicating, moving lines, find, replace, go to line and seven encodings are in; word wrap is not
-yet. See the changelog for what is.
+of, coloured by a lexer, TYPED into, TAKEN BACK, SEARCHED, SAVED and WRAPPED - undo, redo,
+indenting, duplicating, moving lines, find, replace, go to line, seven encodings and word wrap are
+all in. What is left is the shortcut table and the documentation. See the changelog for what is.
 
 -------------------------------------------------------------------------------
 	Getting started
@@ -50,6 +50,8 @@ yet. See the changelog for what is.
   read-only view of a diff wants to be searched and does not want to be replaced in.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
+- Break long lines to fit with fuiEditorConfig.toggles.wordWrap, which turns one document line into several
+  SCREEN lines - only the first of which carries a number.
 - Change what it looks like with fuiEditorSetConfig(), or pass none and take fuiEditorDefaultConfig().
 - Release it with fuiEditorRelease().
 
@@ -196,6 +198,30 @@ SOFTWARE.
 	  editors can be kept scrolled as one thing. Lines were already reachable through fuiEditorScrollToLine
 	  and are the wrong unit for it: a wheel moves the view smoothly, and a second pane following it a whole
 	  line at a time judders against the first.
+	- New: WORD WRAP, on fuiEditorConfig.toggles.wordWrap and off by default. A line too wide for the view
+	  is broken at the last blank that still fitted - and a word with no blank in it is cut where it ran out
+	  of room, because a row that held nothing would be a row nothing could walk past. There is no
+	  horizontal scrollbar while it is on, since there is nothing to the side any more.
+	- New: A SECOND INDEX, which is what the first one has been making room for since iteration 1: the line
+	  index says where a document line begins in the TEXT, this one says where it begins on the SCREEN. Row
+	  counts are kept per line and summed per block of them rather than as one running total - a running
+	  total would have to be added to from the changed line to the end of the document on every keystroke.
+	  Measured over final_ui.h at a width that breaks most of it: 14474 lines become 26556 rows in 1.8 ms
+	  once, and the frame after a keystroke costs 0.012 ms because only the line that changed is measured
+	  again.
+	- New: Only the FIRST row of a broken line carries its number. The rows behind it are the same line
+	  still going, and numbering them would say there were four lines where there is one.
+	- New: Up, down, page up, page down, home and end all move by SCREEN lines while the breaking is on.
+	  Down means the row under this one, which is usually the same line still going - that is what the eye
+	  follows, and moving by document lines would jump over a whole paragraph.
+	- New: A caret standing exactly ON a break belongs to two rows at once - it is the end of the one and
+	  the start of the next, one offset and two places on screen. Pressing end means the row that ENDS
+	  there; everything else means the one that starts there. Without that, end read as a jump to the
+	  beginning of the next line.
+	- Changed: The gutter is sized by the DOCUMENT lines rather than by the screen ones, and while the
+	  breaking is on the strip for the vertical scrollbar is reserved whether or not it is needed. Both are
+	  the same circle: how many rows there are depends on how wide the text may be, which is what is left
+	  over once the gutter and the bar have had their share.
 	- Changed: Nothing was needed in final_ui.h.
 
 	# v0.7.0:
@@ -862,6 +888,10 @@ typedef struct fuiEditorToggles {
 	bool canReplace;
 	//! Answer ctrl+g and let the go to line bar be opened. @ref fuiEditorGoToLine stays open either way
 	bool canGoToLine;
+	//! Break a line that does not fit at the edge of the view rather than letting it run off sideways. One
+	//! document line is then several SCREEN lines, only the first of which carries a number - and there is
+	//! no horizontal scrollbar, because there is nothing left to scroll to
+	bool wordWrap;
 	//! When the vertical scrollbar is there @ref fuiEditorScrollbarMode
 	fuiEditorScrollbarMode verticalScrollbar;
 	//! When the horizontal scrollbar is there @ref fuiEditorScrollbarMode
@@ -1196,6 +1226,40 @@ typedef struct fuiEditorLineIndex {
 } fuiEditorLineIndex;
 
 /**
+* @struct fuiEditorWrapIndex
+* @brief How many screen lines every document line takes, when the lines are being broken to fit.
+* @note Internal. It is the SECOND index of this add-on: the first says where a document line begins in the
+*       text, this one says where it begins on the screen. Without wrapping the two are the same thing and
+*       this one is not built at all.
+* @note Row counts are kept per line and summed per BLOCK of lines, rather than as one running total. A
+*       running total would have to be added to from the changed line all the way to the end of the
+*       document on every keystroke; block sums cost one addition per block instead, and finding a screen
+*       line is a binary search over the blocks and then a walk of at most one block.
+*/
+typedef struct fuiEditorWrapIndex {
+	//! How many screen lines each document line takes, one entry per document line, never less than one
+	int32_t *rowCounts;
+	//! Which screen line each BLOCK of document lines starts on
+	int32_t *blockFirstRows;
+	//! How many line entries are allocated
+	int32_t lineCapacity;
+	//! How many block entries are allocated
+	int32_t blockCapacity;
+	//! How many document lines are filled in
+	int32_t lineCount;
+	//! How many screen lines they come to altogether
+	int32_t screenLineCount;
+	//! The width the lines were broken at
+	float wrapWidth;
+	//! The font height they were measured at
+	float fontHeight;
+	//! And how far apart the tab stops were
+	float tabWidth;
+	//! Whether anything in here is believed at all
+	bool isValid;
+} fuiEditorWrapIndex;
+
+/**
 * @struct fuiEditorDocument
 * @brief The text itself, as one allocation with a hole where the last edit happened.
 * @note Internal. The bytes are NOT contiguous while the hole sits in the middle of them, so reach them
@@ -1352,6 +1416,10 @@ typedef struct fuiEditor {
 	int32_t selectionAnchor;
 	//! How far into its line the caret WANTS to be while it is being moved up and down, in pixels
 	float desiredDistance;
+	//! Whether a caret standing exactly ON a break belongs to the row that ENDS there rather than to the
+	//! one that starts there. The two are the same offset and two different places on screen, and only
+	//! what was last pressed can say which of them was meant
+	bool caretIsAtARowEnd;
 	//! Whether that wish is standing, which every sideways move drops
 	bool hasDesiredDistance;
 	//! How long the caret has been in its current blink phase
@@ -1373,6 +1441,25 @@ typedef struct fuiEditor {
 	//! Whether the caret is to be brought WELL into view rather than just nudged into it, which is what a
 	//! jump across the document - a find, a go to line - has to do to be followed by the eye
 	bool wantsCaretRevealed;
+
+	//! How many screen lines every document line takes, when the lines are being broken to fit
+	fuiEditorWrapIndex wrap;
+	//! The first document line whose breaking may have changed since the index was worked out
+	int32_t wrapDirtyFirstLine;
+	//! How many lines at the END of the document are known not to have changed since then
+	int32_t wrapCleanTailCount;
+	//! Where every screen line of ONE document line begins, filled in for the line being looked at
+	int32_t *wrapRowStarts;
+	//! How much room there is for them
+	int32_t wrapRowCapacity;
+	//! How many of them are filled in
+	int32_t wrapRowCount;
+	//! Which document line they belong to, so walking a line's rows costs one walk rather than one each
+	int32_t wrapRowLine;
+	//! And which document version, because an edit makes them somebody else's rows
+	int32_t wrapRowVersion;
+	//! Set once a line was too broken up to hold all of its rows, so what is in there is only its start
+	bool wrapRowsAreIncomplete;
 
 	//! Which screen line a fuiEditorScrollToLine is waiting to put at the top
 	int32_t pendingScrollScreenLine;
@@ -3526,6 +3613,54 @@ fui_inline void fuiEditor__DocumentMoveGap(fuiEditorDocument *document, const in
 }
 
 // ----------------------------------------------------------------------------
+// > The wrap index
+// ----------------------------------------------------------------------------
+
+/*
+	Where a document line has to be cut so that none of it runs off the side.
+
+	Everything here is only reached while fuiEditorToggles.wordWrap is on. With it off a document line IS a
+	screen line, the index below is never built, and line ten thousand costs what line ten costs.
+
+	The break is a greedy word wrap: the row ends after the last blank that still fitted, and a word too
+	long to fit on a row of its own is cut wherever it runs out of room - because a row that held nothing
+	at all would be a row the walk could never get past.
+*/
+
+//! How many document lines one entry of the block sums stands for
+#define FUI_TEXTEDITOR__WRAP_BLOCK_LINES 256
+
+//! What the dirty range is set to when there is nothing dirty at all
+#define FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY 0x7FFFFFFF
+
+//! How many rows one line is allowed to be broken into before the rest of it is left in one piece
+#define FUI_TEXTEDITOR__WRAP_MAX_ROWS_PER_LINE 4096
+
+fui_inline int32_t fuiEditor__WrapBlockCount(const int32_t lineCount) {
+	if(lineCount <= 0) {
+		return(0);
+	}
+	return((lineCount + FUI_TEXTEDITOR__WRAP_BLOCK_LINES - 1) / FUI_TEXTEDITOR__WRAP_BLOCK_LINES);
+}
+
+static void fuiEditor__WrapIndexRelease(fuiEditor *editor) {
+	fuiEditor__Release(editor, editor->wrap.rowCounts);
+	fuiEditor__Release(editor, editor->wrap.blockFirstRows);
+	FUI_TEXTEDITOR_MEMSET(&editor->wrap, 0, sizeof(editor->wrap));
+}
+
+//! Throws the whole index away, which is what a new document and a switched off wrap both mean
+static void fuiEditor__WrapIndexForget(fuiEditor *editor) {
+	editor->wrap.isValid = false;
+	editor->wrap.lineCount = 0;
+	editor->wrap.screenLineCount = 0;
+	editor->wrapDirtyFirstLine = FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY;
+	editor->wrapCleanTailCount = FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY;
+	editor->wrapRowLine = -1;
+	editor->wrapRowCount = 0;
+}
+
+// ----------------------------------------------------------------------------
 // > Lifetime
 // ----------------------------------------------------------------------------
 
@@ -3566,6 +3701,7 @@ fui_api bool fuiEditorInit(fuiEditor *editor, const fuiAllocator *allocator) {
 	editor->encoding = fuiEditorEncodingUtf8();
 	editor->eol = fuiEditorEol_Lf;
 	editor->config = fuiEditorDefaultConfig();
+	fuiEditor__WrapIndexForget(editor);
 
 	char *initialBytes = (char *)fuiEditor__Allocate(editor, FUI_TEXTEDITOR_MIN_TEXT_BYTES);
 	if(initialBytes == fui_null) {
@@ -3607,6 +3743,8 @@ fui_api void fuiEditorRelease(fuiEditor *editor) {
 	fuiEditor__Release(editor, editor->styleScratch);
 	fuiEditor__Release(editor, editor->undo.records);
 	fuiEditor__Release(editor, editor->undo.arena);
+	fuiEditor__Release(editor, editor->wrapRowStarts);
+	fuiEditor__WrapIndexRelease(editor);
 	FUI_TEXTEDITOR_MEMSET(editor, 0, sizeof(*editor));
 }
 
@@ -3845,6 +3983,83 @@ fui_api int32_t fuiEditorSnapToCodepointStart(const fuiEditor *editor, const int
 		walkOffset -= 1;
 	}
 	return(walkOffset);
+}
+
+// ----------------------------------------------------------------------------
+// > The wrap index
+// ----------------------------------------------------------------------------
+
+/*
+	Remembers what one change did to the breaking, without measuring anything.
+
+	Measuring needs a font, and a font belongs to the CONTEXT - which nothing down here has. So an edit
+	only writes down which lines can no longer be believed, and the next build, which does have a context,
+	works out what they come to. Several edits between two builds fold together: the earliest line that
+	changed, and the fewest lines at the end that are still known to be untouched.
+*/
+static void fuiEditor__NoteWrapChange(fuiEditor *editor, const int32_t firstLine, const int32_t lineCountDelta) {
+	int32_t linesTheChangeSpans = fuiEditor__MaxI32(lineCountDelta, 0) + 1;
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+	int32_t cleanTailCount = lineCount - (firstLine + linesTheChangeSpans);
+	if(cleanTailCount < 0) {
+		cleanTailCount = 0;
+	}
+	editor->wrapDirtyFirstLine = fuiEditor__MinI32(editor->wrapDirtyFirstLine, firstLine);
+	editor->wrapCleanTailCount = fuiEditor__MinI32(editor->wrapCleanTailCount, cleanTailCount);
+	editor->wrapRowLine = -1;
+}
+
+//! Whether the lines are being broken to fit AND there is an index saying how
+fui_inline bool fuiEditor__IsWrapping(const fuiEditor *editor) {
+	return(editor->resolvedConfig.toggles.wordWrap && editor->wrap.isValid && (editor->wrap.lineCount > 0));
+}
+
+//! Which screen line a document line starts on
+static int32_t fuiEditor__WrapFirstRowOfLine(const fuiEditor *editor, const int32_t documentLine) {
+	const fuiEditorWrapIndex *wrap = &editor->wrap;
+	int32_t clampedLine = fuiEditor__ClampI32(documentLine, 0, wrap->lineCount);
+	int32_t blockIndex = clampedLine / FUI_TEXTEDITOR__WRAP_BLOCK_LINES;
+	int32_t firstRow = wrap->blockFirstRows[blockIndex];
+	int32_t firstLineOfBlock = blockIndex * FUI_TEXTEDITOR__WRAP_BLOCK_LINES;
+	for(int32_t lineIndex = firstLineOfBlock; lineIndex < clampedLine; ++lineIndex) {
+		firstRow += wrap->rowCounts[lineIndex];
+	}
+	return(firstRow);
+}
+
+//! Which document line a screen line belongs to
+static int32_t fuiEditor__WrapLineOfRow(const fuiEditor *editor, const int32_t screenLine) {
+	const fuiEditorWrapIndex *wrap = &editor->wrap;
+	if(wrap->lineCount <= 0) {
+		return(0);
+	}
+	int32_t wantedRow = fuiEditor__ClampI32(screenLine, 0, wrap->screenLineCount - 1);
+
+	// The blocks are in order, so the one the row falls in is a binary search - and the line inside it is
+	// then a walk of at most one block's worth of additions.
+	int32_t blockCount = fuiEditor__WrapBlockCount(wrap->lineCount);
+	int32_t lowBlock = 0;
+	int32_t highBlock = blockCount - 1;
+	while(lowBlock < highBlock) {
+		int32_t middleBlock = lowBlock + (highBlock - lowBlock + 1) / 2;
+		if(wrap->blockFirstRows[middleBlock] <= wantedRow) {
+			lowBlock = middleBlock;
+		} else {
+			highBlock = middleBlock - 1;
+		}
+	}
+
+	int32_t firstLineOfBlock = lowBlock * FUI_TEXTEDITOR__WRAP_BLOCK_LINES;
+	int32_t endLineOfBlock = fuiEditor__MinI32(firstLineOfBlock + FUI_TEXTEDITOR__WRAP_BLOCK_LINES, wrap->lineCount);
+	int32_t runningRow = wrap->blockFirstRows[lowBlock];
+	for(int32_t lineIndex = firstLineOfBlock; lineIndex < endLineOfBlock; ++lineIndex) {
+		int32_t nextRow = runningRow + wrap->rowCounts[lineIndex];
+		if(wantedRow < nextRow) {
+			return(lineIndex);
+		}
+		runningRow = nextRow;
+	}
+	return(endLineOfBlock - 1);
 }
 
 // ----------------------------------------------------------------------------
@@ -4593,6 +4808,7 @@ fui_api int32_t fuiEditorGetRedoStepCount(const fuiEditor *editor) {
 static void fuiEditor__NoteChange(fuiEditor *editor, const int32_t offset, const int32_t removedBytes, const int32_t insertedBytes, const int32_t firstLine, const int32_t lineCountDelta) {
 	editor->version += 1;
 	editor->isModified = true;
+	fuiEditor__NoteWrapChange(editor, firstLine, lineCountDelta);
 
 	editor->caretOffset = fuiEditor__PositionAfterChange(editor->caretOffset, offset, removedBytes, insertedBytes);
 	editor->selectionAnchor = fuiEditor__PositionAfterChange(editor->selectionAnchor, offset, removedBytes, insertedBytes);
@@ -4871,6 +5087,10 @@ fui_api bool fuiEditorSetText(fuiEditor *editor, const char *text, const int32_t
 	// the floor to the line count it ends up with.
 	editor->styledUpToLine = 1;
 	editor->lexConvergenceFloor = 0;
+
+	// And row counts that belong to a text that is gone, which would be read as this one's until the first
+	// edit dirtied them.
+	fuiEditor__WrapIndexForget(editor);
 
 	if(text == fui_null) {
 		editor->eol = fuiEditorEol_Lf;
@@ -5295,6 +5515,9 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 
 //! How many rows the whole document takes up on screen
 fui_inline int32_t fuiEditor__GetScreenLineCount(const fuiEditor *editor) {
+	if(fuiEditor__IsWrapping(editor)) {
+		return(editor->wrap.screenLineCount);
+	}
 	int32_t documentLineCount = fuiEditorGetLineCount(editor);
 	return(documentLineCount);
 }
@@ -5305,6 +5528,10 @@ fui_inline int32_t fuiEditor__DocumentLineOfScreenLine(const fuiEditor *editor, 
 	if(documentLineCount <= 0) {
 		return(0);
 	}
+	if(fuiEditor__IsWrapping(editor)) {
+		int32_t foundLine = fuiEditor__WrapLineOfRow(editor, screenLine);
+		return(fuiEditor__ClampI32(foundLine, 0, documentLineCount - 1));
+	}
 	return(fuiEditor__ClampI32(screenLine, 0, documentLineCount - 1));
 }
 
@@ -5314,14 +5541,24 @@ fui_inline int32_t fuiEditor__ScreenLineOfDocumentLine(const fuiEditor *editor, 
 	if(documentLineCount <= 0) {
 		return(0);
 	}
-	return(fuiEditor__ClampI32(documentLine, 0, documentLineCount - 1));
+	int32_t clampedLine = fuiEditor__ClampI32(documentLine, 0, documentLineCount - 1);
+	if(fuiEditor__IsWrapping(editor)) {
+		return(fuiEditor__WrapFirstRowOfLine(editor, clampedLine));
+	}
+	return(clampedLine);
 }
 
 //! Whether a screen row is the one its document line STARTS on, which is the only row that gets a number
 fui_inline bool fuiEditor__ScreenLineCarriesItsNumber(const fuiEditor *editor, const int32_t screenLine) {
-	(void)editor;
-	(void)screenLine;
-	return(true);
+	if(!fuiEditor__IsWrapping(editor)) {
+		return(true);
+	}
+
+	// A line broken over four rows is ONE line and is numbered once. The three rows behind the first are
+	// the same line still going, and numbering them would say there are four lines where there is one.
+	int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+	int32_t firstRowOfTheLine = fuiEditor__WrapFirstRowOfLine(editor, documentLine);
+	return(screenLine == firstRowOfTheLine);
 }
 
 /*
@@ -5733,6 +5970,9 @@ typedef struct fuiEditor__LinePaint {
 	const uint8_t *styles;
 	//! How many of them there are
 	int32_t styleLength;
+	//! The document offset the first of them stands for, which is the LINE's start even when only one row
+	//! of it is being drawn - a lexer colours lines, and a row is a piece of one
+	int32_t styleBaseOffset;
 	//! What text with nothing said about it is drawn in
 	fuiColor defaultColor;
 	//! What the dots and arrows are drawn in
@@ -5813,13 +6053,13 @@ static float fuiEditor__DrawLine(fuiContext *context, const fuiEditor *editor, c
 		float measuredPrefixWidth = 0.0f;
 		int32_t runStart = 0;
 		while(runStart < segment.byteCount) {
-			int32_t styleIndex = (segment.offset - lineStart) + runStart;
+			int32_t styleIndex = (segment.offset - paint->styleBaseOffset) + runStart;
 			uint8_t runStyle = fuiEditor__StyleAt(paint, styleIndex);
 			bool runIsBlanks = paint->showWhitespace && (segment.bytes[runStart] == ' ');
 
 			int32_t runEnd = runStart + 1;
 			while(runEnd < segment.byteCount) {
-				uint8_t styleHere = fuiEditor__StyleAt(paint, (segment.offset - lineStart) + runEnd);
+				uint8_t styleHere = fuiEditor__StyleAt(paint, (segment.offset - paint->styleBaseOffset) + runEnd);
 				bool isABlankHere = paint->showWhitespace && (segment.bytes[runEnd] == ' ');
 				if(styleHere != runStyle || isABlankHere != runIsBlanks) {
 					break;
@@ -5992,6 +6232,384 @@ static int32_t fuiEditor__OffsetAtDistance(fuiContext *context, const fuiEditor 
 }
 
 // ----------------------------------------------------------------------------
+// > Breaking lines to fit
+// ----------------------------------------------------------------------------
+
+/*
+	Walks one document line and says where each of its screen lines begins.
+
+	Answers the count either way; the offsets are only written when there is somewhere to put them, so the
+	same walk both builds the index and lays out a line that is about to be drawn.
+*/
+static int32_t fuiEditor__WrapLine(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineStart, const int32_t lineEnd, const float wrapWidth, int32_t *outRowStarts, const int32_t outRowCapacity) {
+	if(outRowStarts != fui_null && outRowCapacity > 0) {
+		outRowStarts[0] = lineStart;
+	}
+	if(wrapWidth <= 0.0f || lineEnd <= lineStart) {
+		return(1);
+	}
+
+	// A line that fits is one row, and asking THAT costs one measurement per piece rather than one per
+	// character - which is the difference between an index over a whole document being affordable and not.
+	float wholeLineWidth = fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, lineEnd);
+	if(wholeLineWidth <= wrapWidth) {
+		return(1);
+	}
+
+	int32_t rowCount = 1;
+	int32_t rowStart = lineStart;
+	float distanceIntoTheRow = 0.0f;
+	int32_t lastBreakOffset = -1;
+
+	fuiEditor__LineCursor cursor = fuiEditor__BeginLineWalk(editor, rowStart, lineEnd);
+	fuiEditor__LineSegment segment;
+	while(fuiEditor__NextLineSegment(&cursor, &segment)) {
+		if(segment.isTab) {
+			float stopDistance = fuiEditor__NextTabStopDistance(render, distanceIntoTheRow);
+
+			// A tab that reaches past the edge starts the next row, unless it is the first thing on this
+			// one - in which case there is nowhere earlier for it to go.
+			bool reachesPastTheEdge = (stopDistance > wrapWidth) && (segment.offset > rowStart);
+			if(reachesPastTheEdge) {
+				rowStart = segment.offset;
+				if(outRowStarts != fui_null && rowCount < outRowCapacity) {
+					outRowStarts[rowCount] = rowStart;
+				}
+				rowCount += 1;
+				distanceIntoTheRow = fuiEditor__NextTabStopDistance(render, 0.0f);
+				lastBreakOffset = segment.offset + 1;
+				continue;
+			}
+			distanceIntoTheRow = stopDistance;
+
+			// A tab is as good a place to break as a blank is, and for the same reason.
+			lastBreakOffset = segment.offset + 1;
+			continue;
+		}
+
+		bool theWalkStartedAgain = false;
+		int32_t previousStart = -1;
+		int32_t currentStart = 0;
+		while(currentStart < segment.byteCount) {
+			int32_t currentEnd = currentStart + 1;
+			while(currentEnd < segment.byteCount && fuiEditor__IsUtf8Continuation(segment.bytes[currentEnd])) {
+				currentEnd += 1;
+			}
+
+			float advance = fuiEditor__CodepointAdvance(context, render, segment.bytes, previousStart, currentStart, currentEnd);
+			int32_t characterOffset = segment.offset + currentStart;
+			bool reachesPastTheEdge = ((distanceIntoTheRow + advance) > wrapWidth) && (characterOffset > rowStart);
+			if(reachesPastTheEdge) {
+				// Back to the last blank that still fitted, and if there was none, cut the word where it
+				// ran out of room. Either way the new row starts further along than the old one did, which
+				// is what says this walk ends.
+				int32_t breakOffset = characterOffset;
+				bool thereWasABlank = (lastBreakOffset > rowStart) && (lastBreakOffset <= characterOffset);
+				if(thereWasABlank) {
+					breakOffset = lastBreakOffset;
+				}
+
+				rowStart = breakOffset;
+				if(outRowStarts != fui_null && rowCount < outRowCapacity) {
+					outRowStarts[rowCount] = rowStart;
+				}
+				rowCount += 1;
+				if(rowCount >= FUI_TEXTEDITOR__WRAP_MAX_ROWS_PER_LINE) {
+					return(rowCount);
+				}
+				distanceIntoTheRow = 0.0f;
+				lastBreakOffset = -1;
+
+				bool theBreakIsInsideThisPiece = (breakOffset >= segment.offset);
+				if(theBreakIsInsideThisPiece) {
+					currentStart = breakOffset - segment.offset;
+					previousStart = -1;
+					continue;
+				}
+
+				// The blank lay in a piece that is already behind us - a tab or the hole in the buffer came
+				// between - so the walk has to be started again from it. Rare, and correct either way.
+				cursor = fuiEditor__BeginLineWalk(editor, breakOffset, lineEnd);
+				theWalkStartedAgain = true;
+				break;
+			}
+
+			distanceIntoTheRow += advance;
+			bool isABlank = (segment.bytes[currentStart] == ' ');
+			if(isABlank) {
+				// Behind the blank rather than in front of it, so a row keeps the blanks it ends with and
+				// the next one begins with a word.
+				lastBreakOffset = segment.offset + currentEnd;
+			}
+			previousStart = currentStart;
+			currentStart = currentEnd;
+		}
+		if(theWalkStartedAgain) {
+			continue;
+		}
+	}
+	return(rowCount);
+}
+
+//! Whether the index still stands for the width, the face and the tab stops of this build
+fui_inline bool fuiEditor__WrapIndexMatches(const fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth) {
+	const fuiEditorWrapIndex *wrap = &editor->wrap;
+	if(!wrap->isValid) {
+		return(false);
+	}
+	bool sameWidth = (wrap->wrapWidth == wrapWidth);
+	bool sameFace = (wrap->fontHeight == render->fontHeight) && (wrap->tabWidth == render->tabWidth);
+	return(sameWidth && sameFace);
+}
+
+//! Makes room for one entry per document line and one per block of them
+static bool fuiEditor__WrapIndexReserve(fuiEditor *editor, const int32_t lineCount) {
+	fuiEditorWrapIndex *wrap = &editor->wrap;
+	if(lineCount > wrap->lineCapacity) {
+		int32_t wantedCapacity = fuiEditor__GrowCapacity(wrap->lineCapacity, lineCount, FUI_TEXTEDITOR_MIN_LINE_SLOTS);
+		int32_t *grown = (int32_t *)fuiEditor__Allocate(editor, wantedCapacity * (int32_t)sizeof(int32_t));
+		if(grown == fui_null) {
+			return(false);
+		}
+		if(wrap->rowCounts != fui_null) {
+			FUI_TEXTEDITOR_MEMCPY(grown, wrap->rowCounts, (size_t)wrap->lineCount * sizeof(int32_t));
+			fuiEditor__Release(editor, wrap->rowCounts);
+		}
+		wrap->rowCounts = grown;
+		wrap->lineCapacity = wantedCapacity;
+	}
+
+	int32_t blockCount = fuiEditor__WrapBlockCount(lineCount);
+	if(blockCount > wrap->blockCapacity) {
+		int32_t wantedCapacity = fuiEditor__GrowCapacity(wrap->blockCapacity, blockCount, 8);
+		int32_t *grown = (int32_t *)fuiEditor__Allocate(editor, wantedCapacity * (int32_t)sizeof(int32_t));
+		if(grown == fui_null) {
+			return(false);
+		}
+		fuiEditor__Release(editor, wrap->blockFirstRows);
+		wrap->blockFirstRows = grown;
+		wrap->blockCapacity = wantedCapacity;
+	}
+	return(true);
+}
+
+//! Sums the row counts into the block starts again, from the first block that can have moved
+static void fuiEditor__WrapIndexSumBlocks(fuiEditor *editor, const int32_t firstChangedLine) {
+	fuiEditorWrapIndex *wrap = &editor->wrap;
+	int32_t blockCount = fuiEditor__WrapBlockCount(wrap->lineCount);
+	int32_t firstBlock = 0;
+	if(firstChangedLine > 0) {
+		firstBlock = firstChangedLine / FUI_TEXTEDITOR__WRAP_BLOCK_LINES;
+	}
+
+	// Everything in front of the first changed block is a sum over lines that did not move, so it stands.
+	int32_t runningRow = (firstBlock > 0) ? wrap->blockFirstRows[firstBlock] : 0;
+	for(int32_t blockIndex = firstBlock; blockIndex < blockCount; ++blockIndex) {
+		wrap->blockFirstRows[blockIndex] = runningRow;
+		int32_t firstLineOfBlock = blockIndex * FUI_TEXTEDITOR__WRAP_BLOCK_LINES;
+		int32_t endLineOfBlock = fuiEditor__MinI32(firstLineOfBlock + FUI_TEXTEDITOR__WRAP_BLOCK_LINES, wrap->lineCount);
+		for(int32_t lineIndex = firstLineOfBlock; lineIndex < endLineOfBlock; ++lineIndex) {
+			runningRow += wrap->rowCounts[lineIndex];
+		}
+	}
+	wrap->screenLineCount = runningRow;
+}
+
+/*
+	Brings the index up to date with the document, the width and the face.
+
+	Three cases, and only the first of them costs the whole document: nothing is believed and every line is
+	measured; some lines changed and only those are; or nothing changed at all and this returns at once.
+
+	What a changed line costs on top of measuring itself is one addition per line behind it - the block
+	sums have to be walked again from where the change was. That is the price of being able to find a
+	screen line without summing from the top of the document, and it is paid per EDIT rather than per frame.
+*/
+static void fuiEditor__UpdateWrapIndex(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth) {
+	fuiEditorWrapIndex *wrap = &editor->wrap;
+	int32_t lineCount = fuiEditorGetLineCount(editor);
+
+	bool everythingHasToBeMeasured = !fuiEditor__WrapIndexMatches(editor, render, wrapWidth);
+	if(!everythingHasToBeMeasured && (editor->wrapDirtyFirstLine >= FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY) && (wrap->lineCount == lineCount)) {
+		return;
+	}
+
+	if(!fuiEditor__WrapIndexReserve(editor, lineCount)) {
+		return;
+	}
+
+	int32_t firstLineToMeasure = 0;
+	int32_t endLineToMeasure = lineCount;
+	if(!everythingHasToBeMeasured) {
+		int32_t oldLineCount = wrap->lineCount;
+		int32_t firstDirtyLine = fuiEditor__ClampI32(editor->wrapDirtyFirstLine, 0, lineCount);
+
+		// What is still known at the END of the document keeps its row counts; only its INDEX moved, which
+		// is one move of memory rather than one measurement per line.
+		int32_t cleanTailCount = editor->wrapCleanTailCount;
+		cleanTailCount = fuiEditor__MinI32(cleanTailCount, oldLineCount - firstDirtyLine);
+		cleanTailCount = fuiEditor__MinI32(cleanTailCount, lineCount - firstDirtyLine);
+		cleanTailCount = fuiEditor__MaxI32(cleanTailCount, 0);
+
+		int32_t oldTailStart = oldLineCount - cleanTailCount;
+		int32_t newTailStart = lineCount - cleanTailCount;
+		if((cleanTailCount > 0) && (newTailStart != oldTailStart)) {
+			FUI_TEXTEDITOR_MEMMOVE(&wrap->rowCounts[newTailStart], &wrap->rowCounts[oldTailStart], (size_t)cleanTailCount * sizeof(int32_t));
+		}
+		firstLineToMeasure = firstDirtyLine;
+		endLineToMeasure = newTailStart;
+	}
+
+	wrap->lineCount = lineCount;
+	for(int32_t lineIndex = firstLineToMeasure; lineIndex < endLineToMeasure; ++lineIndex) {
+		int32_t lineStart = fuiEditorGetLineStart(editor, lineIndex);
+		int32_t lineEnd = fuiEditorGetLineEnd(editor, lineIndex);
+		int32_t *noRowStarts = fui_null;
+		const int32_t noRowCapacity = 0;
+		wrap->rowCounts[lineIndex] = fuiEditor__WrapLine(context, editor, render, lineStart, lineEnd, wrapWidth, noRowStarts, noRowCapacity);
+	}
+
+	fuiEditor__WrapIndexSumBlocks(editor, firstLineToMeasure);
+	wrap->wrapWidth = wrapWidth;
+	wrap->fontHeight = render->fontHeight;
+	wrap->tabWidth = render->tabWidth;
+	wrap->isValid = true;
+	editor->wrapDirtyFirstLine = FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY;
+	editor->wrapCleanTailCount = FUI_TEXTEDITOR__WRAP_NOTHING_DIRTY;
+	editor->wrapRowLine = -1;
+}
+
+
+
+/*
+	Lays out the rows of ONE document line into the editor's scratch, and keeps them there.
+
+	Everything that asks about a row - drawing it, putting the caret in it, working out which one a click
+	landed on - walks the same line over and over otherwise. Held against the line, the document version and
+	the width, so a line that is asked about five times is walked once.
+*/
+static int32_t fuiEditor__FillRowStarts(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t documentLine, const float wrapWidth) {
+	bool theyAreAlreadyThere = (editor->wrapRowLine == documentLine) && (editor->wrapRowVersion == editor->version);
+	if(theyAreAlreadyThere) {
+		return(editor->wrapRowCount);
+	}
+
+	int32_t wantedCapacity = 1;
+	if(editor->wrap.isValid && (documentLine >= 0) && (documentLine < editor->wrap.lineCount)) {
+		wantedCapacity = editor->wrap.rowCounts[documentLine];
+	}
+	wantedCapacity = fuiEditor__ClampI32(wantedCapacity, 1, FUI_TEXTEDITOR__WRAP_MAX_ROWS_PER_LINE);
+	if(wantedCapacity > editor->wrapRowCapacity) {
+		int32_t grownCapacity = fuiEditor__GrowCapacity(editor->wrapRowCapacity, wantedCapacity, 8);
+		int32_t *grown = (int32_t *)fuiEditor__Allocate(editor, grownCapacity * (int32_t)sizeof(int32_t));
+		if(grown == fui_null) {
+			return(0);
+		}
+		fuiEditor__Release(editor, editor->wrapRowStarts);
+		editor->wrapRowStarts = grown;
+		editor->wrapRowCapacity = grownCapacity;
+	}
+
+	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+	int32_t rowCount = fuiEditor__WrapLine(context, editor, render, lineStart, lineEnd, wrapWidth, editor->wrapRowStarts, editor->wrapRowCapacity);
+	editor->wrapRowsAreIncomplete = (rowCount > editor->wrapRowCapacity);
+	editor->wrapRowCount = fuiEditor__MinI32(rowCount, editor->wrapRowCapacity);
+	editor->wrapRowLine = documentLine;
+	editor->wrapRowVersion = editor->version;
+	return(editor->wrapRowCount);
+}
+
+//! The byte range one row of a line covers, the row counted from the start of that line
+static void fuiEditor__RowRange(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t documentLine, const int32_t rowInLine, const float wrapWidth, int32_t *outRowStart, int32_t *outRowEnd) {
+	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
+	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+	*outRowStart = lineStart;
+	*outRowEnd = lineEnd;
+	if(!fuiEditor__IsWrapping(editor)) {
+		return;
+	}
+
+	int32_t rowCount = fuiEditor__FillRowStarts(context, editor, render, documentLine, wrapWidth);
+	if(rowCount <= 0) {
+		return;
+	}
+	int32_t clampedRow = fuiEditor__ClampI32(rowInLine, 0, rowCount - 1);
+	*outRowStart = editor->wrapRowStarts[clampedRow];
+	bool thereIsAnotherRow = (clampedRow + 1) < rowCount;
+	if(thereIsAnotherRow) {
+		*outRowEnd = editor->wrapRowStarts[clampedRow + 1];
+	}
+}
+
+/*
+	Which row of its line an offset falls on.
+
+	An offset that is exactly a break belongs to two rows at once - it is the end of the one and the start
+	of the next, one offset and two places on screen. preferTheRowThatEndsHere says which of the two was
+	meant, and only the caret ever has an opinion about that.
+*/
+static int32_t fuiEditor__RowOfOffsetInLine(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t documentLine, const int32_t offset, const float wrapWidth, const bool preferTheRowThatEndsHere) {
+	if(!fuiEditor__IsWrapping(editor)) {
+		return(0);
+	}
+	int32_t rowCount = fuiEditor__FillRowStarts(context, editor, render, documentLine, wrapWidth);
+	if(rowCount <= 1) {
+		return(0);
+	}
+
+	int32_t foundRow = 0;
+	for(int32_t rowIndex = 1; rowIndex < rowCount; ++rowIndex) {
+		if(editor->wrapRowStarts[rowIndex] > offset) {
+			break;
+		}
+		foundRow = rowIndex;
+	}
+
+	bool standsOnTheBreakItself = (foundRow > 0) && (editor->wrapRowStarts[foundRow] == offset);
+	if(preferTheRowThatEndsHere && standsOnTheBreakItself) {
+		return(foundRow - 1);
+	}
+	return(foundRow);
+}
+
+/*
+	Which screen line a document offset stands on, and the byte range of that line.
+
+	This and its neighbour below are what the rest of the widget asks, rather than asking about document
+	lines - and with the breaking off they answer with the whole line, so nothing else has to know which
+	of the two it is looking at.
+*/
+static int32_t fuiEditor__ScreenLineOfOffset(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth, const int32_t offset, const bool preferTheRowThatEndsHere, int32_t *outRowStart, int32_t *outRowEnd) {
+	int32_t documentLine = fuiEditorGetLineOfOffset(editor, offset);
+	*outRowStart = fuiEditorGetLineStart(editor, documentLine);
+	*outRowEnd = fuiEditorGetLineEnd(editor, documentLine);
+	if(!fuiEditor__IsWrapping(editor)) {
+		return(documentLine);
+	}
+
+	int32_t rowInLine = fuiEditor__RowOfOffsetInLine(context, editor, render, documentLine, offset, wrapWidth, preferTheRowThatEndsHere);
+	fuiEditor__RowRange(context, editor, render, documentLine, rowInLine, wrapWidth, outRowStart, outRowEnd);
+	int32_t firstRowOfTheLine = fuiEditor__WrapFirstRowOfLine(editor, documentLine);
+	return(firstRowOfTheLine + rowInLine);
+}
+
+//! Which document line one screen line belongs to, and the byte range it covers
+static void fuiEditor__RowRangeOfScreenLine(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth, const int32_t screenLine, int32_t *outDocumentLine, int32_t *outRowStart, int32_t *outRowEnd) {
+	int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+	*outDocumentLine = documentLine;
+	*outRowStart = fuiEditorGetLineStart(editor, documentLine);
+	*outRowEnd = fuiEditorGetLineEnd(editor, documentLine);
+	if(!fuiEditor__IsWrapping(editor)) {
+		return;
+	}
+
+	int32_t firstRowOfTheLine = fuiEditor__WrapFirstRowOfLine(editor, documentLine);
+	fuiEditor__RowRange(context, editor, render, documentLine, screenLine - firstRowOfTheLine, wrapWidth, outRowStart, outRowEnd);
+}
+
+
+// ----------------------------------------------------------------------------
 // > Caret and selection
 // ----------------------------------------------------------------------------
 
@@ -6050,6 +6668,10 @@ static void fuiEditor__MoveCaretTo(fuiEditor *editor, const int32_t offset, cons
 	if(!keepDesiredDistance) {
 		editor->hasDesiredDistance = false;
 	}
+
+	// Every move puts the caret at the START of a break by default; only the end key means the other one,
+	// and it says so straight after this call.
+	editor->caretIsAtARowEnd = false;
 	editor->caretBlinkTime = 0.0f;
 
 	// Typing on somewhere ELSE is a second thought, not the same one - so the run of typing that the newest
@@ -7654,7 +8276,24 @@ fui_inline float fuiEditor__GutterWidthFor(const fuiEditorConfig *config, const 
 	circular - each takes away the room the other is measured against - so one order has to win. This one
 	does, because a document taller than its box is the common case and a wider one is not.
 */
-static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEditorConfig *config, const float gutterWidth, const float contentHeight, const float contentWidth, const float borderThickness) {
+/*
+	How wide the text may be before a line has to be broken.
+
+	Worked out from the rectangle rather than from the layout, because the layout needs the height of the
+	content and the height of the content needs this. It comes to the same numbers the layout does, since
+	the strip for the vertical bar is reserved whichever way that goes while the lines are being broken.
+*/
+static float fuiEditor__WrapWidthFor(const fuiRect rect, const fuiEditorConfig *config, const float gutterWidth, const float borderThickness) {
+	float innerWidth = fuiMaxF(rect.w - borderThickness * 2.0f, 0.0f);
+	float verticalBarWidth = 0.0f;
+	if(config->toggles.verticalScrollbar != fuiEditorScrollbarMode_Never) {
+		verticalBarWidth = fuiScrollGutterWidth();
+	}
+	float widthForTheText = innerWidth - gutterWidth - verticalBarWidth - config->metrics.textPaddingX * 2.0f;
+	return(fuiMaxF(widthForTheText, 0.0f));
+}
+
+static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEditorConfig *config, const float gutterWidth, const float contentHeight, const float contentWidth, const float borderThickness, const bool isWrapping) {
 	fuiEditor__Layout result;
 	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
 
@@ -7674,13 +8313,30 @@ static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEdit
 
 	float scrollbarThickness = fuiScrollGutterWidth();
 
+	/*
+		While the lines are being broken, the vertical strip is reserved whatever fits.
+
+		How TALL the content is then depends on how WIDE the text may be, and how wide it may be depends on
+		whether this bar is there - a circle, and one that flickers exactly when the document is as tall as
+		the box: the bar appears, the text narrows, another line appears, the bar is still needed. Reserving
+		it costs a strip of width and takes the whole question away.
+	*/
 	bool contentIsTallerThanTheBox = (contentHeight > innerHeight);
-	result.hasVerticalBar = fuiEditor__ScrollbarIsThere(config->toggles.verticalScrollbar, contentIsTallerThanTheBox);
+	fuiEditorScrollbarMode verticalMode = config->toggles.verticalScrollbar;
+	if(isWrapping && (verticalMode != fuiEditorScrollbarMode_Never)) {
+		verticalMode = fuiEditorScrollbarMode_Always;
+	}
+	result.hasVerticalBar = fuiEditor__ScrollbarIsThere(verticalMode, contentIsTallerThanTheBox);
 	float verticalBarWidth = result.hasVerticalBar ? scrollbarThickness : 0.0f;
 
+	// And there is no horizontal one at all, because nothing runs off the side any more.
 	float widthForTheText = fuiMaxF(innerWidth - gutterWidth - verticalBarWidth, 0.0f);
 	bool contentIsWiderThanTheBox = (contentWidth > widthForTheText);
-	result.hasHorizontalBar = fuiEditor__ScrollbarIsThere(config->toggles.horizontalScrollbar, contentIsWiderThanTheBox);
+	fuiEditorScrollbarMode horizontalMode = config->toggles.horizontalScrollbar;
+	if(isWrapping) {
+		horizontalMode = fuiEditorScrollbarMode_Never;
+	}
+	result.hasHorizontalBar = fuiEditor__ScrollbarIsThere(horizontalMode, contentIsWiderThanTheBox);
 	float horizontalBarHeight = result.hasHorizontalBar ? scrollbarThickness : 0.0f;
 
 	float bodyHeight = fuiMaxF(innerHeight - horizontalBarHeight, 0.0f);
@@ -7703,7 +8359,7 @@ static fuiEditor__Layout fuiEditor__MakeLayout(const fuiRect rect, const fuiEdit
 // ----------------------------------------------------------------------------
 
 //! Which document offset a point on screen lands on
-static int32_t fuiEditor__OffsetAtPoint(fuiContext *context, const fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float scrollX, const float scrollY, const fuiVec2 point) {
+static int32_t fuiEditor__OffsetAtPoint(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float wrapWidth, const float scrollX, const float scrollY, const fuiVec2 point) {
 	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
 	if(screenLineCount <= 0 || render->lineHeight <= 0.0f) {
 		return(0);
@@ -7716,14 +8372,15 @@ static int32_t fuiEditor__OffsetAtPoint(fuiContext *context, const fuiEditor *ed
 	}
 	screenLine = fuiEditor__ClampI32(screenLine, 0, screenLineCount - 1);
 
-	int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
-	int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
-	int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
+	int32_t documentLine = 0;
+	int32_t rowStart = 0;
+	int32_t rowEnd = 0;
+	fuiEditor__RowRangeOfScreenLine(context, editor, render, wrapWidth, screenLine, &documentLine, &rowStart, &rowEnd);
 
 	const fuiEditorConfig *config = &editor->resolvedConfig;
 	float lineLeftX = layout->textRect.x + config->metrics.textPaddingX - scrollX;
-	float distanceIntoTheLine = point.x - lineLeftX;
-	return(fuiEditor__OffsetAtDistance(context, editor, render, lineStart, lineEnd, distanceIntoTheLine));
+	float distanceIntoTheRow = point.x - lineLeftX;
+	return(fuiEditor__OffsetAtDistance(context, editor, render, rowStart, rowEnd, distanceIntoTheRow));
 }
 
 /*
@@ -7733,20 +8390,24 @@ static int32_t fuiEditor__OffsetAtPoint(fuiContext *context, const fuiEditor *ed
 	That only works if the sideways position is remembered from the last move that was really sideways -
 	the short line in the middle would otherwise pull it left and keep it there.
 */
-static void fuiEditor__MoveCaretByLines(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t lineDelta, const bool extendSelection) {
-	int32_t caretLine = fuiEditorGetCaretLine(editor);
+static void fuiEditor__MoveCaretByLines(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth, const int32_t lineDelta, const bool extendSelection) {
+	int32_t caretRowStart = 0;
+	int32_t caretRowEnd = 0;
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfOffset(context, editor, render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &caretRowStart, &caretRowEnd);
 	if(!editor->hasDesiredDistance) {
-		int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
-		int32_t lineEnd = fuiEditorGetLineEnd(editor, caretLine);
-		editor->desiredDistance = fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, editor->caretOffset);
+		editor->desiredDistance = fuiEditor__DistanceOfOffset(context, editor, render, caretRowStart, caretRowEnd, editor->caretOffset);
 		editor->hasDesiredDistance = true;
 	}
 
-	int32_t lineCount = fuiEditorGetLineCount(editor);
-	int32_t wantedLine = fuiEditor__ClampI32(caretLine + lineDelta, 0, lineCount - 1);
-	int32_t wantedLineStart = fuiEditorGetLineStart(editor, wantedLine);
-	int32_t wantedLineEnd = fuiEditorGetLineEnd(editor, wantedLine);
-	int32_t wantedOffset = fuiEditor__OffsetAtDistance(context, editor, render, wantedLineStart, wantedLineEnd, editor->desiredDistance);
+	// Counted in SCREEN lines rather than document ones. Down means the row under this one, and with the
+	// lines broken to fit that is usually the same line still going - which is what the eye follows.
+	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
+	int32_t wantedScreenLine = fuiEditor__ClampI32(caretScreenLine + lineDelta, 0, screenLineCount - 1);
+	int32_t wantedDocumentLine = 0;
+	int32_t wantedRowStart = 0;
+	int32_t wantedRowEnd = 0;
+	fuiEditor__RowRangeOfScreenLine(context, editor, render, wrapWidth, wantedScreenLine, &wantedDocumentLine, &wantedRowStart, &wantedRowEnd);
+	int32_t wantedOffset = fuiEditor__OffsetAtDistance(context, editor, render, wantedRowStart, wantedRowEnd, editor->desiredDistance);
 
 	const bool keepTheDesiredDistance = true;
 	fuiEditor__MoveCaretTo(editor, wantedOffset, extendSelection, keepTheDesiredDistance);
@@ -7876,7 +8537,7 @@ static bool fuiEditor__TypeWhatWasTyped(fuiContext *context, fuiEditor *editor) 
 }
 
 //! Every key the editor answers to while it has the keyboard
-static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const int32_t linesPerPage, const bool mayAnswerTab, bool *outDidCopy) {
+static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const float wrapWidth, const int32_t linesPerPage, const bool mayAnswerTab, bool *outDidCopy) {
 	bool wantsToExtend = fuiIsShiftDown(context);
 	bool wantsToJumpByWord = fuiIsControlDown(context);
 	bool wantsToMoveLines = fuiIsAltDown(context);
@@ -7914,35 +8575,52 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 	// aside for it - answering both would move the caret onto a line that just moved out from under it.
 	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Up)) {
 		const int32_t oneLineUp = -1;
-		fuiEditor__MoveCaretByLines(context, editor, render, oneLineUp, wantsToExtend);
+		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, oneLineUp, wantsToExtend);
 	}
 	if(!wantsToMoveLines && fuiKeyRepeat(context, fuiKey_Down)) {
 		const int32_t oneLineDown = 1;
-		fuiEditor__MoveCaretByLines(context, editor, render, oneLineDown, wantsToExtend);
+		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, oneLineDown, wantsToExtend);
 	}
 	if(fuiKeyRepeat(context, fuiKey_PageUp)) {
 		int32_t pageUp = -linesPerPage;
-		fuiEditor__MoveCaretByLines(context, editor, render, pageUp, wantsToExtend);
+		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, pageUp, wantsToExtend);
 	}
 	if(fuiKeyRepeat(context, fuiKey_PageDown)) {
-		fuiEditor__MoveCaretByLines(context, editor, render, linesPerPage, wantsToExtend);
+		fuiEditor__MoveCaretByLines(context, editor, render, wrapWidth, linesPerPage, wantsToExtend);
 	}
 
+	/*
+		Home and end go to the ends of the ROW rather than of the line.
+
+		With nothing broken the two are the same. With a line broken over four rows they are not, and the
+		row is the right answer: what home means is "the beginning of what I am reading", and half a
+		paragraph away is not that.
+	*/
 	if(fuiKeyRepeat(context, fuiKey_Home)) {
 		int32_t wantedOffset = 0;
 		if(!wantsToJumpByWord) {
-			int32_t caretLine = fuiEditorGetCaretLine(editor);
-			wantedOffset = fuiEditorGetLineStart(editor, caretLine);
+			int32_t rowStart = 0;
+			int32_t rowEnd = 0;
+			(void)fuiEditor__ScreenLineOfOffset(context, editor, render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &rowStart, &rowEnd);
+			wantedOffset = rowStart;
 		}
 		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
 	}
 	if(fuiKeyRepeat(context, fuiKey_End)) {
 		int32_t wantedOffset = textLength;
+		bool landsOnABreak = false;
 		if(!wantsToJumpByWord) {
-			int32_t caretLine = fuiEditorGetCaretLine(editor);
-			wantedOffset = fuiEditorGetLineEnd(editor, caretLine);
+			int32_t rowStart = 0;
+			int32_t rowEnd = 0;
+			(void)fuiEditor__ScreenLineOfOffset(context, editor, render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &rowStart, &rowEnd);
+			wantedOffset = rowEnd;
+
+			// The end of a broken row IS the start of the next one, so this is the one press that has to
+			// say which of the two it meant - or it would read as a jump to the beginning of the next line.
+			landsOnABreak = rowEnd < fuiEditorGetLineEnd(editor, fuiEditorGetLineOfOffset(editor, rowStart));
 		}
 		fuiEditor__MoveCaretTo(editor, wantedOffset, wantsToExtend, false);
+		editor->caretIsAtARowEnd = landsOnABreak;
 	}
 
 	if(wantsToJumpByWord && fuiKeyWentDown(context, fuiKey_A)) {
@@ -8086,7 +8764,7 @@ static void fuiEditor__HandleKeyboard(fuiContext *context, fuiEditor *editor, co
 }
 
 //! The click, the drag, and what a second and a third click in the same place mean
-static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const fuiInteraction *interaction, const float frameTime, const float scrollX, float *inOutScrollY) {
+static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const fuiInteraction *interaction, const float wrapWidth, const float frameTime, const float scrollX, float *inOutScrollY) {
 	fuiVec2 mousePosition = fuiGetMousePosition(context);
 
 	// The middle button pastes where it is CLICKED rather than where the caret was, which is what it does
@@ -8094,7 +8772,7 @@ static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const
 	// answers for the left button and for nothing else, so the button is asked about directly.
 	bool middleButtonWentDown = fuiMouseButtonWentDown(context, FUI_MOUSE_MIDDLE);
 	if(middleButtonWentDown && interaction->isHovered) {
-		int32_t pastePointOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+		int32_t pastePointOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, wrapWidth, scrollX, *inOutScrollY, mousePosition);
 		const bool dropTheSelection = false;
 		const bool dropTheDesiredColumn = false;
 		fuiEditor__MoveCaretTo(editor, pastePointOffset, dropTheSelection, dropTheDesiredColumn);
@@ -8121,7 +8799,7 @@ static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const
 		editor->timeSinceLastPress = 0.0f;
 		editor->lastPressPosition = mousePosition;
 
-		int32_t pressedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+		int32_t pressedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, wrapWidth, scrollX, *inOutScrollY, mousePosition);
 		bool wantsToExtend = fuiIsShiftDown(context);
 
 		if(editor->pressCount == 2) {
@@ -8164,7 +8842,7 @@ static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const
 		*inOutScrollY += overshootInLines * FUI_TEXTEDITOR__AUTOSCROLL_LINES_PER_SECOND * render->lineHeight * frameTime;
 	}
 
-	int32_t draggedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, scrollX, *inOutScrollY, mousePosition);
+	int32_t draggedOffset = fuiEditor__OffsetAtPoint(context, editor, render, layout, wrapWidth, scrollX, *inOutScrollY, mousePosition);
 
 	// A drag that began on a word or on a line stays on whole words or whole lines, and never shrinks
 	// past the one it began on.
@@ -8196,10 +8874,11 @@ static void fuiEditor__HandleMouse(fuiContext *context, fuiEditor *editor, const
 	off a comparison against where the caret stood at the top of the build, and the wheel and the
 	scrollbars, which move the view without moving the caret, are left alone.
 */
-static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float topInset, float *inOutScrollX, float *inOutScrollY) {
+static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float wrapWidth, const float topInset, float *inOutScrollX, float *inOutScrollY) {
 	const fuiEditorConfig *config = &editor->resolvedConfig;
-	int32_t caretLine = fuiEditorGetCaretLine(editor);
-	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretLine);
+	int32_t caretRowStart = 0;
+	int32_t caretRowEnd = 0;
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfOffset(context, editor, render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &caretRowStart, &caretRowEnd);
 
 	// The find bar floats over the top of the text, so the top of the VIEW is not the top of the body while
 	// it is open. Without this the caret would come to rest underneath it and be invisible exactly while
@@ -8212,9 +8891,13 @@ static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor
 		*inOutScrollY = caretBottom - layout->bodyRect.h;
 	}
 
-	int32_t lineStart = fuiEditorGetLineStart(editor, caretLine);
-	int32_t lineEnd = fuiEditorGetLineEnd(editor, caretLine);
-	float caretDistance = fuiEditor__DistanceOfOffset(context, editor, render, lineStart, lineEnd, editor->caretOffset);
+	// Nothing runs off the side while the lines are being broken, so there is nowhere sideways to go.
+	if(fuiEditor__IsWrapping(editor)) {
+		*inOutScrollX = 0.0f;
+		return;
+	}
+
+	float caretDistance = fuiEditor__DistanceOfOffset(context, editor, render, caretRowStart, caretRowEnd, editor->caretOffset);
 	float caretContentX = config->metrics.textPaddingX + caretDistance;
 
 	// A margin of one character, so the caret is never flush against an edge it is about to cross.
@@ -8236,9 +8919,10 @@ static void fuiEditor__EnsureCaretVisible(fuiContext *context, fuiEditor *editor
 	was already on screen is nudged as usual - a find-next inside the visible window must not throw the
 	view about - and one that was not is put in the MIDDLE, where a jump lands everywhere else.
 */
-static void fuiEditor__RevealCaret(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float topInset, float *inOutScrollX, float *inOutScrollY) {
-	int32_t caretLine = fuiEditorGetCaretLine(editor);
-	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretLine);
+static void fuiEditor__RevealCaret(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const float wrapWidth, const float topInset, float *inOutScrollX, float *inOutScrollY) {
+	int32_t caretRowStart = 0;
+	int32_t caretRowEnd = 0;
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfOffset(context, editor, render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &caretRowStart, &caretRowEnd);
 	float caretTop = (float)caretScreenLine * render->lineHeight;
 	float caretBottom = caretTop + render->lineHeight;
 
@@ -8251,7 +8935,7 @@ static void fuiEditor__RevealCaret(fuiContext *context, fuiEditor *editor, const
 
 	// Sideways is nudged either way. A long line has no middle worth centring on, and the column the match
 	// sits in is what has to be readable.
-	fuiEditor__EnsureCaretVisible(context, editor, render, layout, topInset, inOutScrollX, inOutScrollY);
+	fuiEditor__EnsureCaretVisible(context, editor, render, layout, wrapWidth, topInset, inOutScrollX, inOutScrollY);
 }
 
 // ----------------------------------------------------------------------------
@@ -8845,23 +9529,45 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		arrow key walking down into a long line has to be able to scroll to the caret, and it can only do
 		that if the horizontal range already knows the line is that wide.
 	*/
-	int32_t caretLineBeforeLayout = fuiEditorGetCaretLine(editor);
-	int32_t caretLineStartBeforeLayout = fuiEditorGetLineStart(editor, caretLineBeforeLayout);
-	int32_t caretLineEndBeforeLayout = fuiEditorGetLineEnd(editor, caretLineBeforeLayout);
-	float caretLineWidth = fuiEditor__LineWidth(context, editor, &render, caretLineStartBeforeLayout, caretLineEndBeforeLayout);
-	if(caretLineWidth > editor->widestMeasuredLineWidth) {
-		editor->widestMeasuredLineWidth = caretLineWidth;
+	if(!config->toggles.wordWrap) {
+		int32_t caretLineBeforeLayout = fuiEditorGetCaretLine(editor);
+		int32_t caretLineStartBeforeLayout = fuiEditorGetLineStart(editor, caretLineBeforeLayout);
+		int32_t caretLineEndBeforeLayout = fuiEditorGetLineEnd(editor, caretLineBeforeLayout);
+		float caretLineWidth = fuiEditor__LineWidth(context, editor, &render, caretLineStartBeforeLayout, caretLineEndBeforeLayout);
+		if(caretLineWidth > editor->widestMeasuredLineWidth) {
+			editor->widestMeasuredLineWidth = caretLineWidth;
+		}
 	}
+
+	/*
+		The gutter is sized by the DOCUMENT lines, not by the screen ones.
+
+		What stands in it is a line number, and a line broken over four rows is still one line with one
+		number. Sizing it by the rows would also be the first turn of a circle - how many rows there are
+		depends on how wide the text may be, which is what is left over once the gutter has had its share.
+	*/
+	int32_t documentLineCount = fuiEditorGetLineCount(editor);
+	float gutterWidth = 0.0f;
+	if(config->toggles.showLineNumbers) {
+		gutterWidth = fuiEditor__GutterWidthFor(config, documentLineCount, render.digitWidth);
+	}
+
+	// The index of screen lines is brought up to date before anything asks how many there are. It is only
+	// ever touched while the lines are being broken; with that off, a document line IS a screen line.
+	float wrapWidth = 0.0f;
+	if(config->toggles.wordWrap) {
+		wrapWidth = fuiEditor__WrapWidthFor(rect, config, gutterWidth, theme->widgetBorderThickness);
+		fuiEditor__UpdateWrapIndex(context, editor, &render, wrapWidth);
+	}
+	bool isWrapping = fuiEditor__IsWrapping(editor);
 
 	int32_t screenLineCount = fuiEditor__GetScreenLineCount(editor);
 	float contentHeight = (float)screenLineCount * render.lineHeight;
 	float contentWidth = editor->widestMeasuredLineWidth + config->metrics.textPaddingX * 2.0f;
-
-	float gutterWidth = 0.0f;
-	if(config->toggles.showLineNumbers) {
-		gutterWidth = fuiEditor__GutterWidthFor(config, screenLineCount, render.digitWidth);
+	if(isWrapping) {
+		contentWidth = 0.0f;
 	}
-	fuiEditor__Layout layout = fuiEditor__MakeLayout(rect, config, gutterWidth, contentHeight, contentWidth, theme->widgetBorderThickness);
+	fuiEditor__Layout layout = fuiEditor__MakeLayout(rect, config, gutterWidth, contentHeight, contentWidth, theme->widgetBorderThickness, isWrapping);
 
 	fuiId editorId = fuiGetId(context, id);
 
@@ -8945,11 +9651,11 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	}
 
 	if(config->toggles.isInteractive) {
-		fuiEditor__HandleMouse(context, editor, &render, &layout, &bodyInteraction, frameTime, scrollX, &scrollY);
+		fuiEditor__HandleMouse(context, editor, &render, &layout, &bodyInteraction, wrapWidth, frameTime, scrollX, &scrollY);
 		if(result.isFocused) {
 			int32_t linesPerPage = (int32_t)(layout.bodyRect.h / render.lineHeight);
 			linesPerPage = fuiEditor__MaxI32(linesPerPage, 1);
-			fuiEditor__HandleKeyboard(context, editor, &render, linesPerPage, alreadyHadTheKeyboard, &result.didCopy);
+			fuiEditor__HandleKeyboard(context, editor, &render, wrapWidth, linesPerPage, alreadyHadTheKeyboard, &result.didCopy);
 		}
 
 		// After the document's own keys, so that nothing here answers a keystroke the document has already
@@ -8975,10 +9681,10 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	bool caretMoved = (editor->caretOffset != caretBeforeThisBuild) || (editor->selectionAnchor != anchorBeforeThisBuild);
 	if(editor->wantsCaretRevealed) {
-		fuiEditor__RevealCaret(context, editor, &render, &layout, findBarHeight, &scrollX, &scrollY);
+		fuiEditor__RevealCaret(context, editor, &render, &layout, wrapWidth, findBarHeight, &scrollX, &scrollY);
 		editor->wantsCaretRevealed = false;
 	} else if(caretMoved) {
-		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, findBarHeight, &scrollX, &scrollY);
+		fuiEditor__EnsureCaretVisible(context, editor, &render, &layout, wrapWidth, findBarHeight, &scrollX, &scrollY);
 	}
 
 	// The background goes down BEFORE anything else, the scrollbars included. It covers the whole frame,
@@ -9018,11 +9724,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	int32_t firstVisibleDocumentLine = fuiEditor__DocumentLineOfScreenLine(editor, firstScreenLine);
 	int32_t caretDocumentLine = fuiEditorGetCaretLine(editor);
-	int32_t caretScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, caretDocumentLine);
+	int32_t caretRowStart = 0;
+	int32_t caretRowEnd = 0;
+	int32_t caretScreenLine = fuiEditor__ScreenLineOfOffset(context, editor, &render, wrapWidth, editor->caretOffset, editor->caretIsAtARowEnd, &caretRowStart, &caretRowEnd);
 	int32_t selectionStart = fuiEditorGetSelectionStart(editor);
 	int32_t selectionEnd = fuiEditorGetSelectionEnd(editor);
 	bool hasSelection = (selectionEnd > selectionStart);
-	int32_t documentLineCount = fuiEditorGetLineCount(editor);
 	bool hasLineNumbers = config->toggles.showLineNumbers && (layout.gutterRect.w > 0.0f);
 
 	if(hasLineNumbers) {
@@ -9081,7 +9788,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			fuiVec2 numberSize = fuiMeasureText(context, numberText, (size_t)numberLength, render.fontHeight);
 			float numberLeft = numberRightEdge - numberSize.x;
 			float numberTop = layout.gutterRect.y + (float)screenLine * render.lineHeight - scrollY;
-			bool isTheCaretLine = (screenLine == caretScreenLine);
+			bool isTheCaretLine = (documentLine == caretDocumentLine);
 			fuiColor numberColor = isTheCaretLine ? config->colors.gutterCurrentLineText : config->colors.gutterText;
 			fuiVec2 numberPosition = fuiV2(numberLeft, numberTop);
 			fuiDrawText(context, numberText, (size_t)numberLength, numberPosition, render.fontHeight, numberColor);
@@ -9130,6 +9837,22 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		int32_t lineEnd = fuiEditorGetLineEnd(editor, documentLine);
 		float lineTopY = layout.textRect.y + (float)screenLine * render.lineHeight - scrollY;
 
+		/*
+			What is drawn here is one ROW, which is the whole of its line while nothing is being broken and
+			a piece of it when something is.
+
+			Everything below - the washes, the text, the caret - measures from the row's own start, so it
+			all falls out of handing the same functions a narrower range. The one thing that does not is
+			the colouring: a lexer colours whole LINES, so its styles are still indexed from the line.
+		*/
+		int32_t rowStart = lineStart;
+		int32_t rowEnd = lineEnd;
+		if(isWrapping) {
+			int32_t firstRowOfTheLine = fuiEditor__WrapFirstRowOfLine(editor, documentLine);
+			fuiEditor__RowRange(context, editor, &render, documentLine, screenLine - firstRowOfTheLine, wrapWidth, &rowStart, &rowEnd);
+		}
+		bool isTheLastRowOfItsLine = (rowEnd >= lineEnd);
+
 		// A decoration's wash goes UNDER everything else on the line: it says what the line IS - added,
 		// removed, in error - and the caret and the selection are things that happen on top of that.
 		const fuiEditorLineDecoration *lineDecoration = fuiEditor__LineDecorationAt(&editor->decorations, &textDecorationCursor, documentLine);
@@ -9146,21 +9869,21 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			screen that is not marked as a match.
 		*/
 		if(highlightsTheMatches) {
-			int32_t scanFrom = lineStart;
-			int32_t scanLimit = lineEnd;
+			int32_t scanFrom = rowStart;
+			int32_t scanLimit = rowEnd;
 			if(findNeedleCrossesLines) {
-				// A needle with a line break in it can only be seen at all by looking across the line's
+				// A needle with a line break in it can only be seen at all by looking across the row's
 				// own edges, and what falls outside them is clipped away below.
-				scanFrom = fuiEditor__MaxI32(lineStart - findNeedleLength + 1, 0);
-				scanLimit = fuiEditor__MinI32(lineEnd + findNeedleLength - 1, documentTextLength);
+				scanFrom = fuiEditor__MaxI32(rowStart - findNeedleLength + 1, 0);
+				scanLimit = fuiEditor__MinI32(rowEnd + findNeedleLength - 1, documentTextLength);
 			}
 			int32_t matchStart = fuiEditor__ScanForward(editor, editor->find.needle, findNeedleLength, scanFrom, scanLimit, findMatchCase, findWholeWord);
-			while(matchStart >= 0 && matchStart < lineEnd) {
-				int32_t washStart = fuiEditor__ClampI32(matchStart, lineStart, lineEnd);
-				int32_t washEnd = fuiEditor__ClampI32(matchStart + findNeedleLength, lineStart, lineEnd);
+			while(matchStart >= 0 && matchStart < rowEnd) {
+				int32_t washStart = fuiEditor__ClampI32(matchStart, rowStart, rowEnd);
+				int32_t washEnd = fuiEditor__ClampI32(matchStart + findNeedleLength, rowStart, rowEnd);
 				if(washEnd > washStart) {
-					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
-					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washStart);
+					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washEnd);
 					fuiRect washRect = fuiRectMake(lineLeftX + washStartDistance, lineTopY, washEndDistance - washStartDistance, render.lineHeight);
 					fuiDrawRect(context, washRect, config->colors.findHighlightBackground);
 				}
@@ -9170,17 +9893,18 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		}
 
 		if(hasSelection) {
-			int32_t washStart = fuiEditor__ClampI32(selectionStart, lineStart, lineEnd);
-			int32_t washEnd = fuiEditor__ClampI32(selectionEnd, lineStart, lineEnd);
+			int32_t washStart = fuiEditor__ClampI32(selectionStart, rowStart, rowEnd);
+			int32_t washEnd = fuiEditor__ClampI32(selectionEnd, rowStart, rowEnd);
 
 			// A line whose ENDING is inside the selection gets a blank's worth of wash past its last
 			// character, which is how a selected line break is shown at all - it has no glyph of its own.
+			// Only on the row the line really ends on: the break is at the end of the LINE, not of a row.
 			bool isTheLastLine = (documentLine >= (documentLineCount - 1));
-			bool coversTheLineBreak = !isTheLastLine && (selectionEnd > lineEnd) && (selectionStart <= lineEnd);
+			bool coversTheLineBreak = isTheLastRowOfItsLine && !isTheLastLine && (selectionEnd > lineEnd) && (selectionStart <= lineEnd);
 			bool thereIsAnythingToWash = (washEnd > washStart) || coversTheLineBreak;
 			if(thereIsAnythingToWash) {
-				float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
-				float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+				float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washStart);
+				float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washEnd);
 				float washWidth = washEndDistance - washStartDistance;
 				if(coversTheLineBreak) {
 					washWidth += render.spaceWidth;
@@ -9193,18 +9917,18 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		// The ranges are the decoration that is NOT a whole line - a search hit, a squiggle under one
 		// identifier. Sorted, so only the handful that reach into this line are ever looked at.
 		if(editor->decorations.ranges != fui_null) {
-			int32_t rangeIndex = fuiEditor__FirstRangeDecorationFrom(&editor->decorations, lineStart);
+			int32_t rangeIndex = fuiEditor__FirstRangeDecorationFrom(&editor->decorations, rowStart);
 			while(rangeIndex < editor->decorations.rangeCount) {
 				const fuiEditorRangeDecoration *range = &editor->decorations.ranges[rangeIndex];
-				if(range->startOffset >= lineEnd) {
+				if(range->startOffset >= rowEnd) {
 					break;
 				}
-				bool reachesThisLine = (range->endOffset > lineStart) && (range->background.a > 0.0f);
-				if(reachesThisLine) {
-					int32_t washStart = fuiEditor__ClampI32(range->startOffset, lineStart, lineEnd);
-					int32_t washEnd = fuiEditor__ClampI32(range->endOffset, lineStart, lineEnd);
-					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washStart);
-					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, lineStart, lineEnd, washEnd);
+				bool reachesThisRow = (range->endOffset > rowStart) && (range->background.a > 0.0f);
+				if(reachesThisRow) {
+					int32_t washStart = fuiEditor__ClampI32(range->startOffset, rowStart, rowEnd);
+					int32_t washEnd = fuiEditor__ClampI32(range->endOffset, rowStart, rowEnd);
+					float washStartDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washStart);
+					float washEndDistance = fuiEditor__DistanceOfOffset(context, editor, &render, rowStart, rowEnd, washEnd);
 					fuiRect washRect = fuiRectMake(lineLeftX + washStartDistance, lineTopY, washEndDistance - washStartDistance, render.lineHeight);
 					fuiDrawRect(context, washRect, range->background);
 				}
@@ -9219,6 +9943,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		paint.defaultColor = config->colors.text;
 		paint.whitespaceColor = config->colors.whitespace;
 		paint.showWhitespace = config->toggles.showWhitespace;
+		paint.styleBaseOffset = lineStart;
 		bool thisLineIsColoured = (editor->lexer.lexLine != fui_null) && (documentLine < editor->styledUpToLine);
 		if(thisLineIsColoured) {
 			int32_t startState = fuiEditor__LineIndexGetLexerState(&editor->document.lines, documentLine);
@@ -9228,9 +9953,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			paint.styleLength = lexedLength;
 		}
 
-		float lineWidth = fuiEditor__DrawLine(context, editor, &render, lineStart, lineEnd, lineLeftX, lineTopY, &paint);
-		if(lineWidth > widestLineSoFar) {
-			widestLineSoFar = lineWidth;
+		float rowWidth = fuiEditor__DrawLine(context, editor, &render, rowStart, rowEnd, lineLeftX, lineTopY, &paint);
+
+		// Only worth keeping while there is a sideways range to keep it for. With the lines broken to fit
+		// there is nothing to the side, and a width measured off a ROW would say nothing about a line.
+		if(!isWrapping && (rowWidth > widestLineSoFar)) {
+			widestLineSoFar = rowWidth;
 		}
 
 		/*
@@ -9240,20 +9968,22 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			one - the caret cannot be put in it, and nothing selects it, so it can only mislead. What sets
 			the mark apart from the text is its colour, which is what a mark is for.
 		*/
-		bool hasAnEndingToShow = config->toggles.showLineEndings && (documentLine < (documentLineCount - 1));
+		bool hasAnEndingToShow = config->toggles.showLineEndings && isTheLastRowOfItsLine && (documentLine < (documentLineCount - 1));
 		if(hasAnEndingToShow) {
 			fuiEditorEol lineEnding = fuiEditor__LineEndingOf(editor, documentLine);
 			const char *endingName = fuiEditorEolGetName(lineEnding);
 			size_t endingLength = FUI_TEXTEDITOR_STRLEN(endingName);
-			fuiVec2 endingPosition = fuiV2(lineLeftX + lineWidth, lineTopY);
+			fuiVec2 endingPosition = fuiV2(lineLeftX + rowWidth, lineTopY);
 			fuiDrawText(context, endingName, endingLength, endingPosition, render.fontHeight, config->colors.whitespace);
 
 			// The mark counts towards how wide the line is, or there would be no way to scroll far enough
 			// right to read the one on a long line.
-			fuiVec2 endingSize = fuiMeasureText(context, endingName, endingLength, render.fontHeight);
-			float lineWidthWithTheMark = lineWidth + endingSize.x;
-			if(lineWidthWithTheMark > widestLineSoFar) {
-				widestLineSoFar = lineWidthWithTheMark;
+			if(!isWrapping) {
+				fuiVec2 endingSize = fuiMeasureText(context, endingName, endingLength, render.fontHeight);
+				float rowWidthWithTheMark = rowWidth + endingSize.x;
+				if(rowWidthWithTheMark > widestLineSoFar) {
+					widestLineSoFar = rowWidthWithTheMark;
+				}
 			}
 		}
 	}
@@ -9261,9 +9991,7 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	// Drawn last, so it stands on top of the glyph it sits beside rather than under it.
 	bool caretIsLitRightNow = fuiEditor__AdvanceCaretBlink(editor, theme, frameTime);
 	if(result.isFocused && caretIsLitRightNow && caretLineIsVisible) {
-		int32_t caretLineStart = fuiEditorGetLineStart(editor, caretDocumentLine);
-		int32_t caretLineEnd = fuiEditorGetLineEnd(editor, caretDocumentLine);
-		float caretDistance = fuiEditor__DistanceOfOffset(context, editor, &render, caretLineStart, caretLineEnd, editor->caretOffset);
+		float caretDistance = fuiEditor__DistanceOfOffset(context, editor, &render, caretRowStart, caretRowEnd, editor->caretOffset);
 		float caretTop = layout.textRect.y + (float)caretScreenLine * render.lineHeight - scrollY;
 		float caretLeft = lineLeftX + caretDistance;
 		if(editor->isOverwriting) {
@@ -9276,9 +10004,9 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			*/
 			float boxWidth = render.spaceWidth;
 			int32_t offsetAfterTheCaret = fuiEditorNextCodepointOffset(editor, editor->caretOffset);
-			bool thereIsACharacterUnderIt = (offsetAfterTheCaret > editor->caretOffset) && (offsetAfterTheCaret <= caretLineEnd);
+			bool thereIsACharacterUnderIt = (offsetAfterTheCaret > editor->caretOffset) && (offsetAfterTheCaret <= caretRowEnd);
 			if(thereIsACharacterUnderIt) {
-				float distanceAfterTheCaret = fuiEditor__DistanceOfOffset(context, editor, &render, caretLineStart, caretLineEnd, offsetAfterTheCaret);
+				float distanceAfterTheCaret = fuiEditor__DistanceOfOffset(context, editor, &render, caretRowStart, caretRowEnd, offsetAfterTheCaret);
 				boxWidth = distanceAfterTheCaret - caretDistance;
 			}
 			fuiRect caretBoxRect = fuiRectMake(caretLeft, caretTop, boxWidth, render.lineHeight);
