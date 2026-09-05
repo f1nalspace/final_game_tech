@@ -1461,8 +1461,8 @@ typedef struct fuiEditor {
 	//! Set once a line was too broken up to hold all of its rows, so what is in there is only its start
 	bool wrapRowsAreIncomplete;
 
-	//! Which screen line a fuiEditorScrollToLine is waiting to put at the top
-	int32_t pendingScrollScreenLine;
+	//! Which document line a fuiEditorScrollToLine is waiting to put at the top
+	int32_t pendingScrollDocumentLine;
 	//! Whether there is such a request waiting at all
 	bool hasPendingScroll;
 	//! Which screen line the last build had at the top, so the caller can ask about the view
@@ -8175,10 +8175,15 @@ fui_api void fuiEditorScrollToLine(fuiEditor *editor, const int32_t documentLine
 	if(editor == fui_null || !editor->isInitialized) {
 		return;
 	}
-	// Recorded rather than worked out here. The offset is in PIXELS, and how tall a line is comes from the
-	// font the CONTEXT carries - which a document knows nothing about. Guessing it from the font height
-	// would be wrong by whatever the face's line spacing is, so the next build, which does know, applies it.
-	editor->pendingScrollScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, documentLine);
+	/*
+		Recorded rather than worked out here, and recorded as the DOCUMENT line it was asked for.
+
+		The offset is in pixels, and how tall a line is comes from the font the CONTEXT carries - which a
+		document knows nothing about. Which SCREEN line it is, is no better: with the lines broken to fit
+		that depends on how wide the view is, and on an index the next build is about to bring up to date.
+		So both are left to the build, which knows the one and has just done the other.
+	*/
+	editor->pendingScrollDocumentLine = documentLine;
 	editor->hasPendingScroll = true;
 }
 
@@ -9629,8 +9634,9 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 
 	// A fuiEditorScrollToLine that has been waiting for a line height is answered here, where there is one.
 	if(editor->hasPendingScroll) {
+		int32_t pendingScreenLine = fuiEditor__ScreenLineOfDocumentLine(editor, editor->pendingScrollDocumentLine);
 		int32_t lastScreenLine = fuiEditor__MaxI32(screenLineCount - 1, 0);
-		int32_t pendingScreenLine = fuiEditor__ClampI32(editor->pendingScrollScreenLine, 0, lastScreenLine);
+		pendingScreenLine = fuiEditor__ClampI32(pendingScreenLine, 0, lastScreenLine);
 		editor->scrollY = (float)pendingScreenLine * render.lineHeight;
 		editor->hasPendingScroll = false;
 	}

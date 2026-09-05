@@ -2756,6 +2756,25 @@ static void SelfTestWordWrapOverARealFile(void) {
 	CHECK(RowsCoverEveryLine(&harness, &firstWrongLine));
 	CHECK_I(firstWrongLine, -1);
 
+	/*
+		A scroll to a LINE lands on that line, not on the row of the same number.
+
+		The two are thousands of rows apart in a file this size, and the request is made from OUTSIDE a
+		build - where how wide the view is and how the index stands are both still open. So what is
+		remembered is the line, and the build is what turns it into a row.
+	*/
+	const int32_t lineToScrollTo = 4000;
+	fuiEditorScrollToLine(&harness.editor, lineToScrollTo);
+	(void)HarnessFrame(&harness);
+	CHECK_I(fuiEditorGetFirstVisibleLine(&harness.editor), lineToScrollTo);
+	int32_t firstRowOfThatLine = fuiEditor__WrapFirstRowOfLine(&harness.editor, lineToScrollTo);
+	CHECK(firstRowOfThatLine > lineToScrollTo);
+	CHECK(harness.editor.scrollY == (float)firstRowOfThatLine * harness.render.lineHeight);
+
+	fuiEditorScrollToLine(&harness.editor, 0);
+	(void)HarnessFrame(&harness);
+	CHECK(harness.editor.scrollY == 0.0f);
+
 	// And one keystroke on top of that, which is what the index is kept incrementally FOR.
 	int32_t rowsBeforeTheEdit = screenLineCount;
 	CHECK(fuiEditorInsert(&harness.editor, fuiEditorGetLineStart(&harness.editor, 3), "x", 1));
