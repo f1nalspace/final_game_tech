@@ -102,7 +102,6 @@ FUI_TEXTEDITOR_MIN_LINE_SLOTS   Smallest number of line slots the line index is 
 FUI_TEXTEDITOR_MIN_GAP_BYTES    How much room an insert leaves behind for the next one (default 1024).
 FUI_TEXTEDITOR_MIN_GAP_SLOTS    How many line slots an insert leaves behind for the next one (default 64).
 FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME  How many lines one build may colour before leaving the rest for the next (default 50000).
-FUI_TEXTEDITOR_MAX_PASTE_BYTES  How many bytes one paste may bring in (default 65536).
 FUI_TEXTEDITOR_UNDO_MEMORY_BYTES  How much memory the undo history may hold before its oldest steps are dropped (default 4 MiB).
 FUI_TEXTEDITOR_MAX_FIND_BYTES   How long the text looked for and the text put in its place may be (default 256).
 FUI_TEXTEDITOR_MAX_LINE_NUMBER_BYTES  How many characters the go to line field holds (default 16).
@@ -191,6 +190,15 @@ SOFTWARE.
 	  fuiSelectTextInputContent in final_ui.h - a field anchors the caret to the end of its text the first
 	  time the focus lands on it, which is right for one somebody clicked into and wrong for one that was
 	  just filled in for them. It is the last of the things earlier iterations noted as missing.
+	- Removed: FUI_TEXTEDITOR_MAX_PASTE_BYTES. A paste asks final_ui.h how much there is BEFORE it takes a
+	  buffer, so the buffer is exactly the size of what is coming and a size no longer has to be guessed
+	  ahead of the clipboard. What ctrl+v brings in is the whole clipboard, however large it is.
+	- Changed: Ctrl+c hands the selection over with its LENGTH, through fuiSetClipboardTextLen - the copy
+	  was already one allocation of exactly the selection, and now nothing counts it a second time.
+	- Note: The platform below has lost its own limit as well. FPL's X11 clipboard used to copy into a
+	  buffer of two kilobytes and served NOTHING at all above that, which is what demos/FUI_Editor carried
+	  a refusing hook for; it now serves a text of any size in chunks and reads one back the same way. A
+	  hook is still allowed to refuse, and a cut whose copy was refused still deletes nothing.
 	- Measured: demos/FUI_Performance has editor cases now, over the same generated lines its text box
 	  holds, so the two widgets are compared on the same document rather than on two different ones.
 	  200 000 lines, 25 MB, at 1600x940:
@@ -673,13 +681,6 @@ fui_api const char *fuiEditorGetVersion(void);
 	//! opened and jumped straight to the end of has to be walked once, and doing that in a single frame
 	//! is a stall - so it is spread over as many frames as it takes, showing plain text until it arrives
 #	define FUI_TEXTEDITOR_MAX_LEX_LINES_PER_FRAME 50000
-#endif
-
-#if !defined(FUI_TEXTEDITOR_MAX_PASTE_BYTES)
-	//! How many bytes one paste may bring in. There is a limit at all because fuiGetClipboardText writes
-	//! into a buffer of a size it is TOLD and cannot be asked how much there really is, so a number has to
-	//! be picked before the clipboard is read rather than after
-#	define FUI_TEXTEDITOR_MAX_PASTE_BYTES 65536
 #endif
 
 #if !defined(FUI_TEXTEDITOR_MAX_FIND_BYTES)
@@ -8652,7 +8653,7 @@ static bool fuiEditor__CopySelectionToClipboard(fuiContext *context, fuiEditor *
 		return(false);
 	}
 	(void)fuiEditorCopySelection(editor, clipboardText, bufferLength);
-	bool didSet = fuiSetClipboardText(context, clipboardText);
+	bool didSet = fuiSetClipboardTextLen(context, clipboardText, (size_t)neededLength);
 	fuiEditor__Release(editor, clipboardText);
 	return(didSet);
 }
@@ -8696,22 +8697,29 @@ static bool fuiEditor__PasteFromClipboard(fuiContext *context, fuiEditor *editor
 		return(false);
 	}
 
-	// A size has to be picked BEFORE the clipboard is read: fuiGetClipboardText writes into a buffer of
-	// the size it is told and there is no way to ask it how much there really is.
-	const int32_t pasteCapacity = FUI_TEXTEDITOR_MAX_PASTE_BYTES;
-	char *pastedText = (char *)fuiEditor__Allocate(editor, pasteCapacity);
+	// The clipboard is asked for its size first, so the buffer is exactly as big as what is coming and a
+	// paste of any size arrives whole.
+	size_t clipboardLength = fuiGetClipboardText(context, fui_null, 0);
+	if(clipboardLength == 0) {
+		return(false);
+	}
+
+	// Everything inside the editor counts bytes in an int32_t, so a clipboard beyond that is the one thing
+	// that still cannot be pasted.
+	const size_t largestPasteLength = (size_t)0x7FFFFFFF - 1;
+	if(clipboardLength > largestPasteLength) {
+		return(false);
+	}
+	char *pastedText = (char *)fuiEditor__Allocate(editor, (int32_t)(clipboardLength + 1));
 	if(pastedText == fui_null) {
 		return(false);
 	}
 	pastedText[0] = '\0';
 
 	bool didPaste = false;
-	bool didGet = fuiGetClipboardText(context, pastedText, (uint32_t)pasteCapacity);
-	if(didGet) {
-		size_t pastedLength = FUI_TEXTEDITOR_STRLEN(pastedText);
-		if(pastedLength > 0) {
-			didPaste = fuiEditorInsertAtCaret(editor, pastedText, (int32_t)pastedLength);
-		}
+	size_t pastedLength = fuiGetClipboardText(context, pastedText, clipboardLength + 1);
+	if(pastedLength > 0) {
+		didPaste = fuiEditorInsertAtCaret(editor, pastedText, (int32_t)pastedLength);
 	}
 	fuiEditor__Release(editor, pastedText);
 	return(didPaste);

@@ -1792,33 +1792,65 @@ typedef struct EditorTestHarness {
 } EditorTestHarness;
 
 /*
-	A clipboard of the test's own, so that cutting and pasting can be checked without a window.
+	A clipboard of the test's own, so that cutting and pasting can be checked without a window. It grows to
+	whatever it is handed, the way the real one does since the platform lost its size limit.
 
 	It is also what makes the one case worth having a test for reachable at all: a hook that REFUSES the
-	text. FPL's own does exactly that above two kilobytes, and a cut that deleted the selection anyway
-	would be a delete with no way back.
+	text, which g_testClipboardRefusesEverything switches on. A cut whose copy failed and that deleted the
+	selection anyway would be a delete with no way back.
 */
-#define DEMO_TEST_CLIPBOARD_CAPACITY 4096
-static char g_testClipboard[DEMO_TEST_CLIPBOARD_CAPACITY];
+static char *g_testClipboard = fpl_null;
+static size_t g_testClipboardLength = 0;
 static bool g_testClipboardRefusesEverything = false;
 static int32_t g_testClipboardSetCount = 0;
 
-static bool TestClipboardGet(void *userData, char *destination, uint32_t maxDestinationLength) {
-	(void)userData;
-	fplCopyString(g_testClipboard, destination, maxDestinationLength);
-	return(true);
+//! Puts a text on the test clipboard directly, the way another application would have left it there
+static void TestClipboardSeed(const char *text, const size_t textLength) {
+	free(g_testClipboard);
+	g_testClipboard = (char *)malloc(textLength + 1);
+	g_testClipboardLength = 0;
+	if(g_testClipboard == fpl_null) {
+		return;
+	}
+	if(textLength > 0) {
+		memcpy(g_testClipboard, text, textLength);
+	}
+	g_testClipboard[textLength] = '\0';
+	g_testClipboardLength = textLength;
 }
 
-static bool TestClipboardSet(void *userData, const char *text) {
+static void TestClipboardSeedText(const char *text) {
+	TestClipboardSeed(text, fplGetStringLength(text));
+}
+
+static bool TestClipboardHolds(const char *text) {
+	if(g_testClipboard == fpl_null) {
+		return(false);
+	}
+	return(strcmp(g_testClipboard, text) == 0);
+}
+
+static void TestClipboardRelease(void) {
+	free(g_testClipboard);
+	g_testClipboard = fpl_null;
+	g_testClipboardLength = 0;
+}
+
+static size_t TestClipboardGet(void *userData, char *destination, size_t maxDestinationLength) {
+	(void)userData;
+	if(g_testClipboard == fpl_null) {
+		return(0);
+	}
+	size_t result = fplCopyStringLen(g_testClipboard, g_testClipboardLength, destination, maxDestinationLength);
+	return(result);
+}
+
+static bool TestClipboardSet(void *userData, const char *text, size_t textLength) {
 	(void)userData;
 	if(g_testClipboardRefusesEverything) {
 		return(false);
 	}
-	size_t textLength = fplGetStringLength(text);
-	if(textLength >= DEMO_TEST_CLIPBOARD_CAPACITY) {
-		return(false);
-	}
-	fplCopyString(text, g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	TestClipboardSeed(text, textLength);
 	g_testClipboardSetCount += 1;
 	return(true);
 }
@@ -1850,7 +1882,7 @@ static bool HarnessInit(EditorTestHarness *harness, const char *text, const floa
 	testPlatform.getClipboardText = TestClipboardGet;
 	testPlatform.setClipboardText = TestClipboardSet;
 	fuiSetPlatform(&harness->ui, &testPlatform);
-	g_testClipboard[0] = '\0';
+	TestClipboardSeedText("");
 	g_testClipboardRefusesEverything = false;
 	g_testClipboardSetCount = 0;
 
@@ -3598,7 +3630,7 @@ static void SelfTestCutPasteAndLines(void) {
 	fuiEditorSetSelection(&harness.editor, 4, 7);
 	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
 	CHECK_TEXT(&harness.editor, "one\n\nthree");
-	CHECK(strcmp(g_testClipboard, "two") == 0);
+	CHECK(TestClipboardHolds("two"));
 
 	// And ctrl+v puts it back where the caret was left.
 	HarnessPressKey(&harness, fuiKey_V, noShift, withControl);
@@ -3614,7 +3646,7 @@ static void SelfTestCutPasteAndLines(void) {
 	fuiEditorSetCaretLine(&harness.editor, 1);
 	HarnessPressKey(&harness, fuiKey_X, noShift, withControl);
 	CHECK_TEXT(&harness.editor, "one\nthree");
-	CHECK(strcmp(g_testClipboard, "two\n") == 0);
+	CHECK(TestClipboardHolds("two\n"));
 
 	// Ctrl+d on the LAST line takes the ending in front of it - there is none behind it to take.
 	fuiEditorSetCaretLine(&harness.editor, 1);
@@ -3625,9 +3657,9 @@ static void SelfTestCutPasteAndLines(void) {
 	/*
 		A cut whose COPY failed must not delete anything.
 
-		FPL's own clipboard hook refuses above two kilobytes. There IS an undo stack behind it now, but a
-		cut whose copy failed still took the text nowhere - so it stays refused rather than making the user
-		notice afterwards and press ctrl+z.
+		A hook is allowed to refuse - there is no host where a clipboard is guaranteed. There IS an undo
+		stack behind it now, but a cut whose copy failed still took the text nowhere, so it stays refused
+		rather than making the user notice afterwards and press ctrl+z.
 	*/
 	fuiEditorSetText(&harness.editor, "keep me", 0);
 	fuiEditorSelectAll(&harness.editor);
@@ -3640,17 +3672,71 @@ static void SelfTestCutPasteAndLines(void) {
 
 	// Shift and insert is the other spelling of paste, and shift and delete of cut.
 	fuiEditorSetText(&harness.editor, "abc", 0);
-	fplCopyString("!", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	TestClipboardSeedText("!");
 	fuiEditorSetCaretOffset(&harness.editor, 3, false);
 	HarnessPressKey(&harness, fuiKey_Insert, true, noControl);
 	CHECK_TEXT(&harness.editor, "abc!");
 	fuiEditorSetSelection(&harness.editor, 0, 3);
 	HarnessPressKey(&harness, fuiKey_Delete, true, noControl);
 	CHECK_TEXT(&harness.editor, "!");
-	CHECK(strcmp(g_testClipboard, "abc") == 0);
+	CHECK(TestClipboardHolds("abc"));
 
 	(void)noShift;
 	HarnessRelease(&harness);
+}
+
+/*
+	A copy and a paste far beyond what the clipboard used to be able to carry.
+
+	Two kilobytes was the size of the buffer the platform copied into, and everything above it came out the
+	other end EMPTY rather than shortened. Nothing along the way counts bytes against a fixed size anymore
+	- not the editor, not final_ui.h, not the platform - and these two are what holds that.
+*/
+static void SelfTestClipboardBeyondTheOldLimit(void) {
+	CheckSection("clipboard beyond the old two kilobyte limit");
+
+	const int32_t largeTextLength = 9000;
+	char *largeText = (char *)malloc((size_t)largeTextLength + 1);
+	if(largeText == fpl_null) {
+		CHECK(false);
+		return;
+	}
+	for(int32_t byteIndex = 0; byteIndex < largeTextLength; ++byteIndex) {
+		bool isLineEnd = ((byteIndex % 71) == 70);
+		largeText[byteIndex] = isLineEnd ? '\n' : (char)('a' + (byteIndex % 26));
+	}
+	largeText[largeTextLength] = '\0';
+
+	EditorTestHarness harness;
+	if(!HarnessInit(&harness, largeText, 640.0f, 424.0f)) {
+		CHECK(false);
+		free(largeText);
+		return;
+	}
+	(void)HarnessFrame(&harness);
+	HarnessFocusTheEditor(&harness);
+
+	const bool noShift = false;
+	const bool withControl = true;
+
+	// Ctrl+c hands the whole document over, all nine kilobytes of it.
+	fuiEditorSelectAll(&harness.editor);
+	HarnessPressKey(&harness, fuiKey_C, noShift, withControl);
+	CHECK_I(g_testClipboardLength, largeTextLength);
+	CHECK(TestClipboardHolds(largeText));
+
+	// And ctrl+v brings all of it back into a document that was emptied first.
+	fuiEditorSetText(&harness.editor, "", 0);
+	HarnessPressKey(&harness, fuiKey_V, noShift, withControl);
+	CHECK_I(fuiEditorGetTextLength(&harness.editor), largeTextLength);
+
+	// Not CHECK_TEXT: that one copies the document into a buffer of a kilobyte, which is exactly the kind
+	// of fixed size this test is about.
+	const char *pastedDocument = fuiEditorGetContiguousText(&harness.editor);
+	CHECK(strcmp(pastedDocument, largeText) == 0);
+
+	HarnessRelease(&harness);
+	free(largeText);
 }
 
 /*
@@ -3670,7 +3756,7 @@ static void SelfTestMiddleButtonPaste(void) {
 	(void)HarnessFrame(&harness);
 	HarnessFocusTheEditor(&harness);
 
-	fplCopyString("PASTED", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	TestClipboardSeedText("PASTED");
 
 	// The caret is parked at the very end, so a paste that landed AT the caret rather than at the pointer
 	// would show up on the last line instead of the first.
@@ -3714,7 +3800,7 @@ static void SelfTestReadOnly(void) {
 	const bool withControl = true;
 
 	CHECK(fuiEditorIsReadOnly(&harness.editor));
-	fplCopyString("nope", g_testClipboard, DEMO_TEST_CLIPBOARD_CAPACITY);
+	TestClipboardSeedText("nope");
 	fuiEditorSetCaretOffset(&harness.editor, 2, false);
 
 	int32_t versionBefore = harness.editor.version;
@@ -5811,6 +5897,7 @@ static int RunSelfTest(void) {
 	SelfTestEnterBackspaceDelete();
 	SelfTestOverwriteMode();
 	SelfTestCutPasteAndLines();
+	SelfTestClipboardBeyondTheOldLimit();
 	SelfTestMiddleButtonPaste();
 	SelfTestReadOnly();
 	SelfTestEditsMoveTheCaret();
@@ -6404,29 +6491,16 @@ static void DemoSaveAndVerify(EditorDemoState *demo) {
 }
 
 /*
-	The clipboard hook the demo installs INSTEAD of handing fuiFplSetClipboardText straight over.
+	The clipboard hook the demo installs INSTEAD of handing fuiFplSetClipboardText straight over - not
+	because the platform needs help anymore, but so that every copy says on screen how much went out.
 
-	fplSetClipboardText copies into a fixed buffer of FPL_MAX_BUFFER_LENGTH bytes through fplCopyString,
-	and fplCopyString writes NOTHING AT ALL when the text does not fit - it answers zero and returns. The
-	selection owner is then taken anyway and serves those zero bytes, so what comes out the other end is
-	not a shortened clipboard but an EMPTY one, and whatever was in it beforehand is gone with it. The
-	call even reports success, because taking the ownership did work.
-
-	So anything that does not fit is refused HERE rather than handed over. Every path through the editor
-	goes through this one hook - the Copy button and ctrl+c alike - which is exactly what the hook is for.
+	There is no size to check against: the platform takes a text of any length and serves it in chunks when
+	the receiver cannot swallow it in one go. Every path through the editor goes through this one hook -
+	the Copy button and ctrl+c alike - which is what makes it the right place for that line.
 */
-static bool DemoSetClipboardText(void *userData, const char *text) {
+static bool DemoSetClipboardText(void *userData, const char *text, size_t textLength) {
 	EditorDemoState *demo = (EditorDemoState *)userData;
-	size_t textLength = fplGetStringLength(text);
-
-	// One less than the buffer, because the terminator has to fit in it as well.
-	const size_t platformClipboardLimit = FPL_MAX_BUFFER_LENGTH - 1;
-	if(textLength > platformClipboardLimit) {
-		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "%d bytes exceeds the platform clipboard (%d) - not copied", (int)textLength, (int)platformClipboardLimit);
-		return(false);
-	}
-
-	bool didSet = fplSetClipboardText(text);
+	bool didSet = fplSetClipboardTextLen(text, textLength);
 	if(didSet) {
 		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes", (int)textLength);
 	} else {
@@ -6493,7 +6567,7 @@ static void DemoCopySelection(fuiContext *ui, EditorDemoState *demo) {
 		return;
 	}
 	(void)fuiEditorCopySelection(&demo->editor, copiedText, bufferLength);
-	(void)fuiSetClipboardText(ui, copiedText);
+	(void)fuiSetClipboardTextLen(ui, copiedText, (size_t)selectionLength);
 	free(copiedText);
 }
 
@@ -6884,6 +6958,7 @@ int main(int argc, char **argv) {
 				return 1;
 			}
 			int selfTestResult = RunSelfTest();
+			TestClipboardRelease();
 			fplPlatformRelease();
 			return selfTestResult;
 		}

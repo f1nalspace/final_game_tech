@@ -145,7 +145,6 @@ FUI_MAX_SORTABLE_ROWS     Maximum number of rows one list view will sort (defaul
 FUI_LIST_SORT_VERIFY_ROWS Up to this many rows, a sorted list notices edited cells by itself (default 4096).
 FUI_MAX_TEXT_INPUT        Maximum number of codepoints typed in one frame (default 32).
 FUI_MAX_TOOLTIP_TEXT      Maximum number of bytes one hover tooltip may say (default 256).
-FUI_MAX_CLIPBOARD_TEXT    Maximum number of bytes one clipboard transfer may carry (default 1024).
 FUI_MAX_NUMERIC_TEXT      Maximum number of bytes a numeric widget is typed into (default 32).
 FUI_COMBO_VISIBLE_ROWS    How many rows a combo box drops open at before its list scrolls (default 10).
 FUI_MAX_DIALOGS           Maximum number of modal dialogs open on top of each other (default 8).
@@ -269,6 +268,18 @@ SOFTWARE.
 	  section of their own beside the five new ones - so the dragging, the type-in and the clamping are
 	  written once rather than twice. Nothing about any of them changed except that ctrl and a click now
 	  types the value in instead of starting a drag.
+
+	- Changed: fuiGetClipboardText answers the number of bytes the clipboard holds instead of a bool, and
+	  takes a null destination to be ASKED that number before a buffer for it exists. That is the whole
+	  reason the size limit could go: a paste is read into a buffer of exactly the size it needs.
+	- Changed: fuiPlatform.getClipboardText and .setClipboardText carry sizes now - the getter answers the
+	  required size the way the rest of this file's buffer calls do, and the setter is handed a length so a
+	  selection can go out WITHOUT being copied for a terminator first.
+	- New: fuiSetClipboardTextLen, which is what the text field and the editor use to hand a selection over
+	  straight out of the buffer it lives in. fuiSetClipboardText stays, as the call that counts it first.
+	- Removed: FUI_MAX_CLIPBOARD_TEXT. A copy is no longer cut down to a kilobyte, and a paste no longer
+	  arrives shortened - both go through one allocation of exactly the size that is needed, taken from the
+	  context's allocator and given straight back.
 
 	- New: fuiScrollbarHorizontal, the sideways twin of fuiScrollbarVertical. Both have been the same body
 	  behind an axis flag since the list view got a second bar, and only the vertical half was ever public -
@@ -742,11 +753,6 @@ fui_api const char *fuiGetVersion(void);
 #if !defined(FUI_MAX_TOOLTIP_TEXT)
 	//! Maximum number of bytes one hover tooltip may say
 #	define FUI_MAX_TOOLTIP_TEXT 256
-#endif
-
-#if !defined(FUI_MAX_CLIPBOARD_TEXT)
-	//! Maximum number of bytes one clipboard transfer may carry
-#	define FUI_MAX_CLIPBOARD_TEXT 1024
 #endif
 
 #if !defined(FUI_MAX_NUMERIC_TEXT)
@@ -1865,10 +1871,10 @@ typedef enum fuiCursor {
 *       and a missing cursor callback means the shape is only reported through @ref fuiGetCursor.
 */
 typedef struct fuiPlatform {
-	//! Copies the clipboard contents into destination, returns false when there is no clipboard
-	bool (*getClipboardText)(void *userData, char *destination, uint32_t maxDestinationLength);
-	//! Replaces the clipboard contents, returns false when there is no clipboard
-	bool (*setClipboardText)(void *userData, const char *text);
+	//! Copies the clipboard contents into destination and returns the number of bytes required without the terminator, or zero when there is nothing to read. A null destination asks for the size only, and a destination too small writes nothing and answers zero
+	size_t (*getClipboardText)(void *userData, char *destination, size_t maxDestinationLength);
+	//! Replaces the clipboard contents with the first textLength bytes, returns false when there is no clipboard. The text does not have to be null terminated
+	bool (*setClipboardText)(void *userData, const char *text, size_t textLength);
 	//! Asks the host to show a cursor shape, called only when the shape actually changes
 	void (*setCursor)(void *userData, fuiCursor cursor);
 	//! Passed back to every callback above
@@ -2606,13 +2612,23 @@ fui_api void fuiSetCursor(fuiContext *context, const fuiCursor cursor);
 fui_api fuiCursor fuiGetCursor(const fuiContext *context);
 
 /**
-* @brief Reads the host clipboard.
+* @brief Reads the host clipboard, of any size.
 * @param[in] context Reference to the context @ref fuiContext.
-* @param[out] destination Receives the zero terminated clipboard text.
-* @param[in] maxDestinationLength Size of the destination buffer in bytes.
-* @return Returns true when the clipboard had text and it fit.
+* @param[out] destination Receives the zero terminated clipboard text, pass null to ask for the size only.
+* @param[in] maxDestinationLength Size of the destination buffer in bytes, the terminator included.
+* @return Returns the number of bytes the clipboard text needs without its terminator, or zero when there is nothing to read or the buffer is too small for it.
+* @note Ask with a null destination first and call it a second time with a buffer of that size plus one, that way nothing has to be cut off.
 */
-fui_api bool fuiGetClipboardText(const fuiContext *context, char *destination, const uint32_t maxDestinationLength);
+fui_api size_t fuiGetClipboardText(const fuiContext *context, char *destination, const size_t maxDestinationLength);
+
+/**
+* @brief Writes the host clipboard, taking the length of the text rather than its terminator.
+* @param[in] context Reference to the context @ref fuiContext.
+* @param[in] text The text to put on the clipboard, it does not have to be zero terminated.
+* @param[in] textLength Number of bytes to take from the text.
+* @return Returns true when the host took it.
+*/
+fui_api bool fuiSetClipboardTextLen(const fuiContext *context, const char *text, const size_t textLength);
 
 /**
 * @brief Writes the host clipboard.
@@ -5356,6 +5372,25 @@ fui_inline void fui__ArenaInit(fuiArena *arena, const fuiAllocator *allocator, c
 	arena->outOfMemory = false;
 }
 
+//! Takes memory straight from the allocator, for something that is used and given back within one call.
+//! The arena is the wrong place for that: it never frees a single allocation, so a paste that goes through
+//! it would grow the context by the size of the clipboard every single time.
+fui_inline void *fui__AllocateTransient(fuiArena *arena, const size_t size) {
+	FUI_ASSERT(arena != fui_null);
+	if(size == 0) {
+		return(fui_null);
+	}
+	void *result = arena->allocator.allocate(arena->allocator.userData, size);
+	return(result);
+}
+
+fui_inline void fui__ReleaseTransient(fuiArena *arena, void *pointer) {
+	FUI_ASSERT(arena != fui_null);
+	if(pointer != fui_null) {
+		arena->allocator.release(arena->allocator.userData, pointer);
+	}
+}
+
 //! Asks the allocator for one more block, big enough to hold at least requiredSize bytes
 fui_inline bool fui__ArenaAddBlock(fuiArena *arena, const size_t requiredSize) {
 	FUI_ASSERT(arena != fui_null);
@@ -5880,28 +5915,41 @@ fui_api fuiCursor fuiGetCursor(const fuiContext *context) {
 	return(context->cursor);
 }
 
-fui_api bool fuiGetClipboardText(const fuiContext *context, char *destination, const uint32_t maxDestinationLength) {
-	FUI_ASSERT(context != fui_null && destination != fui_null);
-	if(context == fui_null || destination == fui_null || maxDestinationLength == 0) {
-		return(false);
+fui_api size_t fuiGetClipboardText(const fuiContext *context, char *destination, const size_t maxDestinationLength) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return(0);
 	}
-	destination[0] = '\0';
+	bool isQueryOnly = (destination == fui_null) || (maxDestinationLength == 0);
+	if(!isQueryOnly) {
+		destination[0] = '\0';
+	}
 	if(context->platform.getClipboardText == fui_null) {
-		return(false);
+		return(0);
 	}
-	bool result = context->platform.getClipboardText(context->platform.userData, destination, maxDestinationLength);
-	if(!result) {
+	size_t result = context->platform.getClipboardText(context->platform.userData, destination, maxDestinationLength);
+	if(result == 0 && !isQueryOnly) {
 		destination[0] = '\0';
 	}
 	return(result);
 }
 
-fui_api bool fuiSetClipboardText(const fuiContext *context, const char *text) {
+fui_api bool fuiSetClipboardTextLen(const fuiContext *context, const char *text, const size_t textLength) {
 	FUI_ASSERT(context != fui_null && text != fui_null);
 	if(context == fui_null || text == fui_null || context->platform.setClipboardText == fui_null) {
 		return(false);
 	}
-	bool result = context->platform.setClipboardText(context->platform.userData, text);
+	bool result = context->platform.setClipboardText(context->platform.userData, text, textLength);
+	return(result);
+}
+
+fui_api bool fuiSetClipboardText(const fuiContext *context, const char *text) {
+	FUI_ASSERT(text != fui_null);
+	if(text == fui_null) {
+		return(false);
+	}
+	size_t textLength = fui__StringLength(text);
+	bool result = fuiSetClipboardTextLen(context, text, textLength);
 	return(result);
 }
 
@@ -10352,28 +10400,29 @@ fui_inline bool fui__TextInputBuild(fuiContext *context, const fuiRect rect, con
 				bool hasSelection = fui__HasSelection(context);
 				int32_t copyFrom = hasSelection ? fui__SelectionStart(context) : 0;
 				int32_t copyTo = hasSelection ? fui__SelectionEnd(context) : length;
+				// The selection goes out as it is, in one piece: both ends sit on character boundaries
+				// already, and there is no size to cut it down to anymore.
 				int32_t copyLength = copyTo - copyFrom;
-				if(copyLength > (int32_t)FUI_MAX_CLIPBOARD_TEXT - 1) {
-					copyLength = (int32_t)FUI_MAX_CLIPBOARD_TEXT - 1;
-				}
-				// Truncating in the middle of a multi-byte character would put a broken sequence on the
-				// clipboard, so the cut is pulled back onto a character boundary.
-				copyLength = fui__SnapToCodepointStart(&buffer[copyFrom], copyTo - copyFrom, copyLength);
 				if(copyLength > 0) {
-					char clipboardText[FUI_MAX_CLIPBOARD_TEXT];
-					fui__CopyMemory(clipboardText, &buffer[copyFrom], (size_t)copyLength);
-					clipboardText[copyLength] = '\0';
-					(void)fuiSetClipboardText(context, clipboardText);
+					(void)fuiSetClipboardTextLen(context, &buffer[copyFrom], (size_t)copyLength);
 				}
 				if(wantsCut && !isReadOnly && hasSelection && fui__DeleteSelection(context, buffer, &length)) {
 					didChange = true;
 				}
 			}
 			if(!isReadOnly && fuiKeyWentDown(context, fuiKey_V)) {
-				char clipboardText[FUI_MAX_CLIPBOARD_TEXT];
-				if(fuiGetClipboardText(context, clipboardText, (uint32_t)FUI_MAX_CLIPBOARD_TEXT)) {
-					if(fui__InsertText(context, buffer, capacity, &length, clipboardText, multiline)) {
-						didChange = true;
+				// Asking for the size first is what makes a paste of any size possible - the buffer is
+				// taken for exactly it and given back at the end of this block.
+				size_t clipboardLength = fuiGetClipboardText(context, fui_null, 0);
+				if(clipboardLength > 0) {
+					char *clipboardText = (char *)fui__AllocateTransient(&context->arena, clipboardLength + 1);
+					if(clipboardText != fui_null) {
+						if(fuiGetClipboardText(context, clipboardText, clipboardLength + 1) > 0) {
+							if(fui__InsertText(context, buffer, capacity, &length, clipboardText, multiline)) {
+								didChange = true;
+							}
+						}
+						fui__ReleaseTransient(&context->arena, clipboardText);
 					}
 				}
 			}

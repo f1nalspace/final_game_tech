@@ -103,19 +103,20 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge);
 /**
 * @brief Reads the system clipboard, shaped as the @ref fuiPlatform callback final_ui.h asks for.
 * @param[in] userData Ignored, FPL's clipboard is global.
-* @param[out] destination Receives the text.
+* @param[out] destination Receives the text, pass null to ask for the size only.
 * @param[in] maxDestinationLength Capacity of destination in bytes, including the terminator.
-* @return Returns true when there was text to read.
+* @return Returns the number of bytes the text needs without its terminator, or zero when there is nothing to read or it does not fit.
 */
-fui_api bool fuiFplGetClipboardText(void *userData, char *destination, uint32_t maxDestinationLength);
+fui_api size_t fuiFplGetClipboardText(void *userData, char *destination, size_t maxDestinationLength);
 
 /**
 * @brief Writes the system clipboard, shaped as the @ref fuiPlatform callback final_ui.h asks for.
 * @param[in] userData Ignored, FPL's clipboard is global.
-* @param[in] text The text to put on the clipboard.
+* @param[in] text The text to put on the clipboard, it does not have to be null terminated.
+* @param[in] textLength Number of bytes to take from the text.
 * @return Returns true when the clipboard took it.
 */
-fui_api bool fuiFplSetClipboardText(void *userData, const char *text);
+fui_api bool fuiFplSetClipboardText(void *userData, const char *text, size_t textLength);
 
 #ifdef __cplusplus
 }
@@ -287,14 +288,14 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 	input->textInputLength = bridge->typedCount;
 }
 
-fui_api bool fuiFplGetClipboardText(void *userData, char *destination, uint32_t maxDestinationLength) {
+fui_api size_t fuiFplGetClipboardText(void *userData, char *destination, size_t maxDestinationLength) {
 	(void)userData;
 	return fplGetClipboardText(destination, maxDestinationLength);
 }
 
-fui_api bool fuiFplSetClipboardText(void *userData, const char *text) {
+fui_api bool fuiFplSetClipboardText(void *userData, const char *text, size_t textLength) {
 	(void)userData;
-	return fplSetClipboardText(text);
+	return fplSetClipboardTextLen(text, textLength);
 }
 
 #endif // FUI_INPUT_FPL_IMPLEMENTATION

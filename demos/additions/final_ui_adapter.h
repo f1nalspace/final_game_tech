@@ -438,21 +438,18 @@ fpl_extern bool fuiFontFromFontAsset(const FontAsset *fontAsset, fuiFont *outFon
 // > Platform
 // ----------------------------------------------------------------------------
 
-fpl_internal bool fui__PlatformGetClipboardText(void *userData, char *dest, uint32_t maxDestLength) {
+fpl_internal size_t fui__PlatformGetClipboardText(void *userData, char *dest, size_t maxDestLength) {
 	(void)userData;
-	if(dest == fpl_null || maxDestLength == 0) {
-		return(false);
-	}
-	bool result = fplGetClipboardText(dest, maxDestLength);
+	size_t result = fplGetClipboardText(dest, maxDestLength);
 	return(result);
 }
 
-fpl_internal bool fui__PlatformSetClipboardText(void *userData, const char *text) {
+fpl_internal bool fui__PlatformSetClipboardText(void *userData, const char *text, size_t textLength) {
 	(void)userData;
 	if(text == fpl_null) {
 		return(false);
 	}
-	bool result = fplSetClipboardText(text);
+	bool result = fplSetClipboardTextLen(text, textLength);
 	return(result);
 }
 
