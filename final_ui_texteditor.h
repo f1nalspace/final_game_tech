@@ -50,6 +50,8 @@ all in. What is left is the shortcut table and the documentation. See the change
   read-only view of a diff wants to be searched and does not want to be replaced in.
 - Colour it by handing fuiEditorSetLexer() a callback that colours ONE line, and fuiEditorSetDecorations()
   the arrays for everything that needs no history - a diff, an error marker, a search hit.
+- Say that a line is not THERE rather than that it changed with fuiEditorLineDecoration.backgroundFill -
+  diagonal stripes across it, which is what the filler line of a side by side diff is drawn as.
 - Break long lines to fit with fuiEditorConfig.toggles.wordWrap, which turns one document line into several
   SCREEN lines - only the first of which carries a number.
 - Move a keystroke somewhere else with fuiEditorConfig.shortcuts, or take it off the keyboard entirely with
@@ -155,7 +157,9 @@ SOFTWARE.
 	# v1.0.0:
 	The keys stop being this file's opinion, and the widget gets measured against the one it sits beside.
 	Everything an editor DOES has been here since iteration seven; what was still missing was a way for the
-	caller to say what a keystroke means, and a number saying what any of it costs.
+	caller to say what a keystroke means, and a number saying what any of it costs. A decoration also
+	learns to say that a line is NOT THERE rather than that it changed, which is the one thing a side by
+	side diff needed and could not spell.
 
 	- New: fuiEditorConfig.shortcuts and fuiEditorShortcuts - eighteen actions, each on a fuiShortcut, each
 	  remappable. Select all, cut, undo, both spellings of redo, delete line, duplicate, moving lines up and
@@ -228,6 +232,26 @@ SOFTWARE.
 	  the risk this was written down as. fuiSetDrawBatching answers it completely: the same frame, the same
 	  build time, and SEVEN draw commands. Runs of one colour merge, and the colouring stops costing
 	  anything at all on the submit side.
+
+	- New: fuiEditorLineFill and fuiEditorLineDecoration.backgroundFill, which says whether a decorated
+	  line's wash is one flat colour or diagonal stripes over it. Zero is flat, so every decoration
+	  written before this reads exactly as it did.
+	- New: fuiEditorLineDecoration.stripeColor, what those stripes are drawn in. A zero alpha takes the
+	  line's own background, so a caller who wants stripes and does not care what colour says one thing
+	  rather than two.
+	- New: fuiEditorMetrics.stripeSpacing, how far apart they stand, measured ACROSS the line. Measured
+	  that way and not perpendicular to the stripes, because it is then the distance a reader can see and
+	  because it keeps a square root out of the inner loop. Zero is ten pixels.
+	- New: A RUN of struck out lines is drawn in one go rather than line by line. A block of lines the
+	  other side has and this one has not is one hole in the document and has to read as one: stripes that
+	  start over at every line boundary read as a column of little boxes instead. It is also what the
+	  drawing costs - one hole costs its width plus its height, where one per line would cost the width of
+	  the view once for every line of it.
+	- New: The stripes are generated only for the piece of a run that is not CLIPPED away, at a phase
+	  taken from the run itself. An editor laid out at its full height inside a scrolling container has no
+	  idea which of its rows can be seen, and a run in a long patch can be taller than the window many
+	  times over - so what is drawn is bounded by the window rather than by the document, and it still
+	  does not crawl along the text when that text is scrolled.
 
 	# v0.8.0:
 	It can be read from and written back to something other than utf-8 now. Everything up to here treated
@@ -912,6 +936,8 @@ typedef struct fuiEditorMetrics {
 	float statusBarHeight;
 	//! How wide the caret is drawn. Zero is two pixels
 	float caretWidth;
+	//! How far apart the diagonal stripes of a struck out line stand, measured ACROSS the line in pixels. Zero is ten
+	float stripeSpacing;
 	//! How many characters wide one tab stop is. Zero is four
 	int32_t tabSize;
 	//! How many digits the gutter is wide even when the document is shorter than that. Zero is three
@@ -1209,6 +1235,21 @@ typedef struct fuiEditorLexer {
 } fuiEditorLexer;
 
 /**
+* @enum fuiEditorLineFill
+* @brief How the wash of a decorated line is painted across it.
+* @note The two say different things about the line underneath. A flat wash says what the line IS -
+*       added, removed, in error - and leaves it a line like any other. Stripes say the line is NOT
+*       THERE: the room is being held open for something that only the other side of a side by side
+*       diff has, and there is nothing to read in it at all.
+*/
+typedef enum fuiEditorLineFill {
+	//! One flat colour, which is what a line that is really there wants
+	fuiEditorLineFill_Solid = 0,
+	//! Diagonal stripes over that colour, for a line that stands in for one that is not there
+	fuiEditorLineFill_DiagonalStripes,
+} fuiEditorLineFill;
+
+/**
 * @struct fuiEditorLineDecoration
 * @brief What a decoration says about one whole line.
 */
@@ -1219,6 +1260,10 @@ typedef struct fuiEditorLineDecoration {
 	fuiColor background;
 	//! Fill of the marker drawn at the left edge of the gutter. A zero alpha draws none
 	fuiColor gutterMarker;
+	//! How that wash is painted @ref fuiEditorLineFill. Zero is one flat colour
+	fuiEditorLineFill backgroundFill;
+	//! What the stripes of a striped wash are drawn in. A zero alpha takes @ref background
+	fuiColor stripeColor;
 } fuiEditorLineDecoration;
 
 /**
@@ -5452,6 +5497,15 @@ fui_api void fuiEditorSetByteOrderMark(fuiEditor *editor, const bool hasByteOrde
 //! How thick the hairline between the gutter and the text is
 #define FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS 1.0f
 
+//! How far apart the diagonal stripes of a struck out line stand when the caller named no spacing
+#define FUI_TEXTEDITOR__DEFAULT_STRIPE_SPACING 10.0f
+
+//! How thick one of those stripes is drawn. A hairline, because they are there to be seen THROUGH
+#define FUI_TEXTEDITOR__STRIPE_THICKNESS 1.0f
+
+//! The narrowest a stripe spacing may be taken as, so that a zero or a silly one cannot fill a line solid
+#define FUI_TEXTEDITOR__MIN_STRIPE_SPACING 2.0f
+
 //! How many lines one notch of the wheel moves the view
 #define FUI_TEXTEDITOR__WHEEL_LINES 3.0f
 
@@ -5691,6 +5745,7 @@ static void fuiEditor__ResolveConfig(fuiEditor *editor, const fuiTheme *theme) {
 	resolved.metrics.gutterPaddingX = fuiEditor__ResolveLength(editor->config.metrics.gutterPaddingX, theme->widgetPaddingX);
 	resolved.metrics.statusBarHeight = fuiEditor__ResolveLength(editor->config.metrics.statusBarHeight, theme->menuItemHeight);
 	resolved.metrics.caretWidth = fuiEditor__ResolveLength(editor->config.metrics.caretWidth, FUI_TEXTEDITOR__DEFAULT_CARET_WIDTH);
+	resolved.metrics.stripeSpacing = fuiEditor__ResolveLength(editor->config.metrics.stripeSpacing, FUI_TEXTEDITOR__DEFAULT_STRIPE_SPACING);
 	resolved.metrics.tabSize = fuiEditor__ResolveCount(editor->config.metrics.tabSize, FUI_TEXTEDITOR__DEFAULT_TAB_SIZE);
 	resolved.metrics.gutterMinDigits = fuiEditor__ResolveCount(editor->config.metrics.gutterMinDigits, FUI_TEXTEDITOR__DEFAULT_GUTTER_MIN_DIGITS);
 
@@ -9797,6 +9852,136 @@ static bool fuiEditor__AdvanceCaretBlink(fuiEditor *editor, const fuiTheme *them
 	return(editor->caretBlinkTime < blinkPeriod);
 }
 
+//! Whether two colours are the same one, which is what tells one run of struck out lines from the next
+static bool fuiEditor__ColorsAreTheSame(const fuiColor left, const fuiColor right) {
+	bool colorsMatch = (left.r == right.r) && (left.g == right.g) && (left.b == right.b) && (left.a == right.a);
+	return(colorsMatch);
+}
+
+/*
+	The wash that says what each line IS, across the gutter as well as the text.
+
+	Over the gutter too, and not only over the text: a line whose colour stops at its line number reads
+	as two things beside each other rather than as one line. That is the same reason the current line
+	wash goes the whole way across, and it is what makes the number of a removed line read as belonging
+	to a removed line.
+
+	TWO shapes come out of the one walk. A flat wash is drawn per line. Stripes are drawn for a whole RUN
+	of struck out lines at once, because a block of lines the other side has and this one has not is one
+	hole in the document and has to read as one - stripes that start over at every line boundary read as
+	a column of little boxes instead. It is also what the drawing costs: one hole costs its width plus
+	its height, where one per line would cost the width of the view once for every line of it.
+
+	What is drawn is bounded by whatever is CLIPPING the editor rather than by the run. A block inside a
+	scrolling column is laid out at its full height, and a run in the middle of a long patch can be
+	taller than the window several times over - so the stripes are generated for the piece that can be
+	seen, at a phase taken from the run itself, which is what keeps them still against the text while it
+	scrolls.
+*/
+static void fuiEditor__DrawLineDecorationBackgrounds(fuiContext *context, fuiEditor *editor, const fuiEditor__Render *render, const fuiEditor__Layout *layout, const fuiEditorConfig *config, const int32_t firstScreenLine, const int32_t endScreenLine, const int32_t firstVisibleDocumentLine, const float scrollY) {
+	if(editor->decorations.lines == fui_null) {
+		return;
+	}
+
+	float stripeSpacing = config->metrics.stripeSpacing;
+	if(stripeSpacing < FUI_TEXTEDITOR__MIN_STRIPE_SPACING) {
+		stripeSpacing = FUI_TEXTEDITOR__MIN_STRIPE_SPACING;
+	}
+
+	fuiPushClip(context, layout->bodyRect);
+
+	int32_t decorationCursor = fuiEditor__FirstLineDecorationFrom(&editor->decorations, firstVisibleDocumentLine);
+	int32_t screenLine = firstScreenLine;
+	while(screenLine < endScreenLine) {
+		int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+		const fuiEditorLineDecoration *decoration = fuiEditor__LineDecorationAt(&editor->decorations, &decorationCursor, documentLine);
+		if(decoration == fui_null) {
+			screenLine += 1;
+			continue;
+		}
+
+		bool lineIsStruckOut = (decoration->backgroundFill == fuiEditorLineFill_DiagonalStripes);
+		if(!lineIsStruckOut) {
+			if(decoration->background.a > 0.0f) {
+				float lineTopY = layout->bodyRect.y + (float)screenLine * render->lineHeight - scrollY;
+				fuiRect washRect = fuiRectMake(layout->bodyRect.x, lineTopY, layout->bodyRect.w, render->lineHeight);
+				fuiDrawRect(context, washRect, decoration->background);
+			}
+			screenLine += 1;
+			continue;
+		}
+
+		fuiColor runBackground = decoration->background;
+		fuiColor runStripe = decoration->stripeColor;
+		if(runStripe.a <= 0.0f) {
+			runStripe = runBackground;
+		}
+
+		// The run goes on for as long as the lines keep saying the same thing. A decoration that changes
+		// colour starts a new one, so two holes that meet are still drawn as two.
+		int32_t runStart = screenLine;
+		while(screenLine < endScreenLine) {
+			int32_t nextDocumentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
+			const fuiEditorLineDecoration *nextDecoration = fuiEditor__LineDecorationAt(&editor->decorations, &decorationCursor, nextDocumentLine);
+			bool nextLineBelongsToTheRun = (nextDecoration != fui_null) && (nextDecoration->backgroundFill == fuiEditorLineFill_DiagonalStripes) && fuiEditor__ColorsAreTheSame(nextDecoration->background, runBackground) && fuiEditor__ColorsAreTheSame(nextDecoration->stripeColor, decoration->stripeColor);
+			if(!nextLineBelongsToTheRun) {
+				break;
+			}
+			screenLine += 1;
+		}
+
+		float runTopY = layout->bodyRect.y + (float)runStart * render->lineHeight - scrollY;
+		float runHeight = (float)(screenLine - runStart) * render->lineHeight;
+		fuiRect runRect = fuiRectMake(layout->bodyRect.x, runTopY, layout->bodyRect.w, runHeight);
+		if(runBackground.a > 0.0f) {
+			fuiDrawRect(context, runRect, runBackground);
+		}
+		if(runStripe.a <= 0.0f) {
+			continue;
+		}
+
+		fuiRect visibleRect = fuiRectIntersect(fuiGetClipRect(context), runRect);
+		if(visibleRect.w <= 0.0f || visibleRect.h <= 0.0f) {
+			continue;
+		}
+
+		/*
+			One stripe is the line x + y = c, and stepping c by the spacing steps them across the line by
+			exactly that much - which is what the spacing is documented to mean, and what keeps a square
+			root out of the inner loop.
+
+			The phase comes from the RUN and the range from what can be seen, so scrolling moves the
+			stripes with the text rather than making them crawl along it.
+		*/
+		float runPhase = runRect.x + runRect.y;
+		float firstVisibleC = visibleRect.x + visibleRect.y;
+		float lastVisibleC = (visibleRect.x + visibleRect.w) + (visibleRect.y + visibleRect.h);
+		float stepsIntoTheRun = (firstVisibleC - runPhase) / stripeSpacing;
+		// Rounded DOWN rather than truncated: a cast rounds toward zero, which for a run whose top is
+		// above the view would start the stripes one step inside it and leave a gap along the edge.
+		int32_t firstStep = (int32_t)stepsIntoTheRun;
+		if((float)firstStep > stepsIntoTheRun) {
+			firstStep -= 1;
+		}
+		float stripeC = runPhase + (float)firstStep * stripeSpacing;
+
+		fuiPushClip(context, visibleRect);
+		float stripeTopY = visibleRect.y;
+		float stripeBottomY = visibleRect.y + visibleRect.h;
+		while(stripeC <= lastVisibleC) {
+			// Drawn across the visible height only, and cut to the sides by the clip - so a run a hundred
+			// screens tall costs exactly what one screen of it costs.
+			fuiVec2 stripeBottom = fuiV2(stripeC - stripeBottomY, stripeBottomY);
+			fuiVec2 stripeTop = fuiV2(stripeC - stripeTopY, stripeTopY);
+			fuiDrawLine(context, stripeBottom, stripeTop, runStripe, FUI_TEXTEDITOR__STRIPE_THICKNESS);
+			stripeC += stripeSpacing;
+		}
+		fuiPopClip(context);
+	}
+
+	fuiPopClip(context);
+}
+
 fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, const char *id, fuiEditor *editor) {
 	fuiEditorAction result;
 	FUI_TEXTEDITOR_MEMSET(&result, 0, sizeof(result));
@@ -10073,6 +10258,16 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		fuiPopClip(context);
 	}
 
+	/*
+		What each line IS, washed across the gutter as well as the text.
+
+		Here rather than down in the text loop, because that loop runs inside a clip of the text alone and
+		a wash that stops at the gutter is exactly what this is not. Above the current line wash, so that
+		the line the caret is on still reads as decorated; below the line numbers, so that they stay
+		readable on top of whatever colour their line carries.
+	*/
+	fuiEditor__DrawLineDecorationBackgrounds(context, editor, &render, &layout, config, firstScreenLine, endScreenLine, firstVisibleDocumentLine, scrollY);
+
 	if(hasLineNumbers) {
 		fuiPushClip(context, layout.gutterRect);
 		float numberRightEdge = layout.gutterRect.x + layout.gutterRect.w - config->metrics.gutterPaddingX - FUI_TEXTEDITOR__GUTTER_SEPARATOR_THICKNESS;
@@ -10156,7 +10351,6 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 	fuiPushClip(context, layout.textRect);
 	float lineLeftX = layout.textRect.x + config->metrics.textPaddingX - scrollX;
 	float widestLineSoFar = editor->widestMeasuredLineWidth;
-	int32_t textDecorationCursor = fuiEditor__FirstLineDecorationFrom(&editor->decorations, firstVisibleDocumentLine);
 	for(int32_t screenLine = firstScreenLine; screenLine < endScreenLine; ++screenLine) {
 		int32_t documentLine = fuiEditor__DocumentLineOfScreenLine(editor, screenLine);
 		int32_t lineStart = fuiEditorGetLineStart(editor, documentLine);
@@ -10179,13 +10373,10 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 		}
 		bool isTheLastRowOfItsLine = (rowEnd >= lineEnd);
 
-		// A decoration's wash goes UNDER everything else on the line: it says what the line IS - added,
-		// removed, in error - and the caret and the selection are things that happen on top of that.
-		const fuiEditorLineDecoration *lineDecoration = fuiEditor__LineDecorationAt(&editor->decorations, &textDecorationCursor, documentLine);
-		if(lineDecoration != fui_null && lineDecoration->background.a > 0.0f) {
-			fuiRect decorationRect = fuiRectMake(layout.textRect.x, lineTopY, layout.textRect.w, render.lineHeight);
-			fuiDrawRect(context, decorationRect, lineDecoration->background);
-		}
+		// A decoration's wash is NOT drawn here. It says what the line IS - added, removed, in error -
+		// and that goes across the gutter as well as the text, which this loop's clip does not reach.
+		// fuiEditor__DrawLineDecorationBackgrounds has already laid it down; everything below lands on
+		// top of it.
 
 		/*
 			Every match, washed UNDER the selection.
