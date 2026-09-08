@@ -127,7 +127,7 @@ fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
 fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
 fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
 fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
-fplGetHomePath, fplGetClipboardText.
+fplGetHomePath, fplClipboardGetText.
 
 -------------------------------------------------------------------------------
 	License
@@ -182,7 +182,8 @@ SOFTWARE.
 	- Several bugfixes
 
 	### Breaking Changes
-	- Changed: fplGetClipboardText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
+	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText(), so the clipboard comes first in the name and the verb after it
+	- Changed: fplClipboardGetText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
 
 	### Details
 
@@ -236,13 +237,14 @@ SOFTWARE.
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
 	#### Window
-	- New: Added function fplSetClipboardTextLen() that puts a text of a given length on the clipboard, without needing a null-terminator
-	- Changed: fplGetClipboardText() follows the output buffer contract now - pass a null destination to ask for the size and call it again with a buffer of that size
+	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText()
+	- New: Added function fplClipboardSetTextLen() that puts a text of a given length on the clipboard, without needing a null-terminator
+	- Changed: fplClipboardGetText() follows the output buffer contract now - pass a null destination to ask for the size and call it again with a buffer of that size
 	- Removed: The clipboard has no size limit anymore, in neither direction - the text lives in dynamic memory instead of a fixed buffer
-	- Fixed: [X11] fplSetClipboardText() silently EMPTIED the clipboard for any text of 2048 bytes or more and still returned true, because the copy into the fixed buffer wrote nothing at all when the text did not fit
-	- Fixed: [X11] fplGetClipboardText() returned nothing when the owner served the text in chunks, the INCR protocol is now understood in both directions
-	- Fixed: [X11] fplGetClipboardText() swallowed the drag and drop answer and every window manager property change while it was waiting for the clipboard - those go the normal way now
-	- Fixed: [Win32] fplSetClipboardText() allocated the clipboard memory from the UTF-8 byte count instead of the converted wide character count
+	- Fixed: [X11] fplClipboardSetText() silently EMPTIED the clipboard for any text of 2048 bytes or more and still returned true, because the copy into the fixed buffer wrote nothing at all when the text did not fit
+	- Fixed: [X11] fplClipboardGetText() returned nothing when the owner served the text in chunks, the INCR protocol is now understood in both directions
+	- Fixed: [X11] fplClipboardGetText() swallowed the drag and drop answer and every window manager property change while it was waiting for the clipboard - those go the normal way now
+	- Fixed: [Win32] fplClipboardSetText() allocated the clipboard memory from the UTF-8 byte count instead of the converted wide character count
 	- Fixed: [X11] An application reading our clipboard that quits in the MIDDLE of the transfer took us down with it - Xlib answers a protocol error by killing the process, so the few calls that write into a foreign window catch their errors now
 
 	#### X11
@@ -10763,7 +10765,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outMo
 * @note This follows the output buffer contract described in the file header - pass fpl_null as destination to get the size first and then call it a second time with a buffer of that size plus one.
 * @note The clipboard is read from the system on every call, so the size query and the actual read never disagree when another application changes the clipboard in between.
 */
-fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen);
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen);
 
 /**
 * @brief Overwrites the current clipboard text with the given one, limited by the number of characters.
@@ -10772,15 +10774,15 @@ fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen)
 * @return Returns true when the text in the clipboard was changed, false otherwise.
 * @note There is no size limit, the text is stored in dynamically allocated memory and served in chunks when the system requires it.
 */
-fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen);
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen);
 
 /**
 * @brief Overwrites the current clipboard text with the given one.
 * @param[in] text The new clipboard string.
 * @return Returns true when the text in the clipboard was changed, false otherwise.
-* @see @ref fplSetClipboardTextLen
+* @see @ref fplClipboardSetTextLen
 */
-fpl_common_api bool fplSetClipboardText(const char *text);
+fpl_common_api bool fplClipboardSetText(const char *text);
 
 /** @} */
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -13769,7 +13771,7 @@ typedef struct fpl__X11XdndState {
 
 // One outgoing clipboard transfer that is served in chunks, because the text does not fit into a single X11 request (INCR protocol)
 typedef struct fpl__X11ClipboardSend {
-	// The text carried by this transfer, a snapshot of its own because a fplSetClipboardText in the middle of it must not pull the memory away
+	// The text carried by this transfer, a snapshot of its own because a fplClipboardSetText in the middle of it must not pull the memory away
 	char *text;
 	size_t textLength;
 	size_t sentLength;
@@ -16711,10 +16713,10 @@ fpl_common_api const char *fplKeyGetName(const fplKey key) {
 	return(result);
 }
 
-fpl_common_api bool fplSetClipboardText(const char *text) {
+fpl_common_api bool fplClipboardSetText(const char *text) {
 	FPL__CheckArgumentNull(text, false);
 	const size_t textLen = fplGetStringLength(text);
-	bool result = fplSetClipboardTextLen(text, textLen);
+	bool result = fplClipboardSetTextLen(text, textLen);
 	return(result);
 }
 
@@ -22332,7 +22334,7 @@ fpl_platform_api void fplWindowShutdown(void) {
 	}
 }
 
-fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen) {
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen) {
 	FPL__CheckPlatform(0);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
@@ -22359,7 +22361,7 @@ fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen)
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen) {
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
@@ -28749,7 +28751,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						fpl__X11ClipboardSend *send = fpl__X11AcquireClipboardSendSlot(clipboard);
 						char *textSnapshot = fpl_null;
 						if (send != fpl_null) {
-							// A snapshot of its own, because a fplSetClipboardText in the middle of the
+							// A snapshot of its own, because a fplClipboardSetText in the middle of the
 							// transfer would otherwise release the memory this is still reading from.
 							textSnapshot = (char *)fpl__AllocateDynamicMemory(outgoingLength + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
 						}
@@ -30038,7 +30040,7 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 	return(result);
 }
 
-fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen) {
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen) {
 	FPL__CheckPlatform(0);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
@@ -30070,7 +30072,7 @@ fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen)
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen) {
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;

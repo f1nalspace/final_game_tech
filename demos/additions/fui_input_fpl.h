@@ -290,12 +290,12 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 
 fui_api size_t fuiFplGetClipboardText(void *userData, char *destination, size_t maxDestinationLength) {
 	(void)userData;
-	return fplGetClipboardText(destination, maxDestinationLength);
+	return fplClipboardGetText(destination, maxDestinationLength);
 }
 
 fui_api bool fuiFplSetClipboardText(void *userData, const char *text, size_t textLength) {
 	(void)userData;
-	return fplSetClipboardTextLen(text, textLength);
+	return fplClipboardSetTextLen(text, textLength);
 }
 
 #endif // FUI_INPUT_FPL_IMPLEMENTATION

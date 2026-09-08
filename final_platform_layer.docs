@@ -1384,23 +1384,29 @@
 
 	FPL can read and write the system clipboard text.<br>
 
-	- Use @ref fplGetClipboardText() to read the current clipboard text into a destination buffer.
-	- Use @ref fplSetClipboardText() to overwrite the clipboard text with a new string.
+	- Use @ref fplClipboardGetText() to read the current clipboard text into a destination buffer.
+	- Use @ref fplClipboardSetText() to overwrite the clipboard text with a new string.
+	- Use @ref fplClipboardSetTextLen() to overwrite the clipboard text with a string of a given length.
 
-	Both functions return a boolean indicating success.<br>
+	The clipboard has no size limit, so the text is read in two steps - ask for the required size first and read it with a buffer of that size afterwards.<br>
 
 	@code{.c}
 	// Write text into the clipboard
-	fplSetClipboardText("Copied from FPL");
+	fplClipboardSetText("Copied from FPL");
 
 	// Read text from the clipboard
-	char clipboard[256];
-	if (fplGetClipboardText(clipboard, fplArrayCount(clipboard))) {
-		fplConsoleFormatOut("Clipboard: %s\n", clipboard);
+	size_t requiredLength = fplClipboardGetText(fpl_null, 0);
+	if (requiredLength > 0) {
+		size_t bufferSize = requiredLength + 1;
+		char *clipboard = (char *)fplMemoryAllocate(bufferSize);
+		if (fplClipboardGetText(clipboard, bufferSize) > 0) {
+			fplConsoleFormatOut("Clipboard: %s\n", clipboard);
+		}
+		fplMemoryFree(clipboard);
 	}
 	@endcode
 
-	@note @ref fplGetClipboardText() returns false when the clipboard does not contain any text.
+	@note @ref fplClipboardGetText() returns zero when the clipboard does not contain any text, when the destination buffer is too small or when the transfer failed.
 
 	@section section_category_window_style_displays Querying displays/monitors
 

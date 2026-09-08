@@ -6500,7 +6500,7 @@ static void DemoSaveAndVerify(EditorDemoState *demo) {
 */
 static bool DemoSetClipboardText(void *userData, const char *text, size_t textLength) {
 	EditorDemoState *demo = (EditorDemoState *)userData;
-	bool didSet = fplSetClipboardTextLen(text, textLength);
+	bool didSet = fplClipboardSetTextLen(text, textLength);
 	if(didSet) {
 		fplStringFormat(demo->copyDescription, fplArrayCount(demo->copyDescription), "Copied %d bytes", (int)textLength);
 	} else {

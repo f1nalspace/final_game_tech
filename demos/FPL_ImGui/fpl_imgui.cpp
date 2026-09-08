@@ -151,7 +151,7 @@ static char *clipboardBuffer = nullptr;
 static size_t clipboardBufferSize = 0;
 
 static const char *ClipboardGetFunc(void *user) {
-	size_t requiredLength = fplGetClipboardText(nullptr, 0);
+	size_t requiredLength = fplClipboardGetText(nullptr, 0);
 	if(requiredLength == 0) {
 		return nullptr;
 	}
@@ -164,14 +164,14 @@ static const char *ClipboardGetFunc(void *user) {
 		clipboardBuffer = grownBuffer;
 		clipboardBufferSize = requiredSize;
 	}
-	if(fplGetClipboardText(clipboardBuffer, clipboardBufferSize) == 0) {
+	if(fplClipboardGetText(clipboardBuffer, clipboardBufferSize) == 0) {
 		return nullptr;
 	}
 	return clipboardBuffer;
 }
 
 static void ClipboardSetFunc(void *user, const char *text) {
-	fplSetClipboardText(text);
+	fplClipboardSetText(text);
 }
 
 static void ReleaseClipboardBuffer() {
