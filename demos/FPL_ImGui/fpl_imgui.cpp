@@ -64,6 +64,7 @@ License:
 #include <imgui/imgui.h>
 
 #include <math.h> // fabsf
+#include <stdlib.h> // realloc, free
 
 static int currentMousePosition[2] = { -1, -1 };
 static bool currentMouseStates[3] = { 0 };
@@ -144,15 +145,39 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	glScissor(last_scissor_box[0], last_scissor_box[1], (GLsizei)last_scissor_box[2], (GLsizei)last_scissor_box[3]);
 }
 
-static char clipboardBuffer[1024];
+// ImGui expects the text it gets here to stay put until the next call, so the buffer is kept around and
+// only grows - there is no size limit on either side of it anymore.
+static char *clipboardBuffer = nullptr;
+static size_t clipboardBufferSize = 0;
+
 static const char *ClipboardGetFunc(void *user) {
-	if(fplGetClipboardText(clipboardBuffer, fplArrayCount(clipboardBuffer))) {
-		return clipboardBuffer;
+	size_t requiredLength = fplGetClipboardText(nullptr, 0);
+	if(requiredLength == 0) {
+		return nullptr;
 	}
-	return nullptr;
+	size_t requiredSize = requiredLength + 1;
+	if(requiredSize > clipboardBufferSize) {
+		char *grownBuffer = (char *)realloc(clipboardBuffer, requiredSize);
+		if(grownBuffer == nullptr) {
+			return nullptr;
+		}
+		clipboardBuffer = grownBuffer;
+		clipboardBufferSize = requiredSize;
+	}
+	if(fplGetClipboardText(clipboardBuffer, clipboardBufferSize) == 0) {
+		return nullptr;
+	}
+	return clipboardBuffer;
 }
+
 static void ClipboardSetFunc(void *user, const char *text) {
 	fplSetClipboardText(text);
+}
+
+static void ReleaseClipboardBuffer() {
+	free(clipboardBuffer);
+	clipboardBuffer = nullptr;
+	clipboardBufferSize = 0;
 }
 
 static void InitImGUI() {
@@ -205,6 +230,7 @@ static void InitImGUI() {
 }
 
 static void ReleaseImGUI() {
+	ReleaseClipboardBuffer();
 	if(fontTextureId) {
 		glDeleteTextures(1, &fontTextureId);
 		ImGui::GetIO().Fonts->TexID = 0;

@@ -131,15 +131,15 @@ void UIApplyDarkTheme(fuiContext *ui, const float fontHeight, const float lineHe
 // Platform services
 //
 
-static bool UIPlatformGetClipboardText(void *userData, char *destination, uint32_t maxDestinationLength) {
+static size_t UIPlatformGetClipboardText(void *userData, char *destination, size_t maxDestinationLength) {
 	(void)userData;
-	bool result = fplGetClipboardText(destination, maxDestinationLength);
+	size_t result = fplGetClipboardText(destination, maxDestinationLength);
 	return result;
 }
 
-static bool UIPlatformSetClipboardText(void *userData, const char *text) {
+static bool UIPlatformSetClipboardText(void *userData, const char *text, size_t textLength) {
 	(void)userData;
-	bool result = fplSetClipboardText(text);
+	bool result = fplSetClipboardTextLen(text, textLength);
 	return result;
 }
 

@@ -127,7 +127,7 @@ fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
 fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
 fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
 fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
-fplGetHomePath.
+fplGetHomePath, fplGetClipboardText.
 
 -------------------------------------------------------------------------------
 	License
@@ -178,7 +178,11 @@ SOFTWARE.
 	- New process API for starting and controlling child processes and scripts (fplProcess*)
 	- Proper X11 input handling
 	- UTF8 decode and encode is now culture-invariant
+	- The clipboard has no size limit anymore, in neither direction
 	- Several bugfixes
+
+	### Breaking Changes
+	- Changed: fplGetClipboardText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
 
 	### Details
 
@@ -231,9 +235,20 @@ SOFTWARE.
 	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
+	#### Window
+	- New: Added function fplSetClipboardTextLen() that puts a text of a given length on the clipboard, without needing a null-terminator
+	- Changed: fplGetClipboardText() follows the output buffer contract now - pass a null destination to ask for the size and call it again with a buffer of that size
+	- Removed: The clipboard has no size limit anymore, in neither direction - the text lives in dynamic memory instead of a fixed buffer
+	- Fixed: [X11] fplSetClipboardText() silently EMPTIED the clipboard for any text of 2048 bytes or more and still returned true, because the copy into the fixed buffer wrote nothing at all when the text did not fit
+	- Fixed: [X11] fplGetClipboardText() returned nothing when the owner served the text in chunks, the INCR protocol is now understood in both directions
+	- Fixed: [X11] fplGetClipboardText() swallowed the drag and drop answer and every window manager property change while it was waiting for the clipboard - those go the normal way now
+	- Fixed: [Win32] fplSetClipboardText() allocated the clipboard memory from the UTF-8 byte count instead of the converted wide character count
+	- Fixed: [X11] An application reading our clipboard that quits in the MIDDLE of the transfer took us down with it - Xlib answers a protocol error by killing the process, so the few calls that write into a foreign window catch their errors now
+
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
 	- Changed: Refactored internal X11 functions init/release into separate functions
+	- New: The clipboard releases the text it owns when another application takes the selection away
 
 	## v1.0.0
 
@@ -3797,6 +3812,7 @@ typedef XConfigureEvent fpl__X11_XConfigureEvent;
 typedef XPropertyEvent fpl__X11_XPropertyEvent;
 typedef XSelectionEvent fpl__X11_XSelectionEvent;
 typedef XSelectionRequestEvent fpl__X11_XSelectionRequestEvent;
+typedef XSelectionClearEvent fpl__X11_XSelectionClearEvent;
 typedef XClientMessageEvent fpl__X11_XClientMessageEvent;
 typedef XErrorEvent fpl__X11_XErrorEvent;
 typedef XErrorHandler fpl__X11_XErrorHandler;
@@ -3859,6 +3875,8 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_Expose Expose
 #define FPL__X11_ConfigureNotify ConfigureNotify
 #define FPL__X11_PropertyNotify PropertyNotify
+#define FPL__X11_PropertyNewValue PropertyNewValue
+#define FPL__X11_PropertyDelete PropertyDelete
 #define FPL__X11_SelectionClear SelectionClear
 #define FPL__X11_SelectionRequest SelectionRequest
 #define FPL__X11_SelectionNotify SelectionNotify
@@ -4167,6 +4185,16 @@ typedef struct fpl__X11_XSelectionRequestEvent {
 	fpl__X11_Time time;
 } fpl__X11_XSelectionRequestEvent;
 
+typedef struct fpl__X11_XSelectionClearEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	fpl__X11_Window window;
+	fpl__X11_Atom selection;
+	fpl__X11_Time time;
+} fpl__X11_XSelectionClearEvent;
+
 typedef struct fpl__X11_XClientMessageEvent {
 	int type;
 	unsigned long serial;
@@ -4194,6 +4222,7 @@ typedef union fpl__X11_XEvent {
 	fpl__X11_XPropertyEvent xproperty;
 	fpl__X11_XSelectionEvent xselection;
 	fpl__X11_XSelectionRequestEvent xselectionrequest;
+	fpl__X11_XSelectionClearEvent xselectionclear;
 	fpl__X11_XClientMessageEvent xclient;
 	long pad[24];
 } fpl__X11_XEvent;
@@ -4349,6 +4378,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_Expose 12
 #define FPL__X11_ConfigureNotify 22
 #define FPL__X11_PropertyNotify 28
+#define FPL__X11_PropertyNewValue 0
+#define FPL__X11_PropertyDelete 1
 #define FPL__X11_SelectionClear 29
 #define FPL__X11_SelectionRequest 30
 #define FPL__X11_SelectionNotify 31
@@ -10725,19 +10756,31 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outMo
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Retrieves the current clipboard text.
-* @param[out] dest The destination string buffer to write the clipboard text into.
-* @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns true when the clipboard contained text which is copied into the destination buffer, false otherwise.
+* @brief Retrieves the current clipboard text, of any size.
+* @param[out] dest The destination string buffer to write the clipboard text into or fpl_null to query the required size only.
+* @param[in] maxDestLen The total number of characters available in the destination buffer, including the null-terminator.
+* @return Returns the number of characters required, excluding the null-terminator, or zero when the clipboard has no text, the buffer is too small or the transfer failed.
+* @note This follows the output buffer contract described in the file header - pass fpl_null as destination to get the size first and then call it a second time with a buffer of that size plus one.
+* @note The clipboard is read from the system on every call, so the size query and the actual read never disagree when another application changes the clipboard in between.
 */
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen);
+fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen);
+
+/**
+* @brief Overwrites the current clipboard text with the given one, limited by the number of characters.
+* @param[in] text The new clipboard string, it does not need to be null-terminated.
+* @param[in] textLen The number of characters to take from the text, excluding the null-terminator.
+* @return Returns true when the text in the clipboard was changed, false otherwise.
+* @note There is no size limit, the text is stored in dynamically allocated memory and served in chunks when the system requires it.
+*/
+fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen);
 
 /**
 * @brief Overwrites the current clipboard text with the given one.
 * @param[in] text The new clipboard string.
 * @return Returns true when the text in the clipboard was changed, false otherwise.
+* @see @ref fplSetClipboardTextLen
 */
-fpl_platform_api bool fplSetClipboardText(const char *text);
+fpl_common_api bool fplSetClipboardText(const char *text);
 
 /** @} */
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -13082,6 +13125,8 @@ typedef FPL__FUNC_X11_Xutf8LookupString(fpl__func_x11_Xutf8LookupString);
 typedef FPL__FUNC_X11_XFilterEvent(fpl__func_x11_XFilterEvent);
 #define FPL__FUNC_X11_XSendEvent(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_Bool propagate, long event_mask, fpl__X11_XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
+#define FPL__FUNC_X11_XMaxRequestSize(name) long name(fpl__X11_Display *display)
+typedef FPL__FUNC_X11_XMaxRequestSize(fpl__func_x11_XMaxRequestSize);
 #define FPL__FUNC_X11_XMatchVisualInfo(name) fpl__X11_Status name(fpl__X11_Display* display, int screen, int depth, int clazz, fpl__X11_XVisualInfo* vinfo_return)
 typedef FPL__FUNC_X11_XMatchVisualInfo(fpl__func_x11_XMatchVisualInfo);
 #define FPL__FUNC_X11_XCreateGC(name) fpl__X11_GC name(fpl__X11_Display* display, fpl__X11_Drawable d, unsigned long valuemask, fpl__X11_XGCValues* values)
@@ -13195,6 +13240,7 @@ extern FPL__FUNC_X11_XInitThreads(XInitThreads);
 extern FPL__FUNC_X11_XInternAtom(XInternAtom);
 extern FPL__FUNC_X11_XLookupString(XLookupString);
 extern FPL__FUNC_X11_XMapRaised(XMapRaised);
+extern FPL__FUNC_X11_XMaxRequestSize(XMaxRequestSize);
 extern FPL__FUNC_X11_XMapWindow(XMapWindow);
 extern FPL__FUNC_X11_XMatchVisualInfo(XMatchVisualInfo);
 extern FPL__FUNC_X11_XMoveWindow(XMoveWindow);
@@ -13278,6 +13324,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XCreateImage *XCreateImage;
 	fpl__func_x11_XCreatePixmap *XCreatePixmap;
 	fpl__func_x11_XSelectInput *XSelectInput;
+	fpl__func_x11_XMaxRequestSize *XMaxRequestSize;
 	fpl__func_x11_XGetWindowProperty *XGetWindowProperty;
 	fpl__func_x11_XChangeProperty *XChangeProperty;
 	fpl__func_x11_XDeleteProperty *XDeleteProperty;
@@ -13376,6 +13423,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateImage, XCreateImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmap, XCreatePixmap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSelectInput, XSelectInput);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMaxRequestSize, XMaxRequestSize);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowProperty, XGetWindowProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XChangeProperty, XChangeProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDeleteProperty, XDeleteProperty);
@@ -13710,14 +13758,37 @@ typedef struct fpl__X11XdndState {
 	fpl__X11_Atom textUriList;
 } fpl__X11XdndState;
 
-// Clipboard atoms + outgoing buffer
+//! How many clipboard transfers to other applications may be served in chunks at the same time
+#define FPL__X11_MAX_CLIPBOARD_SENDS 4
+//! Alignment for every dynamically allocated clipboard buffer
+#define FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT 16
+//! How long one chunked clipboard transfer may be idle, before its slot is taken back from a receiver that went away
+#define FPL__X11_CLIPBOARD_TRANSFER_TIMEOUT_MS 10000
+//! How long the clipboard waits for the owner of the selection to answer
+#define FPL__X11_CLIPBOARD_RECEIVE_TIMEOUT_MS 500
+
+// One outgoing clipboard transfer that is served in chunks, because the text does not fit into a single X11 request (INCR protocol)
+typedef struct fpl__X11ClipboardSend {
+	// The text carried by this transfer, a snapshot of its own because a fplSetClipboardText in the middle of it must not pull the memory away
+	char *text;
+	size_t textLength;
+	size_t sentLength;
+	fplMilliseconds lastActivityTime;
+	fpl__X11_Window requestor;
+	fpl__X11_Atom property;
+	fpl__X11_Atom target;
+	bool isActive;
+} fpl__X11ClipboardSend;
+
+// Clipboard atoms + the owned text, which has no size limit and lives in dynamic memory
 typedef struct fpl__X11ClipboardState {
+	fpl__X11ClipboardSend sends[FPL__X11_MAX_CLIPBOARD_SENDS];
 	fpl__X11_Atom clipboardAtom;
 	fpl__X11_Atom targetsAtom;
 	fpl__X11_Atom incrAtom;
 	fpl__X11_Atom selectionPropAtom;
-	char clipboardOut[FPL_MAX_BUFFER_LENGTH];
-	size_t clipboardOutLen;
+	char *outgoingText;
+	size_t outgoingLength;
 } fpl__X11ClipboardState;
 
 // Cursor visibility state
@@ -16637,6 +16708,13 @@ fplStaticAssert(fplKey_First == fplKey_None);
 fpl_common_api const char *fplKeyGetName(const fplKey key) {
 	uint32_t index = FPL__ENUM_VALUE_TO_ARRAY_INDEX(key, fplKey_First, fplKey_Last);
 	const char *result = fpl__global_KeyNameTable[index];
+	return(result);
+}
+
+fpl_common_api bool fplSetClipboardText(const char *text) {
+	FPL__CheckArgumentNull(text, false);
+	const size_t textLen = fplGetStringLength(text);
+	bool result = fplSetClipboardTextLen(text, textLen);
 	return(result);
 }
 
@@ -22254,20 +22332,26 @@ fpl_platform_api void fplWindowShutdown(void) {
 	}
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	FPL__CheckPlatform(false);
+fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen) {
+	FPL__CheckPlatform(0);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-	bool result = false;
+	size_t result = 0;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if (wapi->user.IsClipboardFormatAvailable(CF_UNICODETEXT)) {
 			HGLOBAL dataHandle = wapi->user.GetClipboardData(CF_UNICODETEXT);
 			if (dataHandle != fpl_null) {
 				const wchar_t *stringValue = (const wchar_t *)GlobalLock(dataHandle);
-				fplWideStringToUTF8String(stringValue, lstrlenW(stringValue), dest, maxDestLen);
-				GlobalUnlock(dataHandle);
-				result = true;
+				if (stringValue != fpl_null) {
+					const size_t wideLen = (size_t)lstrlenW(stringValue);
+					if (wideLen > 0) {
+						// The conversion follows the very same contract, so it answers the required size
+						// in query mode and refuses to write a partial buffer all by itself.
+						result = fplWideStringToUTF8String(stringValue, wideLen, dest, maxDestLen);
+					}
+					GlobalUnlock(dataHandle);
+				}
 			}
 		}
 		wapi->user.CloseClipboard();
@@ -22275,23 +22359,32 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
-		const size_t textLen = fplGetStringLength(text);
-		const size_t bufferLen = textLen + 1;
-		HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)bufferLen * sizeof(wchar_t));
+		const size_t requiredWideLen = (textLen > 0) ? fplUTF8StringToWideString(text, textLen, fpl_null, 0) : 0;
+		const size_t wideBufferLen = requiredWideLen + 1;
+		HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
 		if (handle != fpl_null) {
 			wchar_t *target = (wchar_t *)GlobalLock(handle);
-			fplUTF8StringToWideString(text, textLen, target, bufferLen);
-			GlobalUnlock(handle);
-			wapi->user.EmptyClipboard();
-			wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
-			result = true;
+			if (target != fpl_null) {
+				if (requiredWideLen > 0) {
+					fplUTF8StringToWideString(text, textLen, target, wideBufferLen);
+				} else {
+					target[0] = 0;
+				}
+				GlobalUnlock(handle);
+				wapi->user.EmptyClipboard();
+				wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
+				result = true;
+			} else {
+				GlobalFree(handle);
+			}
 		}
 		wapi->user.CloseClipboard();
 	}
@@ -27170,6 +27263,25 @@ fpl_internal void fpl__X11ReleaseCursor(const fpl__X11Api *x11Api, fpl__X11Windo
 	}
 }
 
+// Gives one chunked transfer its slot back, the snapshot it carried included
+fpl_internal void fpl__X11ReleaseClipboardSend(fpl__X11ClipboardSend *send) {
+	if (send->text != fpl_null) {
+		fpl__ReleaseDynamicMemory(send->text);
+	}
+	fplClearStruct(send);
+}
+
+fpl_internal void fpl__X11ReleaseClipboard(fpl__X11ClipboardState *clipboard) {
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ReleaseClipboardSend(&clipboard->sends[sendIndex]);
+	}
+	if (clipboard->outgoingText != fpl_null) {
+		fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+		clipboard->outgoingText = fpl_null;
+	}
+	clipboard->outgoingLength = 0;
+}
+
 fpl_internal void fpl__X11DestroyWindow(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	if (windowState->core.window) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->core.window, windowState->display);
@@ -27202,6 +27314,7 @@ fpl_internal void fpl__X11CloseDisplay(const fpl__X11Api *x11Api, fpl__X11Window
 fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
 	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11ReleaseClipboard(&windowState->clipboard);
 	fpl__X11ReleaseInputMethod(x11Api, windowState);
 	fpl__X11ReleaseCursor(x11Api, windowState);
 	fpl__X11DestroyWindow(x11Api, windowState);
@@ -28326,6 +28439,122 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 #endif // FPL__ENABLE_INPUT_X11
 
 #if defined(FPL__ENABLE_WINDOW)
+
+/*
+	Serving the clipboard means writing into a window that belongs to SOMEBODY ELSE, and a receiver that
+	quits in the middle of a transfer is an ordinary thing rather than a mistake - the property write then
+	fails with a bad window. Xlib answers a protocol error by killing the whole process, so those few calls
+	get an error handler of their own that remembers the error and drops it.
+*/
+fpl_globalvar fpl__X11_XErrorHandler fpl__global__X11PreviousErrorHandler = fpl_null;
+fpl_globalvar bool fpl__global__X11ClipboardHadError = false;
+
+fpl_internal int fpl__X11ClipboardErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
+	(void)display;
+	(void)errorEvent;
+	fpl__global__X11ClipboardHadError = true;
+	return(0);
+}
+
+fpl_internal void fpl__X11BeginClipboardErrorGuard(const fpl__X11Api *x11Api) {
+	fpl__global__X11ClipboardHadError = false;
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		fpl__global__X11PreviousErrorHandler = x11Api->XSetErrorHandler(fpl__X11ClipboardErrorHandler);
+	}
+}
+
+//! Ends the guard and answers whether everything inside it went through. The sync is what makes that
+//! answer possible at all: a protocol error comes back on its own time, not with the call that caused it
+fpl_internal bool fpl__X11EndClipboardErrorGuard(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
+	x11Api->XSync(display, FPL__X11_False);
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		x11Api->XSetErrorHandler(fpl__global__X11PreviousErrorHandler);
+	}
+	bool result = !fpl__global__X11ClipboardHadError;
+	return(result);
+}
+
+// Number of bytes one XChangeProperty may carry, anything larger has to be split into chunks (INCR protocol)
+fpl_internal size_t fpl__X11GetClipboardMaxChunkSize(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
+	// XMaxRequestSize answers in units of four bytes and covers the whole request, so the protocol header
+	// and the property arguments have to come off the top before the rest may be filled with data.
+	const size_t requestSizeUnitInBytes = 4;
+	const size_t requestHeaderReserveInBytes = 1024;
+	const size_t smallestChunkSizeInBytes = 4096;
+	const size_t largestChunkSizeInBytes = 256 * 1024;
+	size_t result = smallestChunkSizeInBytes;
+	if (x11Api->XMaxRequestSize != fpl_null) {
+		long maxRequestSizeInUnits = x11Api->XMaxRequestSize(display);
+		if (maxRequestSizeInUnits > 0) {
+			size_t maxRequestSizeInBytes = (size_t)maxRequestSizeInUnits * requestSizeUnitInBytes;
+			if (maxRequestSizeInBytes > (requestHeaderReserveInBytes + smallestChunkSizeInBytes)) {
+				result = maxRequestSizeInBytes - requestHeaderReserveInBytes;
+			}
+		}
+	}
+	if (result > largestChunkSizeInBytes) {
+		result = largestChunkSizeInBytes;
+	}
+	return(result);
+}
+
+// Takes a slot for a chunked transfer, reusing one whose receiver stopped asking for more
+fpl_internal fpl__X11ClipboardSend *fpl__X11AcquireClipboardSendSlot(fpl__X11ClipboardState *clipboard) {
+	fplMilliseconds currentTime = fplMillisecondsQuery();
+	fpl__X11ClipboardSend *result = fpl_null;
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ClipboardSend *send = &clipboard->sends[sendIndex];
+		if (!send->isActive) {
+			result = send;
+			break;
+		}
+		// A receiver that died in the middle of a transfer never deletes the property again, so its slot
+		// would be lost forever without this.
+		bool hasExpired = (currentTime - send->lastActivityTime) > FPL__X11_CLIPBOARD_TRANSFER_TIMEOUT_MS;
+		if (hasExpired) {
+			fpl__X11ReleaseClipboardSend(send);
+			result = send;
+			break;
+		}
+	}
+	return(result);
+}
+
+fpl_internal fpl__X11ClipboardSend *fpl__X11FindClipboardSend(fpl__X11ClipboardState *clipboard, const fpl__X11_Window requestor, const fpl__X11_Atom property) {
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ClipboardSend *send = &clipboard->sends[sendIndex];
+		if (send->isActive && send->requestor == requestor && send->property == property) {
+			return(send);
+		}
+	}
+	return(fpl_null);
+}
+
+// Writes the next chunk of a transfer, the final empty one included, and gives the slot back when it is done
+fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11ClipboardSend *send) {
+	const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, display);
+	size_t remaining = send->textLength - send->sentLength;
+	size_t chunkSize = (remaining > maxChunkSize) ? maxChunkSize : remaining;
+	const unsigned char *chunk = (const unsigned char *)(send->text + send->sentLength);
+
+	fpl__X11BeginClipboardErrorGuard(x11Api);
+	x11Api->XChangeProperty(display, send->requestor, send->property, send->target, 8, FPL__X11_PropModeReplace, chunk, (int)chunkSize);
+	bool didWrite = fpl__X11EndClipboardErrorGuard(x11Api, display);
+	if (!didWrite) {
+		// The window on the other end is gone, so there is nobody left to send the rest to.
+		fpl__X11ReleaseClipboardSend(send);
+		return;
+	}
+
+	send->sentLength += chunkSize;
+	send->lastActivityTime = fplMillisecondsQuery();
+
+	// An empty chunk is what ends the transfer, so the slot is only free after that one went out.
+	if (chunkSize == 0) {
+		fpl__X11ReleaseClipboardSend(send);
+	}
+}
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -28471,8 +28700,25 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			}
 		} break;
 
+		case FPL__X11_SelectionClear:
+		{
+			// Another application took the clipboard, so the text we served is nobody's business anymore -
+			// and it can be megabytes. Transfers that are still running keep their own snapshot and finish.
+			if (ev->xselectionclear.selection == x11WinState->clipboard.clipboardAtom) {
+				fpl__X11ClipboardState *clipboard = &x11WinState->clipboard;
+				if (clipboard->outgoingText != fpl_null) {
+					fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+					clipboard->outgoingText = fpl_null;
+				}
+				clipboard->outgoingLength = 0;
+			}
+		} break;
+
 		case FPL__X11_SelectionRequest:
 		{
+			// Everything in here writes into the window of the asking application, which may be gone by now.
+			fpl__X11BeginClipboardErrorGuard(x11Api);
+
 			fpl__X11_XSelectionRequestEvent *req = &ev->xselectionrequest;
 			fpl__X11_XEvent reply = fplZeroInit;
 			reply.xselection.type = FPL__X11_SelectionNotify;
@@ -28490,12 +28736,59 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)supported, 3);
 					reply.xselection.property = req->property;
 				} else if (req->target == x11WinState->wm.utf8String || req->target == FPL__X11_XA_STRING) {
-					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (unsigned char *)x11WinState->clipboard.clipboardOut, (int)x11WinState->clipboard.clipboardOutLen);
-					reply.xselection.property = req->property;
+					fpl__X11ClipboardState *clipboard = &x11WinState->clipboard;
+					const char *outgoingText = (clipboard->outgoingText != fpl_null) ? clipboard->outgoingText : "";
+					const size_t outgoingLength = clipboard->outgoingLength;
+					const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, x11WinState->display);
+					if (outgoingLength <= maxChunkSize) {
+						x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (const unsigned char *)outgoingText, (int)outgoingLength);
+						reply.xselection.property = req->property;
+					} else {
+						// Too much for a single request, so it goes out in chunks: the receiver is told the
+						// total size first and then asks for one chunk after another by deleting the property.
+						fpl__X11ClipboardSend *send = fpl__X11AcquireClipboardSendSlot(clipboard);
+						char *textSnapshot = fpl_null;
+						if (send != fpl_null) {
+							// A snapshot of its own, because a fplSetClipboardText in the middle of the
+							// transfer would otherwise release the memory this is still reading from.
+							textSnapshot = (char *)fpl__AllocateDynamicMemory(outgoingLength + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+						}
+						if (textSnapshot != fpl_null) {
+							fplMemoryCopy(outgoingText, outgoingLength, textSnapshot);
+							textSnapshot[outgoingLength] = 0;
+							send->text = textSnapshot;
+							send->textLength = outgoingLength;
+							send->sentLength = 0;
+							send->requestor = req->requestor;
+							send->property = req->property;
+							send->target = req->target;
+							send->lastActivityTime = fplMillisecondsQuery();
+							send->isActive = true;
+
+							// The chunks are asked for through PropertyNotify on the window of the receiver,
+							// which we only get to see after selecting them there.
+							x11Api->XSelectInput(x11WinState->display, req->requestor, FPL__X11_PropertyChangeMask);
+							unsigned long totalSize = (unsigned long)outgoingLength;
+							x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, x11WinState->clipboard.incrAtom, 32, FPL__X11_PropModeReplace, (const unsigned char *)&totalSize, 1);
+							reply.xselection.property = req->property;
+						} else {
+							// No slot or no memory: answering with no property is a refusal the receiver
+							// understands, and it leaves whatever it had in its own clipboard alone.
+							FPL__WARNING(FPL__MODULE_X11, "Failed starting a chunked clipboard transfer of %zu bytes", outgoingLength);
+						}
+					}
 				}
 			}
 			x11Api->XSendEvent(x11WinState->display, req->requestor, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-			x11Api->XFlush(x11WinState->display);
+			bool didAnswer = fpl__X11EndClipboardErrorGuard(x11Api, x11WinState->display);
+			if (!didAnswer) {
+				// The asking window died somewhere in the middle of all this, so a transfer that was just
+				// started for it has nowhere to go anymore.
+				fpl__X11ClipboardSend *deadSend = fpl__X11FindClipboardSend(&x11WinState->clipboard, req->requestor, req->property);
+				if (deadSend != fpl_null) {
+					fpl__X11ReleaseClipboardSend(deadSend);
+				}
+			}
 		} break;
 
 		case FPL__X11_SelectionNotify:
@@ -28578,6 +28871,15 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case FPL__X11_PropertyNotify:
 		{
+			// A receiver of a chunked clipboard transfer asks for the next chunk by deleting the property
+			// it just read, so this is what drives such a transfer forward.
+			if (ev->xproperty.state == FPL__X11_PropertyDelete) {
+				fpl__X11ClipboardSend *send = fpl__X11FindClipboardSend(&x11WinState->clipboard, ev->xproperty.window, ev->xproperty.atom);
+				if (send != fpl_null) {
+					fpl__X11SendNextClipboardChunk(x11Api, x11WinState->display, send);
+					break;
+				}
+			}
 			if (ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
@@ -29533,74 +29835,274 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 	x11Api->XFlush(windowState->display);
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	FPL__CheckArgumentNull(dest, false);
-	FPL__CheckArgumentZero(maxDestLen, false);
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
+// Waits for one answer of the selection owner, while every event that is not part of this conversation
+// goes the normal way instead of being swallowed here - a window resize during a paste must not get lost
+fpl_internal bool fpl__X11WaitForClipboardEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, const int eventType, const int wantedPropertyState, fpl__X11_XEvent *outEvent) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-
-	// Self-owned: just copy local buffer
-	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom) == windowState->core.window) {
-		fplCopyString(windowState->clipboard.clipboardOut, dest, maxDestLen);
-		return(true);
-	}
-
-	x11Api->XConvertSelection(windowState->display, windowState->clipboard.clipboardAtom, windowState->wm.utf8String, windowState->clipboard.selectionPropAtom, windowState->core.window, FPL__X11_CurrentTime);
-	x11Api->XFlush(windowState->display);
-
-	// Poll for SelectionNotify, timeout 500ms
-	fpl__X11_XEvent ev = fplZeroInit;
-	fplMilliseconds startMs = fplMillisecondsQuery();
-	bool received = false;
-	while ((fplMillisecondsQuery() - startMs) < 500) {
-		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
-			received = true;
-			break;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+	const fplMilliseconds startTime = fplMillisecondsQuery();
+	while ((fplMillisecondsQuery() - startTime) < FPL__X11_CLIPBOARD_RECEIVE_TIMEOUT_MS) {
+		fpl__X11_XEvent ev = fplZeroInit;
+		if (!x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, eventType, &ev)) {
+			fplThreadSleep(1);
+			continue;
 		}
-		fplThreadSleep(1);
+		bool isOurs = false;
+		if (eventType == FPL__X11_SelectionNotify) {
+			// A drag and drop answer arrives as the very same event type, but on another property.
+			isOurs = (ev.xselection.property == selectionProperty) || (ev.xselection.property == FPL__X11_None);
+		} else {
+			isOurs = (ev.xproperty.atom == selectionProperty) && (ev.xproperty.state == wantedPropertyState);
+		}
+		if (isOurs) {
+			*outEvent = ev;
+			return(true);
+		}
+		fpl__X11HandleEvent(subplatform, appState, &ev);
 	}
-	if (!received || ev.xselection.property == FPL__X11_None) {
-		return(false);
+	return(false);
+}
+
+// Throws away what an earlier - maybe timed out - clipboard conversation left behind, because those events
+// would be taken for the answer to the request that is about to go out
+fpl_internal void fpl__X11DiscardStaleClipboardEvents(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+
+	// Everything the server already owes us has to be in the queue first, otherwise the leftovers arrive
+	// one moment later and are indistinguishable from the answer.
+	x11Api->XSync(windowState->display, FPL__X11_False);
+
+	fpl__X11_XEvent ev = fplZeroInit;
+	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_PropertyNotify, &ev)) {
+		if (ev.xproperty.atom != selectionProperty) {
+			fpl__X11HandleEvent(subplatform, appState, &ev);
+		}
+	}
+	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
+		if (ev.xselection.property != selectionProperty && ev.xselection.property != FPL__X11_None) {
+			fpl__X11HandleEvent(subplatform, appState, &ev);
+		}
+	}
+}
+
+// Reads the whole selection, of any size, into freshly allocated memory the caller has to release
+fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, size_t *outLength) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11_Display *display = windowState->display;
+	const fpl__X11_Window window = windowState->core.window;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+
+	*outLength = 0;
+
+	fpl__X11DiscardStaleClipboardEvents(subplatform, appState);
+
+	x11Api->XConvertSelection(display, windowState->clipboard.clipboardAtom, windowState->wm.utf8String, selectionProperty, window, FPL__X11_CurrentTime);
+	x11Api->XFlush(display);
+
+	// The property state belongs to a PropertyNotify and says nothing about the answer of the owner.
+	const int propertyStateIsIgnored = 0;
+	fpl__X11_XEvent selectionEvent = fplZeroInit;
+	if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_SelectionNotify, propertyStateIsIgnored, &selectionEvent)) {
+		return(fpl_null);
+	}
+	if (selectionEvent.xselection.property == FPL__X11_None) {
+		return(fpl_null);
 	}
 
+	// Reading with delete takes the property away in the same step, which is what tells the owner of a
+	// chunked transfer that the next chunk may be written.
 	fpl__X11_Atom actualType = 0;
 	int actualFormat = 0;
 	unsigned long itemCount = 0;
 	unsigned long bytesAfter = 0;
 	unsigned char *data = fpl_null;
-	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->clipboard.selectionPropAtom, 0L, LONG_MAX, FPL__X11_False, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
-	bool result = false;
-	if (status == FPL__X11_Success && data != fpl_null && actualType != windowState->clipboard.incrAtom) {
-		size_t copyLen = (size_t)itemCount;
-		if (copyLen >= maxDestLen) {
-			copyLen = maxDestLen - 1;
+	int status = x11Api->XGetWindowProperty(display, window, selectionProperty, 0L, LONG_MAX, FPL__X11_True, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	if (status != FPL__X11_Success || data == fpl_null) {
+		if (data != fpl_null) {
+			x11Api->XFree(data);
 		}
-		fplMemoryCopy(data, copyLen, dest);
-		dest[copyLen] = 0;
-		result = true;
+		return(fpl_null);
 	}
-	if (data != fpl_null) {
+
+	// Everything that fits into one property arrives in one piece.
+	if (actualType != windowState->clipboard.incrAtom) {
+		size_t textLength = (actualFormat == 8) ? (size_t)itemCount : 0;
+		char *result = (char *)fpl__AllocateDynamicMemory(textLength + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+		if (result != fpl_null) {
+			if (textLength > 0) {
+				fplMemoryCopy(data, textLength, result);
+			}
+			result[textLength] = 0;
+			*outLength = textLength;
+		}
 		x11Api->XFree(data);
+		return(result);
 	}
-	x11Api->XDeleteProperty(windowState->display, windowState->core.window, windowState->clipboard.selectionPropAtom);
+
+	// Anything larger comes in chunks: the first property only carries a lower bound of the total size, and
+	// deleting it is the signal to the owner that the next chunk may be written.
+	size_t capacity = 0;
+	if (itemCount > 0 && actualFormat == 32) {
+		const unsigned long *lowerBoundOfTotalSize = (const unsigned long *)data;
+		capacity = (size_t)(*lowerBoundOfTotalSize);
+	}
+	const size_t smallestReceiveCapacity = 4096;
+	if (capacity < smallestReceiveCapacity) {
+		capacity = smallestReceiveCapacity;
+	}
+	x11Api->XFree(data);
+	data = fpl_null;
+
+	char *result = (char *)fpl__AllocateDynamicMemory(capacity + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+	if (result == fpl_null) {
+		return(fpl_null);
+	}
+
+	// Everything the owner wrote before the property was taken away belongs to the announcement, not to the
+	// transfer - and its notification is still in the queue. Our own delete is the marker that separates the
+	// two, so waiting for it first is what keeps a stale notification from being mistaken for the first chunk.
+	x11Api->XFlush(display);
+	fpl__X11_XEvent startEvent = fplZeroInit;
+	if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_PropertyNotify, FPL__X11_PropertyDelete, &startEvent)) {
+		FPL__WARNING(FPL__MODULE_X11, "Timeout while starting a chunked clipboard transfer");
+		fpl__ReleaseDynamicMemory(result);
+		return(fpl_null);
+	}
+
+	size_t textLength = 0;
+	bool isComplete = false;
+	bool hasFailed = false;
+	while (!isComplete && !hasFailed) {
+		fpl__X11_XEvent chunkEvent = fplZeroInit;
+		if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_PropertyNotify, FPL__X11_PropertyNewValue, &chunkEvent)) {
+			FPL__WARNING(FPL__MODULE_X11, "Timeout while reading a chunked clipboard transfer after %zu bytes", textLength);
+			hasFailed = true;
+			break;
+		}
+
+		// Reading with delete lets the owner know that this chunk arrived and the next one may follow.
+		actualType = 0;
+		actualFormat = 0;
+		itemCount = 0;
+		bytesAfter = 0;
+		data = fpl_null;
+		status = x11Api->XGetWindowProperty(display, window, selectionProperty, 0L, LONG_MAX, FPL__X11_True, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+		if (status != FPL__X11_Success || data == fpl_null) {
+			hasFailed = true;
+		} else {
+			size_t chunkLength = (actualFormat == 8) ? (size_t)itemCount : 0;
+			if (chunkLength == 0) {
+				// An empty chunk is the end of the transfer.
+				isComplete = true;
+			} else {
+				if ((textLength + chunkLength) > capacity) {
+					size_t newCapacity = (capacity > 0) ? capacity : smallestReceiveCapacity;
+					while (newCapacity < (textLength + chunkLength)) {
+						newCapacity *= 2;
+					}
+					char *grownResult = (char *)fpl__AllocateDynamicMemory(newCapacity + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+					if (grownResult == fpl_null) {
+						hasFailed = true;
+					} else {
+						if (textLength > 0) {
+							fplMemoryCopy(result, textLength, grownResult);
+						}
+						fpl__ReleaseDynamicMemory(result);
+						result = grownResult;
+						capacity = newCapacity;
+					}
+				}
+				if (!hasFailed) {
+					fplMemoryCopy(data, chunkLength, result + textLength);
+					textLength += chunkLength;
+				}
+			}
+		}
+		if (data != fpl_null) {
+			x11Api->XFree(data);
+		}
+		x11Api->XFlush(display);
+	}
+
+	if (hasFailed) {
+		fpl__ReleaseDynamicMemory(result);
+		return(fpl_null);
+	}
+
+	result[textLength] = 0;
+	*outLength = textLength;
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api size_t fplGetClipboardText(char *dest, const size_t maxDestLen) {
+	FPL__CheckPlatform(0);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+
+	// Self-owned: the text is already here, no conversation with anybody needed
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(0);
+	}
+
+	fpl__X11_Window selectionOwner = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom);
+	if (selectionOwner == windowState->core.window) {
+		const fpl__X11ClipboardState *clipboard = &windowState->clipboard;
+		if (clipboard->outgoingText == fpl_null) {
+			return(0);
+		}
+		size_t result = fplCopyStringLen(clipboard->outgoingText, clipboard->outgoingLength, dest, maxDestLen);
+		return(result);
+	}
+
+	size_t textLength = 0;
+	char *text = fpl__X11ReceiveClipboardText(subplatform, appState, &textLength);
+	if (text == fpl_null) {
+		return(0);
+	}
+	size_t result = fplCopyStringLen(text, textLength, dest, maxDestLen);
+	fpl__ReleaseDynamicMemory(text);
+	return(result);
+}
+
+fpl_platform_api bool fplSetClipboardTextLen(const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11WindowState *windowState = &appState->window.x11;
-	size_t copied = fplCopyString(text, windowState->clipboard.clipboardOut, fplArrayCount(windowState->clipboard.clipboardOut));
-	windowState->clipboard.clipboardOutLen = copied;
-	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom, windowState->core.window, FPL__X11_CurrentTime);
+	fpl__X11ClipboardState *clipboard = &windowState->clipboard;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(false);
+	}
+
+	// The new text is put in place before the ownership is taken, so a failed allocation leaves the
+	// clipboard of the system exactly as it was rather than emptying it.
+	char *newText = (char *)fpl__AllocateDynamicMemory(textLen + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+	if (newText == fpl_null) {
+		FPL__ERROR(FPL__MODULE_X11, "Failed allocating %zu bytes for the clipboard text", textLen + 1);
+		return(false);
+	}
+	if (textLen > 0) {
+		fplMemoryCopy(text, textLen, newText);
+	}
+	newText[textLen] = 0;
+
+	if (clipboard->outgoingText != fpl_null) {
+		fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+	}
+	clipboard->outgoingText = newText;
+	clipboard->outgoingLength = textLen;
+
+	x11Api->XSetSelectionOwner(windowState->display, clipboard->clipboardAtom, windowState->core.window, FPL__X11_CurrentTime);
 	x11Api->XFlush(windowState->display);
-	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom) == windowState->core.window;
+	bool result = x11Api->XGetSelectionOwner(windowState->display, clipboard->clipboardAtom) == windowState->core.window;
 	return(result);
 }
 
