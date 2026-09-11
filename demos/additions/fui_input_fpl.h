@@ -13,7 +13,7 @@ The held state comes from POLLING rather than from the event queue, which is the
 hard way: a key pressed and released inside one frame latches as stuck-down when its state is accumulated
 from events. The cost is that such a tap is not seen at all - two half transitions in one frame is
 something only an event stream can express - and for an interface that is the right trade. What polling
-cannot give at all is drained from the queue instead: typed characters, the wheel, and the focus.
+cannot give at all is drained from the queue instead: typed characters, the wheel, the focus and whether the window is minimized.
 
 --- Getting started ---
 
@@ -51,7 +51,7 @@ extern "C" {
 /**
 * @struct fuiFplInput
 * @brief One frame of input, plus the previous frame's held state that the edges are worked out against.
-* @note Only `input` and `rightPressedThisFrame` are meant to be read, everything else is bookkeeping.
+* @note Only `input`, `rightPressedThisFrame`, `windowHasFocus` and `windowIsMinimized` are meant to be read, everything else is bookkeeping.
 */
 typedef struct fuiFplInput {
 	//! The finished input, ready to hand to @ref fuiBeginFrame
@@ -62,6 +62,8 @@ typedef struct fuiFplInput {
 	bool mouseWasDown[FUI_MOUSE_BUTTON_COUNT];
 	//! Whether the window had the focus, which only the event queue can answer
 	bool windowHasFocus;
+	//! Whether the window is minimized, from the same queue. A window that lost the focus may still be in plain sight on another monitor, and this is what tells the two apart
+	bool windowIsMinimized;
 	//! How far the wheel turned this frame, accumulated from the queue
 	float wheelThisFrame;
 	//! Codepoints typed this frame, accumulated from the queue
@@ -88,7 +90,7 @@ fui_api fuiKey fuiFplMapKey(const fplKey key);
 fui_api void fuiFplInputInit(fuiFplInput *bridge);
 
 /**
-* @brief Drains the event queue for the things polling cannot give: typed characters, the wheel, and focus.
+* @brief Drains the event queue for the things polling cannot give: typed characters, the wheel, the focus and whether the window is minimized.
 * @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
 * @note Call this once per frame, BEFORE @ref fuiFplInputBuild.
 */
@@ -194,6 +196,11 @@ fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge) {
 					bridge->windowHasFocus = true;
 				} else if(event.window.type == fplWindowEventType_LostFocus) {
 					bridge->windowHasFocus = false;
+				} else if(event.window.type == fplWindowEventType_Minimized) {
+					bridge->windowIsMinimized = true;
+				} else if(event.window.type == fplWindowEventType_Restored || event.window.type == fplWindowEventType_Maximized || event.window.type == fplWindowEventType_Shown) {
+					// A minimized window can come back maximized rather than restored. And X11 reports no state at all for one that comes back fullscreen, only that it is shown again.
+					bridge->windowIsMinimized = false;
 				}
 			} break;
 

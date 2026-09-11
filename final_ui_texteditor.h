@@ -253,6 +253,10 @@ SOFTWARE.
 	  times over - so what is drawn is bounded by the window rather than by the document, and it still
 	  does not crawl along the text when that text is scrolled.
 
+	- New: A document that can be typed into says so through fuiRegisterTextInput, once a build and at the very end of it, where the find bar has already had its chance to hand the keyboard back.
+	  That is what keeps fuiDispatchShortcuts from firing a plain letter into it, while a read-only one - a diff that is only looked at - still lets a plain shortcut through with the keyboard on it.
+	- Changed: final_ui.h v0.9.7 also carries fuiRegisterTextInput now, which this needs.
+
 	# v0.8.0:
 	It can be read from and written back to something other than utf-8 now. Everything up to here treated
 	the outside world as though it spelled text the way the document does; this is the iteration that puts a
@@ -10625,6 +10629,12 @@ fui_api fuiEditorAction fuiTextEditor(fuiContext *context, const fuiRect rect, c
 			fuiEditorCloseFind(editor);
 			fuiSetFocusedId(context, editorId);
 		}
+	}
+
+	// Said at the very end, after the find bar had its chance to hand the keyboard back to the document. A document that is only read takes no text, so a plain shortcut still gets through while it has the keyboard.
+	bool canBeTypedInto = config->toggles.isInteractive && !config->toggles.isReadOnly;
+	if(canBeTypedInto) {
+		fuiRegisterTextInput(context, editorId);
 	}
 
 	/*

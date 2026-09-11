@@ -310,6 +310,25 @@ SOFTWARE.
 	  fuiDefaultTheme and changing what one wants - nobody fills forty fields positionally - and a colour
 	  belongs with the colours.
 
+	- Changed: The predicates and the callback of fuiCommand are fui_command_predicate_callback and fui_command_invoke_callback now, declared through FUI_FUNC_COMMAND_PREDICATE and FUI_FUNC_COMMAND_INVOKE rather than written into the struct as raw function pointers.
+	  The signature lives in ONE place, and a function written with the macro cannot drift out of step with the field it is assigned to.
+	  The types are the same ones, so nothing a caller assigns has to change.
+	- New: fuiCommand.isChecked and fuiCommandIsChecked, for a command that is a SWITCH.
+	  fuiMenuItemCommand draws such a command as a row with a check box, the way fuiMenuItemCheck does, and fuiToolStripCommand draws it as a toggle that stays lit while it is on.
+	  A setting's label, its shortcut, whether it can be changed right now and whether it is on all come out of the one table then, rather than half of it being built beside the table where it can disagree with the other half.
+	  It sits at the END of the struct, so a positional initializer written against the six fields before it keeps meaning what it meant.
+	- New: fuiRegisterTextInput and fuiWantsTextInput. A widget says while it is built that it takes typed text, and the second answers whether the keyboard is on such a widget.
+	  fuiWantsKeyboard stays what it was - true for ANY widget with the keyboard - and that is exactly why it could not answer this: a tree, a list and a read only view take the keyboard too, and none of them are typed into.
+	  The text fields register themselves, and a read only one does not.
+	- Changed: fuiDispatchShortcuts refused EVERYTHING while any widget had the keyboard, and a tree takes it with the first click on a row - so in an interface with a tree in it a shortcut worked on almost no frame at all.
+	  It now steps aside only for a shortcut that could be TYPING - no control, no alt, and not one of F1 to F12 - and only while something reads plain keys: a widget that takes text, an open menu, an open combo list or an open dialog.
+	  Ctrl+S saves while a name is being typed, and F5 still arrives with a tree clicked into.
+	- Changed: A shortcut that ran spends its key through fuiConsumeKey, so the widget with the keyboard, which is built after the dispatch, does not answer the same press as well.
+	  Ctrl+PageDown switches a tab and no longer also turns a page in the tree that happened to be focused.
+	  That is also why an open menu, a combo list and a dialog are on the list above: each of them reads its escape or its enter after the dispatch, and would never see a key a plain shortcut had spent.
+	- Note: fuiDispatchShortcuts belongs right after fuiBeginFrame and before the first widget.
+	  Whether the focused widget takes text is then the answer of the PREVIOUS build, the current one not having built anything yet - and a spent key is only kept from the widgets built after the dispatch.
+
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
 	edge, and a text field may be read only - and the scrolling both of them inherited, which turns out to
@@ -2436,6 +2455,12 @@ typedef struct fuiContext {
 	bool tabWasConsumedThisFrame;
 	//! Set once a dialog answered the enter or escape of this frame, so one press cannot close two of them
 	bool dialogKeyWasConsumedThisFrame;
+	//! The widget that said during this build that it takes typed text while it had the keyboard, see @ref fuiRegisterTextInput
+	fuiId textInputThisFrame;
+	//! The same answer from the build before. Shortcuts are dispatched before any widget of a build has had its say, so this is the one they go by
+	fuiId textInputLastFrame;
+	//! Whether the first focusable widget of this build takes typed text. A tab off the last widget hands it the keyboard at the end of the frame, well after it was built
+	bool firstFocusableTakesText;
 
 	//! Text of the tooltip requested this build, empty when nothing asked for one
 	char tooltipText[FUI_MAX_TOOLTIP_TEXT];
@@ -2819,6 +2844,15 @@ fui_api bool fuiWantsMouse(const fuiContext *context);
 fui_api bool fuiWantsKeyboard(const fuiContext *context);
 
 /**
+* @brief Tests whether the keyboard belongs to a widget that takes typed text.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns true while the widget with the keyboard said in the last finished build that it takes text, see @ref fuiRegisterTextInput.
+* @note Narrower than @ref fuiWantsKeyboard, which is true for ANY widget with the keyboard - a tree that was clicked into, a list, a read only view. Those answer a handful of keys, while a text field answers every one of them, and that is what a caller acting on a plain letter has to step aside for.
+* @note Asked during a build, the answer is the one of the build before - which is exactly what a dispatch before the first widget needs. It is held against where the keyboard is NOW, so a field the focus has left since is not reported.
+*/
+fui_api bool fuiWantsTextInput(const fuiContext *context);
+
+/**
 * @brief Returns the widget the cursor is over.
 * @param[in] context Reference to the context @ref fuiContext.
 * @return Returns the identifier @ref fuiId, or @ref FUI_ID_NONE.
@@ -2867,6 +2901,15 @@ fui_api void fuiSelectTextInputContent(fuiContext *context, const fuiId fieldId,
 *       take part in the same chain rather than being the one thing tab skips over.
 */
 fui_api void fuiRegisterFocusable(fuiContext *context, const fuiId id);
+
+/**
+* @brief Says that one widget takes typed text while it has the keyboard.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] id The widget's identifier, from @ref fuiGetId.
+* @note Call it once per build for as long as the widget can be typed into, whether it has the keyboard right now or not - and AFTER @ref fuiRegisterFocusable and anything else that may hand it the keyboard in this build.
+* @note This is what @ref fuiWantsTextInput answers from, and so what keeps @ref fuiDispatchShortcuts from firing a plain letter into a field. The library's own text fields do it for themselves, and a read only one does not.
+*/
+fui_api void fuiRegisterTextInput(fuiContext *context, const fuiId id);
 
 /**
 * @brief Returns where the cursor is this frame.
@@ -4034,6 +4077,35 @@ typedef struct fuiShortcut {
 } fuiShortcut;
 
 /**
+* @def FUI_FUNC_COMMAND_PREDICATE
+* @brief Defines a prototype for a function that answers a yes or no question about a command.
+* @param[in] name The name of the function.
+*/
+#define FUI_FUNC_COMMAND_PREDICATE(name) bool name(void *userData)
+
+/**
+* @typedef fui_command_predicate_callback
+* @brief A callback answering a yes or no question about a command, see @ref fuiCommand.isEnabled, @ref fuiCommand.isVisible and @ref fuiCommand.isChecked.
+* @param[in] userData The caller's own context, handed to every call that names the command.
+* @return Returns the answer.
+*/
+typedef FUI_FUNC_COMMAND_PREDICATE(fui_command_predicate_callback);
+
+/**
+* @def FUI_FUNC_COMMAND_INVOKE
+* @brief Defines a prototype for a function that runs a command.
+* @param[in] name The name of the function.
+*/
+#define FUI_FUNC_COMMAND_INVOKE(name) void name(void *userData)
+
+/**
+* @typedef fui_command_invoke_callback
+* @brief A callback running a command, see @ref fuiCommand.invoke.
+* @param[in] userData The caller's own context, handed to every call that names the command.
+*/
+typedef FUI_FUNC_COMMAND_INVOKE(fui_command_invoke_callback);
+
+/**
 * @struct fuiCommand
 * @brief One action, named once and referenced everywhere: by a menu row, a tool strip button and the keyboard.
 * @note The predicates and the callback all take the caller's own context pointer, which is handed to every
@@ -4047,11 +4119,13 @@ typedef struct fuiCommand {
 	//! The keyboard shortcut, displayed next to the label and dispatched by @ref fuiDispatchShortcuts
 	fuiShortcut shortcut;
 	//! Answers whether the command can be run right now. Null means always
-	bool (*isEnabled)(void *userData);
+	fui_command_predicate_callback *isEnabled;
 	//! Answers whether the command is offered at all right now. Null means always
-	bool (*isVisible)(void *userData);
+	fui_command_predicate_callback *isVisible;
 	//! Runs the action. Null means the command draws and dispatches but does nothing
-	void (*invoke)(void *userData);
+	fui_command_invoke_callback *invoke;
+	//! Answers whether the setting this command switches is on right now. Null means the command is no switch at all, so a menu row for it carries no check box and a strip button for it never stays lit
+	fui_command_predicate_callback *isChecked;
 } fuiCommand;
 
 //! A caller's whole set of actions: a plain array and its count, usually one static table per screen.
@@ -4089,6 +4163,15 @@ fui_api bool fuiCommandIsEnabled(const fuiCommand *command, void *userData);
 fui_api bool fuiCommandIsVisible(const fuiCommand *command, void *userData);
 
 /**
+* @brief Answers whether the setting a command switches is on right now.
+* @param[in] command Reference to the command @ref fuiCommand, may be null.
+* @param[in] userData The caller's context, handed to the command's predicate.
+* @return Returns true when the command exists, is a switch and its predicate says yes.
+* @note A command without the predicate is no switch, and a null command is none either, so both answer false.
+*/
+fui_api bool fuiCommandIsChecked(const fuiCommand *command, void *userData);
+
+/**
 * @brief Writes a shortcut out the way it is displayed, such as "Ctrl+Shift+S".
 * @param[in] shortcut The shortcut to spell out.
 * @param[out] buffer Destination for the text, which is left empty when the shortcut has no key.
@@ -4098,13 +4181,16 @@ fui_api bool fuiCommandIsVisible(const fuiCommand *command, void *userData);
 fui_api const char *fuiShortcutToText(const fuiShortcut shortcut, char *buffer, const size_t bufferCapacity);
 
 /**
-* @brief Runs the first command in a table whose shortcut was pressed this frame.
+* @brief Runs the first command in a table whose shortcut was pressed this frame, and spends the key it ran on.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] table Reference to the command table @ref fuiCommandTable, may be null.
 * @param[in] userData The caller's context, handed to the predicates and the callback.
 * @return Returns the identifier of the command that ran, or @ref FUI_COMMAND_NONE when none did.
 * @note Modifiers must match EXACTLY, so Ctrl+S does not fire while Ctrl+Shift+S is held.
-* @note Nothing is dispatched while a text field has the keyboard - typing an S must not save the level.
+* @note A shortcut that could be TYPING - no control, no alt, and not one of F1 to F12 - is not dispatched while something reads plain keys: a widget that takes text (@ref fuiWantsTextInput), an open menu, an open combo list or an open dialog. Typing an S into a name must not save the level.
+* @note Every other shortcut is dispatched whichever widget has the keyboard, so a tree that was clicked into does not swallow them.
+* @note The key of a command that ran is consumed with @ref fuiConsumeKey, a disabled command leaves it alone. The widget with the keyboard does not answer the same press as well then - provided it is built AFTER this call.
+* @note Call it right after @ref fuiBeginFrame and before the first widget. Whether the focused widget takes text is then the answer of the previous build, the current one not having built anything yet.
 */
 fui_api fuiCommandId fuiDispatchShortcuts(fuiContext *context, const fuiCommandTable *table, void *userData);
 
@@ -4194,6 +4280,7 @@ fui_api bool fuiMenuItemCheck(fuiContext *context, const char *label, const bool
 * @param[in] userData The caller's context, handed to the predicates and the callback.
 * @return Returns true on the frame the command ran.
 * @note An invisible command emits no row at all, so a menu shrinks around what is not on offer.
+* @note A command that is a switch (@ref fuiCommand.isChecked) is drawn with a check box, the way @ref fuiMenuItemCheck draws one, and still with its shortcut on the right.
 */
 fui_api bool fuiMenuItemCommand(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, void *userData);
 
@@ -4291,6 +4378,7 @@ fui_api bool fuiToolStripButton(fuiContext *context, const char *label);
 * @return Returns true on the frame the command ran.
 * @note The shortcut is NOT written on it - a strip sizes itself to the label, and a tooltip is the place
 *       for the shortcut.
+* @note A command that is a switch (@ref fuiCommand.isChecked) is drawn the way @ref fuiToolStripToggle draws a toggle, lit and pushed in while it is on.
 */
 fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, void *userData);
 
@@ -6489,6 +6577,11 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 	context->tabWasConsumedThisFrame = false;
 	context->dialogKeyWasConsumedThisFrame = false;
 
+	// Handed on rather than thrown away, because the shortcuts of this frame are dispatched before any field of it is built.
+	context->textInputLastFrame = context->textInputThisFrame;
+	context->textInputThisFrame = FUI_ID_NONE;
+	context->firstFocusableTakesText = false;
+
 	// Latched only on the interacting build, so a two pass caller's draw pass still reports what its
 	// interact pass saw rather than the state the interact pass left behind.
 	if(!isDrawPass) {
@@ -6563,6 +6656,10 @@ fui_api void fuiEndFrame(fuiContext *context) {
 	if(tabWentUnanswered && context->firstFocusableThisFrame != FUI_ID_NONE) {
 		context->focused = context->firstFocusableThisFrame;
 		context->tabWasConsumedThisFrame = true;
+		// The one widget that gets the keyboard AFTER it was built, so whether it takes text is carried over here rather than said by itself.
+		if(context->firstFocusableTakesText) {
+			context->textInputThisFrame = context->focused;
+		}
 	}
 
 	// A dialog owns the mouse EVERYWHERE it is not, exactly as an open menu does: the backdrop is there to
@@ -6945,6 +7042,17 @@ fui_api bool fuiWantsKeyboard(const fuiContext *context) {
 		return(false);
 	}
 	bool result = (context->focused != FUI_ID_NONE);
+	return(result);
+}
+
+fui_api bool fuiWantsTextInput(const fuiContext *context) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || context->focused == FUI_ID_NONE) {
+		return(false);
+	}
+	// Always the last FINISHED build. The one under way has only said what the widgets built so far said, and a field it has not reached yet would count as gone.
+	fuiId textInputOfTheFinishedBuild = context->isBuildingFrame ? context->textInputLastFrame : context->textInputThisFrame;
+	bool result = (textInputOfTheFinishedBuild == context->focused);
 	return(result);
 }
 
@@ -9744,6 +9852,26 @@ fui_api void fuiRegisterFocusable(fuiContext *context, const fuiId id) {
 	fui__RegisterFocusable(context, id);
 }
 
+//! Notes that a widget takes typed text, for as long as it has the keyboard
+fui_inline void fui__RegisterTextInput(fuiContext *context, const fuiId id) {
+	// Only the widget with the keyboard is written down, which is one slot however many fields a build has. Where the keyboard goes after this, the id no longer matches and nothing is reported.
+	if(context->focused == id) {
+		context->textInputThisFrame = id;
+	}
+	// Except for the first one in the tab chain, which a tab off the last widget hands the keyboard only at the end of the frame.
+	if(context->firstFocusableThisFrame == id) {
+		context->firstFocusableTakesText = true;
+	}
+}
+
+fui_api void fuiRegisterTextInput(fuiContext *context, const fuiId id) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || id == FUI_ID_NONE) {
+		return;
+	}
+	fui__RegisterTextInput(context, id);
+}
+
 // ----------------------------------------------------------------------------
 // > Text editing
 // ----------------------------------------------------------------------------
@@ -10209,6 +10337,9 @@ fui_inline bool fui__TextInputBuild(fuiContext *context, const fuiRect rect, con
 
 	fuiInteraction interaction = fuiInteract(context, fieldId, rect);
 	fui__RegisterFocusable(context, fieldId);
+	if(!isReadOnly) {
+		fui__RegisterTextInput(context, fieldId);
+	}
 	bool isFocused = (context->focused == fieldId);
 
 	// (Re-)anchor whenever the focus lands here from somewhere else, to the end of the text by default.
@@ -11642,6 +11773,15 @@ fui_api bool fuiCommandIsVisible(const fuiCommand *command, void *userData) {
 	return(result);
 }
 
+fui_api bool fuiCommandIsChecked(const fuiCommand *command, void *userData) {
+	// No predicate is no switch, which is the opposite default of the other two: a command that never said it could be on is off.
+	if(command == fui_null || command->isChecked == fui_null) {
+		return(false);
+	}
+	bool result = command->isChecked(userData);
+	return(result);
+}
+
 //! What a key with no name in the table is written as, so its modifiers still read right
 #define FUI__UNNAMED_KEY_TEXT "?"
 
@@ -11687,15 +11827,35 @@ fui_inline uint32_t fui__HeldModifiers(const fuiContext *context) {
 	return(modifiers);
 }
 
+//! Whether a shortcut could be somebody TYPING: nothing but shift held with its key, and no function key, which no text field reads
+fui_inline bool fui__ShortcutCouldBeTyping(const fuiShortcut shortcut) {
+	uint32_t chordModifiers = (uint32_t)fuiModifier_Control | (uint32_t)fuiModifier_Alt;
+	bool isAChord = (shortcut.modifiers & chordModifiers) != 0u;
+	bool isAFunctionKey = (shortcut.key >= fuiKey_F1) && (shortcut.key <= fuiKey_F12);
+	bool result = !isAChord && !isAFunctionKey;
+	return(result);
+}
+
 fui_api fuiCommandId fuiDispatchShortcuts(fuiContext *context, const fuiCommandTable *table, void *userData) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null || table == fui_null || table->commands == fui_null) {
 		return(FUI_COMMAND_NONE);
 	}
-	// A focused text field owns the keyboard. Typing an S into a name must not save the level.
-	if(fuiWantsKeyboard(context)) {
-		return(FUI_COMMAND_NONE);
-	}
+
+	/*
+		Who reads the PLAIN keys right now.
+
+		A field that takes text reads every one of them, and typing an S into a name must not save the level.
+		An open menu shuts on escape, an open combo list is walked with the arrows and enter, and a dialog answers enter and escape.
+		All three read their key after this dispatch, and a shortcut that ran has spent it by then.
+
+		What is NOT on the list is a widget that merely has the keyboard. A tree takes it with the first click on a row, a list does the same, and refusing every shortcut for as long as either had it left F5 working on almost no frame at all.
+	*/
+	bool aFieldTakesText = fuiWantsTextInput(context);
+	bool aMenuIsOpen = fuiIsMenuOpen(context);
+	bool aComboIsOpen = fuiComboIsOpen(context);
+	bool aDialogIsOpen = fuiIsAnyDialogOpen(context);
+	bool plainKeysAreTaken = aFieldTakesText || aMenuIsOpen || aComboIsOpen || aDialogIsOpen;
 
 	uint32_t heldModifiers = fui__HeldModifiers(context);
 	for(uint32_t index = 0; index < table->count; ++index) {
@@ -11708,12 +11868,18 @@ fui_api fuiCommandId fuiDispatchShortcuts(fuiContext *context, const fuiCommandT
 		if(shortcut.modifiers != heldModifiers) {
 			continue;
 		}
+		bool couldBeTyping = fui__ShortcutCouldBeTyping(shortcut);
+		if(plainKeysAreTaken && couldBeTyping) {
+			continue;
+		}
 		if(!fuiKeyWentDown(context, shortcut.key)) {
 			continue;
 		}
 		if(!fuiCommandIsVisible(command, userData) || !fuiCommandIsEnabled(command, userData)) {
 			continue;
 		}
+		// Spent before the widget with the keyboard is built, so Ctrl+PageDown switches a tab without the focused tree also turning a page.
+		fuiConsumeKey(context, shortcut.key);
 		if(command->invoke != fui_null) {
 			command->invoke(userData);
 		}
@@ -12278,20 +12444,29 @@ fui_api void fuiEndMenu(fuiContext *context) {
 	fuiPopId(context);
 }
 
+//! One leaf row of the open menu, with or without a check box. The three public kinds of row are this with different parts left out
+fui_inline bool fui__MenuItemRow(fuiContext *context, const char *label, const char *shortcutText, const bool enabled, const bool hasCheck, const bool isChecked) {
+	fuiMenuFrame *frame = fui__CurrentMenu(context);
+	if(frame == fui_null || !frame->isOpen) {
+		return(false);
+	}
+	const bool noSubmenuMark = false;
+	bool wasClicked = false;
+	(void)fui__MenuEmitRow(context, frame, label, shortcutText, noSubmenuMark, enabled, hasCheck, isChecked, fui_null, &wasClicked);
+	if(wasClicked) {
+		context->menuOpenDepth = 0;   // choosing a leaf closes the whole tree, submenus included
+	}
+	return(wasClicked);
+}
+
 fui_api bool fuiMenuItem(fuiContext *context, const char *label, const char *shortcutText, const bool enabled) {
 	FUI_ASSERT(context != fui_null && label != fui_null);
 	if(context == fui_null || label == fui_null) {
 		return(false);
 	}
-	fuiMenuFrame *frame = fui__CurrentMenu(context);
-	if(frame == fui_null || !frame->isOpen) {
-		return(false);
-	}
-	bool wasClicked = false;
-	(void)fui__MenuEmitRow(context, frame, label, shortcutText, false, enabled, false, false, fui_null, &wasClicked);
-	if(wasClicked) {
-		context->menuOpenDepth = 0;   // choosing a leaf closes the whole tree, submenus included
-	}
+	const bool noCheckBox = false;
+	const bool notChecked = false;
+	bool wasClicked = fui__MenuItemRow(context, label, shortcutText, enabled, noCheckBox, notChecked);
 	return(wasClicked);
 }
 
@@ -12300,15 +12475,9 @@ fui_api bool fuiMenuItemCheck(fuiContext *context, const char *label, const bool
 	if(context == fui_null || label == fui_null) {
 		return(false);
 	}
-	fuiMenuFrame *frame = fui__CurrentMenu(context);
-	if(frame == fui_null || !frame->isOpen) {
-		return(false);
-	}
-	bool wasClicked = false;
-	(void)fui__MenuEmitRow(context, frame, label, fui_null, false, enabled, true, isChecked, fui_null, &wasClicked);
-	if(wasClicked) {
-		context->menuOpenDepth = 0;
-	}
+	const char *noShortcutText = fui_null;
+	const bool withCheckBox = true;
+	bool wasClicked = fui__MenuItemRow(context, label, noShortcutText, enabled, withCheckBox, isChecked);
 	return(wasClicked);
 }
 
@@ -12321,10 +12490,17 @@ fui_api bool fuiMenuItemCommand(fuiContext *context, const fuiCommandTable *tabl
 	if(!fuiCommandIsVisible(command, userData)) {
 		return(false);   // an invisible command emits no row at all, so the menu shrinks around it
 	}
+	FUI_ASSERT(command->label != fui_null);
+	if(command->label == fui_null) {
+		return(false);
+	}
 	bool enabled = fuiCommandIsEnabled(command, userData);
 	char shortcutText[FUI_MAX_SHORTCUT_TEXT];
 	(void)fuiShortcutToText(command->shortcut, shortcutText, sizeof(shortcutText));
-	bool wasClicked = fuiMenuItem(context, command->label, shortcutText, enabled);
+	// A switch gets its box AND keeps its shortcut, which is the one row fuiMenuItemCheck cannot draw.
+	bool isASwitch = (command->isChecked != fui_null);
+	bool isChecked = fuiCommandIsChecked(command, userData);
+	bool wasClicked = fui__MenuItemRow(context, command->label, shortcutText, enabled, isASwitch, isChecked);
 	if(wasClicked && command->invoke != fui_null) {
 		command->invoke(userData);
 		return(true);
@@ -12512,6 +12688,31 @@ fui_api bool fuiToolStripButton(fuiContext *context, const char *label) {
 	return(result);
 }
 
+//! A strip button that may be lit, drawn and nothing else. Shared by the toggle and by a command that is a switch, so the two cannot come to look different
+fui_inline void fui__DrawStripToggle(fuiContext *context, const fuiRect slot, const char *label, const bool isActive, const bool enabled, const fuiInteraction interaction) {
+	const fuiTheme *theme = &context->theme;
+
+	// A lit button takes the accent, a disabled one the recessed track, and the rest follow the usual states.
+	fuiColor fill;
+	if(!enabled) {
+		fill = theme->widgetTrackColor;
+	} else if(isActive) {
+		fill = theme->accentColor;
+	} else {
+		fill = fui__WidgetFillColor(context, interaction);
+	}
+	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
+	// A lit toggle stays pushed IN for as long as it is on, which is what tells a toggle apart from a button
+	// that happens to be under the cursor. Being disabled is NOT a reason to sink, so a disabled toggle that
+	// is off stands exactly as an enabled one does, only darker.
+	bool buttonIsPushed = isActive || interaction.isHeld;
+	fui__Relief relief = buttonIsPushed ? fui__Relief_Sunken : fui__Relief_Raised;
+	fui__DrawBevelBox(context, slot, fill, relief);
+	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
+	fuiRect labelRect = fui__PressedContentRect(context, slot, labelIsPressed);
+	fui__DrawTextInRect(context, labelRect, label, labelColor);
+}
+
 fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, void *userData) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
@@ -12533,7 +12734,13 @@ fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *tab
 	if(enabled) {
 		interaction = fuiInteract(context, widgetId, slot);
 	}
-	fui__DrawButton(context, slot, command->label, enabled, interaction);
+	bool isASwitch = (command->isChecked != fui_null);
+	if(isASwitch) {
+		bool isChecked = fuiCommandIsChecked(command, userData);
+		fui__DrawStripToggle(context, slot, command->label, isChecked, enabled, interaction);
+	} else {
+		fui__DrawButton(context, slot, command->label, enabled, interaction);
+	}
 
 	bool didFire = false;
 	if(interaction.wasClicked && command->invoke != fui_null) {
@@ -12548,7 +12755,6 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 	if(context == fui_null || label == fui_null) {
 		return(false);
 	}
-	const fuiTheme *theme = &context->theme;
 	float thickness = fui__StripItemThickness(context, label);
 	fuiRect slot = fui__StripNextSlot(context, thickness);
 
@@ -12558,26 +12764,7 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 	if(enabled) {
 		interaction = fuiInteract(context, widgetId, slot);
 	}
-
-	// A lit button takes the accent, a disabled one the recessed track, and the rest follow the usual states.
-	fuiColor fill;
-	if(!enabled) {
-		fill = theme->widgetTrackColor;
-	} else if(isActive) {
-		fill = theme->accentColor;
-	} else {
-		fill = fui__WidgetFillColor(context, interaction);
-	}
-	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
-	// A lit toggle stays pushed IN for as long as it is on, which is what tells a toggle apart from a button
-	// that happens to be under the cursor. Being disabled is NOT a reason to sink, so a disabled toggle that
-	// is off stands exactly as an enabled one does, only darker.
-	bool buttonIsPushed = isActive || interaction.isHeld;
-	fui__Relief relief = buttonIsPushed ? fui__Relief_Sunken : fui__Relief_Raised;
-	fui__DrawBevelBox(context, slot, fill, relief);
-	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
-	fuiRect labelRect = fui__PressedContentRect(context, slot, labelIsPressed);
-	fui__DrawTextInRect(context, labelRect, label, labelColor);
+	fui__DrawStripToggle(context, slot, label, isActive, enabled, interaction);
 	return(interaction.wasClicked);
 }
 
