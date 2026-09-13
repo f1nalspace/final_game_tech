@@ -328,6 +328,9 @@ SOFTWARE.
 	  That is also why an open menu, a combo list and a dialog are on the list above: each of them reads its escape or its enter after the dispatch, and would never see a key a plain shortcut had spent.
 	- Note: fuiDispatchShortcuts belongs right after fuiBeginFrame and before the first widget.
 	  Whether the focused widget takes text is then the answer of the PREVIOUS build, the current one not having built anything yet - and a spent key is only kept from the widgets built after the dispatch.
+	- Changed: A checked box is drawn as a TICK now, where it used to be a filled square - in fuiCheckbox, in fuiMenuItemCheck and on a checked row of fuiCheckTreeView alike.
+	  A filled square is what a Mixed row is drawn as, and next to each other the two were one size apart: a box wholly checked read as half of it.
+	  Unchecked stays an empty box and Mixed stays the small filled square. A radio button keeps its square dot, having no half state it could be taken for.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -4266,7 +4269,7 @@ fui_api bool fuiMenuItem(fuiContext *context, const char *label, const char *sho
 * @brief One row inside an open menu that shows a check box, for a setting that is on or off.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] label What is written on the row.
-* @param[in] isChecked Whether the box is filled.
+* @param[in] isChecked Whether the box carries a tick.
 * @param[in] enabled Set to false to draw it muted and take no input.
 * @return Returns true on the frame the row was chosen. The caller flips its own value.
 */
@@ -5082,11 +5085,11 @@ fui_api void fuiListViewInvalidateSort(fuiContext *context, const char *id);
 *       whose files are not all the same way round, or a file the caller knows only half of.
 */
 typedef enum fuiCheckState {
-	//! Nothing under this row is checked
+	//! Nothing under this row is checked, drawn as an empty box
 	fuiCheckState_Unchecked = 0,
-	//! Everything under this row is checked
+	//! Everything under this row is checked, drawn as a tick
 	fuiCheckState_Checked,
-	//! Part of it is and part of it is not, drawn as a smaller filled square rather than as the full mark
+	//! Part of it is and part of it is not, drawn as a small filled square
 	fuiCheckState_Mixed,
 } fuiCheckState;
 
@@ -8146,6 +8149,19 @@ fui_api void fuiDrawTextBlock(fuiContext *context, const char *text, const size_
 #define FUI__CHECK_MARK_INSET 4.0f
 //! How much bare well is left showing between the bevel of a checkbox box and the mark inside it
 #define FUI__CHECK_MARK_WELL_GAP 2.0f
+//! Where the short stroke of a tick starts, as fractions of the box the mark is drawn in
+#define FUI__CHECK_TICK_START_X 0.08f
+#define FUI__CHECK_TICK_START_Y 0.52f
+//! Where the two strokes of a tick meet, which is the lowest point of it
+#define FUI__CHECK_TICK_ELBOW_X 0.38f
+#define FUI__CHECK_TICK_ELBOW_Y 0.84f
+//! Where the long stroke of a tick ends, up at the right
+#define FUI__CHECK_TICK_END_X 0.94f
+#define FUI__CHECK_TICK_END_Y 0.16f
+//! Stroke width of a tick as a fraction of the box the mark is drawn in
+#define FUI__CHECK_TICK_THICKNESS_FRACTION 0.2f
+//! The thinnest a tick is ever drawn, so a small box still shows a stroke rather than a hairline
+#define FUI__CHECK_TICK_MIN_THICKNESS 2.0f
 //! Gap between a checkbox or radio marker and the caption beside it
 #define FUI__WIDGET_LABEL_GAP 6.0f
 //! Width of the knob a slider marks its value with
@@ -8373,6 +8389,43 @@ fui_inline fuiRect fui__CheckMarkRect(const fuiContext *context, const fuiRect w
 	float markInset = fuiMaxF(FUI__CHECK_MARK_INSET, clearingInset);
 	fuiRect result = fuiRectInflate(well, -markInset);
 	return(result);
+}
+
+//! The point a given distance past the end of a segment, carried on in the direction the segment runs
+fui_inline fuiVec2 fui__PointPastSegmentEnd(const fuiVec2 start, const fuiVec2 end, const float distance) {
+	float deltaX = end.x - start.x;
+	float deltaY = end.y - start.y;
+	float length = FUI_SQRTF(deltaX * deltaX + deltaY * deltaY);
+	if(length <= 0.0f) {
+		return(end);
+	}
+	float distanceScale = distance / length;
+	fuiVec2 result = fuiV2(end.x + deltaX * distanceScale, end.y + deltaY * distanceScale);
+	return(result);
+}
+
+/*
+Draws the tick of a checked box into the box its mark goes in, see fui__CheckMarkRect.
+
+A tick and not a filled square, because a filled square is what a MIXED box says. Next to each other the two were one size apart, and a box wholly checked read as half of it.
+
+Two strokes that meet at the bottom, each carried on past the elbow by half its width. A stroke ends square at its end point, so two strokes ending right at the elbow would leave a notch on the outside of the bend. Carried on, each one covers the corner the other leaves open.
+*/
+fui_inline void fui__DrawCheckTick(fuiContext *context, const fuiRect markBox, const fuiColor color) {
+	float left = markBox.x;
+	float top = markBox.y;
+	float width = markBox.w;
+	float height = markBox.h;
+	fuiVec2 start = fuiV2(left + width * FUI__CHECK_TICK_START_X, top + height * FUI__CHECK_TICK_START_Y);
+	fuiVec2 elbow = fuiV2(left + width * FUI__CHECK_TICK_ELBOW_X, top + height * FUI__CHECK_TICK_ELBOW_Y);
+	fuiVec2 end = fuiV2(left + width * FUI__CHECK_TICK_END_X, top + height * FUI__CHECK_TICK_END_Y);
+
+	float thickness = fuiMaxF(FUI__CHECK_TICK_MIN_THICKNESS, width * FUI__CHECK_TICK_THICKNESS_FRACTION);
+	float halfThickness = thickness * 0.5f;
+	fuiVec2 shortStrokeEnd = fui__PointPastSegmentEnd(start, elbow, halfThickness);
+	fuiVec2 longStrokeStart = fui__PointPastSegmentEnd(end, elbow, halfThickness);
+	fuiDrawLine(context, start, shortStrokeEnd, color, thickness);
+	fuiDrawLine(context, longStrokeStart, end, color, thickness);
 }
 
 //! Where the content of a widget goes: level with its box, or nudged down and to the right while the box is
@@ -9575,7 +9628,7 @@ fui_api bool fuiCheckbox(fuiContext *context, const fuiRect rect, const char *la
 	fui__DrawBevelBox(context, box, boxFill, fui__Relief_Sunken);
 	if(*value) {
 		fuiRect checkMark = fui__CheckMarkRect(context, box);
-		fuiDrawRect(context, checkMark, theme->accentColor);
+		fui__DrawCheckTick(context, checkMark, theme->accentColor);
 	}
 
 	float labelX = box.x + box.w + FUI__WIDGET_LABEL_GAP;
@@ -12275,7 +12328,7 @@ static fuiRect fui__MenuEmitRow(fuiContext *context, fuiMenuFrame *frame, const 
 		fui__DrawBevelBox(context, box, boxFill, fui__Relief_Sunken);
 		if(isChecked) {
 			fuiRect checkMark = fui__CheckMarkRect(context, box);
-			fuiDrawRect(context, checkMark, theme->accentColor);
+			fui__DrawCheckTick(context, checkMark, theme->accentColor);
 		}
 		labelX = box.x + box.w + FUI__WIDGET_LABEL_GAP;
 	}
@@ -15790,14 +15843,14 @@ fui_inline void fui__TreeBuildRow(fuiContext *context, fui__TreeRowContext *rowC
 		// and look it.
 		fui__DrawBevelBox(context, checkBox, boxFill, fui__Relief_Sunken);
 		fuiCheckState checkState = checkStates[nodeIndex];
-		if(checkState != fuiCheckState_Unchecked) {
-			fuiRect checkMark = fui__CheckMarkRect(context, checkBox);
-			if(checkState == fuiCheckState_Mixed) {
-				// The same mark drawn smaller inside the same well - "only half of this", with a box around it.
-				float markInset = checkMark.w * (1.0f - FUI__TREE_MIXED_MARK_SCALE) * 0.5f;
-				checkMark = fuiRectInflate(checkMark, -markInset);
-			}
-			fuiDrawRect(context, checkMark, theme->accentColor);
+		fuiRect checkMark = fui__CheckMarkRect(context, checkBox);
+		if(checkState == fuiCheckState_Checked) {
+			fui__DrawCheckTick(context, checkMark, theme->accentColor);
+		} else if(checkState == fuiCheckState_Mixed) {
+			// A small filled square inside the same well - "only part of this" - which is nothing like the tick "all of this" is drawn as.
+			float markInset = checkMark.w * (1.0f - FUI__TREE_MIXED_MARK_SCALE) * 0.5f;
+			fuiRect mixedMark = fuiRectInflate(checkMark, -markInset);
+			fuiDrawRect(context, mixedMark, theme->accentColor);
 		}
 		pressWasOnCheckBox = checkBoxIsHovered;
 		contentLeft = checkSlot.x + checkSlot.w;
