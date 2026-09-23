@@ -21,53 +21,70 @@ Dieses Dokument beschreibt den **Stand samt Messungen** (1), die **Designentsche
 
 ### 1.2 Gemessen
 
-Alle Messungen sind mit `stb_image` v2.19 entstanden und werden nach dem Update in Iteration 0 wiederholt. Sie stammen von dieser Maschine: Ryzen 9 7950X, RTX 3090, NVIDIA 580, Fenster 1280×720, Build mit `g++ -O2`. Die Screenshots wurden per `xdotool` und `import -window` gemacht und mit `magick compare` ausgewertet. Die Referenzen sind mit ImageMagick **in linearem Licht** gerechnet (`-colorspace RGB -filter X -resize … -colorspace sRGB`). `xdotool` ist inzwischen installiert (im Handout des Editors hieß es noch „fehlt“), der Viewer lässt sich also fernsteuern.
+**Neu gemessen in Iteration 0 (2026-09-23).** Die Bildwerte stammen aus `tests/run_scaling_tests.sh` (Abschnitt 4.3): `--render-to` rendert offscreen in ein Framebuffer-Objekt **ohne MSAA**, verglichen wird mit ImageMagick-Referenzen **in linearem Licht** (4.2). Wo der Bildschirm mit seinem 16× MSAA etwas anderes zeigt, steht das dabei, gemessen per `xdotool` und `import -window`. Maschine: Ryzen 9 7950X, RTX 3090, NVIDIA 580, Release-Build. Der vollständige Bericht (483 Zeilen) liegt nach jedem Lauf in `demos/build/FPL_ImageViewer/tests/report.md`. Heute verletzen 378 Zeilen eine Schwelle, genau das soll Iteration 0 festhalten.
 
-**1:1-Treue.** Ein 1-Pixel-Schachbrett 512×512 wird genau 1:1 und pixelgenau ausgerichtet gezeigt:
+**1:1-Treue.** `checker_1px` (1-Pixel-Schachbrett 512×512) genau 1:1, einmal in einem 512×512-Fenster und einmal mittig in 1280×720:
 
-| Filter | Ergebnis (sRGB-Werte, Bildmitte) |
-|---|---|
-| Nearest | 0 / 255 — **exakt** |
-| Bilinear, Bicubic (Triangular, Bell, B-Spline, Catmull-Rom) | **flach 188** — das Schachbrett ist weg |
-| Lanczos3 | 135 / 225 — stark verwaschen |
+| Filter | offscreen (`--render-to`, ohne MSAA) | Bildschirm (16× MSAA) |
+|---|---|---|
+| Nearest | 0 / 255 — **exakt** | exakt |
+| Bilinear, Bicubic (Triangular, Bell, B-Spline, Catmull-Rom) | **flach 188** — das Schachbrett ist weg | flach 188 |
+| Lanczos3 | 0 / 255 — **exakt** | 135 / 225 — verwaschen |
 
-188 ist der sRGB-Wert von linear 0,5. Der Mittelwert wird also **in linearem Licht** gebildet, und die sRGB-Kette aus `GL_SRGB8_ALPHA8` und `GL_FRAMEBUFFER_SRGB` funktioniert. Das Verwaschen selbst ist ein **Halb-Texel-Versatz**: `a = fract(uv * size)` ist an jeder Pixelmitte 0,5, deshalb mischt jeder dieser Filter bei 100 % zwei Nachbarn zu gleichen Teilen (`shadersources.h:125`, `:146`). **Bei 100 % sieht man heute mit jedem Standardfilter ein unscharfes Bild.**
+188 ist der sRGB-Wert von linear 0,5. Der Mittelwert wird also **in linearem Licht** gebildet, und die sRGB-Kette aus `GL_SRGB8_ALPHA8` und `GL_FRAMEBUFFER_SRGB` funktioniert, auch im sRGB-Farbanhang des Offscreen-Framebuffers. Das Verwaschen selbst ist ein **Halb-Texel-Versatz**: `a = fract(uv * size)` ist an jeder Pixelmitte 0,5, deshalb mischt jeder dieser Filter bei 100 % zwei Nachbarn zu gleichen Teilen (`shadersources.h:125`, `:146`). **Bei 100 % sieht man heute mit jedem Standardfilter ein unscharfes Bild.** Lanczos3 ist nur am Bildschirm verwaschen, die Ursache ist das MSAA (1.3).
 
-**Aliasing beim Verkleinern.** Eine Zonenplatte 2048×2048 wird eingepasst. Gemessen wird die Standardabweichung in einem Ring, dessen Frequenz über der Nyquist-Grenze der Ausgabe liegt. Dort muss ein korrekter Downscale **flach** sein, jede Schwankung dort ist Moiré:
+**Aliasing beim Verkleinern.** `zoneplate_2048` wird eingepasst. Gemessen wird die Standardabweichung (8-Bit-Stufen) im Ring von 1,5 × Ausgabe-Nyquist bis 0,95 × Quell-Nyquist (Definition in 4.2). Dort muss ein korrekter Downscale **flach** sein, jede Schwankung ist Moiré. In Klammern steht die ImageMagick-Referenz **desselben** Kernels, korrekt verbreitert:
 
-| Maßstab | Referenz Mitchell | Triangular | Bell | B-Spline | Catmull-Rom | Lanczos3 | Nearest | Bilinear |
+| Maßstab | Referenz Mitchell | Nearest | Bilinear | Triangular | Bell | B-Spline | Catmull-Rom | Lanczos3 |
 |---|---|---|---|---|---|---|---|---|
-| 0,35 (→720) | 8,2 | 9,3 | 10,5 | 12,1 | 22,8 | 21,5 | 50,2 | 20,6 |
-| 0,146 (→300) | **1,1** | 15,9 | 24,3 | 30,1 | 53,4 | 57,7 | 64,3 | 43,1 |
+| 0,5 (→1024) | 8,2 | 90,1 (90,1) | 90,1 (7,5) | 10,9 (3,1) | 16,2 (4,3) | 25,7 (5,2) | 90,1 (10,4) | 72,7 (11,1) |
+| 0,35 (→717) | 4,0 | 90,2 (90,2) | 52,8 (4,4) | 13,2 (1,5) | 23,2 (1,9) | 31,3 (2,4) | 76,7 (5,2) | 86,3 (5,5) |
+| 0,146 (→299) | **0,9** | 90,2 (90,2) | 60,4 (1,2) | 27,5 (0,2) | 36,1 (0,3) | 42,8 (0,5) | 80,7 (1,3) | 88,3 (1,3) |
+| 0,1 (→205) | 0,4 | 89,9 (89,9) | 55,6 (0,7) | 28,6 (0,1) | 38,0 (0,3) | 44,5 (0,0) | 78,5 (0,6) | 86,5 (0,5) |
 
-Bei 0,35 hält der Standardfilter noch mit, weil er ohnehin weich ist. Bei 0,146 aliast **jeder** Filter, 15- bis 60-mal stärker als die Referenz. Die Kernel greifen immer ±2 Quelltexel ab, egal wie viele Quelltexel auf ein Bildschirmpixel fallen. Das ist der Kern von „es gibt kein richtiges Downscale“.
+`zoneplate_4096` liefert dieselben Werte, bei 0,146 bis 0,35 auf ±0,5 und bei 0,1 auf ±4. Schon bei 0,35 aliast **jeder** Filter außer Nearest 9- bis 16-mal stärker als die Referenz desselben Kernels, bei 0,146 50- bis 140-mal. Der Standardfilter (Triangular) kommt bei 0,35 auf 13,2 statt 1,5. Die Kernel greifen immer ±2 Quelltexel ab, egal wie viele Quelltexel auf ein Bildschirmpixel fallen. Das ist der Kern von „es gibt kein richtiges Downscale“. Nearest aliast per Definition, dafür gibt es keine bessere Referenz.
 
-**Fotos unterscheiden die Filter kaum.** `IMG_8978.JPG` (4032×3024 → 960×720, Maßstab 0,238) im Vergleich zur Mitchell-Referenz: **alle sieben Filter liegen zwischen 39,7 und 42,0 dB PSNR, Nearest eingeschlossen (40,5)**. Glatte Flächen dominieren die Metrik. Deshalb braucht es **synthetische Testbilder** (Abschnitt 4). Echte Fotos taugen hier nur zur Sichtprüfung.
+Die Messung vor Iteration 0 kam auf andere Zahlen (8,2 / 1,1 für Mitchell), weil der Ring damals nicht festgelegt war. Die Zahlen oben ersetzen sie.
 
-**CPU-Kosten.** Dekodieren und LOD-Erzeugung mit dem vorhandenen `stb_image_resize` v0.96 (sRGB-korrekt, Mitchell):
+**Fotos unterscheiden die Filter kaum.** `IMG_8978.JPG` (4032×3024 → 960×720, Maßstab 0,238) gegen die Mitchell-Referenz: **alle sieben Filter liegen zwischen 35,2 und 38,6 dB PSNR**, Nearest 35,4, Catmull-Rom 35,2, Triangular 38,6. Die Screenshot-Messung mit MSAA kam auf 39,7–42,0 dB. Glatte Flächen dominieren die Metrik. Deshalb braucht es **synthetische Testbilder** (Abschnitt 4). Echte Fotos taugen hier nur zur Sichtprüfung.
+
+**Weitere Befunde aus dem Testlauf** (alle mit dem heutigen Zeichenweg):
+
+- `gamma_rows` bei 0,35, linke Hälfte (Soll 188): Triangular 187,9 ± 0,3 (ok), Bell 187,3 ± 8,5, B-Spline 186,2 ± 19,8, Bilinear 175,9 ± 58, Catmull-Rom und Lanczos3 ≈ 167 ± 77. Gemittelt wird in linearem Licht, aber zu schmal, deshalb bleiben die Zeilen stehen.
+- `color_checker_1px` bei 0,35: Triangular und Bell treffen (188, 188, 0), Catmull-Rom und Lanczos3 kommen auf (179, 179, 0).
+- `impulse` ×8: Asymmetrie (PAE gegen die gespiegelte Fassung) Bilinear 241, Catmull-Rom 253, B-Spline 123, Lanczos3 39 Stufen. Der Halb-Texel-Versatz wirkt also auch beim Vergrößern.
+- `pixelart_32` mit Nearest bei ×1, ×2, ×3, ×4, ×8: **byteidentisch** zu `-filter Point`.
+- `border_frame_odd` bei 0,35: Bilinear verliert die **obere Rahmenkante** (Rotwert 1 statt 140 in der Referenz), Lanczos3 schwächt oben und unten auf 62 statt 150.
+- `alpha_disk` mit Lanczos3: **7,5 dB**, die transparenten Bereiche erscheinen knallgrün (1.3).
+
+**CPU-Kosten.** Dekodieren und LOD-Erzeugung mit dem vorhandenen `stb_image_resize` v0.96 (sRGB-korrekt, Mitchell), Median aus 7 Läufen, `gcc -O2`:
 
 | | 4032×3024 JPEG | 2154×1108 PNG |
 |---|---|---|
-| `stbi_load` | 43,9 ms | 32,0 ms |
-| LOD-Stufe 1 (½) | 140,3 ms | 27,8 ms |
-| Stufen 2–4 | 35,4 + 9,0 + 2,3 ms | 7,0 + 1,9 + 0,5 ms |
-| **Summe LOD** | **187 ms = 4,3× Dekodieren** | 37 ms |
+| `stbi_load` v2.19 | 40,1 ms | 30,9 ms |
+| `stbi_load` v2.30 | 41,4 ms | **23,2 ms** |
+| LOD-Stufe 1 (½) | 137,8 ms | 27,4 ms |
+| Stufen 2–4 | 34,8 + 8,8 + 2,3 ms | 6,9 + 1,8 + 0,5 ms |
+| **Summe LOD** | **183,5 ms = 4,4× Dekodieren** | 36,6 ms |
 
-LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Deshalb bekommt die LOD-Erzeugung einen eigenen SIMD-Reducer (2.3).
+LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Deshalb bekommt die LOD-Erzeugung einen eigenen SIMD-Reducer (2.3). v2.30 entpackt PNG 25 % schneller, JPEG bleibt gleich.
 
-**Speicher.** Ein 12-MP-Bild belegt als RGBA8 48,8 MB. 17 Slots ergeben **829 MB VRAM**, mit voller Mip-Kette (+33 %) **1,1 GB**. 16× MSAA kostet bei 4K allein für den Farbpuffer 531 MB und verbessert **das Bildinnere nicht**. Der Fragment-Shader läuft trotzdem nur einmal pro Pixel, MSAA glättet nur Geometriekanten, und ein bildschirmfüllendes Rechteck hat keine.
+**Speicher.** Ein 12-MP-Bild belegt als RGBA8 48,8 MB. 17 Slots ergeben **829 MB VRAM**, mit voller Mip-Kette (+33 %) **1,1 GB**. 16× MSAA kostet bei 4K allein für den Farbpuffer 531 MB und hilft dem Bildinneren nicht, es **schadet** ihm sogar: Lanczos3 ist bei 1:1 nur mit MSAA verwaschen (siehe oben). MSAA glättet Geometriekanten, und ein bildschirmfüllendes Rechteck hat keine.
 
 ### 1.3 Befunde im Code
 
-- Halb-Texel-Versatz in Bilinear und allen Bicubic-Filtern (siehe oben). Lanczos3 berechnet die Texelmitte zwar, ist bei 1:1 aber trotzdem nicht exakt. Die Ursache wurde nicht untersucht, weil der Shader ohnehin ersetzt wird.
+- Halb-Texel-Versatz in Bilinear und allen Bicubic-Filtern (siehe oben). Lanczos3 berechnet die Texelmitte selbst und ist offscreen bei 1:1 exakt. **Im Fenster verwäscht ihn das 16× MSAA** (135/225, in Iteration 0 per Gegenprobe gefunden). Vermutlich wertet der Treiber die an der Pixelmitte unstetige Texelmitten-Rechnung (`mod(uv / texel, 1.0)`) für mehrere Abtastpunkte aus. Mit dem MSAA-Ausbau in Iteration 1 ist das erledigt.
+- Lanczos3 startet die Summe mit `vec4(0,0,0,1)` (`shadersources.h:306`). Alpha ist danach ≈ 1 + Σw, geteilt durch Σw, also ≈ 1, und **voll transparente Pixel werden deckend**. Bei `alpha_disk` erscheint das versteckte Knallgrün. Der Shader wird in Iteration 2 ersetzt.
+- Die CMake-Vorlage aller Demos setzt `CMAKE_CXX_STANDARD` erst **nach** `add_executable`. Die Zieleigenschaft wird aber beim Anlegen übernommen, deshalb bekommt der Viewer kein `-std=` und wird mit GCC 16 als **C++20** übersetzt (daher die `-Wvolatile`-Warnungen). Bei den C-Demos greift `target_compile_features`. Das betrifft alle C++-Demos und gehört nicht in diesen Plan.
+- `FPL_Vulkan` baut schon vor dem stb-Update nicht (`fpl_vulkan.c:2083`: `fpl__X11WindowState` hat kein Feld `window`). Das hat nichts mit stb zu tun.
 - `GL_TEXTURE_RECTANGLE` (`fpl_imageviewer.cpp:1119`): kann keine Mip-Stufen haben und braucht nicht-normalisierte Koordinaten. NPOT-`GL_TEXTURE_2D` ist seit GL 2.0 Kern.
 - `GL_CLAMP` (`:530`) gibt es im Core-Profil nicht mehr → `GL_CLAMP_TO_EDGE`.
 - Mip-Gerüst halb fertig und abgeschaltet: `MAX_PICTURE_MIPMAPS = 1` (`:212`), Größen `w / (2 * i)` statt `w >> i` (`:699`), jede Stufe wird aus Stufe 0 statt aus der vorherigen gerechnet (`:697`).
 - Die Zweige in `UpdateAndRender` (`:1562–1581`) heißen „Upscaling“ und „Downscaling“, sind aber „Einpassen“ und „1:1“.
 - Fortschritt: Die Leseposition läuft bis 1,0, danach setzt `:695` den Wert auf **0,75 zurück**. Bei PNG liest `stbi` erst die ganze Datei und entpackt dann, dann steht der Balken auf 100 %, während die eigentliche Arbeit noch läuft.
-- `ParseParameters` (`:882–891`): Das `switch` schickt alles außer `r` und `t` in `default: continue` → **`-p=` und `-f=` werden nie ausgewertet**.
-- `LoadPicturesPath` (`:1050`): `startIndex = 0` setzt den Zeiger statt `*startIndex`. Der Fehler bleibt folgenlos, weil der Aufrufer vorbelegt.
-- `preloadCount` wird erst **nach** der Verwendung auf gerade gerundet (`:1195`), die Rundung wirkt also nicht.
+- ~~`ParseParameters` (`:882–891`): Das `switch` schickt alles außer `r` und `t` in `default: continue` → **`-p=` und `-f=` werden nie ausgewertet**.~~ Behoben in Iteration 0.
+- ~~`LoadPicturesPath` (`:1050`): `startIndex = 0` setzt den Zeiger statt `*startIndex`. Der Fehler bleibt folgenlos, weil der Aufrufer vorbelegt.~~ Behoben in Iteration 0.
+- ~~`preloadCount` wird erst **nach** der Verwendung auf gerade gerundet (`:1195`), die Rundung wirkt also nicht.~~ Behoben in Iteration 0. Dazu kommt eine Begrenzung auf die Slot-Anzahl, weil `-p=1000` jetzt, wo `-p` wirkt, sonst über das Feld `viewPictures[256]` hinauslaufen würde.
 - Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv.
 - `fui_input_fpl.h`: `fuiFplInputPumpEvents` leert die **ganze** Event-Queue. Der Viewer braucht die Events aber selbst (Drop, Tasten).
 - `fui_backend_gl1.h` ist Fixed-Function und läuft auf einem Core-3.3-Kontext nicht. → **`fui_backend_gl3.h` wird gebaut** (Iteration 7).
@@ -424,7 +441,7 @@ Neue Dateien:
 
 ## 4. Testbilder und Messstand
 
-Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos unterscheiden sie nachweislich nicht (1.2). Der Generator ist ein Skript und kein eingechecktes Bildarchiv. Die Bilder sind reproduzierbar und landen in `demos/build/FPL_ImageViewer/tests/`, das bereits ignoriert ist.
+Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos unterscheiden sie nachweislich nicht (1.2). Die Bilder sind **eingecheckt** unter `demos/FPL_ImageViewer/tests/images/` (Entscheidung vom 2026-09-23). Der Generator `tests/generate_testimages.sh` liegt daneben, dokumentiert, wie jedes Bild entstanden ist, und baut sie **byteidentisch** nach (keine Zeitstempel, kein Zufall). Nur die Ergebnisse der Testläufe (Renderings, Referenzen, `report.md`) landen in `demos/build/FPL_ImageViewer/tests/`, das ignoriert ist.
 
 ### 4.1 Die Bilder
 
@@ -450,24 +467,28 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 | `bmp24_bottomup`, `bmp32_topdown` | 257×131 | Referenz-BMP gegen stb | **byteidentisch** |
 | `bmp_rle8` | 64² | Rückfall | Referenz-BMP lehnt ab, stb liest; das Log nennt beide |
 | `png_named.jpg` | 64² | Signatur schlägt Endung | wird als PNG gelesen |
-| `orientation_1` … `orientation_8` | 300×200 JPEG | EXIF-Orientierung | Ein asymmetrisches Motiv („F“ mit Farbecken) wird für jede der 8 Orientierungen passend gedreht bzw. gespiegelt **gespeichert** und bekommt den passenden EXIF-Wert (`magick -orient`). Alle 8 müssen **gleich** angezeigt werden, bei 100 % byteidentisch zur Referenz von `orientation_1` bis auf JPEG-Abweichungen (PSNR-Schwelle), eingepasst, gezoomt und in der Vorschau-Leiste. |
+| `orientation_1` … `orientation_8` | 300×200 JPEG | EXIF-Orientierung | Ein asymmetrisches Motiv („F“ mit Farbecken, `orientation_upright.png`) wird für jede der 8 Orientierungen passend gedreht bzw. gespiegelt **gespeichert** und bekommt ein von Hand gebautes APP1-Segment mit genau dem Orientierungs-Tag, ungerade Werte big-endian (`MM`), gerade little-endian (`II`). `magick -orient` schreibt ohne vorhandenes EXIF-Profil nichts. Gegenprobe: `magick orientation_N.jpg -auto-orient` ergibt für alle 8 das aufrechte Motiv (64 dB). Alle 8 müssen **gleich** angezeigt werden, bei 100 % byteidentisch zur Referenz von `orientation_1` bis auf JPEG-Abweichungen (PSNR-Schwelle), eingepasst, gezoomt und in der Vorschau-Leiste. |
 | `truncated.jpg`, `empty.png` (0 Byte) | | kaputte Dateien | Fehlerzustand, kein Absturz, alle passenden Loader versucht |
-| `exif_broken.jpg` | 64² | EXIF-Block mit Offsets und Längen außerhalb des Blocks | wird als Orientierung 1 angezeigt, kein Absturz, kein Lesen über den Block hinaus (unter ASan geprüft) |
+| `exif_broken.jpg`, `exif_broken_ifd_offset.jpg` | 64² | EXIF-Block mit Offsets und Längen außerhalb des Blocks: 256 angebliche Einträge in einem Block mit einem, Orientierung mit 65536 Werten an Offset 0xFFFFFFF0; bzw. IFD0-Offset weit hinter dem Blockende | wird als Orientierung 1 angezeigt, kein Absturz, kein Lesen über den Block hinaus (unter ASan geprüft) |
+| `Übersicht_ä.png` | 320×200 | Umlaute im Dateinamen (Iteration 7) | Info-Zeile zeigt den Namen richtig |
 | Fotos `202308`, `Bildschirmfotos` | | echte Motive | Sichtprüfung an vergrößerten Ausschnitten |
 
 ### 4.2 Referenzen und Metriken
 
-- **Referenz:** `magick <in> -colorspace RGB -filter <X> -resize <B>x<H>! -colorspace sRGB -depth 8 <ref>`, mit gleichem Kernel (`Box`, `Triangle`, `Mitchell`, `Catrom`, `Lanczos`, `Point`, B-Spline = `Spline`) und gleicher Pixelmitten- und Randkonvention. Für die beiden alten Kernel Triangular und Bell hat ImageMagick keine genaue Entsprechung. Sie werden nur über den Impulstest geprüft.
-- **PSNR gegen dieselbe Kernel-Referenz:** Startziel ≥ 40 dB auf allen synthetischen Bildern. Die Schwelle wird in Iteration 0 kalibriert: Wie weit liegen ImageMagick selbst in Q16 und die auf 8 Bit gerundete Fassung auseinander? Das ist die Obergrenze des Erreichbaren.
-- **Aliasing-Wert:** Standardabweichung im Ring über der Nyquist-Grenze (Zonenplatte), gegen die Werte der Referenz. Die heutigen Werte stehen in 1.2.
-- **Exakte Tests** (100 %, Nearest bei ganzzahligem Zoom): `magick compare -metric AE` = 0.
+- **Referenz:** `magick <in> -colorspace sRGB -colorspace RGB -filter <X> -resize <B>x<H>! -background black -alpha remove -alpha off -colorspace sRGB -depth 8 <ref>`, mit gleichem Kernel (`Box`, `Triangle`, `Mitchell`, `Catrom`, `Lanczos`, `Point`, B-Spline = `Spline`) und gleicher Pixelmittenkonvention. Das erste `-colorspace sRGB` ist nötig, damit Graustufen-PNGs vor dem Linearisieren als sRGB gelten. `-alpha remove` mischt Transparenz in linearem Licht auf Schwarz, so wie der Viewer heute zeigt. Die alten Kernel haben doch eine genaue Entsprechung (in Iteration 0 am Impulsprofil geprüft): **Triangular** = `-filter Triangle -define filter:blur=2` (Dreieck mit Radius 2), **Bell** = `-filter Quadratic -define filter:blur=1.3333333333` (quadratischer B-Spline, auf Radius 2 gestreckt). Damit hat jeder heutige Filter eine Referenz.
+- **Randbehandlung von ImageMagick:** `-resize` klemmt am Rand **nicht**. Abgriffe außerhalb des Bildes fallen weg, und die restlichen Gewichte werden neu normiert (`resize.c`: `start = max(bisect − support + 0.5, 0)`, `stop = min(…, columns)`, danach durch `density` geteilt). Soll die Pipeline in Iteration 2 exakt vergleichbar sein, macht sie es genauso. Klemmen würde nur die Randpixel verändern, trifft aber genau `border_frame_odd`.
+- **PSNR gegen dieselbe Kernel-Referenz: ≥ 45 dB** auf allen synthetischen Bildern. **Kalibriert in Iteration 0:** Die ImageMagick-Referenz als Q16-HDRI-Gleitkomma, auf [0, 1] geklemmt, gegen dieselbe Referenz in 8 Bit liegt über alle Testbilder, Maßstäbe (0,146 … 8) und Kernel (Mitchell, Lanczos3, Triangle, Catmull-Rom) bei **54,4 bis 84,7 dB**. Den Tiefstwert liefern flache Flächen: 187,5 wird zu 188, jedes Pixel liegt also 0,5 Stufen daneben. Das ist die Obergrenze des Erreichbaren. 45 dB lassen 9 dB (RMS ≈ 1,4 Stufen) für die GPU-Arithmetik (RGBA16F, `sin`/`pow`-Näherungen). Ohne Klemmen sinkt der Wert bei Lanczos/Catmull-Rom auf 15–40 dB, das misst aber das Überschwingen und nicht die Rundung. Die Referenz ist deshalb immer das geklemmte 8-Bit-Ergebnis.
+- **Nearest** tastet nur ab. Liegt ein Abtastpunkt genau zwischen zwei Quellpixeln (etwa bei 512 → 179 für `x = 89`: 256·(2x+1)/179 ist ganzzahlig), ist die Rundung Sache der Implementierung. Beim Verkleinern ist der PSNR gegen `Point` deshalb nur informativ. Exakt geprüft wird Nearest bei 100 % und bei ganzzahligem Vergrößern, dort gibt es keine Gleichstände.
+- **Aliasing-Wert:** Standardabweichung (8-Bit-Stufen) des Rotkanals im Ring über der Nyquist-Grenze der Zonenplatte. Die Zonenplatte `0.5 + 0.5·cos(π·r²/N)` hat die Ortsfrequenz `r/N` Perioden pro Quellpixel. Bei Maßstab `s` liegt die Nyquist-Grenze der Ausgabe im Ausgaberadius `0.5·s²·N`, die der Quelle bei `0.5·s·N`. Gemessen wird von **1,5 × Ausgabe-Nyquist** bis **0,95 × Quell-Nyquist**. Ein korrekter Filter ist dort flach. Der Ring braucht mindestens 4 Pixel Breite, bei 2048² also s ≤ 0,5. Toleranz: **+1,0 Stufen** über der Referenz desselben Kernels. Die 8-Bit-Quantisierung selbst trägt nur ≈ 0,3 Stufen bei (in Quadratur addiert: +0,05 bei einer Referenz von 0,9).
+- **Flache Flächen** (`checker_1px` verkleinert): Mittelwert 188 ± 1, Standardabweichung ≤ 1. **`gamma_rows`, `color_checker_1px`:** ± 2. **Impuls:** Asymmetrie (PAE gegen die gespiegelte Fassung) und Abweichung vom abgetasteten Kernel je ≤ 1 Stufe. **Rahmen:** Jede der vier Kanten hat mindestens 50 % des Rotwerts, den dieselbe Kante in der Referenz hat. Das Nearest-Verkleinern ist davon ausgenommen, eine 1-px-Linie darf dabei verschwinden.
+- **Exakte Tests** (100 %, Nearest bei ganzzahligem Zoom): `magick compare -metric AE` = 0. ImageMagick 7.1.2 meldet AE als kanalgewichteten Bruchteil, deshalb zählt jeder Wert über 0 als mindestens ein abweichendes Pixel.
 - **Bitidentität der SIMD-Stufen:** `--selftest` vergleicht alle verfügbaren Stufen auf allen Testbildern und auf Zufallsbildern (Größen 1…130 × 1…130, Zufallsinhalt mit Alpha) Byte für Byte.
 
 ### 4.3 Werkzeuge
 
-- `tests/generate_testimages.sh`: Erzeugt alle Bilder aus 4.1 mit ImageMagick. Das Skript ist deterministisch und hat englische Kommentare.
-- `tests/run_scaling_tests.sh`: Für jede Kombination aus Bild, Maßstab (0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 8) und Filter rendert es mit `--render-to`, erzeugt die Referenz, misst und gibt eine Tabelle aus. Der Exit-Code ist ungleich 0, wenn eine Schwelle verletzt ist.
-- `--render-to` ist der Kern des Messstands: Das Bild wird offscreen in ein Framebuffer-Objekt genau der angegebenen Größe gerendert, ohne Vorschau-Leiste, ohne Info-Zeile, ohne Fensterdekoration und ohne Compositor, und per `glReadPixels` als PAM geschrieben. Das ist deterministischer als jeder Screenshot. Ein Fenster entsteht trotzdem, weil FPL es für den GL-Kontext braucht.
+- `tests/generate_testimages.sh [Zielordner]`: Erzeugt alle Bilder aus 4.1 mit ImageMagick nach `tests/images/` (≈ 10 s). Das Skript ist deterministisch (zweimal erzeugt = byteidentisch) und hat englische Kommentare. PNG-Farbtypen werden erzwungen (`PNG24:` bzw. Graustufen 8 Bit), weil ImageMagick sonst eigenmächtig auf Palette oder 1-Bit-Grau reduziert.
+- `tests/run_scaling_tests.sh [--viewer=] [--images=a,b] [--filters=1,7] [--quick] [--no-photo]`: Für jede Kombination aus Bild, Maßstab (je Bild eine passende Auswahl aus 0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 7 / 8, dazu `1@1280x720` = 1:1 im Fenster der Screenshot-Messungen) und Filter rendert es mit `--render-to`, erzeugt die Referenz (zwischengespeichert), misst und gibt eine Markdown-Tabelle aus, zusätzlich als `report.md`. Der Exit-Code ist 1, wenn eine Schwelle verletzt ist. Ein voller Lauf dauert einige Minuten und öffnet pro Rendering kurz ein kleines Fenster.
+- `--render-to=<Datei.pam> --window=<B>x<H>` ist der Kern des Messstands: Das Bild wird offscreen in ein Framebuffer-Objekt genau der angegebenen Größe gerendert (sRGB-Farbanhang wie der Standard-Framebuffer), ohne Vorschau-Leiste, ohne Info-Zeile, ohne Fensterdekoration und ohne Compositor, und per `glReadPixels` als PAM (RGB) geschrieben. Das ist deterministischer als jeder Screenshot. Ein Fenster entsteht trotzdem, weil FPL es für den GL-Kontext braucht, im Render-Modus nur 256×256 und **ohne MSAA**. Exit-Codes: 0 geschrieben, 1 Parameter, 2 kein Bild, 3 Laden fehlgeschlagen, 4 Zeitüberschreitung (60 s), 5 GL, 6 Schreiben, 7 Fenster geschlossen. Dazu `--zoom=fit|100|<Prozent>`: `fit` passt auch kleine Bilder ein, also mit Vergrößern.
 - **Interaktion** (Tasten, Mausrad, Ziehen, Info-Zeile) wird per `xdotool` gesteuert und mit `import -window <id>` aufgenommen, wie bei den Messungen in 1.2. Nach jeder Zeichenänderung heißt es: Screenshot **und** hineinzoomen.
 
 ---
@@ -483,6 +504,11 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - `generate_testimages.sh` und `run_scaling_tests.sh`. `--render-to` wird vorgezogen und rendert vorerst mit dem **alten** Zeichenweg. Die Parameter werden repariert (`-p`, `-f`), und die Langformen aus Abschnitt 3 kommen dazu, soweit sie schon Sinn ergeben.
 - Die Schwellen werden kalibriert (4.2).
 - **Abnahme:** Der Testlauf läuft durch und dokumentiert den **heutigen** Stand als Tabelle. Er muss die Zahlen aus 1.2 reproduzieren, also 1:1 flach 188 bei allen außer Nearest und Aliasing bei 0,146.
+
+**Stand (2026-09-23):**
+- Erledigt: `--render-to`/`--window`/`--zoom`/`--no-preview`, Parser neu (`-p`, `-f` wirken, unbekannte oder kaputte Parameter enden mit Exit-Code 1), die drei Kleinfehler aus 1.3, v0.6.0 mit Changelog. Testbilder erzeugt und eingecheckt (4.1), `run_scaling_tests.sh` mit 483 Zeilen, Schwellen kalibriert (4.2), Messungen in 1.2 ersetzt.
+- Abnahme erfüllt: 1:1 flach 188 bei Bilinear und allen Bicubic-Filtern, Nearest exakt. Aliasing bei 0,146 für jeden Filter 50- bis 140-fach über der Referenz. Einzige Abweichung von der alten Tabelle: Lanczos3 ist offscreen exakt, das Verwaschen am Bildschirm kommt vom MSAA (1.3).
+- `stb_image` v2.30: Die Datei ist geladen und geprüft (Benchmark in 1.2 läuft damit), liegt aber noch **nicht** im Repo, weil das Einspielen fremden Codes eine Freigabe braucht. Danach: alle Nutzer neu bauen (Viewer, Emulator, Input, OpenGL, Vulkan, Software, GameTemplate, Crackout, Towadev, FUI_Test, FUI_Framework; vorher bauten alle außer Vulkan ohne Fehler) und `run_scaling_tests.sh` wiederholen.
 
 ### Iteration 1 — Fundament
 
@@ -629,6 +655,8 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 | NEON | später, die Architektur reicht vorerst | 2.4, 7.2 |
 | Glyphen | Latin-1 (U+0020–U+00FF) reicht vorerst | 2.8 |
 | Standardfilter | Mitchell ↓ / Catmull-Rom ↑ als Hypothese; der Nutzer entscheidet anhand vorgelegter Vergleichsausschnitte | 2.2, Iteration 2 und 5 |
+| Testbilder | **eingecheckt** unter `demos/FPL_ImageViewer/tests/images/`, der Generator bleibt zum Nachbauen daneben | 4, 4.3 |
+| PSNR-Schwelle | 45 dB statt 40 dB, nach Kalibrierung (Obergrenze ≥ 54,4 dB) | 4.2 |
 
 ### 7.2 Folgepunkte (nicht in diesem Plan)
 
@@ -656,3 +684,4 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - **Ohne GL 3.3 Core kein Start:** Mit dem Legacy-Pfad fällt der letzte Weg für sehr alte Grafik weg. Hardware ab etwa 2010 kann 3.3 Core, und Mesa bietet es auch in Software (llvmpipe).
 - **EXIF aus fremden Dateien:** Der EXIF-Leser liest nicht vertrauenswürdige Daten. Jeder Offset und jede Länge wird gegen die Blockgröße geprüft, und kaputte EXIF-Daten gelten als Orientierung 1. Dafür gibt es `truncated.jpg` und ein absichtlich kaputtes EXIF-Testbild.
 - **Die Standardfilter** sind Arbeitshypothesen. Text in Bildschirmfotos kann die Wahl beim Verkleinern zu Mitchell oder Box verschieben, Fotos eher zu Lanczos3.
+- **Größe der eingecheckten Testbilder:** zusammen ≈ 20 MB, davon `zoneplate_4096.png` 15 MB und `zoneplate_2048.png` 3,8 MB. Zonenplatten lassen sich kaum komprimieren, alle anderen Bilder zusammen haben ≈ 1,4 MB. Jede Neuerzeugung mit geändertem Inhalt landet erneut in der Git-Historie. Deshalb ist der Generator deterministisch, und die Zonenplatten werden nur bei echtem Bedarf geändert.
