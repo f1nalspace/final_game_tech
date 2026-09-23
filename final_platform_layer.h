@@ -179,6 +179,7 @@ SOFTWARE.
 	- Proper X11 input handling
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
+	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
 	- Several bugfixes
 
 	### Breaking Changes
@@ -257,6 +258,13 @@ SOFTWARE.
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 
 	#### Window
+	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
+	- New: Added field initialVisibility to fplWindowSettings, a window that starts hidden has a working video context but is never shown, so the window manager does not see it until it is shown
+	- New: Added function fplSetWindowVisibility() and fplGetWindowVisibility() to hide and show the window at runtime, a hidden window keeps its state and its video context
+	- Changed: fplSetWindowState() on a hidden window only remembers the state, it is applied when the window is shown
+	- Changed: fplSetWindowFullscreenSize(), fplSetWindowFullscreenRect(), fplEnableWindowFullscreen() and fplDisableWindowFullscreen() fail while the window is hidden, use fplSetWindowState(fplWindowState_Fullscreen) instead
+	- Changed: The enums fplWindowState and fplWindowVisibilityState are defined in front of fplWindowSettings, so they are always available
+	- Fixed: [Win32] Leaving fullscreen of a window that started in fullscreen asserted (or restored garbage), because the window placement to return to was never saved
 	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText()
 	- New: Added function fplClipboardSetTextLen() that puts a text of a given length on the clipboard, without needing a null-terminator
 	- Changed: fplClipboardGetText() follows the output buffer contract now - pass a null destination to ask for the size and call it again with a buffer of that size
@@ -6780,6 +6788,36 @@ typedef union fplColor32 {
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
 /**
+* @enum fplWindowState
+* @brief An enumeration containing the states of a window.
+*/
+typedef enum fplWindowState {
+	//! Unknown state.
+	fplWindowState_Unknown = 0,
+	//! Normal window state.
+	fplWindowState_Normal,
+	//! Iconify/Minimize window state.
+	fplWindowState_Iconify,
+	//! Maximize window state.
+	fplWindowState_Maximize,
+	//! Fullscreen state.
+	fplWindowState_Fullscreen,
+} fplWindowState;
+
+/**
+* @enum fplWindowVisibilityState
+* @brief An enumeration containing the visibility state of a window.
+*/
+typedef enum fplWindowVisibilityState {
+	//! Unknown state.
+	fplWindowVisibilityState_Unknown = 0,
+	//! Window is visible.
+	fplWindowVisibilityState_Show,
+	//! Window is hidden.
+	fplWindowVisibilityState_Hide,
+} fplWindowVisibilityState;
+
+/**
 * @struct fplWindowSettings
 * @brief Stores window settings, such as size, title, etc.
 */
@@ -6810,6 +6848,10 @@ typedef struct fplWindowSettings {
 	fpl_b32 isScreenSaverPrevented;
 	//! Is monitor power change prevented (true: prevents the monitor from powering off automatically, false: system behavior).
 	fpl_b32 isMonitorPowerPrevented;
+	//! The @ref fplWindowState the window starts in, @ref fplWindowState_Unknown is the same as @ref fplWindowState_Normal and @ref fplWindowState_Fullscreen is the same as isFullscreen.
+	fplWindowState initialState;
+	//! The @ref fplWindowVisibilityState the window starts with, @ref fplWindowVisibilityState_Unknown is the same as @ref fplWindowVisibilityState_Show. A hidden window has a working video context (e.g. for rendering into framebuffer objects), but is not managed by the window manager and has no taskbar entry.
+	fplWindowVisibilityState initialVisibility;
 } fplWindowSettings;
 
 /**
@@ -10487,36 +10529,6 @@ fpl_platform_api void fplPollEvents(void);
 // ----------------------------------------------------------------------------
 
 /**
-* @enum fplWindowState
-* @brief An enumeration containing the states of a window.
-*/
-typedef enum fplWindowState {
-	//! Unknown state.
-	fplWindowState_Unknown = 0,
-	//! Normal window state.
-	fplWindowState_Normal,
-	//! Iconify/Minimize window state.
-	fplWindowState_Iconify,
-	//! Maximize window state.
-	fplWindowState_Maximize,
-	//! Fullscreen state.
-	fplWindowState_Fullscreen,
-} fplWindowState;
-
-/**
-* @enum fplWindowVisibilityState
-* @brief An enumeration containing the visibility state of a window.
-*/
-typedef enum fplWindowVisibilityState {
-	//! Unknown state.
-	fplWindowVisibilityState_Unknown = 0,
-	//! Window is visible.
-	fplWindowVisibilityState_Show,
-	//! Window is hidden.
-	fplWindowVisibilityState_Hide,
-} fplWindowVisibilityState;
-
-/**
 * @brief Gets the window running state as a boolean.
 * @return Returns true when the window is running, false otherwise.
 */
@@ -10597,6 +10609,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value);
 * @param[in] refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
 * @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
 * @attention This may alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 
@@ -10609,6 +10622,7 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 * @param[in] height The height in virtual screen coordinates.
 * @return Returns true when the window was changed to the rectangle, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 
@@ -10616,6 +10630,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 * @brief Enables fullscreen mode on the nearest display.
 * @return Returns true when the window was changed to fullscreen, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplEnableWindowFullscreen(void);
 
@@ -10623,6 +10638,7 @@ fpl_platform_api bool fplEnableWindowFullscreen(void);
 * @brief Switches the window back to window mode.
 * @return Returns true when the window was changed to window mode, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplDisableWindowFullscreen(void);
 
@@ -10663,6 +10679,7 @@ fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitle
 /**
 * @brief Gets the current window state.
 * @return Returns the current window state.
+* @note For a hidden window this is the state it gets when it is shown again.
 */
 fpl_platform_api fplWindowState fplGetWindowState(void);
 
@@ -10670,8 +10687,25 @@ fpl_platform_api fplWindowState fplGetWindowState(void);
 * @brief Changes the current window state.
 * @param[in] newState The new window state.
 * @return Returns true when the window state was changed, false otherwise.
+* @note A hidden window only remembers the new state, it is applied when the window is shown with @ref fplSetWindowVisibility().
 */
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+
+/**
+* @brief Gets the current visibility of the window.
+* @return Returns @ref fplWindowVisibilityState_Show when the window is shown, @ref fplWindowVisibilityState_Hide when it is hidden.
+* @note A minimized window still counts as shown.
+*/
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
+
+/**
+* @brief Shows or hides the window.
+* @param[in] newVisibility The new visibility.
+* @return Returns true when the window has the new visibility, false otherwise.
+* @note A hidden window keeps its state and its video context. It is not managed by the window manager and has no taskbar entry. Showing it applies the state it had or was given while it was hidden.
+* @note Pushes a @ref fplWindowEventType_Shown or @ref fplWindowEventType_Hidden event when the visibility changes.
+*/
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
 
 /**
 * @brief Enables or disables the input events for the window entirely.
@@ -13200,6 +13234,8 @@ typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
 typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
 #define FPL__FUNC_X11_XIconifyWindow(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, int screen_number)
 typedef FPL__FUNC_X11_XIconifyWindow(fpl__func_x11_XIconifyWindow);
+#define FPL__FUNC_X11_XWithdrawWindow(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, int screen_number)
+typedef FPL__FUNC_X11_XWithdrawWindow(fpl__func_x11_XWithdrawWindow);
 #define FPL__FUNC_X11_XAllocSizeHints(name) fpl__X11_XSizeHints *name(void)
 typedef FPL__FUNC_X11_XAllocSizeHints(fpl__func_x11_XAllocSizeHints);
 #define FPL__FUNC_X11_XSetWMNormalHints(name) void name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_XSizeHints *hints)
@@ -13267,6 +13303,7 @@ extern FPL__FUNC_X11_XGetWMNormalHints(XGetWMNormalHints);
 extern FPL__FUNC_X11_XGetWindowAttributes(XGetWindowAttributes);
 extern FPL__FUNC_X11_XGetWindowProperty(XGetWindowProperty);
 extern FPL__FUNC_X11_XIconifyWindow(XIconifyWindow);
+extern FPL__FUNC_X11_XWithdrawWindow(XWithdrawWindow);
 extern FPL__FUNC_X11_XInitThreads(XInitThreads);
 extern FPL__FUNC_X11_XInternAtom(XInternAtom);
 extern FPL__FUNC_X11_XLookupString(XLookupString);
@@ -13369,6 +13406,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
 	fpl__func_x11_XIconifyWindow *XIconifyWindow;
+	fpl__func_x11_XWithdrawWindow *XWithdrawWindow;
 	fpl__func_x11_XAllocSizeHints *XAllocSizeHints;
 	fpl__func_x11_XSetWMNormalHints *XSetWMNormalHints;
 	fpl__func_x11_XGetWMNormalHints *XGetWMNormalHints;
@@ -13468,6 +13506,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XIconifyWindow, XIconifyWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWithdrawWindow, XWithdrawWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XAllocSizeHints, XAllocSizeHints);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMNormalHints, XSetWMNormalHints);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWMNormalHints, XGetWMNormalHints);
@@ -13950,6 +13989,10 @@ typedef struct {
 	uint64_t keyPressTimes[256];
 	fplButtonState mouseStates[5];
 	fpl_b32 isRunning;
+	// Set by fplSetWindowVisibility() or initialVisibility, the window is not shown and not managed by the window manager
+	fpl_b32 isHidden;
+	// The state a hidden window gets when it is shown, fplWindowState_Unknown when there is nothing to apply
+	fplWindowState pendingState;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
@@ -16436,6 +16479,51 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
 	appState->currentSettings.input.disabledEvents = !enabled;
 }
 
+// The state a new window starts in, isFullscreen and fplWindowState_Fullscreen are the same and fplWindowState_Unknown is fplWindowState_Normal
+fpl_internal fplWindowState fpl__GetInitialWindowState(const fplWindowSettings *windowSettings) {
+	if (windowSettings->isFullscreen || windowSettings->initialState == fplWindowState_Fullscreen) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (windowSettings->initialState == fplWindowState_Unknown) {
+		return(fplWindowState_Normal);
+	}
+	return(windowSettings->initialState);
+}
+
+// A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown
+fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
+	appState->window.isHidden = true;
+	appState->window.pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
+	currentWindowSettings->isFullscreen = false;
+}
+
+// Applies the state a hidden window was given, right after it was shown
+fpl_internal void fpl__ApplyPendingWindowState(fpl__PlatformAppState *appState) {
+	fplWindowState pendingState = appState->window.pendingState;
+	appState->window.pendingState = fplWindowState_Unknown;
+	if (pendingState == fplWindowState_Fullscreen) {
+		const fplWindowSettings *windowSettings = &appState->currentSettings.window;
+		if (!windowSettings->isFullscreen) {
+			fplSetWindowFullscreenSize(true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
+		}
+	} else if (pendingState != fplWindowState_Unknown) {
+		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
+		if (pendingState == fplWindowState_Normal && appState->currentSettings.window.isFullscreen) {
+			fplSetWindowFullscreenSize(false, 0, 0, 0);
+		}
+		fplSetWindowState(pendingState);
+	}
+}
+
+// The fullscreen functions would show a hidden window on Win32 and are ignored by X11 window managers, so they fail while the window is hidden
+fpl_internal bool fpl__IsFullscreenChangeAllowed(const fpl__PlatformAppState *appState) {
+	if (appState->window.isHidden) {
+		FPL__WARNING(FPL__MODULE_WINDOW, "Fullscreen can not be changed while the window is hidden, show the window first or use fplSetWindowState(fplWindowState_Fullscreen)");
+		return(false);
+	}
+	return(true);
+}
+
 #define FPL__KEY_COUNT FPL__ENUM_COUNT(fplKey_First, fplKey_Last)
 
 fpl_globalvar const char *fpl__global_KeyNameTable[] = {
@@ -16956,6 +17044,8 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isFloating = false;
 	window->isScreenSaverPrevented = false;
 	window->isMonitorPowerPrevented = false;
+	window->initialState = fplWindowState_Normal;
+	window->initialVisibility = fplWindowVisibilityState_Show;
 }
 
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
@@ -17920,6 +18010,17 @@ fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) 
 	return(result);
 }
 
+// Minimized and maximized are passed to ShowWindow() directly, like the nCmdShow of WinMain, a following SC_MAXIMIZE can be undone while the window is still being shown
+fpl_internal int fpl__Win32GetShowCommand(const fplWindowState state, const fplWindowSettings *settings) {
+	if (state == fplWindowState_Maximize && settings->isResizable && !settings->isFullscreen) {
+		return(SW_SHOWMAXIMIZED);
+	}
+	if (state == fplWindowState_Iconify) {
+		return(SW_SHOWMINIMIZED);
+	}
+	return(SW_SHOW);
+}
+
 fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
 	DWORD result = WS_EX_APPWINDOW;
 	if (settings->isFullscreen || settings->isFloating) {
@@ -18057,6 +18158,9 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
 	fplWindowSettings *windowSettings = &appState->currentSettings.window;
@@ -18989,15 +19093,22 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
 	}
 
-	// Enter fullscreen if needed
-	if (initWindowSettings->isFullscreen) {
-		fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
-	}
+	fplWindowState initialState = fpl__GetInitialWindowState(initWindowSettings);
+	if (initWindowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
+		fpl__DeferInitialWindowState(platAppState, currentWindowSettings, initialState);
+	} else {
+		// Enter fullscreen if needed, the flag is cleared first, otherwise the window placement to return to is never saved
+		if (initialState == fplWindowState_Fullscreen) {
+			currentWindowSettings->isFullscreen = false;
+			fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
+		}
 
-	// Show window
-	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
-	wapi->user.SetForegroundWindow(windowState->windowHandle);
-	wapi->user.SetFocus(windowState->windowHandle);
+		// Show window
+		int showCommand = fpl__Win32GetShowCommand(initialState, currentWindowSettings);
+		wapi->user.ShowWindow(windowState->windowHandle, showCommand);
+		wapi->user.SetForegroundWindow(windowState->windowHandle);
+		wapi->user.SetFocus(windowState->windowHandle);
+	}
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
@@ -22236,7 +22347,9 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	fplWindowState result;
-	if (appState->currentSettings.window.isFullscreen) {
+	if (appState->window.isHidden && appState->window.pendingState != fplWindowState_Unknown) {
+		result = appState->window.pendingState;
+	} else if (appState->currentSettings.window.isFullscreen) {
 		result = fplWindowState_Fullscreen;
 	} else {
 		bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
@@ -22254,11 +22367,16 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
+	// SC_MINIMIZE/SC_MAXIMIZE would show a hidden window, so the state is applied when it gets shown
+	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
+		appState->window.pendingState = newState;
+		return(true);
+	}
 	bool result = false;
 	switch (newState) {
 		case fplWindowState_Iconify:
@@ -22294,6 +22412,53 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 			break;
 	}
 	return(result);
+}
+
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	HWND windowHandle = windowState->windowHandle;
+	bool isHidden = appState->window.isHidden != 0;
+	if (newVisibility == fplWindowVisibilityState_Hide) {
+		if (!isHidden) {
+			wapi->user.ShowWindow(windowHandle, SW_HIDE);
+			appState->window.isHidden = true;
+			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+		}
+		return(true);
+	}
+	if (newVisibility == fplWindowVisibilityState_Show) {
+		if (isHidden) {
+			// Like at the start, fullscreen is entered or left before the window is shown and minimized and maximized go into ShowWindow() directly
+			fplWindowState pendingState = appState->window.pendingState;
+			int showCommand = fpl__Win32GetShowCommand(pendingState, &appState->currentSettings.window);
+			bool isFullscreen = appState->currentSettings.window.isFullscreen != 0;
+			bool leavesFullscreen = pendingState == fplWindowState_Normal && isFullscreen;
+			appState->window.isHidden = false;
+			if (pendingState == fplWindowState_Fullscreen || leavesFullscreen) {
+				fpl__ApplyPendingWindowState(appState);
+			} else if (showCommand != SW_SHOW) {
+				appState->window.pendingState = fplWindowState_Unknown;
+			}
+			wapi->user.ShowWindow(windowHandle, showCommand);
+			wapi->user.SetForegroundWindow(windowHandle);
+			wapi->user.SetFocus(windowHandle);
+			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(appState);
+		}
+		return(true);
+	}
+	return(false);
 }
 
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
@@ -27810,7 +27975,7 @@ fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSetti
 	}
 
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
-	windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+	windowState->lastWindowStateInfo.visibility = initSettings->window.initialVisibility == fplWindowVisibilityState_Hide ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
 	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
 	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowX, (uint32_t)windowY);
 
@@ -27872,7 +28037,10 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
-	x11Api->XMapWindow(windowState->display, windowState->core.window);
+	// A window that starts hidden is never mapped, so the window manager does not see it until fplSetWindowVisibility() shows it
+	if (initSettings->window.initialVisibility != fplWindowVisibilityState_Hide) {
+		x11Api->XMapWindow(windowState->display, windowState->core.window);
+	}
 	x11Api->XFlush(windowState->display);
 
 	// Announce support for Xdnd (drag and drop)
@@ -27964,8 +28132,13 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	fpl__X11InitInputMethod(x11Api, windowState);
 	fpl__X11BuildKeyMap(x11Api, appState, windowState);
 
-	if (initSettings->window.isFullscreen) {
+	fplWindowState initialState = fpl__GetInitialWindowState(&initSettings->window);
+	if (initSettings->window.initialVisibility == fplWindowVisibilityState_Hide) {
+		fpl__DeferInitialWindowState(appState, currentWindowSettings, initialState);
+	} else if (initialState == fplWindowState_Fullscreen) {
 		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+	} else if (initialState == fplWindowState_Iconify || initialState == fplWindowState_Maximize) {
+		fplSetWindowState(initialState);
 	}
 
 	appState->window.isRunning = true;
@@ -28955,7 +29128,8 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					break;
 				}
 			}
-			if (ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) {
+			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
+			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !appState->window.isHidden) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
@@ -29295,6 +29469,10 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	// A withdrawn window has no states, it gets the remembered one when it is shown
+	if (appState->window.isHidden) {
+		return(appState->window.pendingState != fplWindowState_Unknown ? appState->window.pendingState : fplWindowState_Normal);
+	}
 	if (appState->currentSettings.window.isFullscreen) {
 		return(fplWindowState_Fullscreen);
 	}
@@ -29319,10 +29497,15 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	// Window managers ignore state changes of a withdrawn window and fplWindowState_Normal would map it, so the state is applied when it gets shown
+	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
+		appState->window.pendingState = newState;
+		return(true);
+	}
 	bool result = false;
 	switch (newState) {
 		case fplWindowState_Iconify:
@@ -29361,6 +29544,51 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 			break;
 	}
 	return(result);
+}
+
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	bool isHidden = appState->window.isHidden != 0;
+	if (newVisibility == fplWindowVisibilityState_Hide) {
+		if (!isHidden) {
+			// The window manager removes all states of a withdrawn window, so the current one is applied again when the window is shown
+			fplWindowState currentState = fplGetWindowState();
+			if (appState->window.pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
+				appState->window.pendingState = currentState;
+			}
+			appState->currentSettings.window.isFullscreen = false;
+			// Unlike XUnmapWindow, XWithdrawWindow also tells the window manager to forget the window (ICCCM 4.1.4)
+			x11Api->XWithdrawWindow(windowState->display, windowState->core.window, windowState->screen);
+			x11Api->XFlush(windowState->display);
+			appState->window.isHidden = true;
+			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
+			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+		}
+		return(true);
+	}
+	if (newVisibility == fplWindowVisibilityState_Show) {
+		if (isHidden) {
+			x11Api->XMapWindow(windowState->display, windowState->core.window);
+			x11Api->XFlush(windowState->display);
+			appState->window.isHidden = false;
+			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(appState);
+		}
+		return(true);
+	}
+	return(false);
 }
 
 typedef enum fpl__X11DisplayBackend {
@@ -29757,6 +29985,9 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
@@ -29783,6 +30014,9 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
