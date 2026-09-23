@@ -33,6 +33,10 @@ Changelog:
 	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
 	- New: Upscaling filters the sRGB values instead of linear light (like mpv), so the negative lobes of Catmull-Rom and Lanczos3 no longer dig halos down to black next to dark tones, downscaling stays in linear light
 	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
+	- New: Zoom: the mouse wheel zooms around the mouse (1.2 per notch, snapping to fit and 100 %), + and - step through 1/8 ... 32 with fit as a step of its own, 0 fits, 1 shows 100 %, 2 shows 200 % (also with Ctrl and on the keypad), a double click toggles between 100 % at the mouse and fit
+	- New: Dragging with the left or middle button or Shift + arrow keys moves a picture that is larger than the window, it never shows a border; left and right still page while zoomed
+	- New: K keeps the view over picture changes: reset, relative to the fit size or absolute, also --keep-view=reset|relative|absolute; W or --wheel=zoom|navigate lets the wheel page (Ctrl + wheel still zooms); --center=<x>,<y> sets the start center
+	- Changed: The window title shows the zoom, the center of a picture that can be moved and the view and wheel modes
 	- New: Auto Nearest for pixel inspection: from a zoom of --nearest-from=<percent> on (at least 100) upscaling uses Nearest, A turns it on at 400 % (or the --nearest-from value) and off again, off by default
 	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
 	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
@@ -332,6 +336,14 @@ typedef struct LoadQueue {
 	CacheLinePad pad4;
 } LoadQueue;
 
+// What the mouse wheel does without Ctrl, with Ctrl it always zooms (plan section 2.6)
+typedef enum WheelMode {
+	WheelMode_Zoom = 0,
+	// Pages through the pictures like IrfanView and XnView
+	WheelMode_Navigate,
+	WheelMode_Count,
+} WheelMode;
+
 typedef struct ViewerParameters {
 	const char* path;
 	const char* renderToFilePath;
@@ -341,6 +353,11 @@ typedef struct ViewerParameters {
 	uint32_t windowHeight;
 	float zoomScale;
 	ViewZoomMode zoomMode;
+	// Normalized picture point at the viewport center of the start view (--center)
+	float centerX;
+	float centerY;
+	ViewPersistence persistence;
+	WheelMode wheelMode;
 	ResampleKernel downKernel;
 	ResampleKernel upKernel;
 	ResampleBackground background;
@@ -404,12 +421,25 @@ static const ResampleKernel LegacyFilterNumberKernels[] = {
 	ResampleKernel_Lanczos3,
 };
 
+// Command line keys of --keep-view and --wheel, and how the window title shows the modes (empty for the default)
+static const char* ViewPersistenceKeys[ViewPersistence_Count] = { "reset", "relative", "absolute" };
+static const char* ViewPersistenceTitles[ViewPersistence_Count] = { "", "keep relative", "keep absolute" };
+static const char* WheelModeKeys[WheelMode_Count] = { "zoom", "navigate" };
+static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
+
 // Both defaults decided with the comparison crops of iteration 2 and 5 (plan section 2.2)
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
 #define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
 #define DEFAULT_BACKGROUND ResampleBackground_Checker
 // Zoom from which A switches upscaling to Nearest for pixel inspection, unless --nearest-from sets another one (plan section 2.6)
 #define DEFAULT_NEAREST_FROM_SCALE 4.0f
+// Normalized center of the start view, unless --center sets another one
+#define DEFAULT_VIEW_CENTER 0.5f
+// Two left clicks at most this far apart in time and in pixels on each axis are a double click, FPL reports single clicks only
+#define DOUBLE_CLICK_MILLISECONDS 400
+#define DOUBLE_CLICK_DISTANCE 4
+// Shift + arrow keys move the view by this share of the viewport per press and repeat
+#define KEYBOARD_PAN_VIEWPORT_SHARE 0.125f
 // Kernel of the 2:1 reductions of the level chain (plan section 2.3)
 #define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
 
@@ -441,6 +471,18 @@ typedef struct SupportedFeatures {
 	bool srgbFrameBuffer;
 } SupportedFeatures;
 
+// Mouse input between events: dragging, double click detection and wheel notches that page
+typedef struct PointerState {
+	fplMilliseconds lastClickTime;
+	int32_t lastClickX;
+	int32_t lastClickY;
+	int32_t dragLastX;
+	int32_t dragLastY;
+	// Wheel notches in navigate mode that did not make up a whole page yet (touchpads send fractions)
+	float navigateWheelNotches;
+	bool isDragging;
+} PointerState;
+
 typedef struct ViewerState {
 	char rootPath[FPL_MAX_PATH_LENGTH];
 	SupportedFeatures features;
@@ -460,6 +502,11 @@ typedef struct ViewerState {
 
 	ViewerParameters params;
 	ViewState view;
+	// From --zoom and --center, every picture starts with it when the view is not kept
+	ViewState startView;
+	ViewPersistence persistence;
+	WheelMode wheelMode;
+	PointerState pointer;
 
 	LoadQueue loadQueue;
 	size_t loadQueueCapacity;
@@ -927,8 +974,8 @@ static ViewSize GetDisplayedPictureSize(const ViewPicture* picture) {
 	return(result);
 }
 
-// Transform of the active picture in the current viewport, false while the picture is not ready
-static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTransform) {
+// Displayed size of the active picture, false while the picture is not ready
+static bool GetActivePictureSize(ViewerState* state, ViewSize* outSize) {
 	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
 	if (!hasActivePicture) {
 		return(false);
@@ -938,7 +985,16 @@ static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTran
 	if (pictureState != LoadedPictureState_Ready) {
 		return(false);
 	}
-	ViewSize pictureSize = GetDisplayedPictureSize(activePicture);
+	*outSize = GetDisplayedPictureSize(activePicture);
+	return(true);
+}
+
+// Transform of the active picture in the current viewport, false while the picture is not ready
+static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTransform) {
+	ViewSize pictureSize;
+	if (!GetActivePictureSize(state, &pictureSize)) {
+		return(false);
+	}
 	*outTransform = ComputeViewTransform(&state->view, pictureSize, state->viewportSize);
 	return(true);
 }
@@ -1062,7 +1118,8 @@ static void UpdateWindowTitle(ViewerState* state) {
 	// At 1:1 no filter is in effect, the kernel in parentheses is the one T changes and the next zoom uses; the same goes for auto Nearest.
 	char filterText[FPL_MAX_NAME_LENGTH];
 	ViewTransform transform;
-	if (GetActivePictureTransform(state, &transform)) {
+	bool hasTransform = GetActivePictureTransform(state, &transform);
+	if (hasTransform) {
 		const ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
 		bool isDownscaling = IsDownscaling(&transform);
 		const char* arrow = isDownscaling ? downArrow : upArrow;
@@ -1083,6 +1140,47 @@ static void UpdateWindowTitle(ViewerState* state) {
 		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s%s", downArrow, downDefinition->name, upArrow, upDefinition->name, nearestText);
 	}
 
+	// Zoom (fit when the zoom mode fits the picture), the center once the picture is larger than the viewport, the view and wheel modes when they are not the defaults.
+	// The info line of iteration 7 takes this over.
+	char viewText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	if (hasTransform) {
+		const float wholePercentTolerance = 0.05f;
+		const float half = 0.5f;
+		float percent = transform.scale * percentPerScale;
+		float roundedPercent = roundf(percent);
+		bool isWholePercent = fabsf(percent - roundedPercent) < wholePercentTolerance;
+		char percentText[FPL_MAX_NAME_LENGTH];
+		if (isWholePercent) {
+			fplStringFormat(percentText, fplArrayCount(percentText), "%.0f %%", roundedPercent);
+		} else {
+			fplStringFormat(percentText, fplArrayCount(percentText), "%.1f %%", percent);
+		}
+		bool isFitMode = state->view.zoomMode == ViewZoomMode_Fit || state->view.zoomMode == ViewZoomMode_ShrinkToFit;
+		bool isFitted = isFitMode && transform.scale == transform.fitScale;
+		fplStringFormat(viewText, fplArrayCount(viewText), " | %s%s", (isFitted ? "fit " : ""), percentText);
+		float viewportWidth = (float)state->viewportSize.width;
+		float viewportHeight = (float)state->viewportSize.height;
+		bool isMovable = transform.imageRect.width > viewportWidth || transform.imageRect.height > viewportHeight;
+		if (isMovable) {
+			float centerX = (viewportWidth * half - transform.imageRect.left) / transform.imageRect.width;
+			float centerY = (viewportHeight * half - transform.imageRect.top) / transform.imageRect.height;
+			char centerText[FPL_MAX_NAME_LENGTH];
+			fplStringFormat(centerText, fplArrayCount(centerText), " at %.2f, %.2f", centerX, centerY);
+			fplStringAppend(centerText, viewText, fplArrayCount(viewText));
+		}
+	}
+	const char* persistenceTitle = ViewPersistenceTitles[state->persistence];
+	const char* wheelModeTitle = WheelModeTitles[state->wheelMode];
+	const char* titleSeparator = " | ";
+	if (*persistenceTitle != 0) {
+		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
+		fplStringAppend(persistenceTitle, viewText, fplArrayCount(viewText));
+	}
+	if (*wheelModeTitle != 0) {
+		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
+		fplStringAppend(wheelModeTitle, viewText, fplArrayCount(viewText));
+	}
+
 	// The loader that read the active picture, once it is shown
 	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
 	bool hasActivePicture = state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
@@ -1098,7 +1196,7 @@ static void UpdateWindowTitle(ViewerState* state) {
 	char titleBuffer[FPL_MAX_BUFFER_LENGTH];
 	if (state->activeFileIndex > -1) {
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s | %s%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, backgroundDefinition->name, loaderText);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s%s | %s%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, viewText, backgroundDefinition->name, loaderText);
 	} else {
 		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
@@ -1114,6 +1212,11 @@ static void ChangeViewPicture(ViewerState* state, const int offset, const bool f
 		fplAssert(state->activeFileIndex == -1);
 		return;
 	}
+	// The size of the picture that is shown now carries the view over (plan section 2.6), zero while it is still loading
+	ViewSize previousPictureSize = fplZeroInit;
+	GetActivePictureSize(state, &previousPictureSize);
+	int previousFileIndex = state->activeFileIndex;
+
 	int capacity = (int)state->viewPicturesCapacity;
 	bool loadPictures = false;
 	int viewIndex;
@@ -1129,6 +1232,9 @@ static void ChangeViewPicture(ViewerState* state, const int offset, const bool f
 	}
 	state->viewPictureIndex = viewIndex;
 	state->activeFileIndex = fplMax(fplMin(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
+	if (state->activeFileIndex != previousFileIndex) {
+		state->view = ComputeViewForNextPicture(&state->view, state->persistence, &state->startView, previousPictureSize, state->viewportSize);
+	}
 
 	UpdateWindowTitle(state);
 
@@ -1200,6 +1306,36 @@ static bool ParseZoomValue(const char* text, ViewZoomMode* outMode, float* outSc
 	return(true);
 }
 
+// Parses <x>,<y> of --center, both normalized between 0 and 1
+static bool ParseCenterValue(const char* text, float* outX, float* outY) {
+	const double lowest = 0.0;
+	const double highest = 1.0;
+	char* end = fpl_null;
+	double x = strtod(text, &end);
+	if (end == text || *end != ',') {
+		return(false);
+	}
+	const char* yText = end + 1;
+	double y = strtod(yText, &end);
+	if (end == yText || *end != 0 || x < lowest || x > highest || y < lowest || y > highest) {
+		return(false);
+	}
+	*outX = (float)x;
+	*outY = (float)y;
+	return(true);
+}
+
+// Index of the key in the list, ignoring case
+static bool FindKeyIndex(const char* text, const char* const* keys, const int keyCount, int* outIndex) {
+	for (int keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
+		if (CompareStringIgnoreCase(text, keys[keyIndex]) == 0) {
+			*outIndex = keyIndex;
+			return(true);
+		}
+	}
+	return(false);
+}
+
 // Parses the percentage of --nearest-from, at least 100: auto Nearest is meant for enlarged pixels, below 100 % it would alias
 static bool ParseNearestFromValue(const char* text, float* outScale) {
 	const double actualSizePercent = 100.0;
@@ -1261,6 +1397,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
 			const char* backgroundValue = MatchLongParameter(argument, "--background");
 			const char* nearestFromValue = MatchLongParameter(argument, "--nearest-from");
+			const char* centerValue = MatchLongParameter(argument, "--center");
+			const char* keepViewValue = MatchLongParameter(argument, "--keep-view");
+			const char* wheelValue = MatchLongParameter(argument, "--wheel");
 			const char* loaderValue = MatchLongParameter(argument, "--loader");
 			const char* loaderForValue = MatchLongParameter(argument, "--loader-for");
 			const char* loaderOrderValue = MatchLongParameter(argument, "--loader-order");
@@ -1293,6 +1432,16 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = ResampleFindBackground(backgroundValue, &params->background);
 			} else if (nearestFromValue != fpl_null) {
 				isValid = ParseNearestFromValue(nearestFromValue, &params->nearestFromScale);
+			} else if (centerValue != fpl_null) {
+				isValid = ParseCenterValue(centerValue, &params->centerX, &params->centerY);
+			} else if (keepViewValue != fpl_null) {
+				int persistenceIndex = 0;
+				isValid = FindKeyIndex(keepViewValue, ViewPersistenceKeys, ViewPersistence_Count, &persistenceIndex);
+				params->persistence = (ViewPersistence)persistenceIndex;
+			} else if (wheelValue != fpl_null) {
+				int wheelModeIndex = 0;
+				isValid = FindKeyIndex(wheelValue, WheelModeKeys, WheelMode_Count, &wheelModeIndex);
+				params->wheelMode = (WheelMode)wheelModeIndex;
 			} else if (loaderValue != fpl_null) {
 				params->loaderValue = loaderValue;
 				isValid = *loaderValue != 0;
@@ -1966,6 +2115,11 @@ static bool Init(ViewerState* state) {
 	bool isNearestFromGiven = state->params.nearestFromScale > 0.0f;
 	state->nearestFromScale = state->params.nearestFromScale;
 	state->nearestFromToggleScale = isNearestFromGiven ? state->params.nearestFromScale : DEFAULT_NEAREST_FROM_SCALE;
+	// Before the first picture change, which already applies the view persistence
+	state->startView = ViewMakeState(state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
+	state->view = state->startView;
+	state->persistence = state->params.persistence;
+	state->wheelMode = state->params.wheelMode;
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &state->maxTextureSize);
 	flogWrite("Largest texture size: %d", state->maxTextureSize);
@@ -2012,9 +2166,6 @@ static bool Init(ViewerState* state) {
 			ChangeViewPicture(state, 0, true);
 		}
 	}
-
-	const float centered = 0.5f;
-	state->view = ViewMakeState(state->params.zoomMode, state->params.zoomScale, centered, centered);
 
 	UpdateWindowTitle(state);
 
@@ -2304,6 +2455,12 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) 
 static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 	state->viewportSize = viewportSize;
 
+	// A relative scale kept over a picture change becomes the scale itself once the picture is there, so resizing the window keeps it
+	ViewSize activePictureSize;
+	if (GetActivePictureSize(state, &activePictureSize)) {
+		state->view = ComputeViewResolved(&state->view, activePictureSize, viewportSize);
+	}
+
 	// Scale the active picture, only when its placement, filter or content changed
 	ViewTransform transform;
 	bool isActivePictureReady = GetActivePictureTransform(state, &transform);
@@ -2457,6 +2614,145 @@ static void CycleActiveKernel(ViewerState* state, const int step) {
 	int kernelCount = (int)ResampleKernel_Count;
 	int next = ((int)*kernel + step + kernelCount) % kernelCount;
 	*kernel = (ResampleKernel)next;
+}
+
+// Zooms so that the picture point under the viewport point stays there, while no picture is shown only the zoom mode and scale change
+static void ZoomActivePicture(ViewerState* state, const ViewZoomMode mode, const float scale, const float pointX, const float pointY) {
+	ViewSize pictureSize;
+	if (GetActivePictureSize(state, &pictureSize)) {
+		state->view = ComputeViewZoomAtPoint(&state->view, pictureSize, state->viewportSize, mode, scale, pointX, pointY);
+	} else {
+		state->view = ViewMakeState(mode, scale, state->view.centerX, state->view.centerY);
+	}
+}
+
+// The keyboard zooms around the viewport center
+static void ZoomActivePictureAtCenter(ViewerState* state, const ViewZoomMode mode, const float scale) {
+	const float half = 0.5f;
+	float centerX = (float)state->viewportSize.width * half;
+	float centerY = (float)state->viewportSize.height * half;
+	ZoomActivePicture(state, mode, scale, centerX, centerY);
+}
+
+// + and -: the next zoom step up or down, the fit scale is a step of its own
+static void StepActivePictureZoom(ViewerState* state, const int direction) {
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	ViewZoomMode mode;
+	float scale = ComputeViewStepScale(transform.scale, transform.fitScale, direction, &mode);
+	ZoomActivePictureAtCenter(state, mode, scale);
+}
+
+static void WheelZoomActivePicture(ViewerState* state, const float wheelDelta, const int32_t mouseX, const int32_t mouseY) {
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	ViewZoomMode mode;
+	float scale = ComputeViewWheelScale(transform.scale, transform.fitScale, wheelDelta, &mode);
+	ZoomActivePicture(state, mode, scale, (float)mouseX, (float)mouseY);
+}
+
+// Moves the picture by viewport pixels
+static void PanActivePicture(ViewerState* state, const float deltaX, const float deltaY) {
+	ViewSize pictureSize;
+	if (GetActivePictureSize(state, &pictureSize)) {
+		state->view = ComputeViewPan(&state->view, pictureSize, state->viewportSize, deltaX, deltaY);
+	}
+}
+
+// Shift + arrow key: the view moves in the direction of the arrow, so the picture moves the other way
+static void PanActivePictureByKey(ViewerState* state, const fplKey key) {
+	float stepX = (float)state->viewportSize.width * KEYBOARD_PAN_VIEWPORT_SHARE;
+	float stepY = (float)state->viewportSize.height * KEYBOARD_PAN_VIEWPORT_SHARE;
+	float deltaX = 0.0f;
+	float deltaY = 0.0f;
+	if (key == fplKey_Left) {
+		deltaX = stepX;
+	} else if (key == fplKey_Right) {
+		deltaX = -stepX;
+	} else if (key == fplKey_Up) {
+		deltaY = stepY;
+	} else if (key == fplKey_Down) {
+		deltaY = -stepY;
+	}
+	PanActivePicture(state, deltaX, deltaY);
+}
+
+// Double click: 100 % at the mouse position, from 100 % back to fit
+static void ToggleActualSizeAtPoint(ViewerState* state, const int32_t mouseX, const int32_t mouseY) {
+	const float actualScale = 1.0f;
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	bool isActualSize = transform.scale == actualScale;
+	ViewZoomMode mode = isActualSize ? ViewZoomMode_Fit : ViewZoomMode_ActualSize;
+	ZoomActivePicture(state, mode, actualScale, (float)mouseX, (float)mouseY);
+}
+
+// Left or middle button drags the picture, a left double click toggles 100 %, the wheel zooms around the mouse or pages (plan section 2.7)
+static void HandleMouseEvent(ViewerState* state, const fplMouseEvent* mouse) {
+	PointerState* pointer = &state->pointer;
+	bool isDragButton = mouse->mouseButton == fplMouseButtonType_Left || mouse->mouseButton == fplMouseButtonType_Middle;
+	if (mouse->type == fplMouseEventType_Button && isDragButton) {
+		if (mouse->buttonState == fplButtonState_Press) {
+			pointer->isDragging = true;
+			pointer->dragLastX = mouse->mouseX;
+			pointer->dragLastY = mouse->mouseY;
+			if (mouse->mouseButton == fplMouseButtonType_Left) {
+				fplMilliseconds now = fplMillisecondsQuery();
+				int32_t distanceX = abs(mouse->mouseX - pointer->lastClickX);
+				int32_t distanceY = abs(mouse->mouseY - pointer->lastClickY);
+				bool isInTime = pointer->lastClickTime > 0 && (now - pointer->lastClickTime) <= DOUBLE_CLICK_MILLISECONDS;
+				bool isInPlace = distanceX <= DOUBLE_CLICK_DISTANCE && distanceY <= DOUBLE_CLICK_DISTANCE;
+				if (isInTime && isInPlace) {
+					ToggleActualSizeAtPoint(state, mouse->mouseX, mouse->mouseY);
+					// A third click starts a new double click
+					pointer->lastClickTime = 0;
+				} else {
+					pointer->lastClickTime = now;
+					pointer->lastClickX = mouse->mouseX;
+					pointer->lastClickY = mouse->mouseY;
+				}
+			}
+		} else if (mouse->buttonState == fplButtonState_Release) {
+			pointer->isDragging = false;
+		}
+	} else if (mouse->type == fplMouseEventType_Move && pointer->isDragging) {
+		int32_t deltaX = mouse->mouseX - pointer->dragLastX;
+		int32_t deltaY = mouse->mouseY - pointer->dragLastY;
+		pointer->dragLastX = mouse->mouseX;
+		pointer->dragLastY = mouse->mouseY;
+		PanActivePicture(state, (float)deltaX, (float)deltaY);
+	} else if (mouse->type == fplMouseEventType_Wheel) {
+		// Mouse events carry no modifiers
+		fplKeyboardState keyboardState = fplZeroInit;
+		fplPollKeyboardState(&keyboardState);
+		int ctrlFlags = (int)fplKeyboardModifierFlags_LCtrl | (int)fplKeyboardModifierFlags_RCtrl;
+		bool isCtrlDown = ((int)keyboardState.modifiers & ctrlFlags) != 0;
+		if (state->wheelMode == WheelMode_Navigate && !isCtrlDown) {
+			// Up pages back, down pages forward, one picture per whole notch
+			const float notchesPerPicture = 1.0f;
+			pointer->navigateWheelNotches += mouse->wheelDelta;
+			while (pointer->navigateWheelNotches >= notchesPerPicture) {
+				pointer->navigateWheelNotches -= notchesPerPicture;
+				if (state->activeFileIndex > 0) {
+					ChangeViewPicture(state, -1, false);
+				}
+			}
+			while (pointer->navigateWheelNotches <= -notchesPerPicture) {
+				pointer->navigateWheelNotches += notchesPerPicture;
+				if (state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
+					ChangeViewPicture(state, +1, false);
+				}
+			}
+		} else {
+			WheelZoomActivePicture(state, mouse->wheelDelta, mouse->mouseX, mouse->mouseY);
+		}
+	}
 }
 
 typedef struct OffscreenTarget {
@@ -2653,6 +2949,8 @@ int main(int argc, char** argv) {
 	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
 	defaultParams.upKernel = DEFAULT_UP_KERNEL;
 	defaultParams.background = DEFAULT_BACKGROUND;
+	defaultParams.centerX = DEFAULT_VIEW_CENTER;
+	defaultParams.centerY = DEFAULT_VIEW_CENTER;
 	defaultParams.simdLevel = SimdLevel_Best;
 	defaultParams.levelKernel = DEFAULT_LEVEL_KERNEL;
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
@@ -2743,7 +3041,8 @@ int main(int argc, char** argv) {
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
 	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
-	flogWrite("Zoom mode: %d, scale: %f", (int)state->params.zoomMode, state->params.zoomScale);
+	flogWrite("Zoom mode: %d, scale: %f, center: %.3f, %.3f", (int)state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
+	flogWrite("View on picture change: %s, wheel: %s", ViewPersistenceKeys[state->params.persistence], WheelModeKeys[state->params.wheelMode]);
 	const ResampleKernelDefinition* downKernelDefinition = ResampleGetKernelDefinition(state->params.downKernel);
 	const ResampleKernelDefinition* upKernelDefinition = ResampleGetKernelDefinition(state->params.upKernel);
 	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->params.background);
@@ -2814,6 +3113,8 @@ int main(int argc, char** argv) {
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;
 			const int ActiveKeyThreshold = 150;
+			// The arrow key that is held moves the view instead of paging, decided by shift when it went down
+			bool isActiveKeyPanning = false;
 			if (isRenderToFile) {
 				returnCode = RenderPictureToFile(state);
 			}
@@ -2835,6 +3136,8 @@ int main(int argc, char** argv) {
 									const char* filePath = ev.window.dropFiles.files[fileIndex];
 									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
 									if (LoadPicturesPath(state, filePath, false, &startPicIndex)) {
+										// A new folder starts with the start view
+										state->view = state->startView;
 										state->activeFileIndex = (int)startPicIndex;
 										ChangeViewPicture(state, 0, true);
 									}
@@ -2845,16 +3148,25 @@ int main(int argc, char** argv) {
 						case fplEventType_Keyboard:
 						{
 							if (ev.keyboard.type == fplKeyboardEventType_Button) {
+								int shiftFlags = (int)fplKeyboardModifierFlags_LShift | (int)fplKeyboardModifierFlags_RShift;
+								bool isShiftDown = ((int)ev.keyboard.modifiers & shiftFlags) != 0;
+								fplKey key = ev.keyboard.mappedKey;
+								bool isArrowKey = key == fplKey_Left || key == fplKey_Right || key == fplKey_Up || key == fplKey_Down;
+								bool isFirstPress = ev.keyboard.buttonState == fplButtonState_Press;
 								if (ev.keyboard.buttonState >= fplButtonState_Press) {
 									bool isActiveKeyRepeat;
 									if (activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
 										activeKeyStart = fplMillisecondsQuery();
 										isActiveKeyRepeat = false;
+										// Once per hold, shift is often let go before the arrow key
+										isActiveKeyPanning = isShiftDown && isArrowKey;
 									} else {
 										isActiveKeyRepeat = (fplMillisecondsQuery() - activeKeyStart) >= ActiveKeyThreshold;
 									}
-									if (ev.keyboard.mappedKey == fplKey_Left) {
+									if (isActiveKeyPanning) {
+										PanActivePictureByKey(state, key);
+									} else if (ev.keyboard.mappedKey == fplKey_Left) {
 										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
 											if (state->activeFileIndex > 0) {
 												ChangeViewPicture(state, -1, false);
@@ -2866,25 +3178,55 @@ int main(int argc, char** argv) {
 												ChangeViewPicture(state, +1, false);
 											}
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_T && ev.keyboard.buttonState == fplButtonState_Press) {
+									} else if (ev.keyboard.mappedKey == fplKey_T && isFirstPress) {
 										// Filter of the direction in effect, backwards with shift. On press, because shift is often let go before the key.
-										int shiftFlags = (int)fplKeyboardModifierFlags_LShift | (int)fplKeyboardModifierFlags_RShift;
-										bool isShiftDown = ((int)ev.keyboard.modifiers & shiftFlags) != 0;
 										int step = isShiftDown ? -1 : 1;
 										CycleActiveKernel(state, step);
+									} else if (key == fplKey_OemPlus || key == fplKey_Add) {
+										// Zoom steps repeat while the key is held, Ctrl makes no difference
+										StepActivePictureZoom(state, 1);
+									} else if (key == fplKey_OemMinus || key == fplKey_Substract) {
+										StepActivePictureZoom(state, -1);
+									} else if ((key == fplKey_0 || key == fplKey_NumPad0) && isFirstPress) {
+										const float unusedScale = 0.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_Fit, unusedScale);
+									} else if ((key == fplKey_1 || key == fplKey_NumPad1) && isFirstPress) {
+										const float actualScale = 1.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_ActualSize, actualScale);
+									} else if ((key == fplKey_2 || key == fplKey_NumPad2) && isFirstPress) {
+										const float doubleScale = 2.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_Custom, doubleScale);
 									}
 								} else {
 									fplAssert(ev.keyboard.buttonState == fplButtonState_Release);
-									activeKey = fplKey_None;
-									activeKeyStart = 0;
-									if (ev.keyboard.mappedKey == fplKey_Left) {
+									// Only the release of the held key ends the hold, releasing shift during a pan keeps panning
+									bool isActiveKeyReleased = key == activeKey;
+									bool wasActiveKeyPanning = isActiveKeyReleased && isActiveKeyPanning;
+									if (isActiveKeyReleased) {
+										activeKey = fplKey_None;
+										activeKeyStart = 0;
+										isActiveKeyPanning = false;
+									}
+									// An arrow key that moved the view does not page as well
+									if (ev.keyboard.mappedKey == fplKey_Left && !wasActiveKeyPanning) {
 										if (state->activeFileIndex > 0) {
 											ChangeViewPicture(state, -1, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_Right) {
+									} else if (ev.keyboard.mappedKey == fplKey_Right && !wasActiveKeyPanning) {
 										if (state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
 											ChangeViewPicture(state, +1, false);
 										}
+									} else if (ev.keyboard.mappedKey == fplKey_K) {
+										int persistenceCount = (int)ViewPersistence_Count;
+										int nextPersistence = ((int)state->persistence + 1) % persistenceCount;
+										state->persistence = (ViewPersistence)nextPersistence;
+										flogWrite("View on picture change: %s", ViewPersistenceKeys[state->persistence]);
+									} else if (ev.keyboard.mappedKey == fplKey_W) {
+										int wheelModeCount = (int)WheelMode_Count;
+										int nextWheelMode = ((int)state->wheelMode + 1) % wheelModeCount;
+										state->wheelMode = (WheelMode)nextWheelMode;
+										state->pointer.navigateWheelNotches = 0.0f;
+										flogWrite("Mouse wheel: %s", WheelModeKeys[state->wheelMode]);
 									} else if (ev.keyboard.mappedKey == fplKey_PageDown) {
 										if (state->activeFileIndex < ((int)state->pictureFileCount - PAGE_INCREMENT_COUNT)) {
 											ChangeViewPicture(state, PAGE_INCREMENT_COUNT, false);
@@ -2918,6 +3260,11 @@ int main(int argc, char** argv) {
 									}
 								}
 							}
+						} break;
+
+						case fplEventType_Mouse:
+						{
+							HandleMouseEvent(state, &ev.mouse);
 						} break;
 
 						default:
