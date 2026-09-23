@@ -73,25 +73,25 @@ LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Desha
 
 ### 1.3 Befunde im Code
 
-- Halb-Texel-Versatz in Bilinear und allen Bicubic-Filtern (siehe oben). Lanczos3 berechnet die Texelmitte selbst und ist offscreen bei 1:1 exakt. **Im Fenster verwäscht ihn das 16× MSAA** (135/225, in Iteration 0 per Gegenprobe gefunden). Vermutlich wertet der Treiber die an der Pixelmitte unstetige Texelmitten-Rechnung (`mod(uv / texel, 1.0)`) für mehrere Abtastpunkte aus. Mit dem MSAA-Ausbau in Iteration 1 ist das erledigt.
-- Lanczos3 startet die Summe mit `vec4(0,0,0,1)` (`shadersources.h:306`). Alpha ist danach ≈ 1 + Σw, geteilt durch Σw, also ≈ 1, und **voll transparente Pixel werden deckend**. Bei `alpha_disk` erscheint das versteckte Knallgrün. Der Shader wird in Iteration 2 ersetzt.
+- ~~Halb-Texel-Versatz in Bilinear und allen Bicubic-Filtern (siehe oben).~~ Behoben in Iteration 1. Lanczos3 berechnet die Texelmitte selbst und ist offscreen bei 1:1 exakt. **Im Fenster verwäscht ihn das 16× MSAA** (135/225, in Iteration 0 per Gegenprobe gefunden). Vermutlich wertet der Treiber die an der Pixelmitte unstetige Texelmitten-Rechnung (`mod(uv / texel, 1.0)`) für mehrere Abtastpunkte aus. Mit dem MSAA-Ausbau in Iteration 1 ist das erledigt.
+- ~~Lanczos3 startet die Summe mit `vec4(0,0,0,1)` (`shadersources.h:306`). Alpha ist danach ≈ 1 + Σw, geteilt durch Σw, also ≈ 1, und **voll transparente Pixel werden deckend**. Bei `alpha_disk` erscheint das versteckte Knallgrün.~~ Behoben in Iteration 1: Alle Kernel-Filter laufen durch eine Vorlage, die bei 0 anfängt.
 - Die CMake-Vorlage aller Demos setzt `CMAKE_CXX_STANDARD` erst **nach** `add_executable`. Die Zieleigenschaft wird aber beim Anlegen übernommen, deshalb bekommt der Viewer kein `-std=` und wird mit GCC 16 als **C++20** übersetzt (daher die `-Wvolatile`-Warnungen). Bei den C-Demos greift `target_compile_features`. Das betrifft alle C++-Demos und gehört nicht in diesen Plan.
 - `FPL_Vulkan` baut schon vor dem stb-Update nicht (`fpl_vulkan.c:2083`: `fpl__X11WindowState` hat kein Feld `window`). Das hat nichts mit stb zu tun.
-- `GL_TEXTURE_RECTANGLE` (`fpl_imageviewer.cpp:1119`): kann keine Mip-Stufen haben und braucht nicht-normalisierte Koordinaten. NPOT-`GL_TEXTURE_2D` ist seit GL 2.0 Kern.
-- `GL_CLAMP` (`:530`) gibt es im Core-Profil nicht mehr → `GL_CLAMP_TO_EDGE`.
-- Mip-Gerüst halb fertig und abgeschaltet: `MAX_PICTURE_MIPMAPS = 1` (`:212`), Größen `w / (2 * i)` statt `w >> i` (`:699`), jede Stufe wird aus Stufe 0 statt aus der vorherigen gerechnet (`:697`).
-- Die Zweige in `UpdateAndRender` (`:1562–1581`) heißen „Upscaling“ und „Downscaling“, sind aber „Einpassen“ und „1:1“.
+- ~~`GL_TEXTURE_RECTANGLE` (`fpl_imageviewer.cpp:1119`): kann keine Mip-Stufen haben und braucht nicht-normalisierte Koordinaten. NPOT-`GL_TEXTURE_2D` ist seit GL 2.0 Kern.~~ Behoben in Iteration 1.
+- ~~`GL_CLAMP` (`:530`) gibt es im Core-Profil nicht mehr → `GL_CLAMP_TO_EDGE`.~~ Behoben in Iteration 1.
+- ~~Mip-Gerüst halb fertig und abgeschaltet: `MAX_PICTURE_MIPMAPS = 1` (`:212`), Größen `w / (2 * i)` statt `w >> i` (`:699`), jede Stufe wird aus Stufe 0 statt aus der vorherigen gerechnet (`:697`).~~ Entfernt in Iteration 1.
+- ~~Die Zweige in `UpdateAndRender` (`:1562–1581`) heißen „Upscaling“ und „Downscaling“, sind aber „Einpassen“ und „1:1“.~~ Ersetzt durch `ComputeViewTransform` in Iteration 1.
 - Fortschritt: Die Leseposition läuft bis 1,0, danach setzt `:695` den Wert auf **0,75 zurück**. Bei PNG liest `stbi` erst die ganze Datei und entpackt dann, dann steht der Balken auf 100 %, während die eigentliche Arbeit noch läuft.
 - ~~`ParseParameters` (`:882–891`): Das `switch` schickt alles außer `r` und `t` in `default: continue` → **`-p=` und `-f=` werden nie ausgewertet**.~~ Behoben in Iteration 0.
 - ~~`LoadPicturesPath` (`:1050`): `startIndex = 0` setzt den Zeiger statt `*startIndex`. Der Fehler bleibt folgenlos, weil der Aufrufer vorbelegt.~~ Behoben in Iteration 0.
 - ~~`preloadCount` wird erst **nach** der Verwendung auf gerade gerundet (`:1195`), die Rundung wirkt also nicht.~~ Behoben in Iteration 0. Dazu kommt eine Begrenzung auf die Slot-Anzahl, weil `-p=1000` jetzt, wo `-p` wirkt, sonst über das Feld `viewPictures[256]` hinauslaufen würde.
-- Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv.
+- Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv. Seit Iteration 1 bleibt wenigstens das Seitenverhältnis erhalten, statt das Bild ins Quadrat zu zerren.
 - `fui_input_fpl.h`: `fuiFplInputPumpEvents` leert die **ganze** Event-Queue. Der Viewer braucht die Events aber selbst (Drop, Tasten).
 - `fui_backend_gl1.h` ist Fixed-Function und läuft auf einem Core-3.3-Kontext nicht. → **`fui_backend_gl3.h` wird gebaut** (Iteration 7).
 - `fplX86CPUCapabilities.hasAVX512` prüft nur **AVX512F** (CPUID 7/EBX Bit 16, inklusive XCR0-Prüfung). BW/VL fehlen.
 - Auf Apple Silicon setzt FPL nur `FPL_ARCH_APPLE_ARM64` und **nicht** `FPL_ARCH_ARM64` (`final_platform_layer.h:2170–2182`). Das ist kein Fehler, aber eine Falle für jede ARM-Weiche (2.4).
 
-**Aufgefallen und inzwischen eingeplant:** 10 von 40 Stichproben-Fotos aus `202308` tragen EXIF-Orientierung 3 oder 6 und werden deshalb gedreht angezeigt, weil `stb_image` EXIF ignoriert. Das wird in Iteration 3 behoben. Außerdem ist `stb_image` auf v2.19 (2018), seitdem gab es mehrere Sicherheitskorrekturen. Das Update kommt in Iteration 0.
+**Aufgefallen und inzwischen eingeplant:** 10 von 40 Stichproben-Fotos aus `202308` tragen EXIF-Orientierung 3 oder 6 und werden deshalb gedreht angezeigt, weil `stb_image` EXIF ignoriert. Das wird in Iteration 3 behoben. `stb_image` war auf v2.19 (2018), seitdem gab es mehrere Sicherheitskorrekturen. Das Update auf v2.30 ist in Iteration 0 erledigt.
 
 ---
 
@@ -230,10 +230,11 @@ Heute rechnet der Viewer in einem mittig zentrierten, y-oben-Ortho-System. Maus 
 
 `ComputeViewTransform(viewState, imageSize, viewportSize) → ViewTransform` ist eine **reine Funktion** ohne GL, und deshalb im Selbsttest prüfbar. Sie liefert:
 
-- `scale`: Bildschirmpixel pro Bildpixel.
-- `imageOrigin`: Lage des Bildes im Fenster, **auf ganze Pixel gerundet**. Nur so ist 100 % exakt, und beim Verschieben flimmert nichts.
+- `scale`: Bildschirmpixel pro Bildpixel, wie der Zoom-Modus es verlangt.
+- `imageRect`: Lage und Größe des Bildes im Fenster, **alles auf ganze Pixel gerundet**. Nur so ist 100 % exakt, die Bildränder sind scharf, und beim Verschieben flimmert nichts. Ohne gerundete Größe blieb beim Einpassen die letzte Spalte leer (1023×767 auf 357,45 px Breite, gefunden in Iteration 1).
+- `scaleX`, `scaleY`: der tatsächlich angezeigte Maßstab je Achse, angezeigte Größe durch Bildgröße. Er weicht über das ganze Bild um weniger als ein Pixel von `scale` ab und entspricht genau `magick -resize B×H!`.
 - `visibleSourceRect`: Diesen Bereich rechnet die Pipeline.
-- `sourceLevel`: nach der Regel in 2.3.
+- `sourceLevel`: nach der Regel in 2.3 (ab Iteration 4).
 
 **Orientierung (ab Iteration 3):** Die EXIF-Orientierung (1–8) aus `PictureInfo` wird hier als Abbildung der Bildachsen angewendet: eine ganzzahlige 2×2-Matrix aus Drehung um 0/90/180/270° und Spiegelung, dazu ein Versatz. Die Pixel werden **nicht** umkopiert, LOD-Stufen und Texturen bleiben in gespeicherter Lage. `ComputeViewTransform` rechnet mit der **angezeigten** Größe (bei 90°/270° sind Breite und Höhe vertauscht). Die Resample-Pipeline bekommt die Achsabbildung mit, und Durchgang 1 filtert entlang der gespeicherten Achse, die auf die Bildschirm-x-Achse fällt. Die Info-Zeile zeigt die Größe so, wie das Bild angezeigt wird.
 
@@ -487,7 +488,7 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 ### 4.3 Werkzeuge
 
 - `tests/generate_testimages.sh [Zielordner]`: Erzeugt alle Bilder aus 4.1 mit ImageMagick nach `tests/images/` (≈ 10 s). Das Skript ist deterministisch (zweimal erzeugt = byteidentisch) und hat englische Kommentare. PNG-Farbtypen werden erzwungen (`PNG24:` bzw. Graustufen 8 Bit), weil ImageMagick sonst eigenmächtig auf Palette oder 1-Bit-Grau reduziert.
-- `tests/run_scaling_tests.sh [--viewer=] [--images=a,b] [--filters=1,7] [--quick] [--no-photo]`: Für jede Kombination aus Bild, Maßstab (je Bild eine passende Auswahl aus 0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 7 / 8, dazu `1@1280x720` = 1:1 im Fenster der Screenshot-Messungen) und Filter rendert es mit `--render-to`, erzeugt die Referenz (zwischengespeichert), misst und gibt eine Markdown-Tabelle aus, zusätzlich als `report.md`. Der Exit-Code ist 1, wenn eine Schwelle verletzt ist. Ein voller Lauf dauert einige Minuten und öffnet pro Rendering kurz ein kleines Fenster.
+- `tests/run_scaling_tests.sh [--viewer=] [--images=a,b] [--filters=1,7] [--quick] [--no-photo]`: Für jede Kombination aus Bild, Maßstab (je Bild eine passende Auswahl aus 0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 7 / 8, dazu `1@1280x720` = 1:1 im Fenster der Screenshot-Messungen) und Filter rendert es mit `--render-to` und `--zoom=<Maßstab in Prozent>` in ein Fenster der gerundeten Zielgröße, erzeugt die Referenz (zwischengespeichert), misst und gibt eine Markdown-Tabelle aus, zusätzlich als `report.md`. Bis Iteration 1 stand dort `--zoom=fit`. Einpassen hält aber das Seitenverhältnis und liefert bei 1023×767 in 358×268 nur 357 px Breite, während die Referenz genau 358×268 hat. Der Exit-Code ist 1, wenn eine Schwelle verletzt ist. Ein voller Lauf dauert einige Minuten und öffnet pro Rendering kurz ein kleines Fenster.
 - `--render-to=<Datei.pam> --window=<B>x<H>` ist der Kern des Messstands: Das Bild wird offscreen in ein Framebuffer-Objekt genau der angegebenen Größe gerendert (sRGB-Farbanhang wie der Standard-Framebuffer), ohne Vorschau-Leiste, ohne Info-Zeile, ohne Fensterdekoration und ohne Compositor, und per `glReadPixels` als PAM (RGB) geschrieben. Das ist deterministischer als jeder Screenshot. Ein Fenster entsteht trotzdem, weil FPL es für den GL-Kontext braucht, im Render-Modus nur 256×256 und **ohne MSAA**. Exit-Codes: 0 geschrieben, 1 Parameter, 2 kein Bild, 3 Laden fehlgeschlagen, 4 Zeitüberschreitung (60 s), 5 GL, 6 Schreiben, 7 Fenster geschlossen. Dazu `--zoom=fit|100|<Prozent>`: `fit` passt auch kleine Bilder ein, also mit Vergrößern.
 - **Interaktion** (Tasten, Mausrad, Ziehen, Info-Zeile) wird per `xdotool` gesteuert und mit `import -window <id>` aufgenommen, wie bei den Messungen in 1.2. Nach jeder Zeichenänderung heißt es: Screenshot **und** hineinzoomen.
 
@@ -508,7 +509,8 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 **Stand (2026-09-23):**
 - Erledigt: `--render-to`/`--window`/`--zoom`/`--no-preview`, Parser neu (`-p`, `-f` wirken, unbekannte oder kaputte Parameter enden mit Exit-Code 1), die drei Kleinfehler aus 1.3, v0.6.0 mit Changelog. Testbilder erzeugt und eingecheckt (4.1), `run_scaling_tests.sh` mit 483 Zeilen, Schwellen kalibriert (4.2), Messungen in 1.2 ersetzt.
 - Abnahme erfüllt: 1:1 flach 188 bei Bilinear und allen Bicubic-Filtern, Nearest exakt. Aliasing bei 0,146 für jeden Filter 50- bis 140-fach über der Referenz. Einzige Abweichung von der alten Tabelle: Lanczos3 ist offscreen exakt, das Verwaschen am Bildschirm kommt vom MSAA (1.3).
-- `stb_image` v2.30: Die Datei ist geladen und geprüft (Benchmark in 1.2 läuft damit), liegt aber noch **nicht** im Repo, weil das Einspielen fremden Codes eine Freigabe braucht. Danach: alle Nutzer neu bauen (Viewer, Emulator, Input, OpenGL, Vulkan, Software, GameTemplate, Crackout, Towadev, FUI_Test, FUI_Framework; vorher bauten alle außer Vulkan ohne Fehler) und `run_scaling_tests.sh` wiederholen.
+- `stb_image` v2.30 ist eingespielt (eigener Commit, byteidentisch zu upstream `master`; die alte v2.19 hatte keine lokalen Änderungen). Alle elf Nutzer bauen ohne Fehler und ohne Warnung aus `stb_image.h` (Viewer, Emulator, Input, OpenGL, Vulkan, Software, GameTemplate, Crackout, Towadev, FUI_Test, FUI_Framework). `run_scaling_tests.sh` liefert mit v2.30 einen **zeilengleichen** Bericht (378 Schwellenverletzungen wie vorher), das Update ändert also kein gerendertes Pixel.
+- Beim Testlauf gefunden und behoben: `logging.h` merkte sich nur den Zeiger auf einen Stack-Puffer als Log-Pfad. Mit `--render-to` überschrieb der PAM-Header diesen Puffer, und jeder Lauf schrieb sein Log in eine Datei namens `P7\nWIDTH …` im Arbeitsverzeichnis. Dazu kamen ein um eins zu kleiner Monat im Zeitstempel, ein gemeinsamer Formatpuffer für alle Lade-Threads und FPL-Meldungen als Formatstring.
 
 ### Iteration 1 — Fundament
 
@@ -520,6 +522,21 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - Halb-Texel-Korrektur in den vorhandenen Filtern als Zwischenschritt: `p = uv·size − 0,5`, `base = floor(p)`, Gewichte aus `p − base`. So ist die Iteration für sich schon eine Verbesserung, auch wenn Iteration 2 die Shader ersetzt.
 - `--selftest` mit den ersten ViewTransform-Prüfungen.
 - **Abnahme:** `checker_1px` bei 100 % **byteidentisch** mit **jedem** interpolierenden Filter (Nearest, Bilinear, Catmull-Rom, Lanczos3). `border_frame_odd` hat bei 100 % und beim Einpassen alle vier Rahmenseiten. Es gibt keine GL-Fehler im Core-Profil. Die Fotos sehen nicht schlechter aus als vorher (Sichtprüfung, Vorher-Nachher-Ausschnitte). Im Leerlauf liegt die CPU-Last des Viewers unter 1 % (`pidstat` über 10 s), während des Ladens und Blätterns läuft er flüssig wie vorher. Kein `FORCE_LEGACY_OPENGL` und kein Fixed-Function-Aufruf mehr im Viewer (per `grep` geprüft).
+
+**Stand (2026-09-23):**
+- Erledigt: `GL_TEXTURE_2D` mit `texelFetch`, `GL_CLAMP_TO_EDGE`, kein MSAA. Mip-Gerüst und `stb_image_resize` entfernt, Legacy-GL-Pfad entfernt. Ohne 3.3-Core-Kontext gibt es eine Meldung in Konsole und Log. Rechtecke entstehen aus `gl_VertexID` in Fensterpixeln, y unten, und die Uniform-Positionen werden einmal ermittelt. `viewtransform.h` (ShrinkToFit, Fit, ActualSize, Custom), Halb-Texel-Korrektur in einer gemeinsamen Filter-Vorlage (`p = Position − 0,5`, Abgriffe außerhalb des Bildes fallen weg, die Gewichte werden neu normiert), gezeichnet wird nur bei Bedarf, `--selftest` mit 66 Prüfungen.
+- Gefunden und behoben:
+  - **Lanczos3 war numerisch kaputt**, und zwar schon vorher: `sin(πx)·sin(πx/3)/(πx)²` wird für winziges x wegen des absoluten Fehlers von GPU-`sin()` (≈ 4·10⁻⁷) zu Rauschen. Das trifft jeden Abgriff, der fast, aber nicht genau auf einem Texel liegt (`pixelart_32` ×3: schwarze Zeilen, 21 dB). Jetzt wird nahe 0 die Taylor-Reihe benutzt, das ergibt 61,7 dB. Die Kernel-Tabelle in Iteration 2 übernimmt das.
+  - Eingepasste Bilder hatten eine Größe mit Nachkommastellen, deshalb blieb die letzte Spalte schwarz (`border_frame_odd` in 358×268: rechter Rand 0). Die angezeigte Größe wird jetzt je Achse auf ganze Pixel gerundet (`scaleX`/`scaleY`, 2.5). Der Testlauf übergibt den Maßstab jetzt in Prozent statt `fit` (4.3).
+  - **Leerlauf 140 % CPU**, auch schon mit dem alten Viewer. Die Ursache liegt in FPL: `fpl__InitWaitTimeSpec` hat die Nanosekunden der absoluten Frist nicht in die Sekunden übertragen, und so kehrte jedes zeitbegrenzte Warten, dessen Frist über eine Sekundengrenze lief, mit `EINVAL` sofort zurück. Die 32 Lade-Threads warten mit 50 ms Frist und liefen deshalb 5 % der Zeit leer. Behoben in `final_platform_layer.h` (Changelog v1.0.1, Threading), dazu hält der Viewer jetzt beim Warten die Mutex.
+- Abnahme:
+  - `checker_1px` bei 100 % **byteidentisch** mit Nearest, Bilinear, Catmull-Rom und Lanczos3, sowohl in 512×512 als auch mittig in 1280×720. `pixelart_32` bei 100 % ebenso. Triangular, Bell und B-Spline interpolieren nicht und bleiben bei 100 % weich, bis Iteration 5 den Filter bei genau 100 % umgeht.
+  - `border_frame_odd`: Bei 100 % haben alle vier Seiten den vollen Rotwert (interpolierende Filter). Eingepasst in 1280×720, 800×800, 500×300 und 2000×1200 sind alle vier Seiten vorhanden und gleich stark. Nur Nearest verliert bei 0,39 die 1-px-Linie, was erlaubt ist. Bei 0,35 erreichen Catmull-Rom und Lanczos3 nur 40–47 % des Referenz-Rotwerts. Das ist das fehlende Verbreitern des Kernels und die Schwelle von Iteration 2.
+  - Keine GL-Fehler: Das Debug-Build (Asserts an, `CheckGLError` pro Frame) übersteht Blättern, alle Filter, Vorschau, Vollbild hin und zurück, Neuladen, Pos1, Ende, Bild ab und Größenänderung (`xdotool`) sowie alle Renderings des Testlaufs. Im Log steht kein GL-Fehler.
+  - Fotos: `IMG_8978.JPG` gegen die Mitchell-Referenz Triangular 38,6 → 40,2 dB, Catmull-Rom 35,2 → 35,8 dB, Lanczos3 35,4 → 35,5 dB. Die Vorher-Nachher-Ausschnitte (×3) sind in der Sichtprüfung gleich.
+  - Leerlauf: **0,47 %** eines Kerns über 30 s, alles im Hauptthread. Gemessen über `/proc/<pid>/stat`, weil `pidstat` nicht installiert ist. Vorher waren es 140 %.
+  - `grep`: kein `FORCE_LEGACY_OPENGL`, kein `glBegin`/`glVertex`/`glMatrixMode`/`GL_TEXTURE_RECTANGLE`/`GL_CLAMP` mehr.
+  - Testlauf: 246 statt 378 Schwellenverletzungen. Das Vergrößern trifft ImageMagick jetzt schon fast: `impulse` ×7/×8 hat bei allen Filtern Asymmetrie 0 (vorher 38–253) und weicht höchstens 1 Stufe vom abgetasteten Kernel ab (77–89 dB). `step_edge` ×4 liegt bei 73–78 dB (vorher 35–52), `alpha_disk` mit Lanczos3 bei 40,8 dB (vorher 7,5). Beim Verkleinern (Zonenplatte, `gamma_rows`) ändert sich erwartungsgemäß nichts.
 
 ### Iteration 2 — Richtiges Verkleinern
 
@@ -624,7 +641,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 
 - Code-Stil nach `CLAUDE.md`: benannte Zwischenvariablen statt verschachtelter Aufrufe, keine magischen Zahlen (Gewichte, Schwellen, Faktoren, Tastenzeiten sind benannte Konstanten), keine Umbrüche auf Spaltenbreite, geschweifte Klammern um **jeden** Bedingungskörper, Kommentare auf Englisch. Das gilt auch für die Shell-Skripte.
 - **CMake ist maßgeblich:** `demos/FPL_ImageViewer/CMakeLists.txt` bekommt die neuen Header in `MY_HEADER_FILES`. `.vcxproj` wird nachgezogen.
-- **Eine Versionsstufe pro Branch:** Der Viewer geht einmal von v0.5.6 auf v0.6.0 (`version.h` + Changelog im Dateikopf), und jede Iteration ergänzt nur diese Sektion. `final_ui.h` bleibt unberührt. `fui_backend_gl3.h` ist neu. `final_platform_layer.h` wird nur angefasst, falls `hasAVX512BW` nötig wird, und dann mit genau einer Patch-Stufe über `develop`.
+- **Eine Versionsstufe pro Branch:** Der Viewer geht einmal von v0.5.6 auf v0.6.0 (`version.h` + Changelog im Dateikopf), und jede Iteration ergänzt nur diese Sektion. `final_ui.h` bleibt unberührt. `fui_backend_gl3.h` ist neu. `final_platform_layer.h` wird nur angefasst, falls `hasAVX512BW` nötig wird, und dann mit genau einer Patch-Stufe über `develop`. Ausnahme: Die Korrektur des zeitbegrenzten Wartens aus Iteration 1 steht im noch unveröffentlichten Abschnitt v1.0.1, genauso wie die übrigen Korrekturen auf `develop`.
 - Commits macht der Nutzer selbst. Branch: `demo/image-viewer-improvements`.
 
 ---
