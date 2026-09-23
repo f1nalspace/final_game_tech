@@ -3,10 +3,10 @@
 # compares each result against an ImageMagick reference of the same kernel computed in linear light and prints a table.
 # Exit code is 0 when every threshold holds, 1 when at least one is violated, 2 on usage or setup errors.
 #
-# Usage: run_scaling_tests.sh [--viewer=<path>] [--images=<name,...>] [--filters=<number,...>] [--quick] [--no-photo]
+# Usage: run_scaling_tests.sh [--viewer=<path>] [--images=<name,...>] [--filters=<key,...>] [--quick] [--no-photo]
 #   --viewer   FPL_ImageViewer executable (default: Release build, then Debug build under demos/build/FPL_ImageViewer)
 #   --images   only these test images, names without extension (e.g. zoneplate_2048,checker_1px)
-#   --filters  only these viewer filters (1 = Nearest ... 7 = Lanczos3, same numbers as -f=)
+#   --filters  only these viewer filters, keys as in --down-filter= (nearest box bilinear triangular bell bspline mitchell catmullrom lanczos3)
 #   --quick    fewer scales per image
 #   --no-photo skip the real photo comparison
 # Results (renders, references, report.md) go to demos/build/FPL_ImageViewer/tests, which is ignored by git.
@@ -36,10 +36,15 @@ flatStdTolerance=1
 gammaTolerance=2
 # Allowed asymmetry (8 bit steps) of the upscaled impulse and deviation from the sampled kernel
 impulseTolerance=1
+# Allowed deviation (8 bit steps) at 100 % of a picture with transparency: blended pixels go through the sRGB encoding of the GPU, which rounds a step differently now and then
+translucentIdentityTolerance=1
 # Minimum mean red along each side of border_frame_odd, as a fraction of the same side in the reference; a cut off frame side stays far below
 frameMinimumFraction=0.5
 # Expected sRGB value of a 50 % linear mix of black and white (and of a 50 % red / green mix per channel)
 linearHalfValue=188
+# The flat, gamma and mix checks demand a result some kernels cannot reach at some scales (Box at 0.7 leaves the checker board standing, in ImageMagick just as well).
+# Such a row passes when the viewer is as close as this (8 bit steps) to the same measurement on the reference of the same kernel, and is marked as a kernel property.
+kernelPropertyTolerance=1
 
 # --- Ring metric for the zone plate --------------------------------------------------------------------------------------
 
@@ -50,19 +55,29 @@ ringEndSourceNyquistFraction=0.95
 # Rings thinner than this (output pixels) are not measured
 ringMinimumWidth=4
 
-# --- Viewer filters (numbers as -f=) and their ImageMagick equivalents -----------------------------------------------------
+# --- Viewer filters (keys as --down-filter= / --up-filter=) and their ImageMagick equivalents ------------------------------
 
-filterNames=("" "Nearest" "Bilinear" "Bicubic (Triangular)" "Bicubic (Bell)" "Bicubic (B-Spline)" "Catmull-Rom" "Lanczos3")
-filterKeys=("" "nearest" "bilinear" "triangular" "bell" "bspline" "catmullrom" "lanczos3")
+filterKeys=(nearest box bilinear triangular bell bspline mitchell catmullrom lanczos3)
+declare -A filterNames=([nearest]="Nearest" [box]="Box" [bilinear]="Bilinear" [triangular]="Bicubic (Triangular)" [bell]="Bicubic (Bell)" [bspline]="Bicubic (B-Spline)" [mitchell]="Mitchell" [catmullrom]="Catmull-Rom" [lanczos3]="Lanczos3")
 # Triangular is a triangle of radius 2 and Bell a quadratic B-spline stretched to radius 2, blur widens the ImageMagick kernel accordingly
-filterReferenceOptions=("" "-filter Point" "-filter Triangle" "-filter Triangle -define filter:blur=2" "-filter Quadratic -define filter:blur=1.3333333333" "-filter Spline" "-filter Catrom" "-filter Lanczos")
+declare -A filterReferenceOptions=([nearest]="-filter Point" [box]="-filter Box" [bilinear]="-filter Triangle" [triangular]="-filter Triangle -define filter:blur=2" [bell]="-filter Quadratic -define filter:blur=1.3333333333" [bspline]="-filter Spline" [mitchell]="-filter Mitchell" [catmullrom]="-filter Catrom" [lanczos3]="-filter Lanczos")
 mitchellReferenceOptions="-filter Mitchell"
-allFilters="1 2 3 4 5 6 7"
+allFilters="${filterKeys[*]}"
+
+# --- Backgrounds behind transparent pixels (keys as --background=) -----------------------------------------------------
+
+# ImageMagick takes the background color as numbers in the colorspace of the image, which is linear RGB at that point: the viewer gray is sRGB 128 = linear 21.586 %
+declare -A backgroundReferenceColors=([black]="black" [gray]="srgb(21.586%,21.586%,21.586%)")
+
+# A viewer that is started right after another one exited gets the same X window id, and KWin sometimes applies the late map and destroy
+# of the old window to the new one, which kills it with an X error (BadWindow, GLXBadDrawable). Such a render is simply repeated.
+maximumRenderAttempts=3
 
 # --- Test cases: image | scales | checks -------------------------------------------------------------------------------------
 # A scale "1@1280x720" renders 1:1 into a window of that size (the setup of the screenshot measurements in plan section 1.2)
 # Checks: flat188 (downscaled mean and std), ring (zone plate aliasing), gammaleft (left half of gamma_rows), colormix (red/green mix),
 #         impulse (symmetry and sampled kernel), overshoot (step edge), exactnearest (Nearest at integer zoom), frame (all four frame sides)
+# An optional fourth field sets the background behind transparent pixels (default black)
 
 testCases=(
 	"checker_1px|0.1 0.146 0.238 0.35 0.5 0.7 1 1@1280x720 1.5 2.3 4|flat188"
@@ -77,6 +92,7 @@ testCases=(
 	"text|0.5 0.7 1 1.5|"
 	"pixelart_32|1 2 3 4 8|exactnearest"
 	"alpha_disk|0.146 0.35 0.7 1 1.5|"
+	"alpha_disk|0.146 0.35 1||gray"
 	"border_frame_odd|0.35 0.7 1|frame"
 )
 quickScales="0.146 0.35 1 1@1280x720 4 8"
@@ -110,6 +126,12 @@ if [ -z "$viewer" ] || [ ! -x "$viewer" ]; then
 	echo "FPL_ImageViewer executable not found, build it or pass --viewer=<path>" >&2
 	exit 2
 fi
+for filterKey in $selectedFilters; do
+	if [ -z "${filterNames[$filterKey]+defined}" ]; then
+		echo "Unknown filter '$filterKey', use: ${filterKeys[*]}" >&2
+		exit 2
+	fi
+done
 if [ ! -f "$imagesDirectory/checker_1px.png" ]; then
 	echo "Test images missing in $imagesDirectory, run generate_testimages.sh" >&2
 	exit 2
@@ -165,29 +187,47 @@ masked_std() {
 	magick "$1" -channel R -separate +channel "$2" \( -clone 0 -clone 1 -compose multiply -composite \) \( -clone 0 -clone 0 -compose multiply -composite -clone 1 -compose multiply -composite \) -delete 0 -format "%[fx:mean] " info: | awk '{ inside = $1; mean = $2 / inside; variance = $3 / inside - mean * mean; if (variance < 0) { variance = 0 }; printf "%.1f", sqrt(variance) * 255 }'
 }
 
-# Reference: resize in linear light with the given kernel, transparent pixels over black as the viewer shows them
+# Reference: resize in linear light with the given kernel, transparent pixels over the background in linear light as the viewer shows them
 make_reference() {
-	local source="$1" width="$2" height="$3" options="$4" target="$5"
+	local source="$1" width="$2" height="$3" options="$4" target="$5" background="${6:-black}"
 	if [ -f "$target" ] && [ "$target" -nt "$source" ]; then
 		return
 	fi
 	# shellcheck disable=SC2086
-	magick "$source" -colorspace sRGB -colorspace RGB $options -resize "${width}x${height}!" -background black -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+	magick "$source" -colorspace sRGB -colorspace RGB $options -resize "${width}x${height}!" -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
 }
 
-# 1:1 reference: the source itself over black
+# 1:1 reference: the source itself over the background
 make_identity_reference() {
-	local source="$1" target="$2"
+	local source="$1" target="$2" background="${3:-black}"
 	if [ -f "$target" ] && [ "$target" -nt "$source" ]; then
 		return
 	fi
-	magick "$source" -colorspace sRGB -colorspace RGB -background black -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+	magick "$source" -colorspace sRGB -colorspace RGB -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+}
+
+# Renders one picture offscreen, repeats a render that died of an X error (see maximumRenderAttempts), returns the viewer exit code
+render_picture() {
+	local target="$1" windowSize="$2" zoomParameter="$3" filterKey="$4" background="$5" source="$6"
+	local viewerOutput="$rendersDirectory/viewer_output.txt"
+	local exitCode=0
+	for (( attempt = 1; attempt <= maximumRenderAttempts; attempt++ )); do
+		rm -f "$target"
+		"$viewer" --render-to="$target" --window="$windowSize" "$zoomParameter" --down-filter="$filterKey" --up-filter="$filterKey" --background="$background" "$source" > "$viewerOutput" 2>&1
+		exitCode=$?
+		if [ "$exitCode" = 0 ] || ! grep -q "X Error" "$viewerOutput"; then
+			break
+		fi
+		retriedRenderCount=$(( retriedRenderCount + 1 ))
+	done
+	return "$exitCode"
 }
 
 # --- Report --------------------------------------------------------------------------------------------------------------------
 
 failedRowCount=0
 rowCount=0
+retriedRenderCount=0
 reportRows=()
 
 report_row() {
@@ -208,12 +248,18 @@ echo "$tableSeparator"
 # --- Main loop -----------------------------------------------------------------------------------------------------------------
 
 for testCase in "${testCases[@]}"; do
-	IFS='|' read -r imageName scales checks <<< "$testCase"
+	IFS='|' read -r imageName scales checks background <<< "$testCase"
+	background="${background:-black}"
+	# Everything that depends on the background carries it in its file name, black is the plain name
+	backgroundSuffix=""
+	if [ "$background" != black ]; then
+		backgroundSuffix="_$background"
+	fi
 	if [ -n "$onlyImages" ] && [[ "$onlyImages" != *",$imageName,"* ]]; then
 		continue
 	fi
 	source="$imagesDirectory/$imageName.png"
-	read -r sourceWidth sourceHeight <<< "$(magick identify -format "%w %h" "$source")"
+	read -r sourceWidth sourceHeight isSourceOpaque <<< "$(magick identify -format "%w %h %[opaque]" "$source")"
 	if [ "$isQuick" = 1 ]; then
 		quickSelection=""
 		for scale in $scales; do
@@ -245,7 +291,7 @@ for testCase in "${testCases[@]}"; do
 			cropOffsetY=0
 		fi
 		pictureCrop="${pictureWidth}x${pictureHeight}+${cropOffsetX}+${cropOffsetY}"
-		caseKey="${imageName}_${scaleToken//@/_at_}"
+		caseKey="${imageName}_${scaleToken//@/_at_}${backgroundSuffix}"
 		isIdentity=0
 		if [ "$scale" = "1" ]; then
 			isIdentity=1
@@ -253,10 +299,10 @@ for testCase in "${testCases[@]}"; do
 
 		# References of all kernels for this size, in parallel
 		if [ "$isIdentity" = 1 ]; then
-			make_identity_reference "$source" "$referencesDirectory/${imageName}_identity.png"
+			make_identity_reference "$source" "$referencesDirectory/${imageName}_identity${backgroundSuffix}.png" "$background"
 		else
-			for filterNumber in $selectedFilters; do
-				make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[$filterNumber]}" "$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKeys[$filterNumber]}.png" &
+			for filterKey in $selectedFilters; do
+				make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[$filterKey]}" "$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${backgroundSuffix}.png" "$background" &
 			done
 		fi
 		if [[ " $checks " == *" ring "* ]]; then
@@ -279,11 +325,10 @@ for testCase in "${testCases[@]}"; do
 			fi
 		fi
 
-		for filterNumber in $selectedFilters; do
-			filterName="${filterNames[$filterNumber]}"
-			render="$rendersDirectory/${caseKey}_f${filterNumber}.pam"
-			rm -f "$render"
-			"$viewer" --render-to="$render" --window="${windowWidth}x${windowHeight}" "$zoomParameter" -f="$filterNumber" "$source" > /dev/null 2>&1
+		for filterKey in $selectedFilters; do
+			filterName="${filterNames[$filterKey]}"
+			render="$rendersDirectory/${caseKey}_${filterKey}.pam"
+			render_picture "$render" "${windowWidth}x${windowHeight}" "$zoomParameter" "$filterKey" "$background" "$source"
 			viewerExitCode=$?
 			rowCount=$(( rowCount + 1 ))
 			outputLabel="${pictureWidth}×${pictureHeight}"
@@ -299,20 +344,20 @@ for testCase in "${testCases[@]}"; do
 			# The picture area of the render
 			picture="$render"
 			if [ "$cropOffsetX" != 0 ] || [ "$cropOffsetY" != 0 ]; then
-				picture="$rendersDirectory/${caseKey}_f${filterNumber}_picture.png"
+				picture="$rendersDirectory/${caseKey}_${filterKey}_picture.png"
 				magick "$render" -crop "$pictureCrop" +repage "$picture"
 			fi
 
 			if [ "$isIdentity" = 1 ]; then
-				reference="$referencesDirectory/${imageName}_identity.png"
+				reference="$referencesDirectory/${imageName}_identity${backgroundSuffix}.png"
 			else
-				reference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKeys[$filterNumber]}.png"
+				reference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${backgroundSuffix}.png"
 			fi
 
 			# Nearest is point sampling: it cannot average, and where a sample falls exactly between two source pixels the tie breaking is implementation defined
 			isPointSampling=0
 			isTieFreeScale=0
-			if [ "$filterNumber" = 1 ]; then
+			if [ "$filterKey" = nearest ]; then
 				isPointSampling=1
 			fi
 			if awk -v s="$scale" 'BEGIN { exit !(s >= 1 && s == int(s)) }'; then
@@ -330,19 +375,32 @@ for testCase in "${testCases[@]}"; do
 
 			if [ "$isIdentity" = 1 ]; then
 				differentPixels=$(compare_differing_pixels "$picture" "$reference")
-				checkTexts+=("1:1 differing pixels $differentPixels")
-				if [ "$differentPixels" != 0 ]; then
-					failures+="identity "
+				if [ "$isSourceOpaque" = True ]; then
+					checkTexts+=("1:1 differing pixels $differentPixels")
+					if [ "$differentPixels" != 0 ]; then
+						failures+="identity "
+					fi
+				else
+					largestDifference=$(compare_steps PAE "$picture" "$reference")
+					checkTexts+=("1:1 differing pixels $differentPixels, at most $largestDifference steps")
+					if ! is_less_equal "$largestDifference" "$translucentIdentityTolerance"; then
+						failures+="identity "
+					fi
 				fi
 			fi
 
 			if [[ " $checks " == *" flat188 "* ]] && is_less_equal "$scale" 0.99 && [ "$isPointSampling" = 0 ]; then
 				centerCrop="$(( pictureWidth / 2 ))x$(( pictureHeight / 2 ))+$(( pictureWidth / 4 ))+$(( pictureHeight / 4 ))"
 				read -r flatMean flatStd <<< "$(crop_mean_std "$picture" "$centerCrop")"
-				checkTexts+=("flat $(calc_format "%.1f" "$flatMean") ± $(calc_format "%.1f" "$flatStd")")
+				flatText="flat $(calc_format "%.1f" "$flatMean") ± $(calc_format "%.1f" "$flatStd")"
 				if ! is_abs_less_equal "$(calc "$flatMean - $linearHalfValue")" "$flatMeanTolerance" || ! is_less_equal "$flatStd" "$flatStdTolerance"; then
-					failures+="flat "
+					read -r referenceMean referenceStd <<< "$(crop_mean_std "$reference" "$centerCrop")"
+					flatText+=" (kernel property: reference $(calc_format "%.1f" "$referenceMean") ± $(calc_format "%.1f" "$referenceStd"))"
+					if ! is_abs_less_equal "$(calc "$flatMean - $referenceMean")" "$kernelPropertyTolerance" || ! is_abs_less_equal "$(calc "$flatStd - $referenceStd")" "$kernelPropertyTolerance"; then
+						failures+="flat "
+					fi
 				fi
+				checkTexts+=("$flatText")
 			elif [[ " $checks " == *" flat188 "* ]] && ! is_less_equal "$scale" 0.99; then
 				read -r centerMean centerStd <<< "$(crop_mean_std "$picture" "$(( pictureWidth / 2 ))x$(( pictureHeight / 2 ))+$(( pictureWidth / 4 ))+$(( pictureHeight / 4 ))")"
 				checkTexts+=("center $(calc_format "%.1f" "$centerMean") ± $(calc_format "%.1f" "$centerStd")")
@@ -360,23 +418,33 @@ for testCase in "${testCases[@]}"; do
 			if [[ " $checks " == *" gammaleft "* ]] && [ "$isPointSampling" = 0 ]; then
 				leftCrop="$(( pictureWidth * 3 / 10 ))x$(( pictureHeight * 8 / 10 ))+$(( pictureWidth / 10 ))+$(( pictureHeight / 10 ))"
 				read -r leftMean leftStd <<< "$(crop_mean_std "$picture" "$leftCrop")"
-				checkTexts+=("left half $(calc_format "%.1f" "$leftMean") ± $(calc_format "%.1f" "$leftStd")")
+				gammaText="left half $(calc_format "%.1f" "$leftMean") ± $(calc_format "%.1f" "$leftStd")"
 				if ! is_abs_less_equal "$(calc "$leftMean - $linearHalfValue")" "$gammaTolerance"; then
-					failures+="gamma "
+					read -r referenceMean referenceStd <<< "$(crop_mean_std "$reference" "$leftCrop")"
+					gammaText+=" (kernel property: reference $(calc_format "%.1f" "$referenceMean") ± $(calc_format "%.1f" "$referenceStd"))"
+					if ! is_abs_less_equal "$(calc "$leftMean - $referenceMean")" "$kernelPropertyTolerance"; then
+						failures+="gamma "
+					fi
 				fi
+				checkTexts+=("$gammaText")
 			fi
 
 			if [[ " $checks " == *" colormix "* ]] && [ "$isPointSampling" = 0 ]; then
 				centerCrop="$(( pictureWidth / 2 ))x$(( pictureHeight / 2 ))+$(( pictureWidth / 4 ))+$(( pictureHeight / 4 ))"
 				read -r mixRed mixGreen mixBlue <<< "$(crop_channel_means "$picture" "$centerCrop")"
-				checkTexts+=("mix ($(calc_format "%.0f" "$mixRed"), $(calc_format "%.0f" "$mixGreen"), $(calc_format "%.0f" "$mixBlue"))")
+				mixText="mix ($(calc_format "%.0f" "$mixRed"), $(calc_format "%.0f" "$mixGreen"), $(calc_format "%.0f" "$mixBlue"))"
 				if ! is_abs_less_equal "$(calc "$mixRed - $linearHalfValue")" "$gammaTolerance" || ! is_abs_less_equal "$(calc "$mixGreen - $linearHalfValue")" "$gammaTolerance"; then
-					failures+="mix "
+					read -r referenceRed referenceGreen referenceBlue <<< "$(crop_channel_means "$reference" "$centerCrop")"
+					mixText+=" (kernel property: reference ($(calc_format "%.0f" "$referenceRed"), $(calc_format "%.0f" "$referenceGreen"), $(calc_format "%.0f" "$referenceBlue")))"
+					if ! is_abs_less_equal "$(calc "$mixRed - $referenceRed")" "$kernelPropertyTolerance" || ! is_abs_less_equal "$(calc "$mixGreen - $referenceGreen")" "$kernelPropertyTolerance"; then
+						failures+="mix "
+					fi
 				fi
+				checkTexts+=("$mixText")
 			fi
 
 			if [[ " $checks " == *" impulse "* ]]; then
-				flopped="$rendersDirectory/${caseKey}_f${filterNumber}_flop.png"
+				flopped="$rendersDirectory/${caseKey}_${filterKey}_flop.png"
 				magick "$picture" -flop "$flopped"
 				asymmetry=$(compare_steps PAE "$picture" "$flopped")
 				kernelDeviation=$(compare_steps PAE "$picture" "$reference")
@@ -392,7 +460,7 @@ for testCase in "${testCases[@]}"; do
 				checkTexts+=("range $(calc_format "%.0f" "$viewerMinimum")–$(calc_format "%.0f" "$viewerMaximum") (reference $(calc_format "%.0f" "$referenceMinimum")–$(calc_format "%.0f" "$referenceMaximum"), source 64–191)")
 			fi
 
-			if [[ " $checks " == *" exactnearest "* ]] && [ "$filterNumber" = 1 ]; then
+			if [[ " $checks " == *" exactnearest "* ]] && [ "$filterKey" = nearest ]; then
 				differentPixels=$(compare_differing_pixels "$picture" "$reference")
 				checkTexts+=("differing pixels $differentPixels")
 				if [ "$differentPixels" != 0 ]; then
@@ -431,7 +499,11 @@ for testCase in "${testCases[@]}"; do
 				result="**FAIL** (${failures% })"
 				failedRowCount=$(( failedRowCount + 1 ))
 			fi
-			report_row "| $imageName | $scaleToken | $outputLabel | $filterName | $psnr | $checkText | $result |"
+			imageLabel="$imageName"
+			if [ "$background" != black ]; then
+				imageLabel+=" on $background"
+			fi
+			report_row "| $imageLabel | $scaleToken | $outputLabel | $filterName | $psnr | $checkText | $result |"
 		done
 	done
 done
@@ -444,11 +516,11 @@ if [ "$withPhoto" = 1 ] && [ -f "$photoFile" ] && [ -z "$onlyImages" ]; then
 	photoWindowHeight=720
 	photoReference="$referencesDirectory/photo_${photoWindowWidth}x${photoWindowHeight}_mitchell.png"
 	make_reference "$photoFile" "$photoWindowWidth" "$photoWindowHeight" "$mitchellReferenceOptions" "$photoReference"
-	for filterNumber in $selectedFilters; do
-		render="$rendersDirectory/photo_f${filterNumber}.pam"
-		"$viewer" --render-to="$render" --window="${photoWindowWidth}x${photoWindowHeight}" --zoom=fit -f="$filterNumber" "$photoFile" > /dev/null 2>&1
+	for filterKey in $selectedFilters; do
+		render="$rendersDirectory/photo_${filterKey}.pam"
+		render_picture "$render" "${photoWindowWidth}x${photoWindowHeight}" --zoom=fit "$filterKey" black "$photoFile"
 		photoPsnr=$(compare_value PSNR "$render" "$photoReference")
-		photoRows+=("| $(basename "$photoFile") | ${photoWindowWidth}×${photoWindowHeight} | ${filterNames[$filterNumber]} | $photoPsnr |")
+		photoRows+=("| $(basename "$photoFile") | ${photoWindowWidth}×${photoWindowHeight} | ${filterNames[$filterKey]} | $photoPsnr |")
 	done
 fi
 
@@ -459,7 +531,7 @@ fi
 	echo
 	echo "Viewer: \`$viewer\`  "
 	echo "Date: $(date '+%Y-%m-%d %H:%M')  "
-	echo "Rows: $rowCount, failed: $failedRowCount"
+	echo "Rows: $rowCount, failed: $failedRowCount, renders repeated after an X error: $retriedRenderCount"
 	echo
 	echo "$tableHeader"
 	echo "$tableSeparator"
@@ -486,7 +558,7 @@ if [ "${#photoRows[@]}" -gt 0 ]; then
 	done
 	echo
 fi
-echo "Rows: $rowCount, failed: $failedRowCount"
+echo "Rows: $rowCount, failed: $failedRowCount, renders repeated after an X error: $retriedRenderCount"
 echo "Report: $reportFile"
 if [ "$failedRowCount" -gt 0 ]; then
 	exit 1
