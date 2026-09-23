@@ -31,6 +31,8 @@ Changelog:
 	- Fixed: Unknown or malformed parameters are reported instead of silently ignored
 	- Fixed: Preload count is rounded up to an even count before it is used and clamped to the view picture capacity
 	- Fixed: Start index was not reset when a dropped file was not found in its folder
+	- Fixed: The log kept a pointer to a temporary path buffer, so log lines could end up in a garbage named file in the working directory
+	- Fixed: Log timestamps showed the previous month, load threads shared one format buffer and platform log messages were used as format strings
 
 	## v0.5.6
 	- Changed multi sample count to 16, to improve quality for downscaled pictures
@@ -712,7 +714,7 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 				int w = 0, h = 0, comp = 0;
 				uint8_t* decodedData = fpl_null;
 
-				flogWrite("Load picture stream '%s' [%d]", loadedPic->filePath, loadedPic->fileIndex);
+				flogWrite("Load picture stream '%s' [%zu]", loadedPic->filePath, loadedPic->fileIndex);
 				if (fplFileOpenBinary(loadedPic->filePath, &loadedPic->fileStream.handle)) {
 					loadedPic->fileStream.size = fplFileGetSizeFromHandle32(&loadedPic->fileStream.handle);
 					stbi_io_callbacks callbacks;
@@ -733,7 +735,7 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 				}
 				if (decodedData != fpl_null) {
 					// Loading was successful, mark it as ToUpload
-					flogWrite("Successfully loaded picture stream '%s' [%d], Size (%d x %d)", loadedPic->filePath, loadedPic->fileIndex, w, h);
+					flogWrite("Successfully loaded picture stream '%s' [%zu], Size (%d x %d)", loadedPic->filePath, loadedPic->fileIndex, w, h);
 
 					firstImage->width = (uint32_t)w;
 					firstImage->height = (uint32_t)h;
@@ -763,7 +765,7 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 				} else {
 					// Failed or canceled loading
 					bool isFailed = !(loadThread->shutdown || loadThread->context.canceled);
-					flogWrite("%s loaded picture stream '%s' [%d], Size (%d x %d)", (isFailed ? "Failed" : "Canceled"), loadedPic->filePath, loadedPic->fileIndex, w, h);
+					flogWrite("%s loaded picture stream '%s' [%zu], Size (%d x %d)", (isFailed ? "Failed" : "Canceled"), loadedPic->filePath, loadedPic->fileIndex, w, h);
 					loadedPic->progress = 1.0f;
 					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
 				}
@@ -2011,7 +2013,7 @@ static RenderToFileResult RenderPictureToFile(ViewerState* state, const float de
 }
 
 static void LogCallbackFunc(const char* funcName, const int lineNumber, fplLogLevel level, const char* message) {
-	flogWrite(message);
+	flogWrite("%s", message);
 }
 
 int main(int argc, char** argv) {
@@ -2055,8 +2057,8 @@ int main(int argc, char** argv) {
 
 	flogWrite("Initial Parameters:");
 	flogWrite("Path: %s", state->params.path);
-	flogWrite("Preload count: %lu", state->params.preloadCount);
-	flogWrite("Thread count: %lu", state->params.threadCount);
+	flogWrite("Preload count: %zu", state->params.preloadCount);
+	flogWrite("Thread count: %zu", state->params.threadCount);
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
 	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
