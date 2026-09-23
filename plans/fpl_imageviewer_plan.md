@@ -69,6 +69,18 @@ Die Messung vor Iteration 0 kam auf andere Zahlen (8,2 / 1,1 für Mitchell), wei
 
 LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Deshalb bekommt die LOD-Erzeugung einen eigenen SIMD-Reducer (2.3). v2.30 entpackt PNG 25 % schneller, JPEG bleibt gleich.
 
+**Gemessen nach Iteration 4** mit dem eigenen Reducer (`--bench-lod`, Median aus 7 Läufen, Release-Build, 4032×3024 JPEG, Dekodieren 44,1 ms, 7 Stufen mit zusammen 4,06 MP, Mitchell):
+
+| Stufe | Größe | skalar | SSE2 | AVX2 |
+|---|---|---|---|---|
+| 1 | 2016×1512 | 71,4 ms | 20,1 ms | 16,4 ms |
+| 2 | 1008×756 | 17,8 ms | 5,1 ms | 4,1 ms |
+| 3 | 504×378 | 4,5 ms | 1,3 ms | 1,1 ms |
+| 4–7 | 252×189 … 32×24 | 1,5 ms | 0,4 ms | 0,4 ms |
+| **Summe** | | **95,3 ms = 2,16× Dekodieren** | **26,9 ms = 0,61×** | **22,0 ms = 0,50×** |
+
+Ein 1599×1231-PNG (Bildschirmfoto) kommt auf 15,2 / 4,3 / 3,5 ms. Die Ziele aus 2.3 sind erreicht (AVX2 ≤ 22 ms bzw. ≤ 50 % des Dekodierens, SSE2 ≤ 40 ms, skalar deutlich unter 187 ms). Bei AVX2 entfallen ~60 % auf das Dekodieren (drei Tabellenzugriffe pro Pixel), die beiden Filter brauchen zusammen nur ~6 ms. Das Hochladen aller Stufen eines 12-MP-Fotos (62 MB) dauert 13 ms, ein 96-MP-PNG (488 MB) 31 ms.
+
 **Speicher.** Ein 12-MP-Bild belegt als RGBA8 48,8 MB. 17 Slots ergeben **829 MB VRAM**, mit voller Mip-Kette (+33 %) **1,1 GB**. 16× MSAA kostet bei 4K allein für den Farbpuffer 531 MB und hilft dem Bildinneren nicht, es **schadet** ihm sogar: Lanczos3 ist bei 1:1 nur mit MSAA verwaschen (siehe oben). MSAA glättet Geometriekanten, und ein bildschirmfüllendes Rechteck hat keine.
 
 ### 1.3 Befunde im Code
@@ -81,14 +93,15 @@ LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Desha
 - ~~`GL_CLAMP` (`:530`) gibt es im Core-Profil nicht mehr → `GL_CLAMP_TO_EDGE`.~~ Behoben in Iteration 1.
 - ~~Mip-Gerüst halb fertig und abgeschaltet: `MAX_PICTURE_MIPMAPS = 1` (`:212`), Größen `w / (2 * i)` statt `w >> i` (`:699`), jede Stufe wird aus Stufe 0 statt aus der vorherigen gerechnet (`:697`).~~ Entfernt in Iteration 1.
 - ~~Die Zweige in `UpdateAndRender` (`:1562–1581`) heißen „Upscaling“ und „Downscaling“, sind aber „Einpassen“ und „1:1“.~~ Ersetzt durch `ComputeViewTransform` in Iteration 1.
-- Fortschritt: Die Leseposition läuft bis 1,0, danach setzt `:695` den Wert auf **0,75 zurück**. Bei PNG liest `stbi` erst die ganze Datei und entpackt dann, dann steht der Balken auf 100 %, während die eigentliche Arbeit noch läuft.
+- ~~Fortschritt: Die Leseposition läuft bis 1,0, danach setzt `:695` den Wert auf **0,75 zurück**. Bei PNG liest `stbi` erst die ganze Datei und entpackt dann, dann steht der Balken auf 100 %, während die eigentliche Arbeit noch läuft.~~ Behoben in Iteration 4 (2.9).
+- ~~Ein Bild, das als nackter Dateiname ohne Ordner übergeben wird (`FPL_ImageViewer bild.png` im Arbeitsverzeichnis), zeigt nichts an: `fplExtractFilePath` liefert einen leeren Ordner, und der Ordnerscan findet dann keine Datei. Gefunden in Iteration 4, mit absolutem oder relativem Pfad samt Ordner geht es. Dazu in FPL: `fplExtractFilePath("/bild.png")` liefert ebenfalls einen leeren Ordner statt `/`.~~ Behoben in FPL (v1.0.1, für `develop`), der Viewer bleibt unverändert. Es waren zwei Fehler: `fplDirectoryListBegin("")` fand unter POSIX nichts, und `fplPathCombine("", "bild.png")` ergab `/bild.png`. Jetzt listet ein leerer Ordner das Arbeitsverzeichnis, und `fplExtractFilePath` behält den Trenner des Wurzelordners.
 - ~~`ParseParameters` (`:882–891`): Das `switch` schickt alles außer `r` und `t` in `default: continue` → **`-p=` und `-f=` werden nie ausgewertet**.~~ Behoben in Iteration 0.
 - ~~`LoadPicturesPath` (`:1050`): `startIndex = 0` setzt den Zeiger statt `*startIndex`. Der Fehler bleibt folgenlos, weil der Aufrufer vorbelegt.~~ Behoben in Iteration 0.
 - ~~`preloadCount` wird erst **nach** der Verwendung auf gerade gerundet (`:1195`), die Rundung wirkt also nicht.~~ Behoben in Iteration 0. Dazu kommt eine Begrenzung auf die Slot-Anzahl, weil `-p=1000` jetzt, wo `-p` wirkt, sonst über das Feld `viewPictures[256]` hinauslaufen würde.
-- Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv. Seit Iteration 1 bleibt wenigstens das Seitenverhältnis erhalten, statt das Bild ins Quadrat zu zerren.
+- ~~Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv. Seit Iteration 1 bleibt wenigstens das Seitenverhältnis erhalten, statt das Bild ins Quadrat zu zerren.~~ Seit Iteration 2 rechnet sie mit der Pipeline, seit Iteration 4 aus einer kleinen Stufe.
 - `fui_input_fpl.h`: `fuiFplInputPumpEvents` leert die **ganze** Event-Queue. Der Viewer braucht die Events aber selbst (Drop, Tasten).
 - `fui_backend_gl1.h` ist Fixed-Function und läuft auf einem Core-3.3-Kontext nicht. → **`fui_backend_gl3.h` wird gebaut** (Iteration 7).
-- `fplX86CPUCapabilities.hasAVX512` prüft nur **AVX512F** (CPUID 7/EBX Bit 16, inklusive XCR0-Prüfung). BW/VL fehlen.
+- ~~`fplX86CPUCapabilities.hasAVX512` prüft nur **AVX512F** (CPUID 7/EBX Bit 16, inklusive XCR0-Prüfung). BW/VL fehlen.~~ FPL meldet jetzt auch `hasAVX512BW`, `hasAVX512VL` und `hasAVX512VBMI` (v1.0.1, für `develop`).
 - Auf Apple Silicon setzt FPL nur `FPL_ARCH_APPLE_ARM64` und **nicht** `FPL_ARCH_ARM64` (`final_platform_layer.h:2170–2182`). Das ist kein Fehler, aber eine Falle für jede ARM-Weiche (2.4).
 
 **Aufgefallen und inzwischen eingeplant:** 10 von 40 Stichproben-Fotos aus `202308` tragen EXIF-Orientierung 3 oder 6 und werden deshalb gedreht angezeigt, weil `stb_image` EXIF ignoriert. Das wird in Iteration 3 behoben. `stb_image` war auf v2.19 (2018), seitdem gab es mehrere Sicherheitskorrekturen. Das Update auf v2.30 ist in Iteration 0 erledigt.
@@ -148,31 +161,33 @@ Alle vorhandenen Filter sind Produkte eindimensionaler Kernel, also separabel. S
 
 Wofür die LOD-Stufen gebraucht werden:
 
-1. **Kosten der Resample-Pipeline begrenzen.** Quelle ist die kleinste Stufe, die noch mindestens doppelt so groß wie das Ziel ist. Der Maßstab relativ zur Quelle liegt dann in (¼, ½], die Verbreiterung bleibt ≤ 4 und die Abgriffe pro Achse ≤ 16 (Mitchell) bzw. ≤ 24 (Lanczos3), egal wie groß das Original ist. Der Abstand „mindestens doppelt“ sorgt dafür, dass das Übergangsband des 2:1-Vorfilters über der Nyquist-Grenze des Ziels liegt. So verfälscht die Doppelfilterung das Ergebnis messbar nicht (Abnahme in Iteration 4).
-2. **Vorschau-Leiste:** trilinear aus der Kette, billig und ohne Moiré.
+1. **Kosten der Resample-Pipeline begrenzen.** Quelle ist die kleinste Stufe, die noch mindestens **achtmal** so groß wie das Ziel ist. Der Maßstab relativ zur Quelle liegt dann in (1/16, ⅛], die Verbreiterung bleibt ≤ 16 und die Abgriffe pro Achse ≤ 64 (Mitchell) bzw. ≤ 96 (Lanczos3), egal wie groß das Original ist. Geplant war „mindestens doppelt“. Das reicht nicht: Der 2:1-Vorfilter dämpft dann schon die feinsten noch gezeigten Details, und scharfe Motive weichen bis auf 27 dB von Stufe 0 ab. Mit „achtmal“ bleibt jede Messung ≥ 47,8 dB (Iteration 4). Nearest und Box lesen immer die größte Stufe auf der GPU, weil sie Details über der Nyquist-Grenze durchlassen und genau das ihr Aussehen ist.
+2. **Vorschau-Leiste:** Sie rechnet seit Iteration 2 mit der Pipeline, jetzt aus einer kleinen Stufe, also billig und ohne Moiré. Trilinear wäre schlechter und ist nicht nötig.
 3. **Bilder über `GL_MAX_TEXTURE_SIZE`** (hier 32768): Stufen, die nicht passen, werden nicht hochgeladen. Die Basisstufe ist dann die erste, die passt. Es ist derselbe Code, kein Sonderfall.
 4. **Schneller erster Eindruck:** Die kleinen Stufen werden zuerst hochgeladen, das Bild erscheint sofort und wird scharf, sobald Stufe 0 da ist.
 
 Stufen entstehen bis die lange Seite ≤ 32 px ist. Bei 4032×3024 sind das 7 Stufen. Die ersten vier (2016, 1008, 504, 252) machen über 99 % der Arbeit aus, die restlichen kosten zusammen weniger als ein halbes Prozent.
 
-**Der Reducer.** Eine Funktion `ReduceHalf` (RGBA8 sRGB → RGBA8 sRGB, Größe `floor(w/2) × floor(h/2)` wie in GL) arbeitet so:
+**Stufengröße aufgerundet** (`ceil(w/2) × ceil(h/2)`, seit Iteration 4) statt `floor` wie bei GL-Mip-Stufen. Pixel i der Stufe L deckt die Bildpixel [i·2^L, (i+1)·2^L) ab. Bei einer ungeraden Größe reicht das letzte Stufenpixel über das Bild hinaus, dafür bleibt die letzte Spalte und Zeile in der Stufe (bei `floor` fiele etwa die rechte Rahmenkante von `border_frame_odd` aus Stufe 1 heraus). Die Pipeline gewichtet dieses Randpixel mit seinem Anteil am Bild, und bei einer gespiegelten Achse (EXIF) verschiebt sie die Stufe um diesen Überstand (`ComputeViewLevelPlacement`, 2.5). Ohne die Gewichtung lag der rechte Rand von `border_frame_odd` bei 93 statt 73 (Stufe 0) und die ganze Zeile bei 43 dB, mit ihr bei 62 dB. Weil jede Stufe ihre eigene Textur ist, braucht es keine GL-konformen Mip-Größen.
 
-1. **Dekodieren** über eine 256-Einträge-LUT: sRGB8 → linear u15 (0…32767). Danach wird Alpha vormultipliziert. Die LUT-Zugriffe bleiben skalar: 512 Byte liegen im L1, und Gather-Befehle sind auf Zen 4 nicht schneller.
-2. **Filtern** in Festkomma: u15-Abtastwerte, Q14-Gewichte (vorzeichenbehaftet, Summe exakt 16384), int32-Akkumulator, runden, `>> 14`, auf [0, a] klemmen. Die Daten liegen planar vor (R, G, B, A getrennt). Dann ist der vertikale Durchgang ein reines Vektor-Multiply-Add über die Zeile, und der horizontale 2:1-Durchgang wird über eine Gerade/Ungerade-Aufteilung zu einer Summe verschobener Vektoren.
-3. **Kodieren:** Alpha-Division herausrechnen (Schnellweg für opake Pixel), dann linear u15 → sRGB8 über eine LUT mit 32768 Einträgen (32 KB). Eine kleinere LUT wäre im Dunkeln zu grob.
-4. Die nächste Stufe wird aus dem RGBA8-Ergebnis der vorherigen gerechnet, mit **derselben** Funktion. Ein Zeilen-Ringpuffer (Kernel-Höhe × Breite) statt einer vollen Zwischenkopie kostet pro Thread ~260 KB statt ~100 MB. Ob die wiederholte 8-Bit-Quantisierung stört, wird gemessen (Iteration 4).
+**Der Reducer.** Eine Funktion `ReduceHalf` (RGBA8 sRGB → RGBA8 sRGB, Größe `ceil(w/2) × ceil(h/2)`) arbeitet so:
 
-**Kernel für 2:1:** Kandidaten sind Lanczos2 und Mitchell mit 8 Abgriffen pro Achse. Entschieden wird über die Zonenplatte: Aliasing-Wert und PSNR einer reinen 2:1-Reduktion gegen `magick -filter X -resize 50%` in linearem Licht.
+1. **Dekodieren** über eine 256-Einträge-LUT: sRGB8 → linear u15 (0…32767). Danach wird Alpha vormultipliziert (`c · (a + (a >> 14)) + 2^14 >> 15`, für deckende Pixel exakt die Farbe). Die LUT-Zugriffe bleiben skalar, gemessen in Iteration 4: Gather ist auf Zen 4 beim Dekodieren nicht schneller (9,2 gegen 9,3 ms für 12 MP) und auf Intel-CPUs mit der Gather-Data-Sampling-Abhilfe deutlich langsamer. SIMD prüft Gruppen von 4 Pixeln auf „deckend“ und füllt dann nur die Alpha-Ebene, der Rest geht durch den skalaren Code.
+2. **Filtern** in Festkomma: u15-Abtastwerte, Q14-Gewichte (vorzeichenbehaftet, Summe exakt 16384), int32-Akkumulator, runden, `>> 14`, auf int16 sättigen, erst beim Kodieren auf [0, a] klemmen. Die Daten liegen planar vor (R, G, B, A getrennt). Der vertikale Durchgang ist ein reines Multiply-Add über alle vier Ebenen der Zeile. Der horizontale 2:1-Durchgang braucht **keine** Gerade/Ungerade-Aufteilung: Eine Ladung ab `2x − 3 + 2k` enthält das Abgriffpaar k der Ausgaben x, x+1, … in aufeinanderfolgenden 32-Bit-Spuren, `pmaddwd` rechnet es direkt. Vier Ladungen decken alle acht Abgriffe ab. Am Rand fallen Abgriffe außerhalb des Bildes weg, die übrigen Gewichte werden auf 16384 renormiert, wie bei ImageMagick. Diese höchstens vier Randpixel je Achse rechnet der Treiber selbst.
+3. **Kodieren:** klemmen, Alpha-Division herausrechnen, dann linear u15 → sRGB8 über eine LUT mit 32768 Einträgen (32 KB). Eine kleinere LUT wäre im Dunkeln zu grob. SIMD übernimmt Gruppen von 8 deckenden Pixeln (nichts zu teilen, Alpha 255), jede andere Gruppe samt Division rechnet der skalare Code.
+4. Die nächste Stufe wird aus dem RGBA8-Ergebnis der vorherigen gerechnet, mit **derselben** Funktion. Ein Zeilen-Ringpuffer (8 Zeilen × Breite × 4 Ebenen) statt einer vollen Zwischenkopie kostet pro Thread ~260 KB statt ~100 MB. Die wiederholte 8-Bit-Quantisierung stört nicht: Stufe 3 liegt auf allen synthetischen Bildern ≥ 50,6 dB an derselben Kette in Gleitkomma (Iteration 4).
 
-**Ziele** (7950X, 4032×3024, alle Stufen zusammen): AVX2/AVX-512 ≤ 22 ms (≤ 50 % des Dekodierens), SSE2 ≤ 40 ms, skalar deutlich unter den 187 ms von `stb_image_resize`. Das sind Ziele, keine Zusagen. Die gemessenen Werte kommen nach Iteration 4 in Abschnitt 1.2.
+**Kernel für 2:1: Mitchell** (entschieden in Iteration 4). Reine 2:1-Reduktion der Zonenplatte: Aliasing-Wert Mitchell 8,21, Lanczos2 10,39, jeweils genau wie ImageMagick (PSNR gegen dieselbe Kernel-Referenz 74,4 bzw. 70,8 dB). Durch die Pipeline gesehen ist Lanczos2 bei Siemensstern und Zonenplatte etwas näher an Stufe 0, bei Linien und Text aber 7–10 dB weiter weg, weil er überschwingt. `--lod-kernel=lanczos2` bleibt zum Vergleichen.
 
-**Hochladen:** eine `GL_TEXTURE_2D` mit echten Mip-Stufen `glTexImage2D(level i)`. `GL_TEXTURE_MAX_LEVEL` ist die letzte Stufe, `GL_TEXTURE_BASE_LEVEL` folgt der größten schon hochgeladenen. `glTexStorage2D` ist erst ab GL 4.2 Kern und wird deshalb nicht benutzt. Die Reihenfolge ist klein → groß. Ein Upload-Budget pro Frame kommt nur, wenn die Messung in Iteration 4 zeigt, dass `glTexImage2D` von 48 MB den Frame reißt.
+**Ziele** (7950X, 4032×3024, alle Stufen zusammen): AVX2 ≤ 22 ms (≤ 50 % des Dekodierens), SSE2 ≤ 40 ms, skalar deutlich unter den 187 ms von `stb_image_resize`. **Erreicht** (Iteration 4): AVX2 22,0 ms, SSE2 26,9 ms, skalar 95,3 ms, Zahlen in 1.2.
+
+**Hochladen:** Jede Stufe ist eine eigene `GL_TEXTURE_2D` ohne Mip-Stufen (seit Iteration 4, statt einer Textur mit Mip-Stufen). Das erlaubt die aufgerundeten Größen, und eine Stufe über `GL_MAX_TEXTURE_SIZE` fällt einfach weg. Die Reihenfolge ist klein → groß, alle Stufen in einem Frame. Ein Upload-Budget pro Frame ist nicht nötig: Alle 8 Stufen eines 12-MP-Fotos (62 MB) gehen in 13 ms hoch, vorher war es Stufe 0 allein (48 MB).
 
 **Alles ist Festkomma**, deshalb muss jede SIMD-Stufe auf jeder Architektur **bitidentisch** zur skalaren Referenz rechnen. Genau das prüft der Selbsttest, und es ist die stärkste Absicherung gegen SIMD-Fehler. Wie die Stufen gewählt und angeordnet werden, steht in 2.4.
 
 ### 2.4 SIMD-Architektur: FPL erkennt, eine Tabelle verteilt, ARM ist vorgesehen
 
-**CPU-Erkennung ausschließlich über FPL.** `fplCPUGetCapabilities` liefert `fplCPUCapabilities` mit `type` (`X86` oder `ARM`) und dazu `x86.*` bzw. `arm.*`. Der Viewer liest nur diese Struktur und führt **kein** eigenes `cpuid`, `xgetbv` oder `getauxval` aus. Fehlt ein Flag, wird es **in FPL** ergänzt und nicht im Viewer nachgebaut. Heute betrifft das nur `hasAVX512BW`, und auch nur, falls die AVX-512-Stufe es braucht (siehe unten).
+**CPU-Erkennung ausschließlich über FPL.** `fplCPUGetCapabilities` liefert `fplCPUCapabilities` mit `type` (`X86` oder `ARM`) und dazu `x86.*` bzw. `arm.*`. Der Viewer liest nur diese Struktur und führt **kein** eigenes `cpuid`, `xgetbv` oder `getauxval` aus. Fehlt ein Flag, wird es **in FPL** ergänzt und nicht im Viewer nachgebaut. So kamen `hasAVX512BW`, `hasAVX512VL` und `hasAVX512VBMI` in FPL (v1.0.1) für eine spätere AVX-512-Stufe (siehe unten).
 
 **Aufbau.** Der Treiber `ReduceHalf` (Ringpuffer, Ränder, Zeilenschleife, Abbruchprüfung, LUTs) wird **einmal** geschrieben und kennt keine Architektur. Er ruft die wenigen heißen Zeilenschleifen über eine Funktionstabelle auf:
 
@@ -203,12 +218,12 @@ Die x86-Stufen im Einzelnen:
 
 | Stufe | Wann (FPL) | Umsetzung |
 |---|---|---|
-| AVX-512 | `x86.hasAVX512` | nur **AVX512F**-Befehle (`vpmulld`, `vpaddd`, `vpsrad`, `vpmovzxbd`, `vpmovusdb`), weil FPL nur F meldet. Braucht es doch BW (`vpmaddwd` auf zmm), bekommt FPL `hasAVX512BW` (eigener Commit, eine Patch-Stufe über `develop`). |
-| AVX2 | `x86.hasAVX2` | `vpmaddwd`, 16 Lanes à 16 Bit |
-| SSE2 | x64 immer, x86-32 `x86.hasSSE2` | `pmaddwd`, **nur SSE2** — kein `packusdw` (SSE4.1), kein `pshufb` (SSSE3) |
+| AVX-512 | – | **gibt es vorerst nicht** (Iteration 4). Gemessen auf Zen 4 (7950X), der 512-Bit-Befehle in zwei 256-Bit-Hälften ausführt: Mit den AVX512F-Befehlen, die FPL meldet, waren die Filter (`vpmulld` statt `vpmaddwd`) langsamer als AVX2 (7,0 + 3,6 ms gegen 4,5 + 1,2 ms), und die Tabellen werden mit breiteren Registern nicht schneller. Mit AVX2-Filtern und zmm-Gathers kam die Stufe auf 23,0 ms gegen 22,8 ms für AVX2. `--simd=avx512` fällt auf AVX2 zurück. Neu bewertet wird das auf einer CPU mit echten 512-Bit-Einheiten (Zen 5, etwa 9950X), siehe 7.2. |
+| AVX2 | `x86.hasAVX2` | Filter mit `vpmaddwd`, 16 Lanes à 16 Bit. Dekodieren und Kodieren wie SSE2 |
+| SSE2 | x64 immer, x86-32 `x86.hasSSE2` | `pmaddwd`, **nur SSE2** — kein `packusdw` (SSE4.1), kein `pshufb` (SSSE3). Dekodieren und Kodieren: Prüfung auf deckende Pixel per `cmpeq`/`movemask`, Tabellen skalar |
 | Skalar | immer | Referenzimplementierung, gegen die alle anderen bitidentisch sein müssen |
 
-**Übersetzung.** Es gibt **kein** globales `-mavx2`, `-mfpu=neon` oder `-march=native`. Die AVX-Funktionen tragen `__attribute__((target("avx2")))` bzw. `target("avx512f")` (GCC/Clang). MSVC braucht für Intrinsics kein `/arch`. So läuft dieselbe Binärdatei auf jeder CPU ihrer Architektur. `<immintrin.h>` und `<arm_neon.h>` werden nur innerhalb ihrer Architekturweiche eingebunden.
+**Übersetzung.** Es gibt **kein** globales `-mavx2`, `-mfpu=neon` oder `-march=native`. Die AVX2-Funktionen tragen `__attribute__((target("avx2")))` (GCC/Clang). MSVC braucht für Intrinsics kein `/arch`. So läuft dieselbe Binärdatei auf jeder CPU ihrer Architektur. `<immintrin.h>` und `<arm_neon.h>` werden nur innerhalb ihrer Architekturweiche eingebunden.
 
 **Architekturweichen nur über FPL-Makros**, gebündelt an **einer** Stelle:
 
@@ -234,7 +249,7 @@ Heute rechnet der Viewer in einem mittig zentrierten, y-oben-Ortho-System. Maus 
 - `imageRect`: Lage und Größe des Bildes im Fenster, **alles auf ganze Pixel gerundet**. Nur so ist 100 % exakt, die Bildränder sind scharf, und beim Verschieben flimmert nichts. Ohne gerundete Größe blieb beim Einpassen die letzte Spalte leer (1023×767 auf 357,45 px Breite, gefunden in Iteration 1).
 - `scaleX`, `scaleY`: der tatsächlich angezeigte Maßstab je Achse, angezeigte Größe durch Bildgröße. Er weicht über das ganze Bild um weniger als ein Pixel von `scale` ab und entspricht genau `magick -resize B×H!`.
 - `visibleSourceRect`: Diesen Bereich rechnet die Pipeline.
-- `sourceLevel`: nach der Regel in 2.3 (ab Iteration 4).
+- `sourceLevel`: nach der Regel in 2.3, als eigene reine Funktion `ComputeViewSourceLevel(Maßstab, Stufenanzahl, erste Stufe auf der GPU)` (Iteration 4). Dazu `ComputeViewLevelPlacement`: Versatz einer gespiegelten Achse und Bedeckung der Randpixel einer Stufe mit ungerader Größe (2.3).
 
 **Orientierung (ab Iteration 3):** Die EXIF-Orientierung (1–8) aus `PictureInfo` wird hier als Abbildung der Bildachsen angewendet: eine ganzzahlige 2×2-Matrix aus Drehung um 0/90/180/270° und Spiegelung, dazu ein Versatz. Die Pixel werden **nicht** umkopiert, LOD-Stufen und Texturen bleiben in gespeicherter Lage. `ComputeViewTransform` rechnet mit der **angezeigten** Größe (bei 90°/270° sind Breite und Höhe vertauscht). Die Resample-Pipeline bekommt die Achsabbildung mit, und Durchgang 1 filtert entlang der gespeicherten Achse, die auf die Bildschirm-x-Achse fällt. Die Info-Zeile zeigt die Größe so, wie das Bild angezeigt wird.
 
@@ -318,7 +333,7 @@ Der Fortschritt ist **streng monoton** (`max(alt, neu)`) und in feste Phasen mit
 | LOD-Stufen | 70–95 % | pro Stufe gewichtet nach Ausgabepixeln, Stufe 1 ≈ 75 % der LOD-Arbeit |
 | Hochladen | 95–100 % | Hauptthread, pro Stufe |
 
-Die Gewichte werden nach Iteration 4 anhand der Benchmark-Zahlen einmal nachgestellt. Der Balken wandert unter die Info-Zeile (Iteration 7), heute sitzt er genau dort, wo die Zeile hinkommt.
+Die Gewichte bleiben nach den Benchmark-Zahlen so (Iteration 4): Dekodieren eines 12-MP-JPEGs 43 ms, Stufen 22 ms, Hochladen 13 ms, das passt zu 70 / 25 / 5. Die Leseposition ist bei JPEG ein guter Anhalt, sie endet aber vor angehängten Daten (bei `IMG_8978.JPG` nach 59 % der Datei), danach springt der Balken vorwärts. Das unbestimmte Segment läuft über ein Viertel der restlichen Dekodierphase hin und her. Der Balken wandert unter die Info-Zeile (Iteration 7), heute sitzt er genau dort, wo die Zeile hinkommt.
 
 ### 2.10 Bild-Loader: austauschbar, erkannt an einer 128-Bit-Kennung
 
@@ -411,9 +426,9 @@ Neue Dateien:
 | Datei | Inhalt |
 |---|---|
 | `demos/FPL_ImageViewer/imagepyramid.h` | API, architekturfreier Treiber `ReduceHalf`, LUTs, skalare Zeilenfunktionen, `ImagePyramidRowFunctions`-Tabelle, `ImagePyramidSelectRowFunctions` über `fplCPUCapabilities`, die eine Architekturweiche. Header-only mit `IMAGE_PYRAMID_IMPLEMENTATION`, ohne GL. |
-| `demos/FPL_ImageViewer/imagepyramid_x86.h` | Zeilenfunktionen SSE2, AVX2, AVX-512, nur unter `IMAGE_PYRAMID_ARCH_X86` |
+| `demos/FPL_ImageViewer/imagepyramid_x86.h` | Zeilenfunktionen SSE2 und AVX2, nur unter `IMAGE_PYRAMID_ARCH_X86` (keine AVX-512-Stufe, siehe 2.4) |
 | `demos/FPL_ImageViewer/imagepyramid_arm.h` | **später:** Zeilenfunktionen NEON, nur unter `IMAGE_PYRAMID_ARCH_ARM`. In diesem Plan wird nur der Platz vorgesehen, nicht die Datei. |
-| `demos/FPL_ImageViewer/resamplepipeline.h` | Kernel-Tabelle, Shader-Erzeugung für horizontal und vertikal, Zwischen- und Zieltexturen, Framebuffer, Cache-Schlüssel, Zusammensetzen auf dem Hintergrund, GPU-Zeitmessung (seit Iteration 2) |
+| `demos/FPL_ImageViewer/resamplepipeline.h` | Kernel-Tabelle, Shader-Erzeugung für horizontal und vertikal, Zwischen- und Zieltexturen, Framebuffer, Cache-Schlüssel, Zusammensetzen auf dem Hintergrund, GPU-Zeitmessung (seit Iteration 2); Bänder mit höchstens 64 MB Zwischentextur und Gewichtung der Randpixel einer Stufe (seit Iteration 4) |
 | `demos/FPL_ImageViewer/viewtransform.h` | `ViewState`, `ViewTransform`, `ComputeViewTransform`, Zoom-/Pan-Operationen, Klemmen |
 | `demos/FPL_ImageViewer/imageloader.h` | `ImageLoaderId` mit Parsen und Formatieren, `ImageLoader`, `ImageSource` über `fplFile*`, Registry, Auswahl, Rückfall, Serialisierung für nicht threadsichere Loader |
 | `demos/FPL_ImageViewer/imageloader_stb.h` | Standard-Loader über `stb_image` inklusive Header-Blick für `PictureInfo` |
@@ -424,7 +439,7 @@ Neue Dateien:
 
 Änderungen an Vorhandenem:
 
-- `ImageData imageData[MAX_PICTURE_MIPMAPS]` wird zu `ImageLevel levels[MAX_PICTURE_LEVELS]` mit `levelCount` und `uploadedLevelCount`. Hinzu kommt `PictureInfo info`.
+- `ImageData imageData[MAX_PICTURE_MIPMAPS]` wird zu `ImageLevelTexture levels[IMAGE_PYRAMID_MAX_LEVELS]` mit `levelCount` und `firstUploadedLevel` (die Stufen davor sind größer als `GL_MAX_TEXTURE_SIZE`). Hinzu kommt `PictureInfo info`.
 - `PictureInfo` kommt aus `readInfo` des Loaders (2.10). Der stb-Loader füllt sie aus `stbi_info_from_callbacks` und `stbi_is_16_bit_from_callbacks` und ergänzt sie um einen Header-Blick für PNG (IHDR-Farbtyp 3 → Palette, Bittiefe = bpp) und BMP (`biBitCount`), weil `stbi` allein ein Palette-PNG als 24/32 bpp meldet.
 - `LoadPictureThreadProc` kennt stb nicht mehr. Die Reihenfolge ist: Quelle öffnen → `probe` über die Registry → `readInfo` → `decode` (mit Rückfall) → LOD → `ToUpload`. `IsPictureFile` fragt die Registry.
 - Filter-Shader aus `shadersources.h` → Kernel-Gewichtsfunktionen in `resamplepipeline.h`. Uniform-Positionen werden einmal ermittelt statt bei jedem Zeichnen (`glGetUniformLocation` läuft heute pro Aufruf). Zwei Sampler-Objekte (nearest, trilinear) ersetzen das `glTexParameteri` pro Frame.
@@ -440,11 +455,13 @@ Neue Dateien:
 | `--relative-path`, `--no-preview`, `--no-info` | Anzeige |
 | `--simd=scalar\|sse2\|avx2\|avx512\|neon` | SIMD-Stufe erzwingen; eine nicht verfügbare Stufe fällt mit Log-Zeile zurück |
 | `--lod-source=auto\|0` | Pipeline-Quelle erzwingen, für Referenzvergleiche |
+| `--lod-kernel=mitchell\|lanczos2` | 2:1-Kernel der Stufen, für Vergleiche (Standard Mitchell) |
+| `--write-pyramid=<Ordner>` | alle Stufen des Bildes als `level_<n>.pam` (RGBA) schreiben, ohne Fenster und GL |
 | `--render-to=<Datei.pam> --window=<B>x<H>` | ein Bild offscreen rendern, als PAM schreiben, beenden |
 | `--bench-lod=<Datei>` | Dekodieren + LOD je SIMD-Stufe messen (Median aus N Läufen) |
 | `--loader=`, `--loader-for=`, `--loader-order=`, `--no-loader-fallback`, `--list-loaders` | Loader-Auswahl, siehe 2.10 |
 | `--decode-all=<Ordner>` | dekodiert alle Bilder des Ordners über Registry und Lade-Threads, ohne GL; meldet Fehler, Anzahl und Zeit je Loader |
-| `--selftest` | ViewTransform-Mathematik, Bitidentität aller SIMD-Stufen, Kennungen parsen und formatieren, Loader-Auswahlregeln an Byte-Puffern. Läuft **ohne Fenster und GL**, also auch unter `qemu-aarch64`. |
+| `--selftest[=<Ordner>]` | ViewTransform-Mathematik, Bitidentität aller SIMD-Stufen, Kennungen parsen und formatieren, Loader-Auswahlregeln an Byte-Puffern. Mit Ordner werden zusätzlich alle Bilder darin auf jeder SIMD-Stufe verglichen. Läuft **ohne Fenster und GL**, also auch unter `qemu-aarch64`. |
 
 ---
 
@@ -499,7 +516,7 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 ### 4.3 Werkzeuge
 
 - `tests/generate_testimages.sh [Zielordner]`: Erzeugt alle Bilder aus 4.1 mit ImageMagick nach `tests/images/` (≈ 10 s). Das Skript ist deterministisch (zweimal erzeugt = byteidentisch) und hat englische Kommentare. PNG-Farbtypen werden erzwungen (`PNG24:` bzw. Graustufen 8 Bit), weil ImageMagick sonst eigenmächtig auf Palette oder 1-Bit-Grau reduziert.
-- `tests/run_scaling_tests.sh [--viewer=] [--images=a,b] [--filters=mitchell,lanczos3] [--quick] [--no-photo]`: Für jede Kombination aus Bild, Maßstab (je Bild eine passende Auswahl aus 0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 7 / 8, dazu `1@1280x720` = 1:1 im Fenster der Screenshot-Messungen) und Filter rendert es mit `--render-to` und `--zoom=<Maßstab in Prozent>` in ein Fenster der gerundeten Zielgröße, erzeugt die Referenz (zwischengespeichert), misst und gibt eine Markdown-Tabelle aus, zusätzlich als `report.md`. Bis Iteration 1 stand dort `--zoom=fit`. Einpassen hält aber das Seitenverhältnis und liefert bei 1023×767 in 358×268 nur 357 px Breite, während die Referenz genau 358×268 hat. Der Exit-Code ist 1, wenn eine Schwelle verletzt ist. Ein voller Lauf (648 Zeilen, 9 Filter) dauert etwa 15 Minuten und öffnet pro Rendering kurz ein kleines Fenster. Seit Iteration 2 werden die Filter über ihre Schlüssel angesprochen (`--down-filter=` und `--up-filter=`), und die Referenzen laufen mit `--background=black` (`alpha_disk` zusätzlich auf Grau). Ein Rendering, das an einem X-Fehler stirbt, wird bis zu dreimal wiederholt, siehe Abschnitt 8.
+- `tests/run_scaling_tests.sh [--viewer=] [--images=a,b] [--filters=mitchell,lanczos3] [--quick] [--no-photo]`: Für jede Kombination aus Bild, Maßstab (je Bild eine passende Auswahl aus 0,1 / 0,146 / 0,238 / 0,35 / 0,5 / 0,7 / 1 / 1,5 / 2,3 / 4 / 7 / 8, dazu `1@1280x720` = 1:1 im Fenster der Screenshot-Messungen) und Filter rendert es mit `--render-to` und `--zoom=<Maßstab in Prozent>` in ein Fenster der gerundeten Zielgröße, erzeugt die Referenz (zwischengespeichert), misst und gibt eine Markdown-Tabelle aus, zusätzlich als `report.md`. Bis Iteration 1 stand dort `--zoom=fit`. Einpassen hält aber das Seitenverhältnis und liefert bei 1023×767 in 358×268 nur 357 px Breite, während die Referenz genau 358×268 hat. Der Exit-Code ist 1, wenn eine Schwelle verletzt ist. Ein voller Lauf (648 Zeilen, 9 Filter) dauert etwa 15 Minuten und öffnet pro Rendering kurz ein kleines Fenster. Seit Iteration 2 werden die Filter über ihre Schlüssel angesprochen (`--down-filter=` und `--up-filter=`), und die Referenzen laufen mit `--background=black` (`alpha_disk` zusätzlich auf Grau). Ein Rendering, das an einem X-Fehler stirbt, wird bis zu dreimal wiederholt, siehe Abschnitt 8. Seit Iteration 4 wird jede Zeile, die eine Stufe liest (Maßstab ≤ 0,125), zusätzlich mit `--lod-source=0` gerendert: PSNR zwischen beiden ≥ 45 dB, bei der Zonenplatte Ring-Abweichung ≤ 0,3 Stufen. Ein voller Lauf hat 828 Zeilen und dauert etwa 25 Minuten.
 - `--render-to=<Datei.pam> --window=<B>x<H>` ist der Kern des Messstands: Das Bild wird offscreen in ein Framebuffer-Objekt genau der angegebenen Größe gerendert (sRGB-Farbanhang wie der Standard-Framebuffer), ohne Vorschau-Leiste, ohne Info-Zeile, ohne Fensterdekoration und ohne Compositor, und per `glReadPixels` als PAM (RGB) geschrieben. Das ist deterministischer als jeder Screenshot. Ein Fenster entsteht trotzdem, weil FPL es für den GL-Kontext braucht, im Render-Modus nur 256×256 und **ohne MSAA**. Exit-Codes: 0 geschrieben, 1 Parameter, 2 kein Bild, 3 Laden fehlgeschlagen, 4 Zeitüberschreitung (60 s), 5 GL, 6 Schreiben, 7 Fenster geschlossen. Dazu `--zoom=fit|100|<Prozent>`: `fit` passt auch kleine Bilder ein, also mit Vergrößern.
 - **Interaktion** (Tasten, Mausrad, Ziehen, Info-Zeile) wird per `xdotool` gesteuert und mit `import -window <id>` aufgenommen, wie bei den Messungen in 1.2. Nach jeder Zeichenänderung heißt es: Screenshot **und** hineinzoomen.
 
@@ -636,6 +653,34 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - `extreme_aspect` wird angezeigt.
   - Der Fortschrittsbalken springt nie zurück. Bei PNG steht er nicht auf 100 %, während noch dekodiert wird.
 
+**Stand (2026-09-23):**
+- Erledigt:
+  - `imagepyramid.h`: architekturfreier Treiber (Ring aus 8 dekodierten Zeilen, Randabgriffe wie ImageMagick, Abbruch und Fortschritt alle 16 Zeilen), LUTs, skalare Referenz, Tabelle `ImagePyramidRowFunctions`, Auswahl über `fplCPUGetCapabilities`, die eine Architekturweiche. `imagepyramid_x86.h` mit SSE2 und AVX2 (2.3, 2.4).
+  - Die Stufen entstehen im Lade-Thread, jede Stufe ist eine eigene Textur, hochgeladen klein → groß in einem Frame. Stufen über `GL_MAX_TEXTURE_SIZE` fallen weg, die Pipeline liest dann die erste, die passt.
+  - Die Pipeline wählt die Quellstufe nach 2.3 (`ComputeViewSourceLevel`), verschiebt gespiegelte Achsen und gewichtet überstehende Randpixel (`ComputeViewLevelPlacement`). Beide Durchgänge laufen in Bändern, die Zwischentextur bleibt ≤ 64 MB (Risiko in Abschnitt 8). Die Vorschau-Leiste nutzt dieselbe Pipeline.
+  - Fortschritt nach 2.9: streng monoton, in Phasen, PNG mit unbestimmtem Segment. Die Quelle meldet dazu `reportProgress(Anteil, unbestimmt)`, der stb-Loader zählt bei PNG die Leseposition nur bis 25 %.
+  - `--simd=`, `--lod-source=`, `--lod-kernel=`, `--bench-lod=`, `--write-pyramid=`, `--selftest=<Ordner>`. Der Selbsttest hat 155 Prüfungen ohne Ordner.
+- Entschieden anhand von Messungen (Tabellen in 2.3 und 2.4):
+  - **2:1-Kernel Mitchell**, nicht Lanczos2.
+  - **Quelle mindestens achtmal so groß** wie das Ziel statt doppelt. LOD gegen Stufe 0, schwerste Fälle (Siemensstern, Text, Rahmen, Zonenplatte bei 0,03–0,1 mit Mitchell, Catmull-Rom und Lanczos3): doppelt 27,0–60,3 dB, viermal 37,6–69,7 dB, achtmal 47,8–74,8 dB (bei 0,07 und 0,1 liest die Achtfach-Regel schon Stufe 0).
+  - **Nearest und Box lesen immer die größte Stufe.** Aus einer Stufe lag Box beim Siemensstern bei 35 dB gegen seine eigene Referenz, aus Stufe 0 bei 61 dB.
+  - **Stufengröße aufgerundet** und überstehende Randpixel nach ihrem Anteil gewichtet (`border_frame_odd` bei 0,1: 43 → 62 dB).
+  - **8-Bit-Zwischenstufen bleiben**: Stufe 3 gegen dieselbe Kette in Gleitkomma ≥ 50,6 dB auf allen synthetischen Bildern. Gegen ImageMagick direkt aus Stufe 0 liegen alle ≥ 48 dB bis auf den Siemensstern (38,4 dB), doch dort weicht auch ImageMagicks eigene Kette genauso weit ab: Das ist die Kaskade, nicht die Quantisierung.
+  - **Keine AVX-512-Stufe und keine Gathers** (2.4, 2.3).
+  - **Kein Upload-Budget** (2.3).
+- Gefunden und behoben: Bei ungeraden Stufengrößen verschob sich eine gespiegelte Achse um bis zu ein Stufenpixel, das behebt `ComputeViewLevelPlacement`. Die skalaren Filter liefen mit einer Indirektion pro Abgriff (179 statt 95 ms).
+- Abnahme:
+  - Bitidentität: SSE2 und AVX2 gleich skalar auf 1860 Zufallsbildern (jede Breite 1…130 mit 12 Höhen und 300 Zufallsgrößen, gepolsterte Zeilen, mit Alpha, beide Kernel), auf ganzen Pyramiden bis 1023×767 und auf allen Testbildern (`--selftest=tests/images`). Absichtlich eingebaute Fehler in Filter, Dekodieren und Kodieren fallen dem Selbsttest auf.
+  - `--simd=neon` und `--simd=avx512` fallen auf dieser CPU auf AVX2 zurück, mit Log-Zeile.
+  - `grep`: kein `cpuid`/`xgetbv` im Viewer, `FPL_ARCH_*` steht nur in der einen Weiche von `imagepyramid.h`.
+  - `--bench-lod`: Ziele erreicht, Zahlen in 1.2.
+  - LOD gegen Stufe 0 im Testlauf: 112 Zeilen lesen eine Stufe (Maßstab 0,03 und 0,05, alle Filter außer Nearest und Box), alle ≥ **47,3 dB** (Schwelle 45). Am niedrigsten liegt `border_frame_odd` bei 0,03, dann Siemensstern 48,9, `checker_1px` 48,1, Linien 51,1 und Text 53,3 dB. Das Foto `IMG_8978.JPG` in 200×150 kommt auf 62,7–66,9 dB. Nearest und Box sind mit Stufe 0 identisch.
+  - Aliasing-Wert der Zonenplatte: aus der Stufe höchstens **0,3 Stufen** anders als aus Stufe 0 (45 Zeilen), und weiterhin höchstens Referenz + 1,0.
+  - `extreme_aspect` (40000×64) wird aus Stufe 1 angezeigt, eingepasst und bei 100 %.
+  - Fortschritt: Ein 96-MP-PNG steht nach dem Lesen bei 17,5 % mit laufendem Segment, dann in der Stufenphase bei ~73 %, nie auf 100 % während des Entpackens (Aufnahmen per `import`). Die Meldungen der Quelle steigen monoton (Protokoll über 4414 Meldungen).
+  - Debug-Build interaktiv (Blättern, Bild ab, Vollbild, Neuladen, Ende, Pos1, Größenänderung, `xdotool`): keine GL-Fehler, keine Asserts. ASan/UBSan: Selbsttest mit allen Testbildern und `--write-pyramid` über alle Testbilder auf jeder SIMD-Stufe ohne Meldung.
+  - Testlauf: 828 Zeilen, 40 Verletzungen, alle bei genau 100 % mit Triangular, Bell, B-Spline und Mitchell (Iteration 5), wie nach Iteration 2 und 3. Neu dazu: die Maßstäbe 0,02–0,05, `extreme_aspect` und das Foto in 200×150 (Mitchell 59,7 dB gegen die Referenz). Kein Rendering musste wegen eines X-Fehlers wiederholt werden.
+
 ### Iteration 5 — Vergrößern
 
 - Die Pipeline wird mit `widen = 1` für s > 1 genutzt, dieselben Kernel, Standard Catmull-Rom (Arbeitshypothese).
@@ -719,6 +764,10 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 | Standardfilter | **Mitchell ↓ festgelegt** (anhand der Vergleichsseite aus Iteration 2). Catmull-Rom ↑ bleibt Hypothese, bis der Nutzer in Iteration 5 entscheidet | 2.2, Iteration 2 und 5 |
 | Testbilder | **eingecheckt** unter `demos/FPL_ImageViewer/tests/images/`, der Generator bleibt zum Nachbauen daneben | 4, 4.3 |
 | PSNR-Schwelle | 45 dB statt 40 dB, nach Kalibrierung (Obergrenze ≥ 54,4 dB) | 4.2 |
+| 2:1-Kernel der Stufen | Mitchell (Iteration 4, gemessen) | 2.3 |
+| Quellstufe | mindestens achtmal so groß wie das Ziel, Nearest und Box immer die größte Stufe (Iteration 4, gemessen) | 2.3, 2.5 |
+| Stufengröße | aufgerundet, eine Textur je Stufe, Randpixel nach Anteil gewichtet (Iteration 4) | 2.3 |
+| AVX-512 | keine eigene Stufe, weil nicht schneller als AVX2 (Iteration 4, gemessen) | 2.4 |
 
 ### 7.2 Folgepunkte (nicht in diesem Plan)
 
@@ -730,14 +779,17 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - **LOD eines Bildes auf mehrere Threads:** nur falls die Benchmarks aus Iteration 4 es verlangen.
 - **Blockierendes Warten in FPL** (etwa `fplWaitEvent(timeout)`: X11 über `select` auf die Verbindung, Win32 über `MsgWaitForMultipleObjects`): Damit käme der Leerlauf ohne Schlaf-Intervall und ohne dessen Eingabelatenz aus. Der Leerlauf in Iteration 1 funktioniert auch ohne.
 - **Verstecktes Fenster in FPL** (etwa `fplWindowSettings.isVisible`): `--render-to` bräuchte dann gar kein sichtbares Fenster mehr, KWin würde es nicht verwalten, und der Fehler bei wiederverwendeten X-Kennungen (Abschnitt 8) könnte nicht mehr auftreten.
-- **`fplMemoryCopy` greift auf ungerade ausgerichtete Adressen zu** (gefunden in Iteration 3 mit UBSan): Die Wortgröße richtet sich nach der Byteanzahl, nicht nach der Ausrichtung. Unter x86 und ARM64 geht das gut, formal ist es undefiniertes Verhalten, und auf ARM32 mit strenger Ausrichtung kann es fehlschlagen. Das gehört als eigene Korrektur nach FPL.
+- ~~**`fplMemoryCopy` greift auf ungerade ausgerichtete Adressen zu** (gefunden in Iteration 3 mit UBSan).~~ Behoben in FPL (`develop`, v1.0.1) samt `fplThreadSleep`, in diesen Branch gemergt. Der Selbsttest unter UBSan ist jetzt ohne Meldung.
+- **AVX-512-Stufe auf Zen 5:** erst wenn eine CPU mit echten 512-Bit-Einheiten zum Messen da ist (Ryzen 9000, etwa 9950X; Zen 4 halbiert jeden 512-Bit-Befehl). Mit BW (`vpmaddwd` auf zmm) werden nur die Filter schneller, die bei AVX2 ~6 von 22 ms kosten. Den großen Anteil, das Dekodieren (~60 %), trifft erst VBMI: `vpermi2b` schlägt eine 128-Byte-Tabelle in einem Befehl nach. Die Flags `hasAVX512BW` und `hasAVX512VBMI` meldet FPL inzwischen (v1.0.1, für `develop`). Die Tabelle der Zeilenfunktionen nimmt die Stufe ohne Umbau auf.
 - **Glyphen jenseits von Latin-1** (mehrere Bereiche oder ein dynamischer Glyphen-Cache in `fui_font_stbtt.h`), falls Dateinamen mit anderen Schriften eine Rolle spielen.
 
 ---
 
 ## 8. Risiken
 
-- **RGBA16F-Zwischentexturen bei 4K:** 3840 × Quellzeilen × 8 B im ersten Durchgang. Zusammen mit der Zieltextur sind bei s ≈ 0,5 rund 100–130 MB Arbeitsspeicher auf der GPU zu erwarten. Falls das stört, wird der erste Durchgang in Streifen zerlegt.
+- ~~**RGBA16F-Zwischentexturen bei 4K:** 3840 × Quellzeilen × 8 B im ersten Durchgang.~~ Seit Iteration 4 laufen beide Durchgänge in Bändern, die Zwischentextur bleibt ≤ 64 MB, egal wie viele Quellzeilen ein kleiner Maßstab braucht. Gebändert und am Stück sind die Ergebnisse byteidentisch (3840×2160 bei 95 %, zwei Bänder).
+- **GPU-Arbeit bei der Achtfach-Regel:** Die Verbreiterung kann bis 16 gehen, also bis zu 4·16² Abgriffe pro Ausgabepixel im ersten Durchgang (Mitchell). Das tritt nur auf, wenn das Bild mindestens achtmal so groß wie die Ausgabe ist. Ein 12-MP-Foto auf 3840×2160 braucht 0,3 ms (RTX 3090), eine schwächere GPU entsprechend mehr, und das nur bei einer Änderung der Ansicht.
+- **Gathers auf Intel:** Mit der Gather-Data-Sampling-Abhilfe sind Gather-Befehle auf vielen Intel-CPUs stark gebremst. Der Reducer benutzt deshalb keine (2.3).
 - **Treiberunterschiede beim sRGB-Framebuffer:** Auf NVIDIA ist er nachweislich aktiv (188 in 1.2). Auf Mesa oder Intel wird er beim Start über `GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING` geprüft. Ist er nicht sRGB-fähig, kodiert der letzte Kopiervorgang selbst.
 - **SIMD-Bitidentität** hängt an reiner Ganzzahlarithmetik. Sobald irgendwo Gleitkomma hineinrutscht (z. B. eine Alpha-Division), muss sie in **allen** Stufen skalar und gleich laufen. Der Selbsttest fängt das ab.
 - **AVX-512 nur mit F:** Falls BW-Befehle deutlich schneller wären, heißt das eine FPL-Änderung. Getestet werden kann alles lokal, denn der 7950X hat F, BW und VL.
