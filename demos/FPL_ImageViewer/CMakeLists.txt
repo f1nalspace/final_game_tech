@@ -20,6 +20,10 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"logging.h"
+	"shadersources.h"
+	"viewtransform.h"
+	"selftest.h"
 	)
 
 set(MY_TRANSLATION_UNITS

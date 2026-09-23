@@ -202,8 +202,10 @@
   <ItemGroup>
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="logging.h" />
+    <ClInclude Include="selftest.h" />
     <ClInclude Include="shadersources.h" />
     <ClInclude Include="version.h" />
+    <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.cpp" />

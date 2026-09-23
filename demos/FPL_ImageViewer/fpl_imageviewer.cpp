@@ -16,6 +16,7 @@ Requirements:
 	- C++ Compiler :-( Just because to support R"()"
 	- Final Platform Layer
 	- Final Dynamic OpenGL
+	- OpenGL 3.3 core profile
 	- STB_image
 
 Author:
@@ -26,12 +27,24 @@ Changelog:
 	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
+	- New: --selftest checks the view math without window and OpenGL
 	- New: Test image generator and scaling test runner in tests/
+	- Changed: Requires an OpenGL 3.3 core profile, the legacy OpenGL path is removed and a missing context is reported on the console and in the log
+	- Changed: Pictures are GL_TEXTURE_2D textures read with texelFetch, GL_TEXTURE_RECTANGLE and the 16x multisampling are gone
+	- Changed: Drawing uses viewport pixels with y pointing down, the picture is placed at whole pixels by viewtransform.h
+	- Changed: A frame is only drawn when something changed, otherwise the main loop sleeps
+	- Changed: The preview strip keeps the aspect ratio of the pictures
+	- Removed: Unfinished mipmap code and stb_image_resize
+	- Fixed: Every filter except Nearest was shifted by half a texel, so 100% was blurred and scaled pictures were asymmetric
+	- Fixed: Filters clamped at the picture edge, now taps outside the picture are left out and the weights renormalized
+	- Fixed: Lanczos3 made transparent pixels opaque
+	- Fixed: The next picture was drawn outside of the window in every frame
 	- Fixed: -p and -f parameters were never evaluated
 	- Fixed: Unknown or malformed parameters are reported instead of silently ignored
 	- Fixed: Preload count is rounded up to an even count before it is used and clamped to the view picture capacity
 	- Fixed: Start index was not reset when a dropped file was not found in its folder
 	- Fixed: The log kept a pointer to a temporary path buffer, so log lines could end up in a garbage named file in the working directory
+	- Fixed: Load threads waited on their condition variable without holding its mutex
 	- Fixed: Log timestamps showed the previous month, load threads shared one format buffer and platform log messages were used as format strings
 
 	## v0.5.6
@@ -119,9 +132,6 @@ License:
 -------------------------------------------------------------------------------
 */
 
-// Enable this to prevent the usage of modern OpenGL
-#define FORCE_LEGACY_OPENGL 0
-
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
 #define FPL_NO_VIDEO_VULKAN
@@ -133,9 +143,6 @@ License:
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb/stb_image_resize.h>
-
 #include <string.h>
 
 #include <final_math.h>
@@ -146,6 +153,11 @@ License:
 
 #define FLOG_IMPLEMENTATION
 #include "logging.h"
+
+#define VIEW_TRANSFORM_IMPLEMENTATION
+#include "viewtransform.h"
+
+#include "selftest.h"
 
 char ToLowerCase(char ch) {
 	if (ch >= 'A' && ch <= 'Z') {
@@ -172,26 +184,6 @@ static int CompareStringIgnoreCase(const char* a, const char* b) {
 	return(0);
 }
 
-static int CompareStringLengthIgnoreCase(const char* a, const char* b, const size_t length) {
-	size_t count = 0;
-	while (true) {
-		if (count == length) {
-			break;
-		} else if (!*a || !*b) {
-			return -1;
-		}
-		char ca = ToLowerCase(*a);
-		char cb = ToLowerCase(*b);
-		if (ca < cb || ca > cb) {
-			return (int)ca - (int)cb;
-		}
-		++a;
-		++b;
-		++count;
-	}
-	return(0);
-}
-
 typedef struct PictureFile {
 	char filePath[FPL_MAX_PATH_LENGTH];
 } PictureFile;
@@ -213,25 +205,21 @@ typedef struct StreamingFileBuffer {
 	size_t size;
 } StreamingFileBuffer;
 
+// Always RGBA8, top row first
 typedef struct ImageData {
 	uint8_t* data;
 	uint32_t width;
 	uint32_t height;
-	uint32_t components;
 	GLuint textureId;
 } ImageData;
-
-#define MAX_PICTURE_MIPMAPS (1)
-#define MIN_PICTURE_MIPMAP_SIZE 512
 
 typedef struct ViewPicture {
 	StreamingFileBuffer fileStream;
 	char filePath[FPL_MAX_PATH_LENGTH];
-	ImageData imageData[MAX_PICTURE_MIPMAPS];
+	ImageData image;
 	float progress;
 	size_t fileIndex;
 	volatile LoadedPictureState state;
-	uint8_t mipmapCount;
 } ViewPicture;
 
 typedef struct LoadPictureContext {
@@ -252,6 +240,8 @@ typedef struct PictureLoadThread {
 #define MAX_VIEW_PICTURE_COUNT MAX_LOAD_THREAD_COUNT * 4
 #define MAX_LOAD_QUEUE_COUNT MAX_VIEW_PICTURE_COUNT * 2
 #define PAGE_INCREMENT_COUNT 10
+// Longest sleep of an idle load thread before it looks into the queue again, a new job wakes it up earlier
+#define LOAD_THREAD_POLL_MILLISECONDS 50
 
 typedef struct LoadQueueValue {
 	int fileIndex;
@@ -284,17 +274,6 @@ typedef struct LoadQueue {
 	CacheLinePad pad4;
 } LoadQueue;
 
-typedef enum StartZoomMode {
-	// Fit when the picture is larger than the window, otherwise 1:1
-	StartZoomMode_Default = 0,
-	// Always fit into the window, small pictures are upscaled
-	StartZoomMode_Fit,
-	// Always 1:1
-	StartZoomMode_ActualSize,
-	// Fixed scale from --zoom=<percent>
-	StartZoomMode_Custom,
-} StartZoomMode;
-
 typedef struct ViewerParameters {
 	const char* path;
 	const char* renderToFilePath;
@@ -303,11 +282,11 @@ typedef struct ViewerParameters {
 	uint32_t windowWidth;
 	uint32_t windowHeight;
 	float zoomScale;
-	StartZoomMode zoomMode;
+	ViewZoomMode zoomMode;
 	int filter;
 	bool recursive;
 	bool preview;
-	bool border;
+	bool runSelfTest;
 } ViewerParameters;
 
 // Exit codes of --render-to
@@ -330,11 +309,11 @@ typedef enum RenderToFileResult {
 #define RENDER_TO_FILE_WINDOW_SIZE 256
 // Number of pictures preloaded on both sides of the active picture, when not set by -p
 #define DEFAULT_PRELOAD_COUNT 16
-
-typedef struct Vertex {
-	Vec4f position;
-	Vec2f texCoord;
-} Vertex;
+// Sleep of the main loop when nothing needs to be drawn
+#define IDLE_SLEEP_MILLISECONDS 5
+// Oldest OpenGL version the viewer runs on, always as core profile
+#define REQUIRED_OPENGL_MAJOR_VERSION 3
+#define REQUIRED_OPENGL_MINOR_VERSION 3
 
 typedef enum FilterType {
 	FilterType_Nearest = 0,
@@ -347,9 +326,46 @@ typedef enum FilterType {
 	FilterType_Count,
 } FilterType;
 
+// Kernel function name in KernelFunctionsSource and its integer radius, no kernel means Nearest
+typedef struct FilterDefinition {
+	const char* name;
+	const char* kernelFunctionName;
+	int kernelRadius;
+} FilterDefinition;
+
+static const FilterDefinition FilterDefinitions[FilterType_Count] = {
+	{ "Nearest", fpl_null, 0 },
+	{ "Bilinear", "KernelTriangle", 1 },
+	{ "Bicubic (Triangular)", "KernelTriangular", 2 },
+	{ "Bicubic (Bell)", "KernelBell", 2 },
+	{ "Bicubic (B-Spline)", "KernelBSpline", 2 },
+	{ "Bicubic (CatMull-Rom)", "KernelCatmullRom", 2 },
+	{ "Lanczos3", "KernelLanczos3", 3 },
+};
+
+// Filter used when -f is not given
+#define DEFAULT_FILTER_TYPE FilterType_CubicTriangular
+
+typedef struct ColorProgram {
+	GLuint programId;
+	GLint locationViewportSize;
+	GLint locationRect;
+	GLint locationColor;
+} ColorProgram;
+
+typedef struct PictureProgram {
+	GLuint programId;
+	GLint locationViewportSize;
+	GLint locationRect;
+	GLint locationColor;
+	GLint locationImage;
+	GLint locationImageOrigin;
+	GLint locationImageScale;
+} PictureProgram;
+
 typedef struct Filter {
 	const char* name;
-	GLuint programId;
+	PictureProgram program;
 	FilterType type;
 } Filter;
 
@@ -359,30 +375,9 @@ typedef enum PictureRequestType {
 	PictureRequestType_Force,
 } PictureRequestType;
 
-typedef enum PictureViewFlags {
-	PictureViewFlags_None = 0,
-	PictureViewFlags_KeepAspectRatio = 1 << 1,
-	PictureViewFlags_Upscale = 1 << 2,
-} PictureViewFlags;
-FPL_ENUM_AS_FLAGS_OPERATORS(PictureViewFlags);
-
 typedef struct SupportedFeatures {
-	int openGLMajor;
-	bool rectangleTextures;
 	bool srgbFrameBuffer;
 } SupportedFeatures;
-
-static Vertex QuadVertices[] = {
-	fplStructInit(Vertex, V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f)),
-	fplStructInit(Vertex, V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f)),
-	fplStructInit(Vertex, V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f)),
-	fplStructInit(Vertex, V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f)),
-};
-
-static uint16_t QuadIndices[] = {
-	0, 1, 2,
-	2, 3, 0,
-};
 
 typedef struct ViewerState {
 	char rootPath[FPL_MAX_PATH_LENGTH];
@@ -402,21 +397,18 @@ typedef struct ViewerState {
 	size_t loadThreadCount;
 
 	ViewerParameters params;
-	PictureViewFlags viewFlags;
+	ViewState view;
 
 	LoadQueue loadQueue;
 	size_t loadQueueCapacity;
 
-	GLenum textureTarget;
+	// Rectangles are generated from gl_VertexID, core profile still needs a bound vertex array
 	GLuint vertexArray;
-	GLuint colorShaderProgram;
+	ColorProgram colorProgram;
 
 	Filter filters[FilterType_Count];
 	size_t activeFilter;
 	size_t filterCount;
-
-	GLuint quadVBO;
-	GLuint quadIBO;
 } ViewerState;
 
 static void InitQueue(LoadQueue* queue, const size_t queueCount) {
@@ -541,67 +533,46 @@ static void ReleaseTexture(GLuint* target) {
 	*target = 0;
 }
 
-static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const uint8_t components, const void* data, const bool repeatable, const GLenum textureTarget, const bool supportsSRGB) {
-	// https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glTexImage2D.xhtml
-	int sizedInternalFormatMapping[] = {
-		/* 0 = */ 0,
-		/* 1 = R */ GL_ALPHA8,
-		/* 2 = RG */ 0,
-		/* 3 = RGB */ GL_RGB8,
-		/* 4 = RGBA */ GL_RGBA8,
-	};
-	int baseInternalFormatMapping[] = {
-		/* 0 = */ 0,
-		/* 1 = R */ GL_ALPHA,
-		/* 2 = RG */ 0,
-		/* 3 = RGB */ GL_RGB,
-		/* 4 = RGBA */ GL_RGBA,
-	};
-
-	if (supportsSRGB) {
-		sizedInternalFormatMapping[4] = GL_SRGB8_ALPHA8;
-	}
+// RGBA8 picture as GL_TEXTURE_2D without mipmaps, sRGB when the framebuffer does the sRGB encoding, returns 0 on failure (e.g. larger than GL_MAX_TEXTURE_SIZE)
+static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void* data, const bool supportsSRGB) {
+	GLenum internalFormat = supportsSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
 
 	GLuint handle;
 	glGenTextures(1, &handle);
-	glBindTexture(textureTarget, handle);
+	glBindTexture(GL_TEXTURE_2D, handle);
 
-	GLuint baseInternalFormat = baseInternalFormatMapping[components];
-	GLenum sizedInternalFormat = sizedInternalFormatMapping[components];
-
-	glTexImage2D(textureTarget, 0, sizedInternalFormat, width, height, 0, baseInternalFormat, GL_UNSIGNED_BYTE, data);
-
-	glTexParameteri(textureTarget, GL_TEXTURE_BASE_LEVEL, 0);
-	glTexParameteri(textureTarget, GL_TEXTURE_MAX_LEVEL, (MAX_PICTURE_MIPMAPS - 1));
-
-	glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
-	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-	glBindTexture(textureTarget, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
-	GLenum err = glGetError();
-	fplAssert(err == GL_NO_ERROR);
-
+	GLenum error = glGetError();
+	if (error != GL_NO_ERROR) {
+		flogWrite("Failed to allocate texture %u x %u, error 0x%x", width, height, error);
+		glDeleteTextures(1, &handle);
+		handle = 0;
+	}
 	return(handle);
 }
 
 static void ClearPictureData(ViewPicture* viewPicture, bool noTextures) {
-	for (size_t p = 0; p < fplArrayCount(viewPicture->imageData); ++p) {
-		if (viewPicture->imageData[p].data != fpl_null) {
-			stbi_image_free(viewPicture->imageData[p].data);
-		}
-		if (!noTextures) {
-			if (viewPicture->imageData[p].textureId > 0) {
-				ReleaseTexture(&viewPicture->imageData[p].textureId);
-			}
-		}
-		fplClearStruct(&viewPicture->imageData[p]);
-		viewPicture->mipmapCount = 0;
+	ImageData* image = &viewPicture->image;
+	if (image->data != fpl_null) {
+		stbi_image_free(image->data);
 	}
+	if (!noTextures) {
+		if (image->textureId > 0) {
+			ReleaseTexture(&image->textureId);
+		}
+	}
+	fplClearStruct(image);
 }
 
 static void ClearViewPictures(ViewerState* state) {
@@ -656,20 +627,16 @@ int EofPictureStreamCallback(void* user) {
 	return(res);
 }
 
-static void DownsampleImage(const ImageData* sourceData, ImageData* destData) {
-	int targetStride = destData->components * sizeof(char);
-	uint8_t* targetData = (uint8_t*)stbi__malloc(targetStride * destData->width * destData->height);
-	stbir_resize_uint8(sourceData->data, sourceData->width, sourceData->height, 0, targetData, destData->width, destData->height, 0, destData->components);
-	destData->data = targetData;
-}
-
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 	PictureLoadThread* loadThread = (PictureLoadThread*)data;
 	ViewerState* state = loadThread->state;
 	volatile LoadQueueValue valueToLoad = fplZeroInit;
 	volatile bool hasValue = false;
 	while (!loadThread->shutdown) {
-		fplConditionWait(&loadThread->condition, &loadThread->mutex, 50);
+		// The wait must hold the mutex, the timeout catches a signal that came before the wait
+		fplMutexLock(&loadThread->mutex);
+		fplConditionWait(&loadThread->condition, &loadThread->mutex, LOAD_THREAD_POLL_MILLISECONDS);
+		fplMutexUnlock(&loadThread->mutex);
 		if (loadThread->shutdown) {
 			break;
 		}
@@ -696,19 +663,18 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 				// @TODO(final): This should not be neccesary, but in case there are left-overs...
 				ClearPictureData(loadedPic, true);
 
-				ImageData* firstImage = &loadedPic->imageData[0];
+				ImageData* image = &loadedPic->image;
 
 				fplAssert(!loadedPic->fileStream.handle.isValid);
-				fplAssert(firstImage->data == fpl_null);
-				fplAssert(firstImage->textureId == 0);
+				fplAssert(image->data == fpl_null);
+				fplAssert(image->textureId == 0);
 				fplAssert(picFile->filePath != fpl_null);
 
 				loadedPic->progress = 0.0f;
 				loadedPic->fileStream.size = 0;
 				loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
 				fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
-				firstImage->width = firstImage->height = 0;
-				firstImage->components = 0;
+				image->width = image->height = 0;
 				loadThread->context.viewPic = loadedPic;
 
 				int w = 0, h = 0, comp = 0;
@@ -737,29 +703,10 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 					// Loading was successful, mark it as ToUpload
 					flogWrite("Successfully loaded picture stream '%s' [%zu], Size (%d x %d)", loadedPic->filePath, loadedPic->fileIndex, w, h);
 
-					firstImage->width = (uint32_t)w;
-					firstImage->height = (uint32_t)h;
-					firstImage->components = 4;
-					firstImage->data = decodedData;
+					image->width = (uint32_t)w;
+					image->height = (uint32_t)h;
+					image->data = decodedData;
 					loadedPic->progress = 0.75f;
-
-					const ImageData* bigImage = firstImage;
-					for (uint32_t mipmapIndex = 1; mipmapIndex < MAX_PICTURE_MIPMAPS; ++mipmapIndex) {
-						int32_t mipSizeW = w / (2 * mipmapIndex);
-						int32_t mipSizeH = h / (2 * mipmapIndex);
-						if (mipSizeW < MIN_PICTURE_MIPMAP_SIZE &&
-							mipSizeH < MIN_PICTURE_MIPMAP_SIZE)
-							break;
-
-						ImageData* smallImage = &loadedPic->imageData[mipmapIndex];
-						smallImage->width = mipSizeW;
-						smallImage->height = mipSizeH;
-						smallImage->components = bigImage->components;
-						DownsampleImage(bigImage, smallImage);
-
-						++loadedPic->mipmapCount;
-					}
-
 
 					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
 				} else {
@@ -946,10 +893,10 @@ static bool ParseSizeValue(const char* text, uint32_t* outWidth, uint32_t* outHe
 }
 
 // Parses fit, 100 or any other percentage
-static bool ParseZoomValue(const char* text, StartZoomMode* outMode, float* outScale) {
+static bool ParseZoomValue(const char* text, ViewZoomMode* outMode, float* outScale) {
 	const double actualSizePercent = 100.0;
 	if (CompareStringIgnoreCase(text, "fit") == 0) {
-		*outMode = StartZoomMode_Fit;
+		*outMode = ViewZoomMode_Fit;
 		*outScale = 1.0f;
 		return(true);
 	}
@@ -959,10 +906,10 @@ static bool ParseZoomValue(const char* text, StartZoomMode* outMode, float* outS
 		return(false);
 	}
 	if (percent == actualSizePercent) {
-		*outMode = StartZoomMode_ActualSize;
+		*outMode = ViewZoomMode_ActualSize;
 		*outScale = 1.0f;
 	} else {
-		*outMode = StartZoomMode_Custom;
+		*outMode = ViewZoomMode_Custom;
 		*outScale = (float)(percent / actualSizePercent);
 	}
 	return(true);
@@ -996,6 +943,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* windowValue = MatchLongParameter(argument, "--window");
 			const char* zoomValue = MatchLongParameter(argument, "--zoom");
 			const char* noPreviewValue = MatchLongParameter(argument, "--no-preview");
+			const char* selfTestValue = MatchLongParameter(argument, "--selftest");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1006,6 +954,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (noPreviewValue != fpl_null) {
 				params->preview = false;
 				isValid = *noPreviewValue == 0;
+			} else if (selfTestValue != fpl_null) {
+				params->runSelfTest = true;
+				isValid = *selfTestValue == 0;
 			} else {
 				isValid = false;
 			}
@@ -1059,8 +1010,6 @@ size_t RoundToPowerOfTwo(size_t v) {
 	return(v);
 }
 
-#define BUFFER_OFFSET(i) ((char *)NULL + (i))
-
 static GLuint CreateShaderType(GLenum type, const char* name, const char* source) {
 	GLuint shaderId = glCreateShader(type);
 
@@ -1072,17 +1021,11 @@ static GLuint CreateShaderType(GLenum type, const char* name, const char* source
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
 	if (!compileResult) {
-		GLint infoLen;
-		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= fplArrayCount(info));
-		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		fplDebugFormatOut("Failed compiling '%s' %s shader!\n", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		fplDebugFormatOut("%s\n", info);
+		glGetShaderInfoLog(shaderId, (GLsizei)fplArrayCount(info), fpl_null, info);
+		flogWrite("Failed compiling '%s' %s shader: %s", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), info);
 		glDeleteShader(shaderId);
 		shaderId = 0;
 	}
-
-	fplAssert(shaderId > 0);
 
 	return(shaderId);
 }
@@ -1092,6 +1035,12 @@ static GLuint CreateShaderProgram(const char* name, const char* vertexSource, co
 
 	GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, name, vertexSource);
 	GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, name, fragmentSource);
+	if (vertexShader == 0 || fragmentShader == 0) {
+		glDeleteShader(fragmentShader);
+		glDeleteShader(vertexShader);
+		glDeleteProgram(programId);
+		return(0);
+	}
 
 	glAttachShader(programId, vertexShader);
 	glAttachShader(programId, fragmentShader);
@@ -1105,24 +1054,44 @@ static GLuint CreateShaderProgram(const char* name, const char* vertexSource, co
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
 	if (!linkResult) {
-		GLint infoLen;
-		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= fplArrayCount(info));
-		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		fplDebugFormatOut("Failed linking '%s' shader!\n", name);
-		fplDebugFormatOut("%s\n", info);
+		glGetProgramInfoLog(programId, (GLsizei)fplArrayCount(info), fpl_null, info);
+		flogWrite("Failed linking '%s' shader: %s", name, info);
 		glDeleteProgram(programId);
 		programId = 0;
 	}
-	fplAssert(programId > 0);
 
 	return(programId);
+}
+
+static ColorProgram CreateColorProgram() {
+	ColorProgram result = fplZeroInit;
+	result.programId = CreateShaderProgram("Color", RectangleVertexSource, ColorFragmentSource);
+	if (result.programId > 0) {
+		result.locationViewportSize = glGetUniformLocation(result.programId, "uniViewportSize");
+		result.locationRect = glGetUniformLocation(result.programId, "uniRect");
+		result.locationColor = glGetUniformLocation(result.programId, "uniColor");
+	}
+	return(result);
+}
+
+static PictureProgram CreatePictureProgram(const char* name, const char* fragmentSource) {
+	PictureProgram result = fplZeroInit;
+	result.programId = CreateShaderProgram(name, RectangleVertexSource, fragmentSource);
+	if (result.programId > 0) {
+		result.locationViewportSize = glGetUniformLocation(result.programId, "uniViewportSize");
+		result.locationRect = glGetUniformLocation(result.programId, "uniRect");
+		result.locationColor = glGetUniformLocation(result.programId, "uniColor");
+		result.locationImage = glGetUniformLocation(result.programId, "uniImage");
+		result.locationImageOrigin = glGetUniformLocation(result.programId, "uniImageOrigin");
+		result.locationImageScale = glGetUniformLocation(result.programId, "uniImageScale");
+	}
+	return(result);
 }
 
 static void CheckGLError(const char* stmt, const char* fname, int line) {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
-		flogWrite("Error: OpenGL check %08x, at %s:%i - for %s\n", err, fname, line, stmt);
+		flogWrite("Error: OpenGL check %08x, at %s:%i - for %s", err, fname, line, stmt);
 		fplAssert(!"OpenGL Error!");
 	}
 }
@@ -1179,125 +1148,68 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 }
 
 static bool Init(ViewerState* state) {
-	// Query GL version
-	state->features.openGLMajor = 1;
-
-#if !FORCE_LEGACY_OPENGL
-	const char* versionStr = (const char*)glGetString(GL_VERSION);
-	int versions[2] = fplZeroInit;
-	if (versionStr != fpl_null) {
-		const char* p = versionStr;
-		for (int i = 0; i < 2; ++i) {
-			const char* digitStart = p;
-			int value = 0;
-			while (isdigit(*p)) {
-				int part = (int)(*p - '0');
-				value = value * 10 + part;
-				++p;
-			}
-			versions[i] = value;
-			if (*p != '.' && *p != '-') break;
-			++p;
-		}
-		state->features.openGLMajor = versions[0];
+	GLint majorVersion = 0;
+	GLint minorVersion = 0;
+	glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+	glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+	bool isMajorTooOld = majorVersion < REQUIRED_OPENGL_MAJOR_VERSION;
+	bool isMinorTooOld = majorVersion == REQUIRED_OPENGL_MAJOR_VERSION && minorVersion < REQUIRED_OPENGL_MINOR_VERSION;
+	if (isMajorTooOld || isMinorTooOld) {
+		fplConsoleFormatError("OpenGL %d.%d core profile is required, but got %d.%d\n", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, majorVersion, minorVersion);
+		flogWrite("OpenGL %d.%d core profile is required, but got %d.%d", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, majorVersion, minorVersion);
+		return(false);
 	}
-#endif
 
-	state->features.rectangleTextures = false;
 	state->features.srgbFrameBuffer = false;
-
-#if !FORCE_LEGACY_OPENGL
-	if (state->features.openGLMajor >= 3) {
-		GLint extensionCount = 0;
-		glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
-		for (int i = 0; i < extensionCount; ++i) {
-			const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
-			if (CompareStringIgnoreCase("GL_ARB_framebuffer_sRGB", extension) == 0) {
-				state->features.srgbFrameBuffer = true;
-			} else if (CompareStringIgnoreCase("GL_ARB_texture_rectangle", extension) == 0) {
-				state->features.rectangleTextures = true;
-			}
+	GLint extensionCount = 0;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+	for (int i = 0; i < extensionCount; ++i) {
+		const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
+		if (CompareStringIgnoreCase("GL_ARB_framebuffer_sRGB", extension) == 0) {
+			state->features.srgbFrameBuffer = true;
 		}
-	} else {
-		const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
-		const char* p = extensions;
-		const char* start = p;
-		while (true) {
-			if (*p == ' ' || *p == 0) {
-				if (CompareStringLengthIgnoreCase(start, "GL_ARB_framebuffer_sRGB", fplGetStringLength("GL_ARB_framebuffer_sRGB")) == 0) {
-					state->features.srgbFrameBuffer = true;
-				} else if (CompareStringLengthIgnoreCase(start, "GL_ARB_texture_rectangle", fplGetStringLength("GL_ARB_texture_rectangle")) == 0) {
-					state->features.rectangleTextures = true;
-				}
-				start = p + 1;
-			}
-			if (*p == 0) {
-				break;
-			}
-			++p;
-		}
-	}
-#endif
-
-	if (state->features.rectangleTextures) {
-		state->textureTarget = GL_TEXTURE_RECTANGLE;
-	} else {
-		state->textureTarget = GL_TEXTURE_2D;
 	}
 
 	glClearColor(0, 0, 0, 1);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	const char* samplerType = state->textureTarget == GL_TEXTURE_2D ? "sampler2D" : "sampler2DRect";
-
-	if (state->features.openGLMajor < 2) {
-		glMatrixMode(GL_MODELVIEW);
-		state->filterCount = 0;
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", 0);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", 0);
-		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
-			state->activeFilter = state->params.filter - 1;
-		else
-			state->activeFilter = state->filterCount - 1;
-	} else {
-		if (state->features.srgbFrameBuffer) {
-			glEnable(GL_FRAMEBUFFER_SRGB);
-		}
-
-		glGenVertexArrays(1, &state->vertexArray);
-		glBindVertexArray(state->vertexArray);
-
-		state->colorShaderProgram = CreateShaderProgram("Color", ColorVertexSource, ColorFragmentSource);
-
-		state->filterCount = 0;
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()), FilterType_Nearest);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()), FilterType_Bilinear);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()), FilterType_CubicTriangular);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()), FilterType_CubicBell);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()), FilterType_CubicBSpline);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()), FilterType_CatMullRom);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()), FilterType_Lanczos3);
-
-		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
-			state->activeFilter = state->params.filter - 1;
-		else
-			state->activeFilter = 2;
-
-		CheckGL(true);
-
-		glGenBuffers(1, &state->quadVBO);
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 4, &QuadVertices[0].position.x, GL_STATIC_DRAW);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-		glGenBuffers(1, &state->quadIBO);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort) * 6, &QuadIndices[0], GL_STATIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		CheckGL(0);
+	if (state->features.srgbFrameBuffer) {
+		glEnable(GL_FRAMEBUFFER_SRGB);
 	}
+
+	glGenVertexArrays(1, &state->vertexArray);
+	glBindVertexArray(state->vertexArray);
+
+	state->colorProgram = CreateColorProgram();
+	bool hasAllPrograms = state->colorProgram.programId > 0;
+
+	state->filterCount = 0;
+	for (int filterIndex = 0; filterIndex < FilterType_Count; ++filterIndex) {
+		const FilterDefinition* definition = &FilterDefinitions[filterIndex];
+		std::string fragmentSource;
+		if (definition->kernelFunctionName == fpl_null) {
+			fragmentSource = NearestFilterFragmentSource();
+		} else {
+			fragmentSource = KernelFilterFragmentSource(definition->kernelFunctionName, definition->kernelRadius);
+		}
+		Filter* filter = &state->filters[state->filterCount++];
+		filter->name = definition->name;
+		filter->type = (FilterType)filterIndex;
+		filter->program = CreatePictureProgram(definition->name, fragmentSource.c_str());
+		hasAllPrograms = hasAllPrograms && filter->program.programId > 0;
+	}
+	if (!hasAllPrograms) {
+		fplConsoleFormatError("Failed to create the shader programs, see the log for details\n");
+		return(false);
+	}
+
+	if (state->params.filter > 0 && state->params.filter <= (int)state->filterCount) {
+		state->activeFilter = state->params.filter - 1;
+	} else {
+		state->activeFilter = DEFAULT_FILTER_TYPE;
+	}
+
+	CheckGLError("Init", __FILE__, __LINE__);
 
 	state->viewPictureIndex = -1;
 	state->activeFileIndex = -1;
@@ -1340,197 +1252,72 @@ static bool Init(ViewerState* state) {
 		}
 	}
 
-	state->viewFlags = PictureViewFlags_KeepAspectRatio;
-	if (state->params.zoomMode == StartZoomMode_Fit) {
-		state->viewFlags |= PictureViewFlags_Upscale;
-	}
+	state->view.zoomMode = state->params.zoomMode;
+	state->view.customScale = state->params.zoomScale;
 
 	UpdateWindowTitle(state);
 
 	return(true);
 }
 
-inline void BuildModelMat(const float centerX, const float centerY, const float scaleX, const float scaleY, Mat4f* modelView) {
-	Mat4f modelScale = M4fScaleV3(V3fInit(scaleX, scaleY, 1.0f));
-	Mat4f modelTranslation = M4fTranslationV3(V3fInit(centerX, centerY, 0.0f));
-	*modelView = M4fMult(modelTranslation, modelScale);
+// All programs use RectangleVertexSource, a triangle strip with 4 corners
+static const GLsizei RectangleVertexCount = 4;
+
+static void SetRectangleUniforms(const GLint locationViewportSize, const GLint locationRect, const ViewSize viewportSize, const ViewRect rect) {
+	glUniform2f(locationViewportSize, (float)viewportSize.width, (float)viewportSize.height);
+	glUniform4f(locationRect, rect.left, rect.top, rect.width, rect.height);
 }
 
-static void DrawLinedRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color, const float lineWidth) {
-	if (state->features.openGLMajor >= 2) {
-		GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-		GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-		GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-
-		glUseProgram(state->colorShaderProgram);
-
-		Mat4f modelMat;
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-
-		// Top
-		BuildModelMat(pos.x, pos.y + ext.y, ext.x, lineWidth * 0.5f, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Left
-		BuildModelMat(pos.x - ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Bottom
-		BuildModelMat(pos.x, pos.y - ext.y, ext.x, lineWidth * 0.5f, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Right
-		BuildModelMat(pos.x + ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-	} else {
-		glLoadMatrixf(&vpMat->m[0]);
-		glColor4fv(&color.m[0]);
-		glLineWidth(lineWidth);
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(pos.x + ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y - ext.y);
-		glVertex2f(pos.x + ext.x, pos.y - ext.y);
-		glEnd();
-	}
-
-	fplAssert(glGetError() == GL_NO_ERROR);
+static void DrawSolidRectangle(const ViewerState* state, const ViewSize viewportSize, const ViewRect rect, const Vec4f color) {
+	const ColorProgram* program = &state->colorProgram;
+	glUseProgram(program->programId);
+	SetRectangleUniforms(program->locationViewportSize, program->locationRect, viewportSize, rect);
+	glUniform4fv(program->locationColor, 1, &color.m[0]);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, RectangleVertexCount);
+	glUseProgram(0);
 }
 
-static void DrawSolidRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color) {
-	if (state->features.openGLMajor >= 2) {
-		Mat4f translationMat = M4fTranslationV3(V3fInit(pos.x, pos.y, 0.0f));
-		Mat4f scaleMat = M4fScaleV3(V3fInit(ext.x, ext.y, 1.0f));
-		Mat4f modelMat = M4fMult(translationMat, scaleMat);
-
-		GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-		GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-		GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-
-		glUseProgram(state->colorShaderProgram);
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-	} else {
-		glLoadMatrixf(&vpMat->m[0]);
-		glColor4fv(&color.m[0]);
-		glBegin(GL_QUADS);
-		glVertex2f(pos.x + ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y - ext.y);
-		glVertex2f(pos.x + ext.x, pos.y - ext.y);
-		glEnd();
-	}
-
-	fplAssert(glGetError() == GL_NO_ERROR);
+// Outline of the rectangle, the lines are centered on its edges and do not overlap, so a translucent color stays even
+static void DrawLinedRectangle(const ViewerState* state, const ViewSize viewportSize, const ViewRect rect, const Vec4f color, const float lineWidth) {
+	float halfLineWidth = lineWidth * 0.5f;
+	float left = rect.left - halfLineWidth;
+	float top = rect.top - halfLineWidth;
+	float right = rect.left + rect.width - halfLineWidth;
+	float bottom = rect.top + rect.height - halfLineWidth;
+	float lineLength = rect.width + lineWidth;
+	float sideTop = top + lineWidth;
+	float sideLength = rect.height - lineWidth;
+	ViewRect topLine = fplStructInit(ViewRect, left, top, lineLength, lineWidth);
+	ViewRect bottomLine = fplStructInit(ViewRect, left, bottom, lineLength, lineWidth);
+	ViewRect leftLine = fplStructInit(ViewRect, left, sideTop, lineWidth, sideLength);
+	ViewRect rightLine = fplStructInit(ViewRect, right, sideTop, lineWidth, sideLength);
+	DrawSolidRectangle(state, viewportSize, topLine, color);
+	DrawSolidRectangle(state, viewportSize, bottomLine, color);
+	DrawSolidRectangle(state, viewportSize, leftLine, color);
+	DrawSolidRectangle(state, viewportSize, rightLine, color);
 }
 
-static void DrawTexturedRectangle(ViewerState* state, const GLuint textureId, const GLenum textureTarget, const GLuint programId, const Mat4f* vpMat, const Mat4f* modelMat, const Vec4f color, const Vec2f texSize, const Vec2f texScale) {
-	if (state->features.openGLMajor >= 2) {
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(textureTarget, textureId);
-		glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-		GLint locVP = glGetUniformLocation(programId, "uniVP");
-		GLint locModel = glGetUniformLocation(programId, "uniModel");
-		GLint locImage = glGetUniformLocation(programId, "uniImage");
-		GLint locColor = glGetUniformLocation(programId, "uniColor");
-		GLint locTexSize = glGetUniformLocation(programId, "uniTexSize");
-		GLint locTexScale = glGetUniformLocation(programId, "uniTexScale");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(sizeof(Vec4f)));
-
-		glUseProgram(programId);
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat->m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-		glUniform2fv(locTexSize, 1, &texSize.m[0]);
-		glUniform2fv(locTexScale, 1, &texScale.m[0]);
-		glUniform1i(locImage, 0);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(1);
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-		glBindTexture(textureTarget, 0);
-	} else {
-		Mat4f mvp = M4fMult(*vpMat, *modelMat);
-
-		glEnable(textureTarget);
-		glBindTexture(textureTarget, textureId);
-
-		if (state->activeFilter == FilterType_Nearest) {
-			glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		} else {
-			glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		}
-
-		glLoadMatrixf(&mvp.m[0]);
-		glColor4fv(&color.m[0]);
-
-		glBegin(GL_TRIANGLES);
-		for (int i = 0; i < fplArrayCount(QuadIndices); ++i) {
-			GLushort index = QuadIndices[i];
-			glTexCoord2f(QuadVertices[index].texCoord.x * texScale.x, (1.0f - QuadVertices[index].texCoord.y) * texScale.y);
-			glVertex2fv(&QuadVertices[index].position.m[0]);
-		}
-		glEnd();
-
-		glBindTexture(textureTarget, 0);
-		glDisable(textureTarget);
-	}
-
-	fplAssert(glGetError() == GL_NO_ERROR);
+// Draws the picture into the destination rectangle, whose top-left corner is the picture origin, with scaleX/scaleY viewport pixels per picture pixel
+static void DrawPicture(const Filter* filter, const GLuint textureId, const ViewSize viewportSize, const ViewRect destination, const float scaleX, const float scaleY, const Vec4f color) {
+	const PictureProgram* program = &filter->program;
+	const GLint textureUnit = 0;
+	glActiveTexture(GL_TEXTURE0 + textureUnit);
+	glBindTexture(GL_TEXTURE_2D, textureId);
+	glUseProgram(program->programId);
+	SetRectangleUniforms(program->locationViewportSize, program->locationRect, viewportSize, destination);
+	glUniform4fv(program->locationColor, 1, &color.m[0]);
+	glUniform1i(program->locationImage, textureUnit);
+	glUniform2f(program->locationImageOrigin, destination.left, destination.top);
+	glUniform2f(program->locationImageScale, scaleX, scaleY);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, RectangleVertexCount);
+	glUseProgram(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-static void UpdateAndRender(ViewerState* state, const uint32_t viewportWidth, const uint32_t viewportHeight, const float deltaTime) {
+// Discards, uploads and queues pictures. Returns true when a picture changed or is still loading, so the next frame has to be drawn.
+static bool UpdatePictures(ViewerState* state) {
+	bool isChanging = false;
+
 	// Discard textures on the left/right side when the fileIndex is out of bounds
 	if (state->viewPictureIndex != -1) {
 		ViewPicture* currentPic = &state->viewPictures[state->viewPictureIndex];
@@ -1554,56 +1341,37 @@ static void UpdateAndRender(ViewerState* state, const uint32_t viewportWidth, co
 	// Discard or upload textures
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		ViewPicture* loadedPic = &state->viewPictures[i];
-
-		if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
-
-			for (int p = 0; p < fplArrayCount(loadedPic->imageData); ++p) {
-				if (loadedPic->imageData[p].textureId > 0) {
-					fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-					ReleaseTexture(&loadedPic->imageData[p].textureId);
-				}
+		ImageData* image = &loadedPic->image;
+		LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
+		if (loadState == LoadedPictureState_Discard) {
+			if (image->textureId > 0) {
+				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleaseTexture(&image->textureId);
 			}
-
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
-		} else if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
-			for (int p = 0; p < fplArrayCount(loadedPic->imageData); ++p) {
-				if (loadedPic->imageData[p].textureId > 0) {
-					fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-					ReleaseTexture(&loadedPic->imageData[p].textureId);
-				}
-				fplAssert(loadedPic->imageData[p].textureId == 0);
+			isChanging = true;
+		} else if (loadState == LoadedPictureState_ToUpload) {
+			if (image->textureId > 0) {
+				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleaseTexture(&image->textureId);
 			}
+			fplAssert(image->data != fpl_null);
+			fplAssert(image->width > 0 && image->height > 0);
 
-			bool hasError = false;
-			uint32_t mipmapCount = loadedPic->mipmapCount + 1;
-			for (uint32_t mipmapIndex = 0; mipmapIndex < mipmapCount; ++mipmapIndex) {
-				ImageData* currentImageData = &loadedPic->imageData[mipmapIndex];
+			fplDebugFormatOut("Allocate texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+			image->textureId = AllocateTexture(image->width, image->height, image->data, state->features.srgbFrameBuffer);
+			stbi_image_free(image->data);
+			image->data = fpl_null;
 
-				fplAssert(currentImageData->data != fpl_null);
-				fplAssert(currentImageData->width > 0 && currentImageData->height > 0);
-				fplAssert(currentImageData->components > 0);
-
-				fplDebugFormatOut("Allocate texture '%s'/%d for level %d\n", loadedPic->filePath, loadedPic->fileIndex, mipmapIndex);
-				currentImageData->textureId = AllocateTexture(currentImageData->width, currentImageData->height, (uint8_t)currentImageData->components, currentImageData->data, false, state->textureTarget, state->features.srgbFrameBuffer);
-				if (currentImageData->textureId == 0) {
-					hasError = true;
-					break;
-				}
-
-				stbi_image_free(currentImageData->data);
-				currentImageData->data = fpl_null;
-			}
-
-			if (!hasError) {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
-			} else {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
-			}
-
+			LoadedPictureState uploadedState = image->textureId > 0 ? LoadedPictureState_Ready : LoadedPictureState_Error;
+			fplAtomicStoreS32(&loadedPic->state, uploadedState);
 			loadedPic->progress = 1.0f;
+			isChanging = true;
+		} else if (loadState == LoadedPictureState_LoadingData) {
+			// The progress bars move
+			isChanging = true;
 		}
 	}
-	fplAssert(glGetError() == GL_NO_ERROR);
 
 	// Start to queue up pictures to load
 	if (state->doPictureReload) {
@@ -1623,233 +1391,141 @@ static void UpdateAndRender(ViewerState* state, const uint32_t viewportWidth, co
 			QueueUpPictures(state);
 			state->doPictureReload = false;
 		}
+		isChanging = true;
 	}
 
-	int w = (int)viewportWidth;
-	int h = (int)viewportHeight;
+	CheckGLError("UpdatePictures", __FILE__, __LINE__);
 
-	float screenLeft = -(float)w * 0.5f;
-	float screenRight = (float)w * 0.5f;
-	float screenBottom = -(float)h * 0.5f;
-	float screenTop = (float)h * 0.5f;
-	float screenW = (float)w;
-	float screenH = (float)h;
+	return(isChanging);
+}
 
-	glClear(GL_COLOR_BUFFER_BIT);
-	glViewport(0, 0, w, h);
-
-	Mat4f view;
-	BuildModelMat(0.0f, 0.0f, 1.0f, 1.0f, &view);
-	Mat4f proj = M4fOrthoLH(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f);
-	Mat4f viewProjection = M4fMult(proj, view);
-
-	float pictureScale = 1.0f;
-	int pictureFrameSideCount = 0;
-
-	float targetRectWidth = screenW * pictureScale;
-	float targetRectHeight = screenH * pictureScale;
-	float targetRectLeft = screenLeft + (screenW - targetRectWidth) * 0.5f;
-	float targetRectBottom = screenBottom + (screenH - targetRectHeight) * 0.5f;
-	float pictureFrameSpacing = 10;
-
-	if (state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity) {
-		int framePictureStart = fplMin(-pictureFrameSideCount, 0);
-		int framePictureEnd = (framePictureStart + 1 + pictureFrameSideCount);
-		for (int framePictureOffset = framePictureStart; framePictureOffset < (framePictureEnd + 1); ++framePictureOffset) {
-			if ((state->viewPictureIndex + framePictureOffset) < 0 || (state->viewPictureIndex + framePictureOffset) > ((int)state->viewPicturesCapacity - 1)) {
-				continue;
-			}
-			ViewPicture* loadedPic = &state->viewPictures[state->viewPictureIndex + framePictureOffset];
-			LoadedPictureState pictureState = fplAtomicLoadS32(&loadedPic->state);
-			if (pictureState == LoadedPictureState_Unloaded) {
-				continue;
-			}
-
-			float targetOpacity = 1.0f;
-			float targetRectX = targetRectLeft + (targetRectWidth * (float)framePictureOffset) + (pictureFrameSpacing * (float)framePictureOffset);
-			float targetRectY = targetRectBottom;
-
-			if (pictureState == LoadedPictureState_Ready) {
-				ImageData imageData = loadedPic->imageData[0];
-				float texW = (float)imageData.width;
-				float texH = (float)imageData.height;
-				float viewWidth;
-				float viewHeight;
-				float viewX;
-				float viewY;
-				if (state->params.zoomMode == StartZoomMode_ActualSize || state->params.zoomMode == StartZoomMode_Custom) {
-					// Fixed scale, centered
-					float fixedScale = (state->params.zoomMode == StartZoomMode_Custom) ? state->params.zoomScale : 1.0f;
-					viewWidth = texW * fixedScale;
-					viewHeight = texH * fixedScale;
-					viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
-					viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
-				} else if ((state->viewFlags & PictureViewFlags_KeepAspectRatio) == PictureViewFlags_KeepAspectRatio) {
-					float aspect = texH > 0 ? texW / texH : 1;
-					fplAssert(aspect != 0);
-					float targetHeight = targetRectWidth / aspect;
-					if ((texW > targetRectWidth || texH > targetRectHeight) || ((state->viewFlags & PictureViewFlags_Upscale) == PictureViewFlags_Upscale)) {
-						// Upscaling
-						if (targetHeight > targetRectHeight) {
-							viewHeight = targetRectHeight;
-							viewWidth = targetRectHeight * aspect;
-							viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
-							viewY = targetRectY;
-						} else {
-							viewWidth = targetRectWidth;
-							viewHeight = targetRectWidth / aspect;
-							viewX = targetRectX;
-							viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
-						}
-					} else {
-						// Downscaling
-						viewWidth = texW;
-						viewHeight = texH;
-						viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
-						viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
-					}
-				} else {
-					viewWidth = targetRectWidth;
-					viewHeight = targetRectHeight;
-					viewX = targetRectX;
-					viewY = targetRectY;
-				}
-				float viewLeft = viewX;
-				float viewRight = viewX + viewWidth;
-				float viewBottom = viewY;
-				float viewTop = viewY + viewHeight;
-
-				float compareFactor = 2.0f;
-				uint32_t compareW = (uint32_t)(viewWidth * compareFactor + 0.5f);
-				uint32_t compareH = (uint32_t)(viewHeight * compareFactor + 0.5f);
-
-				uint32_t mipmapCount = loadedPic->mipmapCount + 1;
-				uint32_t lastIndex = mipmapCount - 1;
-				ImageData* actualImageData = &loadedPic->imageData[lastIndex];
-				for (uint32_t mipmapIndex = lastIndex; mipmapIndex > 0; --mipmapIndex) {
-					ImageData *testImageData = &loadedPic->imageData[mipmapIndex];
-					if (compareW > testImageData->width&& compareH > testImageData->height) {
-						actualImageData = testImageData;
-						break;
-					}
-				}
-				
-				texW = (float)actualImageData->width;
-				texH = (float)actualImageData->height;
-
-				Mat4f modelMat;
-				BuildModelMat(viewLeft + viewWidth * 0.5f, viewBottom + viewHeight * 0.5f, viewWidth * 0.5f, viewHeight * 0.5f, &modelMat);
-
-				Vec4f texColor = V4f(1, 1, 1, targetOpacity);
-				Vec2f texSize = V2f(texW, texH);
-				Vec2f texScale = state->features.rectangleTextures ? texSize : V2f(1.0f, 1.0f);
-
-				GLuint filterProgramId = state->filters[state->activeFilter].programId;
-				DrawTexturedRectangle(state, actualImageData->textureId, state->textureTarget, filterProgramId, &viewProjection, &modelMat, texColor, texSize, texScale);
-			} else if (pictureState == LoadedPictureState_LoadingData) {
-				float progressPadding = 4;
-				float progressAspect = 400.0f / 10.0f;
-				float progressW = targetRectWidth * 0.5f;
-				float progressH = progressW / progressAspect;
-				float progressLeft = targetRectX + (targetRectWidth - progressW) * 0.5f;
-				float progressBottom = targetRectY + targetRectHeight - progressH - progressPadding;
-				float percentage = loadedPic->progress;
-				Vec2f progressExt = V2f(progressW * 0.5f, progressH * 0.5f);
-
-				Vec4f progressColor = V4f(0.25f, 0.25f, 0.25f, targetOpacity);
-				Vec4f borderColor = V4f(1, 1, 1, targetOpacity);
-				Vec2f progressCenter = V2f(progressLeft + progressExt.x, progressBottom + progressExt.y);
-				float borderLineWidth = 2.0f;
-
-				Vec2f actualProgressCenter = V2f(progressLeft + progressExt.x * percentage, progressBottom + progressExt.y);
-				Vec2f actualProgressExt = V2f(progressExt.x * percentage, progressExt.y);
-
-				DrawSolidRectangle(state, &viewProjection, actualProgressCenter, actualProgressExt, progressColor);
-				DrawLinedRectangle(state, &viewProjection, progressCenter, progressExt, borderColor, borderLineWidth);
-			}
-			if (state->params.border) {
-				Vec4f frameBorderColor = V4f(1.0f, 1.0f, 1.0f, targetOpacity);
-				float frameBorderWidth = 1.0f;
-				Vec2f targetRectExt = V2f(targetRectWidth * 0.5f + frameBorderWidth * 2.0f, targetRectHeight * 0.5f + frameBorderWidth * 2.0f);
-				DrawLinedRectangle(state, &viewProjection, V2f(targetRectX + targetRectWidth * 0.5f, targetRectY + targetRectHeight * 0.5f), targetRectExt, frameBorderColor, frameBorderWidth);
-			}
-		}
+static Vec4f GetPreviewBlockColor(const LoadedPictureState loadState) {
+	Vec4f result;
+	switch (loadState) {
+		case LoadedPictureState_LoadingData:
+			result = V4fInit(0.0f, 0.0f, 1.0f, 0.5f);
+			break;
+		case LoadedPictureState_Ready:
+			result = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+			break;
+		case LoadedPictureState_ToUpload:
+			result = V4fInit(0.0f, 0.5f, 0.5f, 0.5f);
+			break;
+		case LoadedPictureState_Discard:
+			result = V4fInit(0.75f, 0.25f, 0.0f, 0.5f);
+			break;
+		case LoadedPictureState_Error:
+			result = V4fInit(1.0f, 0.0f, 0.0f, 0.5f);
+			break;
+		default:
+			fplAssert(!"Invalid loaded picture state!");
+			result = V4fInit(0.0f, 0.0f, 0.0f, 0.0f);
+			break;
 	}
+	return(result);
+}
 
-	if (state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount) {
-		int blockCount = (int)state->viewPicturesCapacity;
-		float maxBlockW = ((fplMin(screenW, screenH)) * 0.75f);
-		float blockPadding = 4;
-		float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
-		float blockH = blockW;
-		float blocksLeft = -maxBlockW * 0.5f;
-		float blocksBottom = (-screenH * 0.5f + blockPadding);
-		Vec2f blockExt = V2f(blockW * 0.5f, blockH * 0.5f);
-		for (int i = 0; i < blockCount; ++i) {
-			ViewPicture* loadedPic = &state->viewPictures[i];
-			float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
-			float by = blocksBottom;
-			Vec2f blockPos = V2f(bx + blockW * 0.5f, by + blockH * 0.5f);
+// One block per view picture slot at the bottom, the active slot is outlined green
+static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize, const Filter* filter) {
+	const float stripWidthFactor = 0.75f;
+	const float blockPadding = 4.0f;
+	const float activeBlockLineWidth = 2.0f;
+	const float blockLineWidth = 1.0f;
+	const float minimumPictureBlockSize = 1.0f;
+	const Vec4f activeBlockLineColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
+	const Vec4f unloadedBlockLineColor = V4fInit(1.0f, 1.0f, 1.0f, 0.2f);
+	const Vec4f loadedBlockLineColor = V4fInit(1.0f, 1.0f, 1.0f, 0.5f);
 
-			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
-			if (loadState != LoadedPictureState_Unloaded) {
-				Vec4f color = V4f(0, 0, 0, 0);
-				switch (loadState) {
-					case LoadedPictureState_LoadingData:
-						color = V4f(0, 0, 1, 0.5f);
-						break;
-					case LoadedPictureState_Ready:
-						color = V4f(1, 1, 1, 1);
-						break;
-					case LoadedPictureState_ToUpload:
-						color = V4f(0, 0.5f, 0.5f, 0.5f);
-						break;
-					case LoadedPictureState_Discard:
-						color = V4f(0.75f, 0.25f, 0.0f, 0.5f);
-						break;
-					case LoadedPictureState_Error:
-						color = V4f(1.0, 0.0f, 0.0f, 0.5f);
-						break;
-					default:
-						fplAssert(!"Invalid loaded picture state!");
-						break;
+	float viewportWidth = (float)viewportSize.width;
+	float viewportHeight = (float)viewportSize.height;
+	int blockCount = (int)state->viewPicturesCapacity;
+	float shorterViewportSide = fplMin(viewportWidth, viewportHeight);
+	float stripWidth = shorterViewportSide * stripWidthFactor;
+	float paddingSum = (float)(blockCount - 1) * blockPadding;
+	float blockSize = (stripWidth - paddingSum) / (float)blockCount;
+	float stripLeft = (viewportWidth - stripWidth) * 0.5f;
+	float stripTop = viewportHeight - blockPadding - blockSize;
+	ViewState fitView = fplStructInit(ViewState, ViewZoomMode_Fit, 0.0f);
+
+	for (int i = 0; i < blockCount; ++i) {
+		ViewPicture* picture = &state->viewPictures[i];
+		float blockLeft = stripLeft + (float)i * (blockSize + blockPadding);
+		ViewRect blockRect = fplStructInit(ViewRect, blockLeft, stripTop, blockSize, blockSize);
+
+		LoadedPictureState loadState = fplAtomicLoadS32(&picture->state);
+		if (loadState != LoadedPictureState_Unloaded) {
+			Vec4f color = GetPreviewBlockColor(loadState);
+			if (loadState == LoadedPictureState_Ready) {
+				if (blockSize >= minimumPictureBlockSize) {
+					// Fitted into the block, keeping the aspect ratio
+					ViewSize pictureSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+					ViewSize blockPixelSize = fplStructInit(ViewSize, (uint32_t)blockSize, (uint32_t)blockSize);
+					ViewTransform transform = ComputeViewTransform(&fitView, pictureSize, blockPixelSize);
+					ViewRect pictureRect = transform.imageRect;
+					pictureRect.left += blockLeft;
+					pictureRect.top += stripTop;
+					DrawPicture(filter, picture->image.textureId, viewportSize, pictureRect, transform.scaleX, transform.scaleY, color);
 				}
-
-				if (loadState == LoadedPictureState_Ready) {
-					ImageData imageData = loadedPic->imageData[0];
-					float texW = (float)imageData.width;
-					float texH = (float)imageData.height;
-					Vec2f texSize = V2f(texW, texH);
-					Vec2f texScale = state->features.rectangleTextures ? texSize : V2f(1.0f, 1.0f);
-					GLuint filterProgramId = state->filters[state->activeFilter].programId;
-					Mat4f blockModelMat;
-					BuildModelMat(blockPos.x, blockPos.y, blockExt.x, blockExt.y, &blockModelMat);
-					DrawTexturedRectangle(state, imageData.textureId, state->textureTarget, filterProgramId, &viewProjection, &blockModelMat, color, texSize, texScale);
-				} else {
-					Vec2f actualBlockStart = V2f(blockPos.x, blockPos.y);
-					Vec2f actualBlockExt = V2f(blockExt.x * loadedPic->progress, blockExt.y * loadedPic->progress);
-					DrawSolidRectangle(state, &viewProjection, actualBlockStart, actualBlockExt, color);
-				}
-			}
-
-			Vec4f blockColor;
-			float blockLineWidth;
-			if (i == state->viewPictureIndex) {
-				blockLineWidth = 2;
-				blockColor = V4f(0, 1, 0, 1);
 			} else {
-				blockLineWidth = 1;
-				if (loadedPic->state == LoadedPictureState_Unloaded) {
-					blockColor = V4f(1, 1, 1, 0.2f);
-				} else {
-					blockColor = V4f(1, 1, 1, 0.5f);
-				}
+				// Grows from the center with the progress
+				float progressSize = blockSize * picture->progress;
+				float progressOffset = (blockSize - progressSize) * 0.5f;
+				ViewRect progressRect = fplStructInit(ViewRect, blockLeft + progressOffset, stripTop + progressOffset, progressSize, progressSize);
+				DrawSolidRectangle(state, viewportSize, progressRect, color);
 			}
-			DrawLinedRectangle(state, &viewProjection, blockPos, blockExt, blockColor, blockLineWidth);
+		}
+
+		if (i == state->viewPictureIndex) {
+			DrawLinedRectangle(state, viewportSize, blockRect, activeBlockLineColor, activeBlockLineWidth);
+		} else if (loadState == LoadedPictureState_Unloaded) {
+			DrawLinedRectangle(state, viewportSize, blockRect, unloadedBlockLineColor, blockLineWidth);
+		} else {
+			DrawLinedRectangle(state, viewportSize, blockRect, loadedBlockLineColor, blockLineWidth);
+		}
+	}
+}
+
+static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
+	glViewport(0, 0, (GLsizei)viewportSize.width, (GLsizei)viewportSize.height);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	const Filter* activeFilter = &state->filters[state->activeFilter];
+	float viewportWidth = (float)viewportSize.width;
+
+	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (hasActivePicture) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+		if (pictureState == LoadedPictureState_Ready) {
+			const ImageData* image = &activePicture->image;
+			const Vec4f pictureColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+			ViewSize pictureSize = fplStructInit(ViewSize, image->width, image->height);
+			ViewTransform transform = ComputeViewTransform(&state->view, pictureSize, viewportSize);
+			DrawPicture(activeFilter, image->textureId, viewportSize, transform.imageRect, transform.scaleX, transform.scaleY, pictureColor);
+		} else if (pictureState == LoadedPictureState_LoadingData) {
+			// Progress bar centered at the top
+			const float progressPadding = 4.0f;
+			const float progressWidthFactor = 0.5f;
+			const float progressAspectRatio = 400.0f / 10.0f;
+			const float progressBorderWidth = 2.0f;
+			const Vec4f progressFillColor = V4fInit(0.25f, 0.25f, 0.25f, 1.0f);
+			const Vec4f progressBorderColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+			float progressWidth = viewportWidth * progressWidthFactor;
+			float progressHeight = progressWidth / progressAspectRatio;
+			float progressLeft = (viewportWidth - progressWidth) * 0.5f;
+			float filledWidth = progressWidth * activePicture->progress;
+			ViewRect filledRect = fplStructInit(ViewRect, progressLeft, progressPadding, filledWidth, progressHeight);
+			ViewRect borderRect = fplStructInit(ViewRect, progressLeft, progressPadding, progressWidth, progressHeight);
+			DrawSolidRectangle(state, viewportSize, filledRect, progressFillColor);
+			DrawLinedRectangle(state, viewportSize, borderRect, progressBorderColor, progressBorderWidth);
 		}
 	}
 
-	fplAssert(glGetError() == GL_NO_ERROR);
+	if (state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount > 0) {
+		RenderPreviewStrip(state, viewportSize, activeFilter);
+	}
+
+	CheckGLError("RenderFrame", __FILE__, __LINE__);
 }
 
 typedef struct OffscreenTarget {
@@ -1953,10 +1629,11 @@ static RenderToFileResult ReadOffscreenTargetToFile(const OffscreenTarget* targe
 }
 
 // Renders the active picture into an offscreen framebuffer of --window size, as soon as it is loaded, and writes it to --render-to
-static RenderToFileResult RenderPictureToFile(ViewerState* state, const float deltaTime) {
+static RenderToFileResult RenderPictureToFile(ViewerState* state) {
 	const char* filePath = state->params.renderToFilePath;
 	const uint32_t width = state->params.windowWidth;
 	const uint32_t height = state->params.windowHeight;
+	const ViewSize targetSize = fplStructInit(ViewSize, width, height);
 	if (state->pictureFileCount == 0) {
 		fplConsoleFormatError("No picture found in '%s'\n", state->params.path);
 		return(RenderToFileResult_NoPicture);
@@ -1975,8 +1652,9 @@ static RenderToFileResult RenderPictureToFile(ViewerState* state, const float de
 		while (fplPollEvent(&ev)) {
 		}
 
+		UpdatePictures(state);
 		glBindFramebuffer(GL_FRAMEBUFFER, target.frameBufferId);
-		UpdateAndRender(state, width, height, deltaTime);
+		RenderFrame(state, targetSize);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// The frame that uploads the picture already draws it
@@ -2048,11 +1726,16 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	if (state->params.runSelfTest) {
+		int selfTestResult = RunSelfTest();
+		fplMemoryFree(state);
+		return(selfTestResult);
+	}
+
 	const bool isRenderToFile = state->params.renderToFilePath != fpl_null;
 	if (isRenderToFile) {
 		// Nothing but the picture itself goes into the file
 		state->params.preview = false;
-		state->params.border = false;
 	}
 
 	flogWrite("Initial Parameters:");
@@ -2072,15 +1755,11 @@ int main(int argc, char** argv) {
 	fplSetDefaultSettings(&settings);
 	settings.video.isVSync = !isRenderToFile;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-#if FORCE_LEGACY_OPENGL
-	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
-#else
-	const uint32_t windowMultiSamplingCount = 16;
+	// No multisampling: it only smooths geometry edges, a full screen picture has none and the filters compute every pixel themselves
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
-	settings.video.graphics.opengl.majorVersion = 3;
-	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = isRenderToFile ? 0 : windowMultiSamplingCount;
-#endif
+	settings.video.graphics.opengl.majorVersion = REQUIRED_OPENGL_MAJOR_VERSION;
+	settings.video.graphics.opengl.minorVersion = REQUIRED_OPENGL_MINOR_VERSION;
+	settings.video.graphics.opengl.multiSamplingCount = 0;
 	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
 	if (isRenderToFile) {
 		settings.window.windowSize.width = RENDER_TO_FILE_WINDOW_SIZE;
@@ -2108,19 +1787,36 @@ int main(int argc, char** argv) {
 		settings.window.icons[1].type = fplImageType_RGBA;
 	}
 
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		if (fglLoadOpenGL(true) && Init(state)) {
+	bool isPlatformInitialized = fplPlatformInit(fplInitFlags_Video, &settings);
+	if (!isPlatformInitialized) {
+		const char* platformError = fplGetLastError();
+		fplConsoleFormatError("Failed to create a window with an OpenGL %d.%d core profile context: %s\n", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, platformError);
+		flogWrite("Failed to create a window with an OpenGL %d.%d core profile context: %s", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, platformError);
+		returnCode = -1;
+	}
+	bool isOpenGLLoaded = isPlatformInitialized && fglLoadOpenGL(true);
+	if (isPlatformInitialized && !isOpenGLLoaded) {
+		fplConsoleFormatError("Failed to load the OpenGL functions\n");
+		flogWrite("Failed to load the OpenGL functions");
+		returnCode = -1;
+	}
+	if (isOpenGLLoaded) {
+		if (Init(state)) {
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;
 			const int ActiveKeyThreshold = 150;
-			const float deltaTime = 1.0f / 60.0f;
 			if (isRenderToFile) {
-				returnCode = RenderPictureToFile(state, deltaTime);
+				returnCode = RenderPictureToFile(state);
 			}
+			// The first frame is always drawn
+			bool hasDrawnFrame = false;
+			ViewSize lastViewportSize = fplZeroInit;
 			while (!isRenderToFile && fplWindowUpdate()) {
 				// Events
+				bool hasEvents = false;
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
+					hasEvents = true;
 					switch (ev.type) {
 						case fplEventType_Window:
 						{
@@ -2209,21 +1905,32 @@ int main(int argc, char** argv) {
 
 				fplWindowSize windowSize = fplZeroInit;
 				fplGetWindowSize(&windowSize);
-				UpdateAndRender(state, windowSize.width, windowSize.height, deltaTime);
+				ViewSize viewportSize = fplStructInit(ViewSize, windowSize.width, windowSize.height);
+				bool isViewportChanged = viewportSize.width != lastViewportSize.width || viewportSize.height != lastViewportSize.height;
+				lastViewportSize = viewportSize;
 
-				fplVideoFlip();
+				bool arePicturesChanging = UpdatePictures(state);
+
+				// Draw only when something changed, otherwise idle, and never into an empty (minimized) viewport
+				bool isViewportEmpty = viewportSize.width == 0 || viewportSize.height == 0;
+				bool needsFrame = !hasDrawnFrame || hasEvents || isViewportChanged || arePicturesChanging;
+				if (needsFrame && !isViewportEmpty) {
+					RenderFrame(state, viewportSize);
+					fplVideoFlip();
+					hasDrawnFrame = true;
+				} else {
+					fplThreadSleep(IDLE_SLEEP_MILLISECONDS);
+				}
 			}
 
 			Kill(state);
-
-			fglUnloadOpenGL();
 		} else {
 			returnCode = -1;
 		}
-
+		fglUnloadOpenGL();
+	}
+	if (isPlatformInitialized) {
 		fplPlatformRelease();
-	} else {
-		returnCode = -1;
 	}
 
 	fplMemoryFree(state);

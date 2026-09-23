@@ -10,6 +10,8 @@ project "FPL_ImageViewer"
 		"version.h",
 		"shadersources.h",
 		"logging.h",
+		"viewtransform.h",
+		"selftest.h",
 		"imageresources.h",
 		"fpl_imageviewer.cpp",
 	}

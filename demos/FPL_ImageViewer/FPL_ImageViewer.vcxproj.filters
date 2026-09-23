@@ -19,9 +19,8 @@
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="logging.h" />
-    <ClInclude Include="..\dependencies\stb\stb_image_resize.h">
-      <Filter>dependencies</Filter>
-    </ClInclude>
+    <ClInclude Include="selftest.h" />
+    <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.cpp" />
