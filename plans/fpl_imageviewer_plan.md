@@ -265,6 +265,8 @@ ViewState {
 }
 ```
 
+**Umgesetzt (Iteration 6):** `ViewState { zoomMode, customScale, centerX, centerY, pendingRelativeScale }`. Innerhalb eines Bildes gilt der **absolute** Maßstab (`customScale`), damit eine Größenänderung des Fensters den Maßstab behält. Nur beim Wechsel mit „relativ behalten“ wird er zu `pendingRelativeScale` (Maßstab / Einpassgröße des alten Bildes) und wird wieder absolut, sobald das neue Bild geladen ist (`ComputeViewResolved`). Die Mitte gilt in jedem Modus, auch bei 100 %. Auf einer Achse, auf der das Bild ins Fenster passt, wird ohnehin zentriert. Initialisiert wird immer über `ViewMakeState`, eine Null-Mitte würde die linke obere Ecke zeigen.
+
 Der Maßstab wird **relativ zur Einpassgröße** gespeichert und die Mitte **normiert**. Damit deckt **ein** Modus „Ansicht behalten“ beide Vergleichsfälle aus dem Auftrag ab:
 
 - **Gleich große Bilder:** Die Einpassgröße ist gleich, also ist die Ansicht pixelidentisch.
@@ -282,8 +284,8 @@ Der Maßstab wird **relativ zur Einpassgröße** gespeichert und die Mitte **nor
 
 - **Zoom um einen Punkt:** Der Bildpunkt unter dem Mauszeiger bleibt, wo er ist. Bei Tastatur-Zoom ist der Punkt die Fenstermitte.
 - **Klemmen pro Achse:** Ist das Bild in einer Achse kleiner als das Fenster, wird es in dieser Achse zentriert. Ist es größer, entsteht beim Verschieben kein Rand.
-- **Grenzen:** ½ × Einpassgröße bis 32× (Pixelinspektion).
-- **Magnet:** Das Mausrad rastet an „Einpassen“ und „100 %“ ein, wenn ein Rastschritt darüber hinweggehen würde.
+- **Grenzen:** ½ × Einpassgröße bis 32× (Pixelinspektion). Umgesetzt als höchstens 1 unten und mindestens die Einpassgröße oben, damit 100 % und „Einpassen“ auch bei winzigen Bildern (`pixelart_32` passt mit 2250 % ein) erreichbar bleiben.
+- **Magnet:** Das Mausrad rastet an „Einpassen“ und „100 %“ ein, wenn ein Rastschritt darüber hinweggehen würde. Das gilt auch, wenn der Schritt nur knapp davor endet (0,1 %): Eine Raste hoch und eine zurück ergibt in float32 nicht exakt wieder die Einpassgröße (gefunden per `xdotool` in Iteration 6).
 - **Stufenleiter** für die Tasten: ⅛, ¼, ⅓, ½, ⅔, 1, 1½, 2, 3, 4, 6, 8, 12, 16, 24, 32, plus „Einpassen“ an seiner Stelle.
 - **Mausrad:** Faktor `wheelZoomFactorPerNotch` (Start 1,2) hoch `wheelDelta`. Bruchteilige Deltas vom Touchpad zoomen dadurch stufenlos.
 - **Fenstergröße/Vollbild:** `Fit` bleibt `Fit`, `Custom` behält Maßstab und Mitte.
@@ -295,7 +297,7 @@ Der Maßstab wird **relativ zur Einpassgröße** gespeichert und die Mitte **nor
 
 | Aktion | Tastatur | Maus |
 |---|---|---|
-| Vorheriges / nächstes Bild | ← / → (unverändert, auch gezoomt) | Seitentasten X1 / X2 |
+| Vorheriges / nächstes Bild | ← / → (unverändert, auch gezoomt) | ~~Seitentasten X1 / X2~~ vorerst nicht (7.2) |
 | ±10, erstes / letztes | Bild ↑ / Bild ↓, Pos1 / Ende (unverändert) | – |
 | Zoom (Stufenleiter) | `+` / `-` (Haupt- und Nummernblock), `Strg` + `+`/`-` | Mausrad um den Mauszeiger (auch `Strg`+Rad); im Blätter-Modus nur `Strg`+Rad |
 | Einpassen | `0` (auch `Strg`+`0`) | Doppelklick: Einpassen ↔ 100 % am Mauszeiger |
@@ -728,6 +730,21 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - Beim Halten von → mit „Behalten“ bleibt die Ansicht stabil, ohne Springen.
   - Im Blätter-Modus (`W`) blättert das Rad, `Strg`+Rad zoomt. Im Zoom-Modus blättert das Rad nie.
 
+**Stand (2026-09-23):**
+- Erledigt:
+  - `viewtransform.h`: `ViewMakeState`, Mitte in jedem Modus (auf Ganzpixel gerundet und geklemmt), `ComputeViewZoomAtPoint`, `ComputeViewPan`, `ComputeViewStepScale` (Stufenleiter samt Einpassgröße), `ComputeViewWheelScale` (1,2 je Raste, Magnet), `ComputeViewScaleLimits`, `ComputeViewForNextPicture` (zurücksetzen, relativ, absolut) und `ComputeViewResolved`. Alles ist rein und im Selbsttest geprüft.
+  - Viewer: Mausrad um den Zeiger, Ziehen mit linker und mittlerer Taste, `Shift`+Pfeile (⅛ Fenster je Druck und Wiederholung), Doppelklick (400 ms, 4 px) zwischen 100 % am Zeiger und Einpassen, `+`/`-` (Haupt- und Nummernblock, mit Wiederholung), `0` Einpassen, `1` 100 %, `2` 200 % (auch Nummernblock, `Strg` egal), `K`, `W`, `--keep-view=reset|relative|absolute`, `--wheel=zoom|navigate`, `--center=<x>,<y>`. Den Titel ergänzen Zoom, Mitte (sobald das Bild größer als das Fenster ist), „keep relative/absolute“ und „wheel pages“.
+  - `Shift` entscheidet **einmal je Tastendruck**, ob eine Pfeiltaste verschiebt oder blättert, und nur das Loslassen der gehaltenen Taste beendet das. Wer `Shift` vor der Pfeiltaste loslässt, blättert also nicht aus Versehen.
+  - `0` ist **Einpassen mit Hochrechnen** (`Fit`), die Startansicht bleibt „nur große Bilder einpassen“ (`ShrinkToFit`). Damit wechselt der Doppelklick auch bei kleinen Bildern sichtbar zwischen 100 % und Einpassen. Ein neu abgelegter Ordner beginnt immer mit der Startansicht.
+  - `Strg` am Mausrad liest `fplPollKeyboardState`, weil Maus-Ereignisse keine Modifier tragen.
+- Nicht umgesetzt: **Maus-Seitentasten** (X1/X2) zum Blättern. FPL meldet unter X11 die Buttons 8/9 nicht, der Nutzer hat die FPL-Änderung am 2026-09-23 zurückgestellt (7.2).
+- Abnahme:
+  - `--selftest`: 200 Prüfungen, davon 40 neu für Pan & Zoom. Zoom um einen Punkt bei 6 Maßstäben (0,4 bis 12) und 5 Punkten: Der Bildpunkt bleibt auf ±0,5 px, wo die Kante nicht klemmt. Ein großes Bild, weit verschoben, stoppt genau an beiden Ecken und bewegt sich beim Zurückschieben sofort. Ein kleines Bild bleibt zentriert. Stufen und Magnet stimmen. Relativ: 4032 und 1008 zeigen denselben Ausschnitt in derselben Anzeigegröße (±1 px), gleich große Bilder exakt dieselbe Ansicht. Absolut: 4032 und 1008 bei 100 % um dieselbe Mitte. Ein noch ladendes Bild lässt die Ansicht unberührt.
+  - `--render-to` mit `--center`: `border_frame_odd` bei 400 % mit `--center=0,0` bzw. `1,1` ist byteidentisch zum passenden Quellausschnitt ×4 (`-filter Point`).
+  - Interaktiv (Debug-Build, `xdotool`, Titel über `xprop`): `1`, `+`, `-`, `0`, `2`, Nummernblock-`+`, Rad um den Zeiger, Ziehen links und mitte, `Shift+←`/`Shift+↓` verschieben **ohne** zu blättern, `←`/`→` blättern gezoomt, Doppelklick hin und zurück, `W` (Rad blättert, `Strg`+Rad zoomt), Zoom-Modus blättert nie, `K` durch alle drei Modi. 16 Wechsel zwischen Rad-Modi ohne verlorenen Rad-Schritt. Einmal ging im ersten Lauf ein Rad-Schritt nach `W` verloren, das ließ sich danach nicht mehr auslösen.
+  - Screenshot nach dem Ziehen mit der Maus (`import -window`) ist **byteidentisch** zum `--render-to` derselben, aus dem Ziehweg berechneten Mitte.
+  - → gehalten mit „relativ“ und „absolut“ (Fotos `202308`, 200 %, Titel alle 50 ms): Jedes der 8 erfassten Bilder zeigt genau eine Ansicht, kein Springen. Relativ bekommt ein Bild anderer Auflösung 180 % statt 240 %, absolut bleibt es bei 240 %.
+
 ### Iteration 7 — `final_ui`: GL3-Backend, Eingabe, Info-Zeile
 
 - `fui_backend_gl3.h` (2.8). Eine GL3-Umschaltung in `FUI_Test` dient als Prüfstand.
@@ -804,6 +821,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - ~~**Verstecktes Fenster in FPL** (etwa `fplWindowSettings.isVisible`): `--render-to` bräuchte dann gar kein sichtbares Fenster mehr, KWin würde es nicht verwalten, und der Fehler bei wiederverwendeten X-Kennungen (Abschnitt 8) könnte nicht mehr auftreten.~~ In FPL als `fplWindowSettings.initialVisibility` samt `fplSetWindowVisibility()` (`develop`), seit Iteration 5 nutzt `--render-to` es.
 - ~~**`fplMemoryCopy` greift auf ungerade ausgerichtete Adressen zu** (gefunden in Iteration 3 mit UBSan).~~ Behoben in FPL (`develop`, v1.0.1) samt `fplThreadSleep`, in diesen Branch gemergt. Der Selbsttest unter UBSan ist jetzt ohne Meldung.
 - **AVX-512-Stufe auf Zen 5:** erst wenn eine CPU mit echten 512-Bit-Einheiten zum Messen da ist (Ryzen 9000, etwa 9950X; Zen 4 halbiert jeden 512-Bit-Befehl). Mit BW (`vpmaddwd` auf zmm) werden nur die Filter schneller, die bei AVX2 ~6 von 22 ms kosten. Den großen Anteil, das Dekodieren (~60 %), trifft erst VBMI: `vpermi2b` schlägt eine 128-Byte-Tabelle in einem Befehl nach. Die Flags `hasAVX512BW` und `hasAVX512VBMI` meldet FPL inzwischen (v1.0.1, für `develop`). Die Tabelle der Zeilenfunktionen nimmt die Stufe ohne Umbau auf.
+- **Maus-Seitentasten zum Blättern** (Iteration 6, zurückgestellt): FPL meldet unter X11 die Buttons 8 und 9 nicht als `fplMouseButtonType_X1`/`X2`, nur unter Win32. Das wäre eine kleine FPL-Korrektur auf einem `fpl/*`-Branch, danach im Viewer X1 = vorheriges, X2 = nächstes Bild.
 - **Glyphen jenseits von Latin-1** (mehrere Bereiche oder ein dynamischer Glyphen-Cache in `fui_font_stbtt.h`), falls Dateinamen mit anderen Schriften eine Rolle spielen.
 
 ---
