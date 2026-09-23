@@ -249,6 +249,18 @@ static void SelfTestResample(SelfTest* test) {
 	oneAxisRequest.scaleY = roundedAxisScale;
 	ResampleKernel oneAxisKernel = ResampleGetEffectiveKernel(&oneAxisRequest);
 	SelfTestCheck(test, !ResampleIsPixelCopy(&oneAxisRequest) && oneAxisKernel == ResampleKernel_Mitchell, "Scale 1 on one axis only keeps the kernel on both");
+
+	// A pixel copy runs in linear light even when the request asks for the sRGB values, any other request keeps its space
+	const float upscale = 2.3f;
+	ResampleRequest copySRGBRequest = copyRequest;
+	copySRGBRequest.space = ResampleSpace_SRGB;
+	ResampleRequest upscaleSRGBRequest = copySRGBRequest;
+	upscaleSRGBRequest.scaleX = upscale;
+	upscaleSRGBRequest.scaleY = upscale;
+	ResampleSpace copySpace = ResampleGetEffectiveSpace(&copySRGBRequest);
+	ResampleSpace upscaleSpace = ResampleGetEffectiveSpace(&upscaleSRGBRequest);
+	SelfTestCheck(test, copySpace == ResampleSpace_Linear, "A pixel copy runs in linear light");
+	SelfTestCheck(test, upscaleSpace == ResampleSpace_SRGB, "Upscaling keeps the sRGB space of the request");
 }
 
 static void SelfTestOrientation(SelfTest* test) {

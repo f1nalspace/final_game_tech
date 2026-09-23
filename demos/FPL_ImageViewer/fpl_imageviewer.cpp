@@ -31,6 +31,7 @@ Changelog:
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
 	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
+	- New: Upscaling filters the sRGB values instead of linear light (like mpv), so the negative lobes of Catmull-Rom and Lanczos3 no longer dig halos down to black next to dark tones, downscaling stays in linear light
 	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
 	- New: Auto Nearest for pixel inspection: from a zoom of --nearest-from=<percent> on (at least 100) upscaling uses Nearest, A turns it on at 400 % (or the --nearest-from value) and off again, off by default
 	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
@@ -403,7 +404,7 @@ static const ResampleKernel LegacyFilterNumberKernels[] = {
 	ResampleKernel_Lanczos3,
 };
 
-// Downscaling default decided with the comparison crops, the upscaling default stays a working hypothesis until iteration 5 (plan section 2.2)
+// Both defaults decided with the comparison crops of iteration 2 and 5 (plan section 2.2)
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
 #define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
 #define DEFAULT_BACKGROUND ResampleBackground_Checker
@@ -964,6 +965,15 @@ static ResampleKernel GetKernelForTransform(const ViewerState* state, const View
 	return(result);
 }
 
+// Downscaling averages in linear light, upscaling filters the sRGB values, so the halos of negative lobes stay close to the tone they ring around (plan section 2.1).
+// Without an sRGB framebuffer the textures hold the sRGB values already and everything runs on them.
+static ResampleSpace GetSpaceForTransform(const ViewerState* state, const ViewTransform* transform) {
+	bool isDownscaling = IsDownscaling(transform);
+	bool isEncodingSRGB = state->features.srgbFrameBuffer && !isDownscaling;
+	ResampleSpace result = isEncodingSRGB ? ResampleSpace_SRGB : ResampleSpace_Linear;
+	return(result);
+}
+
 // Level the resample pipeline reads for the transform (plan section 2.3), --lod-source=0 always takes the largest level on the GPU.
 // So do Nearest and Box: both let details above the output Nyquist limit through (Nearest all of them, Box through the side lobes of its spectrum),
 // that is what they look like, and a reduced level has those details already filtered out.
@@ -1014,6 +1024,7 @@ static ResampleRequest BuildPictureRequest(const ViewerState* state, const ViewP
 	result.firstCoverageY = placement.firstCoverageV;
 	result.lastCoverageY = placement.lastCoverageV;
 	result.kernel = GetKernelForTransform(state, transform);
+	result.space = GetSpaceForTransform(state, transform);
 	result.scaleX = levelScaleX;
 	result.scaleY = levelScaleY;
 	result.originX = originX - placement.offsetU * levelScaleX;

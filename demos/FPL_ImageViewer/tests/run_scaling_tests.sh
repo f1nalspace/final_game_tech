@@ -1,6 +1,7 @@
 #!/bin/bash
 # Renders the synthetic test images with FPL_ImageViewer --render-to at many scales and with every filter,
-# compares each result against an ImageMagick reference of the same kernel computed in linear light and prints a table.
+# compares each result against an ImageMagick reference of the same kernel and prints a table. Like the viewer, the references downscale in linear light
+# and upscale on the sRGB values.
 # Where the viewer reads a reduced level (scale <= 0.125), the same picture is also rendered from level 0 (--lod-source=0) and both are compared.
 # Exit code is 0 when every threshold holds, 1 when at least one is violated, 2 on usage or setup errors.
 #
@@ -101,11 +102,11 @@ testCases=(
 	"impulse|1 1.5 2.3 4 7 8|impulse"
 	"step_edge|0.35 0.7 1.5 2.3 4 8|overshoot"
 	"lines_1px|0.03 0.05 0.146 0.238 0.35 0.5 0.7 1|"
-	"text|0.03 0.05 0.5 0.7 1 1.5|"
+	"text|0.03 0.05 0.5 0.7 1 1.5 2.3|"
 	"pixelart_32|1 2 3 4 8|exactnearest autonearest"
 	"alpha_disk|0.05 0.146 0.35 0.7 1 1.5|"
 	"alpha_disk|0.05 0.146 0.35 1||gray"
-	"border_frame_odd|0.03 0.05 0.146 0.238 0.35 0.7 1|frame"
+	"border_frame_odd|0.03 0.05 0.146 0.238 0.35 0.7 1 1.5 2.3|frame"
 	"extreme_aspect|0.02 0.5|nolevel0"
 )
 quickScales="0.05 0.146 0.35 1 1@1280x720 4 8"
@@ -200,14 +201,20 @@ masked_std() {
 	magick "$1" -channel R -separate +channel "$2" \( -clone 0 -clone 1 -compose multiply -composite \) \( -clone 0 -clone 0 -compose multiply -composite -clone 1 -compose multiply -composite \) -delete 0 -format "%[fx:mean] " info: | awk '{ inside = $1; mean = $2 / inside; variance = $3 / inside - mean * mean; if (variance < 0) { variance = 0 }; printf "%.1f", sqrt(variance) * 255 }'
 }
 
-# Reference: resize in linear light with the given kernel, transparent pixels over the background in linear light as the viewer shows them
+# Reference: resize with the given kernel in linear light (space linear) or on the sRGB values (space srgb, the viewer upscales so),
+# then transparent pixels over the background in linear light as the viewer shows them
 make_reference() {
-	local source="$1" width="$2" height="$3" options="$4" target="$5" background="${6:-black}"
+	local source="$1" width="$2" height="$3" options="$4" target="$5" background="${6:-black}" space="${7:-linear}"
 	if [ -f "$target" ] && [ "$target" -nt "$source" ]; then
 		return
 	fi
-	# shellcheck disable=SC2086
-	magick "$source" -colorspace sRGB -colorspace RGB $options -resize "${width}x${height}!" -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+	if [ "$space" = srgb ]; then
+		# shellcheck disable=SC2086
+		magick "$source" -colorspace sRGB $options -resize "${width}x${height}!" -colorspace RGB -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+	else
+		# shellcheck disable=SC2086
+		magick "$source" -colorspace sRGB -colorspace RGB $options -resize "${width}x${height}!" -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
+	fi
 }
 
 # 1:1 reference: the source itself over the background
@@ -315,13 +322,20 @@ for testCase in "${testCases[@]}"; do
 		if is_less_equal "$scale" "$largestLevelScale"; then
 			readsLevel=1
 		fi
+		# The viewer upscales on the sRGB values and downscales in linear light (plan section 2.1), sRGB references carry it in their name
+		referenceSpace=linear
+		spaceSuffix=""
+		if ! is_less_equal "$scale" 1; then
+			referenceSpace=srgb
+			spaceSuffix="_srgb"
+		fi
 
 		# References of all kernels for this size, in parallel
 		if [ "$isIdentity" = 1 ]; then
 			make_identity_reference "$source" "$referencesDirectory/${imageName}_identity${backgroundSuffix}.png" "$background"
 		else
 			for filterKey in $selectedFilters; do
-				make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[$filterKey]}" "$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${backgroundSuffix}.png" "$background" &
+				make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[$filterKey]}" "$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${spaceSuffix}${backgroundSuffix}.png" "$background" "$referenceSpace" &
 			done
 		fi
 		if [[ " $checks " == *" ring "* ]]; then
@@ -370,7 +384,7 @@ for testCase in "${testCases[@]}"; do
 			if [ "$isIdentity" = 1 ]; then
 				reference="$referencesDirectory/${imageName}_identity${backgroundSuffix}.png"
 			else
-				reference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${backgroundSuffix}.png"
+				reference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_${filterKey}${spaceSuffix}${backgroundSuffix}.png"
 			fi
 
 			# Nearest is point sampling: it cannot average, and where a sample falls exactly between two source pixels the tie breaking is implementation defined
@@ -528,8 +542,8 @@ for testCase in "${testCases[@]}"; do
 					checkTexts+=("auto Nearest render failed with exit code $autoExitCode")
 					failures+="autonearest "
 				elif awk -v s="$scale" -v p="$autoNearestPercent" 'BEGIN { exit !(s * 100 >= p) }'; then
-					nearestReference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_nearest${backgroundSuffix}.png"
-					make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[nearest]}" "$nearestReference" "$background"
+					nearestReference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_nearest${spaceSuffix}${backgroundSuffix}.png"
+					make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[nearest]}" "$nearestReference" "$background" "$referenceSpace"
 					autoDifferentPixels=$(compare_differing_pixels "$autoRender" "$nearestReference")
 					checkTexts+=("from $autoNearestPercent % Nearest: differing pixels $autoDifferentPixels")
 					if [ "$autoDifferentPixels" != 0 ]; then

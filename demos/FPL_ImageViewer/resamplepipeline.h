@@ -3,8 +3,10 @@ Name:
 	FPL_ImageViewer | Resample pipeline
 
 Description:
-	Scales a picture on the GPU in two separable passes, in linear light with premultiplied alpha, for downscaling and upscaling alike.
+	Scales a picture on the GPU in two separable passes with premultiplied alpha, for downscaling and upscaling alike.
 	Downscaling widens the kernel by the reduction factor, so every source pixel contributes ("correct downscaling").
+	The kernel runs in linear light or on the sRGB values (ResampleSpace): linear light averages brightness correctly, which downscaling needs,
+	but the negative lobes of an upscaling kernel dig far deeper halos into dark tones there, so upscaling usually runs on the sRGB values (like mpv).
 	Per axis the math is the one of ImageMagick -resize, so every result can be measured against it:
 
 		bisect  = (x + 0.5 - origin) / scale               source position of the output pixel center, source pixel i spans [i, i + 1)
@@ -18,7 +20,8 @@ Description:
 	Pass 1 filters horizontally into an RGBA16F intermediate (output columns x the source rows pass 2 needs),
 	pass 2 filters vertically into an RGBA16F result of the output size. At a small scale pass 2 needs many source rows, so both passes run
 	in bands of output rows whose source rows fit into an intermediate of at most 64 MB. The result stays premultiplied and unclamped,
-	so negative lobes survive until ResampleComposite() clamps it and blends it over the background in linear light.
+	so negative lobes survive until ResampleComposite() clamps it, decodes it to linear light when it was filtered on the sRGB values
+	and blends it over the background in linear light.
 	A result is cached, ResampleUpdate() only runs the passes when the request differs from the last one.
 
 	Coordinates are pixels with y pointing down: row 0 of every texture is the top row.
@@ -80,6 +83,14 @@ typedef struct ResampleBackgroundDefinition {
 	const char *key;
 } ResampleBackgroundDefinition;
 
+// Values the kernel weights, the source texture always decodes to linear light (sRGB texture)
+typedef enum ResampleSpace {
+	// Linear light: brightness is averaged correctly, required for downscaling
+	ResampleSpace_Linear = 0,
+	// The sRGB encoded values: halos of negative lobes stay close to the tone they ring around, used for upscaling
+	ResampleSpace_SRGB,
+} ResampleSpace;
+
 // Source pixels [first, end) one axis of an output range reads
 typedef struct ResampleSourceRange {
 	int32_t first;
@@ -112,6 +123,8 @@ typedef struct ResampleRequest {
 	float firstCoverageY;
 	float lastCoverageY;
 	ResampleKernel kernel;
+	// A pixel copy always runs in linear light, it would only add rounding
+	ResampleSpace space;
 	// Output pixels per source pixel on each axis
 	float scaleX;
 	float scaleY;
@@ -146,6 +159,7 @@ typedef struct ResamplePassProgram {
 	GLint locationAxisStepV;
 	GLint locationEdgeCoverage;
 	GLint locationLastTap;
+	GLint locationEncodeSRGB;
 } ResamplePassProgram;
 
 typedef struct ResampleCompositeProgram {
@@ -158,6 +172,7 @@ typedef struct ResampleCompositeProgram {
 	GLint locationCheckerColors;
 	GLint locationCheckerOrigin;
 	GLint locationCheckerSize;
+	GLint locationDecodeSRGB;
 } ResampleCompositeProgram;
 
 typedef struct ResamplePipeline {
@@ -201,6 +216,8 @@ extern bool ResampleFindBackground(const char *key, ResampleBackground *outBackg
 extern bool ResampleIsPixelCopy(const ResampleRequest *request);
 // Kernel the passes run with: Nearest for a pixel copy, the kernel of the request otherwise
 extern ResampleKernel ResampleGetEffectiveKernel(const ResampleRequest *request);
+// Space the passes run in: linear light for a pixel copy, the space of the request otherwise
+extern ResampleSpace ResampleGetEffectiveSpace(const ResampleRequest *request);
 
 // Source pixels one axis of the output pixels [firstOutput, endOutput) reads, the same computation the shaders do
 extern ResampleSourceRange ResampleComputeSourceRange(const ResampleKernel kernel, const float scale, const float origin, const uint32_t firstOutput, const uint32_t endOutput, const uint32_t sourceLength);
@@ -214,7 +231,7 @@ extern void ResampleResultRelease(ResampleResult *result);
 // Keeps the bound framebuffer, the viewport and the blend state.
 extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *request, ResampleResult *result, const char *timerLabel);
 
-// Draws the result into the bound framebuffer, clamped to 0 <= rgb <= alpha <= 1 and blended over the background in linear light
+// Draws the result into the bound framebuffer, clamped to 0 <= rgb <= alpha <= 1, decoded to linear light when it holds sRGB values, and blended over the background in linear light
 extern void ResampleComposite(ResamplePipeline *pipeline, const ResampleResult *result, const ResampleCompositeParameters *parameters);
 
 // True once when the GPU time of the last timed update is available, with the number of bands it took
@@ -378,13 +395,26 @@ static const char ResamplePassBodySource[] = R"(
 	// Coverage of source pixel 0 and of source pixel uniLastTap, the edge pixels of a level that reaches beyond the picture
 	uniform vec2 uniEdgeCoverage;
 	uniform int uniLastTap;
+	// Horizontal only: 1 filters the sRGB values instead of linear light
+	uniform int uniEncodeSRGB;
+
+	vec3 LinearToSRGB(vec3 linear) {
+		const float linearLimit = 0.0031308;
+		const float linearSlope = 12.92;
+		const float scale = 1.055;
+		const float offset = 0.055;
+		const float inverseGamma = 1.0 / 2.4;
+		vec3 curve = scale * pow(max(linear, vec3(linearLimit)), vec3(inverseGamma)) - offset;
+		return mix(curve, linear * linearSlope, lessThanEqual(linear, vec3(linearLimit)));
+	}
 
 	vec4 FetchTap(int tap, ivec2 fragment) {
 	#if HORIZONTAL
 		int displayedRow = fragment.y + uniRowOffset;
 		ivec2 stored = uniAxisOrigin + tap * uniAxisStepU + displayedRow * uniAxisStepV;
 		vec4 texel = texelFetch(uniSource, stored, 0);
-		return vec4(texel.rgb * texel.a, texel.a);
+		vec3 color = uniEncodeSRGB != 0 ? LinearToSRGB(texel.rgb) : texel.rgb;
+		return vec4(color * texel.a, texel.a);
 	#else
 		return texelFetch(uniSource, ivec2(fragment.x, tap - uniRowOffset), 0);
 	#endif
@@ -449,11 +479,28 @@ static const char ResampleCompositeFragmentSource[] = R"(
 	uniform vec3 uniCheckerColors[2];
 	uniform vec2 uniCheckerOrigin;
 	uniform float uniCheckerSize;
+	// 1 when the result holds premultiplied sRGB values, they go back to linear light before blending
+	uniform int uniDecodeSRGB;
+
+	vec3 SRGBToLinear(vec3 encoded) {
+		const float encodedLimit = 0.04045;
+		const float linearSlope = 12.92;
+		const float scale = 1.055;
+		const float offset = 0.055;
+		const float gamma = 2.4;
+		vec3 curve = pow((max(encoded, vec3(encodedLimit)) + offset) / scale, vec3(gamma));
+		return mix(curve, encoded / linearSlope, lessThanEqual(encoded, vec3(encodedLimit)));
+	}
+
 	void main() {
 		ivec2 texel = ivec2(gl_FragCoord.xy - uniRect.xy);
 		vec4 premultiplied = texelFetch(uniResult, texel, 0);
 		float alpha = clamp(premultiplied.a, 0.0, 1.0);
 		vec3 color = clamp(premultiplied.rgb, vec3(0.0), vec3(alpha));
+		if (uniDecodeSRGB != 0 && alpha > 0.0) {
+			vec3 straight = color / alpha;
+			color = SRGBToLinear(straight) * alpha;
+		}
 		vec3 background = uniBackgroundColor;
 		if (uniBackgroundMode == 0) {
 			ivec2 field = ivec2(floor((gl_FragCoord.xy - uniCheckerOrigin) / uniCheckerSize));
@@ -579,6 +626,12 @@ extern ResampleKernel ResampleGetEffectiveKernel(const ResampleRequest *request)
 	return(result);
 }
 
+extern ResampleSpace ResampleGetEffectiveSpace(const ResampleRequest *request) {
+	bool isPixelCopy = ResampleIsPixelCopy(request);
+	ResampleSpace result = isPixelCopy ? ResampleSpace_Linear : request->space;
+	return(result);
+}
+
 static GLuint ResampleCreateShader(const GLenum type, const char *name, const char *source) {
 	GLuint shaderId = glCreateShader(type);
 	glShaderSource(shaderId, 1, &source, NULL);
@@ -649,6 +702,7 @@ static ResamplePassProgram ResampleCreatePassProgram(const ResampleKernel kernel
 		result.locationAxisStepV = glGetUniformLocation(result.programId, "uniAxisStepV");
 		result.locationEdgeCoverage = glGetUniformLocation(result.programId, "uniEdgeCoverage");
 		result.locationLastTap = glGetUniformLocation(result.programId, "uniLastTap");
+		result.locationEncodeSRGB = glGetUniformLocation(result.programId, "uniEncodeSRGB");
 	}
 	return(result);
 }
@@ -665,6 +719,7 @@ static ResampleCompositeProgram ResampleCreateCompositeProgram() {
 		result.locationCheckerColors = glGetUniformLocation(result.programId, "uniCheckerColors");
 		result.locationCheckerOrigin = glGetUniformLocation(result.programId, "uniCheckerOrigin");
 		result.locationCheckerSize = glGetUniformLocation(result.programId, "uniCheckerSize");
+		result.locationDecodeSRGB = glGetUniformLocation(result.programId, "uniDecodeSRGB");
 	}
 	return(result);
 }
@@ -735,6 +790,7 @@ static bool ResampleIsRequestEqual(const ResampleRequest *a, const ResampleReque
 		a->firstCoverageY == b->firstCoverageY &&
 		a->lastCoverageY == b->lastCoverageY &&
 		a->kernel == b->kernel &&
+		a->space == b->space &&
 		a->scaleX == b->scaleX &&
 		a->scaleY == b->scaleY &&
 		a->originX == b->originX &&
@@ -755,8 +811,9 @@ static bool ResampleIsCoverageEmpty(const ResampleRequest *request) {
 	return(result);
 }
 
-// Draws the pass into the target rows [targetTop, targetTop + targetHeight), fragment coordinates stay those of the whole target
-static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const ResampleAxisMapping *mapping, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const float firstCoverage, const float lastCoverage, const int32_t lastTap, const uint32_t targetWidth, const uint32_t targetTop, const uint32_t targetHeight) {
+// Draws the pass into the target rows [targetTop, targetTop + targetHeight), fragment coordinates stay those of the whole target.
+// isEncodingSRGB is for the horizontal pass, it turns the linear texels into sRGB values before filtering.
+static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const ResampleAxisMapping *mapping, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const float firstCoverage, const float lastCoverage, const int32_t lastTap, const bool isEncodingSRGB, const uint32_t targetWidth, const uint32_t targetTop, const uint32_t targetHeight) {
 	const GLint textureUnit = 0;
 	glViewport(0, (GLint)targetTop, (GLsizei)targetWidth, (GLsizei)targetHeight);
 	glActiveTexture(GL_TEXTURE0 + textureUnit);
@@ -774,6 +831,7 @@ static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sou
 	glUniform2i(program->locationAxisStepV, mapping->stepVX, mapping->stepVY);
 	glUniform2f(program->locationEdgeCoverage, firstCoverage, lastCoverage);
 	glUniform1i(program->locationLastTap, lastTap);
+	glUniform1i(program->locationEncodeSRGB, isEncodingSRGB ? 1 : 0);
 	glDrawArrays(GL_TRIANGLES, 0, ResampleFullTriangleVertexCount);
 }
 
@@ -819,6 +877,8 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	// The passes run with the effective kernel, the cache keeps the request as it came
 	ResampleRequest passRequest = *request;
 	passRequest.kernel = ResampleGetEffectiveKernel(request);
+	passRequest.space = ResampleGetEffectiveSpace(request);
+	bool isEncodingSRGB = passRequest.space == ResampleSpace_SRGB;
 	const ResampleKernelDefinition *definition = ResampleGetKernelDefinition(passRequest.kernel);
 	ResampleAxisMapping mapping = request->axisMapping;
 	if (ResampleIsMappingEmpty(&mapping)) {
@@ -874,11 +934,11 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 
 		// Pass 1: picture columns -> output columns, only the rows this band of pass 2 reads
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline->intermediateTexture, 0);
-		ResampleRunPass(horizontalProgram, request->sourceTexture, &mapping, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, firstCoverageX, lastCoverageX, lastColumn, request->outputWidth, 0, rowCount);
+		ResampleRunPass(horizontalProgram, request->sourceTexture, &mapping, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, firstCoverageX, lastCoverageX, lastColumn, isEncodingSRGB, request->outputWidth, 0, rowCount);
 
-		// Pass 2: picture rows -> the output rows of this band
+		// Pass 2: picture rows -> the output rows of this band, the intermediate already holds the values of the space
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result->texture, 0);
-		ResampleRunPass(verticalProgram, pipeline->intermediateTexture, &mapping, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, firstCoverageY, lastCoverageY, lastRow, request->outputWidth, bandStart, bandHeight);
+		ResampleRunPass(verticalProgram, pipeline->intermediateTexture, &mapping, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, firstCoverageY, lastCoverageY, lastRow, false, request->outputWidth, bandStart, bandHeight);
 
 		bandStart = bandEnd;
 		++bandCount;
@@ -920,6 +980,8 @@ extern void ResampleComposite(ResamplePipeline *pipeline, const ResampleResult *
 	int backgroundMode = parameters->background == ResampleBackground_Checker ? backgroundModeChecker : backgroundModeColor;
 	float width = (float)result->request.outputWidth;
 	float height = (float)result->request.outputHeight;
+	ResampleSpace space = ResampleGetEffectiveSpace(&result->request);
+	int decodeSRGB = space == ResampleSpace_SRGB ? 1 : 0;
 
 	GLboolean wasBlendEnabled = glIsEnabled(GL_BLEND);
 	glDisable(GL_BLEND);
@@ -934,6 +996,7 @@ extern void ResampleComposite(ResamplePipeline *pipeline, const ResampleResult *
 	glUniform3fv(program->locationCheckerColors, 2, checkerColors);
 	glUniform2f(program->locationCheckerOrigin, parameters->checkerOriginX, parameters->checkerOriginY);
 	glUniform1f(program->locationCheckerSize, ResampleCheckerFieldSize);
+	glUniform1i(program->locationDecodeSRGB, decodeSRGB);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, ResampleRectangleVertexCount);
 	glUseProgram(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
