@@ -389,10 +389,18 @@ Maßgeblich ist die Kennung. Ein Name wird nur als Abkürzung angenommen, wenn e
 
 **Einkompiliert, aber DLL-fähig.** Vorerst werden die Loader einkompiliert und beim Start registriert. Die Schnittstelle ist aber reines C, hat `interfaceVersion` und `structSize` und keine C++-Typen. Ein späterer Plugin-Loader über `fplDynamicLibraryLoad` mit genau einer exportierten Funktion `ImageLoaderGetDescriptor` braucht deshalb keine Änderung an der Schnittstelle (Abschnitt 7).
 
+Die eingebauten Loader und ihre festen Kennungen (seit Iteration 3):
+
+| Name | Kennung | Endungen |
+|---|---|---|
+| `stb_image` | `854c10ca-79dc-4202-b064-586af81a96e0` | .jpg .jpeg .png .bmp |
+| `pnm` | `f66f6759-5f30-42bc-a046-0d758209a92a` | .pgm .ppm .pam .pnm |
+| `reference-bmp` | `3e5883ac-265c-4795-9bf0-de30a8a127c3` | .bmp |
+
 **Zwei kleine eingebaute Loader beweisen die Architektur**, zusätzlich zu stb:
 
 - **PNM/PAM** (`.ppm .pgm .pam`, Magic `P5`/`P6`/`P7`) — ein **neues Format**. Es hat auch über den Beweis hinaus Nutzen: Der Messstand schreibt PAM (`--render-to`), und der Viewer kann seine eigenen Testergebnisse dann direkt zeigen.
-- **Referenz-BMP** (nur unkomprimiertes `BI_RGB` mit 24/32 Bit, bottom-up und top-down) — ein **Format, das stb auch kann**. Damit werden das Festlegen (`--loader-for=bmp:…`) und der Rückfall bewiesen: Ein RLE- oder Paletten-BMP gibt `Unsupported`, und stb übernimmt. Wo sich beide überschneiden, muss das Ergebnis byteidentisch zu stb sein. Er **bleibt** in der App registriert, steht in der Reihenfolge aber **hinter** stb. Er ändert also nie etwas, solange man ihn nicht festlegt, und dient Loader-Autoren als lebendes Beispiel.
+- **Referenz-BMP** (nur unkomprimiertes `BI_RGB` mit 24/32 Bit, bottom-up und top-down) — ein **Format, das stb auch kann**. Damit werden das Festlegen (`--loader-for=bmp:…`) und der Rückfall bewiesen: Ein Paletten-BMP gibt `Unsupported`, und stb übernimmt. Ein RLE-BMP kann auch stb nicht lesen, das stellte sich in Iteration 3 heraus. Wo sich beide überschneiden, muss das Ergebnis byteidentisch zu stb sein. Er **bleibt** in der App registriert, steht in der Reihenfolge aber **hinter** stb. Er ändert also nie etwas, solange man ihn nicht festlegt, und dient Loader-Autoren als lebendes Beispiel.
 
 ---
 
@@ -466,10 +474,11 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 | `palette8`, `gray8` | 256² | bpp-Anzeige | **8 bpp (Palette)**, **8 bpp** |
 | `render_rgba.pam`, `.ppm`, `.pgm` | klein | PNM/PAM-Loader (neues Format) | erscheint im Ordnerscan, Pixel gleich der Quelle |
 | `bmp24_bottomup`, `bmp32_topdown` | 257×131 | Referenz-BMP gegen stb | **byteidentisch** |
-| `bmp_rle8` | 64² | Rückfall | Referenz-BMP lehnt ab, stb liest; das Log nennt beide |
+| `bmp_palette8` | 64², 8 Bit Palette, unkomprimiert | Rückfall | Referenz-BMP lehnt ab, stb liest; das Log nennt beide (seit Iteration 3) |
+| `bmp_rle8` | 64² | kein Loader liest es | stb_image kann kein RLE, was vor Iteration 3 nicht bekannt war: Fehlerzustand, das Log nennt beide Loader |
 | `png_named.jpg` | 64² | Signatur schlägt Endung | wird als PNG gelesen |
 | `orientation_1` … `orientation_8` | 300×200 JPEG | EXIF-Orientierung | Ein asymmetrisches Motiv („F“ mit Farbecken, `orientation_upright.png`) wird für jede der 8 Orientierungen passend gedreht bzw. gespiegelt **gespeichert** und bekommt ein von Hand gebautes APP1-Segment mit genau dem Orientierungs-Tag, ungerade Werte big-endian (`MM`), gerade little-endian (`II`). `magick -orient` schreibt ohne vorhandenes EXIF-Profil nichts. Gegenprobe: `magick orientation_N.jpg -auto-orient` ergibt für alle 8 das aufrechte Motiv (64 dB). Alle 8 müssen **gleich** angezeigt werden, bei 100 % byteidentisch zur Referenz von `orientation_1` bis auf JPEG-Abweichungen (PSNR-Schwelle), eingepasst, gezoomt und in der Vorschau-Leiste. |
-| `truncated.jpg`, `empty.png` (0 Byte) | | kaputte Dateien | Fehlerzustand, kein Absturz, alle passenden Loader versucht |
+| `truncated.jpg`, `empty.png` (0 Byte) | | kaputte Dateien | kein Absturz. `empty.png` endet im Fehlerzustand, nachdem alle passenden Loader versucht wurden. `truncated.jpg` zeigt stb_image teilweise, den Rest grau, wie andere Betrachter auch. |
 | `exif_broken.jpg`, `exif_broken_ifd_offset.jpg` | 64² | EXIF-Block mit Offsets und Längen außerhalb des Blocks: 256 angebliche Einträge in einem Block mit einem, Orientierung mit 65536 Werten an Offset 0xFFFFFFF0; bzw. IFD0-Offset weit hinter dem Blockende | wird als Orientierung 1 angezeigt, kein Absturz, kein Lesen über den Block hinaus (unter ASan geprüft) |
 | `Übersicht_ä.png` | 320×200 | Umlaute im Dateinamen (Iteration 7) | Info-Zeile zeigt den Namen richtig |
 | Fotos `202308`, `Bildschirmfotos` | | echte Motive | Sichtprüfung an vergrößerten Ausschnitten |
@@ -584,6 +593,27 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - `L` schaltet ein BMP zwischen beiden Loadern um, und der Titel zeigt jeweils den richtigen.
   - `--decode-all=/home/final/Bilder/202308` liest alle 515 Fotos mit 32 Threads ohne Fehler.
   - `stbi_set_*` wird nur noch bei der Registrierung aufgerufen (per `grep` geprüft).
+
+**Stand (2026-09-23):**
+- Erledigt:
+  - `imageloader.h` mit Kennungstyp (Parsen, Formatieren, Vergleich), C-Schnittstelle (`interfaceVersion`, `structSize`), `ImageSource` über `fplFile*` und über Speicher, Registry (Reihenfolge, Probe, Festlegen global und je Endung, Rückfall, Mutex für nicht threadsichere Loader) und EXIF-Leser.
+  - Die Loader `imageloader_stb.h`, `imageloader_pnm.h` und `imageloader_bmp.h`. Der Lade-Thread läuft nur noch über `ImageLoaderRegistryLoad`, und der Ordnerscan fragt die Registry.
+  - EXIF-Orientierung als ganzzahlige Achsabbildung (`ComputeViewOrientationMapping`). Nur Durchgang 1 der Pipeline liest darüber, nichts wird umkopiert.
+  - `L`, `--loader`, `--loader-for`, `--loader-order`, `--no-loader-fallback`, `--list-loaders`, `--decode-all`, Loader-Name im Fenstertitel, 110 Selbsttest-Prüfungen.
+- Gefunden und behoben:
+  - `stbi_info` meldet ein top-down-BMP mit negativer Höhe, der stb-Loader korrigiert das.
+  - Zwei Lade-Threads konnten denselben Bild-Slot nehmen, die Übergabe läuft jetzt über Compare-and-Swap.
+  - stb_image kann kein RLE-BMP. Deshalb beweist `bmp_palette8.bmp` den Rückfall, nicht `bmp_rle8.bmp` (4.1).
+- Abnahme:
+  - `orientation_1` … `orientation_8`: alle aufrecht und gleich. Gegen `orientation_1` liegen sie bei 100 % bei 66,7–70,7 dB (Orientierung 4 byteidentisch), eingepasst und bei 230 % bei 69–74 dB. Gegen die aufrechte PNG-Quelle erreichen alle 64,3 dB, das ist die JPEG-Kompression. Die Fotos `IMG_9013`/`IMG_9133` (Orientierung 3) und `IMG_8925`/`IMG_8959` (Orientierung 6) stehen aufrecht, und Größe und Seitenverhältnis stimmen mit `magick -auto-orient` überein.
+  - `--list-loaders` zeigt die drei Loader mit Kennung. Eine unbekannte Kennung und ein unbekannter Name enden mit einer klaren Meldung und Exit-Code 1, ein mehrdeutiger Name nennt alle passenden Kennungen (Selbsttest).
+  - BMP: `bmp24_bottomup` und `bmp32_topdown` liefern mit stb_image und mit `--loader-for=bmp:reference-bmp` **byteidentische** Pixel (AE 0). `bmp_palette8`: Die Referenz lehnt ab, stb liest, und das Log nennt beide. Mit `--no-loader-fallback` bleibt der Fehler stehen. `png_named.jpg` wird als PNG gelesen. Kaputte Dateien bringen keinen Absturz.
+  - PNM: `render_rgb.ppm`, `render_gray.pgm` und `render_rgba.pam` sind bei 100 % byteidentisch zu ImageMagick. Sie erscheinen im Ordnerscan (40 statt 37 Dateien).
+  - `--decode-all=/home/final/Bilder/202308`: 515 Fotos mit 32 Threads in 2,6 s ohne Fehler. `Bildschirmfotos`: 39 Dateien ohne Fehler.
+  - EXIF unter ASan und UBSan: Selbsttest und `--decode-all` über alle Testbilder laufen ohne Speicherfehler. UBSan meldet nur ungerade ausgerichtete Zugriffe in `fplMemoryCopy`, die gehören zu FPL (7.2).
+  - `stbi_set_*` steht nur noch in der Registrierung des stb-Loaders (`grep`).
+  - `L` schaltet `bmp24_bottomup.bmp` zwischen stb_image und reference-bmp hin und her, und der Fenstertitel zeigt jeweils den richtigen Loader (`xdotool`, Titel über `xprop`, Debug-Build). Ohne VSync ist das neue Bild nach 2 ms da. Mit VSync dauerte es im automatischen Test bis zu 1 s: Der NVIDIA-Treiber schläft in `glXSwapBuffers` (nachgewiesen mit `strace -k`) und bremst den Tausch vermutlich, weil die Testfenster hinter anderen Fenstern liegen. Mit dem Viewer hat das nichts zu tun.
+  - Testlauf mit Standardeinstellungen: alle 648 Zeilen gleich wie nach Iteration 2. Der Umbau auf Loader ändert also kein Pixel.
 
 ### Iteration 4 — LOD-Kette, SIMD-Reducer, Fortschritt
 
@@ -700,6 +730,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - **LOD eines Bildes auf mehrere Threads:** nur falls die Benchmarks aus Iteration 4 es verlangen.
 - **Blockierendes Warten in FPL** (etwa `fplWaitEvent(timeout)`: X11 über `select` auf die Verbindung, Win32 über `MsgWaitForMultipleObjects`): Damit käme der Leerlauf ohne Schlaf-Intervall und ohne dessen Eingabelatenz aus. Der Leerlauf in Iteration 1 funktioniert auch ohne.
 - **Verstecktes Fenster in FPL** (etwa `fplWindowSettings.isVisible`): `--render-to` bräuchte dann gar kein sichtbares Fenster mehr, KWin würde es nicht verwalten, und der Fehler bei wiederverwendeten X-Kennungen (Abschnitt 8) könnte nicht mehr auftreten.
+- **`fplMemoryCopy` greift auf ungerade ausgerichtete Adressen zu** (gefunden in Iteration 3 mit UBSan): Die Wortgröße richtet sich nach der Byteanzahl, nicht nach der Ausrichtung. Unter x86 und ARM64 geht das gut, formal ist es undefiniertes Verhalten, und auf ARM32 mit strenger Ausrichtung kann es fehlschlagen. Das gehört als eigene Korrektur nach FPL.
 - **Glyphen jenseits von Latin-1** (mehrere Bereiche oder ein dynamischer Glyphen-Cache in `fui_font_stbtt.h`), falls Dateinamen mit anderen Schriften eine Rolle spielen.
 
 ---
