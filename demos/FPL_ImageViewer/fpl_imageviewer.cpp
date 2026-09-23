@@ -2013,8 +2013,8 @@ static bool Init(ViewerState* state) {
 		}
 	}
 
-	state->view.zoomMode = state->params.zoomMode;
-	state->view.customScale = state->params.zoomScale;
+	const float centered = 0.5f;
+	state->view = ViewMakeState(state->params.zoomMode, state->params.zoomScale, centered, centered);
 
 	UpdateWindowTitle(state);
 
@@ -2255,7 +2255,8 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) 
 	float blockSize = (stripWidth - paddingSum) / (float)blockCount;
 	float stripLeft = (viewportWidth - stripWidth) * 0.5f;
 	float stripTop = floorf(viewportHeight - blockPadding - blockSize);
-	ViewState fitView = fplStructInit(ViewState, ViewZoomMode_Fit, 0.0f);
+	const float centered = 0.5f;
+	ViewState fitView = ViewMakeState(ViewZoomMode_Fit, 0.0f, centered, centered);
 	ViewSize blockPixelSize = fplStructInit(ViewSize, (uint32_t)blockSize, (uint32_t)blockSize);
 
 	for (int i = 0; i < blockCount; ++i) {

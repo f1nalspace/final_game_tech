@@ -67,7 +67,8 @@ static void SelfTestCheckRect(SelfTest* test, const ViewRect actual, const float
 }
 
 static ViewTransform SelfTestComputeTransform(const ViewZoomMode zoomMode, const float customScale, const uint32_t pictureWidth, const uint32_t pictureHeight, const uint32_t viewportWidth, const uint32_t viewportHeight) {
-	ViewState viewState = fplStructInit(ViewState, zoomMode, customScale);
+	const float centered = 0.5f;
+	ViewState viewState = ViewMakeState(zoomMode, customScale, centered, centered);
 	ViewSize pictureSize = fplStructInit(ViewSize, pictureWidth, pictureHeight);
 	ViewSize viewportSize = fplStructInit(ViewSize, viewportWidth, viewportHeight);
 	ViewTransform result = ComputeViewTransform(&viewState, pictureSize, viewportSize);
@@ -175,6 +176,165 @@ static void SelfTestViewTransform(SelfTest* test) {
 	SelfTestCheck(test, wholePixelFailures == 0, "Sweep: the picture rectangle is always on whole pixels");
 	SelfTestCheck(test, insideFailures == 0, "Sweep: a fitted picture stays inside the viewport");
 	SelfTestCheck(test, touchFailures == 0, "Sweep: a fitted picture fills the viewport on one axis");
+}
+
+// Pan and zoom (plan section 2.6 and iteration 6): zoom around a point, clamping, zoom steps with the magnet, keeping the view over a picture change
+static void SelfTestViewNavigation(SelfTest* test) {
+	test->groupName = "ViewNavigation";
+	const float centered = 0.5f;
+	const float halfPixel = 0.5f;
+	const float actualScale = 1.0f;
+
+	// Zoom around a point: the picture point under the point stays there within half a pixel, unless the picture hits a viewport edge
+	const ViewSize largePicture = fplStructInit(ViewSize, 4000, 3000);
+	const ViewSize zoomViewport = fplStructInit(ViewSize, 1000, 800);
+	const float zoomScales[] = { 1.5f, 2.0f, 3.3f, 0.7f, 0.4f, 12.0f };
+	const float zoomPoints[][2] = { { 100.0f, 100.0f }, { 500.0f, 400.0f }, { 873.0f, 611.0f }, { 20.0f, 790.0f }, { 333.3f, 17.9f } };
+	ViewState zoomStart = ViewMakeState(ViewZoomMode_ActualSize, actualScale, centered, centered);
+	ViewTransform zoomStartTransform = ComputeViewTransform(&zoomStart, largePicture, zoomViewport);
+	uint32_t zoomChecks = 0;
+	uint32_t zoomFailures = 0;
+	for (uint32_t scaleIndex = 0; scaleIndex < fplArrayCount(zoomScales); ++scaleIndex) {
+		for (uint32_t pointIndex = 0; pointIndex < fplArrayCount(zoomPoints); ++pointIndex) {
+			float pointX = zoomPoints[pointIndex][0];
+			float pointY = zoomPoints[pointIndex][1];
+			float fractionX = (pointX - zoomStartTransform.imageRect.left) / zoomStartTransform.imageRect.width;
+			float fractionY = (pointY - zoomStartTransform.imageRect.top) / zoomStartTransform.imageRect.height;
+			ViewState zoomed = ComputeViewZoomAtPoint(&zoomStart, largePicture, zoomViewport, ViewZoomMode_Custom, zoomScales[scaleIndex], pointX, pointY);
+			ViewTransform zoomedTransform = ComputeViewTransform(&zoomed, largePicture, zoomViewport);
+			float lowestLeft = (float)zoomViewport.width - zoomedTransform.imageRect.width;
+			float lowestTop = (float)zoomViewport.height - zoomedTransform.imageRect.height;
+			bool isClampedX = zoomedTransform.imageRect.left == 0.0f || zoomedTransform.imageRect.left == lowestLeft;
+			bool isClampedY = zoomedTransform.imageRect.top == 0.0f || zoomedTransform.imageRect.top == lowestTop;
+			float movedX = zoomedTransform.imageRect.left + fractionX * zoomedTransform.imageRect.width;
+			float movedY = zoomedTransform.imageRect.top + fractionY * zoomedTransform.imageRect.height;
+			if (!isClampedX) {
+				++zoomChecks;
+				if (fabsf(movedX - pointX) > halfPixel) {
+					++zoomFailures;
+				}
+			}
+			if (!isClampedY) {
+				++zoomChecks;
+				if (fabsf(movedY - pointY) > halfPixel) {
+					++zoomFailures;
+				}
+			}
+		}
+	}
+	const uint32_t leastZoomChecks = 40;
+	SelfTestCheck(test, zoomChecks >= leastZoomChecks && zoomFailures == 0, "Zoom around a point keeps the picture point under it within half a pixel");
+
+	// Clamping: a larger picture never shows a border however far it is moved, and turns around at once; a smaller one stays centered
+	const float farAway = 100000.0f;
+	const float smallStep = 10.0f;
+	const ViewSize panPicture = fplStructInit(ViewSize, 2000, 1500);
+	ViewState panStart = ViewMakeState(ViewZoomMode_ActualSize, actualScale, centered, centered);
+	ViewState pannedTopLeft = ComputeViewPan(&panStart, panPicture, zoomViewport, farAway, farAway);
+	ViewTransform topLeftTransform = ComputeViewTransform(&pannedTopLeft, panPicture, zoomViewport);
+	SelfTestCheckRect(test, topLeftTransform.imageRect, 0.0f, 0.0f, 2000.0f, 1500.0f, "Moved far to the bottom right, the top-left corner stops at the viewport corner");
+	ViewState pannedBack = ComputeViewPan(&pannedTopLeft, panPicture, zoomViewport, -smallStep, -smallStep);
+	ViewTransform pannedBackTransform = ComputeViewTransform(&pannedBack, panPicture, zoomViewport);
+	SelfTestCheckRect(test, pannedBackTransform.imageRect, -smallStep, -smallStep, 2000.0f, 1500.0f, "Moving back from the edge moves at once");
+	ViewState pannedBottomRight = ComputeViewPan(&panStart, panPicture, zoomViewport, -farAway, -farAway);
+	ViewTransform bottomRightTransform = ComputeViewTransform(&pannedBottomRight, panPicture, zoomViewport);
+	SelfTestCheckRect(test, bottomRightTransform.imageRect, -1000.0f, -700.0f, 2000.0f, 1500.0f, "Moved far to the top left, the bottom-right corner stops at the viewport corner");
+	const ViewSize smallPicture = fplStructInit(ViewSize, 300, 200);
+	ViewState smallPanned = ComputeViewPan(&panStart, smallPicture, zoomViewport, farAway, -farAway);
+	ViewTransform smallTransform = ComputeViewTransform(&smallPanned, smallPicture, zoomViewport);
+	SelfTestCheckRect(test, smallTransform.imageRect, 350.0f, 300.0f, 300.0f, 200.0f, "A picture smaller than the viewport stays centered when moved");
+
+	// Zoom steps of + and -: the fit scale is a step of its own, the limits stop at 1/8 here
+	const float photoFitScale = 720.0f / 3024.0f;
+	const float quarterScale = 0.25f;
+	const float eighthScale = 0.125f;
+	const float oneAndHalfScale = 1.5f;
+	const float largestScale = 32.0f;
+	ViewZoomMode stepMode = ViewZoomMode_ShrinkToFit;
+	float stepUpFromFit = ComputeViewStepScale(photoFitScale, photoFitScale, 1, &stepMode);
+	SelfTestCheck(test, stepUpFromFit == quarterScale && stepMode == ViewZoomMode_Custom, "Step up from fit 23.8 % is 25 %");
+	float stepDownToFit = ComputeViewStepScale(quarterScale, photoFitScale, -1, &stepMode);
+	SelfTestCheck(test, stepDownToFit == photoFitScale && stepMode == ViewZoomMode_Fit, "Step down from 25 % is fit");
+	float stepDownFromFit = ComputeViewStepScale(photoFitScale, photoFitScale, -1, &stepMode);
+	SelfTestCheck(test, stepDownFromFit == eighthScale && stepMode == ViewZoomMode_Custom, "Step down from fit 23.8 % is 12.5 %");
+	float stepBelowLimit = ComputeViewStepScale(eighthScale, photoFitScale, -1, &stepMode);
+	SelfTestCheck(test, stepBelowLimit == eighthScale, "No step below half the fit scale");
+	float stepUpFromActual = ComputeViewStepScale(actualScale, photoFitScale, 1, &stepMode);
+	SelfTestCheck(test, stepUpFromActual == oneAndHalfScale && stepMode == ViewZoomMode_Custom, "Step up from 100 % is 150 %");
+	float stepDownToActual = ComputeViewStepScale(oneAndHalfScale, photoFitScale, -1, &stepMode);
+	SelfTestCheck(test, stepDownToActual == actualScale && stepMode == ViewZoomMode_ActualSize, "Step down from 150 % is 100 %");
+	float stepAboveLimit = ComputeViewStepScale(largestScale, photoFitScale, 1, &stepMode);
+	SelfTestCheck(test, stepAboveLimit == largestScale, "No step above 3200 %");
+
+	// Wheel: 1.2 per notch, the magnet snaps to 100 % and fit when a notch would pass over them
+	const float nearActualScale = 0.9f;
+	const float wheelNotch = 1.0f;
+	const float halfNotch = 0.5f;
+	const float wheelFactor = 1.2f;
+	float wheelToActual = ComputeViewWheelScale(nearActualScale, photoFitScale, wheelNotch, &stepMode);
+	SelfTestCheck(test, wheelToActual == actualScale && stepMode == ViewZoomMode_ActualSize, "A notch from 90 % snaps to 100 %");
+	float wheelFromActual = ComputeViewWheelScale(actualScale, photoFitScale, wheelNotch, &stepMode);
+	SelfTestCheckNear(test, wheelFromActual, wheelFactor, "A notch from 100 % goes on to 120 %");
+	float wheelToFit = ComputeViewWheelScale(quarterScale, photoFitScale, -wheelNotch, &stepMode);
+	SelfTestCheck(test, wheelToFit == photoFitScale && stepMode == ViewZoomMode_Fit, "A notch down from 25 % snaps to fit 23.8 %");
+	float wheelHalfNotch = ComputeViewWheelScale(actualScale, photoFitScale, halfNotch, &stepMode);
+	SelfTestCheckNear(test, wheelHalfNotch, sqrtf(wheelFactor), "Half a notch zooms by the square root");
+	// One notch up from fit and one back ends a float rounding away from fit, the magnet still takes it
+	const float oddFitScale = 700.0f / 2048.0f;
+	float wheelUpFromFit = ComputeViewWheelScale(oddFitScale, oddFitScale, wheelNotch, &stepMode);
+	float wheelBackToFit = ComputeViewWheelScale(wheelUpFromFit, oddFitScale, -wheelNotch, &stepMode);
+	SelfTestCheck(test, wheelBackToFit == oddFitScale && stepMode == ViewZoomMode_Fit, "A notch up from fit and one back is fit again");
+	float wheelUpFromActual = ComputeViewWheelScale(actualScale, oddFitScale, wheelNotch, &stepMode);
+	float wheelBackToActual = ComputeViewWheelScale(wheelUpFromActual, oddFitScale, -wheelNotch, &stepMode);
+	SelfTestCheck(test, wheelBackToActual == actualScale && stepMode == ViewZoomMode_ActualSize, "A notch up from 100 % and one back is 100 % again");
+
+	// Keep relative: the same motif in 4032 and 1008 shows the same part at the same displayed size, same sized pictures show the very same pixels
+	const ViewSize keepViewport = fplStructInit(ViewSize, 1280, 720);
+	const ViewSize largeMotif = fplStructInit(ViewSize, 4032, 3024);
+	const ViewSize smallMotif = fplStructInit(ViewSize, 1008, 756);
+	const float relativeZoom = 2.0f;
+	const float zoomPointX = 300.0f;
+	const float zoomPointY = 200.0f;
+	ViewState startView = ViewMakeState(ViewZoomMode_ShrinkToFit, 0.0f, centered, centered);
+	ViewTransform largeFitted = ComputeViewTransform(&startView, largeMotif, keepViewport);
+	ViewState largeZoomed = ComputeViewZoomAtPoint(&startView, largeMotif, keepViewport, ViewZoomMode_Custom, largeFitted.fitScale * relativeZoom, zoomPointX, zoomPointY);
+	ViewTransform largeTransform = ComputeViewTransform(&largeZoomed, largeMotif, keepViewport);
+	ViewState relativeView = ComputeViewForNextPicture(&largeZoomed, ViewPersistence_KeepRelative, &startView, largeMotif, keepViewport);
+	ViewState relativeResolved = ComputeViewResolved(&relativeView, smallMotif, keepViewport);
+	ViewTransform smallMotifTransform = ComputeViewTransform(&relativeResolved, smallMotif, keepViewport);
+	float partTolerance = 1.5f / largeTransform.imageRect.width;
+	bool isSameDisplayedSize = fabsf(smallMotifTransform.imageRect.width - largeTransform.imageRect.width) <= actualScale && fabsf(smallMotifTransform.imageRect.height - largeTransform.imageRect.height) <= actualScale;
+	bool isSamePartX = fabsf(smallMotifTransform.visibleSourceRect.left / (float)smallMotif.width - largeTransform.visibleSourceRect.left / (float)largeMotif.width) <= partTolerance;
+	bool isSamePartY = fabsf(smallMotifTransform.visibleSourceRect.top / (float)smallMotif.height - largeTransform.visibleSourceRect.top / (float)largeMotif.height) <= partTolerance;
+	SelfTestCheck(test, isSameDisplayedSize && isSamePartX && isSamePartY, "Keep relative: 4032 and 1008 show the same part at the same size");
+	SelfTestCheck(test, relativeResolved.pendingRelativeScale == 0.0f && relativeResolved.customScale == smallMotifTransform.scale, "The relative scale is resolved into the scale itself");
+	ViewState sameSizeView = ComputeViewForNextPicture(&largeZoomed, ViewPersistence_KeepRelative, &startView, largeMotif, keepViewport);
+	ViewTransform sameSizeTransform = ComputeViewTransform(&sameSizeView, largeMotif, keepViewport);
+	SelfTestCheckRect(test, sameSizeTransform.imageRect, largeTransform.imageRect.left, largeTransform.imageRect.top, largeTransform.imageRect.width, largeTransform.imageRect.height, "Keep relative: a picture of the same size shows the very same view");
+
+	// Keep absolute: at 100 % both show 1:1 around the same normalized center
+	const ViewSize absoluteViewport = fplStructInit(ViewSize, 800, 600);
+	const float absoluteCenter = 0.45f;
+	ViewState actualView = ViewMakeState(ViewZoomMode_ActualSize, actualScale, absoluteCenter, absoluteCenter);
+	ViewState absoluteView = ComputeViewForNextPicture(&actualView, ViewPersistence_KeepAbsolute, &startView, largeMotif, absoluteViewport);
+	ViewTransform absoluteTransform = ComputeViewTransform(&absoluteView, smallMotif, absoluteViewport);
+	float shownCenterX = ((float)absoluteViewport.width * centered - absoluteTransform.imageRect.left) / absoluteTransform.imageRect.width;
+	float shownCenterY = ((float)absoluteViewport.height * centered - absoluteTransform.imageRect.top) / absoluteTransform.imageRect.height;
+	float centerTolerance = halfPixel / absoluteTransform.imageRect.width;
+	bool isSameCenter = fabsf(shownCenterX - absoluteCenter) <= centerTolerance && fabsf(shownCenterY - absoluteCenter) <= centerTolerance;
+	SelfTestCheck(test, absoluteTransform.scale == actualScale && isSameCenter, "Keep absolute: 4032 and 1008 at 100 % around the same center");
+	const float halfScale = 0.5f;
+	ViewState customView = ViewMakeState(ViewZoomMode_Custom, halfScale, centered, centered);
+	ViewState customAbsolute = ComputeViewForNextPicture(&customView, ViewPersistence_KeepAbsolute, &startView, largeMotif, absoluteViewport);
+	ViewTransform customAbsoluteTransform = ComputeViewTransform(&customAbsolute, smallMotif, absoluteViewport);
+	SelfTestCheck(test, customAbsoluteTransform.scale == halfScale, "Keep absolute keeps a custom scale as it is");
+
+	// Reset starts over, and a picture that is still loading keeps the view untouched
+	ViewState resetView = ComputeViewForNextPicture(&largeZoomed, ViewPersistence_Reset, &startView, largeMotif, keepViewport);
+	SelfTestCheck(test, resetView.zoomMode == ViewZoomMode_ShrinkToFit && resetView.centerX == centered && resetView.centerY == centered, "Reset starts with the start view");
+	const ViewSize loadingPicture = fplStructInit(ViewSize, 0, 0);
+	ViewState loadingView = ComputeViewForNextPicture(&relativeView, ViewPersistence_KeepRelative, &startView, loadingPicture, keepViewport);
+	SelfTestCheck(test, loadingView.pendingRelativeScale == relativeView.pendingRelativeScale && loadingView.centerX == relativeView.centerX, "A picture that is still loading keeps the view as it is");
 }
 
 static void SelfTestCheckRange(SelfTest* test, const ResampleSourceRange actual, const int32_t first, const int32_t end, const char* description) {
@@ -1025,6 +1185,7 @@ static int RunSelfTest(const char* imageFolder) {
 	SelfTest test = fplZeroInit;
 	ImagePyramidInitialize();
 	SelfTestViewTransform(&test);
+	SelfTestViewNavigation(&test);
 	SelfTestResample(&test);
 	SelfTestOrientation(&test);
 	SelfTestLoaderIds(&test);
