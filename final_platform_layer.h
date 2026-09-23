@@ -195,6 +195,7 @@ SOFTWARE.
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
+	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
 	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 
@@ -15381,11 +15382,13 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_SET(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, value);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_SET(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, value);
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
@@ -15401,11 +15404,13 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_CLEAR(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_CLEAR(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
@@ -15422,11 +15427,13 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (sourceSize % 8 == 0) {
+	// A word size is only used when both addresses are aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)sourceMem | (uintptr_t)targetMem | (uintptr_t)sourceSize;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (sourceSize % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (sourceSize % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
