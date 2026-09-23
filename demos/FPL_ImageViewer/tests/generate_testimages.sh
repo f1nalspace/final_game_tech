@@ -238,7 +238,7 @@ bmpHeight=131
 bmpRedExpression="i/(w-1)"
 bmpGreenExpression="j/(h-1)"
 bmpBlueExpression="0.5+0.5*sin(i*0.3)*cos(j*0.2)"
-step "bmp24_bottomup.bmp, bmp32_topdown.bmp, bmp_rle8.bmp"
+step "bmp24_bottomup.bmp, bmp32_topdown.bmp, bmp_rle8.bmp, bmp_palette8.bmp"
 fx_rgb $bmpWidth $bmpHeight "$bmpRedExpression" "$bmpGreenExpression" "$bmpBlueExpression" bmp_source.png
 magick bmp_source.png -type TrueColor BMP3:bmp24_bottomup.bmp
 bmpFileHeaderSize=14
@@ -268,6 +268,9 @@ bmpPixelsPerMeter=2835
 rm bmp_source.png
 bmpRleSize=64
 magick -size "${bmpRleSize}x${bmpRleSize}" -define gradient:direction=East gradient:red-blue +dither -colors 16 -compress RLE BMP3:bmp_rle8.bmp
+# Uncompressed 8 bit palette: stb_image reads it, the reference loader does not, so it proves the fallback (stb_image cannot read RLE either)
+bmpPaletteColors=200
+magick -size "${bmpRleSize}x${bmpRleSize}" -define gradient:direction=East gradient:red-blue +dither -colors $bmpPaletteColors -compress None BMP3:bmp_palette8.bmp
 
 # PNG content behind a .jpg extension: the signature must win over the extension
 step "png_named.jpg"
