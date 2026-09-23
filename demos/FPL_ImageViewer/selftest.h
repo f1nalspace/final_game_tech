@@ -227,6 +227,28 @@ static void SelfTestResample(SelfTest* test) {
 	SelfTestCheckRange(test, nearest, 1, 16, "Nearest 0.25");
 	ResampleSourceRange empty = ResampleComputeSourceRange(ResampleKernel_Mitchell, 0.5f, 0.0f, 5, 5, 100);
 	SelfTestCheckRange(test, empty, 0, 0, "No output rows read nothing");
+
+	// Exactly 1:1 at a whole pixel origin copies the pixels with Nearest, any other scale or a fractional origin keeps the kernel
+	const float identityScale = 1.0f;
+	const float wholeOrigin = -37.0f;
+	const float fractionalOrigin = -37.5f;
+	const float roundedAxisScale = 1.004f;
+	ResampleRequest copyRequest = fplZeroInit;
+	copyRequest.kernel = ResampleKernel_Mitchell;
+	copyRequest.scaleX = identityScale;
+	copyRequest.scaleY = identityScale;
+	copyRequest.originX = wholeOrigin;
+	copyRequest.originY = 0.0f;
+	ResampleKernel copyKernel = ResampleGetEffectiveKernel(&copyRequest);
+	SelfTestCheck(test, ResampleIsPixelCopy(&copyRequest) && copyKernel == ResampleKernel_Nearest, "Mitchell at 1:1 with a whole pixel origin copies the pixels");
+	ResampleRequest shiftedRequest = copyRequest;
+	shiftedRequest.originY = fractionalOrigin;
+	ResampleKernel shiftedKernel = ResampleGetEffectiveKernel(&shiftedRequest);
+	SelfTestCheck(test, !ResampleIsPixelCopy(&shiftedRequest) && shiftedKernel == ResampleKernel_Mitchell, "A fractional origin keeps the kernel at 1:1");
+	ResampleRequest oneAxisRequest = copyRequest;
+	oneAxisRequest.scaleY = roundedAxisScale;
+	ResampleKernel oneAxisKernel = ResampleGetEffectiveKernel(&oneAxisRequest);
+	SelfTestCheck(test, !ResampleIsPixelCopy(&oneAxisRequest) && oneAxisKernel == ResampleKernel_Mitchell, "Scale 1 on one axis only keeps the kernel on both");
 }
 
 static void SelfTestOrientation(SelfTest* test) {

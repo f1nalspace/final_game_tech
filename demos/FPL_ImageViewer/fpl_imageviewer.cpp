@@ -31,6 +31,7 @@ Changelog:
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
 	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
+	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
 	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
 	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
 	- Changed: The preview strip scales its pictures with the resample pipeline too, computed once per picture
@@ -944,6 +945,73 @@ static ResampleKernel GetKernelForTransform(const ViewerState* state, const View
 	return(result);
 }
 
+// Level the resample pipeline reads for the transform (plan section 2.3), --lod-source=0 always takes the largest level on the GPU.
+// So do Nearest and Box: both let details above the output Nyquist limit through (Nearest all of them, Box through the side lobes of its spectrum),
+// that is what they look like, and a reduced level has those details already filtered out.
+static uint32_t GetPictureSourceLevel(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform) {
+	const ImageData* image = &picture->image;
+	ResampleKernel kernel = GetKernelForTransform(state, transform);
+	bool isAliasingKernel = kernel == ResampleKernel_Nearest || kernel == ResampleKernel_Box;
+	if (state->params.isFullSourceLevelForced || isAliasingKernel) {
+		return(image->firstUploadedLevel);
+	}
+	float largerScale = fplMax(transform->scaleX, transform->scaleY);
+	uint32_t result = ComputeViewSourceLevel(largerScale, image->levelCount, image->firstUploadedLevel);
+	return(result);
+}
+
+// Request that scales the picture for the transform, but only the part in outputRect (viewport pixels).
+// The source is the level GetPictureSourceLevel() picks: its scale is 2^level times larger, a mirrored axis of an odd sized level is shifted onto the picture
+// and the edge pixel that reaches beyond the picture is weighted by the part that lies on it.
+static ResampleRequest BuildPictureRequest(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect) {
+	const ImageData* image = &picture->image;
+	uint32_t sourceLevel = GetPictureSourceLevel(state, picture, transform);
+	const ImageLevelTexture* levelTexture = &image->levels[sourceLevel];
+	uint32_t orientation = (uint32_t)picture->info.orientation;
+	float levelFactor = ldexpf(1.0f, (int)sourceLevel);
+	ViewSize storedSize = fplStructInit(ViewSize, image->width, image->height);
+	ViewSize storedLevelSize = fplStructInit(ViewSize, levelTexture->width, levelTexture->height);
+	ViewSize displayedLevelSize = ComputeViewOrientedSize(orientation, storedLevelSize);
+	ViewOrientationMapping mapping = ComputeViewOrientationMapping(orientation, storedLevelSize);
+	ViewLevelPlacement placement = ComputeViewLevelPlacement(orientation, storedSize, storedLevelSize, sourceLevel);
+	float levelScaleX = transform->scaleX * levelFactor;
+	float levelScaleY = transform->scaleY * levelFactor;
+	float originX = transform->imageRect.left - outputRect.left;
+	float originY = transform->imageRect.top - outputRect.top;
+
+	ResampleRequest result = fplZeroInit;
+	result.sourceTexture = levelTexture->textureId;
+	result.sourceSerial = picture->uploadSerial;
+	result.sourceWidth = displayedLevelSize.width;
+	result.sourceHeight = displayedLevelSize.height;
+	result.axisMapping.originX = mapping.originX;
+	result.axisMapping.originY = mapping.originY;
+	result.axisMapping.stepUX = mapping.stepUX;
+	result.axisMapping.stepUY = mapping.stepUY;
+	result.axisMapping.stepVX = mapping.stepVX;
+	result.axisMapping.stepVY = mapping.stepVY;
+	result.firstCoverageX = placement.firstCoverageU;
+	result.lastCoverageX = placement.lastCoverageU;
+	result.firstCoverageY = placement.firstCoverageV;
+	result.lastCoverageY = placement.lastCoverageV;
+	result.kernel = GetKernelForTransform(state, transform);
+	result.scaleX = levelScaleX;
+	result.scaleY = levelScaleY;
+	result.originX = originX - placement.offsetU * levelScaleX;
+	result.originY = originY - placement.offsetV * levelScaleY;
+	result.outputWidth = (uint32_t)outputRect.width;
+	result.outputHeight = (uint32_t)outputRect.height;
+	return(result);
+}
+
+// The pipeline copies the pixels of the level instead of filtering them (exactly 1:1 at a whole pixel origin), outLevel receives that level
+static bool IsPictureCopied(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, uint32_t* outLevel) {
+	ResampleRequest request = BuildPictureRequest(state, picture, transform, transform->imageRect);
+	*outLevel = GetPictureSourceLevel(state, picture, transform);
+	bool result = ResampleIsPixelCopy(&request);
+	return(result);
+}
+
 // Sets the title only when it changed, so it can be called every frame
 static void UpdateWindowTitle(ViewerState* state) {
 	const char* downArrow = "\xE2\x86\x93";
@@ -952,18 +1020,27 @@ static void UpdateWindowTitle(ViewerState* state) {
 	const ResampleKernelDefinition* upDefinition = ResampleGetKernelDefinition(state->upKernel);
 	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->background);
 
-	// The filter of the direction that is in effect, both while that is unknown
+	// The filter of the direction that is in effect, both while that is unknown.
+	// At 1:1 no filter is in effect, the kernel in parentheses is the one T changes and the next zoom uses.
 	char filterText[FPL_MAX_NAME_LENGTH];
 	ViewTransform transform;
 	if (GetActivePictureTransform(state, &transform)) {
+		const ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
 		bool isDownscaling = IsDownscaling(&transform);
 		const char* arrow = isDownscaling ? downArrow : upArrow;
 		const char* kernelName = isDownscaling ? downDefinition->name : upDefinition->name;
-		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s", arrow, kernelName);
+		uint32_t copiedLevel = 0;
+		bool isCopied = IsPictureCopied(state, activePicture, &transform, &copiedLevel);
+		if (isCopied && copiedLevel == 0) {
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 (%s %s)", arrow, kernelName);
+		} else if (isCopied) {
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 of level %u (%s %s)", copiedLevel, arrow, kernelName);
+		} else {
+			fplStringFormat(filterText, fplArrayCount(filterText), "%s %s", arrow, kernelName);
+		}
 	} else {
 		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s", downArrow, downDefinition->name, upArrow, upDefinition->name);
 	}
-
 	// The loader that read the active picture, once it is shown
 	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
 	bool hasActivePicture = state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
@@ -2090,62 +2167,9 @@ static ViewRect IntersectWithViewport(const ViewRect rect, const ViewSize viewpo
 	return(result);
 }
 
-// Level the resample pipeline reads for the transform (plan section 2.3), --lod-source=0 always takes the largest level on the GPU.
-// So do Nearest and Box: both let details above the output Nyquist limit through (Nearest all of them, Box through the side lobes of its spectrum),
-// that is what they look like, and a reduced level has those details already filtered out.
-static uint32_t GetPictureSourceLevel(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform) {
-	const ImageData* image = &picture->image;
-	ResampleKernel kernel = GetKernelForTransform(state, transform);
-	bool isAliasingKernel = kernel == ResampleKernel_Nearest || kernel == ResampleKernel_Box;
-	if (state->params.isFullSourceLevelForced || isAliasingKernel) {
-		return(image->firstUploadedLevel);
-	}
-	float largerScale = fplMax(transform->scaleX, transform->scaleY);
-	uint32_t result = ComputeViewSourceLevel(largerScale, image->levelCount, image->firstUploadedLevel);
-	return(result);
-}
-
 // Scales the picture for the transform into the result, but only the part in outputRect (viewport pixels). Returns true when it had to be computed.
-// The source is the level GetPictureSourceLevel() picks: its scale is 2^level times larger, a mirrored axis of an odd sized level is shifted onto the picture
-// and the edge pixel that reaches beyond the picture is weighted by the part that lies on it.
 static bool UpdatePictureResult(ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect, ResampleResult* result, const char* timerLabel) {
-	const ImageData* image = &picture->image;
-	uint32_t sourceLevel = GetPictureSourceLevel(state, picture, transform);
-	const ImageLevelTexture* levelTexture = &image->levels[sourceLevel];
-	uint32_t orientation = (uint32_t)picture->info.orientation;
-	float levelFactor = ldexpf(1.0f, (int)sourceLevel);
-	ViewSize storedSize = fplStructInit(ViewSize, image->width, image->height);
-	ViewSize storedLevelSize = fplStructInit(ViewSize, levelTexture->width, levelTexture->height);
-	ViewSize displayedLevelSize = ComputeViewOrientedSize(orientation, storedLevelSize);
-	ViewOrientationMapping mapping = ComputeViewOrientationMapping(orientation, storedLevelSize);
-	ViewLevelPlacement placement = ComputeViewLevelPlacement(orientation, storedSize, storedLevelSize, sourceLevel);
-	float levelScaleX = transform->scaleX * levelFactor;
-	float levelScaleY = transform->scaleY * levelFactor;
-	float originX = transform->imageRect.left - outputRect.left;
-	float originY = transform->imageRect.top - outputRect.top;
-
-	ResampleRequest request = fplZeroInit;
-	request.sourceTexture = levelTexture->textureId;
-	request.sourceSerial = picture->uploadSerial;
-	request.sourceWidth = displayedLevelSize.width;
-	request.sourceHeight = displayedLevelSize.height;
-	request.axisMapping.originX = mapping.originX;
-	request.axisMapping.originY = mapping.originY;
-	request.axisMapping.stepUX = mapping.stepUX;
-	request.axisMapping.stepUY = mapping.stepUY;
-	request.axisMapping.stepVX = mapping.stepVX;
-	request.axisMapping.stepVY = mapping.stepVY;
-	request.firstCoverageX = placement.firstCoverageU;
-	request.lastCoverageX = placement.lastCoverageU;
-	request.firstCoverageY = placement.firstCoverageV;
-	request.lastCoverageY = placement.lastCoverageV;
-	request.kernel = GetKernelForTransform(state, transform);
-	request.scaleX = levelScaleX;
-	request.scaleY = levelScaleY;
-	request.originX = originX - placement.offsetU * levelScaleX;
-	request.originY = originY - placement.offsetV * levelScaleY;
-	request.outputWidth = (uint32_t)outputRect.width;
-	request.outputHeight = (uint32_t)outputRect.height;
+	ResampleRequest request = BuildPictureRequest(state, picture, transform, outputRect);
 	bool isComputed = ResampleUpdate(&state->pipeline, &request, result, timerLabel);
 	return(isComputed);
 }

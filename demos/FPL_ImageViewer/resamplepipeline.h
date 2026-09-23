@@ -14,6 +14,7 @@ Description:
 		weight  = Kernel((tap + 0.5 - bisect) / widen), normalized to a sum of 1
 
 	Nearest is point sampling (the tap at floor(bisect)) and is never widened.
+	Exactly 1:1 at a whole pixel origin bypasses the kernel and copies the pixels, otherwise the non interpolating kernels (B-spline, Mitchell) would blur even at 100 %.
 	Pass 1 filters horizontally into an RGBA16F intermediate (output columns x the source rows pass 2 needs),
 	pass 2 filters vertically into an RGBA16F result of the output size. At a small scale pass 2 needs many source rows, so both passes run
 	in bands of output rows whose source rows fit into an intermediate of at most 64 MB. The result stays premultiplied and unclamped,
@@ -195,6 +196,11 @@ extern const ResampleKernelDefinition *ResampleGetKernelDefinition(const Resampl
 extern bool ResampleFindKernel(const char *key, ResampleKernel *outKernel);
 extern const ResampleBackgroundDefinition *ResampleGetBackgroundDefinition(const ResampleBackground background);
 extern bool ResampleFindBackground(const char *key, ResampleBackground *outBackground);
+
+// True when the request copies the pixels: scale exactly 1 on both axes and a whole pixel origin
+extern bool ResampleIsPixelCopy(const ResampleRequest *request);
+// Kernel the passes run with: Nearest for a pixel copy, the kernel of the request otherwise
+extern ResampleKernel ResampleGetEffectiveKernel(const ResampleRequest *request);
 
 // Source pixels one axis of the output pixels [firstOutput, endOutput) reads, the same computation the shaders do
 extern ResampleSourceRange ResampleComputeSourceRange(const ResampleKernel kernel, const float scale, const float origin, const uint32_t firstOutput, const uint32_t endOutput, const uint32_t sourceLength);
@@ -559,6 +565,20 @@ extern ResampleSourceRange ResampleComputeSourceRange(const ResampleKernel kerne
 	return(result);
 }
 
+extern bool ResampleIsPixelCopy(const ResampleRequest *request) {
+	const float identityScale = 1.0f;
+	bool isIdentityScale = request->scaleX == identityScale && request->scaleY == identityScale;
+	bool isWholePixelOrigin = request->originX == floorf(request->originX) && request->originY == floorf(request->originY);
+	bool result = isIdentityScale && isWholePixelOrigin;
+	return(result);
+}
+
+extern ResampleKernel ResampleGetEffectiveKernel(const ResampleRequest *request) {
+	bool isPixelCopy = ResampleIsPixelCopy(request);
+	ResampleKernel result = isPixelCopy ? ResampleKernel_Nearest : request->kernel;
+	return(result);
+}
+
 static GLuint ResampleCreateShader(const GLenum type, const char *name, const char *source) {
 	GLuint shaderId = glCreateShader(type);
 	glShaderSource(shaderId, 1, &source, NULL);
@@ -796,7 +816,10 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 		return(false);
 	}
 
-	const ResampleKernelDefinition *definition = ResampleGetKernelDefinition(request->kernel);
+	// The passes run with the effective kernel, the cache keeps the request as it came
+	ResampleRequest passRequest = *request;
+	passRequest.kernel = ResampleGetEffectiveKernel(request);
+	const ResampleKernelDefinition *definition = ResampleGetKernelDefinition(passRequest.kernel);
 	ResampleAxisMapping mapping = request->axisMapping;
 	if (ResampleIsMappingEmpty(&mapping)) {
 		const ResampleAxisMapping asStored = { 0, 0, 1, 0, 0, 1 };
@@ -810,7 +833,7 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	float lastCoverageY = isCoverageEmpty ? wholeCoverage : request->lastCoverageY;
 	int32_t lastColumn = (int32_t)request->sourceWidth - 1;
 	int32_t lastRow = (int32_t)request->sourceHeight - 1;
-	ResampleSourceRange allRows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, 0, request->outputHeight, request->sourceHeight);
+	ResampleSourceRange allRows = ResampleComputeSourceRange(passRequest.kernel, request->scaleY, request->originY, 0, request->outputHeight, request->sourceHeight);
 	if (allRows.end <= allRows.first) {
 		result->isValid = false;
 		return(false);
@@ -838,13 +861,13 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQuery);
 	}
 
-	const ResamplePassProgram *horizontalProgram = &pipeline->horizontalPrograms[request->kernel];
-	const ResamplePassProgram *verticalProgram = &pipeline->verticalPrograms[request->kernel];
+	const ResamplePassProgram *horizontalProgram = &pipeline->horizontalPrograms[passRequest.kernel];
+	const ResamplePassProgram *verticalProgram = &pipeline->verticalPrograms[passRequest.kernel];
 	uint32_t bandCount = 0;
 	uint32_t bandStart = 0;
 	while (bandStart < request->outputHeight) {
 		ResampleSourceRange rows;
-		uint32_t bandEnd = ResampleFindBandEnd(request, bandStart, largestBandRows, &rows);
+		uint32_t bandEnd = ResampleFindBandEnd(&passRequest, bandStart, largestBandRows, &rows);
 		uint32_t rowCount = (uint32_t)(rows.end - rows.first);
 		uint32_t bandHeight = bandEnd - bandStart;
 		ResampleEnsureIntermediate(pipeline, request->outputWidth, rowCount);
