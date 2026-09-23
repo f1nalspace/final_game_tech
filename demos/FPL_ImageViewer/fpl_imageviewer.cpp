@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.5.6 (version.h)
+	v0.6.0 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -22,6 +22,16 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.6.0
+	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits
+	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
+	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
+	- New: Test image generator and scaling test runner in tests/
+	- Fixed: -p and -f parameters were never evaluated
+	- Fixed: Unknown or malformed parameters are reported instead of silently ignored
+	- Fixed: Preload count is rounded up to an even count before it is used and clamped to the view picture capacity
+	- Fixed: Start index was not reset when a dropped file was not found in its folder
+
 	## v0.5.6
 	- Changed multi sample count to 16, to improve quality for downscaled pictures
 	- Changed default filter to bicubic triangular
@@ -272,15 +282,52 @@ typedef struct LoadQueue {
 	CacheLinePad pad4;
 } LoadQueue;
 
+typedef enum StartZoomMode {
+	// Fit when the picture is larger than the window, otherwise 1:1
+	StartZoomMode_Default = 0,
+	// Always fit into the window, small pictures are upscaled
+	StartZoomMode_Fit,
+	// Always 1:1
+	StartZoomMode_ActualSize,
+	// Fixed scale from --zoom=<percent>
+	StartZoomMode_Custom,
+} StartZoomMode;
+
 typedef struct ViewerParameters {
 	const char* path;
+	const char* renderToFilePath;
 	size_t threadCount;
 	size_t preloadCount;
+	uint32_t windowWidth;
+	uint32_t windowHeight;
+	float zoomScale;
+	StartZoomMode zoomMode;
 	int filter;
 	bool recursive;
 	bool preview;
 	bool border;
 } ViewerParameters;
+
+// Exit codes of --render-to
+typedef enum RenderToFileResult {
+	RenderToFileResult_Success = 0,
+	RenderToFileResult_InvalidParameters = 1,
+	RenderToFileResult_NoPicture = 2,
+	RenderToFileResult_LoadFailed = 3,
+	RenderToFileResult_Timeout = 4,
+	RenderToFileResult_GraphicsFailed = 5,
+	RenderToFileResult_WriteFailed = 6,
+	RenderToFileResult_Canceled = 7,
+} RenderToFileResult;
+
+// Longest time --render-to waits for the picture to be loaded and uploaded
+#define RENDER_TO_FILE_TIMEOUT_MILLISECONDS 60000
+// Sleep between two frames while --render-to waits for the picture
+#define RENDER_TO_FILE_POLL_MILLISECONDS 1
+// Size of the (never shown) window for --render-to, the picture is rendered into an offscreen framebuffer of --window size
+#define RENDER_TO_FILE_WINDOW_SIZE 256
+// Number of pictures preloaded on both sides of the active picture, when not set by -p
+#define DEFAULT_PRELOAD_COUNT 16
 
 typedef struct Vertex {
 	Vec4f position;
@@ -867,57 +914,131 @@ static uint32_t ParseNumber(const char **p) {
 	return(v);
 }
 
-static void ParseParameters(ViewerParameters *params, const ViewerParameters *defaultParams, const int argc, char** argv) {
+// Parses a complete unsigned decimal number, trailing characters are an error
+static bool ParseUnsignedValue(const char* text, uint32_t* outValue) {
+	const char* p = text;
+	uint32_t value = ParseNumber(&p);
+	if (p == text || *p != 0) {
+		return(false);
+	}
+	*outValue = value;
+	return(true);
+}
+
+// Parses <W>x<H>, both must be greater than zero
+static bool ParseSizeValue(const char* text, uint32_t* outWidth, uint32_t* outHeight) {
+	const char* p = text;
+	uint32_t width = ParseNumber(&p);
+	if (p == text || (*p != 'x' && *p != 'X')) {
+		return(false);
+	}
+	++p;
+	const char* heightStart = p;
+	uint32_t height = ParseNumber(&p);
+	if (p == heightStart || *p != 0 || width == 0 || height == 0) {
+		return(false);
+	}
+	*outWidth = width;
+	*outHeight = height;
+	return(true);
+}
+
+// Parses fit, 100 or any other percentage
+static bool ParseZoomValue(const char* text, StartZoomMode* outMode, float* outScale) {
+	const double actualSizePercent = 100.0;
+	if (CompareStringIgnoreCase(text, "fit") == 0) {
+		*outMode = StartZoomMode_Fit;
+		*outScale = 1.0f;
+		return(true);
+	}
+	char* end = fpl_null;
+	double percent = strtod(text, &end);
+	if (end == text || *end != 0 || percent <= 0.0) {
+		return(false);
+	}
+	if (percent == actualSizePercent) {
+		*outMode = StartZoomMode_ActualSize;
+		*outScale = 1.0f;
+	} else {
+		*outMode = StartZoomMode_Custom;
+		*outScale = (float)(percent / actualSizePercent);
+	}
+	return(true);
+}
+
+// Returns the text after "<name>=" or an empty string for "<name>" alone, null when the argument is a different parameter
+static const char* MatchLongParameter(const char* argument, const char* name) {
+	size_t nameLength = fplGetStringLength(name);
+	if (strncmp(argument, name, nameLength) != 0) {
+		return(fpl_null);
+	}
+	const char* rest = argument + nameLength;
+	if (*rest == '=') {
+		return(rest + 1);
+	}
+	if (*rest == 0) {
+		return(rest);
+	}
+	return(fpl_null);
+}
+
+static bool ParseParameters(ViewerParameters *params, const ViewerParameters *defaultParams, const int argc, char** argv) {
 	fplClearStruct(params);
 	*params = *defaultParams;
 	params->path = fpl_null;
 	for (int i = 0; i < argc; ++i) {
-		const char* p = argv[i];
-		if (p[0] == '-') {
-			++p;
-			if (!isalpha(*p)) {
-				continue;
+		const char* argument = argv[i];
+		bool isValid = true;
+		if (argument[0] == '-' && argument[1] == '-') {
+			const char* renderToValue = MatchLongParameter(argument, "--render-to");
+			const char* windowValue = MatchLongParameter(argument, "--window");
+			const char* zoomValue = MatchLongParameter(argument, "--zoom");
+			const char* noPreviewValue = MatchLongParameter(argument, "--no-preview");
+			if (renderToValue != fpl_null) {
+				params->renderToFilePath = renderToValue;
+				isValid = *renderToValue != 0;
+			} else if (windowValue != fpl_null) {
+				isValid = ParseSizeValue(windowValue, &params->windowWidth, &params->windowHeight);
+			} else if (zoomValue != fpl_null) {
+				isValid = ParseZoomValue(zoomValue, &params->zoomMode, &params->zoomScale);
+			} else if (noPreviewValue != fpl_null) {
+				params->preview = false;
+				isValid = *noPreviewValue == 0;
+			} else {
+				isValid = false;
 			}
-			const char param = p[0];
-			switch (param) {
-				case 'r':
-					params->recursive = true;
-					break;
-				case 't':
-					params->threadCount = 0;
-					break;
-				default:
-					continue;
-			}
-			if (param == 't') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->threadCount = ParseNumber(&p);
-				} else {
-					continue;
-				}
-			} else if (param == 'p') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->preloadCount = ParseNumber(&p);
-				} else {
-					continue;
-				}
-			} else if (param == 'f') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->filter = ParseNumber(&p);
-				} else {
-					continue;
-				}
+		} else if (argument[0] == '-') {
+			// Short forms: -r, -t=<threads>, -p=<preload count>, -f=<filter number>
+			const char shortName = argument[1];
+			const bool hasValue = shortName != 0 && argument[2] == '=';
+			const char* shortValue = hasValue ? argument + 3 : fpl_null;
+			uint32_t number = 0;
+			if (shortName == 'r' && argument[2] == 0) {
+				params->recursive = true;
+			} else if (shortName == 't' && hasValue && ParseUnsignedValue(shortValue, &number)) {
+				params->threadCount = number;
+			} else if (shortName == 'p' && hasValue && ParseUnsignedValue(shortValue, &number)) {
+				params->preloadCount = number;
+			} else if (shortName == 'f' && hasValue && ParseUnsignedValue(shortValue, &number)) {
+				params->filter = (int)number;
+			} else {
+				isValid = false;
 			}
 		} else {
-			params->path = p;
+			params->path = argument;
+		}
+		if (!isValid) {
+			fplConsoleFormatError("Invalid parameter '%s'\n", argument);
+			flogWrite("Invalid parameter '%s'", argument);
+			return(false);
 		}
 	}
+	if (params->renderToFilePath != fpl_null && (params->windowWidth == 0 || params->path == fpl_null)) {
+		fplConsoleFormatError("--render-to requires --window=<W>x<H> and a picture path\n");
+		flogWrite("--render-to requires --window=<W>x<H> and a picture path");
+		return(false);
+	}
+	return(true);
 }
 
 size_t RoundToPowerOfTwo(size_t v) {
@@ -1047,7 +1168,7 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
 			AddPicturesFromPath(state, state->rootPath, recursive);
 			if (!FindPictureIndexByPath(state, path, startIndex)) {
-				startIndex = 0;
+				*startIndex = 0;
 			}
 			result = true;
 		}
@@ -1189,15 +1310,18 @@ static bool Init(ViewerState* state) {
 	}
 	InitLoadThreads(state, threadCount);
 
+	// Even count, so both sides of the active picture get the same number of preloaded pictures, plus one slot for the active picture
+	const size_t maxPreloadCapacity = MAX_VIEW_PICTURE_COUNT - 2;
 	size_t preloadCapacity;
-	if (state->params.preloadCount > 0) {
-		preloadCapacity = state->params.preloadCount;
-		if ((state->params.preloadCount % 2) != 0) {
-			state->params.preloadCount++;
-		}
+	if (state->params.renderToFilePath != fpl_null) {
+		preloadCapacity = 0;
+	} else if (state->params.preloadCount > 0) {
+		size_t evenPreloadCount = state->params.preloadCount + (state->params.preloadCount % 2);
+		preloadCapacity = fplMin(evenPreloadCount, maxPreloadCapacity);
 	} else {
-		preloadCapacity = 16;
+		preloadCapacity = DEFAULT_PRELOAD_COUNT;
 	}
+	state->params.preloadCount = preloadCapacity;
 	size_t queueCapacity = RoundToPowerOfTwo((preloadCapacity + 1) * 2);
 	state->viewPicturesCapacity = preloadCapacity + 1;
 	state->loadQueueCapacity = queueCapacity;
@@ -1215,6 +1339,9 @@ static bool Init(ViewerState* state) {
 	}
 
 	state->viewFlags = PictureViewFlags_KeepAspectRatio;
+	if (state->params.zoomMode == StartZoomMode_Fit) {
+		state->viewFlags |= PictureViewFlags_Upscale;
+	}
 
 	UpdateWindowTitle(state);
 
@@ -1401,7 +1528,7 @@ static void DrawTexturedRectangle(ViewerState* state, const GLuint textureId, co
 	fplAssert(glGetError() == GL_NO_ERROR);
 }
 
-static void UpdateAndRender(ViewerState* state, const float deltaTime) {
+static void UpdateAndRender(ViewerState* state, const uint32_t viewportWidth, const uint32_t viewportHeight, const float deltaTime) {
 	// Discard textures on the left/right side when the fileIndex is out of bounds
 	if (state->viewPictureIndex != -1) {
 		ViewPicture* currentPic = &state->viewPictures[state->viewPictureIndex];
@@ -1496,15 +1623,8 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 		}
 	}
 
-	int w, h;
-	fplWindowSize winSize;
-	if (fplGetWindowSize(&winSize)) {
-		w = winSize.width;
-		h = winSize.height;
-	} else {
-		w = 0;
-		h = 0;
-	}
+	int w = (int)viewportWidth;
+	int h = (int)viewportHeight;
 
 	float screenLeft = -(float)w * 0.5f;
 	float screenRight = (float)w * 0.5f;
@@ -1555,7 +1675,14 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 				float viewHeight;
 				float viewX;
 				float viewY;
-				if ((state->viewFlags & PictureViewFlags_KeepAspectRatio) == PictureViewFlags_KeepAspectRatio) {
+				if (state->params.zoomMode == StartZoomMode_ActualSize || state->params.zoomMode == StartZoomMode_Custom) {
+					// Fixed scale, centered
+					float fixedScale = (state->params.zoomMode == StartZoomMode_Custom) ? state->params.zoomScale : 1.0f;
+					viewWidth = texW * fixedScale;
+					viewHeight = texH * fixedScale;
+					viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
+					viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
+				} else if ((state->viewFlags & PictureViewFlags_KeepAspectRatio) == PictureViewFlags_KeepAspectRatio) {
 					float aspect = texH > 0 ? texW / texH : 1;
 					fplAssert(aspect != 0);
 					float targetHeight = targetRectWidth / aspect;
@@ -1723,6 +1850,166 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 	fplAssert(glGetError() == GL_NO_ERROR);
 }
 
+typedef struct OffscreenTarget {
+	GLuint frameBufferId;
+	GLuint colorTextureId;
+	uint32_t width;
+	uint32_t height;
+} OffscreenTarget;
+
+static void DestroyOffscreenTarget(OffscreenTarget* target) {
+	if (target->frameBufferId > 0) {
+		glDeleteFramebuffers(1, &target->frameBufferId);
+	}
+	if (target->colorTextureId > 0) {
+		glDeleteTextures(1, &target->colorTextureId);
+	}
+	fplClearStruct(target);
+}
+
+// Color attachment is sRGB when the default framebuffer is, so GL_FRAMEBUFFER_SRGB encodes exactly as on screen
+static bool CreateOffscreenTarget(OffscreenTarget* target, const uint32_t width, const uint32_t height, const bool supportsSRGB) {
+	fplClearStruct(target);
+	target->width = width;
+	target->height = height;
+
+	GLenum internalFormat = supportsSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+	glGenTextures(1, &target->colorTextureId);
+	glBindTexture(GL_TEXTURE_2D, target->colorTextureId);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, fpl_null);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glGenFramebuffers(1, &target->frameBufferId);
+	glBindFramebuffer(GL_FRAMEBUFFER, target->frameBufferId);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->colorTextureId, 0);
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	GLenum error = glGetError();
+	if (status != GL_FRAMEBUFFER_COMPLETE || error != GL_NO_ERROR) {
+		flogWrite("Failed to create offscreen framebuffer %u x %u, status 0x%x, error 0x%x", width, height, status, error);
+		DestroyOffscreenTarget(target);
+		return(false);
+	}
+	return(true);
+}
+
+// Writes bottom-up RGBA rows (as glReadPixels returns them) as a top-down PAM with RGB tuples, alpha is dropped because the screen shows no alpha either
+static bool WritePortableArbitraryMapRGB(const char* filePath, const uint8_t* bottomUpPixelsRGBA, const uint32_t width, const uint32_t height) {
+	const uint32_t sourceComponents = 4;
+	const uint32_t targetComponents = 3;
+	fplFileHandle file;
+	if (!fplFileCreateBinary(filePath, &file)) {
+		return(false);
+	}
+	char header[256];
+	size_t headerLength = fplStringFormat(header, fplArrayCount(header), "P7\nWIDTH %u\nHEIGHT %u\nDEPTH %u\nMAXVAL 255\nTUPLTYPE RGB\nENDHDR\n", width, height, targetComponents);
+	uint32_t writtenHeaderBytes = fplFileWriteBlock32(&file, header, (uint32_t)headerLength);
+	bool result = writtenHeaderBytes == (uint32_t)headerLength;
+
+	uint32_t targetRowSize = width * targetComponents;
+	uint8_t* targetRow = (uint8_t*)malloc(targetRowSize);
+	for (uint32_t row = 0; result && row < height; ++row) {
+		uint32_t sourceRow = height - 1 - row;
+		const uint8_t* source = bottomUpPixelsRGBA + (size_t)sourceRow * width * sourceComponents;
+		for (uint32_t x = 0; x < width; ++x) {
+			targetRow[x * targetComponents + 0] = source[x * sourceComponents + 0];
+			targetRow[x * targetComponents + 1] = source[x * sourceComponents + 1];
+			targetRow[x * targetComponents + 2] = source[x * sourceComponents + 2];
+		}
+		uint32_t writtenRowBytes = fplFileWriteBlock32(&file, targetRow, targetRowSize);
+		result = writtenRowBytes == targetRowSize;
+	}
+	free(targetRow);
+	fplFileClose(&file);
+	return(result);
+}
+
+static RenderToFileResult ReadOffscreenTargetToFile(const OffscreenTarget* target, const char* filePath) {
+	const size_t bytesPerPixel = 4;
+	size_t pixelsSize = (size_t)target->width * target->height * bytesPerPixel;
+	uint8_t* pixels = (uint8_t*)malloc(pixelsSize);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, target->frameBufferId);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, (GLsizei)target->width, (GLsizei)target->height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	GLenum error = glGetError();
+	RenderToFileResult result;
+	if (error != GL_NO_ERROR) {
+		flogWrite("Failed to read offscreen framebuffer, error 0x%x", error);
+		result = RenderToFileResult_GraphicsFailed;
+	} else if (!WritePortableArbitraryMapRGB(filePath, pixels, target->width, target->height)) {
+		flogWrite("Failed to write '%s'", filePath);
+		result = RenderToFileResult_WriteFailed;
+	} else {
+		result = RenderToFileResult_Success;
+	}
+	free(pixels);
+	return(result);
+}
+
+// Renders the active picture into an offscreen framebuffer of --window size, as soon as it is loaded, and writes it to --render-to
+static RenderToFileResult RenderPictureToFile(ViewerState* state, const float deltaTime) {
+	const char* filePath = state->params.renderToFilePath;
+	const uint32_t width = state->params.windowWidth;
+	const uint32_t height = state->params.windowHeight;
+	if (state->pictureFileCount == 0) {
+		fplConsoleFormatError("No picture found in '%s'\n", state->params.path);
+		return(RenderToFileResult_NoPicture);
+	}
+
+	OffscreenTarget target;
+	if (!CreateOffscreenTarget(&target, width, height, state->features.srgbFrameBuffer)) {
+		fplConsoleFormatError("Failed to create offscreen framebuffer %u x %u\n", width, height);
+		return(RenderToFileResult_GraphicsFailed);
+	}
+
+	RenderToFileResult result = RenderToFileResult_Canceled;
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	while (fplWindowUpdate()) {
+		fplEvent ev;
+		while (fplPollEvent(&ev)) {
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, target.frameBufferId);
+		UpdateAndRender(state, width, height, deltaTime);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// The frame that uploads the picture already draws it
+		if (!state->doPictureReload && state->viewPictureIndex > -1) {
+			ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+			LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+			if (pictureState == LoadedPictureState_Ready) {
+				result = ReadOffscreenTargetToFile(&target, filePath);
+				break;
+			} else if (pictureState == LoadedPictureState_Error) {
+				fplConsoleFormatError("Failed to load picture '%s'\n", activePicture->filePath);
+				result = RenderToFileResult_LoadFailed;
+				break;
+			}
+		}
+
+		fplMilliseconds elapsed = fplMillisecondsQuery() - startTime;
+		if (elapsed > RENDER_TO_FILE_TIMEOUT_MILLISECONDS) {
+			fplConsoleFormatError("Timeout while waiting for picture '%s'\n", state->params.path);
+			result = RenderToFileResult_Timeout;
+			break;
+		}
+		fplThreadSleep(RENDER_TO_FILE_POLL_MILLISECONDS);
+	}
+
+	DestroyOffscreenTarget(&target);
+
+	if (result == RenderToFileResult_Success) {
+		flogWrite("Rendered '%s' into '%s' (%u x %u)", state->params.path, filePath, width, height);
+	} else if (result == RenderToFileResult_GraphicsFailed || result == RenderToFileResult_WriteFailed) {
+		fplConsoleFormatError("Failed to write '%s'\n", filePath);
+	}
+	return(result);
+}
+
 static void LogCallbackFunc(const char* funcName, const int lineNumber, fplLogLevel level, const char* message) {
 	flogWrite(message);
 }
@@ -1753,7 +2040,17 @@ int main(int argc, char** argv) {
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	state->params = defaultParams;
 	if (argc >= 2) {
-		ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1);
+		if (!ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1)) {
+			fplMemoryFree(state);
+			return(RenderToFileResult_InvalidParameters);
+		}
+	}
+
+	const bool isRenderToFile = state->params.renderToFilePath != fpl_null;
+	if (isRenderToFile) {
+		// Nothing but the picture itself goes into the file
+		state->params.preview = false;
+		state->params.border = false;
 	}
 
 	flogWrite("Initial Parameters:");
@@ -1762,21 +2059,34 @@ int main(int argc, char** argv) {
 	flogWrite("Thread count: %lu", state->params.threadCount);
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
+	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
+	flogWrite("Zoom mode: %d, scale: %f", (int)state->params.zoomMode, state->params.zoomScale);
+	if (isRenderToFile) {
+		flogWrite("Render to: %s", state->params.renderToFilePath);
+	}
 
 	int returnCode = 0;
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
-	settings.video.isVSync = true;
+	settings.video.isVSync = !isRenderToFile;
 	settings.video.backend = fplVideoBackendType_OpenGL;
 #if FORCE_LEGACY_OPENGL
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 #else
+	const uint32_t windowMultiSamplingCount = 16;
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 	settings.video.graphics.opengl.majorVersion = 3;
 	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 16;
+	settings.video.graphics.opengl.multiSamplingCount = isRenderToFile ? 0 : windowMultiSamplingCount;
 #endif
 	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
+	if (isRenderToFile) {
+		settings.window.windowSize.width = RENDER_TO_FILE_WINDOW_SIZE;
+		settings.window.windowSize.height = RENDER_TO_FILE_WINDOW_SIZE;
+	} else if (state->params.windowWidth > 0) {
+		settings.window.windowSize.width = state->params.windowWidth;
+		settings.window.windowSize.height = state->params.windowHeight;
+	}
 
 	// Load icons (Memory are released on shutdown)
 	int iconW, iconH, iconC;
@@ -1802,7 +2112,10 @@ int main(int argc, char** argv) {
 			uint64_t activeKeyStart = 0;
 			const int ActiveKeyThreshold = 150;
 			const float deltaTime = 1.0f / 60.0f;
-			while (fplWindowUpdate()) {
+			if (isRenderToFile) {
+				returnCode = RenderPictureToFile(state, deltaTime);
+			}
+			while (!isRenderToFile && fplWindowUpdate()) {
 				// Events
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
@@ -1892,7 +2205,9 @@ int main(int argc, char** argv) {
 					}
 				}
 
-				UpdateAndRender(state, deltaTime);
+				fplWindowSize windowSize = fplZeroInit;
+				fplGetWindowSize(&windowSize);
+				UpdateAndRender(state, windowSize.width, windowSize.height, deltaTime);
 
 				fplVideoFlip();
 			}
