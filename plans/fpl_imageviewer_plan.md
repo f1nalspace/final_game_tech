@@ -1,6 +1,6 @@
 # Plan: FPL_ImageViewer — Skalierung, Pan & Zoom, final_ui
 
-Ziel: Der `FPL_ImageViewer` wird zur eigenständigen App umgebaut, zu einem schnellen und brauchbaren Bildbetrachter. Dieser Plan legt die **technische Basis** dafür: Bilder werden beim Verkleinern **richtig heruntergerechnet** und beim Vergrößern mit einem umschaltbaren Filter **hochgerechnet**. Man kann **zoomen und verschieben**, ohne dass das mit dem Blättern kollidiert. `final_ui.h` ist **fest eingebaut** und zeichnet vorerst nur eine Info-Zeile.
+Ziel: Der `FPL_ImageViewer` wird zur eigenständigen App umgebaut, zu einem schnellen und brauchbaren Bildbetrachter. Dieser Plan legt die **technische Basis** dafür: Bilder werden beim Verkleinern **richtig heruntergerechnet** und beim Vergrößern mit einem umschaltbaren Filter **hochgerechnet**. Man kann **zoomen und verschieben**, ohne dass das mit dem Blättern kollidiert. `final_ui.h` ist **fest eingebaut** und zeichnet vorerst nur eine Info-Zeile. Bilder werden über **austauschbare Loader** gelesen, jeder mit seiner eigenen 128-Bit-Kennung. `stb_image` ist der Standard, und welcher Loader wofür zuständig ist, lässt sich einstellen.
 
 Dieses Dokument beschreibt den **Stand samt Messungen** (1), die **Designentscheidungen** (2), den **inneren Aufbau** (3), die **Testbilder und den Messstand** (4) und die **Iterationen** mit Abnahmekriterien (5). Danach folgen Arbeitsregeln, Offenes und Risiken (6–8).
 
@@ -14,14 +14,14 @@ Dieses Dokument beschreibt den **Stand samt Messungen** (1), die **Designentsche
 
 - Dateiliste aus einem Ordner (optional rekursiv), `.jpg/.jpeg/.png/.bmp`.
 - `viewPicturesCapacity` = Preload + 1 Slots (Standard 17) um das aktive Bild herum. Die Lade-Threads (Standard: ein Thread pro Kern, hier 32) holen Aufträge aus einer lock-freien MPMC-Queue und dekodieren mit `stbi_load_from_callbacks`. Texturen werden im Hauptthread angelegt und freigegeben.
-- OpenGL 3.3 **Core** mit 16× MSAA, sRGB-Framebuffer, Texturen als `GL_TEXTURE_RECTANGLE`. Dazu ein Legacy-Pfad hinter `FORCE_LEGACY_OPENGL`.
+- OpenGL 3.3 **Core** mit 16× MSAA, sRGB-Framebuffer, Texturen als `GL_TEXTURE_RECTANGLE`. Dazu ein Legacy-Pfad hinter `FORCE_LEGACY_OPENGL`, der in Iteration 1 entfernt wird (Abschnitt 7).
 - Sieben Filter-Shader (`shadersources.h`): Nearest, Bilinear, Bicubic (Triangular, Bell, B-Spline, Catmull-Rom), Lanczos3. Standard ist Bicubic (Triangular). Umschalten mit `T`.
 - Darstellung: Das Bild wird eingepasst, wenn es größer als das Fenster ist, sonst 1:1 gezeigt. Dazu kommt eine Vorschau-Leiste mit einem Kästchen pro Slot.
 - Tasten: Links/Rechts, Bild auf/ab (±10), Pos1/Ende, `F` Vollbild, `P` Vorschau, `R` neu laden, `T` Filter.
 
 ### 1.2 Gemessen
 
-Alle Messungen stammen von dieser Maschine: Ryzen 9 7950X, RTX 3090, NVIDIA 580, Fenster 1280×720, Build mit `g++ -O2`. Die Screenshots wurden per `xdotool` und `import -window` gemacht und mit `magick compare` ausgewertet. Die Referenzen sind mit ImageMagick **in linearem Licht** gerechnet (`-colorspace RGB -filter X -resize … -colorspace sRGB`). `xdotool` ist inzwischen installiert (im Handout des Editors hieß es noch „fehlt“), der Viewer lässt sich also fernsteuern.
+Alle Messungen sind mit `stb_image` v2.19 entstanden und werden nach dem Update in Iteration 0 wiederholt. Sie stammen von dieser Maschine: Ryzen 9 7950X, RTX 3090, NVIDIA 580, Fenster 1280×720, Build mit `g++ -O2`. Die Screenshots wurden per `xdotool` und `import -window` gemacht und mit `magick compare` ausgewertet. Die Referenzen sind mit ImageMagick **in linearem Licht** gerechnet (`-colorspace RGB -filter X -resize … -colorspace sRGB`). `xdotool` ist inzwischen installiert (im Handout des Editors hieß es noch „fehlt“), der Viewer lässt sich also fernsteuern.
 
 **1:1-Treue.** Ein 1-Pixel-Schachbrett 512×512 wird genau 1:1 und pixelgenau ausgerichtet gezeigt:
 
@@ -70,11 +70,11 @@ LOD per `stb_image_resize` würde die Ladezeit eines Fotos verfünffachen. Desha
 - `preloadCount` wird erst **nach** der Verwendung auf gerade gerundet (`:1195`), die Rundung wirkt also nicht.
 - Vorschau-Leiste: Sie zeichnet die volle Textur mit dem aktiven Filter in ein Kästchen von ~40 px und aliast deshalb massiv.
 - `fui_input_fpl.h`: `fuiFplInputPumpEvents` leert die **ganze** Event-Queue. Der Viewer braucht die Events aber selbst (Drop, Tasten).
-- `fui_backend_gl1.h` ist Fixed-Function und läuft auf einem Core-3.3-Kontext nicht. → **`fui_backend_gl3.h` wird gebaut** (Iteration 6).
+- `fui_backend_gl1.h` ist Fixed-Function und läuft auf einem Core-3.3-Kontext nicht. → **`fui_backend_gl3.h` wird gebaut** (Iteration 7).
 - `fplX86CPUCapabilities.hasAVX512` prüft nur **AVX512F** (CPUID 7/EBX Bit 16, inklusive XCR0-Prüfung). BW/VL fehlen.
 - Auf Apple Silicon setzt FPL nur `FPL_ARCH_APPLE_ARM64` und **nicht** `FPL_ARCH_ARM64` (`final_platform_layer.h:2170–2182`). Das ist kein Fehler, aber eine Falle für jede ARM-Weiche (2.4).
 
-**Aufgefallen, aber nicht Teil des Auftrags:** 10 von 40 Stichproben-Fotos aus `202308` tragen EXIF-Orientierung 3 oder 6 und werden deshalb gedreht angezeigt, weil `stb_image` EXIF ignoriert. Außerdem ist `stb_image` auf v2.19 (2018), und seitdem gab es mehrere Sicherheitskorrekturen. Beides steht in Abschnitt 7. Das View-Modell reserviert der Orientierung schon jetzt ihren Platz.
+**Aufgefallen und inzwischen eingeplant:** 10 von 40 Stichproben-Fotos aus `202308` tragen EXIF-Orientierung 3 oder 6 und werden deshalb gedreht angezeigt, weil `stb_image` EXIF ignoriert. Das wird in Iteration 3 behoben. Außerdem ist `stb_image` auf v2.19 (2018), seitdem gab es mehrere Sicherheitskorrekturen. Das Update kommt in Iteration 0.
 
 ---
 
@@ -95,7 +95,7 @@ Das entspricht der Resize-Mathematik von ImageMagick: gleiche Pixelmitten-Konven
 
 Warum nicht die Alternativen:
 
-- **Mipmaps + trilinear:** Das ist Box-Filter plus Überblendung zweier Stufen, weich und nicht „richtig gerechnet“. Es bleibt der Fallback für den Legacy-Pfad und für die Vorschau-Leiste.
+- **Mipmaps + trilinear:** Das ist Box-Filter plus Überblendung zweier Stufen, weich und nicht „richtig gerechnet“. Es bleibt nur für die Vorschau-Leiste.
 - **Ein Durchgang 2D:** kostet `(2·r/s)²` Abgriffe pro Pixel, bei s = 0,15 und Mitchell über 700. Zwei Durchgänge kosten `2·r/s + 2·r/s`.
 - **Exakte Neuberechnung auf der CPU bei jeder Ansichtsänderung:** Das wäre Latenz beim Zoomen, und eine GPU erledigt so etwas in Bruchteilen einer Millisekunde.
 
@@ -121,7 +121,7 @@ Alle vorhandenen Filter sind Produkte eindimensionaler Kernel, also separabel. S
 | Catmull-Rom | 2 | ja | vorhanden, scharf |
 | Lanczos3 | 3 | ja | vorhanden, am schärfsten, schwingt über |
 
-**Standard beim Verkleinern: Mitchell.** Das ist der übliche Kompromiss zwischen Schärfe, Aliasing und Überschwingen, und auch `stb_image_resize` nimmt ihn als Standard zum Verkleinern. **Standard beim Vergrößern: Catmull-Rom**, interpolierend und scharf mit wenig Überschwingen. Beide Vorgaben sind Arbeitshypothesen. Iteration 2 und 4 entscheiden anhand der Testbilder und der Bildschirmfoto-Sammlung, denn Text in Screenshots ist der Härtefall für Lanczos-Halos.
+**Standard beim Verkleinern: Mitchell.** Das ist der übliche Kompromiss zwischen Schärfe, Aliasing und Überschwingen, und auch `stb_image_resize` nimmt ihn als Standard zum Verkleinern. **Standard beim Vergrößern: Catmull-Rom**, interpolierend und scharf mit wenig Überschwingen. Beide Vorgaben sind Arbeitshypothesen. In Iteration 2 und 5 bekommt der Nutzer Vergleichsausschnitte (Fotos, Bildschirmfotos mit Text, synthetische Bilder) vorgelegt und legt die Standards selbst fest. Text in Screenshots ist dabei der Härtefall für Lanczos-Halos.
 
 `T` schaltet den Filter der Richtung weiter, die **gerade wirkt**, `Shift+T` schaltet zurück. So bleibt die gewohnte Taste erhalten, und es gibt keine neuen Tasten. Titel und Info-Zeile zeigen „↓ Mitchell“ oder „↑ Catmull-Rom“.
 
@@ -131,8 +131,8 @@ Alle vorhandenen Filter sind Produkte eindimensionaler Kernel, also separabel. S
 
 Wofür die LOD-Stufen gebraucht werden:
 
-1. **Kosten der Resample-Pipeline begrenzen.** Quelle ist die kleinste Stufe, die noch mindestens doppelt so groß wie das Ziel ist. Der Maßstab relativ zur Quelle liegt dann in (¼, ½], die Verbreiterung bleibt ≤ 4 und die Abgriffe pro Achse ≤ 16 (Mitchell) bzw. ≤ 24 (Lanczos3), egal wie groß das Original ist. Der Abstand „mindestens doppelt“ sorgt dafür, dass das Übergangsband des 2:1-Vorfilters über der Nyquist-Grenze des Ziels liegt. So verfälscht die Doppelfilterung das Ergebnis messbar nicht (Abnahme in Iteration 3).
-2. **Vorschau-Leiste** und **Legacy-Pfad:** trilinear aus der Kette, billig und ohne Moiré.
+1. **Kosten der Resample-Pipeline begrenzen.** Quelle ist die kleinste Stufe, die noch mindestens doppelt so groß wie das Ziel ist. Der Maßstab relativ zur Quelle liegt dann in (¼, ½], die Verbreiterung bleibt ≤ 4 und die Abgriffe pro Achse ≤ 16 (Mitchell) bzw. ≤ 24 (Lanczos3), egal wie groß das Original ist. Der Abstand „mindestens doppelt“ sorgt dafür, dass das Übergangsband des 2:1-Vorfilters über der Nyquist-Grenze des Ziels liegt. So verfälscht die Doppelfilterung das Ergebnis messbar nicht (Abnahme in Iteration 4).
+2. **Vorschau-Leiste:** trilinear aus der Kette, billig und ohne Moiré.
 3. **Bilder über `GL_MAX_TEXTURE_SIZE`** (hier 32768): Stufen, die nicht passen, werden nicht hochgeladen. Die Basisstufe ist dann die erste, die passt. Es ist derselbe Code, kein Sonderfall.
 4. **Schneller erster Eindruck:** Die kleinen Stufen werden zuerst hochgeladen, das Bild erscheint sofort und wird scharf, sobald Stufe 0 da ist.
 
@@ -143,13 +143,13 @@ Stufen entstehen bis die lange Seite ≤ 32 px ist. Bei 4032×3024 sind das 7 St
 1. **Dekodieren** über eine 256-Einträge-LUT: sRGB8 → linear u15 (0…32767). Danach wird Alpha vormultipliziert. Die LUT-Zugriffe bleiben skalar: 512 Byte liegen im L1, und Gather-Befehle sind auf Zen 4 nicht schneller.
 2. **Filtern** in Festkomma: u15-Abtastwerte, Q14-Gewichte (vorzeichenbehaftet, Summe exakt 16384), int32-Akkumulator, runden, `>> 14`, auf [0, a] klemmen. Die Daten liegen planar vor (R, G, B, A getrennt). Dann ist der vertikale Durchgang ein reines Vektor-Multiply-Add über die Zeile, und der horizontale 2:1-Durchgang wird über eine Gerade/Ungerade-Aufteilung zu einer Summe verschobener Vektoren.
 3. **Kodieren:** Alpha-Division herausrechnen (Schnellweg für opake Pixel), dann linear u15 → sRGB8 über eine LUT mit 32768 Einträgen (32 KB). Eine kleinere LUT wäre im Dunkeln zu grob.
-4. Die nächste Stufe wird aus dem RGBA8-Ergebnis der vorherigen gerechnet, mit **derselben** Funktion. Ein Zeilen-Ringpuffer (Kernel-Höhe × Breite) statt einer vollen Zwischenkopie kostet pro Thread ~260 KB statt ~100 MB. Ob die wiederholte 8-Bit-Quantisierung stört, wird gemessen (Iteration 3).
+4. Die nächste Stufe wird aus dem RGBA8-Ergebnis der vorherigen gerechnet, mit **derselben** Funktion. Ein Zeilen-Ringpuffer (Kernel-Höhe × Breite) statt einer vollen Zwischenkopie kostet pro Thread ~260 KB statt ~100 MB. Ob die wiederholte 8-Bit-Quantisierung stört, wird gemessen (Iteration 4).
 
 **Kernel für 2:1:** Kandidaten sind Lanczos2 und Mitchell mit 8 Abgriffen pro Achse. Entschieden wird über die Zonenplatte: Aliasing-Wert und PSNR einer reinen 2:1-Reduktion gegen `magick -filter X -resize 50%` in linearem Licht.
 
-**Ziele** (7950X, 4032×3024, alle Stufen zusammen): AVX2/AVX-512 ≤ 22 ms (≤ 50 % des Dekodierens), SSE2 ≤ 40 ms, skalar deutlich unter den 187 ms von `stb_image_resize`. Das sind Ziele, keine Zusagen. Die gemessenen Werte kommen nach Iteration 3 in Abschnitt 1.2.
+**Ziele** (7950X, 4032×3024, alle Stufen zusammen): AVX2/AVX-512 ≤ 22 ms (≤ 50 % des Dekodierens), SSE2 ≤ 40 ms, skalar deutlich unter den 187 ms von `stb_image_resize`. Das sind Ziele, keine Zusagen. Die gemessenen Werte kommen nach Iteration 4 in Abschnitt 1.2.
 
-**Hochladen:** eine `GL_TEXTURE_2D` mit echten Mip-Stufen `glTexImage2D(level i)`. `GL_TEXTURE_MAX_LEVEL` ist die letzte Stufe, `GL_TEXTURE_BASE_LEVEL` folgt der größten schon hochgeladenen. `glTexStorage2D` ist erst ab GL 4.2 Kern und wird deshalb nicht benutzt. Die Reihenfolge ist klein → groß. Ein Upload-Budget pro Frame kommt nur, wenn die Messung in Iteration 3 zeigt, dass `glTexImage2D` von 48 MB den Frame reißt.
+**Hochladen:** eine `GL_TEXTURE_2D` mit echten Mip-Stufen `glTexImage2D(level i)`. `GL_TEXTURE_MAX_LEVEL` ist die letzte Stufe, `GL_TEXTURE_BASE_LEVEL` folgt der größten schon hochgeladenen. `glTexStorage2D` ist erst ab GL 4.2 Kern und wird deshalb nicht benutzt. Die Reihenfolge ist klein → groß. Ein Upload-Budget pro Frame kommt nur, wenn die Messung in Iteration 4 zeigt, dass `glTexImage2D` von 48 MB den Frame reißt.
 
 **Alles ist Festkomma**, deshalb muss jede SIMD-Stufe auf jeder Architektur **bitidentisch** zur skalaren Referenz rechnen. Genau das prüft der Selbsttest, und es ist die stärkste Absicherung gegen SIMD-Fehler. Wie die Stufen gewählt und angeordnet werden, steht in 2.4.
 
@@ -218,7 +218,7 @@ Heute rechnet der Viewer in einem mittig zentrierten, y-oben-Ortho-System. Maus 
 - `visibleSourceRect`: Diesen Bereich rechnet die Pipeline.
 - `sourceLevel`: nach der Regel in 2.3.
 
-Die EXIF-Orientierung hätte hier ihren Platz als Transformation der Bildachsen, sobald sie kommt (Abschnitt 7).
+**Orientierung (ab Iteration 3):** Die EXIF-Orientierung (1–8) aus `PictureInfo` wird hier als Abbildung der Bildachsen angewendet: eine ganzzahlige 2×2-Matrix aus Drehung um 0/90/180/270° und Spiegelung, dazu ein Versatz. Die Pixel werden **nicht** umkopiert, LOD-Stufen und Texturen bleiben in gespeicherter Lage. `ComputeViewTransform` rechnet mit der **angezeigten** Größe (bei 90°/270° sind Breite und Höhe vertauscht). Die Resample-Pipeline bekommt die Achsabbildung mit, und Durchgang 1 filtert entlang der gespeicherten Achse, die auf die Bildschirm-x-Achse fällt. Die Info-Zeile zeigt die Größe so, wie das Bild angezeigt wird.
 
 ### 2.6 View-Modell für Pan & Zoom
 
@@ -235,9 +235,13 @@ Der Maßstab wird **relativ zur Einpassgröße** gespeichert und die Mitte **nor
 - **Gleich große Bilder:** Die Einpassgröße ist gleich, also ist die Ansicht pixelidentisch.
 - **Dasselbe Bild in verschiedenen Auflösungen:** Man sieht denselben Ausschnitt in derselben Anzeigegröße, und die kleinere Fassung wird entsprechend stärker hochgerechnet. Genau das will man sehen, um Qualität zu vergleichen.
 
-`Fit` und `ActualSize` bleiben beim Wechsel **als Modus** erhalten, dann ist 100 % auch beim nächsten Bild 100 %. Ein dritter Modus „absoluter Maßstab behalten“ (gleiche Bildpixel pro Bildschirmpixel über verschiedene Auflösungen) kostet eine Zeile, wird aber nur gebaut, wenn er gebraucht wird (Abschnitt 7).
+`Fit` und `ActualSize` bleiben beim Wechsel **als Modus** erhalten, dann ist 100 % auch beim nächsten Bild 100 %. Dazu kommt ein dritter Modus **„absoluter Maßstab behalten“**: gleiche Bildpixel pro Bildschirmpixel und gleiche normierte Mitte, über verschiedene Auflösungen hinweg. So lassen sich zwei Auflösungen desselben Motivs etwa bei 100 % vergleichen.
 
-**Einstellung** `ViewPersistence_Reset` (Standard: jeder Wechsel beginnt eingepasst) oder `ViewPersistence_Keep`. Umschalten mit `K` oder `--keep-view`.
+**Einstellung:** `ViewPersistence_Reset` (Standard: jeder Wechsel beginnt eingepasst), `ViewPersistence_KeepRelative` oder `ViewPersistence_KeepAbsolute`. `K` schaltet in dieser Reihenfolge durch, auf der Kommandozeile heißt das `--keep-view=relative|absolute`. Titel und Info-Zeile zeigen den Modus.
+
+**Mausrad-Modus:** `WheelMode_Zoom` (Standard: Rad zoomt um den Mauszeiger, `Strg`+Rad ebenso) oder `WheelMode_Navigate` (Rad blättert, `Strg`+Rad zoomt, wie IrfanView und XnView). Umschalten mit `W` oder `--wheel=zoom|navigate`.
+
+**Pixelinspektion:** Ab einer einstellbaren Zoomstufe wird automatisch Nearest benutzt. Das ist standardmäßig **aus**, schaltbar mit `A` (Schwelle dann 400 %) oder `--nearest-from=<Prozent>`.
 
 **Regeln:**
 
@@ -258,14 +262,18 @@ Der Maßstab wird **relativ zur Einpassgröße** gespeichert und die Mitte **nor
 |---|---|---|
 | Vorheriges / nächstes Bild | ← / → (unverändert, auch gezoomt) | Seitentasten X1 / X2 |
 | ±10, erstes / letztes | Bild ↑ / Bild ↓, Pos1 / Ende (unverändert) | – |
-| Zoom (Stufenleiter) | `+` / `-` (Haupt- und Nummernblock), `Strg` + `+`/`-` | Mausrad um den Mauszeiger (auch `Strg`+Rad) |
+| Zoom (Stufenleiter) | `+` / `-` (Haupt- und Nummernblock), `Strg` + `+`/`-` | Mausrad um den Mauszeiger (auch `Strg`+Rad); im Blätter-Modus nur `Strg`+Rad |
 | Einpassen | `0` (auch `Strg`+`0`) | Doppelklick: Einpassen ↔ 100 % am Mauszeiger |
 | 100 % / 200 % | `1` (auch `Strg`+`1`) / `2` | |
 | Verschieben | `Shift` + Pfeile (⅛ Fenster pro Druck, mit Wiederholung) | Linke oder mittlere Taste ziehen |
-| Ansicht beim Wechsel behalten | `K` | |
+| Ansicht beim Wechsel: zurücksetzen → relativ → absolut | `K` | |
+| Mausrad-Modus Zoom ↔ Blättern | `W` | im Blätter-Modus: Rad = vorheriges/nächstes Bild |
+| Automatisch Nearest ab 400 % ein/aus | `A` | |
+| Hintergrund: Schachbrett → Schwarz → Grau | `B` | |
 | Filter der wirkenden Richtung | `T` / `Shift`+`T` | |
 | Dateiname ↔ relativer Pfad | `N` | |
-| Info-Zeile ein/aus | `I` (Vorschlag) | |
+| Nächsten Loader für dieses Bild (2.10) | `L` | |
+| Info-Zeile ein/aus (Standard an) | `I` | |
 | Vorhanden | `F` Vollbild, `P` Vorschau, `R` neu laden | |
 
 `Strg+0` und `Strg+1` sind die Photoshop- und Browser-Belegung, `+`/`-` und Ziehen zum Verschieben sind überall üblich. Den Doppelklick meldet FPL nicht selbst, er wird über Zeitstempel erkannt (benannte Konstanten für Zeit und Abstand). Die Links/Rechts-Behandlung muss `Shift` ausschließen, sonst blättert `Shift+←` zusätzlich.
@@ -288,11 +296,85 @@ Der Fortschritt ist **streng monoton** (`max(alt, neu)`) und in feste Phasen mit
 
 | Phase | Anteil | Quelle |
 |---|---|---|
-| Lesen + Dekodieren | 0–70 % | JPEG: Dateiposition (`stbi` dekodiert beim Lesen). PNG: Dateiposition nur 0–25 %, danach eine unbestimmte „läuft“-Animation im Rest der Phase, weil `stbi` erst nach dem Lesen entpackt |
+| Lesen + Dekodieren | 0–70 % | Standard ist die Leseposition der `ImageSource` (2.10). Ein Loader, der es besser weiß, übersteuert sie mit `reportProgress`. Beim stb-Loader: JPEG über die Dateiposition (`stbi` dekodiert beim Lesen), PNG über die Dateiposition nur bis 25 %, danach eine unbestimmte „läuft“-Animation im Rest der Phase, weil `stbi` erst nach dem Lesen entpackt |
 | LOD-Stufen | 70–95 % | pro Stufe gewichtet nach Ausgabepixeln, Stufe 1 ≈ 75 % der LOD-Arbeit |
 | Hochladen | 95–100 % | Hauptthread, pro Stufe |
 
-Die Gewichte werden nach Iteration 3 anhand der Benchmark-Zahlen einmal nachgestellt. Der Balken wandert unter die Info-Zeile (Iteration 6), heute sitzt er genau dort, wo die Zeile hinkommt.
+Die Gewichte werden nach Iteration 4 anhand der Benchmark-Zahlen einmal nachgestellt. Der Balken wandert unter die Info-Zeile (Iteration 7), heute sitzt er genau dort, wo die Zeile hinkommt.
+
+### 2.10 Bild-Loader: austauschbar, erkannt an einer 128-Bit-Kennung
+
+**Entscheidung:** Das Laden läuft über eine Schnittstelle, und `stb_image` wird deren erste Implementierung und der Standard. Weitere Loader können **neue Formate** bringen oder **dieselben Formate anders** lesen, etwa schneller, vollständiger oder zum Vergleich. Jeder Loader trägt eine **feste 128-Bit-Kennung** (UUID v4: einmal zufällig erzeugt, danach nie mehr geändert). Name und Version sind nur Anzeige. Einstellungen, Kommandozeile und Log verweisen auf die Kennung.
+
+Warum eine Kennung statt des Namens:
+- Namen ändern sich.
+- Zwei JPEG-Loader heißen schnell beide „jpeg“.
+- Eine zufällige 128-Bit-Zahl braucht keine zentrale Vergabe und kollidiert praktisch nie.
+- Eine Einstellung, die heute einen Loader festlegt, gilt auch nach jeder Umbenennung.
+
+**Der Typ:**
+
+```c
+typedef struct ImageLoaderId {
+    uint8_t bytes[16];   // RFC 4122 order, byte for byte identical to the textual form
+} ImageLoaderId;
+```
+
+Die Textform ist `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, mit oder ohne geschweifte Klammern, Groß- oder Kleinschreibung. Dazu kommen `ImageLoaderIdParse`, `ImageLoaderIdFormat` und `ImageLoaderIdIsEqual`. Die Byte-Reihenfolge ist **die Textreihenfolge** und bewusst **nicht** die Windows-`GUID`-Struktur, deren erste drei Felder little-endian liegen. So bedeutet dieselbe Kennung in einer Datei, auf der Kommandozeile und auf jeder Plattform dieselben 16 Bytes. FPL hat nur `fplInputDeviceGuid` (gleiches Layout, aber für Eingabegeräte gedacht) und keine Funktionen zum Parsen oder Formatieren. Deshalb bekommt der Viewer einen eigenen Typ.
+
+**Die Schnittstelle:**
+
+```c
+typedef struct ImageLoader {
+    uint32_t interfaceVersion;                 // IMAGE_LOADER_INTERFACE_VERSION, an unknown version is rejected
+    uint32_t structSize;                       // sizeof(ImageLoader) as the loader was compiled with
+    ImageLoaderId id;                          // the 128-bit signature, never changes
+    const char *name;                          // display only, e.g. "stb_image"
+    const char *version;                       // display only, e.g. "2.19"
+    ImageLoaderFlags flags;                    // e.g. ImageLoaderFlags_NotThreadSafe
+    const char *const *fileExtensions;         // null terminated list, e.g. ".jpg", ".jpeg"
+    ImageLoaderProbeFunction *probe;           // first bytes of the file -> ImageLoaderMatch
+    ImageLoaderReadInfoFunction *readInfo;     // header only -> PictureInfo
+    ImageLoaderDecodeFunction *decode;         // full decode -> ImagePixels
+    ImageLoaderReleaseFunction *releasePixels; // frees what decode returned
+    void *userData;
+} ImageLoader;
+```
+
+- **Quelle statt Datei.** Ein Loader öffnet nie selbst eine Datei. Er bekommt eine `ImageSource` mit `read`, `seek`, `tell`, `size`, `isCanceled` und `reportProgress`. Der Viewer stellt sie über `fplFile*` bereit, und die heutigen `stbi`-Callbacks werden genau zu dieser Quelle. Dadurch funktionieren Fortschritt und Abbruch bei **jedem** Loader gleich. Andere Quellen (Speicher, Archiv) kommen später ohne Änderung an einem Loader aus.
+- **Fortschritt.** Standard ist die Leseposition. Ein Loader, der mehr weiß, meldet selbst `reportProgress(source, fraction)`. Das löst das PNG-Problem aus 2.9 für jeden Loader, dem es wichtig ist.
+- **Ergebnis.** `ImagePixels { width, height, stride, format, pixels }` gehört dem Loader und wird nach LOD-Erzeugung und Upload über `releasePixels` zurückgegeben, wie heute `stbi_image_free`. `format` ist ein Enum. Nötig ist vorerst nur `ImagePixelFormat_RGBA8_SRGB`, `RGBA16` und `RGBA32F` sind für später reserviert (16-Bit-PNG in voller Tiefe, HDR).
+- **`PictureInfo`** kommt aus `readInfo` und damit **vor** dem Dekodieren. Die Info-Zeile zeigt Größe und bpp also schon während des Ladens. Der Loader füllt `width`, `height`, `channelCount`, `bitsPerPixel`, `isPalette`, `formatName` („JPEG“, „PNG“) und `orientation`. Die Orientierung liest der stb-Loader selbst aus dem EXIF-Block (JPEG APP1, siehe 2.5), weil `stb_image` sie nicht liefert.
+- **Rückgabe.** `ImageLoadResult` ist `Success`, `Unsupported` (dieser Loader lehnt diese Datei oder Variante ab), `Corrupt`, `OutOfMemory` oder `Canceled`, dazu eine kurze Meldung in einen Puffer des Aufrufers.
+- **Threads.** Alle Lade-Threads rufen Loader gleichzeitig auf. Ein Loader muss deshalb **wiedereintrittsfähig** sein und darf pro Aufruf keinen globalen Zustand anfassen. Wer das nicht kann, setzt `ImageLoaderFlags_NotThreadSafe`, und die Registry serialisiert seine Aufrufe über eine eigene Mutex. `stb_image` v2.19 hat globale Schalter (Flip, Unpremultiply) und einen globalen Fehlertext. Der stb-Loader setzt die Schalter **einmal** bei der Registrierung (heute ruft jeder Thread `stbi_set_flip_vertically_on_load` auf) und liest den Fehlertext nur als Hinweis ohne Gewähr. Nach dem Update in Iteration 0 gibt es `STBI_THREAD_LOCAL` (ab 2.26). Dann ist der Fehlertext threadlokal, und die threadlokalen Schalter-Varianten werden genutzt.
+
+**Registry und Auswahl:**
+
+1. **Geordnete Liste** der registrierten Loader, `stb_image` zuerst. Das ist mit „Standard“ gemeint.
+2. **Ordnerscan:** Die Vereinigung aller Endungen aller Loader ersetzt das fest verdrahtete `IsPictureFile`. Ein neuer Loader bringt seine Formate also automatisch in die Dateiliste.
+3. **Pro Datei** werden die ersten 64 Bytes einmal gelesen, und jeder Loader bewertet sie mit `probe`: `ImageLoaderMatch_None`, `_Extension` (nur die Endung passt) oder `_Signature` (die Magic Bytes passen). Die höchste Bewertung gewinnt, bei Gleichstand die Reihenfolge. Der **Inhalt schlägt die Endung**: Ein PNG namens `.jpg` wird von einem PNG-fähigen Loader gelesen.
+4. **Festlegen:** Ein Loader lässt sich global oder pro Endung festlegen. Er wird dann zuerst versucht, unabhängig von der Reihenfolge, aber nur wenn sein `probe` nicht `None` sagt.
+5. **Rückfall:** Liefert der gewählte Loader `Unsupported` oder `Corrupt`, wird der nächste passende versucht. Das ist standardmäßig an und über `--no-loader-fallback` abschaltbar. So darf ein eigener Loader ein Format auch nur **teilweise** abdecken und den Rest an stb weitergeben.
+6. Jedes Bild merkt sich, **welcher** Loader es gelesen hat. Das steht im Fenstertitel und im Log. `L` schaltet für das aktuelle Bild zum nächsten Loader, der es lesen kann, und lädt neu. So lassen sich zwei Loader an **derselben** Datei vergleichen, nach Ergebnis und nach Zeit.
+
+**Einstellbar** über die Kommandozeile (die Speicherung in einer Einstellungsdatei steht in Abschnitt 7):
+
+| Parameter | Bedeutung |
+|---|---|
+| `--loader=<Kennung\|Name>` | alle Formate zuerst mit diesem Loader versuchen (Rückfall bleibt) |
+| `--loader-for=<Endung>:<Kennung\|Name>` | pro Endung, mehrfach erlaubt |
+| `--loader-order=<Kennung>,<Kennung>,…` | Reihenfolge der Registry |
+| `--no-loader-fallback` | kein Rückfall auf den nächsten Loader |
+| `--list-loaders` | Tabelle aus Name, Kennung, Version und Endungen, dann beenden |
+
+Maßgeblich ist die Kennung. Ein Name wird nur als Abkürzung angenommen, wenn er eindeutig ist, sonst gibt es einen Fehler mit der Liste der passenden Kennungen.
+
+**Einkompiliert, aber DLL-fähig.** Vorerst werden die Loader einkompiliert und beim Start registriert. Die Schnittstelle ist aber reines C, hat `interfaceVersion` und `structSize` und keine C++-Typen. Ein späterer Plugin-Loader über `fplDynamicLibraryLoad` mit genau einer exportierten Funktion `ImageLoaderGetDescriptor` braucht deshalb keine Änderung an der Schnittstelle (Abschnitt 7).
+
+**Zwei kleine eingebaute Loader beweisen die Architektur**, zusätzlich zu stb:
+
+- **PNM/PAM** (`.ppm .pgm .pam`, Magic `P5`/`P6`/`P7`) — ein **neues Format**. Es hat auch über den Beweis hinaus Nutzen: Der Messstand schreibt PAM (`--render-to`), und der Viewer kann seine eigenen Testergebnisse dann direkt zeigen.
+- **Referenz-BMP** (nur unkomprimiertes `BI_RGB` mit 24/32 Bit, bottom-up und top-down) — ein **Format, das stb auch kann**. Damit werden das Festlegen (`--loader-for=bmp:…`) und der Rückfall bewiesen: Ein RLE- oder Paletten-BMP gibt `Unsupported`, und stb übernimmt. Wo sich beide überschneiden, muss das Ergebnis byteidentisch zu stb sein. Er **bleibt** in der App registriert, steht in der Reihenfolge aber **hinter** stb. Er ändert also nie etwas, solange man ihn nicht festlegt, und dient Loader-Autoren als lebendes Beispiel.
 
 ---
 
@@ -307,13 +389,18 @@ Neue Dateien:
 | `demos/FPL_ImageViewer/imagepyramid_arm.h` | **später:** Zeilenfunktionen NEON, nur unter `IMAGE_PYRAMID_ARCH_ARM`. In diesem Plan wird nur der Platz vorgesehen, nicht die Datei. |
 | `demos/FPL_ImageViewer/resamplepipeline.h` | Kernel-Tabelle, Shader-Erzeugung für horizontal und vertikal, Zwischen- und Zieltexturen, Framebuffer, Cache-Schlüssel |
 | `demos/FPL_ImageViewer/viewtransform.h` | `ViewState`, `ViewTransform`, `ComputeViewTransform`, Zoom-/Pan-Operationen, Klemmen |
+| `demos/FPL_ImageViewer/imageloader.h` | `ImageLoaderId` mit Parsen und Formatieren, `ImageLoader`, `ImageSource` über `fplFile*`, Registry, Auswahl, Rückfall, Serialisierung für nicht threadsichere Loader |
+| `demos/FPL_ImageViewer/imageloader_stb.h` | Standard-Loader über `stb_image` inklusive Header-Blick für `PictureInfo` |
+| `demos/FPL_ImageViewer/imageloader_pnm.h` | PNM/PAM-Loader (neues Format) |
+| `demos/FPL_ImageViewer/imageloader_bmp.h` | Referenz-BMP-Loader (gleiches Format wie stb, nur unkomprimiert) |
 | `demos/additions/fui_backend_gl3.h` | siehe 2.8 |
 | `demos/FPL_ImageViewer/tests/` | Testbild-Generator, Testlauf, Auswertung (Abschnitt 4) |
 
 Änderungen an Vorhandenem:
 
 - `ImageData imageData[MAX_PICTURE_MIPMAPS]` wird zu `ImageLevel levels[MAX_PICTURE_LEVELS]` mit `levelCount` und `uploadedLevelCount`. Hinzu kommt `PictureInfo info`.
-- `PictureInfo { width, height, channelCount, bitsPerPixel, isPalette }`: vor dem Dekodieren aus `stbi_info_from_callbacks` und `stbi_is_16_bit_from_callbacks`, ergänzt um einen Header-Blick für PNG (IHDR-Farbtyp 3 → Palette, Bittiefe = bpp) und BMP (`biBitCount`). Die Info-Zeile kann dadurch Größe und bpp schon **während des Ladens** zeigen. `stbi` allein meldet ein Palette-PNG als 24/32 bpp.
+- `PictureInfo` kommt aus `readInfo` des Loaders (2.10). Der stb-Loader füllt sie aus `stbi_info_from_callbacks` und `stbi_is_16_bit_from_callbacks` und ergänzt sie um einen Header-Blick für PNG (IHDR-Farbtyp 3 → Palette, Bittiefe = bpp) und BMP (`biBitCount`), weil `stbi` allein ein Palette-PNG als 24/32 bpp meldet.
+- `LoadPictureThreadProc` kennt stb nicht mehr. Die Reihenfolge ist: Quelle öffnen → `probe` über die Registry → `readInfo` → `decode` (mit Rückfall) → LOD → `ToUpload`. `IsPictureFile` fragt die Registry.
 - Filter-Shader aus `shadersources.h` → Kernel-Gewichtsfunktionen in `resamplepipeline.h`. Uniform-Positionen werden einmal ermittelt statt bei jedem Zeichnen (`glGetUniformLocation` läuft heute pro Aufruf). Zwei Sampler-Objekte (nearest, trilinear) ersetzen das `glTexParameteri` pro Frame.
 - Hauptschleife: Events → Bridge und Viewer, dann `fuiFplInputBuild`, Update, Bild (Pipeline oder Cache-Kopie), Vorschau-Leiste, Info-Zeile über `final_ui`, `fuiGL3Render`, Flip.
 - **Parameter** werden neu geparst. Die alten Kurzformen `-r -t= -p= -f=` bleiben, repariert. Dazu kommen Langformen mit selbsterklärenden Namen:
@@ -323,12 +410,15 @@ Neue Dateien:
 | `--zoom=fit\|100\|<Prozent>` | Startzoom |
 | `--center=<u>,<v>` | normierte Startmitte |
 | `--down-filter=<Name>`, `--up-filter=<Name>` | Filterwahl |
-| `--keep-view`, `--relative-path`, `--no-preview`, `--no-info` | Einstellungen |
+| `--keep-view=relative\|absolute`, `--wheel=zoom\|navigate`, `--nearest-from=<Prozent>`, `--background=checker\|black\|gray` | Ansicht und Bedienung |
+| `--relative-path`, `--no-preview`, `--no-info` | Anzeige |
 | `--simd=scalar\|sse2\|avx2\|avx512\|neon` | SIMD-Stufe erzwingen; eine nicht verfügbare Stufe fällt mit Log-Zeile zurück |
 | `--lod-source=auto\|0` | Pipeline-Quelle erzwingen, für Referenzvergleiche |
 | `--render-to=<Datei.pam> --window=<B>x<H>` | ein Bild offscreen rendern, als PAM schreiben, beenden |
 | `--bench-lod=<Datei>` | Dekodieren + LOD je SIMD-Stufe messen (Median aus N Läufen) |
-| `--selftest` | ViewTransform-Mathematik + Bitidentität aller SIMD-Stufen. Läuft **ohne Fenster und GL**, also auch unter `qemu-aarch64`. |
+| `--loader=`, `--loader-for=`, `--loader-order=`, `--no-loader-fallback`, `--list-loaders` | Loader-Auswahl, siehe 2.10 |
+| `--decode-all=<Ordner>` | dekodiert alle Bilder des Ordners über Registry und Lade-Threads, ohne GL; meldet Fehler, Anzahl und Zeit je Loader |
+| `--selftest` | ViewTransform-Mathematik, Bitidentität aller SIMD-Stufen, Kennungen parsen und formatieren, Loader-Auswahlregeln an Byte-Puffern. Läuft **ohne Fenster und GL**, also auch unter `qemu-aarch64`. |
 
 ---
 
@@ -356,6 +446,13 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 | `tiny_1x1`, `tiny_3x2` | | entartete Größen | korrekt, LOD-Kette endet sauber |
 | `gradient16` | 4096×256, 16 Bit | Banding in den Zwischentexturen; bpp-Anzeige | kein sichtbares Banding; Info zeigt **48 bpp** |
 | `palette8`, `gray8` | 256² | bpp-Anzeige | **8 bpp (Palette)**, **8 bpp** |
+| `render_rgba.pam`, `.ppm`, `.pgm` | klein | PNM/PAM-Loader (neues Format) | erscheint im Ordnerscan, Pixel gleich der Quelle |
+| `bmp24_bottomup`, `bmp32_topdown` | 257×131 | Referenz-BMP gegen stb | **byteidentisch** |
+| `bmp_rle8` | 64² | Rückfall | Referenz-BMP lehnt ab, stb liest; das Log nennt beide |
+| `png_named.jpg` | 64² | Signatur schlägt Endung | wird als PNG gelesen |
+| `orientation_1` … `orientation_8` | 300×200 JPEG | EXIF-Orientierung | Ein asymmetrisches Motiv („F“ mit Farbecken) wird für jede der 8 Orientierungen passend gedreht bzw. gespiegelt **gespeichert** und bekommt den passenden EXIF-Wert (`magick -orient`). Alle 8 müssen **gleich** angezeigt werden, bei 100 % byteidentisch zur Referenz von `orientation_1` bis auf JPEG-Abweichungen (PSNR-Schwelle), eingepasst, gezoomt und in der Vorschau-Leiste. |
+| `truncated.jpg`, `empty.png` (0 Byte) | | kaputte Dateien | Fehlerzustand, kein Absturz, alle passenden Loader versucht |
+| `exif_broken.jpg` | 64² | EXIF-Block mit Offsets und Längen außerhalb des Blocks | wird als Orientierung 1 angezeigt, kein Absturz, kein Lesen über den Block hinaus (unter ASan geprüft) |
 | Fotos `202308`, `Bildschirmfotos` | | echte Motive | Sichtprüfung an vergrößerten Ausschnitten |
 
 ### 4.2 Referenzen und Metriken
@@ -377,10 +474,12 @@ Die Filter werden gegen **selbst erzeugte** Bilder validiert, denn echte Fotos u
 
 ## 5. Iterationen
 
-Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verkleinern**, dann das Vergrößern, dann die Steuerung, am Ende die UI. Das Verkleinern ist ohne LOD-Stufen schon **richtig**, die LOD-Stufen machen es danach nur schneller und begrenzen die Kosten. Deshalb kommt die Qualität vor der Kette.
+Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verkleinern**, dann das Vergrößern, dann die Steuerung, am Ende die UI. Das Verkleinern ist ohne LOD-Stufen schon **richtig**, die LOD-Stufen machen es danach nur schneller und begrenzen die Kosten. Deshalb kommt die Qualität vor der Kette. Die Loader-Architektur steht vor der LOD-Kette, weil beide den Lade-Thread umbauen und die Kette auf dem Ergebnis des Loaders aufsetzt.
 
 ### Iteration 0 — Testbilder und Messstand
 
+- **Vorab, eigener Commit:** `demos/dependencies/stb/stb_image.h` von v2.19 auf die aktuelle Version. Die Datei wird gemeinsam genutzt, außer vom Viewer von `final_assets.h`, `final_graphics.h` (und darüber den Spiele-Demos), `FPL_Emulator`, `FPL_Input`, `FPL_OpenGL` und `FPL_Vulkan`. Alle diese Demos werden danach gebaut. Das Update kommt **vor** allem anderen, damit jeder Messwert und die Abnahme „gleiche Pixel wie vorher“ in Iteration 3 schon mit der neuen Version entstehen.
+- Die Messungen aus 1.2 werden mit der neuen Version wiederholt und dort ersetzt.
 - `generate_testimages.sh` und `run_scaling_tests.sh`. `--render-to` wird vorgezogen und rendert vorerst mit dem **alten** Zeichenweg. Die Parameter werden repariert (`-p`, `-f`), und die Langformen aus Abschnitt 3 kommen dazu, soweit sie schon Sinn ergeben.
 - Die Schwellen werden kalibriert (4.2).
 - **Abnahme:** Der Testlauf läuft durch und dokumentiert den **heutigen** Stand als Tabelle. Er muss die Zahlen aus 1.2 reproduzieren, also 1:1 flach 188 bei allen außer Nearest und Aliasing bei 0,146.
@@ -388,26 +487,47 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 ### Iteration 1 — Fundament
 
 - `GL_TEXTURE_RECTANGLE` → `GL_TEXTURE_2D`, `GL_CLAMP` → `GL_CLAMP_TO_EDGE`, 16× MSAA weg.
-- Das halbe Mip-Gerüst kommt raus (`MAX_PICTURE_MIPMAPS`, `DownsampleImage`, die Auswahlschleife).
+- Das halbe Mip-Gerüst kommt raus (`MAX_PICTURE_MIPMAPS`, `DownsampleImage`, die Auswahlschleife) und mit ihm `stb_image_resize`.
+- **Legacy-GL-Pfad entfernen:** `FORCE_LEGACY_OPENGL`, alle Zweige `openGLMajor < 2` und das Fixed-Function-Zeichnen. Die App setzt GL 3.3 Core voraus. Kommt der Kontext nicht zustande, gibt es eine klare Fehlermeldung in Log und Konsole statt eines stillen `return -1`.
+- **Leerlauf:** Gezeichnet wird nur, wenn etwas „schmutzig“ ist: Events, Ladefortschritt, Uploads, Fenstergröße, laufende Animationen. Sonst werden Zeichnen und Flip übersprungen, und der Thread schläft kurz (benannte Konstante, etwa 5 ms). FPL kennt kein blockierendes Warten auf Events, siehe Abschnitt 7.
 - Umstellung auf y-unten-Fensterpixel; `viewtransform.h` mit `ComputeViewTransform` (vorerst nur `Fit` und `ActualSize`) und Ganzpixel-Rundung des Ursprungs. Die falsch benannten Zweige verschwinden dabei.
 - Halb-Texel-Korrektur in den vorhandenen Filtern als Zwischenschritt: `p = uv·size − 0,5`, `base = floor(p)`, Gewichte aus `p − base`. So ist die Iteration für sich schon eine Verbesserung, auch wenn Iteration 2 die Shader ersetzt.
 - `--selftest` mit den ersten ViewTransform-Prüfungen.
-- **Abnahme:** `checker_1px` bei 100 % **byteidentisch** mit **jedem** interpolierenden Filter (Nearest, Bilinear, Catmull-Rom, Lanczos3). `border_frame_odd` hat bei 100 % und beim Einpassen alle vier Rahmenseiten. Es gibt keine GL-Fehler im Core-Profil. Die Fotos sehen nicht schlechter aus als vorher (Sichtprüfung, Vorher-Nachher-Ausschnitte).
+- **Abnahme:** `checker_1px` bei 100 % **byteidentisch** mit **jedem** interpolierenden Filter (Nearest, Bilinear, Catmull-Rom, Lanczos3). `border_frame_odd` hat bei 100 % und beim Einpassen alle vier Rahmenseiten. Es gibt keine GL-Fehler im Core-Profil. Die Fotos sehen nicht schlechter aus als vorher (Sichtprüfung, Vorher-Nachher-Ausschnitte). Im Leerlauf liegt die CPU-Last des Viewers unter 1 % (`pidstat` über 10 s), während des Ladens und Blätterns läuft er flüssig wie vorher. Kein `FORCE_LEGACY_OPENGL` und kein Fixed-Function-Aufruf mehr im Viewer (per `grep` geprüft).
 
 ### Iteration 2 — Richtiges Verkleinern
 
 - `resamplepipeline.h`: Kernel-Tabelle (2.2) mit Box und Mitchell neu, Shader-Vorlage für horizontal und vertikal, verbreiterter Kernel, lineares Licht, vormultipliziertes Alpha, RGBA16F-Zwischen- und Zieltextur, nur der sichtbare Ausschnitt, Cache mit Schlüssel (Bild, Stufe, Maßstab, Versatz, Filter, Fenstergröße).
 - Quelle ist vorerst immer Stufe 0.
+- **Hintergrund** hinter transparenten Bildern: Schachbrett (Standard, feste Feldgröße in Bildschirmpixeln), Schwarz oder Grau. Umschalten mit `B` oder `--background=`. Das vormultiplizierte Ergebnis wird in linearem Licht darauf gemischt.
 - Getrennte Filterwahl für unten und oben, `T` / `Shift+T` wirkt auf die aktive Richtung, der Fenstertitel zeigt Richtung und Filter.
 - Ausblick: GPU-Zeit der Durchgänge per `GL_TIME_ELAPSED`-Abfrage, sichtbar im Log.
 - **Abnahme:**
   - Zonenplatte bei 0,146 und 0,35: Aliasing-Wert höchstens Referenz + kalibrierte Toleranz (heute 15,9–64,3 bei einer Referenz von 1,1).
   - PSNR ≥ Schwelle gegen dieselbe Kernel-Referenz für Box, Triangle, Mitchell, Catmull-Rom und Lanczos3 auf allen synthetischen Bildern.
   - `gamma_rows` und `color_checker_1px` verkleinert: ± 2 zum Sollwert.
-  - `alpha_disk`: kein grüner Saum.
-  - Standardfilter per Sichtprüfung an `text`, `Bildschirmfotos` und Fotos festgelegt.
+  - `alpha_disk`: kein grüner Saum. Auf Schwarz und Grau stimmt es mit `magick -background <Farbe> -flatten` überein (PSNR ≥ Schwelle), das Schachbrett wird per Sichtprüfung abgenommen.
+  - Standardfilter zum Verkleinern: Der Nutzer bekommt Vergleichsausschnitte (`text`, `Bildschirmfotos`, Fotos, Zonenplatte) je Kandidat vorgelegt und legt fest.
 
-### Iteration 3 — LOD-Kette, SIMD-Reducer, Fortschritt
+### Iteration 3 — Loader-Architektur
+
+- `imageloader.h` nach 2.10: Kennungstyp mit Parsen und Formatieren, Schnittstelle, `ImageSource` über `fplFile*`, Registry mit Reihenfolge, Probe, Festlegen, Rückfall und Serialisierung für `NotThreadSafe`.
+- `imageloader_stb.h` als Standard. Der geplante Header-Blick für `PictureInfo` zieht hier als `readInfo` ein, und die globalen stb-Schalter werden nur noch einmal bei der Registrierung gesetzt.
+- **EXIF-Orientierung:** Ein kleiner EXIF-Leser (JPEG APP1, TIFF-Header, nur Tag 0x0112, beide Byte-Reihenfolgen, mit Grenzprüfung gegen kaputte Dateien) füllt `PictureInfo.orientation`. `ViewTransform`, die Resample-Pipeline und die Vorschau-Leiste wenden sie an (2.5).
+- `imageloader_pnm.h` und `imageloader_bmp.h` als Beweis für „neues Format“ und „gleiches Format“.
+- Der Lade-Thread läuft nur noch über die Registry, und `IsPictureFile` fragt sie.
+- Loader-Parameter, `L` zum Durchschalten, `--list-loaders`, `--decode-all`, Loader-Name im Fenstertitel.
+- `--selftest`: Kennungen in beide Richtungen (mit und ohne Klammern, Groß- und Kleinschreibung, ungültige Eingaben) und Auswahlregeln an Byte-Puffern, also ohne Datei und ohne GL.
+- **Abnahme:**
+  - Mit der Standardeinstellung ändert sich sonst nichts: Der Testlauf aus Iteration 0 liefert für alle Bilder ohne Drehung dieselben Pixel wie vor dem Umbau.
+  - `orientation_1` … `orientation_8` werden wie in 4.1 erwartet gleich angezeigt. Die gedrehten Fotos aus `202308` stehen aufrecht (Sichtprüfung an Stichproben mit Orientierung 3 und 6).
+  - `--list-loaders` zeigt drei Loader mit Kennung. Eine unbekannte Kennung und ein mehrdeutiger Name führen zu einer klaren Fehlermeldung.
+  - Die Loader-Testbilder aus 4.1 verhalten sich wie dort erwartet: BMP byteidentisch, RLE-Rückfall, Signatur vor Endung, kaputte Dateien ohne Absturz, PAM im Ordnerscan.
+  - `L` schaltet ein BMP zwischen beiden Loadern um, und der Titel zeigt jeweils den richtigen.
+  - `--decode-all=/home/final/Bilder/202308` liest alle 515 Fotos mit 32 Threads ohne Fehler.
+  - `stbi_set_*` wird nur noch bei der Registrierung aufgerufen (per `grep` geprüft).
+
+### Iteration 4 — LOD-Kette, SIMD-Reducer, Fortschritt
 
 - `imagepyramid.h` und `imagepyramid_x86.h` nach 2.4:
   - Zuerst der architekturfreie Treiber mit Tabelle und skalaren Zeilenfunktionen.
@@ -428,29 +548,32 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - `extreme_aspect` wird angezeigt.
   - Der Fortschrittsbalken springt nie zurück. Bei PNG steht er nicht auf 100 %, während noch dekodiert wird.
 
-### Iteration 4 — Vergrößern
+### Iteration 5 — Vergrößern
 
 - Die Pipeline wird mit `widen = 1` für s > 1 genutzt, dieselben Kernel, Standard Catmull-Rom (Arbeitshypothese).
 - Genau 100 % umgeht den Filter.
-- Optional, nur wenn die Sichtprüfung es nahelegt: Ab einer einstellbaren Zoomstufe (etwa 400 %) wird automatisch Nearest benutzt, wie Bildbearbeitungen es zur Pixelinspektion tun. Standardmäßig aus.
+- Automatisch Nearest ab einer einstellbaren Zoomstufe (2.6), standardmäßig aus, `A` und `--nearest-from=`.
 - **Abnahme:**
   - `impulse` ×7 und ×8: Profil ≤ 1 Stufe Abweichung vom abgetasteten Kernel, symmetrisch, Maximum mittig — für **alle** Kernel inklusive Triangular und Bell.
   - `pixelart_32` mit Nearest bei ×2 bis ×8 **byteidentisch**.
   - `step_edge`: Überschwinger je Filter dokumentiert und plausibel.
   - PSNR ≥ Schwelle gegen die ImageMagick-Referenz bei 1,5 / 2,3 / 4.
   - Die kleinen Screenshots (261×462 usw.) sehen eingepasst mit Hochrechnen sauber aus.
+  - Mit `--nearest-from=400` ist `pixelart_32` bei ×4 byteidentisch zu Nearest, bei ×3 gilt der gewählte Filter.
+  - Standardfilter zum Vergrößern: Der Nutzer bekommt Vergleichsausschnitte vorgelegt und legt fest.
 
-### Iteration 5 — Pan & Zoom
+### Iteration 6 — Pan & Zoom
 
 - `ViewState` vollständig (`Custom`, `relativeScale`, `normalizedCenter`), Stufenleiter, Mausrad mit Magnet, Zoom um den Mauszeiger, Ziehen mit linker und mittlerer Taste, `Shift`+Pfeile, Doppelklick, `0`/`1`/`2`, `Strg`-Varianten, Seitentasten zum Blättern.
-- `K` und `--keep-view` für Behalten oder Zurücksetzen, dazu `--zoom=` und `--center=` für reproduzierbare Aufnahmen.
-- Zoom und Mitte stehen vorerst im Fenstertitel, ab Iteration 6 in der Info-Zeile.
+- `K` mit drei Modi und `--keep-view=`, Mausrad-Modus mit `W` und `--wheel=`, dazu `--zoom=` und `--center=` für reproduzierbare Aufnahmen.
+- Zoom und Mitte stehen vorerst im Fenstertitel, ab Iteration 7 in der Info-Zeile.
 - **Abnahme:**
-  - `--selftest`: Zoom um einen Punkt lässt den Bildpunkt unter dem Zeiger auf ±0,5 px stehen. Klemmen: Ein Bild, das größer als das Fenster ist, zeigt nie einen Rand, ein kleineres bleibt zentriert. Behalten: Gleich große Bilder ergeben pixelidentische Ansichten, dasselbe Motiv in 4032 und 1008 ergibt denselben Ausschnitt.
+  - `--selftest`: Zoom um einen Punkt lässt den Bildpunkt unter dem Zeiger auf ±0,5 px stehen. Klemmen: Ein Bild, das größer als das Fenster ist, zeigt nie einen Rand, ein kleineres bleibt zentriert. Behalten relativ: Gleich große Bilder ergeben pixelidentische Ansichten, dasselbe Motiv in 4032 und 1008 ergibt denselben Ausschnitt. Behalten absolut: Dasselbe Motiv in 4032 und 1008 steht beim Wechsel auf demselben Maßstab (z. B. 100 %) um dieselbe normierte Mitte.
   - Interaktiv per `xdotool` (Tasten, Rad, Ziehen): ← und → blättern auch gezoomt, `Shift+←` blättert **nicht**.
   - Beim Halten von → mit „Behalten“ bleibt die Ansicht stabil, ohne Springen.
+  - Im Blätter-Modus (`W`) blättert das Rad, `Strg`+Rad zoomt. Im Zoom-Modus blättert das Rad nie.
 
-### Iteration 6 — `final_ui`: GL3-Backend, Eingabe, Info-Zeile
+### Iteration 7 — `final_ui`: GL3-Backend, Eingabe, Info-Zeile
 
 - `fui_backend_gl3.h` (2.8). Eine GL3-Umschaltung in `FUI_Test` dient als Prüfstand.
 - `fui_input_fpl.h`: Begin- und HandleEvent-Aufteilung.
@@ -460,6 +583,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - Rechtsbündig in derselben Zeile steht die **Originalgröße und bpp**: `4032 × 3024 · 24 bpp`. Dieser Teil hat Vorrang und wird nie gekürzt.
   - Die Zeile erscheint schon während des Ladens (aus `PictureInfo`).
   - Der Fortschrittsbalken rückt darunter.
+  - `I` und `--no-info` blenden die Zeile aus, standardmäßig ist sie an.
 - **Abnahme:**
   - `FUI_Test` über GL1 (Kompatibilitätskontext) und über GL3 (Core): Screenshots bis auf ≤ 1 Stufe gleich (`magick compare -metric AE` mit `-fuzz 1`).
   - Die Info-Zeile ist bei hellem und dunklem Bild lesbar (Screenshot + Zoom).
@@ -479,19 +603,43 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 
 ---
 
-## 7. Bewusst offen
+## 7. Entscheidungen und Folgepunkte
 
-- **EXIF-Orientierung:** 10 von 40 Stichproben-Fotos sind betroffen. Die Lösung wäre ein kleiner JPEG-APP1-Parser beim Header-Blick und die Orientierung als Achsentransformation in `ViewTransform`. Der Platz dafür ist reserviert, der Aufwand ist klein. **Empfehlung: direkt nach diesem Plan.**
-- **`stb_image` aktualisieren** (v2.19 → aktuell): Das bringt Sicherheitskorrekturen für eine App, die beliebige Dateien öffnet. Danach die Benchmarks wiederholen.
-- **VRAM-Budget:** 17 Slots × 65 MB = 1,1 GB sind auf der 3090 kein Thema, auf einer iGPU schon. Nachbarn jenseits von ±N bräuchten nur die Stufe in Bildschirmgröße, Stufe 0 erst beim Hinsehen. Die Kette aus Iteration 3 macht das möglich, es ist aber nicht Teil dieses Plans.
-- **Absoluter Maßstab behalten** als dritter Modus (2.6).
-- **Schachbrett-Hintergrund** für transparente Bilder: Heute ist er schwarz.
-- **Neu zeichnen nur bei Bedarf:** Heute läuft die Schleife mit 60 Hz, auch wenn sich nichts ändert. Für eine eigenständige App gehört das in den Leerlauf.
-- **NEON-Stufe:** Die Architektur ist vorbereitet (2.4). Der Aufwand sind die vier Zeilenfunktionen in `imagepyramid_arm.h`, eine Tabellenzeile und die Zuordnung zu `arm.hasNEON`. Geprüft wird per Cross-Compile und `--selftest` unter `qemu-aarch64`, dafür muss `aarch64-linux-gnu-gcc` noch installiert werden. Bis dahin läuft ARM skalar. Auch der übrige Viewer müsste auf ARM erst einmal übersetzt werden, bevor man sich darauf verlassen kann. Nur die SIMD-Seite ist hier schon ausgelegt.
-- **Der erste Bildaufruf** ist heute nicht parallel: Ein Bild wird von einem Thread dekodiert, und nur die Nachbarn laufen parallel. Die LOD-Stufe 1 ließe sich in Zeilenblöcken auf mehrere Threads verteilen.
-- **Glyphen außerhalb von U+00FF** (CJK usw.) erscheinen als Ersatzzeichen.
-- **Legacy-GL-Pfad:** Er bleibt übersetzbar und zeigt Nearest/Bilinear/trilinear aus der Kette, ohne Qualitätszusage. Ob er für eine eigenständige App überhaupt bleiben soll, ist zu entscheiden.
-- **Umzug nach `apps/`** und Einstellungen in einer Datei speichern: gehört zum App-Umbau, nicht zur technischen Basis.
+### 7.1 Entschieden am 2026-09-23
+
+| Punkt | Entscheidung | Wo im Plan |
+|---|---|---|
+| EXIF-Orientierung | wird eingebaut | 2.5, 2.10, Iteration 3 |
+| `stb_image` aktualisieren | vor allem anderen, eigener Commit, alle abhängigen Demos bauen | Iteration 0 |
+| Hintergrund für Transparenz | umschaltbar Schachbrett/Schwarz/Grau, Standard Schachbrett | 2.7, Iteration 2 |
+| Legacy-GL-Pfad | **entfernt**, GL 3.3 Core ist Voraussetzung | Iteration 1 |
+| Mausrad | einstellbar, Standard Zoom um den Mauszeiger, `W` schaltet auf Blättern | 2.6, 2.7, Iteration 6 |
+| Verschieben per Tastatur | `Shift` + Pfeile | 2.7 |
+| Ansicht behalten | drei Modi: zurücksetzen, relativ, absolut; `K` schaltet durch | 2.6, Iteration 6 |
+| Automatisch Nearest | eingebaut, standardmäßig aus, `A` | 2.6, Iteration 5 |
+| Neu zeichnen nur bei Bedarf | eingebaut | Iteration 1 |
+| VRAM-Budget | später | 7.2 |
+| LOD eines Bildes auf mehrere Threads | nur wenn die Benchmarks es verlangen | Iteration 4, 7.2 |
+| Info-Zeile ausblendbar | `I`, Standard an | 2.7, Iteration 7 |
+| Referenz-BMP-Loader | bleibt, hinter stb eingereiht | 2.10 |
+| Plugin-Loader als DLL | später, eigener Plan | 7.2 |
+| Weitere Loader | **WebP** als Folgeplan vorgemerkt, sonst keine | 7.2 |
+| Kennungstyp | eigener `ImageLoaderId` im Viewer, kein `fplGuid` in FPL | 2.10 |
+| Umzug nach `apps/` + Einstellungsdatei | nach diesem Plan, eigener Plan | 7.2 |
+| NEON | später, die Architektur reicht vorerst | 2.4, 7.2 |
+| Glyphen | Latin-1 (U+0020–U+00FF) reicht vorerst | 2.8 |
+| Standardfilter | Mitchell ↓ / Catmull-Rom ↑ als Hypothese; der Nutzer entscheidet anhand vorgelegter Vergleichsausschnitte | 2.2, Iteration 2 und 5 |
+
+### 7.2 Folgepunkte (nicht in diesem Plan)
+
+- **App-Umbau:** Umzug nach `apps/FPL_ImageViewer` und eine Einstellungsdatei für Filter, Loader-Kennungen, Ansichtsmodus, Mausrad-Modus, Hintergrund und so weiter. Bis dahin gibt es alles als Parameter und Tasten.
+- **WebP-Loader:** der erste Folgeplan für ein neues Format, über die Loader-Schnittstelle aus 2.10.
+- **Plugin-Loader als DLL** über `fplDynamicLibraryLoad` und eine exportierte `ImageLoaderGetDescriptor`. Die Schnittstelle ist darauf ausgelegt, das Laden selbst ist ein eigenes Thema: Suche, Versionsprüfung, Entladen, Fehler in fremdem Code.
+- **VRAM-Budget:** Nachbarn jenseits von ±N laden nur die Stufe in Bildschirmgröße hoch, Stufe 0 erst beim Hinsehen. Die LOD-Kette aus Iteration 4 macht das möglich.
+- **NEON-Stufe:** die vier Zeilenfunktionen in `imagepyramid_arm.h`, eine Tabellenzeile und die Zuordnung zu `arm.hasNEON`. Dazu `aarch64-linux-gnu-gcc` installieren und `--selftest` unter `qemu-aarch64` laufen lassen. Vorher muss der Viewer insgesamt einmal auf ARM übersetzt werden.
+- **LOD eines Bildes auf mehrere Threads:** nur falls die Benchmarks aus Iteration 4 es verlangen.
+- **Blockierendes Warten in FPL** (etwa `fplWaitEvent(timeout)`: X11 über `select` auf die Verbindung, Win32 über `MsgWaitForMultipleObjects`): Damit käme der Leerlauf ohne Schlaf-Intervall und ohne dessen Eingabelatenz aus. Der Leerlauf in Iteration 1 funktioniert auch ohne.
+- **Glyphen jenseits von Latin-1** (mehrere Bereiche oder ein dynamischer Glyphen-Cache in `fui_font_stbtt.h`), falls Dateinamen mit anderen Schriften eine Rolle spielen.
 
 ---
 
@@ -501,6 +649,10 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - **Treiberunterschiede beim sRGB-Framebuffer:** Auf NVIDIA ist er nachweislich aktiv (188 in 1.2). Auf Mesa oder Intel wird er beim Start über `GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING` geprüft. Ist er nicht sRGB-fähig, kodiert der letzte Kopiervorgang selbst.
 - **SIMD-Bitidentität** hängt an reiner Ganzzahlarithmetik. Sobald irgendwo Gleitkomma hineinrutscht (z. B. eine Alpha-Division), muss sie in **allen** Stufen skalar und gleich laufen. Der Selbsttest fängt das ab.
 - **AVX-512 nur mit F:** Falls BW-Befehle deutlich schneller wären, heißt das eine FPL-Änderung. Getestet werden kann alles lokal, denn der 7950X hat F, BW und VL.
-- **ARM-Weiche auf Apple:** Wer an der einen Weiche vorbei `FPL_ARCH_ARM64` allein abfragt, bekommt auf einem Mac stillschweigend den skalaren Pfad. Das fällt nur über die Leistung auf, nie über ein falsches Ergebnis. Abhilfe ist die `grep`-Prüfung in der Abnahme von Iteration 3.
+- **ARM-Weiche auf Apple:** Wer an der einen Weiche vorbei `FPL_ARCH_ARM64` allein abfragt, bekommt auf einem Mac stillschweigend den skalaren Pfad. Das fällt nur über die Leistung auf, nie über ein falsches Ergebnis. Abhilfe ist die `grep`-Prüfung in der Abnahme von Iteration 4.
 - **ImageMagick-Referenz:** Die Kernel-Definitionen müssen exakt übereinstimmen (Mitchell B = C = ⅓, Lanczos mit 3 Keulen, Catmull-Rom B = 0, C = ½). Eine Abweichung sieht aus wie ein Fehler im Viewer. Der Impulstest ist die unabhängige Gegenprobe.
+- **Fremde Loader und Threads:** Ein Loader, der fälschlich als threadsicher gilt, erzeugt seltene, schwer reproduzierbare Fehler. `--decode-all` mit 32 Threads über die Fotosammlung ist der Belastungstest, und im Zweifel wird ein neuer Loader zunächst als `NotThreadSafe` eingetragen.
+- **`stb_image`-Update:** Die Datei ist eine gemeinsame Abhängigkeit mehrerer Demos. Eine geänderte API oder geänderte Warnungen fallen erst beim Bauen der anderen Demos auf, deshalb gehört das zur Abnahme von Iteration 0.
+- **Ohne GL 3.3 Core kein Start:** Mit dem Legacy-Pfad fällt der letzte Weg für sehr alte Grafik weg. Hardware ab etwa 2010 kann 3.3 Core, und Mesa bietet es auch in Software (llvmpipe).
+- **EXIF aus fremden Dateien:** Der EXIF-Leser liest nicht vertrauenswürdige Daten. Jeder Offset und jede Länge wird gegen die Blockgröße geprüft, und kaputte EXIF-Daten gelten als Orientierung 1. Dafür gibt es `truncated.jpg` und ein absichtlich kaputtes EXIF-Testbild.
 - **Die Standardfilter** sind Arbeitshypothesen. Text in Bildschirmfotos kann die Wahl beim Verkleinern zu Mitchell oder Box verschieben, Fotos eher zu Lanczos3.
