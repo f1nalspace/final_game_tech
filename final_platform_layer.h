@@ -198,6 +198,8 @@ SOFTWARE.
 	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
 	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
+	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
+	- Fixed: fplX86CPUCapabilities.hasEM64T read bit 29 of CPUID leaf 1 (thermal monitor) instead of the long mode bit of the extended leaf 0x80000001, so it was always false on AMD CPUs
 
 	#### Process
 	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
@@ -5781,8 +5783,14 @@ typedef struct fplX86CPUCapabilities {
 	bool hasAVX;
 	//! Has AVX2 support.
 	bool hasAVX2;
-	//! Has AVX512 support.
+	//! Has AVX512F (foundation) support.
 	bool hasAVX512;
+	//! Has AVX512BW support (byte and word instructions).
+	bool hasAVX512BW;
+	//! Has AVX512VL support (AVX-512 instructions on 128 and 256 bit registers).
+	bool hasAVX512VL;
+	//! Has AVX512VBMI support (byte permutes such as vpermb and vpermi2b).
+	bool hasAVX512VBMI;
 	//! Has FMA3 support.
 	bool hasFMA3;
 	//! Has EM64T support.
@@ -15686,7 +15694,13 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	}
 
 	if (hasAVX512Support) {
+		const uint32_t LEAF7_EBX_BIT_AVX512BW = 30;
+		const uint32_t LEAF7_EBX_BIT_AVX512VL = 31;
+		const uint32_t LEAF7_ECX_BIT_AVX512VBMI = 1;
 		outCaps->x86.hasAVX512 = fplIsBitSet(info7.ebx, 16);
+		outCaps->x86.hasAVX512BW = fplIsBitSet(info7.ebx, LEAF7_EBX_BIT_AVX512BW);
+		outCaps->x86.hasAVX512VL = fplIsBitSet(info7.ebx, LEAF7_EBX_BIT_AVX512VL);
+		outCaps->x86.hasAVX512VBMI = fplIsBitSet(info7.ecx, LEAF7_ECX_BIT_AVX512VBMI);
 	}
 
 	outCaps->x86.hasFMA3 = fplIsBitSet(info1.ecx, 12);
@@ -15698,8 +15712,15 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	outCaps->x86.hasADX = fplIsBitSet(info7.ebx, 19);
 	outCaps->x86.hasF16C = fplIsBitSet(info1.ecx, 29);
 
-	if (fplCPUID(0x80000001, &tempLeaf)) {
-		outCaps->x86.hasEM64T = fplIsBitSet(info1.edx, 29);
+	// Long mode is reported in the extended leaf, which only exists when the highest extended leaf covers it
+	const uint32_t EXTENDED_LEAF_MAX_FUNCTION_ID = 0x80000000;
+	const uint32_t EXTENDED_LEAF_FEATURES = 0x80000001;
+	const uint32_t EXTENDED_EDX_BIT_LONG_MODE = 29;
+	fplCPUIDLeaf extendedInfo0 = fplZeroInit;
+	if (fplCPUID(EXTENDED_LEAF_MAX_FUNCTION_ID, &extendedInfo0) && extendedInfo0.eax >= EXTENDED_LEAF_FEATURES) {
+		if (fplCPUID(EXTENDED_LEAF_FEATURES, &tempLeaf)) {
+			outCaps->x86.hasEM64T = fplIsBitSet(tempLeaf.edx, EXTENDED_EDX_BIT_LONG_MODE);
+		}
 	}
 
 	return(true);
