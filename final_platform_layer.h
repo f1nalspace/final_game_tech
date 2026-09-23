@@ -227,6 +227,9 @@ SOFTWARE.
 	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 
+	#### Audio
+	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
+
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError passed the UTF-8 byte count to WriteConsoleW instead of the converted wide character count, which read past the conversion buffer for any text longer than it
@@ -40706,8 +40709,11 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	// Wake up the worker thread and wait for it to properly terminate.
 	fpl__SetAudioEvent(&audioState->wakeupEvent);
 
-	fplThreadWaitForOne(audioState->workerThread, FPL_TIMEOUT_INFINITE);
-	fplThreadTerminate(audioState->workerThread);
+	// Async backends (e.g. PipeWire) run without a worker thread
+	if (audioState->workerThread != fpl_null) {
+		fplThreadWaitForOne(audioState->workerThread, FPL_TIMEOUT_INFINITE);
+		fplThreadTerminate(audioState->workerThread);
+	}
 
 	// Release signals and thread
 	fpl__ReleaseAudioEvent(&audioState->stopEvent);
