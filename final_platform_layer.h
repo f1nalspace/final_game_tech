@@ -195,6 +195,7 @@ SOFTWARE.
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
+	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
 	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 
@@ -228,6 +229,11 @@ SOFTWARE.
 	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
 	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
 	- Fixed: [POSIX] fplConditionWait and fplSemaphoreWait with a timeout failed immediately with EINVAL whenever the deadline crossed a second boundary, because the nanoseconds of the absolute deadline were not carried over into the seconds - a wait loop with a 50 ms timeout busy spun for 5 % of the time
+<<<<<<< HEAD
+=======
+	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
+	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
+>>>>>>> develop
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 
 	#### Audio
@@ -15381,11 +15387,13 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_SET(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, value);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_SET(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, value);
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
@@ -15401,11 +15409,13 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_CLEAR(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_CLEAR(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
@@ -15422,11 +15432,13 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (sourceSize % 8 == 0) {
+	// A word size is only used when both addresses are aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)sourceMem | (uintptr_t)targetMem | (uintptr_t)sourceSize;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (sourceSize % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (sourceSize % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
@@ -24489,19 +24501,21 @@ fpl_platform_api bool fplThreadYield(void) {
 }
 
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
-	uint32_t ms;
-	uint32_t s;
-	if (milliseconds > 1000) {
-		s = milliseconds / 1000;
-		ms = milliseconds % 1000;
-	} else {
-		s = 0;
-		ms = milliseconds;
+	const uint32_t millisecondsPerSecond = 1000;
+	const long nanosecondsPerMillisecond = 1000000L;
+	// nanosleep rejects 1 second or more in tv_nsec (EINVAL), so full seconds always go into tv_sec
+	const uint32_t seconds = milliseconds / millisecondsPerSecond;
+	const uint32_t remainingMilliseconds = milliseconds % millisecondsPerSecond;
+	struct timespec requested;
+	requested.tv_sec = (time_t)seconds;
+	requested.tv_nsec = (long)remainingMilliseconds * nanosecondsPerMillisecond;
+	// A signal ends nanosleep early (EINTR), then the time that is left is slept again
+	struct timespec remaining;
+	int sleepResult = nanosleep(&requested, &remaining);
+	while ((sleepResult == -1) && (errno == EINTR)) {
+		requested = remaining;
+		sleepResult = nanosleep(&requested, &remaining);
 	}
-	struct timespec input, output;
-	input.tv_sec = s;
-	input.tv_nsec = ms * 1000000;
-	nanosleep(&input, &output);
 }
 
 fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
