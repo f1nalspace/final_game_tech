@@ -76,8 +76,9 @@ allFilters="${filterKeys[*]}"
 # ImageMagick takes the background color as numbers in the colorspace of the image, which is linear RGB at that point: the viewer gray is sRGB 128 = linear 21.586 %
 declare -A backgroundReferenceColors=([black]="black" [gray]="srgb(21.586%,21.586%,21.586%)")
 
-# A viewer that is started right after another one exited gets the same X window id, and KWin sometimes applies the late map and destroy
-# of the old window to the new one, which kills it with an X error (BadWindow, GLXBadDrawable). Such a render is simply repeated.
+# A viewer that is started right after another one exited gets the same X window id, and KWin sometimes applied the late map and destroy
+# of the old window to the new one, which killed it with an X error (BadWindow, GLXBadDrawable). --render-to keeps its window hidden now,
+# so KWin never sees it; a render that still dies of an X error is simply repeated.
 maximumRenderAttempts=3
 
 # --- Test cases: image | scales | checks -------------------------------------------------------------------------------------

@@ -24,7 +24,7 @@ Author:
 
 Changelog:
 	## v0.6.0
-	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits
+	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits, the window it needs for OpenGL stays hidden
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
@@ -378,7 +378,7 @@ typedef enum RenderToFileResult {
 #define RENDER_TO_FILE_TIMEOUT_MILLISECONDS 60000
 // Sleep between two frames while --render-to waits for the picture
 #define RENDER_TO_FILE_POLL_MILLISECONDS 1
-// Size of the (never shown) window for --render-to, the picture is rendered into an offscreen framebuffer of --window size
+// Size of the hidden window for --render-to, the picture is rendered into an offscreen framebuffer of --window size
 #define RENDER_TO_FILE_WINDOW_SIZE 256
 // Number of pictures preloaded on both sides of the active picture, when not set by -p
 #define DEFAULT_PRELOAD_COUNT 16
@@ -2678,8 +2678,10 @@ int main(int argc, char** argv) {
 	settings.video.graphics.opengl.multiSamplingCount = 0;
 	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
 	if (isRenderToFile) {
+		// Hidden: the window manager never sees it, so a render cannot run into a reused X window id of the previous one
 		settings.window.windowSize.width = RENDER_TO_FILE_WINDOW_SIZE;
 		settings.window.windowSize.height = RENDER_TO_FILE_WINDOW_SIZE;
+		settings.window.initialVisibility = fplWindowVisibilityState_Hide;
 	} else if (state->params.windowWidth > 0) {
 		settings.window.windowSize.width = state->params.windowWidth;
 		settings.window.windowSize.height = state->params.windowHeight;
