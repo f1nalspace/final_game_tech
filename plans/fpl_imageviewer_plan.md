@@ -138,7 +138,7 @@ Alle vorhandenen Filter sind Produkte eindimensionaler Kernel, also separabel. S
 | Catmull-Rom | 2 | ja | vorhanden, scharf |
 | Lanczos3 | 3 | ja | vorhanden, am schärfsten, schwingt über |
 
-**Standard beim Verkleinern: Mitchell.** Das ist der übliche Kompromiss zwischen Schärfe, Aliasing und Überschwingen, und auch `stb_image_resize` nimmt ihn als Standard zum Verkleinern. **Standard beim Vergrößern: Catmull-Rom**, interpolierend und scharf mit wenig Überschwingen. Beide Vorgaben sind Arbeitshypothesen. In Iteration 2 und 5 bekommt der Nutzer Vergleichsausschnitte (Fotos, Bildschirmfotos mit Text, synthetische Bilder) vorgelegt und legt die Standards selbst fest. Text in Screenshots ist dabei der Härtefall für Lanczos-Halos.
+**Standard beim Verkleinern: Mitchell.** Das ist der übliche Kompromiss zwischen Schärfe, Aliasing und Überschwingen, und auch `stb_image_resize` nimmt ihn als Standard zum Verkleinern. **Standard beim Vergrößern: Catmull-Rom**, interpolierend und scharf mit wenig Überschwingen. Mitchell hat der Nutzer am 2026-09-23 anhand der Vergleichsseite festgelegt (Iteration 2). Catmull-Rom bleibt Arbeitshypothese bis Iteration 5. In Iteration 2 und 5 bekommt der Nutzer Vergleichsausschnitte (Fotos, Bildschirmfotos mit Text, synthetische Bilder) vorgelegt und legt die Standards selbst fest. Text in Screenshots ist dabei der Härtefall für Lanczos-Halos.
 
 `T` schaltet den Filter der Richtung weiter, die **gerade wirkt**, `Shift+T` schaltet zurück. So bleibt die gewohnte Taste erhalten, und es gibt keine neuen Tasten. Titel und Info-Zeile zeigen „↓ Mitchell“ oder „↑ Catmull-Rom“.
 
@@ -565,7 +565,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
   - `alpha_disk` auf Schwarz und Grau: 55–66 dB gegen `-background … -alpha remove` in linearem Licht, kein grüner Saum. Das Schachbrett ist per Sichtprüfung abgenommen (4×-Ausschnitt der Kante).
   - Testlauf: 648 Zeilen, 40 Verletzungen, alle bei genau 100 % mit den nicht interpolierenden Kerneln (Mitchell, Triangular, Bell, B-Spline). Das behebt die Umgehung in Iteration 5. Vor Iteration 2 waren es 246 von 483.
   - GPU-Zeit (RTX 3090, Mitchell): 4032×3024 → 960×720 in 1,9 ms, → 1920×1440 in 4,0 ms. Gerechnet wird nur bei einer Änderung, im Leerlauf 0,7 % CPU (Debug-Build, 30 s).
-  - Standardfilter zum Verkleinern: **offen.** Die Vergleichsseite liegt lokal unter `demos/build/FPL_ImageViewer/tests/filter_comparison.html` (Text, Spiel-Screenshot, Foto, Zonenplatte und Siemensstern, je Box, Bilinear, B-Spline, Mitchell, Catmull-Rom und Lanczos3, umschaltbar an derselben Stelle). Sie wird nicht veröffentlicht, weil sie private Fotos enthält.
+  - Standardfilter zum Verkleinern: **Mitchell**, vom Nutzer am 2026-09-23 festgelegt. Die Vergleichsseite liegt lokal unter `demos/build/FPL_ImageViewer/tests/filter_comparison.html` (Text, Spiel-Screenshot, Foto, Zonenplatte und Siemensstern, je Box, Bilinear, B-Spline, Mitchell, Catmull-Rom und Lanczos3, umschaltbar an derselben Stelle). Sie wird nicht veröffentlicht, weil sie private Fotos enthält.
 
 ### Iteration 3 — Loader-Architektur
 
@@ -686,7 +686,7 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 | Umzug nach `apps/` + Einstellungsdatei | nach diesem Plan, eigener Plan | 7.2 |
 | NEON | später, die Architektur reicht vorerst | 2.4, 7.2 |
 | Glyphen | Latin-1 (U+0020–U+00FF) reicht vorerst | 2.8 |
-| Standardfilter | Mitchell ↓ / Catmull-Rom ↑ als Hypothese; der Nutzer entscheidet anhand vorgelegter Vergleichsausschnitte | 2.2, Iteration 2 und 5 |
+| Standardfilter | **Mitchell ↓ festgelegt** (anhand der Vergleichsseite aus Iteration 2). Catmull-Rom ↑ bleibt Hypothese, bis der Nutzer in Iteration 5 entscheidet | 2.2, Iteration 2 und 5 |
 | Testbilder | **eingecheckt** unter `demos/FPL_ImageViewer/tests/images/`, der Generator bleibt zum Nachbauen daneben | 4, 4.3 |
 | PSNR-Schwelle | 45 dB statt 40 dB, nach Kalibrierung (Obergrenze ≥ 54,4 dB) | 4.2 |
 
@@ -717,5 +717,5 @@ Die Reihenfolge folgt dem Auftrag: Zuerst die Technik und dort **zuerst das Verk
 - **Ohne GL 3.3 Core kein Start:** Mit dem Legacy-Pfad fällt der letzte Weg für sehr alte Grafik weg. Hardware ab etwa 2010 kann 3.3 Core, und Mesa bietet es auch in Software (llvmpipe).
 - **EXIF aus fremden Dateien:** Der EXIF-Leser liest nicht vertrauenswürdige Daten. Jeder Offset und jede Länge wird gegen die Blockgröße geprüft, und kaputte EXIF-Daten gelten als Orientierung 1. Dafür gibt es `truncated.jpg` und ein absichtlich kaputtes EXIF-Testbild.
 - **Wiederverwendete X-Kennungen (gefunden in Iteration 2):** Ein Prozess, der kurz nach dem Ende eines anderen startet, bekommt dieselbe Fenster-Kennung (`0x4600002`). KWin wendet dann manchmal das verspätete Map/Destroy des alten Fensters auf das neue an und zerstört es mit seinem Rahmen. Das zeigt sich als `BadWindow` oder `GLXBadDrawable` mit Exit-Code 1, auch beim Viewer aus Iteration 0. Im normalen Betrieb tritt das nicht auf, nur bei dicht aufeinanderfolgenden Starts, in Schleifen 5–15 % der Läufe. Nachgewiesen über ein Protokoll der Root-Fenster-Ereignisse. Der Testlauf wiederholt solche Renderings, die saubere Lösung steht in 7.2.
-- **Die Standardfilter** sind Arbeitshypothesen. Text in Bildschirmfotos kann die Wahl beim Verkleinern zu Mitchell oder Box verschieben, Fotos eher zu Lanczos3.
+- **Der Standardfilter zum Vergrößern** ist eine Arbeitshypothese. Pixelgrafik und Text können die Wahl zu Nearest oder Lanczos3 verschieben. Zum Verkleinern ist Mitchell festgelegt.
 - **Größe der eingecheckten Testbilder:** zusammen ≈ 20 MB, davon `zoneplate_4096.png` 15 MB und `zoneplate_2048.png` 3,8 MB. Zonenplatten lassen sich kaum komprimieren, alle anderen Bilder zusammen haben ≈ 1,4 MB. Jede Neuerzeugung mit geändertem Inhalt landet erneut in der Git-Historie. Deshalb ist der Generator deterministisch, und die Zonenplatten werden nur bei echtem Bedarf geändert.

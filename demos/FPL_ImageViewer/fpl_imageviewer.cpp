@@ -342,7 +342,7 @@ static const ResampleKernel LegacyFilterNumberKernels[] = {
 	ResampleKernel_Lanczos3,
 };
 
-// Defaults, working hypotheses until the comparison crops are decided (plan section 2.2)
+// Downscaling default decided with the comparison crops, the upscaling default stays a working hypothesis until iteration 5 (plan section 2.2)
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
 #define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
 #define DEFAULT_BACKGROUND ResampleBackground_Checker
