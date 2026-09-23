@@ -32,6 +32,7 @@ Changelog:
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
 	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
 	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
+	- New: Auto Nearest for pixel inspection: from a zoom of --nearest-from=<percent> on (at least 100) upscaling uses Nearest, A turns it on at 400 % (or the --nearest-from value) and off again, off by default
 	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
 	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
 	- Changed: The preview strip scales its pictures with the resample pipeline too, computed once per picture
@@ -342,6 +343,8 @@ typedef struct ViewerParameters {
 	ResampleKernel downKernel;
 	ResampleKernel upKernel;
 	ResampleBackground background;
+	// --nearest-from as a scale, 0 when not given: auto Nearest starts on and A toggles this scale instead of the default one
+	float nearestFromScale;
 	// Loader selection, resolved against the registry after parsing
 	const char* loaderValue;
 	const char* loaderOrderValue;
@@ -404,6 +407,8 @@ static const ResampleKernel LegacyFilterNumberKernels[] = {
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
 #define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
 #define DEFAULT_BACKGROUND ResampleBackground_Checker
+// Zoom from which A switches upscaling to Nearest for pixel inspection, unless --nearest-from sets another one (plan section 2.6)
+#define DEFAULT_NEAREST_FROM_SCALE 4.0f
 // Kernel of the 2:1 reductions of the level chain (plan section 2.3)
 #define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
 
@@ -472,6 +477,10 @@ typedef struct ViewerState {
 	ResampleKernel downKernel;
 	ResampleKernel upKernel;
 	ResampleBackground background;
+	// Auto Nearest: from this scale on upscaling uses Nearest, 0 is off
+	float nearestFromScale;
+	// Scale A turns auto Nearest on with
+	float nearestFromToggleScale;
 	uint64_t nextUploadSerial;
 
 	// Every picture is read through these loaders, stb_image first
@@ -939,7 +948,17 @@ static bool IsDownscaling(const ViewTransform* transform) {
 	return(result);
 }
 
+// Pixel inspection: from the scale of A or --nearest-from on, upscaling uses Nearest (plan section 2.6)
+static bool IsAutoNearestInEffect(const ViewerState* state, const ViewTransform* transform) {
+	bool isEnabled = state->nearestFromScale > 0.0f;
+	bool result = isEnabled && transform->scale >= state->nearestFromScale;
+	return(result);
+}
+
 static ResampleKernel GetKernelForTransform(const ViewerState* state, const ViewTransform* transform) {
+	if (IsAutoNearestInEffect(state, transform)) {
+		return(ResampleKernel_Nearest);
+	}
 	bool isDownscaling = IsDownscaling(transform);
 	ResampleKernel result = isDownscaling ? state->downKernel : state->upKernel;
 	return(result);
@@ -1020,8 +1039,16 @@ static void UpdateWindowTitle(ViewerState* state) {
 	const ResampleKernelDefinition* upDefinition = ResampleGetKernelDefinition(state->upKernel);
 	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->background);
 
+	// Auto Nearest is listed whenever it is on, so A always shows an effect
+	const float percentPerScale = 100.0f;
+	char nearestText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	if (state->nearestFromScale > 0.0f) {
+		float nearestFromPercent = state->nearestFromScale * percentPerScale;
+		fplStringFormat(nearestText, fplArrayCount(nearestText), ", Nearest from %.0f %%", nearestFromPercent);
+	}
+
 	// The filter of the direction that is in effect, both while that is unknown.
-	// At 1:1 no filter is in effect, the kernel in parentheses is the one T changes and the next zoom uses.
+	// At 1:1 no filter is in effect, the kernel in parentheses is the one T changes and the next zoom uses; the same goes for auto Nearest.
 	char filterText[FPL_MAX_NAME_LENGTH];
 	ViewTransform transform;
 	if (GetActivePictureTransform(state, &transform)) {
@@ -1032,15 +1059,19 @@ static void UpdateWindowTitle(ViewerState* state) {
 		uint32_t copiedLevel = 0;
 		bool isCopied = IsPictureCopied(state, activePicture, &transform, &copiedLevel);
 		if (isCopied && copiedLevel == 0) {
-			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 (%s %s)", arrow, kernelName);
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 (%s %s%s)", arrow, kernelName, nearestText);
 		} else if (isCopied) {
-			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 of level %u (%s %s)", copiedLevel, arrow, kernelName);
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 of level %u (%s %s%s)", copiedLevel, arrow, kernelName, nearestText);
+		} else if (IsAutoNearestInEffect(state, &transform)) {
+			float nearestFromPercent = state->nearestFromScale * percentPerScale;
+			fplStringFormat(filterText, fplArrayCount(filterText), "%s Nearest from %.0f %% (%s below)", upArrow, nearestFromPercent, upDefinition->name);
 		} else {
-			fplStringFormat(filterText, fplArrayCount(filterText), "%s %s", arrow, kernelName);
+			fplStringFormat(filterText, fplArrayCount(filterText), "%s %s%s", arrow, kernelName, nearestText);
 		}
 	} else {
-		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s", downArrow, downDefinition->name, upArrow, upDefinition->name);
+		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s%s", downArrow, downDefinition->name, upArrow, upDefinition->name, nearestText);
 	}
+
 	// The loader that read the active picture, once it is shown
 	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
 	bool hasActivePicture = state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
@@ -1158,6 +1189,18 @@ static bool ParseZoomValue(const char* text, ViewZoomMode* outMode, float* outSc
 	return(true);
 }
 
+// Parses the percentage of --nearest-from, at least 100: auto Nearest is meant for enlarged pixels, below 100 % it would alias
+static bool ParseNearestFromValue(const char* text, float* outScale) {
+	const double actualSizePercent = 100.0;
+	char* end = fpl_null;
+	double percent = strtod(text, &end);
+	if (end == text || *end != 0 || percent < actualSizePercent) {
+		return(false);
+	}
+	*outScale = (float)(percent / actualSizePercent);
+	return(true);
+}
+
 // A kernel key (e.g. mitchell) or, for -f, a number in the numbering before Box and Mitchell existed
 static bool ParseFilterValue(const char* text, const bool allowLegacyNumber, ResampleKernel* outKernel) {
 	uint32_t number = 0;
@@ -1206,6 +1249,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* downFilterValue = MatchLongParameter(argument, "--down-filter");
 			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
 			const char* backgroundValue = MatchLongParameter(argument, "--background");
+			const char* nearestFromValue = MatchLongParameter(argument, "--nearest-from");
 			const char* loaderValue = MatchLongParameter(argument, "--loader");
 			const char* loaderForValue = MatchLongParameter(argument, "--loader-for");
 			const char* loaderOrderValue = MatchLongParameter(argument, "--loader-order");
@@ -1236,6 +1280,8 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = ParseFilterValue(upFilterValue, false, &params->upKernel);
 			} else if (backgroundValue != fpl_null) {
 				isValid = ResampleFindBackground(backgroundValue, &params->background);
+			} else if (nearestFromValue != fpl_null) {
+				isValid = ParseNearestFromValue(nearestFromValue, &params->nearestFromScale);
 			} else if (loaderValue != fpl_null) {
 				params->loaderValue = loaderValue;
 				isValid = *loaderValue != 0;
@@ -1905,6 +1951,10 @@ static bool Init(ViewerState* state) {
 	state->downKernel = state->params.downKernel;
 	state->upKernel = state->params.upKernel;
 	state->background = state->params.background;
+	// --nearest-from starts with auto Nearest on and is also the scale A toggles, otherwise it starts off
+	bool isNearestFromGiven = state->params.nearestFromScale > 0.0f;
+	state->nearestFromScale = state->params.nearestFromScale;
+	state->nearestFromToggleScale = isNearestFromGiven ? state->params.nearestFromScale : DEFAULT_NEAREST_FROM_SCALE;
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &state->maxTextureSize);
 	flogWrite("Largest texture size: %d", state->maxTextureSize);
@@ -2686,6 +2736,11 @@ int main(int argc, char** argv) {
 	const ResampleKernelDefinition* upKernelDefinition = ResampleGetKernelDefinition(state->params.upKernel);
 	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->params.background);
 	flogWrite("Filters: down %s, up %s, background %s", downKernelDefinition->name, upKernelDefinition->name, backgroundDefinition->name);
+	if (state->params.nearestFromScale > 0.0f) {
+		const float percentPerScale = 100.0f;
+		float nearestFromPercent = state->params.nearestFromScale * percentPerScale;
+		flogWrite("Auto Nearest from %.0f %%", nearestFromPercent);
+	}
 	if (isRenderToFile) {
 		flogWrite("Render to: %s", state->params.renderToFilePath);
 	}
@@ -2844,6 +2899,10 @@ int main(int argc, char** argv) {
 										int backgroundCount = (int)ResampleBackground_Count;
 										int nextBackground = ((int)state->background + 1) % backgroundCount;
 										state->background = (ResampleBackground)nextBackground;
+									} else if (ev.keyboard.mappedKey == fplKey_A) {
+										bool isAutoNearestOn = state->nearestFromScale > 0.0f;
+										state->nearestFromScale = isAutoNearestOn ? 0.0f : state->nearestFromToggleScale;
+										flogWrite("Auto Nearest %s", (isAutoNearestOn ? "off" : "on"));
 									}
 								}
 							}

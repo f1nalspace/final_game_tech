@@ -52,6 +52,8 @@ linearHalfValue=188
 # The flat, gamma and mix checks demand a result some kernels cannot reach at some scales (Box at 0.7 leaves the checker board standing, in ImageMagick just as well).
 # Such a row passes when the viewer is as close as this (8 bit steps) to the same measurement on the reference of the same kernel, and is marked as a kernel property.
 kernelPropertyTolerance=1
+# Threshold of the autonearest check (--nearest-from=<percent>): from this zoom on the render must be Nearest, below it the chosen filter
+autoNearestPercent=400
 
 # --- Ring metric for the zone plate --------------------------------------------------------------------------------------
 
@@ -85,7 +87,8 @@ maximumRenderAttempts=3
 # A scale "1@1280x720" renders 1:1 into a window of that size (the setup of the screenshot measurements in plan section 1.2)
 # Checks: flat188 (downscaled mean and std), ring (zone plate aliasing), gammaleft (left half of gamma_rows), colormix (red/green mix),
 #         impulse (symmetry and sampled kernel), overshoot (step edge), exactnearest (Nearest at integer zoom), frame (all four frame sides),
-#         nolevel0 (level 0 exceeds the GPU texture size, above 0.125 the PSNR is informational)
+#         nolevel0 (level 0 exceeds the GPU texture size, above 0.125 the PSNR is informational),
+#         autonearest (rendered again with --nearest-from=autoNearestPercent: from that zoom on exactly Nearest, below it exactly the chosen filter)
 # An optional fourth field sets the background behind transparent pixels (default black)
 
 testCases=(
@@ -99,7 +102,7 @@ testCases=(
 	"step_edge|0.35 0.7 1.5 2.3 4 8|overshoot"
 	"lines_1px|0.03 0.05 0.146 0.238 0.35 0.5 0.7 1|"
 	"text|0.03 0.05 0.5 0.7 1 1.5|"
-	"pixelart_32|1 2 3 4 8|exactnearest"
+	"pixelart_32|1 2 3 4 8|exactnearest autonearest"
 	"alpha_disk|0.05 0.146 0.35 0.7 1 1.5|"
 	"alpha_disk|0.05 0.146 0.35 1||gray"
 	"border_frame_odd|0.03 0.05 0.146 0.238 0.35 0.7 1|frame"
@@ -216,14 +219,16 @@ make_identity_reference() {
 	magick "$source" -colorspace sRGB -colorspace RGB -background "${backgroundReferenceColors[$background]}" -alpha remove -alpha off -colorspace sRGB -depth 8 "$target"
 }
 
-# Renders one picture offscreen, repeats a render that died of an X error (see maximumRenderAttempts), returns the viewer exit code
+# Renders one picture offscreen, repeats a render that died of an X error (see maximumRenderAttempts), returns the viewer exit code.
+# Arguments after the level source are passed on to the viewer.
 render_picture() {
 	local target="$1" windowSize="$2" zoomParameter="$3" filterKey="$4" background="$5" source="$6" levelSource="${7:-auto}"
+	local extraArguments=("${@:8}")
 	local viewerOutput="$rendersDirectory/viewer_output.txt"
 	local exitCode=0
 	for (( attempt = 1; attempt <= maximumRenderAttempts; attempt++ )); do
 		rm -f "$target"
-		"$viewer" --render-to="$target" --window="$windowSize" "$zoomParameter" --down-filter="$filterKey" --up-filter="$filterKey" --background="$background" --lod-source="$levelSource" "$source" > "$viewerOutput" 2>&1
+		"$viewer" --render-to="$target" --window="$windowSize" "$zoomParameter" --down-filter="$filterKey" --up-filter="$filterKey" --background="$background" --lod-source="$levelSource" "${extraArguments[@]}" "$source" > "$viewerOutput" 2>&1
 		exitCode=$?
 		if [ "$exitCode" = 0 ] || ! grep -q "X Error" "$viewerOutput"; then
 			break
@@ -512,6 +517,30 @@ for testCase in "${testCases[@]}"; do
 				checkTexts+=("differing pixels $differentPixels")
 				if [ "$differentPixels" != 0 ]; then
 					failures+="nearest "
+				fi
+			fi
+
+			if [[ " $checks " == *" autonearest "* ]]; then
+				autoRender="$rendersDirectory/${caseKey}_${filterKey}_autonearest.pam"
+				render_picture "$autoRender" "${windowWidth}x${windowHeight}" "$zoomParameter" "$filterKey" "$background" "$source" auto "--nearest-from=$autoNearestPercent"
+				autoExitCode=$?
+				if [ "$autoExitCode" != 0 ] || [ ! -f "$autoRender" ]; then
+					checkTexts+=("auto Nearest render failed with exit code $autoExitCode")
+					failures+="autonearest "
+				elif awk -v s="$scale" -v p="$autoNearestPercent" 'BEGIN { exit !(s * 100 >= p) }'; then
+					nearestReference="$referencesDirectory/${imageName}_${pictureWidth}x${pictureHeight}_nearest${backgroundSuffix}.png"
+					make_reference "$source" "$pictureWidth" "$pictureHeight" "${filterReferenceOptions[nearest]}" "$nearestReference" "$background"
+					autoDifferentPixels=$(compare_differing_pixels "$autoRender" "$nearestReference")
+					checkTexts+=("from $autoNearestPercent % Nearest: differing pixels $autoDifferentPixels")
+					if [ "$autoDifferentPixels" != 0 ]; then
+						failures+="autonearest "
+					fi
+				else
+					autoDifferentPixels=$(compare_differing_pixels "$autoRender" "$render")
+					checkTexts+=("below $autoNearestPercent % unchanged: differing pixels $autoDifferentPixels")
+					if [ "$autoDifferentPixels" != 0 ]; then
+						failures+="autonearest "
+					fi
 				fi
 			fi
 
