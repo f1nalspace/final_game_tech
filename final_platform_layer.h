@@ -235,6 +235,13 @@ SOFTWARE.
 	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 
+	#### IO
+	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
+	- Fixed: fplExtractFilePath() left the destination untouched for an empty source path, it writes an empty string now
+	- Fixed: fplPathCombine() put a separator in front of the first path when all paths before it were empty, so an empty directory and "file" were combined into the absolute path "/file"
+	- Fixed: [POSIX] fplDirectoryListBegin() found nothing for an empty path, it lists the current working directory now, just like on Win32
+	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
+
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
 	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
@@ -9174,7 +9181,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 
 /**
 * @brief Iterates through files/directories in the given directory.
-* @param[in] path The full path.
+* @param[in] path The full path. An empty path is the current working directory.
 * @param[in] filter The filter wildcard. If empty or null, it is rewritten internally to "*" (match all) and stored as such in the entry's internal root info.
 * @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
@@ -9246,6 +9253,7 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 * @param[out] destPath The destination buffer.
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
+* @note A file name without any directory results in an empty path, a file in the root directory keeps the root separator (e.g. "/" or the drive root on Win32).
 * @see @ref subsection_category_io_paths_utils_extractfilepath
 */
 fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen);
@@ -9284,6 +9292,7 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 * @param[in] pathCount The number of dynamic path arguments.
 * @param[in] ... The dynamic path arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
+* @note Empty or null paths are skipped, so no separator is put in front of the first non-empty path.
 * @see @ref subsection_category_io_paths_utils_pathcombine
 */
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
@@ -16200,25 +16209,35 @@ fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle) 
 
 fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(sourcePath, 0);
-	size_t sourceLen = fplGetStringLength(sourcePath);
-	size_t result = 0;
-	if (sourceLen > 0) {
-		size_t pathLen = 0;
-		const char *chPtr = (const char *)sourcePath;
-		while (*chPtr) {
-			if (*chPtr == FPL_PATH_SEPARATOR) {
-				pathLen = (size_t)(chPtr - sourcePath);
-			}
-			++chPtr;
+	size_t pathLen = 0;
+	const char *lastSeparator = fpl_null;
+	const char *chPtr = (const char *)sourcePath;
+	while (*chPtr) {
+		if (*chPtr == FPL_PATH_SEPARATOR) {
+			lastSeparator = chPtr;
 		}
-		result = pathLen;
-		if (destPath != fpl_null) {
-			size_t requiredDestLen = pathLen + 1;
-			FPL__CheckArgumentMin(maxDestLen, requiredDestLen, 0);
-			fplCopyStringLen(sourcePath, pathLen, destPath, maxDestLen);
+		++chPtr;
+	}
+	if (lastSeparator != fpl_null) {
+		pathLen = (size_t)(lastSeparator - sourcePath);
+		// The separator of the root directory is kept, otherwise "/file" would become "" instead of "/"
+		bool isRootSeparator = pathLen == 0;
+#if defined(FPL_PLATFORM_WINDOWS)
+		const size_t driveColonIndex = 1;
+		const size_t driveRootSeparatorIndex = 2;
+		bool isDriveRootSeparator = pathLen == driveRootSeparatorIndex && sourcePath[driveColonIndex] == ':';
+		isRootSeparator = isRootSeparator || isDriveRootSeparator;
+#endif
+		if (isRootSeparator) {
+			pathLen += 1;
 		}
 	}
-	return(result);
+	if (destPath != fpl_null) {
+		size_t requiredDestLen = pathLen + 1;
+		FPL__CheckArgumentMin(maxDestLen, requiredDestLen, 0);
+		fplCopyStringLen(sourcePath, pathLen, destPath, maxDestLen);
+	}
+	return(pathLen);
 }
 
 fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
@@ -16345,7 +16364,8 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 		const size_t len = fplGetStringLength(path);
 
-		if (i > 0 && len > 0 && !prevHasTrailingSep) {
+		// No separator in front of the first non-empty path, otherwise an empty first path would turn "file" into the absolute path "/file"
+		if (totalLen > 0 && len > 0 && !prevHasTrailingSep) {
 			totalLen += 1; // separator
 		}
 
@@ -16377,7 +16397,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 			const size_t len = fplGetStringLength(path);
 
-			if (i > 0 && len > 0 && !prevHasTrailingSep) {
+			if (pos > 0 && len > 0 && !prevHasTrailingSep) {
 				destPath[pos++] = FPL_PATH_SEPARATOR;
 			}
 
@@ -21644,6 +21664,8 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
+	// Cleared up front, so fplDirectoryListEnd() is safe even when nothing is found
+	fplClearStruct(entry);
 	if (fplGetStringLength(filter) == 0) {
 		filter = "*";
 	}
@@ -21657,7 +21679,6 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	HANDLE searchHandle = FindFirstFileW(pathAndFilterWide, &findData);
 	bool result = false;
 	if (searchHandle != INVALID_HANDLE_VALUE) {
-		fplClearStruct(entry);
 		entry->internalHandle.win32FileHandle = searchHandle;
 		fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
 		fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
@@ -25434,14 +25455,19 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
-	DIR *dir = opendir(path);
+	// Cleared up front, so fplDirectoryListEnd() is safe even when the directory cannot be opened
+	fplClearStruct(entry);
+	// An empty path is the working directory, like on Win32, where the search pattern is just the filter then
+	const char *workingDirectoryPath = ".";
+	size_t pathLen = fplGetStringLength(path);
+	const char *openPath = pathLen > 0 ? path : workingDirectoryPath;
+	DIR *dir = opendir(openPath);
 	if (dir == fpl_null) {
 		return false;
 	}
 	if (fplGetStringLength(filter) == 0) {
 		filter = "*";
 	}
-	fplClearStruct(entry);
 	entry->internalHandle.posixDirHandle = dir;
 	fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
 	fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
