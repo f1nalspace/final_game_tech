@@ -80,15 +80,34 @@ static ImageLoaderStbFormat ImageLoaderStbDetect(const uint8_t *header, const si
 	return(ImageLoaderStbFormat_Unknown);
 }
 
+// stb_image reads a whole PNG before it inflates it, so reading counts for this share of the progress and the rest is reported as indeterminate
+static const float ImageLoaderStbPngReadShare = 0.25f;
+
+// What the stb_image callbacks read from
+typedef struct ImageLoaderStbStream {
+	ImageSource *source;
+	// Reports the PNG progress itself, see ImageLoaderStbPngReadShare
+	bool isPngProgress;
+} ImageLoaderStbStream;
+
 static int ImageLoaderStbRead(void *user, char *data, int size) {
-	ImageSource *source = (ImageSource *)user;
+	ImageLoaderStbStream *stream = (ImageLoaderStbStream *)user;
+	ImageSource *source = stream->source;
 	size_t readSize = source->read(source, data, (size_t)size);
+	if (stream->isPngProgress) {
+		uint64_t position = source->tell(source);
+		uint64_t sourceSize = source->size(source);
+		float readFraction = sourceSize > 0 ? (float)((double)position / (double)sourceSize) : 1.0f;
+		bool isEverythingRead = position >= sourceSize;
+		source->reportProgress(source, readFraction * ImageLoaderStbPngReadShare, isEverythingRead);
+	}
 	return((int)readSize);
 }
 
 // stb_image skips forward and, with a negative count, back
 static void ImageLoaderStbSkip(void *user, int count) {
-	ImageSource *source = (ImageSource *)user;
+	ImageLoaderStbStream *stream = (ImageLoaderStbStream *)user;
+	ImageSource *source = stream->source;
 	int64_t position = (int64_t)source->tell(source);
 	int64_t size = (int64_t)source->size(source);
 	int64_t target = position + count;
@@ -97,8 +116,11 @@ static void ImageLoaderStbSkip(void *user, int count) {
 }
 
 static int ImageLoaderStbEof(void *user) {
-	ImageSource *source = (ImageSource *)user;
-	bool isEnd = source->tell(source) >= source->size(source) || source->isCanceled(source);
+	ImageLoaderStbStream *stream = (ImageLoaderStbStream *)user;
+	ImageSource *source = stream->source;
+	uint64_t position = source->tell(source);
+	uint64_t size = source->size(source);
+	bool isEnd = position >= size || source->isCanceled(source);
 	return(isEnd ? 1 : 0);
 }
 
@@ -164,15 +186,16 @@ static uint32_t ImageLoaderStbPngChannels(const uint8_t colorType) {
 
 static ImageLoadResult ImageLoaderStbReadInfo(const ImageLoader *loader, ImageSource *source, PictureInfo *outInfo, char *message, size_t messageSize) {
 	stbi_io_callbacks callbacks = ImageLoaderStbCallbacks();
+	ImageLoaderStbStream stream = { source, false };
 	int width = 0;
 	int height = 0;
 	int components = 0;
-	if (!stbi_info_from_callbacks(&callbacks, source, &width, &height, &components)) {
+	if (!stbi_info_from_callbacks(&callbacks, &stream, &width, &height, &components)) {
 		ImageLoadResult failure = ImageLoaderStbFailure(source, message, messageSize);
 		return(failure);
 	}
 	source->seek(source, 0);
-	int is16Bit = stbi_is_16_bit_from_callbacks(&callbacks, source);
+	int is16Bit = stbi_is_16_bit_from_callbacks(&callbacks, &stream);
 	uint32_t bitsPerChannel = is16Bit ? ImageLoaderStbBitsPerWideChannel : ImageLoaderStbBitsPerChannel;
 
 	// stbi_info reports a top-down BMP with its negative height, the decoder does not
@@ -226,11 +249,17 @@ static ImageLoadResult ImageLoaderStbReadInfo(const ImageLoader *loader, ImageSo
 }
 
 static ImageLoadResult ImageLoaderStbDecode(const ImageLoader *loader, ImageSource *source, ImagePixels *outPixels, char *message, size_t messageSize) {
+	// JPEG decodes while reading, so the read position is a good progress, PNG does not
+	uint8_t header[IMAGE_LOADER_PROBE_SIZE];
+	size_t headerSize = source->read(source, header, sizeof(header));
+	source->seek(source, 0);
+	ImageLoaderStbFormat format = ImageLoaderStbDetect(header, headerSize);
 	stbi_io_callbacks callbacks = ImageLoaderStbCallbacks();
+	ImageLoaderStbStream stream = { source, format == ImageLoaderStbFormat_Png };
 	int width = 0;
 	int height = 0;
 	int components = 0;
-	stbi_uc *pixels = stbi_load_from_callbacks(&callbacks, source, &width, &height, &components, ImageLoaderStbRequestedComponents);
+	stbi_uc *pixels = stbi_load_from_callbacks(&callbacks, &stream, &width, &height, &components, ImageLoaderStbRequestedComponents);
 	if (pixels == NULL) {
 		ImageLoadResult failure = ImageLoaderStbFailure(source, message, messageSize);
 		return(failure);

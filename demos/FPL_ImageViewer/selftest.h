@@ -5,7 +5,7 @@ Name:
 Description:
 	Checks for --selftest that need neither a window nor OpenGL, so they also run on a machine without a GPU or under an emulator.
 	Prints every failed check and a summary, RunSelfTest() returns the process exit code (0 = all passed, 1 = at least one failed).
-	Include once, in the translation unit that implements final_platform_layer.h, viewtransform.h, resamplepipeline.h and the image loaders.
+	Include once, in the translation unit that implements final_platform_layer.h, viewtransform.h, resamplepipeline.h, imagepyramid.h and the image loaders.
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -25,6 +25,7 @@ License:
 #include "imageloader_stb.h"
 #include "imageloader_pnm.h"
 #include "imageloader_bmp.h"
+#include "imagepyramid.h"
 
 typedef struct SelfTest {
 	const char* groupName;
@@ -476,8 +477,519 @@ static void SelfTestLoaders(SelfTest* test) {
 	SelfTestCheck(test, result == ImageLoadResult_Unsupported, "An 8 bit BMP is unsupported by the reference loader");
 }
 
-static int RunSelfTest() {
+// --- Image pyramid -----------------------------------------------------------------------------------------------------------
+
+// xorshift32, deterministic so a failure can be reproduced
+static uint32_t SelfTestNextRandom(uint32_t* state) {
+	const uint32_t firstShift = 13;
+	const uint32_t secondShift = 17;
+	const uint32_t thirdShift = 5;
+	uint32_t value = *state;
+	value ^= value << firstShift;
+	value ^= value >> secondShift;
+	value ^= value << thirdShift;
+	*state = value;
+	return(value);
+}
+
+// Hard edges between black, white and random values, so the filters overshoot, saturate and meet every alpha case
+static uint8_t SelfTestRandomSample(uint32_t* state) {
+	const uint32_t choiceCount = 4;
+	const uint8_t byteMaximum = 255;
+	uint32_t choice = SelfTestNextRandom(state) % choiceCount;
+	uint32_t value = SelfTestNextRandom(state);
+	if (choice == 0) {
+		return(0);
+	}
+	if (choice == 1) {
+		return(byteMaximum);
+	}
+	return((uint8_t)value);
+}
+
+// Rows are stride bytes apart, padding bytes are random too and must never show up in a result
+static void SelfTestFillRandomPicture(uint8_t* pixels, const uint32_t width, const uint32_t height, const uint32_t stride, const bool isOpaque, uint32_t* state) {
+	const uint32_t bytesPerPixel = 4;
+	const uint32_t alphaOffset = 3;
+	const uint8_t opaqueAlpha = 255;
+	for (uint32_t y = 0; y < height; ++y) {
+		uint8_t* row = pixels + (size_t)y * stride;
+		for (uint32_t byteIndex = 0; byteIndex < stride; ++byteIndex) {
+			row[byteIndex] = SelfTestRandomSample(state);
+		}
+		if (isOpaque) {
+			for (uint32_t x = 0; x < width; ++x) {
+				row[x * bytesPerPixel + alphaOffset] = opaqueAlpha;
+			}
+		}
+	}
+}
+
+static bool SelfTestAreLevelsEqual(const ImagePyramidLevel* a, const ImagePyramidLevel* b) {
+	const uint32_t bytesPerPixel = 4;
+	if (a->width != b->width || a->height != b->height) {
+		return(false);
+	}
+	size_t rowBytes = (size_t)a->width * bytesPerPixel;
+	for (uint32_t y = 0; y < a->height; ++y) {
+		const uint8_t* rowA = a->pixels + (size_t)y * a->stride;
+		const uint8_t* rowB = b->pixels + (size_t)y * b->stride;
+		if (memcmp(rowA, rowB, rowBytes) != 0) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+static ImagePyramidSettings SelfTestPyramidSettings(const ImagePyramidRowFunctions* functions, const ImagePyramidKernel kernel) {
+	ImagePyramidSettings result = fplZeroInit;
+	result.functions = functions;
+	result.kernel = kernel;
+	return(result);
+}
+
+static void SelfTestPyramidTables(SelfTest* test) {
+	test->groupName = "PyramidTables";
+	ImagePyramidInitialize();
+	const ImagePyramidTables* tables = ImagePyramidGetTables();
+	const int32_t byteMaximum = 255;
+	const int32_t linearMaximum = 32767;
+	const int32_t weightOne = 16384;
+	const int32_t firstTapOffset = -3;
+
+	uint32_t roundTripFailures = 0;
+	uint32_t alphaRoundTripFailures = 0;
+	uint32_t monotonicFailures = 0;
+	for (int32_t value = 0; value <= byteMaximum; ++value) {
+		int16_t linear = tables->srgbToLinear[value];
+		if (tables->linearToSRGB[linear] != value) {
+			++roundTripFailures;
+		}
+		int32_t alpha = tables->alphaToLinear[value];
+		int32_t alphaBack = (alpha * byteMaximum + linearMaximum / 2) / linearMaximum;
+		if (alphaBack != value) {
+			++alphaRoundTripFailures;
+		}
+		if (value > 0 && tables->srgbToLinear[value] <= tables->srgbToLinear[value - 1]) {
+			++monotonicFailures;
+		}
+	}
+	SelfTestCheck(test, roundTripFailures == 0, "Every sRGB value survives decode and encode");
+	SelfTestCheck(test, alphaRoundTripFailures == 0, "Every alpha value survives decode and encode");
+	SelfTestCheck(test, monotonicFailures == 0, "sRGB to linear rises strictly, dark values stay apart");
+	SelfTestCheck(test, tables->srgbToLinear[0] == 0 && tables->srgbToLinear[byteMaximum] == linearMaximum, "sRGB 0 and 255 map to linear 0 and 32767");
+
+	// Interior weights: symmetric and exactly one in Q14, for both kernels
+	for (int kernelIndex = 0; kernelIndex < ImagePyramidKernel_Count; ++kernelIndex) {
+		const ImagePyramidKernelDefinition* definition = ImagePyramidGetKernelDefinition((ImagePyramidKernel)kernelIndex);
+		const int16_t* weights = tables->interiorWeights[kernelIndex];
+		int32_t sum = 0;
+		bool isSymmetric = true;
+		for (uint32_t tap = 0; tap < IMAGE_PYRAMID_TAP_COUNT; ++tap) {
+			sum += weights[tap];
+			if (weights[tap] != weights[IMAGE_PYRAMID_TAP_COUNT - 1 - tap]) {
+				isSymmetric = false;
+			}
+		}
+		char text[256];
+		fplStringFormat(text, fplArrayCount(text), "%s interior weights sum to 16384 and are symmetric", definition->name);
+		SelfTestCheck(test, sum == weightOne && isSymmetric, text);
+	}
+
+	// Edge weights: taps inside the picture only, still exactly one, for every output of short and long axes
+	const int32_t longestTestedLength = 40;
+	uint32_t edgeSumFailures = 0;
+	uint32_t edgeRangeFailures = 0;
+	for (int kernelIndex = 0; kernelIndex < ImagePyramidKernel_Count; ++kernelIndex) {
+		for (int32_t length = 1; length <= longestTestedLength; ++length) {
+			int32_t outputCount = length / 2 + length % 2;
+			for (int32_t output = 0; output < outputCount; ++output) {
+				int32_t firstTap = 0;
+				int16_t weights[IMAGE_PYRAMID_TAP_COUNT];
+				uint32_t tapCount = ImagePyramidComputeTaps((ImagePyramidKernel)kernelIndex, output, length, &firstTap, weights);
+				int32_t sum = 0;
+				for (uint32_t tap = 0; tap < tapCount; ++tap) {
+					sum += weights[tap];
+				}
+				int32_t endTap = firstTap + (int32_t)tapCount;
+				int32_t expectedFirst = fplMax(2 * output + firstTapOffset, 0);
+				if (sum != weightOne) {
+					++edgeSumFailures;
+				}
+				if (tapCount == 0 || firstTap != expectedFirst || endTap > length) {
+					++edgeRangeFailures;
+				}
+			}
+		}
+	}
+	SelfTestCheck(test, edgeSumFailures == 0, "Edge weights sum to 16384 on every axis length 1..40");
+	SelfTestCheck(test, edgeRangeFailures == 0, "Edge taps stay inside the picture");
+}
+
+static void SelfTestPyramidLevels(SelfTest* test) {
+	test->groupName = "PyramidLevels";
+	uint32_t photoLevelCount = ImagePyramidComputeLevelCount(4032, 3024);
+	SelfTestCheck(test, photoLevelCount == 8, "4032x3024 has level 0 and 7 reduced levels");
+	uint32_t smallestWidth = 0;
+	uint32_t smallestHeight = 0;
+	ImagePyramidComputeLevelSize(4032, 3024, 7, &smallestWidth, &smallestHeight);
+	SelfTestCheck(test, smallestWidth == 32 && smallestHeight == 24, "4032x3024 level 7 is 32x24 (sizes round up)");
+	uint32_t oddWidth = 0;
+	uint32_t oddHeight = 0;
+	ImagePyramidComputeLevelSize(1023, 767, 1, &oddWidth, &oddHeight);
+	SelfTestCheck(test, oddWidth == 512 && oddHeight == 384, "1023x767 level 1 is 512x384, the last column and row stay inside");
+	uint32_t tinyLevelCount = ImagePyramidComputeLevelCount(1, 1);
+	uint32_t smallLevelCount = ImagePyramidComputeLevelCount(32, 32);
+	uint32_t justAboveLevelCount = ImagePyramidComputeLevelCount(33, 1);
+	SelfTestCheck(test, tinyLevelCount == 1 && smallLevelCount == 1 && justAboveLevelCount == 2, "Pictures of at most 32 pixels get no reduced level");
+	uint32_t extremeLevelCount = ImagePyramidComputeLevelCount(40000, 64);
+	uint32_t extremeWidth = 0;
+	uint32_t extremeHeight = 0;
+	ImagePyramidComputeLevelSize(40000, 64, 11, &extremeWidth, &extremeHeight);
+	SelfTestCheck(test, extremeLevelCount == 12 && extremeWidth == 20 && extremeHeight == 1, "40000x64 ends at 20x1 after 11 reductions");
+
+	// Flat pictures stay exactly flat through the whole pyramid: opaque, translucent and fully transparent
+	const uint32_t flatWidth = 71;
+	const uint32_t flatHeight = 45;
+	const uint32_t bytesPerPixel = 4;
+	const uint8_t flatColors[][4] = { { 128, 128, 128, 255 }, { 255, 0, 0, 255 }, { 200, 100, 50, 128 }, { 1, 2, 3, 254 }, { 90, 180, 30, 0 } };
+	const uint8_t transparentPixel[4] = { 0, 0, 0, 0 };
+	const ImagePyramidRowFunctions* scalar = ImagePyramidGetRowFunctions(SimdLevel_Scalar);
+	ImagePyramidSettings settings = SelfTestPyramidSettings(scalar, ImagePyramidKernel_Mitchell);
+	uint32_t flatStride = flatWidth * bytesPerPixel;
+	uint8_t* flatPixels = (uint8_t*)malloc((size_t)flatStride * flatHeight);
+	for (uint32_t colorIndex = 0; colorIndex < fplArrayCount(flatColors); ++colorIndex) {
+		const uint8_t* color = flatColors[colorIndex];
+		const uint8_t* expected = color[3] == 0 ? transparentPixel : color;
+		for (uint32_t pixelIndex = 0; pixelIndex < flatWidth * flatHeight; ++pixelIndex) {
+			memcpy(flatPixels + pixelIndex * bytesPerPixel, color, bytesPerPixel);
+		}
+		ImagePyramidLevel baseLevel = { flatPixels, flatWidth, flatHeight, flatStride };
+		ImagePyramid pyramid;
+		ImagePyramidResult result = ImagePyramidBuild(&baseLevel, &settings, &pyramid);
+		uint32_t differentPixels = 0;
+		for (uint32_t level = 1; level < pyramid.levelCount; ++level) {
+			const ImagePyramidLevel* pyramidLevel = &pyramid.levels[level];
+			for (uint32_t pixelIndex = 0; pixelIndex < pyramidLevel->width * pyramidLevel->height; ++pixelIndex) {
+				if (memcmp(pyramidLevel->pixels + pixelIndex * bytesPerPixel, expected, bytesPerPixel) != 0) {
+					++differentPixels;
+				}
+			}
+		}
+		char text[256];
+		fplStringFormat(text, fplArrayCount(text), "Flat (%u, %u, %u, %u) stays flat on all %u levels", color[0], color[1], color[2], color[3], pyramid.levelCount);
+		SelfTestCheck(test, result == ImagePyramidResult_Success && pyramid.levelCount > 1 && differentPixels == 0, text);
+		ImagePyramidRelease(&pyramid);
+	}
+	free(flatPixels);
+
+	// Cancel stops the build and leaves level 0 alone
+	const uint32_t cancelWidth = 300;
+	const uint32_t cancelHeight = 200;
+	uint32_t cancelStride = cancelWidth * bytesPerPixel;
+	uint8_t* cancelPixels = (uint8_t*)calloc((size_t)cancelStride * cancelHeight, 1);
+	volatile bool isCanceled = true;
+	ImagePyramidSettings cancelSettings = SelfTestPyramidSettings(scalar, ImagePyramidKernel_Mitchell);
+	cancelSettings.cancelFlag = &isCanceled;
+	ImagePyramidLevel cancelLevel = { cancelPixels, cancelWidth, cancelHeight, cancelStride };
+	ImagePyramid canceledPyramid;
+	ImagePyramidResult cancelResult = ImagePyramidBuild(&cancelLevel, &cancelSettings, &canceledPyramid);
+	SelfTestCheck(test, cancelResult == ImagePyramidResult_Canceled && canceledPyramid.levelCount == 1 && canceledPyramid.memory == fpl_null, "A canceled build keeps only level 0");
+	ImagePyramidRelease(&canceledPyramid);
+	free(cancelPixels);
+}
+
+// Reduces the same picture with the scalar reference and with the level, true when every byte is equal
+static bool SelfTestIsReductionBitIdentical(const ImagePyramidRowFunctions* functions, const ImagePyramidKernel kernel, const ImagePyramidLevel* source) {
+	const uint32_t bytesPerPixel = 4;
+	const ImagePyramidRowFunctions* scalar = ImagePyramidGetRowFunctions(SimdLevel_Scalar);
+	ImagePyramidSettings scalarSettings = SelfTestPyramidSettings(scalar, kernel);
+	ImagePyramidSettings levelSettings = SelfTestPyramidSettings(functions, kernel);
+	uint32_t targetWidth = source->width / 2 + source->width % 2;
+	uint32_t targetHeight = source->height / 2 + source->height % 2;
+	uint32_t targetStride = targetWidth * bytesPerPixel;
+	size_t targetBytes = (size_t)targetStride * targetHeight;
+	uint8_t* scalarPixels = (uint8_t*)malloc(targetBytes);
+	uint8_t* levelPixels = (uint8_t*)malloc(targetBytes);
+	ImagePyramidLevel scalarTarget = { scalarPixels, targetWidth, targetHeight, targetStride };
+	ImagePyramidLevel levelTarget = { levelPixels, targetWidth, targetHeight, targetStride };
+	ImagePyramidResult scalarResult = ImagePyramidReduceHalf(source, &scalarTarget, &scalarSettings);
+	ImagePyramidResult levelResult = ImagePyramidReduceHalf(source, &levelTarget, &levelSettings);
+	bool result = scalarResult == ImagePyramidResult_Success && levelResult == ImagePyramidResult_Success && SelfTestAreLevelsEqual(&scalarTarget, &levelTarget);
+	free(levelPixels);
+	free(scalarPixels);
+	return(result);
+}
+
+// Builds the whole pyramid with the scalar reference and with the level, true when every level is equal
+static bool SelfTestIsPyramidBitIdentical(const ImagePyramidRowFunctions* functions, const ImagePyramidKernel kernel, const ImagePyramidLevel* baseLevel) {
+	const ImagePyramidRowFunctions* scalar = ImagePyramidGetRowFunctions(SimdLevel_Scalar);
+	ImagePyramidSettings scalarSettings = SelfTestPyramidSettings(scalar, kernel);
+	ImagePyramidSettings levelSettings = SelfTestPyramidSettings(functions, kernel);
+	ImagePyramid scalarPyramid;
+	ImagePyramid levelPyramid;
+	ImagePyramidResult scalarResult = ImagePyramidBuild(baseLevel, &scalarSettings, &scalarPyramid);
+	ImagePyramidResult levelResult = ImagePyramidBuild(baseLevel, &levelSettings, &levelPyramid);
+	bool result = scalarResult == ImagePyramidResult_Success && levelResult == ImagePyramidResult_Success && scalarPyramid.levelCount == levelPyramid.levelCount;
+	for (uint32_t level = 1; result && level < scalarPyramid.levelCount; ++level) {
+		result = SelfTestAreLevelsEqual(&scalarPyramid.levels[level], &levelPyramid.levels[level]);
+	}
+	ImagePyramidRelease(&levelPyramid);
+	ImagePyramidRelease(&scalarPyramid);
+	return(result);
+}
+
+// Every picture of the folder through every available SIMD level, compared with the scalar reference
+static void SelfTestPyramidFolder(SelfTest* test, const char* folderPath, const fplCPUCapabilities* capabilities) {
+	ImageLoaderRegistry registry;
+	ImageLoaderRegistryInit(&registry);
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet() };
+	for (uint32_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
+		char message[IMAGE_LOADER_MESSAGE_SIZE];
+		ImageLoaderRegistryAdd(&registry, loaders[loaderIndex], message, sizeof(message));
+	}
+	uint32_t pictureCount = 0;
+	uint32_t failedCount = 0;
+	fplFileEntry entry;
+	for (bool hasEntry = fplDirectoryListBegin(folderPath, "*", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
+		if (entry.type != fplFileEntryType_File) {
+			continue;
+		}
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, folderPath, entry.name);
+		const char* extension = fplExtractFileExtension(filePath);
+		if (extension == fpl_null || !ImageLoaderRegistryIsKnownExtension(&registry, extension)) {
+			continue;
+		}
+		ImageFileSource fileSource;
+		if (!ImageFileSourceOpen(&fileSource, filePath, fpl_null, fpl_null, fpl_null)) {
+			continue;
+		}
+		int32_t loaderEntry = -1;
+		PictureInfo info;
+		ImagePixels pixels = fplZeroInit;
+		char message[IMAGE_LOADER_MESSAGE_SIZE];
+		ImageLoadResult loadResult = ImageLoaderRegistryLoad(&registry, &fileSource.source, extension, -1, &loaderEntry, &info, &pixels, message, sizeof(message));
+		ImageFileSourceClose(&fileSource);
+		if (loadResult != ImageLoadResult_Success) {
+			continue;
+		}
+		++pictureCount;
+		ImagePyramidLevel baseLevel = { (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride };
+		for (int32_t level = SimdLevel_Scalar + 1; level < SimdLevel_Count; ++level) {
+			if (!ImagePyramidIsSimdLevelAvailable(capabilities, (SimdLevel)level)) {
+				continue;
+			}
+			const ImagePyramidRowFunctions* functions = ImagePyramidGetRowFunctions((SimdLevel)level);
+			for (int kernelIndex = 0; kernelIndex < ImagePyramidKernel_Count; ++kernelIndex) {
+				if (!SelfTestIsPyramidBitIdentical(functions, (ImagePyramidKernel)kernelIndex, &baseLevel)) {
+					const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition((ImagePyramidKernel)kernelIndex);
+					++failedCount;
+					fplConsoleFormatError("[%s] %s differs from scalar on '%s' (%s)\n", test->groupName, functions->name, entry.name, kernelDefinition->key);
+				}
+			}
+		}
+		ImageLoaderRegistryReleasePixels(&registry, loaderEntry, &pixels);
+	}
+	ImageLoaderRegistryRelease(&registry);
+	char text[256];
+	fplStringFormat(text, fplArrayCount(text), "All %u test pictures of '%s' are bit identical on every SIMD level", pictureCount, folderPath);
+	SelfTestCheck(test, pictureCount > 0 && failedCount == 0, text);
+}
+
+static void SelfTestPyramidSimd(SelfTest* test, const char* imageFolder) {
+	test->groupName = "PyramidSimd";
+	const uint32_t bytesPerPixel = 4;
+	const uint32_t largestTestedSize = 130;
+	const uint32_t randomSizeCount = 300;
+	const uint32_t rowPaddingBytes = 12;
+	const uint32_t randomSeed = 0x2545F491;
+	// Failures listed one by one per SIMD level, the rest is only counted
+	const uint32_t largestReportedFailures = 5;
+	const uint32_t fixedHeights[] = { 1, 2, 3, 4, 5, 7, 8, 9, 16, 17, 33, 130 };
+	fplCPUCapabilities capabilities = fplZeroInit;
+	fplCPUGetCapabilities(&capabilities);
+
+	// Falling back: a level that is not available picks the next lower one, scalar is always there
+	const ImagePyramidRowFunctions* best = ImagePyramidSelectRowFunctions(&capabilities, SimdLevel_Best);
+	const ImagePyramidRowFunctions* scalar = ImagePyramidSelectRowFunctions(&capabilities, SimdLevel_Scalar);
+	SelfTestCheck(test, best != fpl_null && scalar != fpl_null && scalar->level == SimdLevel_Scalar, "Best and scalar row functions exist");
+	bool isNeonAvailable = ImagePyramidIsSimdLevelAvailable(&capabilities, SimdLevel_ARM_NEON);
+	const ImagePyramidRowFunctions* requestedNeon = ImagePyramidSelectRowFunctions(&capabilities, SimdLevel_ARM_NEON);
+	SelfTestCheck(test, isNeonAvailable || requestedNeon == best, "NEON without NEON falls back to the best available level");
+	for (int32_t level = SimdLevel_Scalar; level < SimdLevel_Count; ++level) {
+		const ImagePyramidRowFunctions* selected = ImagePyramidSelectRowFunctions(&capabilities, (SimdLevel)level);
+		bool isAvailable = ImagePyramidIsSimdLevelAvailable(&capabilities, (SimdLevel)level);
+		const char* requestedName = ImagePyramidGetSimdLevelName((SimdLevel)level);
+		char text[256];
+		fplStringFormat(text, fplArrayCount(text), "Requesting %s gives %s", requestedName, selected->name);
+		SelfTestCheck(test, isAvailable ? selected->level == (SimdLevel)level : selected->level < (SimdLevel)level, text);
+	}
+	char levelsText[256] = fplZeroInit;
+	for (int32_t level = SimdLevel_Scalar; level < SimdLevel_Count; ++level) {
+		if (ImagePyramidIsSimdLevelAvailable(&capabilities, (SimdLevel)level)) {
+			const char* levelName = ImagePyramidGetSimdLevelName((SimdLevel)level);
+			fplStringAppend(levelName, levelsText, fplArrayCount(levelsText));
+			fplStringAppend(" ", levelsText, fplArrayCount(levelsText));
+		}
+	}
+	fplConsoleFormatOut("[%s] Available SIMD levels: %s\n", test->groupName, levelsText);
+
+	// Random pictures: every width up to 130 with a set of heights, plus random sizes, with padded rows, both kernels
+	uint32_t randomState = randomSeed;
+	size_t largestStride = (size_t)largestTestedSize * bytesPerPixel + rowPaddingBytes;
+	uint8_t* pixels = (uint8_t*)malloc(largestStride * largestTestedSize);
+	for (int32_t level = SimdLevel_Scalar + 1; level < SimdLevel_Count; ++level) {
+		if (!ImagePyramidIsSimdLevelAvailable(&capabilities, (SimdLevel)level)) {
+			continue;
+		}
+		const ImagePyramidRowFunctions* functions = ImagePyramidGetRowFunctions((SimdLevel)level);
+		uint32_t caseCount = 0;
+		uint32_t failedCount = 0;
+		uint32_t sizeCount = largestTestedSize * fplArrayCount(fixedHeights) + randomSizeCount;
+		for (uint32_t sizeIndex = 0; sizeIndex < sizeCount; ++sizeIndex) {
+			uint32_t width;
+			uint32_t height;
+			if (sizeIndex < largestTestedSize * fplArrayCount(fixedHeights)) {
+				width = sizeIndex % largestTestedSize + 1;
+				height = fixedHeights[sizeIndex / largestTestedSize];
+			} else {
+				width = SelfTestNextRandom(&randomState) % largestTestedSize + 1;
+				height = SelfTestNextRandom(&randomState) % largestTestedSize + 1;
+			}
+			bool isOpaque = (sizeIndex % 3) == 0;
+			bool isPadded = (sizeIndex % 2) == 0;
+			uint32_t stride = width * bytesPerPixel + (isPadded ? rowPaddingBytes : 0);
+			SelfTestFillRandomPicture(pixels, width, height, stride, isOpaque, &randomState);
+			ImagePyramidLevel source = { pixels, width, height, stride };
+			ImagePyramidKernel kernel = (ImagePyramidKernel)(sizeIndex % ImagePyramidKernel_Count);
+			++caseCount;
+			if (!SelfTestIsReductionBitIdentical(functions, kernel, &source)) {
+				if (failedCount < largestReportedFailures) {
+					const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition(kernel);
+					fplConsoleFormatError("[%s] %s differs from scalar at %u x %u (stride %u, %s)\n", test->groupName, functions->name, width, height, stride, kernelDefinition->key);
+				}
+				++failedCount;
+			}
+		}
+		char text[256];
+		fplStringFormat(text, fplArrayCount(text), "%s reduces %u random pictures bit identical to scalar", functions->name, caseCount);
+		SelfTestCheck(test, failedCount == 0, text);
+
+		// Whole pyramids of larger pictures reach the wide SIMD loops on several levels
+		const uint32_t largeSizes[][2] = { { 1000, 37 }, { 97, 777 }, { 1023, 767 } };
+		uint32_t largeFailures = 0;
+		for (uint32_t largeIndex = 0; largeIndex < fplArrayCount(largeSizes); ++largeIndex) {
+			uint32_t largeWidth = largeSizes[largeIndex][0];
+			uint32_t largeHeight = largeSizes[largeIndex][1];
+			uint32_t largeStride = largeWidth * bytesPerPixel;
+			uint8_t* largePixels = (uint8_t*)malloc((size_t)largeStride * largeHeight);
+			SelfTestFillRandomPicture(largePixels, largeWidth, largeHeight, largeStride, largeIndex == 0, &randomState);
+			ImagePyramidLevel largeLevel = { largePixels, largeWidth, largeHeight, largeStride };
+			for (int kernelIndex = 0; kernelIndex < ImagePyramidKernel_Count; ++kernelIndex) {
+				if (!SelfTestIsPyramidBitIdentical(functions, (ImagePyramidKernel)kernelIndex, &largeLevel)) {
+					++largeFailures;
+				}
+			}
+			free(largePixels);
+		}
+		fplStringFormat(text, fplArrayCount(text), "%s builds whole pyramids of 1000x37, 97x777 and 1023x767 bit identical to scalar", functions->name);
+		SelfTestCheck(test, largeFailures == 0, text);
+	}
+	free(pixels);
+
+	if (imageFolder != fpl_null) {
+		SelfTestPyramidFolder(test, imageFolder, &capabilities);
+	}
+}
+
+static void SelfTestSourceLevel(SelfTest* test) {
+	test->groupName = "SourceLevel";
+	const uint32_t photoLevelCount = 8;
+
+	// The scale relative to the source level lies in (1/16, 1/8], level 0 serves everything above 1/16
+	typedef struct SourceLevelCase {
+		float scale;
+		uint32_t levelCount;
+		uint32_t firstLevel;
+		uint32_t expectedLevel;
+		const char* description;
+	} SourceLevelCase;
+	const SourceLevelCase cases[] = {
+		{ 1.0f, photoLevelCount, 0, 0, "Scale 1 reads level 0" },
+		{ 0.238f, photoLevelCount, 0, 0, "Scale 0.238 (a photo fitted into 1280x720) reads level 0" },
+		{ 0.125f, photoLevelCount, 0, 0, "Scale 0.125 reads level 0" },
+		{ 0.1f, photoLevelCount, 0, 0, "Scale 0.1 reads level 0" },
+		{ 0.0625f, photoLevelCount, 0, 1, "Scale 0.0625 reads level 1 at 0.125" },
+		{ 0.05f, photoLevelCount, 0, 1, "Scale 0.05 reads level 1" },
+		{ 0.03f, photoLevelCount, 0, 2, "Scale 0.03 reads level 2" },
+		{ 0.001f, 3, 0, 2, "A tiny scale reads the last level" },
+		{ 1.0f, photoLevelCount, 1, 1, "Scale 1 reads level 1 when level 0 has no texture" },
+		{ 0.03f, photoLevelCount, 3, 3, "Scale 0.03 reads level 3 when the levels before have no texture" },
+		{ 0.0f, photoLevelCount, 0, 0, "No scale reads level 0" },
+		{ 0.03f, 1, 0, 0, "Without reduced levels everything reads level 0" },
+	};
+	for (uint32_t caseIndex = 0; caseIndex < fplArrayCount(cases); ++caseIndex) {
+		const SourceLevelCase* sourceCase = &cases[caseIndex];
+		uint32_t level = ComputeViewSourceLevel(sourceCase->scale, sourceCase->levelCount, sourceCase->firstLevel);
+		SelfTestCheck(test, level == sourceCase->expectedLevel, sourceCase->description);
+	}
+	const float firstSweepScale = 0.0002f;
+	const float sweepStep = 1.013f;
+	const float smallestLevelScale = 0.0625f;
+	const float largestLevelScale = 0.125f;
+	uint32_t rangeFailures = 0;
+	for (float scale = firstSweepScale; scale <= 1.0f; scale *= sweepStep) {
+		uint32_t level = ComputeViewSourceLevel(scale, IMAGE_PYRAMID_MAX_LEVELS, 0);
+		float levelScale = ldexpf(scale, (int)level);
+		bool isInRange = level == 0 ? scale > smallestLevelScale : (levelScale > smallestLevelScale && levelScale <= largestLevelScale);
+		if (!isInRange) {
+			++rangeFailures;
+		}
+	}
+	SelfTestCheck(test, rangeFailures == 0, "Sweep: the scale relative to the source level stays in (1/16, 1/8]");
+
+	// 5x3 stored, level 1 is 3x2 and covers 6x4 picture pixels: its last column and row lie half on the picture.
+	// A mirrored axis shows that pixel first, shifted by 3 - 5 / 2 = 0.5 or 2 - 3 / 2 = 0.5.
+	const uint32_t firstOrientation = 1;
+	const uint32_t lastOrientation = 8;
+	const float half = 0.5f;
+	const float whole = 1.0f;
+	const bool isColumnMirrored[] = { false, false, true, true, false, false, true, true, false };
+	const bool isRowMirrored[] = { false, false, false, true, true, false, false, true, true };
+	ViewSize storedSize = fplStructInit(ViewSize, 5, 3);
+	ViewSize storedLevelSize = fplStructInit(ViewSize, 3, 2);
+	uint32_t placementFailures = 0;
+	uint32_t levelZeroFailures = 0;
+	for (uint32_t orientation = firstOrientation; orientation <= lastOrientation; ++orientation) {
+		ViewLevelPlacement placement = ComputeViewLevelPlacement(orientation, storedSize, storedLevelSize, 1);
+		float expectedOffsetU = isColumnMirrored[orientation] ? half : 0.0f;
+		float expectedOffsetV = isRowMirrored[orientation] ? half : 0.0f;
+		float expectedFirstU = isColumnMirrored[orientation] ? half : whole;
+		float expectedLastU = isColumnMirrored[orientation] ? whole : half;
+		float expectedFirstV = isRowMirrored[orientation] ? half : whole;
+		float expectedLastV = isRowMirrored[orientation] ? whole : half;
+		bool isOffsetRight = fabsf(placement.offsetU - expectedOffsetU) <= SelfTestFloatTolerance && fabsf(placement.offsetV - expectedOffsetV) <= SelfTestFloatTolerance;
+		bool isColumnCoverageRight = fabsf(placement.firstCoverageU - expectedFirstU) <= SelfTestFloatTolerance && fabsf(placement.lastCoverageU - expectedLastU) <= SelfTestFloatTolerance;
+		bool isRowCoverageRight = fabsf(placement.firstCoverageV - expectedFirstV) <= SelfTestFloatTolerance && fabsf(placement.lastCoverageV - expectedLastV) <= SelfTestFloatTolerance;
+		if (!isOffsetRight || !isColumnCoverageRight || !isRowCoverageRight) {
+			++placementFailures;
+			fplConsoleFormatError("[%s] orientation %u: offset (%f, %f), coverage u (%f, %f), v (%f, %f)\n", test->groupName, orientation, placement.offsetU, placement.offsetV, placement.firstCoverageU, placement.lastCoverageU, placement.firstCoverageV, placement.lastCoverageV);
+		}
+		ViewLevelPlacement levelZero = ComputeViewLevelPlacement(orientation, storedSize, storedSize, 0);
+		bool isLevelZeroWhole = levelZero.offsetU == 0.0f && levelZero.offsetV == 0.0f && levelZero.firstCoverageU == whole && levelZero.lastCoverageU == whole && levelZero.firstCoverageV == whole && levelZero.lastCoverageV == whole;
+		if (!isLevelZeroWhole) {
+			++levelZeroFailures;
+		}
+	}
+	SelfTestCheck(test, placementFailures == 0, "An odd sized level is shifted onto the picture and its overhanging edge pixel is covered by half, for all 8 orientations");
+	SelfTestCheck(test, levelZeroFailures == 0, "Level 0 needs no shift and covers the picture completely");
+}
+
+// imageFolder is optional: when set, every picture in it is also reduced on every SIMD level and compared
+static int RunSelfTest(const char* imageFolder) {
 	SelfTest test = fplZeroInit;
+	ImagePyramidInitialize();
 	SelfTestViewTransform(&test);
 	SelfTestResample(&test);
 	SelfTestOrientation(&test);
@@ -485,6 +997,10 @@ static int RunSelfTest() {
 	SelfTestLoaderSelection(&test);
 	SelfTestExif(&test);
 	SelfTestLoaders(&test);
+	SelfTestPyramidTables(&test);
+	SelfTestPyramidLevels(&test);
+	SelfTestPyramidSimd(&test, imageFolder);
+	SelfTestSourceLevel(&test);
 	fplConsoleFormatOut("Self test: %u checks, %u failed\n", test.checkCount, test.failedCount);
 	int result = test.failedCount == 0 ? 0 : 1;
 	return(result);

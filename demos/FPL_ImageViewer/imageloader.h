@@ -122,10 +122,14 @@ struct ImageSource {
 	uint64_t (*tell)(ImageSource *source);
 	uint64_t (*size)(ImageSource *source);
 	bool (*isCanceled)(ImageSource *source);
-	// For a loader that knows better than the read position, fraction 0..1 of reading and decoding
-	void (*reportProgress)(ImageSource *source, float fraction);
+	// For a loader that knows better than the read position: fraction 0..1 of reading and decoding, from the first report on the read position no longer counts.
+	// isIndeterminate: the loader keeps working past fraction without knowing how far it is, e.g. inflating a PNG after the whole file is read.
+	void (*reportProgress)(ImageSource *source, float fraction, bool isIndeterminate);
 	void *userData;
 };
+
+// Gets the progress of a source: the read position, or what the loader reports
+typedef void ImageSourceProgressFunction(void *userData, const float fraction, const bool isIndeterminate);
 
 typedef struct ImageLoader ImageLoader;
 typedef ImageLoaderMatch ImageLoaderProbeFunction(const ImageLoader *loader, const uint8_t *header, size_t headerSize, const char *fileExtension);
@@ -186,9 +190,12 @@ typedef struct ImageFileSource {
 	ImageSource source;
 	fplFileHandle file;
 	uint64_t fileSize;
-	// Optional: canceled when it turns true, progress by read position is written here
+	// Optional: canceled when it turns true
 	volatile bool *cancelFlag;
-	volatile float *progress;
+	// Optional: gets the read position until the loader reports its own progress
+	ImageSourceProgressFunction *progress;
+	void *progressUserData;
+	bool hasLoaderProgress;
 } ImageFileSource;
 
 // Memory backed source for tests and embedded data
@@ -213,7 +220,7 @@ extern ImageOrientation ImageExifReadOrientation(const uint8_t *tiff, const size
 // Walks the JPEG segments up to the first scan and reads the orientation of the first EXIF APP1 segment, Normal otherwise
 extern ImageOrientation ImageJpegReadOrientation(ImageSource *source);
 
-extern bool ImageFileSourceOpen(ImageFileSource *fileSource, const char *filePath, volatile bool *cancelFlag, volatile float *progress);
+extern bool ImageFileSourceOpen(ImageFileSource *fileSource, const char *filePath, volatile bool *cancelFlag, ImageSourceProgressFunction *progress, void *progressUserData);
 extern void ImageFileSourceClose(ImageFileSource *fileSource);
 extern void ImageMemorySourceInit(ImageMemorySource *memorySource, const void *data, const size_t dataSize);
 
@@ -525,12 +532,12 @@ extern ImageOrientation ImageJpegReadOrientation(ImageSource *source) {
 // --- Sources ---------------------------------------------------------------------------------------------------------------
 
 static void ImageFileSourceUpdateProgress(ImageFileSource *fileSource) {
-	if (fileSource->progress == NULL || fileSource->fileSize == 0) {
+	if (fileSource->progress == NULL || fileSource->fileSize == 0 || fileSource->hasLoaderProgress) {
 		return;
 	}
 	uint64_t position = fplFileGetPosition64(&fileSource->file);
 	float fraction = (float)((double)position / (double)fileSource->fileSize);
-	*fileSource->progress = fraction;
+	fileSource->progress(fileSource->progressUserData, fraction, false);
 }
 
 static size_t ImageFileSourceRead(ImageSource *source, void *buffer, size_t size) {
@@ -571,14 +578,15 @@ static bool ImageFileSourceIsCanceled(ImageSource *source) {
 	return(result);
 }
 
-static void ImageFileSourceReportProgress(ImageSource *source, float fraction) {
+static void ImageFileSourceReportProgress(ImageSource *source, float fraction, bool isIndeterminate) {
 	ImageFileSource *fileSource = (ImageFileSource *)source;
+	fileSource->hasLoaderProgress = true;
 	if (fileSource->progress != NULL) {
-		*fileSource->progress = fraction;
+		fileSource->progress(fileSource->progressUserData, fraction, isIndeterminate);
 	}
 }
 
-extern bool ImageFileSourceOpen(ImageFileSource *fileSource, const char *filePath, volatile bool *cancelFlag, volatile float *progress) {
+extern bool ImageFileSourceOpen(ImageFileSource *fileSource, const char *filePath, volatile bool *cancelFlag, ImageSourceProgressFunction *progress, void *progressUserData) {
 	memset(fileSource, 0, sizeof(*fileSource));
 	if (!fplFileOpenBinary(filePath, &fileSource->file)) {
 		return(false);
@@ -586,6 +594,7 @@ extern bool ImageFileSourceOpen(ImageFileSource *fileSource, const char *filePat
 	fileSource->fileSize = fplFileGetSizeFromHandle64(&fileSource->file);
 	fileSource->cancelFlag = cancelFlag;
 	fileSource->progress = progress;
+	fileSource->progressUserData = progressUserData;
 	fileSource->source.read = ImageFileSourceRead;
 	fileSource->source.seek = ImageFileSourceSeek;
 	fileSource->source.tell = ImageFileSourceTell;
@@ -631,7 +640,7 @@ static bool ImageMemorySourceIsCanceled(ImageSource *source) {
 	return(false);
 }
 
-static void ImageMemorySourceReportProgress(ImageSource *source, float fraction) {
+static void ImageMemorySourceReportProgress(ImageSource *source, float fraction, bool isIndeterminate) {
 }
 
 extern void ImageMemorySourceInit(ImageMemorySource *memorySource, const void *data, const size_t dataSize) {

@@ -84,6 +84,24 @@ extern float ComputeViewFitScale(const ViewSize pictureSize, const ViewSize view
 // Scale and placement of the picture for the view state, the picture is centered on both axes
 extern ViewTransform ComputeViewTransform(const ViewState *viewState, const ViewSize pictureSize, const ViewSize viewportSize);
 
+// Level of detail the resample pipeline reads for a displayed scale (the larger one of both axes): the smallest level that is still at least eight times the displayed size,
+// so the scale relative to that level lies in (1/16, 1/8]. levelCount counts level 0, levels before firstLevel have no texture (larger than the GPU allows).
+extern uint32_t ComputeViewSourceLevel(const float scale, const uint32_t levelCount, const uint32_t firstLevel);
+
+// Where a level lies on the displayed picture, per displayed axis (u = columns, v = rows).
+// Level pixel i covers the picture pixels [i * 2^level, (i + 1) * 2^level), so a level of an odd size reaches beyond the picture with its last pixel.
+// On an axis that is displayed mirrored that pixel comes first, which shifts the level by levelLength - pictureLength / 2^level.
+// The coverage is the part of the first and the last displayed level pixel that lies on the picture, the resample pipeline weights them by it.
+typedef struct ViewLevelPlacement {
+	float offsetU;
+	float offsetV;
+	float firstCoverageU;
+	float lastCoverageU;
+	float firstCoverageV;
+	float lastCoverageV;
+} ViewLevelPlacement;
+extern ViewLevelPlacement ComputeViewLevelPlacement(const uint32_t orientation, const ViewSize storedSize, const ViewSize storedLevelSize, const uint32_t level);
+
 #endif // VIEW_TRANSFORM_H
 
 #if defined(VIEW_TRANSFORM_IMPLEMENTATION) && !defined(VIEW_TRANSFORM_IMPLEMENTED)
@@ -248,6 +266,66 @@ extern ViewTransform ComputeViewTransform(const ViewState *viewState, const View
 	result.visibleSourceRect.top = sourceTop;
 	result.visibleSourceRect.width = sourceRight - sourceLeft;
 	result.visibleSourceRect.height = sourceBottom - sourceTop;
+	return(result);
+}
+
+extern uint32_t ComputeViewSourceLevel(const float scale, const uint32_t levelCount, const uint32_t firstLevel) {
+	// The source level must be at least eight times as large as the displayed picture: from twice on the 2:1 kernels of the levels
+	// dampen the finest details that are still shown, which differs visibly from level 0 (iteration 4, plan section 2.3)
+	const float largestLevelScale = 0.125f;
+	const float levelScaleFactor = 2.0f;
+	uint32_t lastLevel = levelCount > 0 ? levelCount - 1 : 0;
+	uint32_t lowestLevel = firstLevel < lastLevel ? firstLevel : lastLevel;
+	if (!(scale > 0.0f)) {
+		return(lowestLevel);
+	}
+	uint32_t level = 0;
+	float levelScale = scale;
+	while (level < lastLevel) {
+		float nextLevelScale = levelScale * levelScaleFactor;
+		if (nextLevelScale > largestLevelScale) {
+			break;
+		}
+		levelScale = nextLevelScale;
+		++level;
+	}
+	uint32_t result = level > lowestLevel ? level : lowestLevel;
+	return(result);
+}
+
+typedef struct ViewAxisPlacement {
+	float offset;
+	float firstCoverage;
+	float lastCoverage;
+} ViewAxisPlacement;
+
+// One displayed axis: the stored axis it shows and whether it runs backwards come from the steps of the orientation mapping
+static ViewAxisPlacement ViewComputeAxisPlacement(const int32_t stepX, const int32_t stepY, const ViewSize storedSize, const ViewSize storedLevelSize, const float levelFactor) {
+	bool showsStoredX = stepX != 0;
+	bool isMirrored = stepX < 0 || stepY < 0;
+	float pictureLength = showsStoredX ? (float)storedSize.width : (float)storedSize.height;
+	float levelLength = showsStoredX ? (float)storedLevelSize.width : (float)storedLevelSize.height;
+	float overhang = levelLength - pictureLength / levelFactor;
+	float edgeCoverage = 1.0f - overhang;
+	ViewAxisPlacement result;
+	result.offset = isMirrored ? overhang : 0.0f;
+	result.firstCoverage = isMirrored ? edgeCoverage : 1.0f;
+	result.lastCoverage = isMirrored ? 1.0f : edgeCoverage;
+	return(result);
+}
+
+extern ViewLevelPlacement ComputeViewLevelPlacement(const uint32_t orientation, const ViewSize storedSize, const ViewSize storedLevelSize, const uint32_t level) {
+	float levelFactor = ldexpf(1.0f, (int)level);
+	ViewOrientationMapping mapping = ComputeViewOrientationMapping(orientation, storedLevelSize);
+	ViewAxisPlacement columns = ViewComputeAxisPlacement(mapping.stepUX, mapping.stepUY, storedSize, storedLevelSize, levelFactor);
+	ViewAxisPlacement rows = ViewComputeAxisPlacement(mapping.stepVX, mapping.stepVY, storedSize, storedLevelSize, levelFactor);
+	ViewLevelPlacement result;
+	result.offsetU = columns.offset;
+	result.offsetV = rows.offset;
+	result.firstCoverageU = columns.firstCoverage;
+	result.lastCoverageU = columns.lastCoverage;
+	result.firstCoverageV = rows.firstCoverage;
+	result.lastCoverageV = rows.lastCoverage;
 	return(result);
 }
 

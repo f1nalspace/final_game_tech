@@ -15,7 +15,8 @@ Description:
 
 	Nearest is point sampling (the tap at floor(bisect)) and is never widened.
 	Pass 1 filters horizontally into an RGBA16F intermediate (output columns x the source rows pass 2 needs),
-	pass 2 filters vertically into an RGBA16F result of the output size. The result stays premultiplied and unclamped,
+	pass 2 filters vertically into an RGBA16F result of the output size. At a small scale pass 2 needs many source rows, so both passes run
+	in bands of output rows whose source rows fit into an intermediate of at most 64 MB. The result stays premultiplied and unclamped,
 	so negative lobes survive until ResampleComposite() clamps it and blends it over the background in linear light.
 	A result is cached, ResampleUpdate() only runs the passes when the request differs from the last one.
 
@@ -103,6 +104,12 @@ typedef struct ResampleRequest {
 	uint32_t sourceWidth;
 	uint32_t sourceHeight;
 	ResampleAxisMapping axisMapping;
+	// Part of the first and the last source pixel of each axis that lies on the picture, their weights are multiplied by it.
+	// 1 for a picture itself, below 1 where a level of an odd size reaches beyond the picture. All zero means 1.
+	float firstCoverageX;
+	float lastCoverageX;
+	float firstCoverageY;
+	float lastCoverageY;
 	ResampleKernel kernel;
 	// Output pixels per source pixel on each axis
 	float scaleX;
@@ -136,6 +143,8 @@ typedef struct ResamplePassProgram {
 	GLint locationAxisOrigin;
 	GLint locationAxisStepU;
 	GLint locationAxisStepV;
+	GLint locationEdgeCoverage;
+	GLint locationLastTap;
 } ResamplePassProgram;
 
 typedef struct ResampleCompositeProgram {
@@ -159,8 +168,11 @@ typedef struct ResamplePipeline {
 	GLuint intermediateTexture;
 	uint32_t intermediateWidth;
 	uint32_t intermediateHeight;
-	// GPU time of the two passes of the last timed update
-	GLuint timerQueries[2];
+	// GL_MAX_TEXTURE_SIZE, a band never needs more intermediate rows
+	uint32_t maxTextureSize;
+	// GPU time of both passes over all bands of the last timed update
+	GLuint timerQuery;
+	uint32_t timerBandCount;
 	char timerLabel[256];
 	bool isTimerPending;
 } ResamplePipeline;
@@ -192,15 +204,15 @@ extern void ResamplePipelineRelease(ResamplePipeline *pipeline);
 extern void ResampleResultRelease(ResampleResult *result);
 
 // Runs both passes when the request differs from the cached one and returns true then.
-// With a timer label the GPU time of the passes is measured, ResamplePollTimer() hands it out once it is available.
+// With a timer label the GPU time of both passes is measured, ResamplePollTimer() hands it out once it is available.
 // Keeps the bound framebuffer, the viewport and the blend state.
 extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *request, ResampleResult *result, const char *timerLabel);
 
 // Draws the result into the bound framebuffer, clamped to 0 <= rgb <= alpha <= 1 and blended over the background in linear light
 extern void ResampleComposite(ResamplePipeline *pipeline, const ResampleResult *result, const ResampleCompositeParameters *parameters);
 
-// True once when the GPU time of the last timed update is available
-extern bool ResamplePollTimer(ResamplePipeline *pipeline, const char **outLabel, double *outHorizontalMilliseconds, double *outVerticalMilliseconds);
+// True once when the GPU time of the last timed update is available, with the number of bands it took
+extern bool ResamplePollTimer(ResamplePipeline *pipeline, const char **outLabel, double *outMilliseconds, uint32_t *outBandCount);
 
 #endif // RESAMPLE_PIPELINE_H
 
@@ -238,6 +250,10 @@ static const float ResampleGraySRGB = 128.0f / 255.0f;
 static const float ResampleCheckerFieldSize = 8.0f;
 // Extra source rows around the rows the vertical pass needs, covers float differences between the CPU and the GPU computation
 static const int32_t ResampleRowMargin = 1;
+// Largest intermediate texture, pass 1 and 2 run in bands of output rows whose source rows fit into it
+static const size_t ResampleIntermediateBudgetBytes = 64 * 1024 * 1024;
+// RGBA16F
+static const size_t ResampleFloatTexelBytes = 8;
 static const double ResampleNanosecondsPerMillisecond = 1000000.0;
 // The passes draw one triangle that covers the whole target
 static const GLsizei ResampleFullTriangleVertexCount = 3;
@@ -353,6 +369,9 @@ static const char ResamplePassBodySource[] = R"(
 	uniform ivec2 uniAxisOrigin;
 	uniform ivec2 uniAxisStepU;
 	uniform ivec2 uniAxisStepV;
+	// Coverage of source pixel 0 and of source pixel uniLastTap, the edge pixels of a level that reaches beyond the picture
+	uniform vec2 uniEdgeCoverage;
+	uniform int uniLastTap;
 
 	vec4 FetchTap(int tap, ivec2 fragment) {
 	#if HORIZONTAL
@@ -386,6 +405,12 @@ static const char ResamplePassBodySource[] = R"(
 		float weightSum = 0.0;
 		for (int tap = firstTap; tap < endTap; ++tap) {
 			float weight = KERNEL((float(tap) + 0.5 - bisect) / widen);
+			if (tap == 0) {
+				weight *= uniEdgeCoverage.x;
+			}
+			if (tap == uniLastTap) {
+				weight *= uniEdgeCoverage.y;
+			}
 			sum += FetchTap(tap, fragment) * weight;
 			weightSum += weight;
 		}
@@ -602,6 +627,8 @@ static ResamplePassProgram ResampleCreatePassProgram(const ResampleKernel kernel
 		result.locationAxisOrigin = glGetUniformLocation(result.programId, "uniAxisOrigin");
 		result.locationAxisStepU = glGetUniformLocation(result.programId, "uniAxisStepU");
 		result.locationAxisStepV = glGetUniformLocation(result.programId, "uniAxisStepV");
+		result.locationEdgeCoverage = glGetUniformLocation(result.programId, "uniEdgeCoverage");
+		result.locationLastTap = glGetUniformLocation(result.programId, "uniLastTap");
 	}
 	return(result);
 }
@@ -633,7 +660,10 @@ extern bool ResamplePipelineInit(ResamplePipeline *pipeline) {
 	pipeline->compositeProgram = ResampleCreateCompositeProgram();
 	result = result && pipeline->compositeProgram.programId > 0;
 	glGenFramebuffers(1, &pipeline->framebuffer);
-	glGenQueries(2, pipeline->timerQueries);
+	glGenQueries(1, &pipeline->timerQuery);
+	GLint maxTextureSize = 0;
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+	pipeline->maxTextureSize = (uint32_t)maxTextureSize;
 	return(result);
 }
 
@@ -654,7 +684,7 @@ extern void ResamplePipelineRelease(ResamplePipeline *pipeline) {
 		glDeleteTextures(1, &pipeline->intermediateTexture);
 	}
 	glDeleteFramebuffers(1, &pipeline->framebuffer);
-	glDeleteQueries(2, pipeline->timerQueries);
+	glDeleteQueries(1, &pipeline->timerQuery);
 	memset(pipeline, 0, sizeof(*pipeline));
 }
 
@@ -680,6 +710,10 @@ static bool ResampleIsRequestEqual(const ResampleRequest *a, const ResampleReque
 		a->sourceWidth == b->sourceWidth &&
 		a->sourceHeight == b->sourceHeight &&
 		memcmp(&a->axisMapping, &b->axisMapping, sizeof(a->axisMapping)) == 0 &&
+		a->firstCoverageX == b->firstCoverageX &&
+		a->lastCoverageX == b->lastCoverageX &&
+		a->firstCoverageY == b->firstCoverageY &&
+		a->lastCoverageY == b->lastCoverageY &&
 		a->kernel == b->kernel &&
 		a->scaleX == b->scaleX &&
 		a->scaleY == b->scaleY &&
@@ -695,9 +729,16 @@ static bool ResampleIsMappingEmpty(const ResampleAxisMapping *mapping) {
 	return(result);
 }
 
-static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const ResampleAxisMapping *mapping, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const uint32_t targetWidth, const uint32_t targetHeight) {
+// Coverage of all zero means a whole picture
+static bool ResampleIsCoverageEmpty(const ResampleRequest *request) {
+	bool result = request->firstCoverageX == 0.0f && request->lastCoverageX == 0.0f && request->firstCoverageY == 0.0f && request->lastCoverageY == 0.0f;
+	return(result);
+}
+
+// Draws the pass into the target rows [targetTop, targetTop + targetHeight), fragment coordinates stay those of the whole target
+static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const ResampleAxisMapping *mapping, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const float firstCoverage, const float lastCoverage, const int32_t lastTap, const uint32_t targetWidth, const uint32_t targetTop, const uint32_t targetHeight) {
 	const GLint textureUnit = 0;
-	glViewport(0, 0, (GLsizei)targetWidth, (GLsizei)targetHeight);
+	glViewport(0, (GLint)targetTop, (GLsizei)targetWidth, (GLsizei)targetHeight);
 	glActiveTexture(GL_TEXTURE0 + textureUnit);
 	glBindTexture(GL_TEXTURE_2D, sourceTexture);
 	glUseProgram(program->programId);
@@ -711,7 +752,38 @@ static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sou
 	glUniform2i(program->locationAxisOrigin, mapping->originX, mapping->originY);
 	glUniform2i(program->locationAxisStepU, mapping->stepUX, mapping->stepUY);
 	glUniform2i(program->locationAxisStepV, mapping->stepVX, mapping->stepVY);
+	glUniform2f(program->locationEdgeCoverage, firstCoverage, lastCoverage);
+	glUniform1i(program->locationLastTap, lastTap);
 	glDrawArrays(GL_TRIANGLES, 0, ResampleFullTriangleVertexCount);
+}
+
+// Output rows [bandStart, returned end) whose source rows fit into largestRows, at least one output row
+static uint32_t ResampleFindBandEnd(const ResampleRequest *request, const uint32_t bandStart, const uint32_t largestRows, ResampleSourceRange *outRows) {
+	uint32_t bandEnd = request->outputHeight;
+	ResampleSourceRange rows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, bandStart, bandEnd, request->sourceHeight);
+	uint32_t rowCount = (uint32_t)(rows.end - rows.first);
+	while (rowCount > largestRows && bandEnd > bandStart + 1) {
+		// Shrink by the ratio of rows, source rows grow about linearly with output rows
+		uint32_t bandRows = bandEnd - bandStart;
+		uint64_t fittingRows = (uint64_t)bandRows * largestRows / rowCount;
+		uint32_t shrunkRows = fittingRows >= bandRows ? bandRows - 1 : (fittingRows < 1 ? 1 : (uint32_t)fittingRows);
+		bandEnd = bandStart + shrunkRows;
+		rows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, bandStart, bandEnd, request->sourceHeight);
+		rowCount = (uint32_t)(rows.end - rows.first);
+	}
+	*outRows = rows;
+	return(bandEnd);
+}
+
+static void ResampleEnsureIntermediate(ResamplePipeline *pipeline, const uint32_t width, const uint32_t height) {
+	if (pipeline->intermediateTexture != 0 && pipeline->intermediateWidth >= width && pipeline->intermediateHeight >= height) {
+		return;
+	}
+	uint32_t grownWidth = pipeline->intermediateWidth > width ? pipeline->intermediateWidth : width;
+	uint32_t grownHeight = pipeline->intermediateHeight > height ? pipeline->intermediateHeight : height;
+	ResampleAllocateFloatTexture(&pipeline->intermediateTexture, grownWidth, grownHeight);
+	pipeline->intermediateWidth = grownWidth;
+	pipeline->intermediateHeight = grownHeight;
 }
 
 extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *request, ResampleResult *result, const char *timerLabel) {
@@ -730,9 +802,16 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 		const ResampleAxisMapping asStored = { 0, 0, 1, 0, 0, 1 };
 		mapping = asStored;
 	}
-	ResampleSourceRange rows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, 0, request->outputHeight, request->sourceHeight);
-	uint32_t rowCount = (uint32_t)(rows.end - rows.first);
-	if (rowCount == 0) {
+	const float wholeCoverage = 1.0f;
+	bool isCoverageEmpty = ResampleIsCoverageEmpty(request);
+	float firstCoverageX = isCoverageEmpty ? wholeCoverage : request->firstCoverageX;
+	float lastCoverageX = isCoverageEmpty ? wholeCoverage : request->lastCoverageX;
+	float firstCoverageY = isCoverageEmpty ? wholeCoverage : request->firstCoverageY;
+	float lastCoverageY = isCoverageEmpty ? wholeCoverage : request->lastCoverageY;
+	int32_t lastColumn = (int32_t)request->sourceWidth - 1;
+	int32_t lastRow = (int32_t)request->sourceHeight - 1;
+	ResampleSourceRange allRows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, 0, request->outputHeight, request->sourceHeight);
+	if (allRows.end <= allRows.first) {
 		result->isValid = false;
 		return(false);
 	}
@@ -742,13 +821,9 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 		result->textureWidth = request->outputWidth;
 		result->textureHeight = request->outputHeight;
 	}
-	if (pipeline->intermediateTexture == 0 || pipeline->intermediateWidth < request->outputWidth || pipeline->intermediateHeight < rowCount) {
-		uint32_t width = pipeline->intermediateWidth > request->outputWidth ? pipeline->intermediateWidth : request->outputWidth;
-		uint32_t height = pipeline->intermediateHeight > rowCount ? pipeline->intermediateHeight : rowCount;
-		ResampleAllocateFloatTexture(&pipeline->intermediateTexture, width, height);
-		pipeline->intermediateWidth = width;
-		pipeline->intermediateHeight = height;
-	}
+	size_t budgetRows = ResampleIntermediateBudgetBytes / ((size_t)request->outputWidth * ResampleFloatTexelBytes);
+	size_t largestRows = budgetRows < pipeline->maxTextureSize ? budgetRows : pipeline->maxTextureSize;
+	uint32_t largestBandRows = largestRows > 0 ? (uint32_t)largestRows : 1;
 
 	GLint previousFramebuffer = 0;
 	GLint previousViewport[4] = { 0 };
@@ -759,28 +834,37 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	glBindFramebuffer(GL_FRAMEBUFFER, pipeline->framebuffer);
 
 	bool isTimed = timerLabel != NULL && !pipeline->isTimerPending;
+	if (isTimed) {
+		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQuery);
+	}
 
-	// Pass 1: picture columns -> output columns, only the rows pass 2 reads
 	const ResamplePassProgram *horizontalProgram = &pipeline->horizontalPrograms[request->kernel];
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline->intermediateTexture, 0);
-	if (isTimed) {
-		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQueries[0]);
-	}
-	ResampleRunPass(horizontalProgram, request->sourceTexture, &mapping, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, request->outputWidth, rowCount);
-	if (isTimed) {
-		glEndQuery(GL_TIME_ELAPSED);
+	const ResamplePassProgram *verticalProgram = &pipeline->verticalPrograms[request->kernel];
+	uint32_t bandCount = 0;
+	uint32_t bandStart = 0;
+	while (bandStart < request->outputHeight) {
+		ResampleSourceRange rows;
+		uint32_t bandEnd = ResampleFindBandEnd(request, bandStart, largestBandRows, &rows);
+		uint32_t rowCount = (uint32_t)(rows.end - rows.first);
+		uint32_t bandHeight = bandEnd - bandStart;
+		ResampleEnsureIntermediate(pipeline, request->outputWidth, rowCount);
+
+		// Pass 1: picture columns -> output columns, only the rows this band of pass 2 reads
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline->intermediateTexture, 0);
+		ResampleRunPass(horizontalProgram, request->sourceTexture, &mapping, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, firstCoverageX, lastCoverageX, lastColumn, request->outputWidth, 0, rowCount);
+
+		// Pass 2: picture rows -> the output rows of this band
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result->texture, 0);
+		ResampleRunPass(verticalProgram, pipeline->intermediateTexture, &mapping, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, firstCoverageY, lastCoverageY, lastRow, request->outputWidth, bandStart, bandHeight);
+
+		bandStart = bandEnd;
+		++bandCount;
 	}
 
-	// Pass 2: picture rows -> output rows
-	const ResamplePassProgram *verticalProgram = &pipeline->verticalPrograms[request->kernel];
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result->texture, 0);
-	if (isTimed) {
-		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQueries[1]);
-	}
-	ResampleRunPass(verticalProgram, pipeline->intermediateTexture, &mapping, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, request->outputWidth, request->outputHeight);
 	if (isTimed) {
 		glEndQuery(GL_TIME_ELAPSED);
 		snprintf(pipeline->timerLabel, sizeof(pipeline->timerLabel), "%s", timerLabel);
+		pipeline->timerBandCount = bandCount;
 		pipeline->isTimerPending = true;
 	}
 
@@ -835,23 +919,21 @@ extern void ResampleComposite(ResamplePipeline *pipeline, const ResampleResult *
 	}
 }
 
-extern bool ResamplePollTimer(ResamplePipeline *pipeline, const char **outLabel, double *outHorizontalMilliseconds, double *outVerticalMilliseconds) {
+extern bool ResamplePollTimer(ResamplePipeline *pipeline, const char **outLabel, double *outMilliseconds, uint32_t *outBandCount) {
 	if (!pipeline->isTimerPending) {
 		return(false);
 	}
 	GLint isAvailable = 0;
-	glGetQueryObjectiv(pipeline->timerQueries[1], GL_QUERY_RESULT_AVAILABLE, &isAvailable);
+	glGetQueryObjectiv(pipeline->timerQuery, GL_QUERY_RESULT_AVAILABLE, &isAvailable);
 	if (!isAvailable) {
 		return(false);
 	}
-	GLuint64 horizontalNanoseconds = 0;
-	GLuint64 verticalNanoseconds = 0;
-	glGetQueryObjectui64v(pipeline->timerQueries[0], GL_QUERY_RESULT, &horizontalNanoseconds);
-	glGetQueryObjectui64v(pipeline->timerQueries[1], GL_QUERY_RESULT, &verticalNanoseconds);
+	GLuint64 nanoseconds = 0;
+	glGetQueryObjectui64v(pipeline->timerQuery, GL_QUERY_RESULT, &nanoseconds);
 	pipeline->isTimerPending = false;
 	*outLabel = pipeline->timerLabel;
-	*outHorizontalMilliseconds = (double)horizontalNanoseconds / ResampleNanosecondsPerMillisecond;
-	*outVerticalMilliseconds = (double)verticalNanoseconds / ResampleNanosecondsPerMillisecond;
+	*outMilliseconds = (double)nanoseconds / ResampleNanosecondsPerMillisecond;
+	*outBandCount = pipeline->timerBandCount;
 	return(true);
 }
 

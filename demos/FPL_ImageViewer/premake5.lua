@@ -12,6 +12,8 @@ project "FPL_ImageViewer"
 		"logging.h",
 		"viewtransform.h",
 		"resamplepipeline.h",
+		"imagepyramid.h",
+		"imagepyramid_x86.h",
 		"imageloader.h",
 		"imageloader_stb.h",
 		"imageloader_pnm.h",

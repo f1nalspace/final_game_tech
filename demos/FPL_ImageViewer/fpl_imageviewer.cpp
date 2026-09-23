@@ -40,7 +40,14 @@ Changelog:
 	- New: --loader=<id|name>, --loader-for=<extension>:<id|name>, --loader-order=<id|name>,..., --no-loader-fallback, --list-loaders and --decode-all=<folder>
 	- New: L reads the active picture again with the next loader that recognizes it, the window title shows the loader
 	- New: The EXIF orientation of JPEG files is applied to the picture, its scaling and the preview strip, without copying pixels
+	- New: Level of detail chain (imagepyramid.h): the load thread halves every picture again and again until the longer side is at most 32 pixels, in linear light with premultiplied alpha and fixed point Mitchell weights, each level becomes its own texture
+	- New: The resample pipeline reads the smallest level that is still at least eight times the displayed size, Nearest and Box always read the largest level on the GPU
+	- New: A picture larger than GL_MAX_TEXTURE_SIZE is shown from the first level that fits
+	- New: SSE2 and AVX2 row functions for the levels, picked from the CPU capabilities FPL reports and bit identical to the scalar reference, --simd=scalar|sse2|avx2|avx512|neon forces a level and an unavailable one falls back to the next lower
+	- New: --lod-source=auto|0 and --lod-kernel=mitchell|lanczos2 for comparisons, --bench-lod=<file> measures decode and levels on every SIMD level, --write-pyramid=<folder> writes all levels as PAM, --selftest=<folder> also compares every SIMD level on the pictures of the folder
 	- Changed: The folder scan takes every extension of every loader
+	- Changed: The loading progress only moves forward: reading and decoding fill 70 %, the levels 95 %, then the upload; a PNG counts its reading up to a quarter of the first phase and then shows a running segment while stb_image inflates it
+	- Changed: The resample passes run in bands of output rows, so the intermediate texture stays below 64 MB at any scale, and the log shows the GPU time of both passes with the band count
 	- Changed: A load job that meets a cancel is dropped, the reload queues everything it needs again
 	- Fixed: Two load threads could take the same picture slot
 	- Changed: Requires an OpenGL 3.3 core profile, the legacy OpenGL path is removed and a missing context is reported on the console and in the log
@@ -184,6 +191,9 @@ License:
 #define RESAMPLE_PIPELINE_IMPLEMENTATION
 #include "resamplepipeline.h"
 
+#define IMAGE_PYRAMID_IMPLEMENTATION
+#include "imagepyramid.h"
+
 #include "selftest.h"
 
 char ToLowerCase(char ch) {
@@ -228,14 +238,27 @@ typedef enum LoadedPictureStateType {
 
 typedef int32_t LoadedPictureState;
 
+// One level of detail on the GPU, RGBA8 (sRGB) as stored, before the orientation
+typedef struct ImageLevelTexture {
+	GLuint textureId;
+	uint32_t width;
+	uint32_t height;
+} ImageLevelTexture;
+
 // Always RGBA8, top row first, as stored (before the orientation)
 typedef struct ImageData {
 	// Decoded pixels until the upload, owned by the loader in loaderEntry
 	ImagePixels pixels;
+	// Reduced levels until the upload, level 0 borrows pixels
+	ImagePyramid pyramid;
+	ImageLevelTexture levels[IMAGE_PYRAMID_MAX_LEVELS];
 	int32_t loaderEntry;
+	// Level 0
 	uint32_t width;
 	uint32_t height;
-	GLuint textureId;
+	uint32_t levelCount;
+	// Levels before this one are larger than GL_MAX_TEXTURE_SIZE and have no texture
+	uint32_t firstUploadedLevel;
 } ImageData;
 
 typedef struct ViewPicture {
@@ -246,7 +269,10 @@ typedef struct ViewPicture {
 	ResampleResult thumbnail;
 	// Changes with every upload, the texture name alone may be reused by OpenGL
 	uint64_t uploadSerial;
-	float progress;
+	// 0..1, only grows while a picture loads (plan section 2.9)
+	volatile float progress;
+	// The loader works on without knowing how far it is, the bar shows a running animation after progress
+	volatile bool isProgressIndeterminate;
 	size_t fileIndex;
 	volatile LoadedPictureState state;
 } ViewPicture;
@@ -321,11 +347,19 @@ typedef struct ViewerParameters {
 	const char* loaderForValues[IMAGE_LOADER_MAX_EXTENSION_PINS];
 	uint32_t loaderForCount;
 	const char* decodeAllPath;
+	// Optional folder of --selftest=<folder>, its pictures are compared on every SIMD level too
+	const char* selfTestFolder;
+	const char* benchLevelsPath;
+	const char* writePyramidFolder;
+	SimdLevel simdLevel;
+	ImagePyramidKernel levelKernel;
 	bool isLoaderFallbackDisabled;
 	bool listLoaders;
 	bool recursive;
 	bool preview;
 	bool runSelfTest;
+	// --lod-source=0: the resample pipeline always reads level 0, for reference comparisons
+	bool isFullSourceLevelForced;
 } ViewerParameters;
 
 // Exit codes of --render-to
@@ -369,6 +403,19 @@ static const ResampleKernel LegacyFilterNumberKernels[] = {
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
 #define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
 #define DEFAULT_BACKGROUND ResampleBackground_Checker
+// Kernel of the 2:1 reductions of the level chain (plan section 2.3)
+#define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
+
+// Load progress phases (plan section 2.9): reading and decoding, then the level chain, then the upload
+static const float ProgressDecodeStart = 0.0f;
+static const float ProgressDecodeEnd = 0.70f;
+static const float ProgressLevelsEnd = 0.95f;
+static const float ProgressComplete = 1.0f;
+// A running segment of this share of the remaining decode phase moves back and forth while the loader cannot tell how far it is
+static const float ProgressIndeterminateSegmentShare = 0.25f;
+static const double ProgressIndeterminatePeriodSeconds = 1.2;
+// Runs per SIMD level of --bench-lod, the median is reported
+#define BENCH_LEVELS_RUN_COUNT 7
 
 typedef struct ColorProgram {
 	GLuint programId;
@@ -415,6 +462,10 @@ typedef struct ViewerState {
 	ColorProgram colorProgram;
 
 	ResamplePipeline pipeline;
+	// Largest texture width and height, larger levels stay on the CPU and are left out
+	GLint maxTextureSize;
+	// Row functions of the SIMD level the load threads reduce with
+	const ImagePyramidRowFunctions* pyramidFunctions;
 	// The active picture scaled into the viewport
 	ResampleResult viewResult;
 	ResampleKernel downKernel;
@@ -583,16 +634,33 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	return(handle);
 }
 
-// Frees the decoded pixels through the loader that owns them. Load threads pass noTextures, textures belong to the main thread.
+static bool HasPictureTextures(const ImageData* image) {
+	for (uint32_t level = 0; level < image->levelCount; ++level) {
+		if (image->levels[level].textureId > 0) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// Main thread only
+static void ReleasePictureTextures(ImageData* image) {
+	for (uint32_t level = 0; level < image->levelCount; ++level) {
+		if (image->levels[level].textureId > 0) {
+			ReleaseTexture(&image->levels[level].textureId);
+		}
+	}
+}
+
+// Frees the decoded pixels through the loader that owns them and the reduced levels. Load threads pass noTextures, textures belong to the main thread.
 static void ClearPictureData(ImageLoaderRegistry* registry, ViewPicture* viewPicture, bool noTextures) {
 	ImageData* image = &viewPicture->image;
+	ImagePyramidRelease(&image->pyramid);
 	if (image->pixels.pixels != fpl_null) {
 		ImageLoaderRegistryReleasePixels(registry, image->loaderEntry, &image->pixels);
 	}
 	if (!noTextures) {
-		if (image->textureId > 0) {
-			ReleaseTexture(&image->textureId);
-		}
+		ReleasePictureTextures(image);
 	}
 	fplClearStruct(image);
 	image->loaderEntry = -1;
@@ -603,16 +671,17 @@ static void ClearViewPictures(ViewerState* state) {
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		state->viewPictures[i].state = LoadedPictureState_Unloaded;
 		state->viewPictures[i].progress = 0.0f;
+		state->viewPictures[i].isProgressIndeterminate = false;
 		ClearPictureData(&state->loaderRegistry, &state->viewPictures[i], false);
 		ResampleResultRelease(&state->viewPictures[i].thumbnail);
 	}
 }
 
 // Reads one file through the loader registry: the loader chosen with the L key alone, otherwise the selected candidates with fallback.
-// Used by the load threads and by --decode-all.
-static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, volatile float* progress, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
+// Used by the load threads, --decode-all, --bench-lod and --write-pyramid.
+static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, ImageSourceProgressFunction* progress, void* progressUserData, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
 	ImageFileSource fileSource;
-	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, progress)) {
+	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, progress, progressUserData)) {
 		fplStringFormat(message, messageSize, "file cannot be opened");
 		return(ImageLoadResult_Corrupt);
 	}
@@ -620,6 +689,30 @@ static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char
 	ImageLoadResult result = ImageLoaderRegistryLoad(registry, &fileSource.source, extension, forcedLoaderEntry, outLoaderEntry, outInfo, outPixels, message, messageSize);
 	ImageFileSourceClose(&fileSource);
 	return(result);
+}
+
+// The bar only moves forward, a value below the current one is ignored
+static void RaisePictureProgress(ViewPicture* picture, const float value) {
+	float current = picture->progress;
+	if (value > current) {
+		picture->progress = value;
+	}
+}
+
+// Reading and decoding fill the first phase
+static void ReportPictureDecodeProgress(void* userData, const float fraction, const bool isIndeterminate) {
+	ViewPicture* picture = (ViewPicture*)userData;
+	float value = ProgressDecodeStart + fraction * (ProgressDecodeEnd - ProgressDecodeStart);
+	RaisePictureProgress(picture, value);
+	picture->isProgressIndeterminate = isIndeterminate;
+}
+
+// The level chain fills the second phase, by output pixels
+static void ReportPictureLevelsProgress(void* userData, const float fraction) {
+	ViewPicture* picture = (ViewPicture*)userData;
+	float value = ProgressDecodeEnd + fraction * (ProgressLevelsEnd - ProgressDecodeEnd);
+	picture->isProgressIndeterminate = false;
+	RaisePictureProgress(picture, value);
 }
 
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
@@ -652,9 +745,10 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 		}
 
 		// @TODO(final): This should not be neccesary, but in case there are left-overs...
+		fplAssert(!HasPictureTextures(&loadedPic->image));
 		ClearPictureData(&state->loaderRegistry, loadedPic, true);
-		fplAssert(loadedPic->image.textureId == 0);
 		loadedPic->progress = 0.0f;
+		loadedPic->isProgressIndeterminate = false;
 		loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
 		fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
 		fplClearStruct(&loadedPic->info);
@@ -665,11 +759,42 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 		ImagePixels pixels = fplZeroInit;
 		int32_t loaderEntry = -1;
 		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
-		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, (volatile float*)&loadedPic->progress, &loaderEntry, &info, &pixels, message, sizeof(message));
+		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, ReportPictureDecodeProgress, loadedPic, &loaderEntry, &info, &pixels, message, sizeof(message));
 		bool isCanceled = loadThread->shutdown || loadThread->context.canceled;
 		if (result == ImageLoadResult_Success && isCanceled) {
 			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
 			result = ImageLoadResult_Canceled;
+		}
+
+		// The level chain, from the decoded pixels in this thread
+		ImagePyramid pyramid = fplZeroInit;
+		if (result == ImageLoadResult_Success) {
+			const double millisecondsPerSecond = 1000.0;
+			RaisePictureProgress(loadedPic, ProgressDecodeEnd);
+			loadedPic->isProgressIndeterminate = false;
+			ImagePyramidLevel baseLevel = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+			ImagePyramidSettings pyramidSettings = fplZeroInit;
+			pyramidSettings.functions = state->pyramidFunctions;
+			pyramidSettings.kernel = state->params.levelKernel;
+			pyramidSettings.cancelFlag = &loadThread->context.canceled;
+			pyramidSettings.progress = ReportPictureLevelsProgress;
+			pyramidSettings.progressUserData = loadedPic;
+			fplTimestamp pyramidStart = fplTimestampQuery();
+			ImagePyramidResult pyramidResult = ImagePyramidBuild(&baseLevel, &pyramidSettings, &pyramid);
+			fplTimestamp pyramidFinish = fplTimestampQuery();
+			double pyramidMilliseconds = fplTimestampElapsed(pyramidStart, pyramidFinish) * millisecondsPerSecond;
+			if (pyramidResult == ImagePyramidResult_Canceled || loadThread->shutdown || loadThread->context.canceled) {
+				ImagePyramidRelease(&pyramid);
+				ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+				fplCopyString("canceled while reducing", message, fplArrayCount(message));
+				result = ImageLoadResult_Canceled;
+				isCanceled = true;
+			} else if (pyramidResult == ImagePyramidResult_OutOfMemory) {
+				// Level 0 alone still shows the picture, just slower and with more work for the pipeline
+				flogWrite("Out of memory for the levels of '%s' [%zu], only level 0 is used", loadedPic->filePath, loadedPic->fileIndex);
+			} else {
+				flogWrite("Levels of '%s' [%zu]: %u levels in %.1f ms (%s)", loadedPic->filePath, loadedPic->fileIndex, pyramid.levelCount, pyramidMilliseconds, state->pyramidFunctions->name);
+			}
 		}
 
 		if (result == ImageLoadResult_Success) {
@@ -677,16 +802,19 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			flogWrite("Loaded picture '%s' [%zu] with %s: %s %u x %u, %u bpp%s, orientation %d", loadedPic->filePath, loadedPic->fileIndex, loader->name, info.formatName, info.width, info.height, info.bitsPerPixel, (info.isPalette ? " palette" : ""), (int)info.orientation);
 			ImageData* image = &loadedPic->image;
 			image->pixels = pixels;
+			image->pyramid = pyramid;
 			image->loaderEntry = loaderEntry;
 			image->width = pixels.width;
 			image->height = pixels.height;
+			image->levelCount = pyramid.levelCount;
 			loadedPic->info = info;
-			loadedPic->progress = 0.75f;
+			RaisePictureProgress(loadedPic, ProgressLevelsEnd);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
 		} else {
 			const char* resultName = ImageLoadResultGetName(result);
 			flogWrite("%s picture '%s' [%zu]: %s (%s)", (isCanceled ? "Canceled" : "Failed"), loadedPic->filePath, loadedPic->fileIndex, resultName, message);
-			loadedPic->progress = 1.0f;
+			loadedPic->isProgressIndeterminate = false;
+			RaisePictureProgress(loadedPic, ProgressComplete);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
 		}
 	}
@@ -1007,6 +1135,11 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* noLoaderFallbackValue = MatchLongParameter(argument, "--no-loader-fallback");
 			const char* listLoadersValue = MatchLongParameter(argument, "--list-loaders");
 			const char* decodeAllValue = MatchLongParameter(argument, "--decode-all");
+			const char* simdValue = MatchLongParameter(argument, "--simd");
+			const char* levelKernelValue = MatchLongParameter(argument, "--lod-kernel");
+			const char* levelSourceValue = MatchLongParameter(argument, "--lod-source");
+			const char* benchLevelsValue = MatchLongParameter(argument, "--bench-lod");
+			const char* writePyramidValue = MatchLongParameter(argument, "--write-pyramid");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1019,7 +1152,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = *noPreviewValue == 0;
 			} else if (selfTestValue != fpl_null) {
 				params->runSelfTest = true;
-				isValid = *selfTestValue == 0;
+				params->selfTestFolder = *selfTestValue != 0 ? selfTestValue : fpl_null;
 			} else if (downFilterValue != fpl_null) {
 				isValid = ParseFilterValue(downFilterValue, false, &params->downKernel);
 			} else if (upFilterValue != fpl_null) {
@@ -1046,6 +1179,21 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (decodeAllValue != fpl_null) {
 				params->decodeAllPath = decodeAllValue;
 				isValid = *decodeAllValue != 0;
+			} else if (simdValue != fpl_null) {
+				isValid = ImagePyramidFindSimdLevel(simdValue, &params->simdLevel);
+			} else if (levelKernelValue != fpl_null) {
+				isValid = ImagePyramidFindKernel(levelKernelValue, &params->levelKernel);
+			} else if (levelSourceValue != fpl_null) {
+				bool isAuto = CompareStringIgnoreCase(levelSourceValue, "auto") == 0;
+				bool isFull = fplIsStringEqual(levelSourceValue, "0");
+				params->isFullSourceLevelForced = isFull;
+				isValid = isAuto || isFull;
+			} else if (benchLevelsValue != fpl_null) {
+				params->benchLevelsPath = benchLevelsValue;
+				isValid = *benchLevelsValue != 0;
+			} else if (writePyramidValue != fpl_null) {
+				params->writePyramidFolder = writePyramidValue;
+				isValid = *writePyramidValue != 0;
 			} else {
 				isValid = false;
 			}
@@ -1078,6 +1226,11 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 	if (params->renderToFilePath != fpl_null && (params->windowWidth == 0 || params->path == fpl_null)) {
 		fplConsoleFormatError("--render-to requires --window=<W>x<H> and a picture path\n");
 		flogWrite("--render-to requires --window=<W>x<H> and a picture path");
+		return(false);
+	}
+	if (params->writePyramidFolder != fpl_null && params->path == fpl_null) {
+		fplConsoleFormatError("--write-pyramid requires a picture path\n");
+		flogWrite("--write-pyramid requires a picture path");
 		return(false);
 	}
 	return(true);
@@ -1214,7 +1367,7 @@ static void DecodeAllThreadProc(const fplThreadHandle* thread, void* data) {
 		ImagePixels pixels = fplZeroInit;
 		fplTimestamp start = fplTimestampQuery();
 		result->loaderEntry = -1;
-		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
+		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
 		fplTimestamp finish = fplTimestampQuery();
 		result->milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
 		if (result->result == ImageLoadResult_Success) {
@@ -1275,6 +1428,218 @@ static int DecodeAllPictures(ViewerState* state, const char* folderPath) {
 	free(job.results);
 	int result = failureCount == 0 ? 0 : 1;
 	return(result);
+}
+
+// Largest PAM header: magic, size, depth, maximum value and tuple type
+#define PORTABLE_MAP_HEADER_CAPACITY 256
+
+// Writes top-down RGBA8 rows as a PAM with RGB_ALPHA tuples
+static bool WritePortableArbitraryMapRGBA(const char* filePath, const ImagePyramidLevel* level) {
+	const uint32_t components = 4;
+	fplFileHandle file;
+	if (!fplFileCreateBinary(filePath, &file)) {
+		return(false);
+	}
+	char header[PORTABLE_MAP_HEADER_CAPACITY];
+	size_t headerLength = fplStringFormat(header, fplArrayCount(header), "P7\nWIDTH %u\nHEIGHT %u\nDEPTH %u\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", level->width, level->height, components);
+	uint32_t writtenHeaderBytes = fplFileWriteBlock32(&file, header, (uint32_t)headerLength);
+	bool result = writtenHeaderBytes == (uint32_t)headerLength;
+	uint32_t rowSize = level->width * components;
+	for (uint32_t row = 0; result && row < level->height; ++row) {
+		uint8_t* rowPixels = level->pixels + (size_t)row * level->stride;
+		uint32_t writtenRowBytes = fplFileWriteBlock32(&file, rowPixels, rowSize);
+		result = writtenRowBytes == rowSize;
+	}
+	fplFileClose(&file);
+	return(result);
+}
+
+static void LogConsoleLine(const char* text) {
+	fplConsoleFormatOut("%s\n", text);
+	flogWrite("%s", text);
+}
+
+// --write-pyramid=<folder>: reduces the picture with the selected SIMD level and kernel and writes every level as level_<n>.pam (RGBA), without window and GL
+static int WritePyramidLevels(ViewerState* state, const char* picturePath, const char* folderPath) {
+	int32_t loaderEntry = -1;
+	PictureInfo info = fplZeroInit;
+	ImagePixels pixels = fplZeroInit;
+	char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+	ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+	if (loadResult != ImageLoadResult_Success) {
+		const char* resultName = ImageLoadResultGetName(loadResult);
+		fplConsoleFormatError("Failed to load '%s': %s (%s)\n", picturePath, resultName, message);
+		return(1);
+	}
+	ImagePyramidLevel baseLevel = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+	ImagePyramidSettings settings = fplZeroInit;
+	settings.functions = state->pyramidFunctions;
+	settings.kernel = state->params.levelKernel;
+	ImagePyramid pyramid;
+	ImagePyramidResult pyramidResult = ImagePyramidBuild(&baseLevel, &settings, &pyramid);
+	int result = pyramidResult == ImagePyramidResult_Success ? 0 : 1;
+	fplDirectoriesCreate(folderPath);
+	for (uint32_t level = 0; result == 0 && level < pyramid.levelCount; ++level) {
+		char fileName[FPL_MAX_NAME_LENGTH];
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplStringFormat(fileName, fplArrayCount(fileName), "level_%u.pam", level);
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, folderPath, fileName);
+		if (!WritePortableArbitraryMapRGBA(filePath, &pyramid.levels[level])) {
+			fplConsoleFormatError("Failed to write '%s'\n", filePath);
+			result = 1;
+		}
+	}
+	if (result == 0) {
+		const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition(settings.kernel);
+		char line[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(line, fplArrayCount(line), "Wrote %u levels of '%s' (%u x %u) into '%s', kernel %s, %s", pyramid.levelCount, picturePath, pixels.width, pixels.height, folderPath, kernelDefinition->name, settings.functions->name);
+		LogConsoleLine(line);
+	}
+	ImagePyramidRelease(&pyramid);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+	return(result);
+}
+
+// Median of the values, the array gets sorted
+static double SortAndGetMedian(double* values, const uint32_t count) {
+	for (uint32_t index = 1; index < count; ++index) {
+		double value = values[index];
+		uint32_t target = index;
+		while (target > 0 && values[target - 1] > value) {
+			values[target] = values[target - 1];
+			--target;
+		}
+		values[target] = value;
+	}
+	double result = count > 0 ? values[count / 2] : 0.0;
+	return(result);
+}
+
+// --bench-lod=<file>: decode and the level chain on every available SIMD level, median of BENCH_LEVELS_RUN_COUNT runs, without window and GL
+static int BenchmarkLevels(ViewerState* state, const char* picturePath) {
+	const double millisecondsPerSecond = 1000.0;
+	const double pixelsPerMegapixel = 1000000.0;
+	const uint32_t runCount = BENCH_LEVELS_RUN_COUNT;
+	const uint32_t bytesPerPixel = 4;
+
+	// Decode, the pixels of the last run stay for the levels
+	double decodeMilliseconds[BENCH_LEVELS_RUN_COUNT];
+	int32_t loaderEntry = -1;
+	PictureInfo info = fplZeroInit;
+	ImagePixels pixels = fplZeroInit;
+	for (uint32_t run = 0; run < runCount; ++run) {
+		if (pixels.pixels != fpl_null) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+		}
+		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+		fplTimestamp start = fplTimestampQuery();
+		ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+		fplTimestamp finish = fplTimestampQuery();
+		if (loadResult != ImageLoadResult_Success) {
+			const char* resultName = ImageLoadResultGetName(loadResult);
+			fplConsoleFormatError("Failed to load '%s': %s (%s)\n", picturePath, resultName, message);
+			return(1);
+		}
+		decodeMilliseconds[run] = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+	}
+	double decodeMedian = SortAndGetMedian(decodeMilliseconds, runCount);
+
+	// Level buffers, reused by every SIMD level
+	ImagePyramidLevel levels[IMAGE_PYRAMID_MAX_LEVELS];
+	uint32_t levelCount = ImagePyramidComputeLevelCount(pixels.width, pixels.height);
+	levels[0] = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+	size_t levelBytes = 0;
+	uint64_t levelPixels = 0;
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		ImagePyramidComputeLevelSize(pixels.width, pixels.height, level, &levels[level].width, &levels[level].height);
+		levels[level].stride = levels[level].width * bytesPerPixel;
+		levelBytes += (size_t)levels[level].stride * levels[level].height;
+		levelPixels += (uint64_t)levels[level].width * levels[level].height;
+	}
+	uint8_t* levelMemory = (uint8_t*)malloc(levelBytes > 0 ? levelBytes : 1);
+	size_t levelOffset = 0;
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		levels[level].pixels = levelMemory + levelOffset;
+		levelOffset += (size_t)levels[level].stride * levels[level].height;
+	}
+
+	fplCPUCapabilities capabilities = fplZeroInit;
+	fplCPUGetCapabilities(&capabilities);
+	SimdLevel measuredLevels[SimdLevel_Count];
+	uint32_t measuredCount = 0;
+	double levelMedians[SimdLevel_Count][IMAGE_PYRAMID_MAX_LEVELS] = fplZeroInit;
+	double totalMedians[SimdLevel_Count] = fplZeroInit;
+	for (int32_t simdLevel = SimdLevel_Scalar; simdLevel < SimdLevel_Count; ++simdLevel) {
+		if (!ImagePyramidIsSimdLevelAvailable(&capabilities, (SimdLevel)simdLevel)) {
+			continue;
+		}
+		ImagePyramidSettings settings = fplZeroInit;
+		settings.functions = ImagePyramidGetRowFunctions((SimdLevel)simdLevel);
+		settings.kernel = state->params.levelKernel;
+		double runLevelMilliseconds[IMAGE_PYRAMID_MAX_LEVELS][BENCH_LEVELS_RUN_COUNT];
+		double runTotalMilliseconds[BENCH_LEVELS_RUN_COUNT];
+		for (uint32_t run = 0; run < runCount; ++run) {
+			runTotalMilliseconds[run] = 0.0;
+			for (uint32_t level = 1; level < levelCount; ++level) {
+				fplTimestamp start = fplTimestampQuery();
+				ImagePyramidReduceHalf(&levels[level - 1], &levels[level], &settings);
+				fplTimestamp finish = fplTimestampQuery();
+				double milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+				runLevelMilliseconds[level][run] = milliseconds;
+				runTotalMilliseconds[run] += milliseconds;
+			}
+		}
+		for (uint32_t level = 1; level < levelCount; ++level) {
+			levelMedians[measuredCount][level] = SortAndGetMedian(runLevelMilliseconds[level], runCount);
+		}
+		totalMedians[measuredCount] = SortAndGetMedian(runTotalMilliseconds, runCount);
+		measuredLevels[measuredCount] = (SimdLevel)simdLevel;
+		++measuredCount;
+	}
+
+	const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, loaderEntry);
+	const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition(state->params.levelKernel);
+	double levelMegapixels = (double)levelPixels / pixelsPerMegapixel;
+	char line[FPL_MAX_BUFFER_LENGTH];
+	char cell[FPL_MAX_NAME_LENGTH];
+	fplStringFormat(line, fplArrayCount(line), "Picture '%s': %u x %u, %s, decode %.1f ms (median of %u runs)", picturePath, pixels.width, pixels.height, loader->name, decodeMedian, runCount);
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%u reduced levels, %.2f megapixels, kernel %s, median of %u runs per SIMD level", levelCount - 1, levelMegapixels, kernelDefinition->name, runCount);
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "Level", "Size");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		const char* simdName = ImagePyramidGetSimdLevelName(measuredLevels[measured]);
+		fplStringFormat(cell, fplArrayCount(cell), " %10s", simdName);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		char sizeText[FPL_MAX_NAME_LENGTH];
+		fplStringFormat(sizeText, fplArrayCount(sizeText), "%ux%u", levels[level].width, levels[level].height);
+		fplStringFormat(line, fplArrayCount(line), "%-6u %-12s", level, sizeText);
+		for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+			fplStringFormat(cell, fplArrayCount(cell), " %7.2f ms", levelMedians[measured][level]);
+			fplStringAppend(cell, line, fplArrayCount(line));
+		}
+		LogConsoleLine(line);
+	}
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "All", "");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		fplStringFormat(cell, fplArrayCount(cell), " %7.2f ms", totalMedians[measured]);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "Decode", "share");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		double share = decodeMedian > 0.0 ? totalMedians[measured] / decodeMedian : 0.0;
+		fplStringFormat(cell, fplArrayCount(cell), " %9.2fx", share);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+
+	free(levelMemory);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+	return(0);
 }
 
 size_t RoundToPowerOfTwo(size_t v) {
@@ -1464,6 +1829,9 @@ static bool Init(ViewerState* state) {
 	state->upKernel = state->params.upKernel;
 	state->background = state->params.background;
 
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &state->maxTextureSize);
+	flogWrite("Largest texture size: %d", state->maxTextureSize);
+
 	CheckGLError("Init", __FILE__, __LINE__);
 
 	state->viewPictureIndex = -1;
@@ -1552,6 +1920,52 @@ static void DrawLinedRectangle(const ViewerState* state, const ViewSize viewport
 	DrawSolidRectangle(state, viewportSize, rightLine, color);
 }
 
+// Uploads every level that fits the GPU as its own texture, small to large, then frees the CPU copies. False when not even the smallest level could be uploaded.
+static bool UploadPictureLevels(ViewerState* state, ViewPicture* picture) {
+	const double millisecondsPerSecond = 1000.0;
+	ImageData* image = &picture->image;
+	uint32_t largestTextureSize = (uint32_t)state->maxTextureSize;
+	fplTimestamp uploadStart = fplTimestampQuery();
+	size_t uploadedBytes = 0;
+	image->firstUploadedLevel = image->levelCount;
+	for (int32_t level = (int32_t)image->levelCount - 1; level >= 0; --level) {
+		const ImagePyramidLevel* pyramidLevel = &image->pyramid.levels[level];
+		bool fitsTexture = pyramidLevel->width <= largestTextureSize && pyramidLevel->height <= largestTextureSize;
+		if (!fitsTexture) {
+			break;
+		}
+		GLuint textureId = AllocateTexture(pyramidLevel->width, pyramidLevel->height, pyramidLevel->stride, pyramidLevel->pixels, state->features.srgbFrameBuffer);
+		if (textureId == 0) {
+			break;
+		}
+		ImageLevelTexture* levelTexture = &image->levels[level];
+		levelTexture->textureId = textureId;
+		levelTexture->width = pyramidLevel->width;
+		levelTexture->height = pyramidLevel->height;
+		image->firstUploadedLevel = (uint32_t)level;
+		uploadedBytes += (size_t)pyramidLevel->stride * pyramidLevel->height;
+	}
+	fplTimestamp uploadFinish = fplTimestampQuery();
+	double uploadMilliseconds = fplTimestampElapsed(uploadStart, uploadFinish) * millisecondsPerSecond;
+
+	bool result = image->firstUploadedLevel < image->levelCount;
+	const char* pictureFileName = fplExtractFileName(picture->filePath);
+	const double bytesPerMegabyte = 1024.0 * 1024.0;
+	double uploadedMegabytes = (double)uploadedBytes / bytesPerMegabyte;
+	if (!result) {
+		flogWrite("Upload '%s' failed, no level fits the GPU texture size %d", pictureFileName, state->maxTextureSize);
+	} else if (image->firstUploadedLevel > 0) {
+		const ImageLevelTexture* firstTexture = &image->levels[image->firstUploadedLevel];
+		flogWrite("Uploaded '%s': %u x %u exceeds the GPU texture size %d, levels %u..%u from %u x %u, %.1f MB in %.1f ms", pictureFileName, image->width, image->height, state->maxTextureSize, image->firstUploadedLevel, image->levelCount - 1, firstTexture->width, firstTexture->height, uploadedMegabytes, uploadMilliseconds);
+	} else {
+		flogWrite("Uploaded '%s': %u levels, %.1f MB in %.1f ms", pictureFileName, image->levelCount, uploadedMegabytes, uploadMilliseconds);
+	}
+
+	ImagePyramidRelease(&image->pyramid);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, image->loaderEntry, &image->pixels);
+	return(result);
+}
+
 // Discards, uploads and queues pictures. Returns true when a picture changed or is still loading, so the next frame has to be drawn.
 static bool UpdatePictures(ViewerState* state) {
 	bool isChanging = false;
@@ -1582,30 +1996,29 @@ static bool UpdatePictures(ViewerState* state) {
 		ImageData* image = &loadedPic->image;
 		LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
 		if (loadState == LoadedPictureState_Discard) {
-			if (image->textureId > 0) {
-				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
-				ReleaseTexture(&image->textureId);
+			if (HasPictureTextures(image)) {
+				fplDebugFormatOut("Release textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleasePictureTextures(image);
 			}
 			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
 			isChanging = true;
 		} else if (loadState == LoadedPictureState_ToUpload) {
-			if (image->textureId > 0) {
-				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
-				ReleaseTexture(&image->textureId);
+			if (HasPictureTextures(image)) {
+				fplDebugFormatOut("Release textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleasePictureTextures(image);
 			}
 			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAssert(image->pixels.pixels != fpl_null);
-			fplAssert(image->width > 0 && image->height > 0);
+			fplAssert(image->width > 0 && image->height > 0 && image->levelCount > 0);
 
-			fplDebugFormatOut("Allocate texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
-			image->textureId = AllocateTexture(image->width, image->height, image->pixels.stride, image->pixels.pixels, state->features.srgbFrameBuffer);
-			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, image->loaderEntry, &image->pixels);
+			fplDebugFormatOut("Allocate textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+			bool isUploaded = UploadPictureLevels(state, loadedPic);
 			loadedPic->uploadSerial = ++state->nextUploadSerial;
 
-			LoadedPictureState uploadedState = image->textureId > 0 ? LoadedPictureState_Ready : LoadedPictureState_Error;
+			LoadedPictureState uploadedState = isUploaded ? LoadedPictureState_Ready : LoadedPictureState_Error;
+			RaisePictureProgress(loadedPic, ProgressComplete);
 			fplAtomicStoreS32(&loadedPic->state, uploadedState);
-			loadedPic->progress = 1.0f;
 			isChanging = true;
 		} else if (loadState == LoadedPictureState_LoadingData) {
 			// The progress bars move
@@ -1677,27 +2090,60 @@ static ViewRect IntersectWithViewport(const ViewRect rect, const ViewSize viewpo
 	return(result);
 }
 
+// Level the resample pipeline reads for the transform (plan section 2.3), --lod-source=0 always takes the largest level on the GPU.
+// So do Nearest and Box: both let details above the output Nyquist limit through (Nearest all of them, Box through the side lobes of its spectrum),
+// that is what they look like, and a reduced level has those details already filtered out.
+static uint32_t GetPictureSourceLevel(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform) {
+	const ImageData* image = &picture->image;
+	ResampleKernel kernel = GetKernelForTransform(state, transform);
+	bool isAliasingKernel = kernel == ResampleKernel_Nearest || kernel == ResampleKernel_Box;
+	if (state->params.isFullSourceLevelForced || isAliasingKernel) {
+		return(image->firstUploadedLevel);
+	}
+	float largerScale = fplMax(transform->scaleX, transform->scaleY);
+	uint32_t result = ComputeViewSourceLevel(largerScale, image->levelCount, image->firstUploadedLevel);
+	return(result);
+}
+
 // Scales the picture for the transform into the result, but only the part in outputRect (viewport pixels). Returns true when it had to be computed.
+// The source is the level GetPictureSourceLevel() picks: its scale is 2^level times larger, a mirrored axis of an odd sized level is shifted onto the picture
+// and the edge pixel that reaches beyond the picture is weighted by the part that lies on it.
 static bool UpdatePictureResult(ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect, ResampleResult* result, const char* timerLabel) {
+	const ImageData* image = &picture->image;
+	uint32_t sourceLevel = GetPictureSourceLevel(state, picture, transform);
+	const ImageLevelTexture* levelTexture = &image->levels[sourceLevel];
+	uint32_t orientation = (uint32_t)picture->info.orientation;
+	float levelFactor = ldexpf(1.0f, (int)sourceLevel);
+	ViewSize storedSize = fplStructInit(ViewSize, image->width, image->height);
+	ViewSize storedLevelSize = fplStructInit(ViewSize, levelTexture->width, levelTexture->height);
+	ViewSize displayedLevelSize = ComputeViewOrientedSize(orientation, storedLevelSize);
+	ViewOrientationMapping mapping = ComputeViewOrientationMapping(orientation, storedLevelSize);
+	ViewLevelPlacement placement = ComputeViewLevelPlacement(orientation, storedSize, storedLevelSize, sourceLevel);
+	float levelScaleX = transform->scaleX * levelFactor;
+	float levelScaleY = transform->scaleY * levelFactor;
+	float originX = transform->imageRect.left - outputRect.left;
+	float originY = transform->imageRect.top - outputRect.top;
+
 	ResampleRequest request = fplZeroInit;
-	request.sourceTexture = picture->image.textureId;
+	request.sourceTexture = levelTexture->textureId;
 	request.sourceSerial = picture->uploadSerial;
-	ViewSize storedSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
-	ViewSize displayedSize = GetDisplayedPictureSize(picture);
-	ViewOrientationMapping mapping = ComputeViewOrientationMapping((uint32_t)picture->info.orientation, storedSize);
-	request.sourceWidth = displayedSize.width;
-	request.sourceHeight = displayedSize.height;
+	request.sourceWidth = displayedLevelSize.width;
+	request.sourceHeight = displayedLevelSize.height;
 	request.axisMapping.originX = mapping.originX;
 	request.axisMapping.originY = mapping.originY;
 	request.axisMapping.stepUX = mapping.stepUX;
 	request.axisMapping.stepUY = mapping.stepUY;
 	request.axisMapping.stepVX = mapping.stepVX;
 	request.axisMapping.stepVY = mapping.stepVY;
+	request.firstCoverageX = placement.firstCoverageU;
+	request.lastCoverageX = placement.lastCoverageU;
+	request.firstCoverageY = placement.firstCoverageV;
+	request.lastCoverageY = placement.lastCoverageV;
 	request.kernel = GetKernelForTransform(state, transform);
-	request.scaleX = transform->scaleX;
-	request.scaleY = transform->scaleY;
-	request.originX = transform->imageRect.left - outputRect.left;
-	request.originY = transform->imageRect.top - outputRect.top;
+	request.scaleX = levelScaleX;
+	request.scaleY = levelScaleY;
+	request.originX = originX - placement.offsetU * levelScaleX;
+	request.originY = originY - placement.offsetV * levelScaleY;
 	request.outputWidth = (uint32_t)outputRect.width;
 	request.outputHeight = (uint32_t)outputRect.height;
 	bool isComputed = ResampleUpdate(&state->pipeline, &request, result, timerLabel);
@@ -1781,9 +2227,11 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 		ResampleKernel kernel = GetKernelForTransform(state, &transform);
 		const ResampleKernelDefinition* kernelDefinition = ResampleGetKernelDefinition(kernel);
 		const char* pictureFileName = fplExtractFileName(activePicture->filePath);
+		uint32_t sourceLevel = GetPictureSourceLevel(state, activePicture, &transform);
+		const ImageLevelTexture* levelTexture = &activePicture->image.levels[sourceLevel];
 		visibleRect = IntersectWithViewport(transform.imageRect, viewportSize);
 		char timerLabel[FPL_MAX_BUFFER_LENGTH];
-		fplStringFormat(timerLabel, fplArrayCount(timerLabel), "'%s' %u x %u -> %u x %u of %u x %u (%s)", pictureFileName, activePicture->image.width, activePicture->image.height, (uint32_t)visibleRect.width, (uint32_t)visibleRect.height, (uint32_t)transform.imageRect.width, (uint32_t)transform.imageRect.height, kernelDefinition->name);
+		fplStringFormat(timerLabel, fplArrayCount(timerLabel), "'%s' level %u (%u x %u) -> %u x %u of %u x %u (%s)", pictureFileName, sourceLevel, levelTexture->width, levelTexture->height, (uint32_t)visibleRect.width, (uint32_t)visibleRect.height, (uint32_t)transform.imageRect.width, (uint32_t)transform.imageRect.height, kernelDefinition->name);
 		UpdatePictureResult(state, activePicture, &transform, visibleRect, &state->viewResult, timerLabel);
 	}
 
@@ -1812,14 +2260,29 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 			const float progressAspectRatio = 400.0f / 10.0f;
 			const float progressBorderWidth = 2.0f;
 			const Vec4f progressFillColor = V4fInit(0.25f, 0.25f, 0.25f, 1.0f);
+			const Vec4f progressRunningColor = V4fInit(0.5f, 0.5f, 0.5f, 1.0f);
 			const Vec4f progressBorderColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
 			float progressWidth = viewportWidth * progressWidthFactor;
 			float progressHeight = progressWidth / progressAspectRatio;
 			float progressLeft = (viewportWidth - progressWidth) * 0.5f;
-			float filledWidth = progressWidth * activePicture->progress;
+			float progress = activePicture->progress;
+			float filledWidth = progressWidth * progress;
 			ViewRect filledRect = fplStructInit(ViewRect, progressLeft, progressPadding, filledWidth, progressHeight);
 			ViewRect borderRect = fplStructInit(ViewRect, progressLeft, progressPadding, progressWidth, progressHeight);
 			DrawSolidRectangle(state, viewportSize, filledRect, progressFillColor);
+			if (activePicture->isProgressIndeterminate) {
+				// A segment runs back and forth over the rest of the decode phase, the frame is drawn anyway while the picture loads
+				const double millisecondsPerSecond = 1000.0;
+				fplMilliseconds now = fplMillisecondsQuery();
+				double seconds = (double)now / millisecondsPerSecond;
+				double cycle = fmod(seconds / ProgressIndeterminatePeriodSeconds, 1.0);
+				float triangle = (float)(1.0 - fabs(2.0 * cycle - 1.0));
+				float remaining = fplMax(ProgressDecodeEnd - progress, 0.0f);
+				float segment = remaining * ProgressIndeterminateSegmentShare;
+				float segmentStart = progress + (remaining - segment) * triangle;
+				ViewRect runningRect = fplStructInit(ViewRect, progressLeft + progressWidth * segmentStart, progressPadding, progressWidth * segment, progressHeight);
+				DrawSolidRectangle(state, viewportSize, runningRect, progressRunningColor);
+			}
 			DrawLinedRectangle(state, viewportSize, borderRect, progressBorderColor, progressBorderWidth);
 		}
 	}
@@ -1834,10 +2297,10 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 // Writes the GPU time of the last timed resample into the log once it is available
 static void LogResampleTimer(ViewerState* state) {
 	const char* label = fpl_null;
-	double horizontalMilliseconds = 0.0;
-	double verticalMilliseconds = 0.0;
-	if (ResamplePollTimer(&state->pipeline, &label, &horizontalMilliseconds, &verticalMilliseconds)) {
-		flogWrite("Resample %s: horizontal %.3f ms, vertical %.3f ms", label, horizontalMilliseconds, verticalMilliseconds);
+	double milliseconds = 0.0;
+	uint32_t bandCount = 0;
+	if (ResamplePollTimer(&state->pipeline, &label, &milliseconds, &bandCount)) {
+		flogWrite("Resample %s: %.3f ms in %u band%s", label, milliseconds, bandCount, (bandCount == 1 ? "" : "s"));
 	}
 }
 
@@ -1847,6 +2310,7 @@ static void ReloadViewPicture(ViewerState* state, const int pictureIndex) {
 	ClearPictureData(&state->loaderRegistry, picture, false);
 	ResampleResultRelease(&picture->thumbnail);
 	picture->progress = 0.0f;
+	picture->isProgressIndeterminate = false;
 	fplAtomicStoreS32(&picture->state, LoadedPictureState_Unloaded);
 	LoadQueueValue value;
 	value.fileIndex = (int)picture->fileIndex;
@@ -1873,7 +2337,7 @@ static void SwitchActivePictureLoader(ViewerState* state) {
 	int32_t candidates[IMAGE_LOADER_MAX_COUNT];
 	uint32_t candidateCount = 0;
 	ImageFileSource fileSource;
-	if (ImageFileSourceOpen(&fileSource, file->filePath, fpl_null, fpl_null)) {
+	if (ImageFileSourceOpen(&fileSource, file->filePath, fpl_null, fpl_null, fpl_null)) {
 		const char* extension = fplExtractFileExtension(file->filePath);
 		candidateCount = ImageLoaderRegistrySelectForSource(&state->loaderRegistry, &fileSource.source, extension, true, candidates, IMAGE_LOADER_MAX_COUNT);
 		ImageFileSourceClose(&fileSource);
@@ -2103,6 +2567,8 @@ int main(int argc, char** argv) {
 	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
 	defaultParams.upKernel = DEFAULT_UP_KERNEL;
 	defaultParams.background = DEFAULT_BACKGROUND;
+	defaultParams.simdLevel = SimdLevel_Best;
+	defaultParams.levelKernel = DEFAULT_LEVEL_KERNEL;
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	state->params = defaultParams;
 	if (argc >= 2) {
@@ -2112,8 +2578,16 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	// The lookup tables of the level chain, before any load thread runs
+	ImagePyramidInitialize();
+
 	if (state->params.runSelfTest) {
-		int selfTestResult = RunSelfTest();
+		// Without video, the folder of --selftest=<folder> needs the file functions only
+		bool isPlatformReady = fplPlatformInit(fplInitFlags_None, fpl_null);
+		int selfTestResult = RunSelfTest(state->params.selfTestFolder);
+		if (isPlatformReady) {
+			fplPlatformRelease();
+		}
 		fplMemoryFree(state);
 		return(selfTestResult);
 	}
@@ -2123,6 +2597,19 @@ int main(int argc, char** argv) {
 		fplMemoryFree(state);
 		return(RenderToFileResult_InvalidParameters);
 	}
+
+	// SIMD level of the level chain from the CPU capabilities FPL reports, an unavailable --simd= level falls back to the next lower one
+	fplCPUCapabilities capabilities = fplZeroInit;
+	fplCPUGetCapabilities(&capabilities);
+	state->pyramidFunctions = ImagePyramidSelectRowFunctions(&capabilities, state->params.simdLevel);
+	bool isSimdLevelRequested = state->params.simdLevel != SimdLevel_Best;
+	if (isSimdLevelRequested && state->pyramidFunctions->level != state->params.simdLevel) {
+		const char* requestedName = ImagePyramidGetSimdLevelName(state->params.simdLevel);
+		fplConsoleFormatOut("SIMD level %s is not available, using %s\n", requestedName, state->pyramidFunctions->name);
+		flogWrite("SIMD level %s is not available, using %s", requestedName, state->pyramidFunctions->name);
+	}
+	const ImagePyramidKernelDefinition* levelKernelDefinition = ImagePyramidGetKernelDefinition(state->params.levelKernel);
+	flogWrite("Level chain: %s, kernel %s, source level %s", state->pyramidFunctions->name, levelKernelDefinition->name, (state->params.isFullSourceLevelForced ? "always 0" : "auto"));
 
 	// Modes without window
 	if (state->params.listLoaders) {
@@ -2141,6 +2628,20 @@ int main(int argc, char** argv) {
 		ImageLoaderRegistryRelease(&state->loaderRegistry);
 		fplMemoryFree(state);
 		return(decodeResult);
+	}
+	if (state->params.benchLevelsPath != fpl_null || state->params.writePyramidFolder != fpl_null) {
+		int levelsResult = 1;
+		if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			if (state->params.benchLevelsPath != fpl_null) {
+				levelsResult = BenchmarkLevels(state, state->params.benchLevelsPath);
+			} else {
+				levelsResult = WritePyramidLevels(state, state->params.path, state->params.writePyramidFolder);
+			}
+			fplPlatformRelease();
+		}
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(levelsResult);
 	}
 
 	const bool isRenderToFile = state->params.renderToFilePath != fpl_null;

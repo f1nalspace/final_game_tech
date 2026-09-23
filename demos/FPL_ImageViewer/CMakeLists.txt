@@ -24,6 +24,8 @@ set(MY_HEADER_FILES
 	"shadersources.h"
 	"viewtransform.h"
 	"resamplepipeline.h"
+	"imagepyramid.h"
+	"imagepyramid_x86.h"
 	"imageloader.h"
 	"imageloader_stb.h"
 	"imageloader_pnm.h"
