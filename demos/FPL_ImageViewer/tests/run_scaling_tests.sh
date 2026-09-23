@@ -239,7 +239,8 @@ for testCase in "${testCases[@]}"; do
 		else
 			windowWidth=$pictureWidth
 			windowHeight=$pictureHeight
-			zoomParameter="--zoom=fit"
+			# The exact scale and not fit: fit keeps the aspect ratio and can come out a pixel narrower than the rounded window (1023x767 at 0.35 fits as 357x268 into 358x268), the reference is resized to exactly the window
+			zoomParameter="--zoom=$(calc "$scale * 100")"
 			cropOffsetX=0
 			cropOffsetY=0
 		fi
