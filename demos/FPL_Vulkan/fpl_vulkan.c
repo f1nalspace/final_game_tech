@@ -2080,7 +2080,7 @@ bool VulkanCreateSurface(VkAllocationCallbacks *allocator, const VulkanInstanceA
                         createInfo.hwnd, instanceHandle, surface->surfaceHandle);
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
     // @TODO(final): This is just temporary, until we can query the platform window informations from FPL
-    Window window = fpl__global__AppState->window.x11.window;
+    Window window = fpl__global__AppState->window.x11.core.window;
     Display *display = fpl__global__AppState->window.x11.display;
 
     VkXlibSurfaceCreateInfoKHR createInfo = fplZeroInit;
