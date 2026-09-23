@@ -11,6 +11,7 @@ project "FPL_ImageViewer"
 		"shadersources.h",
 		"logging.h",
 		"viewtransform.h",
+		"resamplepipeline.h",
 		"selftest.h",
 		"imageresources.h",
 		"fpl_imageviewer.cpp",

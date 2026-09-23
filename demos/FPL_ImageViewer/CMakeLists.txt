@@ -23,6 +23,7 @@ set(MY_HEADER_FILES
 	"logging.h"
 	"shadersources.h"
 	"viewtransform.h"
+	"resamplepipeline.h"
 	"selftest.h"
 	)
 

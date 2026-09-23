@@ -5,7 +5,7 @@ Name:
 Description:
 	Checks for --selftest that need neither a window nor OpenGL, so they also run on a machine without a GPU or under an emulator.
 	Prints every failed check and a summary, RunSelfTest() returns the process exit code (0 = all passed, 1 = at least one failed).
-	Include once, in the translation unit that implements final_platform_layer.h and viewtransform.h.
+	Include once, in the translation unit that implements final_platform_layer.h, viewtransform.h and resamplepipeline.h.
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -20,6 +20,7 @@ License:
 #include <final_platform_layer.h>
 
 #include "viewtransform.h"
+#include "resamplepipeline.h"
 
 typedef struct SelfTest {
 	const char* groupName;
@@ -171,9 +172,62 @@ static void SelfTestViewTransform(SelfTest* test) {
 	SelfTestCheck(test, touchFailures == 0, "Sweep: a fitted picture fills the viewport on one axis");
 }
 
+static void SelfTestCheckRange(SelfTest* test, const ResampleSourceRange actual, const int32_t first, const int32_t end, const char* description) {
+	bool isEqual = actual.first == first && actual.end == end;
+	++test->checkCount;
+	if (!isEqual) {
+		++test->failedCount;
+		fplConsoleFormatError("[%s] FAILED: %s (expected [%d, %d), got [%d, %d))\n", test->groupName, description, first, end, actual.first, actual.end);
+	}
+}
+
+static void SelfTestResample(SelfTest* test) {
+	test->groupName = "Resample";
+
+	// Every kernel and background is found by its key, ignoring case, and unknown keys are rejected
+	uint32_t lookupFailures = 0;
+	for (int kernelIndex = 0; kernelIndex < ResampleKernel_Count; ++kernelIndex) {
+		const ResampleKernelDefinition* definition = ResampleGetKernelDefinition((ResampleKernel)kernelIndex);
+		ResampleKernel found = ResampleKernel_Count;
+		if (!ResampleFindKernel(definition->key, &found) || found != (ResampleKernel)kernelIndex) {
+			++lookupFailures;
+		}
+	}
+	for (int backgroundIndex = 0; backgroundIndex < ResampleBackground_Count; ++backgroundIndex) {
+		const ResampleBackgroundDefinition* definition = ResampleGetBackgroundDefinition((ResampleBackground)backgroundIndex);
+		ResampleBackground found = ResampleBackground_Count;
+		if (!ResampleFindBackground(definition->key, &found) || found != (ResampleBackground)backgroundIndex) {
+			++lookupFailures;
+		}
+	}
+	SelfTestCheck(test, lookupFailures == 0, "Every kernel and background is found by its key");
+	ResampleKernel upperCaseKernel = ResampleKernel_Count;
+	bool isUpperCaseFound = ResampleFindKernel("MITCHELL", &upperCaseKernel);
+	SelfTestCheck(test, isUpperCaseFound && upperCaseKernel == ResampleKernel_Mitchell, "Kernel keys ignore case");
+	ResampleKernel unknownKernel = ResampleKernel_Count;
+	SelfTestCheck(test, !ResampleFindKernel("mitch", &unknownKernel), "A partial kernel key is rejected");
+
+	// Source rows a vertical pass reads, including one row of margin on both sides:
+	// Mitchell at 0.5 widens the support to 4, the first output center 0.5 maps to 1, the last one 99.5 to 199
+	ResampleSourceRange wholePicture = ResampleComputeSourceRange(ResampleKernel_Mitchell, 0.5f, 0.0f, 0, 100, 200);
+	SelfTestCheckRange(test, wholePicture, 0, 200, "Mitchell 0.5, all 100 output rows of 200 source rows");
+	// Output rows 10..19 map to 21..39, taps floor(21 - 4 + 0.5) = 17 up to floor(39 + 4 + 0.5) = 43
+	ResampleSourceRange someRows = ResampleComputeSourceRange(ResampleKernel_Mitchell, 0.5f, 0.0f, 10, 20, 1000);
+	SelfTestCheckRange(test, someRows, 16, 44, "Mitchell 0.5, output rows 10..19");
+	// Catmull-Rom at 4 is not widened, the picture starts 100 output pixels before the output area: 0.5 maps to 25.125, 7.5 to 26.875
+	ResampleSourceRange upscaled = ResampleComputeSourceRange(ResampleKernel_CatmullRom, 4.0f, -100.0f, 0, 8, 1000);
+	SelfTestCheckRange(test, upscaled, 22, 30, "Catmull-Rom 4, picture 100 pixels before the output");
+	// Nearest reads one tap per output pixel: 0.5 maps to 2, 3.5 to 14
+	ResampleSourceRange nearest = ResampleComputeSourceRange(ResampleKernel_Nearest, 0.25f, 0.0f, 0, 4, 16);
+	SelfTestCheckRange(test, nearest, 1, 16, "Nearest 0.25");
+	ResampleSourceRange empty = ResampleComputeSourceRange(ResampleKernel_Mitchell, 0.5f, 0.0f, 5, 5, 100);
+	SelfTestCheckRange(test, empty, 0, 0, "No output rows read nothing");
+}
+
 static int RunSelfTest() {
 	SelfTest test = fplZeroInit;
 	SelfTestViewTransform(&test);
+	SelfTestResample(&test);
 	fplConsoleFormatOut("Self test: %u checks, %u failed\n", test.checkCount, test.failedCount);
 	int result = test.failedCount == 0 ? 0 : 1;
 	return(result);

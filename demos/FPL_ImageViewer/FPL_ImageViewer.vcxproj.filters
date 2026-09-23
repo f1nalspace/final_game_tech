@@ -20,6 +20,7 @@
     <ClInclude Include="version.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="selftest.h" />
+    <ClInclude Include="resamplepipeline.h" />
     <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>

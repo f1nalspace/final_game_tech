@@ -27,7 +27,13 @@ Changelog:
 	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
-	- New: --selftest checks the view math without window and OpenGL
+	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
+	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
+	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
+	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
+	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
+	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
+	- Changed: The preview strip scales its pictures with the resample pipeline too, computed once per picture
 	- New: Test image generator and scaling test runner in tests/
 	- Changed: Requires an OpenGL 3.3 core profile, the legacy OpenGL path is removed and a missing context is reported on the console and in the log
 	- Changed: Pictures are GL_TEXTURE_2D textures read with texelFetch, GL_TEXTURE_RECTANGLE and the 16x multisampling are gone
@@ -38,6 +44,7 @@ Changelog:
 	- Fixed: Every filter except Nearest was shifted by half a texel, so 100% was blurred and scaled pictures were asymmetric
 	- Fixed: Filters clamped at the picture edge, now taps outside the picture are left out and the weights renormalized
 	- Fixed: Lanczos3 made transparent pixels opaque
+	- Fixed: Dropping another folder onto the window leaked the textures of all loaded pictures
 	- Fixed: The next picture was drawn outside of the window in every frame
 	- Fixed: -p and -f parameters were never evaluated
 	- Fixed: Unknown or malformed parameters are reported instead of silently ignored
@@ -157,6 +164,9 @@ License:
 #define VIEW_TRANSFORM_IMPLEMENTATION
 #include "viewtransform.h"
 
+#define RESAMPLE_PIPELINE_IMPLEMENTATION
+#include "resamplepipeline.h"
+
 #include "selftest.h"
 
 char ToLowerCase(char ch) {
@@ -217,6 +227,10 @@ typedef struct ViewPicture {
 	StreamingFileBuffer fileStream;
 	char filePath[FPL_MAX_PATH_LENGTH];
 	ImageData image;
+	// Scaled into its preview block, main thread only
+	ResampleResult thumbnail;
+	// Changes with every upload, the texture name alone may be reused by OpenGL
+	uint64_t uploadSerial;
 	float progress;
 	size_t fileIndex;
 	volatile LoadedPictureState state;
@@ -283,7 +297,9 @@ typedef struct ViewerParameters {
 	uint32_t windowHeight;
 	float zoomScale;
 	ViewZoomMode zoomMode;
-	int filter;
+	ResampleKernel downKernel;
+	ResampleKernel upKernel;
+	ResampleBackground background;
 	bool recursive;
 	bool preview;
 	bool runSelfTest;
@@ -315,36 +331,21 @@ typedef enum RenderToFileResult {
 #define REQUIRED_OPENGL_MAJOR_VERSION 3
 #define REQUIRED_OPENGL_MINOR_VERSION 3
 
-typedef enum FilterType {
-	FilterType_Nearest = 0,
-	FilterType_Bilinear,
-	FilterType_CubicTriangular,
-	FilterType_CubicBell,
-	FilterType_CubicBSpline,
-	FilterType_CatMullRom,
-	FilterType_Lanczos3,
-	FilterType_Count,
-} FilterType;
-
-// Kernel function name in KernelFunctionsSource and its integer radius, no kernel means Nearest
-typedef struct FilterDefinition {
-	const char* name;
-	const char* kernelFunctionName;
-	int kernelRadius;
-} FilterDefinition;
-
-static const FilterDefinition FilterDefinitions[FilterType_Count] = {
-	{ "Nearest", fpl_null, 0 },
-	{ "Bilinear", "KernelTriangle", 1 },
-	{ "Bicubic (Triangular)", "KernelTriangular", 2 },
-	{ "Bicubic (Bell)", "KernelBell", 2 },
-	{ "Bicubic (B-Spline)", "KernelBSpline", 2 },
-	{ "Bicubic (CatMull-Rom)", "KernelCatmullRom", 2 },
-	{ "Lanczos3", "KernelLanczos3", 3 },
+// Filters of -f=<number> in the numbering before the Box and Mitchell kernels existed
+static const ResampleKernel LegacyFilterNumberKernels[] = {
+	ResampleKernel_Nearest,
+	ResampleKernel_Triangle,
+	ResampleKernel_Triangular,
+	ResampleKernel_Bell,
+	ResampleKernel_BSpline,
+	ResampleKernel_CatmullRom,
+	ResampleKernel_Lanczos3,
 };
 
-// Filter used when -f is not given
-#define DEFAULT_FILTER_TYPE FilterType_CubicTriangular
+// Defaults, working hypotheses until the comparison crops are decided (plan section 2.2)
+#define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
+#define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
+#define DEFAULT_BACKGROUND ResampleBackground_Checker
 
 typedef struct ColorProgram {
 	GLuint programId;
@@ -352,22 +353,6 @@ typedef struct ColorProgram {
 	GLint locationRect;
 	GLint locationColor;
 } ColorProgram;
-
-typedef struct PictureProgram {
-	GLuint programId;
-	GLint locationViewportSize;
-	GLint locationRect;
-	GLint locationColor;
-	GLint locationImage;
-	GLint locationImageOrigin;
-	GLint locationImageScale;
-} PictureProgram;
-
-typedef struct Filter {
-	const char* name;
-	PictureProgram program;
-	FilterType type;
-} Filter;
 
 typedef enum PictureRequestType {
 	PictureRequestType_None = 0,
@@ -406,9 +391,17 @@ typedef struct ViewerState {
 	GLuint vertexArray;
 	ColorProgram colorProgram;
 
-	Filter filters[FilterType_Count];
-	size_t activeFilter;
-	size_t filterCount;
+	ResamplePipeline pipeline;
+	// The active picture scaled into the viewport
+	ResampleResult viewResult;
+	ResampleKernel downKernel;
+	ResampleKernel upKernel;
+	ResampleBackground background;
+	uint64_t nextUploadSerial;
+
+	// Size of the window client area, updated every frame
+	ViewSize viewportSize;
+	char windowTitle[FPL_MAX_BUFFER_LENGTH];
 } ViewerState;
 
 static void InitQueue(LoadQueue* queue, const size_t queueCount) {
@@ -575,11 +568,13 @@ static void ClearPictureData(ViewPicture* viewPicture, bool noTextures) {
 	fplClearStruct(image);
 }
 
+// Main thread only, releases the textures as well
 static void ClearViewPictures(ViewerState* state) {
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		state->viewPictures[i].state = LoadedPictureState_Unloaded;
 		state->viewPictures[i].progress = 0.0f;
-		ClearPictureData(&state->viewPictures[i], true);
+		ClearPictureData(&state->viewPictures[i], false);
+		ResampleResultRelease(&state->viewPictures[i].thumbnail);
 	}
 }
 
@@ -811,16 +806,65 @@ static void QueueUpPictures(ViewerState* state) {
 	}
 }
 
+// Transform of the active picture in the current viewport, false while the picture is not ready
+static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTransform) {
+	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return(false);
+	}
+	ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+	LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+	if (pictureState != LoadedPictureState_Ready) {
+		return(false);
+	}
+	ViewSize pictureSize = fplStructInit(ViewSize, activePicture->image.width, activePicture->image.height);
+	*outTransform = ComputeViewTransform(&state->view, pictureSize, state->viewportSize);
+	return(true);
+}
+
+// Downscaling uses the down kernel, 1:1 and upscaling the up kernel
+static bool IsDownscaling(const ViewTransform* transform) {
+	bool result = transform->scale < 1.0f;
+	return(result);
+}
+
+static ResampleKernel GetKernelForTransform(const ViewerState* state, const ViewTransform* transform) {
+	bool isDownscaling = IsDownscaling(transform);
+	ResampleKernel result = isDownscaling ? state->downKernel : state->upKernel;
+	return(result);
+}
+
+// Sets the title only when it changed, so it can be called every frame
 static void UpdateWindowTitle(ViewerState* state) {
-	char titleBuffer[256];
+	const char* downArrow = "\xE2\x86\x93";
+	const char* upArrow = "\xE2\x86\x91";
+	const ResampleKernelDefinition* downDefinition = ResampleGetKernelDefinition(state->downKernel);
+	const ResampleKernelDefinition* upDefinition = ResampleGetKernelDefinition(state->upKernel);
+	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->background);
+
+	// The filter of the direction that is in effect, both while that is unknown
+	char filterText[FPL_MAX_NAME_LENGTH];
+	ViewTransform transform;
+	if (GetActivePictureTransform(state, &transform)) {
+		bool isDownscaling = IsDownscaling(&transform);
+		const char* arrow = isDownscaling ? downArrow : upArrow;
+		const char* kernelName = isDownscaling ? downDefinition->name : upDefinition->name;
+		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s", arrow, kernelName);
+	} else {
+		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s", downArrow, downDefinition->name, upArrow, upDefinition->name);
+	}
+
+	char titleBuffer[FPL_MAX_BUFFER_LENGTH];
 	if (state->activeFileIndex > -1) {
-		const char* filterName = state->filters[state->activeFilter].name;
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s | %s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, backgroundDefinition->name);
 	} else {
 		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
-	fplSetWindowTitle(titleBuffer);
+	if (!fplIsStringEqual(titleBuffer, state->windowTitle)) {
+		fplCopyString(titleBuffer, state->windowTitle, fplArrayCount(state->windowTitle));
+		fplSetWindowTitle(titleBuffer);
+	}
 }
 
 static void ChangeViewPicture(ViewerState* state, const int offset, const bool forceReload) {
@@ -915,6 +959,22 @@ static bool ParseZoomValue(const char* text, ViewZoomMode* outMode, float* outSc
 	return(true);
 }
 
+// A kernel key (e.g. mitchell) or, for -f, a number in the numbering before Box and Mitchell existed
+static bool ParseFilterValue(const char* text, const bool allowLegacyNumber, ResampleKernel* outKernel) {
+	uint32_t number = 0;
+	if (allowLegacyNumber && ParseUnsignedValue(text, &number)) {
+		const uint32_t firstLegacyNumber = 1;
+		uint32_t legacyCount = fplArrayCount(LegacyFilterNumberKernels);
+		if (number < firstLegacyNumber || number >= firstLegacyNumber + legacyCount) {
+			return(false);
+		}
+		*outKernel = LegacyFilterNumberKernels[number - firstLegacyNumber];
+		return(true);
+	}
+	bool result = ResampleFindKernel(text, outKernel);
+	return(result);
+}
+
 // Returns the text after "<name>=" or an empty string for "<name>" alone, null when the argument is a different parameter
 static const char* MatchLongParameter(const char* argument, const char* name) {
 	size_t nameLength = fplGetStringLength(name);
@@ -944,6 +1004,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* zoomValue = MatchLongParameter(argument, "--zoom");
 			const char* noPreviewValue = MatchLongParameter(argument, "--no-preview");
 			const char* selfTestValue = MatchLongParameter(argument, "--selftest");
+			const char* downFilterValue = MatchLongParameter(argument, "--down-filter");
+			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
+			const char* backgroundValue = MatchLongParameter(argument, "--background");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -957,11 +1020,17 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (selfTestValue != fpl_null) {
 				params->runSelfTest = true;
 				isValid = *selfTestValue == 0;
+			} else if (downFilterValue != fpl_null) {
+				isValid = ParseFilterValue(downFilterValue, false, &params->downKernel);
+			} else if (upFilterValue != fpl_null) {
+				isValid = ParseFilterValue(upFilterValue, false, &params->upKernel);
+			} else if (backgroundValue != fpl_null) {
+				isValid = ResampleFindBackground(backgroundValue, &params->background);
 			} else {
 				isValid = false;
 			}
 		} else if (argument[0] == '-') {
-			// Short forms: -r, -t=<threads>, -p=<preload count>, -f=<filter number>
+			// Short forms: -r, -t=<threads>, -p=<preload count>, -f=<filter number or key> for both directions
 			const char shortName = argument[1];
 			const bool hasValue = shortName != 0 && argument[2] == '=';
 			const char* shortValue = hasValue ? argument + 3 : fpl_null;
@@ -972,8 +1041,8 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				params->threadCount = number;
 			} else if (shortName == 'p' && hasValue && ParseUnsignedValue(shortValue, &number)) {
 				params->preloadCount = number;
-			} else if (shortName == 'f' && hasValue && ParseUnsignedValue(shortValue, &number)) {
-				params->filter = (int)number;
+			} else if (shortName == 'f' && hasValue && ParseFilterValue(shortValue, true, &params->downKernel)) {
+				params->upKernel = params->downKernel;
 			} else {
 				isValid = false;
 			}
@@ -1074,20 +1143,6 @@ static ColorProgram CreateColorProgram() {
 	return(result);
 }
 
-static PictureProgram CreatePictureProgram(const char* name, const char* fragmentSource) {
-	PictureProgram result = fplZeroInit;
-	result.programId = CreateShaderProgram(name, RectangleVertexSource, fragmentSource);
-	if (result.programId > 0) {
-		result.locationViewportSize = glGetUniformLocation(result.programId, "uniViewportSize");
-		result.locationRect = glGetUniformLocation(result.programId, "uniRect");
-		result.locationColor = glGetUniformLocation(result.programId, "uniColor");
-		result.locationImage = glGetUniformLocation(result.programId, "uniImage");
-		result.locationImageOrigin = glGetUniformLocation(result.programId, "uniImageOrigin");
-		result.locationImageScale = glGetUniformLocation(result.programId, "uniImageScale");
-	}
-	return(result);
-}
-
 static void CheckGLError(const char* stmt, const char* fname, int line) {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
@@ -1183,31 +1238,17 @@ static bool Init(ViewerState* state) {
 	state->colorProgram = CreateColorProgram();
 	bool hasAllPrograms = state->colorProgram.programId > 0;
 
-	state->filterCount = 0;
-	for (int filterIndex = 0; filterIndex < FilterType_Count; ++filterIndex) {
-		const FilterDefinition* definition = &FilterDefinitions[filterIndex];
-		std::string fragmentSource;
-		if (definition->kernelFunctionName == fpl_null) {
-			fragmentSource = NearestFilterFragmentSource();
-		} else {
-			fragmentSource = KernelFilterFragmentSource(definition->kernelFunctionName, definition->kernelRadius);
-		}
-		Filter* filter = &state->filters[state->filterCount++];
-		filter->name = definition->name;
-		filter->type = (FilterType)filterIndex;
-		filter->program = CreatePictureProgram(definition->name, fragmentSource.c_str());
-		hasAllPrograms = hasAllPrograms && filter->program.programId > 0;
+	if (!ResamplePipelineInit(&state->pipeline)) {
+		hasAllPrograms = false;
 	}
 	if (!hasAllPrograms) {
 		fplConsoleFormatError("Failed to create the shader programs, see the log for details\n");
 		return(false);
 	}
 
-	if (state->params.filter > 0 && state->params.filter <= (int)state->filterCount) {
-		state->activeFilter = state->params.filter - 1;
-	} else {
-		state->activeFilter = DEFAULT_FILTER_TYPE;
-	}
+	state->downKernel = state->params.downKernel;
+	state->upKernel = state->params.upKernel;
+	state->background = state->params.background;
 
 	CheckGLError("Init", __FILE__, __LINE__);
 
@@ -1297,23 +1338,6 @@ static void DrawLinedRectangle(const ViewerState* state, const ViewSize viewport
 	DrawSolidRectangle(state, viewportSize, rightLine, color);
 }
 
-// Draws the picture into the destination rectangle, whose top-left corner is the picture origin, with scaleX/scaleY viewport pixels per picture pixel
-static void DrawPicture(const Filter* filter, const GLuint textureId, const ViewSize viewportSize, const ViewRect destination, const float scaleX, const float scaleY, const Vec4f color) {
-	const PictureProgram* program = &filter->program;
-	const GLint textureUnit = 0;
-	glActiveTexture(GL_TEXTURE0 + textureUnit);
-	glBindTexture(GL_TEXTURE_2D, textureId);
-	glUseProgram(program->programId);
-	SetRectangleUniforms(program->locationViewportSize, program->locationRect, viewportSize, destination);
-	glUniform4fv(program->locationColor, 1, &color.m[0]);
-	glUniform1i(program->locationImage, textureUnit);
-	glUniform2f(program->locationImageOrigin, destination.left, destination.top);
-	glUniform2f(program->locationImageScale, scaleX, scaleY);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, RectangleVertexCount);
-	glUseProgram(0);
-	glBindTexture(GL_TEXTURE_2D, 0);
-}
-
 // Discards, uploads and queues pictures. Returns true when a picture changed or is still loading, so the next frame has to be drawn.
 static bool UpdatePictures(ViewerState* state) {
 	bool isChanging = false;
@@ -1348,6 +1372,7 @@ static bool UpdatePictures(ViewerState* state) {
 				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleaseTexture(&image->textureId);
 			}
+			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
 			isChanging = true;
 		} else if (loadState == LoadedPictureState_ToUpload) {
@@ -1355,6 +1380,7 @@ static bool UpdatePictures(ViewerState* state) {
 				fplDebugFormatOut("Release texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleaseTexture(&image->textureId);
 			}
+			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAssert(image->data != fpl_null);
 			fplAssert(image->width > 0 && image->height > 0);
 
@@ -1362,6 +1388,7 @@ static bool UpdatePictures(ViewerState* state) {
 			image->textureId = AllocateTexture(image->width, image->height, image->data, state->features.srgbFrameBuffer);
 			stbi_image_free(image->data);
 			image->data = fpl_null;
+			loadedPic->uploadSerial = ++state->nextUploadSerial;
 
 			LoadedPictureState uploadedState = image->textureId > 0 ? LoadedPictureState_Ready : LoadedPictureState_Error;
 			fplAtomicStoreS32(&loadedPic->state, uploadedState);
@@ -1425,8 +1452,38 @@ static Vec4f GetPreviewBlockColor(const LoadedPictureState loadState) {
 	return(result);
 }
 
+// Part of a whole pixel rectangle that lies inside the viewport
+static ViewRect IntersectWithViewport(const ViewRect rect, const ViewSize viewportSize) {
+	float left = fplMax(rect.left, 0.0f);
+	float top = fplMax(rect.top, 0.0f);
+	float right = fplMin(rect.left + rect.width, (float)viewportSize.width);
+	float bottom = fplMin(rect.top + rect.height, (float)viewportSize.height);
+	float width = fplMax(right - left, 0.0f);
+	float height = fplMax(bottom - top, 0.0f);
+	ViewRect result = fplStructInit(ViewRect, left, top, width, height);
+	return(result);
+}
+
+// Scales the picture for the transform into the result, but only the part in outputRect (viewport pixels). Returns true when it had to be computed.
+static bool UpdatePictureResult(ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect, ResampleResult* result, const char* timerLabel) {
+	ResampleRequest request = fplZeroInit;
+	request.sourceTexture = picture->image.textureId;
+	request.sourceSerial = picture->uploadSerial;
+	request.sourceWidth = picture->image.width;
+	request.sourceHeight = picture->image.height;
+	request.kernel = GetKernelForTransform(state, transform);
+	request.scaleX = transform->scaleX;
+	request.scaleY = transform->scaleY;
+	request.originX = transform->imageRect.left - outputRect.left;
+	request.originY = transform->imageRect.top - outputRect.top;
+	request.outputWidth = (uint32_t)outputRect.width;
+	request.outputHeight = (uint32_t)outputRect.height;
+	bool isComputed = ResampleUpdate(&state->pipeline, &request, result, timerLabel);
+	return(isComputed);
+}
+
 // One block per view picture slot at the bottom, the active slot is outlined green
-static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize, const Filter* filter) {
+static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) {
 	const float stripWidthFactor = 0.75f;
 	const float blockPadding = 4.0f;
 	const float activeBlockLineWidth = 2.0f;
@@ -1444,35 +1501,39 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize, 
 	float paddingSum = (float)(blockCount - 1) * blockPadding;
 	float blockSize = (stripWidth - paddingSum) / (float)blockCount;
 	float stripLeft = (viewportWidth - stripWidth) * 0.5f;
-	float stripTop = viewportHeight - blockPadding - blockSize;
+	float stripTop = floorf(viewportHeight - blockPadding - blockSize);
 	ViewState fitView = fplStructInit(ViewState, ViewZoomMode_Fit, 0.0f);
+	ViewSize blockPixelSize = fplStructInit(ViewSize, (uint32_t)blockSize, (uint32_t)blockSize);
 
 	for (int i = 0; i < blockCount; ++i) {
 		ViewPicture* picture = &state->viewPictures[i];
-		float blockLeft = stripLeft + (float)i * (blockSize + blockPadding);
+		float blockLeft = floorf(stripLeft + (float)i * (blockSize + blockPadding));
 		ViewRect blockRect = fplStructInit(ViewRect, blockLeft, stripTop, blockSize, blockSize);
 
 		LoadedPictureState loadState = fplAtomicLoadS32(&picture->state);
-		if (loadState != LoadedPictureState_Unloaded) {
-			Vec4f color = GetPreviewBlockColor(loadState);
-			if (loadState == LoadedPictureState_Ready) {
-				if (blockSize >= minimumPictureBlockSize) {
-					// Fitted into the block, keeping the aspect ratio
-					ViewSize pictureSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
-					ViewSize blockPixelSize = fplStructInit(ViewSize, (uint32_t)blockSize, (uint32_t)blockSize);
-					ViewTransform transform = ComputeViewTransform(&fitView, pictureSize, blockPixelSize);
-					ViewRect pictureRect = transform.imageRect;
-					pictureRect.left += blockLeft;
-					pictureRect.top += stripTop;
-					DrawPicture(filter, picture->image.textureId, viewportSize, pictureRect, transform.scaleX, transform.scaleY, color);
-				}
-			} else {
-				// Grows from the center with the progress
-				float progressSize = blockSize * picture->progress;
-				float progressOffset = (blockSize - progressSize) * 0.5f;
-				ViewRect progressRect = fplStructInit(ViewRect, blockLeft + progressOffset, stripTop + progressOffset, progressSize, progressSize);
-				DrawSolidRectangle(state, viewportSize, progressRect, color);
+		if (loadState == LoadedPictureState_Ready) {
+			if (blockSize >= minimumPictureBlockSize) {
+				// Fitted into the block with the resample pipeline, computed once per picture and block size
+				ViewSize pictureSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+				ViewTransform transform = ComputeViewTransform(&fitView, pictureSize, blockPixelSize);
+				UpdatePictureResult(state, picture, &transform, transform.imageRect, &picture->thumbnail, fpl_null);
+				ResampleCompositeParameters composite = fplZeroInit;
+				composite.viewportWidth = viewportSize.width;
+				composite.viewportHeight = viewportSize.height;
+				composite.left = blockLeft + transform.imageRect.left;
+				composite.top = stripTop + transform.imageRect.top;
+				composite.background = state->background;
+				composite.checkerOriginX = composite.left;
+				composite.checkerOriginY = composite.top;
+				ResampleComposite(&state->pipeline, &picture->thumbnail, &composite);
 			}
+		} else if (loadState != LoadedPictureState_Unloaded) {
+			// Grows from the center with the progress
+			Vec4f color = GetPreviewBlockColor(loadState);
+			float progressSize = blockSize * picture->progress;
+			float progressOffset = (blockSize - progressSize) * 0.5f;
+			ViewRect progressRect = fplStructInit(ViewRect, blockLeft + progressOffset, stripTop + progressOffset, progressSize, progressSize);
+			DrawSolidRectangle(state, viewportSize, progressRect, color);
 		}
 
 		if (i == state->viewPictureIndex) {
@@ -1485,24 +1546,44 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize, 
 	}
 }
 
+// Draws into the bound framebuffer, the resample passes run before and keep that binding
 static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
+	state->viewportSize = viewportSize;
+
+	// Scale the active picture, only when its placement, filter or content changed
+	ViewTransform transform;
+	bool isActivePictureReady = GetActivePictureTransform(state, &transform);
+	ViewRect visibleRect = fplZeroInit;
+	if (isActivePictureReady) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		ResampleKernel kernel = GetKernelForTransform(state, &transform);
+		const ResampleKernelDefinition* kernelDefinition = ResampleGetKernelDefinition(kernel);
+		const char* pictureFileName = fplExtractFileName(activePicture->filePath);
+		visibleRect = IntersectWithViewport(transform.imageRect, viewportSize);
+		char timerLabel[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(timerLabel, fplArrayCount(timerLabel), "'%s' %u x %u -> %u x %u of %u x %u (%s)", pictureFileName, activePicture->image.width, activePicture->image.height, (uint32_t)visibleRect.width, (uint32_t)visibleRect.height, (uint32_t)transform.imageRect.width, (uint32_t)transform.imageRect.height, kernelDefinition->name);
+		UpdatePictureResult(state, activePicture, &transform, visibleRect, &state->viewResult, timerLabel);
+	}
+
 	glViewport(0, 0, (GLsizei)viewportSize.width, (GLsizei)viewportSize.height);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	const Filter* activeFilter = &state->filters[state->activeFilter];
 	float viewportWidth = (float)viewportSize.width;
-
 	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
-	if (hasActivePicture) {
+	if (isActivePictureReady) {
+		ResampleCompositeParameters composite = fplZeroInit;
+		composite.viewportWidth = viewportSize.width;
+		composite.viewportHeight = viewportSize.height;
+		composite.left = visibleRect.left;
+		composite.top = visibleRect.top;
+		composite.background = state->background;
+		composite.checkerOriginX = transform.imageRect.left;
+		composite.checkerOriginY = transform.imageRect.top;
+		ResampleComposite(&state->pipeline, &state->viewResult, &composite);
+	} else if (hasActivePicture) {
 		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
 		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
-		if (pictureState == LoadedPictureState_Ready) {
-			const ImageData* image = &activePicture->image;
-			const Vec4f pictureColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
-			ViewSize pictureSize = fplStructInit(ViewSize, image->width, image->height);
-			ViewTransform transform = ComputeViewTransform(&state->view, pictureSize, viewportSize);
-			DrawPicture(activeFilter, image->textureId, viewportSize, transform.imageRect, transform.scaleX, transform.scaleY, pictureColor);
-		} else if (pictureState == LoadedPictureState_LoadingData) {
+		if (pictureState == LoadedPictureState_LoadingData) {
 			// Progress bar centered at the top
 			const float progressPadding = 4.0f;
 			const float progressWidthFactor = 0.5f;
@@ -1522,10 +1603,33 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 	}
 
 	if (state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount > 0) {
-		RenderPreviewStrip(state, viewportSize, activeFilter);
+		RenderPreviewStrip(state, viewportSize);
 	}
 
 	CheckGLError("RenderFrame", __FILE__, __LINE__);
+}
+
+// Writes the GPU time of the last timed resample into the log once it is available
+static void LogResampleTimer(ViewerState* state) {
+	const char* label = fpl_null;
+	double horizontalMilliseconds = 0.0;
+	double verticalMilliseconds = 0.0;
+	if (ResamplePollTimer(&state->pipeline, &label, &horizontalMilliseconds, &verticalMilliseconds)) {
+		flogWrite("Resample %s: horizontal %.3f ms, vertical %.3f ms", label, horizontalMilliseconds, verticalMilliseconds);
+	}
+}
+
+// Steps the kernel of the direction that is in effect, the down kernel while no picture is shown
+static void CycleActiveKernel(ViewerState* state, const int step) {
+	ViewTransform transform;
+	bool isDownscaling = true;
+	if (GetActivePictureTransform(state, &transform)) {
+		isDownscaling = IsDownscaling(&transform);
+	}
+	ResampleKernel* kernel = isDownscaling ? &state->downKernel : &state->upKernel;
+	int kernelCount = (int)ResampleKernel_Count;
+	int next = ((int)*kernel + step + kernelCount) % kernelCount;
+	*kernel = (ResampleKernel)next;
 }
 
 typedef struct OffscreenTarget {
@@ -1663,6 +1767,8 @@ static RenderToFileResult RenderPictureToFile(ViewerState* state) {
 			LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
 			if (pictureState == LoadedPictureState_Ready) {
 				result = ReadOffscreenTargetToFile(&target, filePath);
+				glFinish();
+				LogResampleTimer(state);
 				break;
 			} else if (pictureState == LoadedPictureState_Error) {
 				fplConsoleFormatError("Failed to load picture '%s'\n", activePicture->filePath);
@@ -1717,6 +1823,9 @@ int main(int argc, char** argv) {
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
 	ViewerParameters defaultParams = fplZeroInit;
 	defaultParams.preview = true;
+	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
+	defaultParams.upKernel = DEFAULT_UP_KERNEL;
+	defaultParams.background = DEFAULT_BACKGROUND;
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	state->params = defaultParams;
 	if (argc >= 2) {
@@ -1746,6 +1855,10 @@ int main(int argc, char** argv) {
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
 	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
 	flogWrite("Zoom mode: %d, scale: %f", (int)state->params.zoomMode, state->params.zoomScale);
+	const ResampleKernelDefinition* downKernelDefinition = ResampleGetKernelDefinition(state->params.downKernel);
+	const ResampleKernelDefinition* upKernelDefinition = ResampleGetKernelDefinition(state->params.upKernel);
+	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->params.background);
+	flogWrite("Filters: down %s, up %s, background %s", downKernelDefinition->name, upKernelDefinition->name, backgroundDefinition->name);
 	if (isRenderToFile) {
 		flogWrite("Render to: %s", state->params.renderToFilePath);
 	}
@@ -1857,6 +1970,12 @@ int main(int argc, char** argv) {
 												ChangeViewPicture(state, +1, false);
 											}
 										}
+									} else if (ev.keyboard.mappedKey == fplKey_T && ev.keyboard.buttonState == fplButtonState_Press) {
+										// Filter of the direction in effect, backwards with shift. On press, because shift is often let go before the key.
+										int shiftFlags = (int)fplKeyboardModifierFlags_LShift | (int)fplKeyboardModifierFlags_RShift;
+										bool isShiftDown = ((int)ev.keyboard.modifiers & shiftFlags) != 0;
+										int step = isShiftDown ? -1 : 1;
+										CycleActiveKernel(state, step);
 									}
 								} else {
 									fplAssert(ev.keyboard.buttonState == fplButtonState_Release);
@@ -1890,9 +2009,10 @@ int main(int argc, char** argv) {
 										state->params.preview = !state->params.preview;
 									} else if (ev.keyboard.mappedKey == fplKey_R) {
 										ChangeViewPicture(state, 0, true);
-									} else if (ev.keyboard.mappedKey == fplKey_T) {
-										state->activeFilter = (state->activeFilter + 1) % state->filterCount;
-										UpdateWindowTitle(state);
+									} else if (ev.keyboard.mappedKey == fplKey_B) {
+										int backgroundCount = (int)ResampleBackground_Count;
+										int nextBackground = ((int)state->background + 1) % backgroundCount;
+										state->background = (ResampleBackground)nextBackground;
 									}
 								}
 							}
@@ -1909,7 +2029,10 @@ int main(int argc, char** argv) {
 				bool isViewportChanged = viewportSize.width != lastViewportSize.width || viewportSize.height != lastViewportSize.height;
 				lastViewportSize = viewportSize;
 
+				state->viewportSize = viewportSize;
 				bool arePicturesChanging = UpdatePictures(state);
+				UpdateWindowTitle(state);
+				LogResampleTimer(state);
 
 				// Draw only when something changed, otherwise idle, and never into an empty (minimized) viewport
 				bool isViewportEmpty = viewportSize.width == 0 || viewportSize.height == 0;
@@ -1927,6 +2050,11 @@ int main(int argc, char** argv) {
 		} else {
 			returnCode = -1;
 		}
+		for (size_t pictureIndex = 0; pictureIndex < fplArrayCount(state->viewPictures); ++pictureIndex) {
+			ResampleResultRelease(&state->viewPictures[pictureIndex].thumbnail);
+		}
+		ResampleResultRelease(&state->viewResult);
+		ResamplePipelineRelease(&state->pipeline);
 		fglUnloadOpenGL();
 	}
 	if (isPlatformInitialized) {

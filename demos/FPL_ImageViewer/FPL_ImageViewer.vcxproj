@@ -202,6 +202,7 @@
   <ItemGroup>
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="logging.h" />
+    <ClInclude Include="resamplepipeline.h" />
     <ClInclude Include="selftest.h" />
     <ClInclude Include="shadersources.h" />
     <ClInclude Include="version.h" />
