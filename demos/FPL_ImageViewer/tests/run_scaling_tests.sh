@@ -1,6 +1,7 @@
 #!/bin/bash
 # Renders the synthetic test images with FPL_ImageViewer --render-to at many scales and with every filter,
 # compares each result against an ImageMagick reference of the same kernel computed in linear light and prints a table.
+# Where the viewer reads a reduced level (scale <= 0.125), the same picture is also rendered from level 0 (--lod-source=0) and both are compared.
 # Exit code is 0 when every threshold holds, 1 when at least one is violated, 2 on usage or setup errors.
 #
 # Usage: run_scaling_tests.sh [--viewer=<path>] [--images=<name,...>] [--filters=<key,...>] [--quick] [--no-photo]
@@ -38,6 +39,12 @@ gammaTolerance=2
 impulseTolerance=1
 # Allowed deviation (8 bit steps) at 100 % of a picture with transparency: blended pixels go through the sRGB encoding of the GPU, which rounds a step differently now and then
 translucentIdentityTolerance=1
+# Minimum PSNR in dB between the render from the reduced level and the render from level 0, the double filtering must stay invisible (plan section 2.3)
+levelPsnrThreshold=45
+# Allowed difference (8 bit steps) of the zone plate ring between the render from the reduced level and the one from level 0
+levelRingTolerance=0.3
+# Scales up to this one read a reduced level: the source level is the smallest one that is still at least eight times the displayed size
+largestLevelScale=0.125
 # Minimum mean red along each side of border_frame_odd, as a fraction of the same side in the reference; a cut off frame side stays far below
 frameMinimumFraction=0.5
 # Expected sRGB value of a 50 % linear mix of black and white (and of a 50 % red / green mix per channel)
@@ -76,26 +83,28 @@ maximumRenderAttempts=3
 # --- Test cases: image | scales | checks -------------------------------------------------------------------------------------
 # A scale "1@1280x720" renders 1:1 into a window of that size (the setup of the screenshot measurements in plan section 1.2)
 # Checks: flat188 (downscaled mean and std), ring (zone plate aliasing), gammaleft (left half of gamma_rows), colormix (red/green mix),
-#         impulse (symmetry and sampled kernel), overshoot (step edge), exactnearest (Nearest at integer zoom), frame (all four frame sides)
+#         impulse (symmetry and sampled kernel), overshoot (step edge), exactnearest (Nearest at integer zoom), frame (all four frame sides),
+#         nolevel0 (level 0 exceeds the GPU texture size, above 0.125 the PSNR is informational)
 # An optional fourth field sets the background behind transparent pixels (default black)
 
 testCases=(
-	"checker_1px|0.1 0.146 0.238 0.35 0.5 0.7 1 1@1280x720 1.5 2.3 4|flat188"
-	"zoneplate_2048|0.1 0.146 0.238 0.35 0.5 0.7 1|ring"
-	"zoneplate_4096|0.1 0.146 0.238 0.35|ring"
-	"siemens_star|0.146 0.35 0.7|"
-	"gamma_rows|0.146 0.238 0.35 0.5 0.7|gammaleft"
-	"color_checker_1px|0.146 0.35 0.5 0.7|colormix"
+	"checker_1px|0.05 0.1 0.146 0.238 0.35 0.5 0.7 1 1@1280x720 1.5 2.3 4|flat188"
+	"zoneplate_2048|0.05 0.1 0.146 0.238 0.35 0.5 0.7 1|ring"
+	"zoneplate_4096|0.03 0.05 0.1 0.146 0.238 0.35|ring"
+	"siemens_star|0.03 0.05 0.146 0.35 0.7|"
+	"gamma_rows|0.05 0.146 0.238 0.35 0.5 0.7|gammaleft"
+	"color_checker_1px|0.05 0.146 0.35 0.5 0.7|colormix"
 	"impulse|1 1.5 2.3 4 7 8|impulse"
 	"step_edge|0.35 0.7 1.5 2.3 4 8|overshoot"
-	"lines_1px|0.146 0.238 0.35 0.5 0.7 1|"
-	"text|0.5 0.7 1 1.5|"
+	"lines_1px|0.03 0.05 0.146 0.238 0.35 0.5 0.7 1|"
+	"text|0.03 0.05 0.5 0.7 1 1.5|"
 	"pixelart_32|1 2 3 4 8|exactnearest"
-	"alpha_disk|0.146 0.35 0.7 1 1.5|"
-	"alpha_disk|0.146 0.35 1||gray"
-	"border_frame_odd|0.35 0.7 1|frame"
+	"alpha_disk|0.05 0.146 0.35 0.7 1 1.5|"
+	"alpha_disk|0.05 0.146 0.35 1||gray"
+	"border_frame_odd|0.03 0.05 0.146 0.238 0.35 0.7 1|frame"
+	"extreme_aspect|0.02 0.5|nolevel0"
 )
-quickScales="0.146 0.35 1 1@1280x720 4 8"
+quickScales="0.05 0.146 0.35 1 1@1280x720 4 8"
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
@@ -208,12 +217,12 @@ make_identity_reference() {
 
 # Renders one picture offscreen, repeats a render that died of an X error (see maximumRenderAttempts), returns the viewer exit code
 render_picture() {
-	local target="$1" windowSize="$2" zoomParameter="$3" filterKey="$4" background="$5" source="$6"
+	local target="$1" windowSize="$2" zoomParameter="$3" filterKey="$4" background="$5" source="$6" levelSource="${7:-auto}"
 	local viewerOutput="$rendersDirectory/viewer_output.txt"
 	local exitCode=0
 	for (( attempt = 1; attempt <= maximumRenderAttempts; attempt++ )); do
 		rm -f "$target"
-		"$viewer" --render-to="$target" --window="$windowSize" "$zoomParameter" --down-filter="$filterKey" --up-filter="$filterKey" --background="$background" "$source" > "$viewerOutput" 2>&1
+		"$viewer" --render-to="$target" --window="$windowSize" "$zoomParameter" --down-filter="$filterKey" --up-filter="$filterKey" --background="$background" --lod-source="$levelSource" "$source" > "$viewerOutput" 2>&1
 		exitCode=$?
 		if [ "$exitCode" = 0 ] || ! grep -q "X Error" "$viewerOutput"; then
 			break
@@ -296,6 +305,10 @@ for testCase in "${testCases[@]}"; do
 		if [ "$scale" = "1" ]; then
 			isIdentity=1
 		fi
+		readsLevel=0
+		if is_less_equal "$scale" "$largestLevelScale"; then
+			readsLevel=1
+		fi
 
 		# References of all kernels for this size, in parallel
 		if [ "$isIdentity" = 1 ]; then
@@ -369,8 +382,33 @@ for testCase in "${testCases[@]}"; do
 			psnr=$(compare_value PSNR "$picture" "$reference")
 			if [ "$isPointSampling" = 1 ] && [ "$isTieFreeScale" = 0 ]; then
 				checkTexts+=("PSNR informational (tie breaking)")
+			elif [[ " $checks " == *" nolevel0 "* ]] && [ "$readsLevel" = 0 ]; then
+				checkTexts+=("PSNR informational (level 0 exceeds the GPU, level 1 stands in)")
 			elif ! is_less_equal "$psnrThreshold" "$psnr"; then
 				failures+="psnr "
+			fi
+
+			# The same picture from level 0: the reduced level must not change what is shown
+			levelPicture=""
+			if [ "$readsLevel" = 1 ] && [[ " $checks " != *" nolevel0 "* ]]; then
+				levelRender="$rendersDirectory/${caseKey}_${filterKey}_level0.pam"
+				render_picture "$levelRender" "${windowWidth}x${windowHeight}" "$zoomParameter" "$filterKey" "$background" "$source" 0
+				levelExitCode=$?
+				if [ "$levelExitCode" != 0 ] || [ ! -f "$levelRender" ]; then
+					checkTexts+=("level 0 render failed with exit code $levelExitCode")
+					failures+="level0 "
+				else
+					levelPicture="$levelRender"
+					if [ "$cropOffsetX" != 0 ] || [ "$cropOffsetY" != 0 ]; then
+						levelPicture="$rendersDirectory/${caseKey}_${filterKey}_level0_picture.png"
+						magick "$levelRender" -crop "$pictureCrop" +repage "$levelPicture"
+					fi
+					levelPsnr=$(compare_value PSNR "$picture" "$levelPicture")
+					checkTexts+=("LOD vs level 0 $levelPsnr dB")
+					if ! is_less_equal "$levelPsnrThreshold" "$levelPsnr"; then
+						failures+="lod "
+					fi
+				fi
 			fi
 
 			if [ "$isIdentity" = 1 ]; then
@@ -409,7 +447,15 @@ for testCase in "${testCases[@]}"; do
 			if [ -n "$ringMask" ]; then
 				viewerRing=$(masked_std "$picture" "$ringMask")
 				referenceRing=$(masked_std "$reference" "$ringMask")
-				checkTexts+=("ring $viewerRing (same kernel $referenceRing, Mitchell $mitchellRing)")
+				ringText="ring $viewerRing (same kernel $referenceRing, Mitchell $mitchellRing"
+				if [ -n "$levelPicture" ]; then
+					levelRing=$(masked_std "$levelPicture" "$ringMask")
+					ringText+=", from level 0 $levelRing"
+					if ! is_abs_less_equal "$(calc "$viewerRing - $levelRing")" "$levelRingTolerance"; then
+						failures+="lodring "
+					fi
+				fi
+				checkTexts+=("$ringText)")
 				if ! is_less_equal "$viewerRing" "$(calc "$referenceRing + $ringTolerance")"; then
 					failures+="ring "
 				fi
@@ -510,17 +556,24 @@ done
 
 # --- Real photo: filters barely differ, informational only ------------------------------------------------------------------
 
+# 960x720 is the photo fitted into 1280x720 (level 0), 200x150 reads level 1; both keep the 4:3 aspect ratio exactly
 photoRows=()
+photoSizes="960x720 200x150"
 if [ "$withPhoto" = 1 ] && [ -f "$photoFile" ] && [ -z "$onlyImages" ]; then
-	photoWindowWidth=960
-	photoWindowHeight=720
-	photoReference="$referencesDirectory/photo_${photoWindowWidth}x${photoWindowHeight}_mitchell.png"
-	make_reference "$photoFile" "$photoWindowWidth" "$photoWindowHeight" "$mitchellReferenceOptions" "$photoReference"
-	for filterKey in $selectedFilters; do
-		render="$rendersDirectory/photo_${filterKey}.pam"
-		render_picture "$render" "${photoWindowWidth}x${photoWindowHeight}" --zoom=fit "$filterKey" black "$photoFile"
-		photoPsnr=$(compare_value PSNR "$render" "$photoReference")
-		photoRows+=("| $(basename "$photoFile") | ${photoWindowWidth}×${photoWindowHeight} | ${filterNames[$filterKey]} | $photoPsnr |")
+	for photoSize in $photoSizes; do
+		photoWindowWidth="${photoSize%x*}"
+		photoWindowHeight="${photoSize#*x}"
+		photoReference="$referencesDirectory/photo_${photoWindowWidth}x${photoWindowHeight}_mitchell.png"
+		make_reference "$photoFile" "$photoWindowWidth" "$photoWindowHeight" "$mitchellReferenceOptions" "$photoReference"
+		for filterKey in $selectedFilters; do
+			render="$rendersDirectory/photo_${photoSize}_${filterKey}.pam"
+			levelRender="$rendersDirectory/photo_${photoSize}_${filterKey}_level0.pam"
+			render_picture "$render" "${photoWindowWidth}x${photoWindowHeight}" --zoom=fit "$filterKey" black "$photoFile"
+			render_picture "$levelRender" "${photoWindowWidth}x${photoWindowHeight}" --zoom=fit "$filterKey" black "$photoFile" 0
+			photoPsnr=$(compare_value PSNR "$render" "$photoReference")
+			photoLevelPsnr=$(compare_value PSNR "$render" "$levelRender")
+			photoRows+=("| $(basename "$photoFile") | ${photoWindowWidth}×${photoWindowHeight} | ${filterNames[$filterKey]} | $photoPsnr | $photoLevelPsnr |")
+		done
 	done
 fi
 
@@ -542,8 +595,8 @@ fi
 		echo
 		echo "## Photo against the Mitchell reference (informational)"
 		echo
-		echo "| Photo | Output | Filter | PSNR (dB) |"
-		echo "|---|---|---|---|"
+		echo "| Photo | Output | Filter | PSNR (dB) | LOD vs level 0 (dB) |"
+		echo "|---|---|---|---|---|"
 		for line in "${photoRows[@]}"; do
 			echo "$line"
 		done
