@@ -223,17 +223,14 @@ SOFTWARE.
 
 	#### Threading
 	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
+	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
 	- Fixed: [POSIX] Two threads could join the very same pthread and hang forever, because a thread slot was marked free before its pthread was joined and the waiter read the handle out of the slot after that
 	- Fixed: [POSIX] Threads were created joinable but never joined once the slot was recycled, which leaked the thread descriptor and let pthread identifiers be reused - threads are created detached now
 	- Fixed: [Win32] fplThreadWaitForOne could wait on an already closed thread handle, or on a completely different thread when the slot was handed out again
-	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
 	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
 	- Fixed: [POSIX] fplConditionWait and fplSemaphoreWait with a timeout failed immediately with EINVAL whenever the deadline crossed a second boundary, because the nanoseconds of the absolute deadline were not carried over into the seconds - a wait loop with a 50 ms timeout busy spun for 5 % of the time
-<<<<<<< HEAD
-=======
 	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
 	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
->>>>>>> develop
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 
 	#### Audio
