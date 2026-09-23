@@ -229,6 +229,8 @@ SOFTWARE.
 	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
 	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
 	- Fixed: [POSIX] fplConditionWait and fplSemaphoreWait with a timeout failed immediately with EINVAL whenever the deadline crossed a second boundary, because the nanoseconds of the absolute deadline were not carried over into the seconds - a wait loop with a 50 ms timeout busy spun for 5 % of the time
+	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
+	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 
 	#### Audio
@@ -24496,19 +24498,21 @@ fpl_platform_api bool fplThreadYield(void) {
 }
 
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
-	uint32_t ms;
-	uint32_t s;
-	if (milliseconds > 1000) {
-		s = milliseconds / 1000;
-		ms = milliseconds % 1000;
-	} else {
-		s = 0;
-		ms = milliseconds;
+	const uint32_t millisecondsPerSecond = 1000;
+	const long nanosecondsPerMillisecond = 1000000L;
+	// nanosleep rejects 1 second or more in tv_nsec (EINVAL), so full seconds always go into tv_sec
+	const uint32_t seconds = milliseconds / millisecondsPerSecond;
+	const uint32_t remainingMilliseconds = milliseconds % millisecondsPerSecond;
+	struct timespec requested;
+	requested.tv_sec = (time_t)seconds;
+	requested.tv_nsec = (long)remainingMilliseconds * nanosecondsPerMillisecond;
+	// A signal ends nanosleep early (EINTR), then the time that is left is slept again
+	struct timespec remaining;
+	int sleepResult = nanosleep(&requested, &remaining);
+	while ((sleepResult == -1) && (errno == EINTR)) {
+		requested = remaining;
+		sleepResult = nanosleep(&requested, &remaining);
 	}
-	struct timespec input, output;
-	input.tv_sec = s;
-	input.tv_nsec = ms * 1000000;
-	nanosleep(&input, &output);
 }
 
 fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
