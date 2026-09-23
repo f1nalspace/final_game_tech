@@ -21,6 +21,10 @@
     <ClInclude Include="logging.h" />
     <ClInclude Include="selftest.h" />
     <ClInclude Include="resamplepipeline.h" />
+    <ClInclude Include="imageloader.h" />
+    <ClInclude Include="imageloader_stb.h" />
+    <ClInclude Include="imageloader_pnm.h" />
+    <ClInclude Include="imageloader_bmp.h" />
     <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>

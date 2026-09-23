@@ -200,6 +200,10 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="imageloader.h" />
+    <ClInclude Include="imageloader_bmp.h" />
+    <ClInclude Include="imageloader_pnm.h" />
+    <ClInclude Include="imageloader_stb.h" />
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="logging.h" />
     <ClInclude Include="resamplepipeline.h" />

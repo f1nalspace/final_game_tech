@@ -20,6 +20,8 @@ Description:
 	A result is cached, ResampleUpdate() only runs the passes when the request differs from the last one.
 
 	Coordinates are pixels with y pointing down: row 0 of every texture is the top row.
+	A picture that is displayed turned or mirrored (EXIF orientation) is resampled as displayed: pass 1 maps each displayed pixel
+	through an integer axis mapping to the texel that stores it, so nothing is copied and pass 2 never knows.
 
 Usage:
 	C++ (raw string literals for GLSL), needs final_dynamic_opengl.h loaded and an OpenGL 3.3 core context.
@@ -82,13 +84,25 @@ typedef struct ResampleSourceRange {
 	int32_t end;
 } ResampleSourceRange;
 
+// Displayed picture pixel (u = column, v = row) to stored texel: origin + u * stepU + v * stepV. All zero means as stored.
+typedef struct ResampleAxisMapping {
+	int32_t originX;
+	int32_t originY;
+	int32_t stepUX;
+	int32_t stepUY;
+	int32_t stepVX;
+	int32_t stepVY;
+} ResampleAxisMapping;
+
 typedef struct ResampleRequest {
 	// Picture texture (RGBA, sRGB when the framebuffer encodes sRGB)
 	GLuint sourceTexture;
 	// Changes whenever the texture gets new content, texture names are reused by OpenGL
 	uint64_t sourceSerial;
+	// Size of the picture as displayed, after the axis mapping
 	uint32_t sourceWidth;
 	uint32_t sourceHeight;
+	ResampleAxisMapping axisMapping;
 	ResampleKernel kernel;
 	// Output pixels per source pixel on each axis
 	float scaleX;
@@ -119,6 +133,9 @@ typedef struct ResamplePassProgram {
 	GLint locationTapMinimum;
 	GLint locationTapEnd;
 	GLint locationRowOffset;
+	GLint locationAxisOrigin;
+	GLint locationAxisStepU;
+	GLint locationAxisStepV;
 } ResamplePassProgram;
 
 typedef struct ResampleCompositeProgram {
@@ -321,7 +338,8 @@ static const char ResampleKernelFunctionsSource[] = R"(
 )";
 
 // Needs HORIZONTAL (0 or 1), NEAREST (0 or 1) and, unless nearest, KERNEL defined.
-// Horizontal: source is the picture, fragment (x, y) is output column x of picture row y + uniRowOffset, taps are picture columns.
+// Horizontal: source is the picture, fragment (x, y) is output column x of displayed picture row y + uniRowOffset, taps are displayed picture columns,
+// the axis mapping turns a displayed pixel into the stored texel.
 // Vertical: source is the intermediate, fragment (x, y) is output pixel (x, y), taps are picture rows, stored at row tap - uniRowOffset.
 static const char ResamplePassBodySource[] = R"(
 	layout(location = 0) out vec4 outColor;
@@ -332,10 +350,15 @@ static const char ResamplePassBodySource[] = R"(
 	uniform int uniTapMinimum;
 	uniform int uniTapEnd;
 	uniform int uniRowOffset;
+	uniform ivec2 uniAxisOrigin;
+	uniform ivec2 uniAxisStepU;
+	uniform ivec2 uniAxisStepV;
 
 	vec4 FetchTap(int tap, ivec2 fragment) {
 	#if HORIZONTAL
-		vec4 texel = texelFetch(uniSource, ivec2(tap, fragment.y + uniRowOffset), 0);
+		int displayedRow = fragment.y + uniRowOffset;
+		ivec2 stored = uniAxisOrigin + tap * uniAxisStepU + displayedRow * uniAxisStepV;
+		vec4 texel = texelFetch(uniSource, stored, 0);
 		return vec4(texel.rgb * texel.a, texel.a);
 	#else
 		return texelFetch(uniSource, ivec2(fragment.x, tap - uniRowOffset), 0);
@@ -576,6 +599,9 @@ static ResamplePassProgram ResampleCreatePassProgram(const ResampleKernel kernel
 		result.locationTapMinimum = glGetUniformLocation(result.programId, "uniTapMinimum");
 		result.locationTapEnd = glGetUniformLocation(result.programId, "uniTapEnd");
 		result.locationRowOffset = glGetUniformLocation(result.programId, "uniRowOffset");
+		result.locationAxisOrigin = glGetUniformLocation(result.programId, "uniAxisOrigin");
+		result.locationAxisStepU = glGetUniformLocation(result.programId, "uniAxisStepU");
+		result.locationAxisStepV = glGetUniformLocation(result.programId, "uniAxisStepV");
 	}
 	return(result);
 }
@@ -653,6 +679,7 @@ static bool ResampleIsRequestEqual(const ResampleRequest *a, const ResampleReque
 		a->sourceSerial == b->sourceSerial &&
 		a->sourceWidth == b->sourceWidth &&
 		a->sourceHeight == b->sourceHeight &&
+		memcmp(&a->axisMapping, &b->axisMapping, sizeof(a->axisMapping)) == 0 &&
 		a->kernel == b->kernel &&
 		a->scaleX == b->scaleX &&
 		a->scaleY == b->scaleY &&
@@ -663,7 +690,12 @@ static bool ResampleIsRequestEqual(const ResampleRequest *a, const ResampleReque
 	return(result);
 }
 
-static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const uint32_t targetWidth, const uint32_t targetHeight) {
+static bool ResampleIsMappingEmpty(const ResampleAxisMapping *mapping) {
+	bool result = mapping->stepUX == 0 && mapping->stepUY == 0 && mapping->stepVX == 0 && mapping->stepVY == 0;
+	return(result);
+}
+
+static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sourceTexture, const ResampleAxisMapping *mapping, const float scale, const float origin, const float radius, const int32_t tapMinimum, const int32_t tapEnd, const int32_t rowOffset, const uint32_t targetWidth, const uint32_t targetHeight) {
 	const GLint textureUnit = 0;
 	glViewport(0, 0, (GLsizei)targetWidth, (GLsizei)targetHeight);
 	glActiveTexture(GL_TEXTURE0 + textureUnit);
@@ -676,6 +708,9 @@ static void ResampleRunPass(const ResamplePassProgram *program, const GLuint sou
 	glUniform1i(program->locationTapMinimum, tapMinimum);
 	glUniform1i(program->locationTapEnd, tapEnd);
 	glUniform1i(program->locationRowOffset, rowOffset);
+	glUniform2i(program->locationAxisOrigin, mapping->originX, mapping->originY);
+	glUniform2i(program->locationAxisStepU, mapping->stepUX, mapping->stepUY);
+	glUniform2i(program->locationAxisStepV, mapping->stepVX, mapping->stepVY);
 	glDrawArrays(GL_TRIANGLES, 0, ResampleFullTriangleVertexCount);
 }
 
@@ -690,6 +725,11 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	}
 
 	const ResampleKernelDefinition *definition = ResampleGetKernelDefinition(request->kernel);
+	ResampleAxisMapping mapping = request->axisMapping;
+	if (ResampleIsMappingEmpty(&mapping)) {
+		const ResampleAxisMapping asStored = { 0, 0, 1, 0, 0, 1 };
+		mapping = asStored;
+	}
 	ResampleSourceRange rows = ResampleComputeSourceRange(request->kernel, request->scaleY, request->originY, 0, request->outputHeight, request->sourceHeight);
 	uint32_t rowCount = (uint32_t)(rows.end - rows.first);
 	if (rowCount == 0) {
@@ -726,7 +766,7 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	if (isTimed) {
 		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQueries[0]);
 	}
-	ResampleRunPass(horizontalProgram, request->sourceTexture, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, request->outputWidth, rowCount);
+	ResampleRunPass(horizontalProgram, request->sourceTexture, &mapping, request->scaleX, request->originX, definition->radius, 0, (int32_t)request->sourceWidth, rows.first, request->outputWidth, rowCount);
 	if (isTimed) {
 		glEndQuery(GL_TIME_ELAPSED);
 	}
@@ -737,7 +777,7 @@ extern bool ResampleUpdate(ResamplePipeline *pipeline, const ResampleRequest *re
 	if (isTimed) {
 		glBeginQuery(GL_TIME_ELAPSED, pipeline->timerQueries[1]);
 	}
-	ResampleRunPass(verticalProgram, pipeline->intermediateTexture, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, request->outputWidth, request->outputHeight);
+	ResampleRunPass(verticalProgram, pipeline->intermediateTexture, &mapping, request->scaleY, request->originY, definition->radius, rows.first, rows.end, rows.first, request->outputWidth, request->outputHeight);
 	if (isTimed) {
 		glEndQuery(GL_TIME_ELAPSED);
 		snprintf(pipeline->timerLabel, sizeof(pipeline->timerLabel), "%s", timerLabel);

@@ -17,7 +17,7 @@ Requirements:
 	- Final Platform Layer
 	- Final Dynamic OpenGL
 	- OpenGL 3.3 core profile
-	- STB_image
+	- STB_image (the default loader, others are optional)
 
 Author:
 	Torsten Spaete
@@ -35,6 +35,14 @@ Changelog:
 	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
 	- Changed: The preview strip scales its pictures with the resample pipeline too, computed once per picture
 	- New: Test image generator and scaling test runner in tests/
+	- New: Pictures are read through exchangeable loaders (imageloader.h), each with a fixed 128-bit id: stb_image (default: JPEG, PNG, BMP), PNM/PAM (PGM, PPM, PAM) and a reference BMP loader behind stb_image
+	- New: A loader is picked by the first bytes of the file (the signature beats the extension), a pinned loader goes first, Unsupported or Corrupt falls back to the next loader
+	- New: --loader=<id|name>, --loader-for=<extension>:<id|name>, --loader-order=<id|name>,..., --no-loader-fallback, --list-loaders and --decode-all=<folder>
+	- New: L reads the active picture again with the next loader that recognizes it, the window title shows the loader
+	- New: The EXIF orientation of JPEG files is applied to the picture, its scaling and the preview strip, without copying pixels
+	- Changed: The folder scan takes every extension of every loader
+	- Changed: A load job that meets a cancel is dropped, the reload queues everything it needs again
+	- Fixed: Two load threads could take the same picture slot
 	- Changed: Requires an OpenGL 3.3 core profile, the legacy OpenGL path is removed and a missing context is reported on the console and in the log
 	- Changed: Pictures are GL_TEXTURE_2D textures read with texelFetch, GL_TEXTURE_RECTANGLE and the 16x multisampling are gone
 	- Changed: Drawing uses viewport pixels with y pointing down, the picture is placed at whole pixels by viewtransform.h
@@ -150,6 +158,15 @@ License:
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+#define IMAGE_LOADER_IMPLEMENTATION
+#include "imageloader.h"
+#define IMAGE_LOADER_STB_IMPLEMENTATION
+#include "imageloader_stb.h"
+#define IMAGE_LOADER_PNM_IMPLEMENTATION
+#include "imageloader_pnm.h"
+#define IMAGE_LOADER_BMP_IMPLEMENTATION
+#include "imageloader_bmp.h"
+
 #include <string.h>
 
 #include <final_math.h>
@@ -196,6 +213,8 @@ static int CompareStringIgnoreCase(const char* a, const char* b) {
 
 typedef struct PictureFile {
 	char filePath[FPL_MAX_PATH_LENGTH];
+	// Loader entry the L key chose for this file, -1 lets the registry select
+	int32_t forcedLoaderEntry;
 } PictureFile;
 
 typedef enum LoadedPictureStateType {
@@ -209,24 +228,20 @@ typedef enum LoadedPictureStateType {
 
 typedef int32_t LoadedPictureState;
 
-#define MAX_FILE_BUFFER_SIZE 4096
-typedef struct StreamingFileBuffer {
-	fplFileHandle handle;
-	size_t size;
-} StreamingFileBuffer;
-
-// Always RGBA8, top row first
+// Always RGBA8, top row first, as stored (before the orientation)
 typedef struct ImageData {
-	uint8_t* data;
+	// Decoded pixels until the upload, owned by the loader in loaderEntry
+	ImagePixels pixels;
+	int32_t loaderEntry;
 	uint32_t width;
 	uint32_t height;
 	GLuint textureId;
 } ImageData;
 
 typedef struct ViewPicture {
-	StreamingFileBuffer fileStream;
 	char filePath[FPL_MAX_PATH_LENGTH];
 	ImageData image;
+	PictureInfo info;
 	// Scaled into its preview block, main thread only
 	ResampleResult thumbnail;
 	// Changes with every upload, the texture name alone may be reused by OpenGL
@@ -300,6 +315,14 @@ typedef struct ViewerParameters {
 	ResampleKernel downKernel;
 	ResampleKernel upKernel;
 	ResampleBackground background;
+	// Loader selection, resolved against the registry after parsing
+	const char* loaderValue;
+	const char* loaderOrderValue;
+	const char* loaderForValues[IMAGE_LOADER_MAX_EXTENSION_PINS];
+	uint32_t loaderForCount;
+	const char* decodeAllPath;
+	bool isLoaderFallbackDisabled;
+	bool listLoaders;
 	bool recursive;
 	bool preview;
 	bool runSelfTest;
@@ -399,6 +422,9 @@ typedef struct ViewerState {
 	ResampleBackground background;
 	uint64_t nextUploadSerial;
 
+	// Every picture is read through these loaders, stb_image first
+	ImageLoaderRegistry loaderRegistry;
+
 	// Size of the window client area, updated every frame
 	ViewSize viewportSize;
 	char windowTitle[FPL_MAX_BUFFER_LENGTH];
@@ -462,14 +488,10 @@ static bool TryQueueDequeue(volatile LoadQueue* queue, volatile LoadQueueValue* 
 	return(false);
 }
 
-static bool IsPictureFile(const char* filePath) {
-	const char* ext = fplExtractFileExtension(filePath);
-	bool result;
-	if (ext != fpl_null) {
-		result = (CompareStringIgnoreCase(ext, ".jpg") == 0) || (CompareStringIgnoreCase(ext, ".jpeg") == 0) || (CompareStringIgnoreCase(ext, ".png") == 0) || (CompareStringIgnoreCase(ext, ".bmp") == 0);
-	} else {
-		result = false;
-	}
+// Every extension any registered loader lists, so a new loader brings its formats into the folder scan
+static bool IsPictureFile(const ViewerState* state, const char* filePath) {
+	const char* extension = fplExtractFileExtension(filePath);
+	bool result = extension != fpl_null && ImageLoaderRegistryIsKnownExtension(&state->loaderRegistry, extension);
 	return(result);
 }
 
@@ -495,6 +517,7 @@ static void AddPictureFile(ViewerState* state, const char* filePath) {
 	}
 	PictureFile* pictureFile = &state->pictureFiles[state->pictureFileCount++];
 	fplCopyString(filePath, pictureFile->filePath, fplArrayCount(pictureFile->filePath));
+	pictureFile->forcedLoaderEntry = -1;
 }
 
 static void AddPicturesFromPath(ViewerState* state, const char* path, const bool recursive) {
@@ -507,7 +530,7 @@ static void AddPicturesFromPath(ViewerState* state, const char* path, const bool
 		char fullPath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(fullPath, fplArrayCount(fullPath), 2, path, entry.name);
 		if (entry.type == fplFileEntryType_File) {
-			if (IsPictureFile(fullPath)) {
+			if (IsPictureFile(state, fullPath)) {
 				AddPictureFile(state, fullPath);
 				++addedPics;
 			}
@@ -527,7 +550,8 @@ static void ReleaseTexture(GLuint* target) {
 }
 
 // RGBA8 picture as GL_TEXTURE_2D without mipmaps, sRGB when the framebuffer does the sRGB encoding, returns 0 on failure (e.g. larger than GL_MAX_TEXTURE_SIZE)
-static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const void* data, const bool supportsSRGB) {
+static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const uint32_t stride, const void* data, const bool supportsSRGB) {
+	const uint32_t bytesPerPixel = 4;
 	GLenum internalFormat = supportsSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
 
 	GLuint handle;
@@ -541,8 +565,12 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+	// Rows may be longer than the pixels need
+	GLint rowLength = (GLint)(stride / bytesPerPixel);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
 	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -555,10 +583,11 @@ static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const
 	return(handle);
 }
 
-static void ClearPictureData(ViewPicture* viewPicture, bool noTextures) {
+// Frees the decoded pixels through the loader that owns them. Load threads pass noTextures, textures belong to the main thread.
+static void ClearPictureData(ImageLoaderRegistry* registry, ViewPicture* viewPicture, bool noTextures) {
 	ImageData* image = &viewPicture->image;
-	if (image->data != fpl_null) {
-		stbi_image_free(image->data);
+	if (image->pixels.pixels != fpl_null) {
+		ImageLoaderRegistryReleasePixels(registry, image->loaderEntry, &image->pixels);
 	}
 	if (!noTextures) {
 		if (image->textureId > 0) {
@@ -566,6 +595,7 @@ static void ClearPictureData(ViewPicture* viewPicture, bool noTextures) {
 		}
 	}
 	fplClearStruct(image);
+	image->loaderEntry = -1;
 }
 
 // Main thread only, releases the textures as well
@@ -573,60 +603,29 @@ static void ClearViewPictures(ViewerState* state) {
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		state->viewPictures[i].state = LoadedPictureState_Unloaded;
 		state->viewPictures[i].progress = 0.0f;
-		ClearPictureData(&state->viewPictures[i], false);
+		ClearPictureData(&state->loaderRegistry, &state->viewPictures[i], false);
 		ResampleResultRelease(&state->viewPictures[i].thumbnail);
 	}
 }
 
-static void UpdateStreamProgress(ViewPicture* pic) {
-	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size > 0) {
-		pic->progress = pos / (float)pic->fileStream.size;
+// Reads one file through the loader registry: the loader chosen with the L key alone, otherwise the selected candidates with fallback.
+// Used by the load threads and by --decode-all.
+static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, volatile float* progress, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
+	ImageFileSource fileSource;
+	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, progress)) {
+		fplStringFormat(message, messageSize, "file cannot be opened");
+		return(ImageLoadResult_Corrupt);
 	}
-}
-
-int ReadPictureStreamCallback(void* user, char* data, int size) {
-	// fill 'data' with 'size' bytes.  return number of bytes actually read
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	ViewPicture* pic = ctx->viewPic;
-	if (ctx->canceled) {
-		return -1;
-	}
-	fplAssert(size >= 0);
-	uint32_t readBytes = fplFileReadBlock32(&pic->fileStream.handle, (uint32_t)size, (void*)data, (uint32_t)size);
-	UpdateStreamProgress(pic);
-	return (int)readBytes;
-}
-void SkipPictureStreamCallback(void* user, int n) {
-	// skip the next 'n' bytes, or 'unget' the last -n bytes if negative
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	if (ctx->canceled) {
-		return;
-	}
-	ViewPicture* pic = ctx->viewPic;
-	fplFileSetPosition32(&pic->fileStream.handle, n, fplFilePositionMode_Current);
-	UpdateStreamProgress(pic);
-}
-int EofPictureStreamCallback(void* user) {
-	// returns nonzero if we are at end of file/data
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	ViewPicture* pic = ctx->viewPic;
-	if (ctx->canceled) {
-		return 1;
-	}
-	int res = 0;
-	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size == 0 || pos == pic->fileStream.size) {
-		res = 1;
-	}
-	return(res);
+	const char* extension = fplExtractFileExtension(filePath);
+	ImageLoadResult result = ImageLoaderRegistryLoad(registry, &fileSource.source, extension, forcedLoaderEntry, outLoaderEntry, outInfo, outPixels, message, messageSize);
+	ImageFileSourceClose(&fileSource);
+	return(result);
 }
 
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 	PictureLoadThread* loadThread = (PictureLoadThread*)data;
 	ViewerState* state = loadThread->state;
 	volatile LoadQueueValue valueToLoad = fplZeroInit;
-	volatile bool hasValue = false;
 	while (!loadThread->shutdown) {
 		// The wait must hold the mutex, the timeout catches a signal that came before the wait
 		fplMutexLock(&loadThread->mutex);
@@ -636,83 +635,59 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			break;
 		}
 
-		if (!hasValue) {
-			if (TryQueueDequeue(&state->loadQueue, &valueToLoad)) {
-				hasValue = true;
-			}
+		// A job that meets a cancel is dropped, a reload queues everything it needs again
+		if (!TryQueueDequeue(&state->loadQueue, &valueToLoad) || loadThread->context.canceled) {
+			continue;
+		}
+		fplAssert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
+		fplAssert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
+		ViewPicture* loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
+		const PictureFile* picFile = &state->pictureFiles[valueToLoad.fileIndex];
+
+		// Exactly one thread takes a free slot
+		bool isTakenFromUnloaded = fplAtomicIsCompareAndSwapS32(&loadedPic->state, LoadedPictureState_Unloaded, LoadedPictureState_LoadingData);
+		bool isTaken = isTakenFromUnloaded || fplAtomicIsCompareAndSwapS32(&loadedPic->state, LoadedPictureState_Error, LoadedPictureState_LoadingData);
+		if (!isTaken) {
+			continue;
 		}
 
-		if (hasValue) {
-			fplAssert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
-			fplAssert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
-			ViewPicture* loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
-			const PictureFile* picFile = &state->pictureFiles[valueToLoad.fileIndex];
+		// @TODO(final): This should not be neccesary, but in case there are left-overs...
+		ClearPictureData(&state->loaderRegistry, loadedPic, true);
+		fplAssert(loadedPic->image.textureId == 0);
+		loadedPic->progress = 0.0f;
+		loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
+		fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
+		fplClearStruct(&loadedPic->info);
+		loadThread->context.viewPic = loadedPic;
 
-			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
-			if (loadState == LoadedPictureState_Discard || loadThread->context.canceled || loadedPic->fileStream.handle.isValid) {
-				continue;
-			}
-			if (loadState == LoadedPictureState_Unloaded || loadState == LoadedPictureState_Error) {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
+		flogWrite("Load picture '%s' [%zu]", loadedPic->filePath, loadedPic->fileIndex);
+		PictureInfo info = fplZeroInit;
+		ImagePixels pixels = fplZeroInit;
+		int32_t loaderEntry = -1;
+		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, (volatile float*)&loadedPic->progress, &loaderEntry, &info, &pixels, message, sizeof(message));
+		bool isCanceled = loadThread->shutdown || loadThread->context.canceled;
+		if (result == ImageLoadResult_Success && isCanceled) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+			result = ImageLoadResult_Canceled;
+		}
 
-				// @TODO(final): This should not be neccesary, but in case there are left-overs...
-				ClearPictureData(loadedPic, true);
-
-				ImageData* image = &loadedPic->image;
-
-				fplAssert(!loadedPic->fileStream.handle.isValid);
-				fplAssert(image->data == fpl_null);
-				fplAssert(image->textureId == 0);
-				fplAssert(picFile->filePath != fpl_null);
-
-				loadedPic->progress = 0.0f;
-				loadedPic->fileStream.size = 0;
-				loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
-				fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
-				image->width = image->height = 0;
-				loadThread->context.viewPic = loadedPic;
-
-				int w = 0, h = 0, comp = 0;
-				uint8_t* decodedData = fpl_null;
-
-				flogWrite("Load picture stream '%s' [%zu]", loadedPic->filePath, loadedPic->fileIndex);
-				if (fplFileOpenBinary(loadedPic->filePath, &loadedPic->fileStream.handle)) {
-					loadedPic->fileStream.size = fplFileGetSizeFromHandle32(&loadedPic->fileStream.handle);
-					stbi_io_callbacks callbacks;
-					callbacks.read = ReadPictureStreamCallback;
-					callbacks.skip = SkipPictureStreamCallback;
-					callbacks.eof = EofPictureStreamCallback;
-					stbi_set_flip_vertically_on_load(0);
-					decodedData = stbi_load_from_callbacks(&callbacks, &loadThread->context, &w, &h, &comp, 4);
-					fplFileClose(&loadedPic->fileStream.handle);
-				}
-
-				if (loadThread->shutdown || loadThread->context.canceled) {
-					// Loading is canceled
-					if (decodedData != fpl_null) {
-						stbi_image_free(decodedData);
-						decodedData = fpl_null;
-					}
-				}
-				if (decodedData != fpl_null) {
-					// Loading was successful, mark it as ToUpload
-					flogWrite("Successfully loaded picture stream '%s' [%zu], Size (%d x %d)", loadedPic->filePath, loadedPic->fileIndex, w, h);
-
-					image->width = (uint32_t)w;
-					image->height = (uint32_t)h;
-					image->data = decodedData;
-					loadedPic->progress = 0.75f;
-
-					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
-				} else {
-					// Failed or canceled loading
-					bool isFailed = !(loadThread->shutdown || loadThread->context.canceled);
-					flogWrite("%s loaded picture stream '%s' [%zu], Size (%d x %d)", (isFailed ? "Failed" : "Canceled"), loadedPic->filePath, loadedPic->fileIndex, w, h);
-					loadedPic->progress = 1.0f;
-					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
-				}
-			}
-			hasValue = false;
+		if (result == ImageLoadResult_Success) {
+			const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, loaderEntry);
+			flogWrite("Loaded picture '%s' [%zu] with %s: %s %u x %u, %u bpp%s, orientation %d", loadedPic->filePath, loadedPic->fileIndex, loader->name, info.formatName, info.width, info.height, info.bitsPerPixel, (info.isPalette ? " palette" : ""), (int)info.orientation);
+			ImageData* image = &loadedPic->image;
+			image->pixels = pixels;
+			image->loaderEntry = loaderEntry;
+			image->width = pixels.width;
+			image->height = pixels.height;
+			loadedPic->info = info;
+			loadedPic->progress = 0.75f;
+			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
+		} else {
+			const char* resultName = ImageLoadResultGetName(result);
+			flogWrite("%s picture '%s' [%zu]: %s (%s)", (isCanceled ? "Canceled" : "Failed"), loadedPic->filePath, loadedPic->fileIndex, resultName, message);
+			loadedPic->progress = 1.0f;
+			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
 		}
 	}
 }
@@ -806,6 +781,13 @@ static void QueueUpPictures(ViewerState* state) {
 	}
 }
 
+// Size as displayed: turned by the EXIF orientation
+static ViewSize GetDisplayedPictureSize(const ViewPicture* picture) {
+	ViewSize storedSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+	ViewSize result = ComputeViewOrientedSize((uint32_t)picture->info.orientation, storedSize);
+	return(result);
+}
+
 // Transform of the active picture in the current viewport, false while the picture is not ready
 static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTransform) {
 	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
@@ -817,7 +799,7 @@ static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTran
 	if (pictureState != LoadedPictureState_Ready) {
 		return(false);
 	}
-	ViewSize pictureSize = fplStructInit(ViewSize, activePicture->image.width, activePicture->image.height);
+	ViewSize pictureSize = GetDisplayedPictureSize(activePicture);
 	*outTransform = ComputeViewTransform(&state->view, pictureSize, state->viewportSize);
 	return(true);
 }
@@ -854,10 +836,22 @@ static void UpdateWindowTitle(ViewerState* state) {
 		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s", downArrow, downDefinition->name, upArrow, upDefinition->name);
 	}
 
+	// The loader that read the active picture, once it is shown
+	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	bool hasActivePicture = state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (hasActivePicture) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+		const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, activePicture->image.loaderEntry);
+		if (pictureState == LoadedPictureState_Ready && loader != fpl_null) {
+			fplStringFormat(loaderText, fplArrayCount(loaderText), " | %s", loader->name);
+		}
+	}
+
 	char titleBuffer[FPL_MAX_BUFFER_LENGTH];
 	if (state->activeFileIndex > -1) {
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s | %s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, backgroundDefinition->name);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s | %s%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, backgroundDefinition->name, loaderText);
 	} else {
 		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
@@ -1007,6 +1001,12 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* downFilterValue = MatchLongParameter(argument, "--down-filter");
 			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
 			const char* backgroundValue = MatchLongParameter(argument, "--background");
+			const char* loaderValue = MatchLongParameter(argument, "--loader");
+			const char* loaderForValue = MatchLongParameter(argument, "--loader-for");
+			const char* loaderOrderValue = MatchLongParameter(argument, "--loader-order");
+			const char* noLoaderFallbackValue = MatchLongParameter(argument, "--no-loader-fallback");
+			const char* listLoadersValue = MatchLongParameter(argument, "--list-loaders");
+			const char* decodeAllValue = MatchLongParameter(argument, "--decode-all");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1026,6 +1026,26 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = ParseFilterValue(upFilterValue, false, &params->upKernel);
 			} else if (backgroundValue != fpl_null) {
 				isValid = ResampleFindBackground(backgroundValue, &params->background);
+			} else if (loaderValue != fpl_null) {
+				params->loaderValue = loaderValue;
+				isValid = *loaderValue != 0;
+			} else if (loaderForValue != fpl_null) {
+				isValid = *loaderForValue != 0 && params->loaderForCount < fplArrayCount(params->loaderForValues);
+				if (isValid) {
+					params->loaderForValues[params->loaderForCount++] = loaderForValue;
+				}
+			} else if (loaderOrderValue != fpl_null) {
+				params->loaderOrderValue = loaderOrderValue;
+				isValid = *loaderOrderValue != 0;
+			} else if (noLoaderFallbackValue != fpl_null) {
+				params->isLoaderFallbackDisabled = true;
+				isValid = *noLoaderFallbackValue == 0;
+			} else if (listLoadersValue != fpl_null) {
+				params->listLoaders = true;
+				isValid = *listLoadersValue == 0;
+			} else if (decodeAllValue != fpl_null) {
+				params->decodeAllPath = decodeAllValue;
+				isValid = *decodeAllValue != 0;
 			} else {
 				isValid = false;
 			}
@@ -1061,6 +1081,200 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 		return(false);
 	}
 	return(true);
+}
+
+static void LogLoaderMessage(const char* message) {
+	flogWrite("%s", message);
+}
+
+// stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned
+static bool RegisterLoaders(ImageLoaderRegistry* registry) {
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet() };
+	ImageLoaderRegistryInit(registry);
+	registry->log = LogLoaderMessage;
+	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
+		char message[IMAGE_LOADER_MESSAGE_SIZE];
+		if (!ImageLoaderRegistryAdd(registry, loaders[loaderIndex], message, sizeof(message))) {
+			fplConsoleFormatError("Failed to register loader '%s': %s\n", loaders[loaderIndex]->name, message);
+			return(false);
+		}
+	}
+	return(true);
+}
+
+static void ReportLoaderParameterError(const char* parameter, const char* message) {
+	fplConsoleFormatError("Invalid parameter '%s': %s\n", parameter, message);
+	flogWrite("Invalid parameter '%s': %s", parameter, message);
+}
+
+// Applies --loader-order, --loader, --loader-for and --no-loader-fallback; an unknown id or an ambiguous name is an error
+static bool ApplyLoaderParameters(ImageLoaderRegistry* registry, const ViewerParameters* params) {
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+	if (params->loaderOrderValue != fpl_null) {
+		char buffer[FPL_MAX_BUFFER_LENGTH];
+		fplCopyString(params->loaderOrderValue, buffer, fplArrayCount(buffer));
+		int32_t entries[IMAGE_LOADER_MAX_COUNT];
+		uint32_t entryCount = 0;
+		for (char* token = strtok(buffer, ","); token != fpl_null; token = strtok(fpl_null, ",")) {
+			int32_t entry = ImageLoaderRegistryFind(registry, token, message, sizeof(message));
+			if (entry < 0 || entryCount >= fplArrayCount(entries)) {
+				ReportLoaderParameterError(params->loaderOrderValue, message);
+				return(false);
+			}
+			entries[entryCount++] = entry;
+		}
+		if (!ImageLoaderRegistrySetOrder(registry, entries, entryCount)) {
+			ReportLoaderParameterError(params->loaderOrderValue, "a loader is named twice");
+			return(false);
+		}
+	}
+	if (params->loaderValue != fpl_null) {
+		int32_t entry = ImageLoaderRegistryFind(registry, params->loaderValue, message, sizeof(message));
+		if (entry < 0) {
+			ReportLoaderParameterError(params->loaderValue, message);
+			return(false);
+		}
+		ImageLoaderRegistryPinGlobal(registry, entry);
+	}
+	for (uint32_t pinIndex = 0; pinIndex < params->loaderForCount; ++pinIndex) {
+		const char* value = params->loaderForValues[pinIndex];
+		const char* separator = strchr(value, ':');
+		if (separator == fpl_null || separator == value) {
+			ReportLoaderParameterError(value, "expected <extension>:<loader id or name>");
+			return(false);
+		}
+		char extension[IMAGE_LOADER_MAX_EXTENSION_LENGTH];
+		size_t extensionLength = (size_t)(separator - value);
+		if (extensionLength >= fplArrayCount(extension)) {
+			ReportLoaderParameterError(value, "extension too long");
+			return(false);
+		}
+		fplCopyStringLen(value, extensionLength, extension, fplArrayCount(extension));
+		int32_t entry = ImageLoaderRegistryFind(registry, separator + 1, message, sizeof(message));
+		if (entry < 0 || !ImageLoaderRegistryPinExtension(registry, extension, entry)) {
+			ReportLoaderParameterError(value, entry < 0 ? message : "too many extension pins");
+			return(false);
+		}
+	}
+	registry->isFallbackEnabled = !params->isLoaderFallbackDisabled;
+	return(true);
+}
+
+// --list-loaders: one line per loader in selection order, then the pins
+static void PrintLoaders(const ImageLoaderRegistry* registry) {
+	fplConsoleFormatOut("Loaders in selection order, the first one is the default:\n");
+	for (uint32_t orderIndex = 0; orderIndex < registry->count; ++orderIndex) {
+		int32_t entry = registry->order[orderIndex];
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, entry);
+		char idText[IMAGE_LOADER_ID_TEXT_SIZE];
+		ImageLoaderIdFormat(&loader->id, idText, sizeof(idText));
+		char extensions[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+		for (const char* const* extension = loader->fileExtensions; *extension != fpl_null; ++extension) {
+			fplStringAppend(*extension, extensions, fplArrayCount(extensions));
+			fplStringAppend(" ", extensions, fplArrayCount(extensions));
+		}
+		const char* threadText = (loader->flags & ImageLoaderFlags_NotThreadSafe) ? "serialized" : "thread-safe";
+		fplConsoleFormatOut("  %u. %-14s %-5s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
+	}
+	if (registry->globalPinIndex >= 0) {
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->globalPinIndex);
+		fplConsoleFormatOut("Pinned for all files: %s\n", loader->name);
+	}
+	for (uint32_t pinIndex = 0; pinIndex < registry->extensionPinCount; ++pinIndex) {
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->extensionPins[pinIndex].entryIndex);
+		fplConsoleFormatOut("Pinned for %s: %s\n", registry->extensionPins[pinIndex].extension, loader->name);
+	}
+	fplConsoleFormatOut("Fallback to the next loader: %s\n", registry->isFallbackEnabled ? "on" : "off");
+}
+
+typedef struct DecodeAllResult {
+	ImageLoadResult result;
+	int32_t loaderEntry;
+	double milliseconds;
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+} DecodeAllResult;
+
+typedef struct DecodeAllJob {
+	ViewerState* state;
+	DecodeAllResult* results;
+	volatile int32_t nextFileIndex;
+} DecodeAllJob;
+
+static void DecodeAllThreadProc(const fplThreadHandle* thread, void* data) {
+	const double millisecondsPerSecond = 1000.0;
+	DecodeAllJob* job = (DecodeAllJob*)data;
+	ViewerState* state = job->state;
+	while (true) {
+		int32_t fileIndex = fplAtomicFetchAndAddS32(&job->nextFileIndex, 1);
+		if (fileIndex >= (int32_t)state->pictureFileCount) {
+			break;
+		}
+		DecodeAllResult* result = &job->results[fileIndex];
+		PictureInfo info;
+		ImagePixels pixels = fplZeroInit;
+		fplTimestamp start = fplTimestampQuery();
+		result->loaderEntry = -1;
+		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
+		fplTimestamp finish = fplTimestampQuery();
+		result->milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+		if (result->result == ImageLoadResult_Success) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, result->loaderEntry, &pixels);
+		}
+	}
+}
+
+// --decode-all: decodes every picture of the folder with the loader threads, without window and GL, and reports errors and time per loader
+static int DecodeAllPictures(ViewerState* state, const char* folderPath) {
+	const double millisecondsPerSecond = 1000.0;
+	const uint32_t largestListedFailures = 20;
+	if (!fplDirectoryExists(folderPath)) {
+		fplConsoleFormatError("Folder '%s' does not exist\n", folderPath);
+		return(1);
+	}
+	AddPicturesFromPath(state, folderPath, state->params.recursive);
+	size_t fileCount = state->pictureFileCount;
+	DecodeAllJob job = fplZeroInit;
+	job.state = state;
+	job.results = (DecodeAllResult*)calloc(fileCount > 0 ? fileCount : 1, sizeof(DecodeAllResult));
+	size_t threadCount = fplMax(fplMin(state->params.threadCount, (size_t)MAX_LOAD_THREAD_COUNT), (size_t)1);
+	fplThreadHandle* threads[MAX_LOAD_THREAD_COUNT];
+	fplTimestamp start = fplTimestampQuery();
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		threads[threadIndex] = fplThreadCreate(DecodeAllThreadProc, &job);
+	}
+	fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle*), FPL_TIMEOUT_INFINITE);
+	fplTimestamp finish = fplTimestampQuery();
+	double wallMilliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+
+	uint32_t failureCount = 0;
+	uint32_t loaderFileCounts[IMAGE_LOADER_MAX_COUNT] = fplZeroInit;
+	double loaderMilliseconds[IMAGE_LOADER_MAX_COUNT] = fplZeroInit;
+	for (size_t fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
+		const DecodeAllResult* result = &job.results[fileIndex];
+		if (result->result == ImageLoadResult_Success) {
+			++loaderFileCounts[result->loaderEntry];
+			loaderMilliseconds[result->loaderEntry] += result->milliseconds;
+		} else {
+			if (failureCount < largestListedFailures) {
+				const char* resultName = ImageLoadResultGetName(result->result);
+				fplConsoleFormatOut("FAILED %s: %s (%s)\n", state->pictureFiles[fileIndex].filePath, resultName, result->message);
+			}
+			++failureCount;
+		}
+	}
+	fplConsoleFormatOut("Decoded %zu files with %zu threads in %.0f ms, %u failed\n", fileCount, threadCount, wallMilliseconds, failureCount);
+	for (uint32_t entry = 0; entry < state->loaderRegistry.count; ++entry) {
+		if (loaderFileCounts[entry] == 0) {
+			continue;
+		}
+		const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, entry);
+		double averageMilliseconds = loaderMilliseconds[entry] / (double)loaderFileCounts[entry];
+		fplConsoleFormatOut("  %-14s %u files, %.1f ms per file on average\n", loader->name, loaderFileCounts[entry], averageMilliseconds);
+	}
+	flogWrite("Decode all '%s': %zu files, %u failed, %.0f ms", folderPath, fileCount, failureCount, wallMilliseconds);
+	free(job.results);
+	int result = failureCount == 0 ? 0 : 1;
+	return(result);
 }
 
 size_t RoundToPowerOfTwo(size_t v) {
@@ -1190,7 +1404,7 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 		result = state->pictureFileCount > 0;
 		*startIndex = 0;
 	} else if (fplFileExists(path)) {
-		if (IsPictureFile(path)) {
+		if (IsPictureFile(state, path)) {
 			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
 			AddPicturesFromPath(state, state->rootPath, recursive);
 			if (!FindPictureIndexByPath(state, path, startIndex)) {
@@ -1381,13 +1595,12 @@ static bool UpdatePictures(ViewerState* state) {
 				ReleaseTexture(&image->textureId);
 			}
 			ResampleResultRelease(&loadedPic->thumbnail);
-			fplAssert(image->data != fpl_null);
+			fplAssert(image->pixels.pixels != fpl_null);
 			fplAssert(image->width > 0 && image->height > 0);
 
 			fplDebugFormatOut("Allocate texture '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
-			image->textureId = AllocateTexture(image->width, image->height, image->data, state->features.srgbFrameBuffer);
-			stbi_image_free(image->data);
-			image->data = fpl_null;
+			image->textureId = AllocateTexture(image->width, image->height, image->pixels.stride, image->pixels.pixels, state->features.srgbFrameBuffer);
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, image->loaderEntry, &image->pixels);
 			loadedPic->uploadSerial = ++state->nextUploadSerial;
 
 			LoadedPictureState uploadedState = image->textureId > 0 ? LoadedPictureState_Ready : LoadedPictureState_Error;
@@ -1469,8 +1682,17 @@ static bool UpdatePictureResult(ViewerState* state, const ViewPicture* picture, 
 	ResampleRequest request = fplZeroInit;
 	request.sourceTexture = picture->image.textureId;
 	request.sourceSerial = picture->uploadSerial;
-	request.sourceWidth = picture->image.width;
-	request.sourceHeight = picture->image.height;
+	ViewSize storedSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+	ViewSize displayedSize = GetDisplayedPictureSize(picture);
+	ViewOrientationMapping mapping = ComputeViewOrientationMapping((uint32_t)picture->info.orientation, storedSize);
+	request.sourceWidth = displayedSize.width;
+	request.sourceHeight = displayedSize.height;
+	request.axisMapping.originX = mapping.originX;
+	request.axisMapping.originY = mapping.originY;
+	request.axisMapping.stepUX = mapping.stepUX;
+	request.axisMapping.stepUY = mapping.stepUY;
+	request.axisMapping.stepVX = mapping.stepVX;
+	request.axisMapping.stepVY = mapping.stepVY;
 	request.kernel = GetKernelForTransform(state, transform);
 	request.scaleX = transform->scaleX;
 	request.scaleY = transform->scaleY;
@@ -1514,7 +1736,7 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) 
 		if (loadState == LoadedPictureState_Ready) {
 			if (blockSize >= minimumPictureBlockSize) {
 				// Fitted into the block with the resample pipeline, computed once per picture and block size
-				ViewSize pictureSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+				ViewSize pictureSize = GetDisplayedPictureSize(picture);
 				ViewTransform transform = ComputeViewTransform(&fitView, pictureSize, blockPixelSize);
 				UpdatePictureResult(state, picture, &transform, transform.imageRect, &picture->thumbnail, fpl_null);
 				ResampleCompositeParameters composite = fplZeroInit;
@@ -1617,6 +1839,61 @@ static void LogResampleTimer(ViewerState* state) {
 	if (ResamplePollTimer(&state->pipeline, &label, &horizontalMilliseconds, &verticalMilliseconds)) {
 		flogWrite("Resample %s: horizontal %.3f ms, vertical %.3f ms", label, horizontalMilliseconds, verticalMilliseconds);
 	}
+}
+
+// Reads a view picture again, main thread only: the texture goes at once and the slot is queued like on the first load
+static void ReloadViewPicture(ViewerState* state, const int pictureIndex) {
+	ViewPicture* picture = &state->viewPictures[pictureIndex];
+	ClearPictureData(&state->loaderRegistry, picture, false);
+	ResampleResultRelease(&picture->thumbnail);
+	picture->progress = 0.0f;
+	fplAtomicStoreS32(&picture->state, LoadedPictureState_Unloaded);
+	LoadQueueValue value;
+	value.fileIndex = (int)picture->fileIndex;
+	value.pictureIndex = pictureIndex;
+	TryQueueEnqueue(&state->loadQueue, value);
+	for (size_t threadIndex = 0; threadIndex < state->loadThreadCount; ++threadIndex) {
+		fplConditionSignal(&state->loadThreads[threadIndex].condition);
+	}
+}
+
+// L: reads the active picture again with the next loader that recognizes the file, so two loaders can be compared on the same file
+static void SwitchActivePictureLoader(ViewerState* state) {
+	bool hasActivePicture = state->activeFileIndex > -1 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return;
+	}
+	ViewPicture* picture = &state->viewPictures[state->viewPictureIndex];
+	LoadedPictureState pictureState = fplAtomicLoadS32(&picture->state);
+	if (pictureState != LoadedPictureState_Ready && pictureState != LoadedPictureState_Error) {
+		return;
+	}
+	PictureFile* file = &state->pictureFiles[picture->fileIndex];
+
+	int32_t candidates[IMAGE_LOADER_MAX_COUNT];
+	uint32_t candidateCount = 0;
+	ImageFileSource fileSource;
+	if (ImageFileSourceOpen(&fileSource, file->filePath, fpl_null, fpl_null)) {
+		const char* extension = fplExtractFileExtension(file->filePath);
+		candidateCount = ImageLoaderRegistrySelectForSource(&state->loaderRegistry, &fileSource.source, extension, true, candidates, IMAGE_LOADER_MAX_COUNT);
+		ImageFileSourceClose(&fileSource);
+	}
+	if (candidateCount < 2) {
+		flogWrite("No other loader recognizes '%s'", file->filePath);
+		return;
+	}
+
+	int32_t currentEntry = pictureState == LoadedPictureState_Ready ? picture->image.loaderEntry : file->forcedLoaderEntry;
+	uint32_t nextIndex = 0;
+	for (uint32_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex) {
+		if (candidates[candidateIndex] == currentEntry) {
+			nextIndex = (candidateIndex + 1) % candidateCount;
+		}
+	}
+	file->forcedLoaderEntry = candidates[nextIndex];
+	const ImageLoader* nextLoader = ImageLoaderRegistryGet(&state->loaderRegistry, file->forcedLoaderEntry);
+	flogWrite("Read '%s' again with loader %s", file->filePath, nextLoader->name);
+	ReloadViewPicture(state, state->viewPictureIndex);
 }
 
 // Steps the kernel of the direction that is in effect, the down kernel while no picture is shown
@@ -1841,6 +2118,31 @@ int main(int argc, char** argv) {
 		return(selfTestResult);
 	}
 
+	if (!RegisterLoaders(&state->loaderRegistry) || !ApplyLoaderParameters(&state->loaderRegistry, &state->params)) {
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(RenderToFileResult_InvalidParameters);
+	}
+
+	// Modes without window
+	if (state->params.listLoaders) {
+		PrintLoaders(&state->loaderRegistry);
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(0);
+	}
+	if (state->params.decodeAllPath != fpl_null) {
+		int decodeResult = 1;
+		if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			decodeResult = DecodeAllPictures(state, state->params.decodeAllPath);
+			ClearPictureFiles(state);
+			fplPlatformRelease();
+		}
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(decodeResult);
+	}
+
 	const bool isRenderToFile = state->params.renderToFilePath != fpl_null;
 	if (isRenderToFile) {
 		// Nothing but the picture itself goes into the file
@@ -2009,6 +2311,8 @@ int main(int argc, char** argv) {
 										state->params.preview = !state->params.preview;
 									} else if (ev.keyboard.mappedKey == fplKey_R) {
 										ChangeViewPicture(state, 0, true);
+									} else if (ev.keyboard.mappedKey == fplKey_L) {
+										SwitchActivePictureLoader(state);
 									} else if (ev.keyboard.mappedKey == fplKey_B) {
 										int backgroundCount = (int)ResampleBackground_Count;
 										int nextBackground = ((int)state->background + 1) % backgroundCount;
@@ -2061,6 +2365,7 @@ int main(int argc, char** argv) {
 		fplPlatformRelease();
 	}
 
+	ImageLoaderRegistryRelease(&state->loaderRegistry);
 	fplMemoryFree(state);
 
 	if (icon16Data != fpl_null) {

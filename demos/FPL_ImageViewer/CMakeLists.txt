@@ -24,6 +24,10 @@ set(MY_HEADER_FILES
 	"shadersources.h"
 	"viewtransform.h"
 	"resamplepipeline.h"
+	"imageloader.h"
+	"imageloader_stb.h"
+	"imageloader_pnm.h"
+	"imageloader_bmp.h"
 	"selftest.h"
 	)
 
