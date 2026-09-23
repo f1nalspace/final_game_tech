@@ -231,6 +231,7 @@ SOFTWARE.
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
+	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
 
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
@@ -34274,7 +34275,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendDirectSoundIniti
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
-	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
+	FPL_LOG_INFO(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
 	fpl__AudioBackendDirectSoundRelease(context, backend); \
 	return ret; \
 } while (0)
@@ -34295,7 +34296,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendDirectSou
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
-	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
+	FPL_LOG_INFO(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
 	fpl__AudioBackendDirectSoundReleaseDevice(context, backend); \
 	return ret; \
 } while (0)
@@ -34975,7 +34976,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize
 	fplClearStruct(impl);
 
 	if (!fpl__LoadWasapiApi(&impl->api)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Failed to load WASAPI runtime API!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "Unable to load WASAPI runtime API!");
 		return(fplAudioResultType_ApiFailed);
 	}
 
@@ -34991,14 +34992,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize
 		impl->api.CoUninitialize();
 		impl->comInitialized = false;
 	} else if (hr != FPL__WASAPI_RPC_E_CHANGED_MODE) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
 
 	hr = impl->api.CoCreateInstance(&FPL__WASAPI_CLSID_MMDeviceEnumerator, fpl_null, CLSCTX_ALL, &FPL__WASAPI_IID_IMMDeviceEnumerator, (LPVOID *)&impl->enumerator);
 	if (FAILED(hr) || impl->enumerator == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
@@ -35330,7 +35331,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	(void)context;
 
 #define FPL__WASAPI_INIT_ERROR(ret, fmt, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
 		fpl__AudioBackendWasapiReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -35343,7 +35344,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	{
 		fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->id.wasapi, &impl->device, &impl->audioClient);
 		if (openRes != fplAudioResultType_Success) {
-			FPL__WASAPI_INIT_ERROR(openRes, "Failed to open WASAPI render endpoint!");
+			FPL__WASAPI_INIT_ERROR(openRes, "Unable to open WASAPI render endpoint!");
 		}
 	}
 
@@ -35518,7 +35519,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Event handle for the WASAPI buffer-available signal.
 	impl->bufferEvent = CreateEventW(fpl_null, FALSE, FALSE, fpl_null);
 	if (impl->bufferEvent == fpl_null) {
-		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI buffer event");
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to create WASAPI buffer event");
 	}
 	HRESULT hrEvt = impl->audioClient->lpVtbl->SetEventHandle(impl->audioClient, impl->bufferEvent);
 	if (FAILED(hrEvt)) {
@@ -35537,7 +35538,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Stop event: manual-reset, used to break the main loop.
 	impl->stopEvent = CreateEventW(fpl_null, TRUE, FALSE, fpl_null);
 	if (impl->stopEvent == fpl_null) {
-		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI stop event");
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to create WASAPI stop event");
 	}
 
 	// Translate the negotiated WAVEFORMATEX back into our format types.
@@ -36474,7 +36475,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 	fplAssert(impl != fpl_null);
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioBackendAlsaRelease(context, backend); \
 		return ret; \
 	} while (0)
@@ -36482,7 +36483,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 	// Load ALSA library
 	fpl__AlsaAudioApi *alsaApi = &impl->api;
 	if (!fpl__LoadAlsaApi(alsaApi)) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed loading ALSA api!");
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to load ALSA api!");
 	}
 
 	return fplAudioResultType_Success;
@@ -36560,7 +36561,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (pcmInfo != fpl_null) fpl__ReleaseTemporaryMemory(pcmInfo); \
 		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
 		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
-		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioBackendAlsaReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -36601,7 +36602,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 				fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
 				break;
 			} else {
-				FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed opening default PCM audio device '%s'!", defaultDeviceName);
+				FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, "Unable to open default PCM audio device '%s'!", defaultDeviceName);
 			}
 		}
 		if (!isDeviceOpen) {
@@ -36696,7 +36697,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	hardwareParams = (snd_pcm_hw_params_t *)fpl__AllocateTemporaryMemory(hardwareParamsSize, 8);
 	fplMemoryClear(hardwareParams, hardwareParamsSize);
 	if (alsaApi->snd_pcm_hw_params_any(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed getting hardware parameters from device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to get hardware parameters from device '%s'!", internalDeviceId);
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Successfully got hardware parameters from device '%s'", internalDeviceId);
 
@@ -36708,12 +36709,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
 			impl->isUsingMMap = true;
 		} else {
-			FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
+			FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, "Unable to set MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
 		}
 	}
 	if (!impl->isUsingMMap) {
 		if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting default access mode for device '%s'!", internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set default access mode for device '%s'!", internalDeviceId);
 		}
 	}
 
@@ -36760,7 +36761,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	}
 
 	if (alsaApi->snd_pcm_hw_params_set_format(impl->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), internalDeviceId);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -36769,7 +36770,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	//
 	unsigned int internalChannels = targetFormat->channels;
 	if (alsaApi->snd_pcm_hw_params_set_channels_near(impl->pcmDevice, hardwareParams, &internalChannels) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM channels '%lu' for device '%s'!", internalChannels, internalDeviceId);
 	}
 	internalFormat.channels = internalChannels;
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
@@ -36786,7 +36787,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	unsigned int actualSampleRate = targetFormat->sampleRate;
 	fplAssert(actualSampleRate > 0);
 	if (alsaApi->snd_pcm_hw_params_set_rate_near(impl->pcmDevice, hardwareParams, &actualSampleRate, 0) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM sample rate '%lu' for device '%s'!", actualSampleRate, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM sample rate '%lu' for device '%s'!", actualSampleRate, internalDeviceId);
 	}
 	internalFormat.sampleRate = actualSampleRate;
 
@@ -36801,7 +36802,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	}
 	fplAssert(actualBufferSize > 0);
 	if (alsaApi->snd_pcm_hw_params_set_buffer_size_near(impl->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set PCM buffer size '%lu' for device '%s'!", actualBufferSize, internalDeviceId);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
@@ -36815,7 +36816,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	uint32_t internalPeriods = targetFormat->periods;
 	int periodsDir = 0;
 	if (alsaApi->snd_pcm_hw_params_set_periods_near(impl->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set PCM periods '%lu' for device '%s'!", internalPeriods, internalDeviceId);
 	}
 	internalFormat.periods = internalPeriods;
 
@@ -36823,7 +36824,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Hardware parameters
 	//
 	if (alsaApi->snd_pcm_hw_params(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM hardware parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to install PCM hardware parameters for device '%s'!", internalDeviceId);
 	}
 
 	//
@@ -36833,27 +36834,27 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	softwareParams = (snd_pcm_sw_params_t *)fpl__AllocateTemporaryMemory(softwareParamsSize, 8);
 	fplMemoryClear(softwareParams, softwareParamsSize);
 	if (alsaApi->snd_pcm_sw_params_current(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to get software parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to get software parameters for device '%s'!", internalDeviceId);
 	}
 	snd_pcm_uframes_t minAvailableFrames = fpl__PrevPowerOfTwo(internalFormat.bufferSizeInFrames / internalFormat.periods);
 	if (alsaApi->snd_pcm_sw_params_set_avail_min(impl->pcmDevice, softwareParams, minAvailableFrames) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, internalDeviceId);
 	}
 	if (!impl->isUsingMMap) {
 		snd_pcm_uframes_t threshold = internalFormat.bufferSizeInFrames / internalFormat.periods;
 		if (alsaApi->snd_pcm_sw_params_set_start_threshold(impl->pcmDevice, softwareParams, threshold) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set start threshold of '%lu' for device '%s'!", threshold, internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set start threshold of '%lu' for device '%s'!", threshold, internalDeviceId);
 		}
 	}
 	if (alsaApi->snd_pcm_sw_params(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM software parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to install PCM software parameters for device '%s'!", internalDeviceId);
 	}
 
 	if (!impl->isUsingMMap) {
 		fplAssert(bufferSizeInBytes > 0);
 		impl->intermediaryBuffer = fpl__AllocateDynamicMemory(bufferSizeInBytes, 16);
 		if (impl->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to allocate intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, internalDeviceId);
 		}
 	}
 
@@ -37256,7 +37257,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	fplAssert(impl != fpl_null);
 
 #	define FPL__OSS_INIT_ERROR(ret, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_OSS, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_OSS, format, ## __VA_ARGS__); \
 		fpl__AudioBackendOssReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -37276,7 +37277,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_OSS, "Opening OSS audio device '%s'", devicePath);
 	int fd = open(devicePath, openFlags);
 	if (fd < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed to open OSS audio device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to open OSS audio device '%s' (errno %d)", devicePath, errno);
 	}
 	impl->fd = fd;
 
@@ -37290,7 +37291,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	// Query supported formats
 	int formatMask = 0;
 	if (ioctl(fd, SNDCTL_DSP_GETFMTS, &formatMask) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS format mask for device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to query OSS format mask for device '%s' (errno %d)", devicePath, errno);
 	}
 
 	// Pick a supported format. Prefer the caller-requested format, then walk a fallback list.
@@ -37362,12 +37363,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	}
 	int fragArg = (int)((periods << 16) | (fragExp & 0xFFFF));
 	if (ioctl(fd, SNDCTL_DSP_SETFRAGMENT, &fragArg) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to set OSS fragment (periods %lu, exp %lu) for device '%s' (errno %d)", periods, fragExp, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set OSS fragment (periods %lu, exp %lu) for device '%s' (errno %d)", periods, fragExp, devicePath, errno);
 	}
 
 	int setFormat = chosenFormat;
 	if (ioctl(fd, SNDCTL_DSP_SETFMT, &setFormat) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS format '%d' for device '%s' (errno %d)", chosenFormat, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS format '%d' for device '%s' (errno %d)", chosenFormat, devicePath, errno);
 	}
 	if (setFormat != chosenFormat) {
 		// Driver replaced our choice — accept whatever it picked if we can map it.
@@ -37382,7 +37383,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	int setChannels = (int)channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &setChannels) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS channels '%lu' for device '%s' (errno %d)", channels, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS channels '%lu' for device '%s' (errno %d)", channels, devicePath, errno);
 	}
 	channels = (uint32_t)setChannels;
 	frameBytes = sampleBytes * channels;
@@ -37391,14 +37392,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	int setRate = (int)sampleRate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &setRate) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS sample rate '%lu' for device '%s' (errno %d)", sampleRate, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS sample rate '%lu' for device '%s' (errno %d)", sampleRate, devicePath, errno);
 	}
 	internalFormat.sampleRate = (uint32_t)setRate;
 
 	// Query actual buffer layout. GETOSPACE reports current fragment count and size.
 	audio_buf_info bufInfo = fplZeroInit;
 	if (ioctl(fd, SNDCTL_DSP_GETOSPACE, &bufInfo) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS output buffer info for device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to query OSS output buffer info for device '%s' (errno %d)", devicePath, errno);
 	}
 	if (bufInfo.fragsize <= 0 || bufInfo.fragstotal <= 0 || frameBytes == 0) {
 		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "OSS reported invalid buffer geometry for device '%s' (fragsize=%d, fragstotal=%d)", devicePath, bufInfo.fragsize, bufInfo.fragstotal);
@@ -37414,7 +37415,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	uint32_t intermediarySize = (uint32_t)bufInfo.fragsize;
 	impl->intermediaryBuffer = fpl__AllocateDynamicMemory(intermediarySize, 16);
 	if (impl->intermediaryBuffer == fpl_null) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_OutOfMemory, "Failed allocating OSS intermediary buffer of '%lu' bytes for device '%s'", intermediarySize, devicePath);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_OutOfMemory, "Unable to allocate OSS intermediary buffer of '%lu' bytes for device '%s'", intermediarySize, devicePath);
 	}
 	impl->intermediaryBufferSize = intermediarySize;
 
@@ -38476,7 +38477,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitia
 	fplAssert(pulseAudioBackend != fpl_null);
 	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	if (!fpl__LoadPulseAudioApi(pulseAudioApi)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed loading PulseAudio api!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, "Unable to load PulseAudio api!");
 		return fplAudioResultType_ApiFailed;
 	}
 	return fplAudioResultType_Success;
@@ -38614,12 +38615,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	fplAssert(pulseAudioBackend != fpl_null);
 	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	if (pulseAudioApi->libHandle == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
 		return fplAudioResultType_ApiFailed;
 	}
 
 #	define FPL__PULSEAUDIO_INIT_ERROR(resultValue, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
 		fpl__AudioBackendPulseAudioReleaseDevice(context, backend); \
 		return resultValue; \
 	} while (0)
@@ -38646,14 +38647,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	// Create the threaded mainloop and start it. From this point callbacks can fire.
 	pulseAudioBackend->mainloop = pulseAudioApi->pa_threaded_mainloop_new();
 	if (pulseAudioBackend->mainloop == fpl_null) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio threaded mainloop!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create pulseaudio threaded mainloop!");
 	}
 	pulseAudioBackend->mainloopApi = pulseAudioApi->pa_threaded_mainloop_get_api(pulseAudioBackend->mainloop);
 	if (pulseAudioBackend->mainloopApi == fpl_null) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed getting pulseaudio mainloop api!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to get pulseaudio mainloop api!");
 	}
 	if (pulseAudioApi->pa_threaded_mainloop_start(pulseAudioBackend->mainloop) < 0) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting pulseaudio threaded mainloop!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to start pulseaudio threaded mainloop!");
 	}
 
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
@@ -38662,14 +38663,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioBackend->context = pulseAudioApi->pa_context_new(pulseAudioBackend->mainloopApi, pulseAudioBackend->applicationName);
 	if (pulseAudioBackend->context == fpl_null) {
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio context!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create pulseaudio context!");
 	}
 	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudioContextStateCallback, backend);
 	const char *pulseServerName = (fplGetStringLength(pulseAudioBackend->serverName) > 0) ? pulseAudioBackend->serverName : fpl_null;
 	if (pulseAudioApi->pa_context_connect(pulseAudioBackend->context, pulseServerName, PA_CONTEXT_NOFLAGS, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to connect pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	while (!pulseAudioBackend->isContextReady && !pulseAudioBackend->isContextFailed) {
 		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
@@ -38717,7 +38718,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	if (pulseAudioBackend->stream == fpl_null) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to create pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamStateCallback, backend);
 	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamWriteCallback, backend);
@@ -38741,7 +38742,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	if (pulseAudioApi->pa_stream_connect_playback(pulseAudioBackend->stream, requestedDeviceName, &bufferAttributes, streamFlags, fpl_null, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to connect pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	while (!pulseAudioBackend->isStreamReady && !pulseAudioBackend->isStreamFailed) {
 		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
@@ -39923,7 +39924,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitiali
 	fplAssert(pw != fpl_null);
 	fpl__PipeWireApi *api = &pw->api;
 	if (!fpl__LoadPipeWireApi(api)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed loading PipeWire api!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, "Unable to load PipeWire api!");
 		return fplAudioResultType_ApiFailed;
 	}
 	api->pw_init(fpl_null, fpl_null);
@@ -40114,12 +40115,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	fplAssert(pw != fpl_null);
 	fpl__PipeWireApi *api = &pw->api;
 	if (api->libHandle == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire api is not loaded!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire api is not loaded!");
 		return fplAudioResultType_ApiFailed;
 	}
 
 #	define FPL__PIPEWIRE_INIT_ERROR(resultValue, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, format, ## __VA_ARGS__); \
 		fpl__AudioBackendPipeWireReleaseDevice(context, backend); \
 		return resultValue; \
 	} while (0)
@@ -40150,26 +40151,26 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	// Create the threaded loop + context + core.
 	pw->threadLoop = api->pw_thread_loop_new("fpl-pw-playback", fpl_null);
 	if (pw->threadLoop == fpl_null) {
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire thread loop!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire thread loop!");
 	}
 
 	api->pw_thread_loop_lock(pw->threadLoop);
 
 	if (api->pw_thread_loop_start(pw->threadLoop) < 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting PipeWire thread loop!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to start PipeWire thread loop!");
 	}
 
 	pw->context = api->pw_context_new(api->pw_thread_loop_get_loop(pw->threadLoop), fpl_null, 0);
 	if (pw->context == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire context!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire context!");
 	}
 
 	pw->core = api->pw_context_connect(pw->context, fpl_null, 0);
 	if (pw->core == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting PipeWire context!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to connect PipeWire context!");
 	}
 
 	// Build the target sample format.
@@ -40191,7 +40192,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	pw_properties *props = api->pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", fpl_null);
 	if (props == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream properties!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire stream properties!");
 	}
 	api->pw_properties_set(props, PW_KEY_MEDIA_CATEGORY, "Playback");
 	api->pw_properties_set(props, PW_KEY_MEDIA_ROLE, mediaRole);
@@ -40209,7 +40210,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	if (pw->stream == fpl_null) {
 		api->pw_properties_free(props);
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire stream!");
 	}
 
 	fplClearStruct(&pw->streamListener);
@@ -40224,7 +40225,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	uint32_t podSize = fpl__PipeWireBuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
 	if (podSize == 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed building PipeWire format POD!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to build PipeWire format POD!");
 	}
 	const struct spa_pod *params[1];
 	params[0] = (const struct spa_pod *)podBuffer;
@@ -40232,7 +40233,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	uint32_t streamFlags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_INACTIVE;
 	if (api->pw_stream_connect(pw->stream, PW_DIRECTION_OUTPUT, PW_ID_ANY, streamFlags, params, 1) < 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting PipeWire playback stream!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to connect PipeWire playback stream!");
 	}
 
 	// Wait until the stream reaches PAUSED (because we passed INACTIVE) or errors out.
@@ -41059,6 +41060,11 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	// Because all backends share the same `backend` memory chunk, we fully init+release
 	// per attempt rather than holding multiple backends initialized simultaneously.
 	fplAudioResultType resultType = fplAudioResultType_NoBackendsFound;
+	// Every attempt only logs its reason as info, the last result of each backend goes into the error when no backend could be used at all
+	fplAudioResultType lastBackendResults[fplArrayCount(descriptors)];
+	for (size_t backendIndex = 0; backendIndex < fplArrayCount(lastBackendResults); ++backendIndex) {
+		lastBackendResults[backendIndex] = fplAudioResultType_NoBackendsFound;
+	}
 	bool probeSucceeded = false;
 	for (uint32_t tierIndex = 0; tierIndex < (uint32_t)fpl__AudioProbeTier_Count && !probeSucceeded; ++tierIndex) {
 		const fpl__AudioProbeTier tier = (fpl__AudioProbeTier)tierIndex;
@@ -41119,6 +41125,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				if (backendInitResult != fplAudioResultType_Success) {
 					descriptor->table.release(context, backend);
 					resultType = backendInitResult;
+					lastBackendResults[backendIndex] = backendInitResult;
 					continue;
 				}
 
@@ -41144,10 +41151,11 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				fplAudioResultType deviceResult = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &backend->internalDevice, &channelsMapping);
 				if (deviceResult != fplAudioResultType_Success) {
 					const char *resultErrorStr = fplGetAudioResultName(deviceResult);
-					FPL_LOG_WARN(FPL__MODULE_AUDIO, "Backend '%s' rejected settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backendName, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
+					FPL_LOG_INFO(FPL__MODULE_AUDIO, "Backend '%s' rejected settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backendName, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
 					descriptor->table.releaseDevice(context, backend);
 					descriptor->table.release(context, backend);
 					resultType = deviceResult;
+					lastBackendResults[backendIndex] = deviceResult;
 					continue;
 				}
 
@@ -41163,8 +41171,20 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	}
 
 	if (resultType != fplAudioResultType_Success) {
-		const char *resultErrorStr = fplGetAudioResultName(resultType);
-		FPL_LOG_ERROR(FPL__MODULE_AUDIO, "Either no backend was found or the specified audio format is not supported -> %s", resultErrorStr);
+		// e.g. "PipeWire -> ApiFailed, PulseAudio -> DeviceFailure, ALSA -> NoDeviceFound"
+		char backendSummary[512];
+		backendSummary[0] = 0;
+		const size_t maxSummaryLength = fplArrayCount(backendSummary) - 1;
+		size_t summaryLength = 0;
+		for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
+			const char *backendName = descriptors[backendIndex].header.idName.name;
+			const char *backendResultName = fplGetAudioResultName(lastBackendResults[backendIndex]);
+			const char *separator = (backendIndex > 0) ? ", " : "";
+			const size_t remainingSize = fplArrayCount(backendSummary) - summaryLength;
+			size_t entryLength = fplStringFormat(backendSummary + summaryLength, remainingSize, "%s%s -> %s", separator, backendName, backendResultName);
+			summaryLength = fplMin(summaryLength + entryLength, maxSummaryLength);
+		}
+		FPL_LOG_ERROR(FPL__MODULE_AUDIO, "No audio backend could be used, the specified audio format may not be supported: %s", backendSummary);
 		fpl__ReleaseAudio(audioState);
 		return resultType;
 	}
