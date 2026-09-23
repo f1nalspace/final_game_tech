@@ -533,6 +533,9 @@ static void TestHardware(void) {
 		ftMsg("\tAVX: %s\n", (cpuCaps.x86.hasAVX ? "yes" : "no"));
 		ftMsg("\tAVX2: %s\n", (cpuCaps.x86.hasAVX2 ? "yes" : "no"));
 		ftMsg("\tAVX512: %s\n", (cpuCaps.x86.hasAVX512 ? "yes" : "no"));
+		ftMsg("\tAVX512BW: %s\n", (cpuCaps.x86.hasAVX512BW ? "yes" : "no"));
+		ftMsg("\tAVX512VL: %s\n", (cpuCaps.x86.hasAVX512VL ? "yes" : "no"));
+		ftMsg("\tAVX512VBMI: %s\n", (cpuCaps.x86.hasAVX512VBMI ? "yes" : "no"));
 		ftMsg("\tFMA3: %s\n", (cpuCaps.x86.hasFMA3 ? "yes" : "no"));
 		ftMsg("\tEM64T: %s\n", (cpuCaps.x86.hasEM64T ? "yes" : "no"));
 		ftMsg("\tAES-NI: %s\n", (cpuCaps.x86.hasAES_NI ? "yes" : "no"));

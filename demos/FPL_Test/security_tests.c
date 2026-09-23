@@ -257,11 +257,88 @@ static void fsec__Path_ExtractFilePathLengthIsSizet(void) {
 	FSEC_ASSERT_EQ_SZ(out, 7);
 }
 
+// fplExtractFilePath keeps the separator of the root directory, a bare file name and an empty path both give an empty string
+static void fsec__Path_ExtractFilePathRootAndBareName(void) {
+	fsec__Banner("paths", "fplExtractFilePath keeps the root separator");
+	const char untouchedMarker = 'x';
+	const size_t rootPathLen = 1;
+	char rootFilePath[] = "/file.txt";
+	rootFilePath[0] = FPL_PATH_SEPARATOR;
+	char expectedRootPath[] = "/";
+	expectedRootPath[0] = FPL_PATH_SEPARATOR;
+	char dest[64];
+
+	memset(dest, untouchedMarker, sizeof(dest));
+	size_t rootLen = fplExtractFilePath(rootFilePath, dest, sizeof(dest));
+	FSEC_ASSERT_EQ_SZ(rootLen, rootPathLen);
+	FSEC_ASSERT_TRUE(fplIsStringEqual(dest, expectedRootPath));
+
+	memset(dest, untouchedMarker, sizeof(dest));
+	size_t bareNameLen = fplExtractFilePath("file.txt", dest, sizeof(dest));
+	FSEC_ASSERT_EQ_SZ(bareNameLen, 0);
+	FSEC_ASSERT_TRUE(dest[0] == 0);
+
+	memset(dest, untouchedMarker, sizeof(dest));
+	size_t emptyLen = fplExtractFilePath("", dest, sizeof(dest));
+	FSEC_ASSERT_EQ_SZ(emptyLen, 0);
+	FSEC_ASSERT_TRUE(dest[0] == 0);
+
+#if defined(FPL_PLATFORM_WINDOWS)
+	const char *driveRootFilePath = "C:\\file.txt";
+	const char *expectedDriveRootPath = "C:\\";
+	size_t expectedDriveRootLen = fplGetStringLength(expectedDriveRootPath);
+	size_t driveRootLen = fplExtractFilePath(driveRootFilePath, dest, sizeof(dest));
+	FSEC_ASSERT_EQ_SZ(driveRootLen, expectedDriveRootLen);
+	FSEC_ASSERT_TRUE(fplIsStringEqual(dest, expectedDriveRootPath));
+#endif
+}
+
+// fplPathCombine must not put a separator in front of the first non-empty path, an empty directory would turn "file.txt" into the absolute path "/file.txt"
+static void fsec__Path_CombineEmptyFirstPath(void) {
+	fsec__Banner("paths", "fplPathCombine with an empty first path");
+	const char *fileName = "file.txt";
+	size_t fileNameLen = fplGetStringLength(fileName);
+	char dest[64];
+
+	size_t combinedLen = fplPathCombine(dest, sizeof(dest), 2, "", fileName);
+	FSEC_ASSERT_EQ_SZ(combinedLen, fileNameLen);
+	FSEC_ASSERT_TRUE(fplIsStringEqual(dest, fileName));
+
+	const size_t dirSeparatorIndex = 3;
+	char expectedDirAndFile[] = "dir/file.txt";
+	expectedDirAndFile[dirSeparatorIndex] = FPL_PATH_SEPARATOR;
+	size_t expectedDirAndFileLen = fplGetStringLength(expectedDirAndFile);
+	size_t dirAndFileLen = fplPathCombine(dest, sizeof(dest), 3, "", "dir", fileName);
+	FSEC_ASSERT_EQ_SZ(dirAndFileLen, expectedDirAndFileLen);
+	FSEC_ASSERT_TRUE(fplIsStringEqual(dest, expectedDirAndFile));
+}
+
+static size_t fsec__CountDirectoryEntries(const char *path) {
+	size_t result = 0;
+	fplFileEntry entry = fplZeroInit;
+	for (bool hasEntry = fplDirectoryListBegin(path, "*", &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
+		++result;
+	}
+	fplDirectoryListEnd(&entry);
+	return(result);
+}
+
+// fplDirectoryListBegin with an empty path lists the working directory, just like "."
+static void fsec__Path_DirectoryListEmptyPathIsWorkingDirectory(void) {
+	fsec__Banner("paths", "fplDirectoryListBegin with an empty path");
+	size_t workingDirectoryCount = fsec__CountDirectoryEntries(".");
+	size_t emptyPathCount = fsec__CountDirectoryEntries("");
+	FSEC_ASSERT_EQ_SZ(emptyPathCount, workingDirectoryCount);
+}
+
 void FPLSecurityTests_Paths(void) {
 	fsec__Path_CombineNoDoubleSeparators();
 	fsec__Path_CombineBoundedDoesNotOverflow();
 	fsec__Path_NormalizeReturnsRequired();
 	fsec__Path_ExtractFilePathLengthIsSizet();
+	fsec__Path_ExtractFilePathRootAndBareName();
+	fsec__Path_CombineEmptyFirstPath();
+	fsec__Path_DirectoryListEmptyPathIsWorkingDirectory();
 }
 
 /* ===========================================================================
