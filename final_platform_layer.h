@@ -232,6 +232,7 @@ SOFTWARE.
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
 	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
+	- Fixed: [PipeWire] Audio initialization could hang forever when no PipeWire server was reachable, because stopping a thread loop right after starting it deadlocks inside libpipewire - the thread loop now waits until its thread has entered the loop (PipeWire 0.3.80 or newer)
 
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
@@ -39163,6 +39164,10 @@ typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(fpl__pw_func_pw_thread_loop_unl
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(fpl__pw_func_pw_thread_loop_wait);
 #define FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(name) void name(pw_thread_loop *threadLoop, bool waitForAccept)
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(fpl__pw_func_pw_thread_loop_signal);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_timed_wait(name) int name(pw_thread_loop *threadLoop, int waitMaxSeconds)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_timed_wait(fpl__pw_func_pw_thread_loop_timed_wait);
+#define FPL__PIPEWIRE_FUNC_pw_check_library_version(name) bool name(int major, int minor, int micro)
+typedef FPL__PIPEWIRE_FUNC_pw_check_library_version(fpl__pw_func_pw_check_library_version);
 #define FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(name) pw_loop *name(pw_thread_loop *threadLoop)
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(fpl__pw_func_pw_thread_loop_get_loop);
 
@@ -39228,6 +39233,10 @@ typedef struct {
 	fpl__pw_func_pw_thread_loop_unlock *pw_thread_loop_unlock;
 	fpl__pw_func_pw_thread_loop_wait *pw_thread_loop_wait;
 	fpl__pw_func_pw_thread_loop_signal *pw_thread_loop_signal;
+	// Optional, null when the library does not export it
+	fpl__pw_func_pw_thread_loop_timed_wait *pw_thread_loop_timed_wait;
+	// Optional, null for libraries older than ~0.3.80
+	fpl__pw_func_pw_check_library_version *pw_check_library_version;
 	fpl__pw_func_pw_thread_loop_get_loop *pw_thread_loop_get_loop;
 	fpl__pw_func_pw_context_new *pw_context_new;
 	fpl__pw_func_pw_context_destroy *pw_context_destroy;
@@ -39320,6 +39329,8 @@ fpl_internal bool fpl__LoadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_unlock, pw_thread_loop_unlock);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_wait, pw_thread_loop_wait);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_signal, pw_thread_loop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_timed_wait, pw_thread_loop_timed_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_check_library_version, pw_check_library_version);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_get_loop, pw_thread_loop_get_loop);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_new, pw_context_new);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_destroy, pw_context_destroy);
@@ -39943,6 +39954,56 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
 	return true;
 }
 
+// The thread-loop.start-signal property exists since PipeWire 0.3.80, older libraries ignore it and would never signal
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MAJOR 0
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MINOR 3
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MICRO 80
+// Longest time to wait for a started thread loop to enter its loop
+#define FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS 5
+
+fpl_internal bool fpl__PipeWireHasThreadLoopStartSignal(const fpl__PipeWireApi *api) {
+	if (api->pw_check_library_version == fpl_null) {
+		return false;
+	}
+	bool result = api->pw_check_library_version(FPL__PIPEWIRE_START_SIGNAL_MIN_MAJOR, FPL__PIPEWIRE_START_SIGNAL_MIN_MINOR, FPL__PIPEWIRE_START_SIGNAL_MIN_MICRO);
+	return result;
+}
+
+// Creates a thread loop that signals once its thread has entered the loop, when the library supports it (see fpl__PipeWireStartThreadLoop)
+fpl_internal pw_thread_loop *fpl__PipeWireNewThreadLoop(const fpl__PipeWireApi *api, const char *name) {
+	struct spa_dict_item startSignalItem;
+	startSignalItem.key = "thread-loop.start-signal";
+	startSignalItem.value = "true";
+	struct spa_dict startSignalProps;
+	startSignalProps.flags = 0;
+	startSignalProps.n_items = 1;
+	startSignalProps.items = &startSignalItem;
+	bool hasStartSignal = fpl__PipeWireHasThreadLoopStartSignal(api);
+	const struct spa_dict *props = hasStartSignal ? &startSignalProps : fpl_null;
+	pw_thread_loop *result = api->pw_thread_loop_new(name, props);
+	return result;
+}
+
+// Starts a thread loop created by fpl__PipeWireNewThreadLoop, the caller must hold the loop lock.
+// NOTE(final): pw_thread_loop_stop() deadlocks when it runs before the loop thread has entered its loop: pw_loop_invoke() then calls do_stop in the calling thread without waking the loop thread, which goes into its poll right after and never returns (seen with PipeWire 1.6.8 when a connect fails and the loop is stopped right away). So this waits for the start signal - the loop thread can only send it once the caller waits, because entering the loop takes the same lock.
+fpl_internal bool fpl__PipeWireStartThreadLoop(const fpl__PipeWireApi *api, pw_thread_loop *loop) {
+	if (api->pw_thread_loop_start(loop) < 0) {
+		return false;
+	}
+	bool hasStartSignal = fpl__PipeWireHasThreadLoopStartSignal(api);
+	if (hasStartSignal) {
+		if (api->pw_thread_loop_timed_wait != fpl_null) {
+			int waitResult = api->pw_thread_loop_timed_wait(loop, FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS);
+			if (waitResult != 0) {
+				FPL_LOG_WARN(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire thread loop did not signal its start within %d seconds", FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS);
+			}
+		} else {
+			api->pw_thread_loop_wait(loop);
+		}
+	}
+	return true;
+}
+
 // Runs a one-shot registry enumeration using the caller-prepared enumState (deviceInfos buffer, maxDeviceCount, optional targetId filter).
 // All thread-loop/context/registry state is local so the persistent playback state inside the backend is never touched.
 fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl__PipeWireEnumState *enumState) {
@@ -39953,7 +40014,7 @@ fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl_
 	struct spa_hook coreListener = fplZeroInit;
 	struct spa_hook registryListener = fplZeroInit;
 
-	pw_thread_loop *loop = api->pw_thread_loop_new("fpl-pw-enum", fpl_null);
+	pw_thread_loop *loop = fpl__PipeWireNewThreadLoop(api, "fpl-pw-enum");
 	if (loop == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire thread loop for device enumeration!");
 		return false;
@@ -39965,14 +40026,15 @@ fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl_
 	pw_registry *registry = fpl_null;
 	bool started = false;
 
-	if (api->pw_thread_loop_start(loop) < 0) {
+	api->pw_thread_loop_lock(loop);
+
+	if (!fpl__PipeWireStartThreadLoop(api, loop)) {
+		api->pw_thread_loop_unlock(loop);
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
 		api->pw_thread_loop_destroy(loop);
 		return false;
 	}
 	started = true;
-
-	api->pw_thread_loop_lock(loop);
 
 	do {
 		ctx = api->pw_context_new(api->pw_thread_loop_get_loop(loop), fpl_null, 0);
@@ -40149,14 +40211,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	pw->frameSize = 0;
 
 	// Create the threaded loop + context + core.
-	pw->threadLoop = api->pw_thread_loop_new("fpl-pw-playback", fpl_null);
+	pw->threadLoop = fpl__PipeWireNewThreadLoop(api, "fpl-pw-playback");
 	if (pw->threadLoop == fpl_null) {
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire thread loop!");
 	}
 
 	api->pw_thread_loop_lock(pw->threadLoop);
 
-	if (api->pw_thread_loop_start(pw->threadLoop) < 0) {
+	if (!fpl__PipeWireStartThreadLoop(api, pw->threadLoop)) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
 		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to start PipeWire thread loop!");
 	}
