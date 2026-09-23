@@ -195,6 +195,8 @@ SOFTWARE.
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
+	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
+	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 
 	#### Process
 	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
@@ -12687,10 +12689,11 @@ typedef struct fpl__Win32WindowState {
 #endif
 
 // Little macros for loading a library and getting proc address for POSIX
+// NOTE(final): These run inside loops over several library candidates (e.g. libpthread.so, libpthread.so.0), so a failed candidate is only a hint - the caller reports an error when no candidate could be loaded at all.
 #define FPL__POSIX_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = dlopen(libName, FPL__POSIX_DL_LOADTYPE); \
 	if((target) == fpl_null) { \
-		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		FPL_LOG_INFO(mod, "Unable to load library '%s'", (libName)); \
 		break; \
 	}
 
@@ -12698,7 +12701,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)dlsym(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		FPL_LOG_INFO(mod, "Unable to get procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -32083,7 +32086,7 @@ fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char 
 			result = true;
 		} while (0);
 		if (result) {
-			FPL_LOG_DEBUG(FPL__MODULE_GLX, , "Successfully loaded GLX Api from Library '%s'", libName);
+			FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully loaded GLX Api from Library '%s'", libName);
 			break;
 		}
 		fpl__UnloadX11OpenGLApi(api);
