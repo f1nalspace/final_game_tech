@@ -31,6 +31,10 @@ waitSeconds=5
 pollIntervalSeconds=0.05
 # Time the demo gets to pump an input before the log is checked for something that must NOT be there
 settleSeconds=0.5
+# The self test starts one second after the focus and waits up to two seconds per target
+selfTestWaitSeconds=15
+# A position to the right of the window, in window coordinates, for leaving the window
+outsideOffsetX=700
 # A demo that dies of an X error is started again, see the X window id reuse race in plans/fpl_imageviewer_plan.md section 8
 maximumTestAttempts=3
 
@@ -44,7 +48,7 @@ windowSize="640x400"
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
-allTests=(mouse_move key_press_release focus_switch alt_tab_without_grab_switches no_stuck_alt_after_alt_tab)
+allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab)
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
@@ -121,6 +125,18 @@ Note() {
 
 LogLineCount() {
 	wc -l < "$1"
+}
+
+# Prints the line number of the first line after <mark> that matches the extended regular expression, nothing when there is none
+LineNumberOf() {
+	local logFile="$1"
+	local mark="$2"
+	local pattern="$3"
+	local relativeLine
+	relativeLine=$(tail -n +"$((mark + 1))" "$logFile" | grep -n -m1 -E -- "$pattern" | cut -d: -f1)
+	if [ -n "$relativeLine" ]; then
+		echo "$((mark + relativeLine))"
+	fi
 }
 
 # Waits until a line matching the extended regular expression shows up after line <mark>; prints the line
@@ -251,11 +267,65 @@ Test_mouse_move() {
 	ActivateDemo "$window" "$logFile" || return 1
 	mark=$(LogLineCount "$logFile")
 	xdotool mousemove --window "$window" 100 50
-	ExpectLogLine "$logFile" "$mark" "mouse move x=100 y=50$" || return 1
+	ExpectLogLine "$logFile" "$mark" "mouse move x=100 y=50 " || return 1
 	mark=$(LogLineCount "$logFile")
 	xdotool mousemove --window "$window" 300 200
-	ExpectLogLine "$logFile" "$mark" "mouse move x=300 y=200$" || return 1
+	ExpectLogLine "$logFile" "$mark" "mouse move x=300 y=200 " || return 1
 	StopDemo "$processId"
+	return 0
+}
+
+# A move inside the window carries the difference to the previous move
+Test_move_deltas() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" 100 50
+	ExpectLogLine "$logFile" "$mark" "mouse move x=100 y=50 " || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" 130 70
+	ExpectLogLine "$logFile" "$mark" "mouse move x=130 y=70 dx=30 dy=20$" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" 110 90
+	ExpectLogLine "$logFile" "$mark" "mouse move x=110 y=90 dx=-20 dy=20$" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# The first move after the cursor came back into the window has no delta, the way outside is not movement inside the window
+Test_no_delta_after_reenter() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" 100 50
+	ExpectLogLine "$logFile" "$mark" "mouse move x=100 y=50 " || return 1
+	# Outside of the window, to the right of it
+	xdotool mousemove --window "$window" "$((outsideOffsetX))" 50
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" 300 200
+	ExpectLogLine "$logFile" "$mark" "mouse move x=300 y=200 dx=0 dy=0$" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# The demo warps the cursor to the corners and the center and checks the move events and the screen positions itself
+Test_warp_selftest() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --selftest || return 1
+	local window="$demoWindow" logFile="$demoLog" resultLine
+	# A new window usually has the focus already, and the self test may be over before an activation could be confirmed, so the activation is not checked here
+	xdotool windowactivate "$window" > /dev/null 2>&1
+	resultLine=$(waitSeconds=$selfTestWaitSeconds WaitForLogLine "$logFile" 0 "selftest (pass|fail)")
+	if [ -z "$resultLine" ]; then
+		Fail "no self test result"
+		return 1
+	fi
+	if [[ "$resultLine" != *"selftest pass"* ]]; then
+		Fail "$(grep -m1 "result=fail" "$logFile" | cut -d' ' -f2-)"
+		return 1
+	fi
 	return 0
 }
 
@@ -286,6 +356,34 @@ Test_focus_switch() {
 	mark=$(LogLineCount "$logA")
 	ActivateDemo "$windowA" "$logA" || return 1
 	ExpectLogLine "$logA" "$mark" "window gotfocus" || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# A key that is still held when the window loses the focus gets its release before the lostfocus event
+Test_focus_loss_releases_keys() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark releaseLine lostFocusLine
+	ActivateDemo "$windowA" "$logA" || return 1
+	mark=$(LogLineCount "$logA")
+	xdotool keydown a
+	ExpectLogLine "$logA" "$mark" "key button state=press .* key=A " || { xdotool keyup a; return 1; }
+	ActivateDemo "$windowB" "$logB" || { xdotool keyup a; return 1; }
+	xdotool keyup a
+	ExpectLogLine "$logA" "$mark" "window lostfocus" || return 1
+	releaseLine=$(LineNumberOf "$logA" "$mark" "key button state=release .* key=A ")
+	lostFocusLine=$(LineNumberOf "$logA" "$mark" "window lostfocus")
+	if [ -z "$releaseLine" ]; then
+		Fail "no release of A in demo A"
+		return 1
+	fi
+	if [ "$releaseLine" -gt "$lostFocusLine" ]; then
+		Fail "the release of A came after lostfocus"
+		return 1
+	fi
 	StopDemo "$processA"
 	StopDemo "$processB"
 	return 0
@@ -326,6 +424,13 @@ Test_no_stuck_alt_after_alt_tab() {
 	mark=$(LogLineCount "$logA")
 	xdotool key alt+Tab
 	ExpectLogLine "$logA" "$mark" "window lostfocus" || return 1
+	local releaseLine lostFocusLine
+	releaseLine=$(LineNumberOf "$logA" "$mark" "key button state=release .* key=LeftAlt ")
+	lostFocusLine=$(LineNumberOf "$logA" "$mark" "window lostfocus")
+	if [ -z "$releaseLine" ] || [ "$releaseLine" -gt "$lostFocusLine" ]; then
+		Fail "Alt was not released before lostfocus"
+		return 1
+	fi
 	ActivateDemo "$windowA" "$logA" || return 1
 	mark=$(LogLineCount "$logA")
 	xdotool key alt

@@ -9,10 +9,19 @@ Description:
 	which the test scripts in the tests folder evaluate.
 
 	Hotkeys (like qemu, never logged as a normal key):
+	  Ctrl+Alt+G         Toggle the full grab (keyboard grab + relative mouse)
+	  Ctrl+Alt+M         Toggle the mouse grab
+	  Ctrl+Alt+R         Toggle the relative mouse mode
+	  Ctrl+Alt+K         Toggle the keyboard grab
+	  Ctrl+Alt+W         Warp the cursor to the window center
 	  Ctrl+Alt+Q         Quit
 
 	Parameters:
 	  --log-events         Write every event as one line to the standard output
+	  --mouse-grab         Request the mouse grab at the start
+	  --relative-mouse     Request the relative mouse mode at the start
+	  --keyboard-grab      Request the keyboard grab at the start
+	  --selftest           Warp the cursor to five positions and check the move events and the screen positions, the exit code is 1 when a check fails
 	  --timeout=<seconds>  Quit by itself after this time, the safety net for tests that grab the input
 	  --stall=<ms>         Sleep this long in every frame, simulates a main loop that pumps the events rarely
 	  --window=<w>x<h>     Inner size of the window (Default: 640x400)
@@ -21,7 +30,8 @@ Description:
 
 	Log format, one event per line:
 	  t=<ms since start> <category> <name> [key=value ...]
-	  e.g. "t=1520 key button state=press code=38 key=A mods=0x0" or "t=1733 mouse move x=100 y=50"
+	  e.g. "t=1520 key button state=press code=38 key=A mods=0x0" or "t=1733 mouse move x=100 y=50 dx=3 dy=-1"
+	  The self test lines ("selftest ...") are written even without --log-events.
 
 Requirements:
 	- C99 Compiler
@@ -33,6 +43,7 @@ Author:
 Changelog:
 	## 2026-09-24
 	- Initial version: event log, crosshair, focus border, timeout, stall
+	- Move deltas in the log, grab hotkeys and parameters, warp self test
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -80,6 +91,18 @@ static const uint32_t focusFrameUnfocusedColor = 0xFF5A5A5A;
 #define LOG_MESSAGE_CAPACITY 512
 #define TITLE_CAPACITY 256
 
+// Self test: four corners and the center
+#define SELF_TEST_TARGET_COUNT 5
+
+// The self test starts this long after the window got the focus, so a test script can place the window first
+static const fplMilliseconds selfTestStartDelayMilliseconds = 1000;
+// Without a focus event the self test starts anyway after this time, the warp itself needs no focus
+static const fplMilliseconds selfTestFocusFallbackMilliseconds = 2000;
+// Longest wait for the move event that follows one warp
+static const fplMilliseconds selfTestMoveTimeoutMilliseconds = 2000;
+// Distance of the corner targets from the edges of the client area
+static const int32_t selfTestEdgeMargin = 10;
+
 typedef struct DemoOptions {
 	char titlePrefix[TITLE_CAPACITY];
 	uint32_t windowWidth;
@@ -88,15 +111,42 @@ typedef struct DemoOptions {
 	uint32_t timeoutSeconds;
 	uint32_t stallMilliseconds;
 	bool logEvents;
+	bool requestMouseGrab;
+	bool requestRelativeMouse;
+	bool requestKeyboardGrab;
+	bool runSelfTest;
 } DemoOptions;
+
+typedef enum SelfTestPhase {
+	SelfTestPhase_WaitForFocus = 0,
+	SelfTestPhase_WaitForStart,
+	SelfTestPhase_Warp,
+	SelfTestPhase_WaitForMove,
+	SelfTestPhase_Finished,
+} SelfTestPhase;
+
+typedef struct SelfTestState {
+	int32_t targetX[SELF_TEST_TARGET_COUNT];
+	int32_t targetY[SELF_TEST_TARGET_COUNT];
+	fplMilliseconds phaseStartTime;
+	SelfTestPhase phase;
+	uint32_t targetIndex;
+	uint32_t failureCount;
+	// Screen position of the client area origin, found with the first warp
+	int32_t clientOriginX;
+	int32_t clientOriginY;
+	bool hasClientOrigin;
+} SelfTestState;
 
 typedef struct DemoState {
 	DemoOptions options;
+	SelfTestState selfTest;
 	fplMilliseconds startTime;
 	int32_t mouseX;
 	int32_t mouseY;
 	fplKey lastKey;
 	fplButtonState lastKeyState;
+	int exitCode;
 	bool hasMousePosition;
 	bool hasFocus;
 	bool hasLastKey;
@@ -114,20 +164,36 @@ typedef enum ParseResult {
 //
 // Logging
 //
-static void LogEvent(const DemoState *state, const char *format, ...) {
-	if (!state->options.logEvents) {
-		return;
-	}
+static void WriteLogLine(const DemoState *state, const char *format, va_list argList) {
 	char message[LOG_MESSAGE_CAPACITY];
-	va_list argList;
-	va_start(argList, format);
 	fplStringFormatArgs(message, fplArrayCount(message), format, argList);
-	va_end(argList);
 	fplMilliseconds now = fplMillisecondsQuery();
 	unsigned long long elapsedMilliseconds = (unsigned long long)(now - state->startTime);
 	fplConsoleFormatOut("t=%llu %s\n", elapsedMilliseconds, message);
 	// The tests read the log while the demo is still running, a pipe or a file is fully buffered otherwise
 	fflush(stdout);
+}
+
+static void LogEvent(const DemoState *state, const char *format, ...) {
+	if (!state->options.logEvents) {
+		return;
+	}
+	va_list argList;
+	va_start(argList, format);
+	WriteLogLine(state, format, argList);
+	va_end(argList);
+}
+
+// Self test results are written even without --log-events
+static void LogSelfTest(const DemoState *state, const char *format, ...) {
+	va_list argList;
+	va_start(argList, format);
+	WriteLogLine(state, format, argList);
+	va_end(argList);
+}
+
+static const char *GetOnOffName(const bool value) {
+	return value ? "on" : "off";
 }
 
 static const char *GetButtonStateName(const fplButtonState buttonState) {
@@ -216,11 +282,15 @@ static bool TryParseWindowSize(const char *text, uint32_t *outWidth, uint32_t *o
 static void PrintHelp(void) {
 	fplConsoleOut("FPL_InputGrab - test bench for keyboard grab, mouse confinement, cursor warping and relative mouse mode\n");
 	fplConsoleOut("  --log-events         Write every event as one line to the standard output\n");
+	fplConsoleOut("  --mouse-grab         Request the mouse grab at the start\n");
+	fplConsoleOut("  --relative-mouse     Request the relative mouse mode at the start\n");
+	fplConsoleOut("  --keyboard-grab      Request the keyboard grab at the start\n");
+	fplConsoleOut("  --selftest           Check the cursor warping, the exit code is 1 when a check fails\n");
 	fplConsoleOut("  --timeout=<seconds>  Quit by itself after this time\n");
 	fplConsoleOut("  --stall=<ms>         Sleep this long in every frame\n");
 	fplConsoleOut("  --window=<w>x<h>     Inner size of the window\n");
 	fplConsoleOut("  --title=<text>       Window title prefix\n");
-	fplConsoleOut("  Hotkeys: Ctrl+Alt+Q quits\n");
+	fplConsoleOut("  Hotkeys: Ctrl+Alt+G full grab, Ctrl+Alt+M mouse grab, Ctrl+Alt+R relative mouse, Ctrl+Alt+K keyboard grab, Ctrl+Alt+W warp to the center, Ctrl+Alt+Q quit\n");
 }
 
 static ParseResult ParseArguments(const int argumentCount, char **arguments, DemoOptions *outOptions) {
@@ -244,6 +314,14 @@ static ParseResult ParseArguments(const int argumentCount, char **arguments, Dem
 			return ParseResult_Help;
 		} else if (fplIsStringEqual(argument, "--log-events")) {
 			outOptions->logEvents = true;
+		} else if (fplIsStringEqual(argument, "--mouse-grab")) {
+			outOptions->requestMouseGrab = true;
+		} else if (fplIsStringEqual(argument, "--relative-mouse")) {
+			outOptions->requestRelativeMouse = true;
+		} else if (fplIsStringEqual(argument, "--keyboard-grab")) {
+			outOptions->requestKeyboardGrab = true;
+		} else if (fplIsStringEqual(argument, "--selftest")) {
+			outOptions->runSelfTest = true;
 		} else if (StartsWith(argument, timeoutPrefix)) {
 			const char *valueText = argument + timeoutPrefixLength;
 			size_t valueLength = fplGetStringLength(valueText);
@@ -335,8 +413,14 @@ static void UpdateTitle(const DemoState *state) {
 		lastKeyText = GetKeyNameOrUnknown(state->lastKey);
 		lastKeyStateText = GetButtonStateName(state->lastKeyState);
 	}
+	bool isMouseGrabbed = fplIsWindowMouseGrabbed();
+	bool isRelativeMouse = fplIsWindowRelativeMouse();
+	bool isKeyboardGrabbed = fplIsWindowKeyboardGrabbed();
+	const char *mouseGrabText = GetOnOffName(isMouseGrabbed);
+	const char *relativeMouseText = GetOnOffName(isRelativeMouse);
+	const char *keyboardGrabText = GetOnOffName(isKeyboardGrabbed);
 	char title[TITLE_CAPACITY];
-	fplStringFormat(title, fplArrayCount(title), "%s - Focus: %s - Last key: %s %s - Ctrl+Alt+Q quits", state->options.titlePrefix, focusText, lastKeyText, lastKeyStateText);
+	fplStringFormat(title, fplArrayCount(title), "%s - Focus: %s - Mouse grab: %s, Relative: %s, Keyboard grab: %s - Last key: %s %s", state->options.titlePrefix, focusText, mouseGrabText, relativeMouseText, keyboardGrabText, lastKeyText, lastKeyStateText);
 	fplSetWindowTitle(title);
 }
 
@@ -352,19 +436,220 @@ static bool IsControlAndAltDown(const fplKeyboardModifierFlags modifiers) {
 	return isControlDown && isAltDown;
 }
 
+static void RequestMouseGrab(DemoState *state, const bool enabled) {
+	bool result = fplSetWindowMouseGrab(enabled);
+	LogEvent(state, "grab mouse requested=%s result=%d", GetOnOffName(enabled), result ? 1 : 0);
+	state->isTitleDirty = true;
+}
+
+static void RequestRelativeMouse(DemoState *state, const bool enabled) {
+	bool result = fplSetWindowRelativeMouse(enabled);
+	LogEvent(state, "grab relative requested=%s result=%d", GetOnOffName(enabled), result ? 1 : 0);
+	state->isTitleDirty = true;
+}
+
+static void RequestKeyboardGrab(DemoState *state, const bool enabled) {
+	bool result = fplSetWindowKeyboardGrab(enabled);
+	LogEvent(state, "grab keyboard requested=%s result=%d", GetOnOffName(enabled), result ? 1 : 0);
+	state->isTitleDirty = true;
+}
+
+static void WarpToWindowCenter(DemoState *state) {
+	fplWindowSize windowSize = fplZeroInit;
+	if (!fplGetWindowSize(&windowSize)) {
+		return;
+	}
+	int32_t centerX = (int32_t)windowSize.width / 2;
+	int32_t centerY = (int32_t)windowSize.height / 2;
+	bool result = fplWarpWindowCursor(centerX, centerY);
+	LogEvent(state, "warp x=%d y=%d result=%d", centerX, centerY, result ? 1 : 0);
+}
+
 // Returns true when the key event was a hotkey of the demo, which is never logged as a normal key
 static bool HandleHotkey(DemoState *state, const fplKeyboardEvent *keyboardEvent) {
 	if (!IsControlAndAltDown(keyboardEvent->modifiers)) {
 		return false;
 	}
-	if (keyboardEvent->mappedKey == fplKey_Q) {
-		if (keyboardEvent->buttonState == fplButtonState_Press) {
-			LogEvent(state, "hotkey quit");
-			state->isQuitRequested = true;
-		}
-		return true;
+	bool isPress = keyboardEvent->buttonState == fplButtonState_Press;
+	switch (keyboardEvent->mappedKey) {
+		case fplKey_Q:
+			if (isPress) {
+				LogEvent(state, "hotkey quit");
+				state->isQuitRequested = true;
+			}
+			return true;
+		case fplKey_G:
+			if (isPress) {
+				// Like qemu: one hotkey grabs or releases keyboard and mouse together
+				bool isAnyGrabbed = fplIsWindowKeyboardGrabbed() || fplIsWindowRelativeMouse();
+				bool enableGrab = !isAnyGrabbed;
+				RequestKeyboardGrab(state, enableGrab);
+				RequestRelativeMouse(state, enableGrab);
+			}
+			return true;
+		case fplKey_M:
+			if (isPress) {
+				bool isMouseGrabbed = fplIsWindowMouseGrabbed();
+				RequestMouseGrab(state, !isMouseGrabbed);
+			}
+			return true;
+		case fplKey_R:
+			if (isPress) {
+				bool isRelativeMouse = fplIsWindowRelativeMouse();
+				RequestRelativeMouse(state, !isRelativeMouse);
+			}
+			return true;
+		case fplKey_K:
+			if (isPress) {
+				bool isKeyboardGrabbed = fplIsWindowKeyboardGrabbed();
+				RequestKeyboardGrab(state, !isKeyboardGrabbed);
+			}
+			return true;
+		case fplKey_W:
+			if (isPress) {
+				WarpToWindowCenter(state);
+			}
+			return true;
+		default:
+			return false;
 	}
-	return false;
+}
+
+//
+// Self test: warps the cursor to the corners and the center, the move event must arrive with the target position and no delta,
+// and the screen position must lie at the same client area origin for every target
+//
+static void FinishSelfTest(DemoState *state) {
+	SelfTestState *selfTest = &state->selfTest;
+	selfTest->phase = SelfTestPhase_Finished;
+	if (selfTest->failureCount == 0) {
+		LogSelfTest(state, "selftest pass");
+		state->exitCode = 0;
+	} else {
+		LogSelfTest(state, "selftest fail failures=%u", selfTest->failureCount);
+		state->exitCode = 1;
+	}
+	state->isQuitRequested = true;
+}
+
+static void AdvanceSelfTest(DemoState *state) {
+	SelfTestState *selfTest = &state->selfTest;
+	++selfTest->targetIndex;
+	if (selfTest->targetIndex >= SELF_TEST_TARGET_COUNT) {
+		FinishSelfTest(state);
+	} else {
+		selfTest->phase = SelfTestPhase_Warp;
+	}
+}
+
+static void FailSelfTest(DemoState *state, const char *reason) {
+	SelfTestState *selfTest = &state->selfTest;
+	uint32_t targetIndex = selfTest->targetIndex;
+	LogSelfTest(state, "selftest target=%u x=%d y=%d result=fail reason=%s", targetIndex, selfTest->targetX[targetIndex], selfTest->targetY[targetIndex], reason);
+	++selfTest->failureCount;
+	AdvanceSelfTest(state);
+}
+
+static void PrepareSelfTestTargets(SelfTestState *selfTest) {
+	fplWindowSize windowSize = fplZeroInit;
+	fplGetWindowSize(&windowSize);
+	int32_t right = (int32_t)windowSize.width - 1 - selfTestEdgeMargin;
+	int32_t bottom = (int32_t)windowSize.height - 1 - selfTestEdgeMargin;
+	int32_t centerX = (int32_t)windowSize.width / 2;
+	int32_t centerY = (int32_t)windowSize.height / 2;
+	int32_t xs[SELF_TEST_TARGET_COUNT] = { selfTestEdgeMargin, right, selfTestEdgeMargin, right, centerX };
+	int32_t ys[SELF_TEST_TARGET_COUNT] = { selfTestEdgeMargin, selfTestEdgeMargin, bottom, bottom, centerY };
+	for (uint32_t targetIndex = 0; targetIndex < SELF_TEST_TARGET_COUNT; ++targetIndex) {
+		selfTest->targetX[targetIndex] = xs[targetIndex];
+		selfTest->targetY[targetIndex] = ys[targetIndex];
+	}
+}
+
+static void WarpToSelfTestTarget(DemoState *state) {
+	SelfTestState *selfTest = &state->selfTest;
+	int32_t targetX = selfTest->targetX[selfTest->targetIndex];
+	int32_t targetY = selfTest->targetY[selfTest->targetIndex];
+	if (!fplWarpWindowCursor(targetX, targetY)) {
+		FailSelfTest(state, "warp-returned-false");
+		return;
+	}
+	int32_t screenX = 0;
+	int32_t screenY = 0;
+	if (!fplQueryCursorPosition(&screenX, &screenY)) {
+		FailSelfTest(state, "cursor-position-unknown");
+		return;
+	}
+	int32_t originX = screenX - targetX;
+	int32_t originY = screenY - targetY;
+	if (!selfTest->hasClientOrigin) {
+		selfTest->clientOriginX = originX;
+		selfTest->clientOriginY = originY;
+		selfTest->hasClientOrigin = true;
+	} else if (originX != selfTest->clientOriginX || originY != selfTest->clientOriginY) {
+		LogSelfTest(state, "selftest screen x=%d y=%d expected-x=%d expected-y=%d", screenX, screenY, selfTest->clientOriginX + targetX, selfTest->clientOriginY + targetY);
+		FailSelfTest(state, "screen-position");
+		return;
+	}
+	selfTest->phase = SelfTestPhase_WaitForMove;
+	selfTest->phaseStartTime = fplMillisecondsQuery();
+}
+
+static void UpdateSelfTest(DemoState *state) {
+	SelfTestState *selfTest = &state->selfTest;
+	fplMilliseconds now = fplMillisecondsQuery();
+	fplMilliseconds phaseDuration = now - selfTest->phaseStartTime;
+	switch (selfTest->phase) {
+		case SelfTestPhase_WaitForFocus:
+		{
+			fplMilliseconds runningDuration = now - state->startTime;
+			if (state->hasFocus) {
+				selfTest->phase = SelfTestPhase_WaitForStart;
+				selfTest->phaseStartTime = now;
+			} else if (runningDuration >= selfTestFocusFallbackMilliseconds) {
+				LogSelfTest(state, "selftest no-focus-event");
+				selfTest->phase = SelfTestPhase_WaitForStart;
+				selfTest->phaseStartTime = now;
+			}
+		} break;
+		case SelfTestPhase_WaitForStart:
+			if (phaseDuration >= selfTestStartDelayMilliseconds) {
+				PrepareSelfTestTargets(selfTest);
+				selfTest->targetIndex = 0;
+				selfTest->phase = SelfTestPhase_Warp;
+			}
+			break;
+		case SelfTestPhase_Warp:
+			WarpToSelfTestTarget(state);
+			break;
+		case SelfTestPhase_WaitForMove:
+			if (phaseDuration >= selfTestMoveTimeoutMilliseconds) {
+				FailSelfTest(state, "no-move-event");
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static void CheckSelfTestMove(DemoState *state, const fplMouseEvent *mouseEvent) {
+	SelfTestState *selfTest = &state->selfTest;
+	if (selfTest->phase != SelfTestPhase_WaitForMove) {
+		return;
+	}
+	uint32_t targetIndex = selfTest->targetIndex;
+	int32_t targetX = selfTest->targetX[targetIndex];
+	int32_t targetY = selfTest->targetY[targetIndex];
+	// Other moves (the cursor on its way into the window) are ignored until the target arrives or the wait times out
+	if (mouseEvent->mouseX != targetX || mouseEvent->mouseY != targetY) {
+		return;
+	}
+	if (mouseEvent->deltaX != 0 || mouseEvent->deltaY != 0) {
+		LogSelfTest(state, "selftest delta dx=%d dy=%d", mouseEvent->deltaX, mouseEvent->deltaY);
+		FailSelfTest(state, "move-delta-not-zero");
+		return;
+	}
+	LogSelfTest(state, "selftest target=%u x=%d y=%d result=pass", targetIndex, targetX, targetY);
+	AdvanceSelfTest(state);
 }
 
 static void HandleWindowEvent(DemoState *state, const fplWindowEvent *windowEvent) {
@@ -432,7 +717,10 @@ static void HandleKeyboardEvent(DemoState *state, const fplKeyboardEvent *keyboa
 static void HandleMouseEvent(DemoState *state, const fplMouseEvent *mouseEvent) {
 	switch (mouseEvent->type) {
 		case fplMouseEventType_Move:
-			LogEvent(state, "mouse move x=%d y=%d", mouseEvent->mouseX, mouseEvent->mouseY);
+			LogEvent(state, "mouse move x=%d y=%d dx=%d dy=%d", mouseEvent->mouseX, mouseEvent->mouseY, mouseEvent->deltaX, mouseEvent->deltaY);
+			if (state->options.runSelfTest) {
+				CheckSelfTestMove(state, mouseEvent);
+			}
 			break;
 		case fplMouseEventType_Button:
 		{
@@ -516,13 +804,33 @@ int main(int argc, char **args) {
 	fplGetWindowSize(&windowSize);
 	LogEvent(&state, "demo ready w=%u h=%u", windowSize.width, windowSize.height);
 
+	if (state.options.requestMouseGrab) {
+		RequestMouseGrab(&state, true);
+	}
+	if (state.options.requestRelativeMouse) {
+		RequestRelativeMouse(&state, true);
+	}
+	if (state.options.requestKeyboardGrab) {
+		RequestKeyboardGrab(&state, true);
+	}
+
 	while (fplWindowUpdate() && !state.isQuitRequested) {
 		bool hadEvents = ProcessEvents(&state);
 		if (state.isQuitRequested) {
 			break;
 		}
+		if (state.options.runSelfTest) {
+			UpdateSelfTest(&state);
+			if (state.isQuitRequested) {
+				break;
+			}
+		}
 		if (IsTimeoutReached(&state)) {
 			LogEvent(&state, "demo timeout");
+			if (state.options.runSelfTest) {
+				LogSelfTest(&state, "selftest fail reason=timeout");
+				state.exitCode = 1;
+			}
 			break;
 		}
 		if (state.isTitleDirty) {
@@ -544,5 +852,5 @@ int main(int argc, char **args) {
 
 	LogEvent(&state, "demo quit");
 	fplPlatformRelease();
-	return 0;
+	return state.exitCode;
 }
