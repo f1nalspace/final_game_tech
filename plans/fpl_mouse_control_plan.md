@@ -12,6 +12,8 @@ Quellen der Anforderungen: qemu `master` und v10.1.0 (`ui/sdl2.c`, `ui/gtk.c`, `
 
 **`fpl/mouse-control` steht auf `3f1c1df4`, dem Kopf von `demo/image-viewer-improvements`, und nicht auf `develop`.** Der Branch trägt damit alle 39 Viewer-Commits, die noch nicht in `develop` sind (der älteste ist `51aa141c`), dazu `plans/` und `prompts/`. Ein späterer Merge nach `develop` würde den halben Bildbetrachter mitziehen. Der Branch hat noch keinen eigenen Commit, und der Arbeitsbaum ist sauber. Deshalb wird er **vor dem ersten Commit** auf `develop` gesetzt: `git switch fpl/mouse-control && git reset --hard develop`. Diese Plandatei ist bis dahin nicht eingecheckt und übersteht den Reset.
 
+**Erledigt (2026-09-24):** Der Branch steht auf `develop` (`edc19303`), der erste eigene Commit ist diese Plandatei (`3bb6aa02`).
+
 ---
 
 ## 1. Stand
