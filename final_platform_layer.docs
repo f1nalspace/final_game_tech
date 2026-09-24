@@ -1021,11 +1021,18 @@
 			int mouseX = currentEvent.mouse.mouseX;
 			int mouseY = currentEvent.mouse.mouseY;
 			// ... do something with the mouse position
+			int movedX = currentEvent.mouse.deltaX;
+			int movedY = currentEvent.mouse.deltaY;
+			// ... or with the movement since the previous move event
 		} break;
 	}
 	@endcode
 
 	@note Any mouse button event contains the position of the click as well.
+
+	@note The delta of a move event is the difference to the previous move event. It is zero for the first move after the cursor entered the window, after the window got the focus back and after @ref fplWarpWindowCursor(), so none of these ever shows up as movement.
+
+	@note When the window loses the focus, every key and mouse button that it still holds as pressed gets a release event before the @ref fplWindowEventType_LostFocus event. The real release goes to another window, so without it the key would stay pressed and come back as a repeat.
 
 	@subsection subsection_category_window_events_handle_event_type_keyboard Keyboard events
 
@@ -1337,6 +1344,20 @@
 
 	// Disable the cursor
 	fplSetWindowCursorEnabled(false);
+	@endcode
+
+	@section section_category_window_style_cursor_warp Moving the cursor
+
+	Use @ref fplWarpWindowCursor() to move the cursor to a position in window coordinates, the same coordinates the mouse events use.<br>
+	The move event that follows the warp has a delta of zero, so the warp itself never shows up as movement.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Move the cursor to the center of the window
+	fplWindowSize windowSize;
+	if (fplGetWindowSize(&windowSize)) {
+		fplWarpWindowCursor(windowSize.width / 2, windowSize.height / 2);
+	}
 	@endcode
 
 	@section section_category_window_style_title Get/Set the window title
