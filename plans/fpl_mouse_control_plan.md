@@ -2,17 +2,82 @@
 
 Ziel: FPL bekommt alles, was ein **qemu-Frontend** (wie `ui/sdl2.c` oder `ui/gtk.c`) von der Fenster- und Eingabeschicht braucht, um Tastatur und Maus an den Gast zu übergeben. Dazu gehören **Tastatur-Grab** (Alt+Tab, Super/Win, Alt+Esc und Strg+Esc landen im Fenster), **Maus einsperren**, **Mauszeiger setzen** (Warp) und ein **relativer Mausmodus** mit rohen, unbeschleunigten Deltas. Unterstützt werden **X11 und Win32** gleichwertig, hinter einer kleinen API, die ohne Plattformwissen benutzbar ist.
 
-Dieses Dokument beschreibt den **Stand** (1), die **Designentscheidungen** samt API (2), den **inneren Aufbau** (3), den **Prüfstand** (4) und die **Iterationen** mit Abnahmekriterien (5). Danach folgen Arbeitsregeln, Entscheidungen und Folgepunkte sowie Risiken (6–8).
+Dieses Dokument beginnt mit dem **Handover** für eine frische Session (0). Danach beschreibt es den **Stand** (1), die **Designentscheidungen** samt API (2), den **inneren Aufbau** (3), den **Prüfstand** (4) und die **Iterationen** mit Abnahmekriterien (5). Danach folgen Arbeitsregeln, Entscheidungen und Folgepunkte sowie Risiken (6–8).
 
 Quellen der Anforderungen: qemu `master` und v10.1.0 (`ui/sdl2.c`, `ui/gtk.c`, `ui/input.c`, `ui/kbd-state.c`, `ui/win32-kbd-hook.c`, `include/ui/console.h`) sowie SDL2 (`src/video/x11/*`, `src/video/windows/*`), im Quelltext geprüft am 2026-09-24.
 
 ---
 
-## 0. Vorab: Branch-Basis
+## 0. Handover (Stand 2026-09-24, nach Iteration 1)
 
-**`fpl/mouse-control` steht auf `3f1c1df4`, dem Kopf von `demo/image-viewer-improvements`, und nicht auf `develop`.** Der Branch trägt damit alle 39 Viewer-Commits, die noch nicht in `develop` sind (der älteste ist `51aa141c`), dazu `plans/` und `prompts/`. Ein späterer Merge nach `develop` würde den halben Bildbetrachter mitziehen. Der Branch hat noch keinen eigenen Commit, und der Arbeitsbaum ist sauber. Deshalb wird er **vor dem ersten Commit** auf `develop` gesetzt: `git switch fpl/mouse-control && git reset --hard develop`. Diese Plandatei ist bis dahin nicht eingecheckt und übersteht den Reset.
+Dieser Abschnitt reicht, um in einer frischen Session weiterzumachen. Der Rest des Plans ist die Begründung dazu.
 
-**Erledigt (2026-09-24):** Der Branch steht auf `develop` (`edc19303`), der erste eigene Commit ist diese Plandatei (`3bb6aa02`).
+### 0.1 Wo wir stehen
+
+- **Branch `fpl/mouse-control`**, basiert auf `develop` (`edc19303`). Er war zuerst versehentlich vom Viewer-Branch abgezweigt und wurde vor dem ersten Commit auf `develop` gesetzt. Alles ist gepusht, `origin` steht auf `204a55df`.
+- **Commits auf dem Branch:** `3bb6aa02` Plan angelegt, `1231c892` Plan (Nutzer), `68eefab4` Demo + Testskript, `b5d674bb` Plan Iteration 0 + Entscheidungen, `199699f6` **FPL: Cursor warp, move deltas and key release on focus loss**, `d4f56021` Demo: Deltas, Grab-Tastenkürzel, Warp-Selbsttest, `204a55df` Plan Iteration 1.
+- **Fertig:** Iteration 0 (Demo `demos/FPL_InputGrab`, Testskript, Ausgangsstand) und Iteration 1 (API-Gerüst, Zustandsmodell, `fplWarpWindowCursor`, `deltaX`/`deltaY`, Loslassen bei Fokusverlust). Die Details stehen in den „Stand“-Blöcken unter 5.
+- **Die API ist entschieden** (7.1): `fplSetWindowMouseGrab`/`fplIsWindowMouseGrabbed`, `fplSetWindowRelativeMouse`/`fplIsWindowRelativeMouse`, `fplSetWindowKeyboardGrab`/`fplIsWindowKeyboardGrabbed`, `fplWarpWindowCursor`. Die drei Setter lehnen `true` heute noch mit `false` und einer Warnung ab. Jede Iteration schaltet ihren Teil frei.
+- **Als Nächstes: Iteration 2 (Maus-Grab),** die Schrittliste steht in 0.6.
+- **Entschieden am 2026-09-24 (7.1):** Der Win32-Fehler „Events vom Fensteraufbau gehen verloren“ (1.3) wird **in einem eigenen Branch** behoben, etwa `fpl/win32-init-events` von `develop`. Der wird nach `develop` gemergt, danach `develop` in `fpl/mouse-control`. Gearbeitet wird dort in einem eigenen `git worktree`, nicht in diesem Arbeitsbaum. Der Branch existiert noch nicht. Die **Abnahme auf echtem Windows wird gesammelt in Iteration 6** gemacht, bis dahin gelten MinGW und wine als Win32-Prüfung.
+
+### 0.2 Bauen
+
+- Demo (CMake ist maßgeblich), die Ausgabe landet in `demos/build/FPL_InputGrab/Linux-x64-Release/FPL_InputGrab`:
+  `cmake -S demos/FPL_InputGrab -B demos/FPL_InputGrab/build -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C demos/FPL_InputGrab/build`
+- **Build-Matrix pro Iteration** (6): `FPL_InputGrab`, `FPL_Window`, `FPL_Input`, `FPL_Test`, `FPL_NoRuntimeLinking`, `FPL_NoPlatformIncludes`, `FPL_ImGui`, je mit gcc/g++ und clang/clang++, jeweils `cmake -S demos/<Demo> -B <scratch>/<Demo>-<cc> -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=<cc> -DCMAKE_CXX_COMPILER=<cxx>` und `ninja`. Die Build-Verzeichnisse gehören ins Scratchpad, nicht ins Repo.
+- **MinGW** (Win32-Build ohne Windows), aus `demos/`: `x86_64-w64-mingw32-gcc -std=c99 -I.. FPL_InputGrab/fpl_inputgrab.c -o <scratch>/FPL_InputGrab_x64.exe`, genauso mit `i686-w64-mingw32-gcc`, `FPL_Window` (C99) und `FPL_Input` (mit `x86_64-w64-mingw32-g++ -std=c++11 -Iadditions -Idependencies`). `FPL_Test` unter MinGW nur mit `-O2` und `-DFPL_LOGGING -DFT_IMPLEMENTATION`, ohne Optimierung linkt es schon auf `develop` nicht.
+- **Neue Warnungen finden:** denselben Build einmal mit dem Header von `develop` (`git show develop:final_platform_layer.h > <scratch>/oldheader/final_platform_layer.h`, dann `-I<scratch>/oldheader` vor `-I..`) und einmal mit dem aktuellen, dann die Warnungen ohne Zeilennummern vergleichen. Der Header erzeugt mit `-Wall -Wextra` rund 70 alte Warnungen, gezählt werden nur neue.
+
+### 0.3 Testen
+
+- **Vor jedem Lauf, der Fenster öffnet, den Nutzer fragen.** Jedes neue Demo-Fenster bekommt den Fokus, und was der Nutzer gerade tippt, landet darin (ist in Iteration 0 passiert). Ansage mit Dauer, dann erst starten, nie in Schleifen.
+- `demos/FPL_InputGrab/tests/run_grab_tests.sh [--tests=a,b] [--list] [--demo=<pfad>]`: 9 Tests, alle grün, etwa 60 s. Logs und `report.md` gehen nach `demos/build/FPL_InputGrab/tests/`. Jede Demo läuft unter `timeout -s KILL`, wird per Signal beendet, und nach jedem Test prüft python-xlib, ob Tasten im X-Server hängen (Kapitel 8, Iteration 0).
+- Ein neuer Test ist eine Funktion `Test_<name>` im Skript plus ein Eintrag in `allTests`. Die Helfer sind `StartDemo` (setzt `demoPid`, `demoWindow`, `demoLog`), `ActivateDemo`, `StopDemo <pid>`, `ExpectLogLine <log> <mark> <regex>`, `LineNumberOf`, `LogLineCount`, `Fail`, `Note`.
+- Die Demo loggt mit `--log-events` eine Zeile pro Event (`t=… mouse move x= y= dx= dy=`, `key button state= code= key= mods=`, `window gotfocus|lostfocus|…`, `grab mouse requested= result=`). `--selftest` prüft den Warp selbst, Exit-Code 1 bei Fehler, und läuft auch ohne Fokus-Event los.
+- **wine** (Win32-Vortest), im Scratchpad: `WINEDEBUG=-all timeout -s KILL 40 wine ./FPL_InputGrab_x64.exe --selftest --log-events --timeout=15`. Vorsicht ab Iteration 2: wine setzt `ClipCursor` vermutlich über einen echten X-Pointer-Grab um, der betrifft dann den Desktop des Nutzers.
+- **`FPL_Test` taugt nicht als Abnahme,** es ist schon auf `develop` rot (1.3). Wer es laufen lässt, vergleicht mit dem `develop`-Header. Es öffnet ein Fenster (`fplInitFlags_All`).
+
+### 0.4 Arbeitsweise
+
+- Code-Stil nach `CLAUDE.md` (benannte Zwischenwerte statt Aufrufketten, keine magischen Zahlen, keine Umbrüche auf Spaltenbreite, Klammern um jeden Bedingungskörper, Kommentare englisch). Der Plan bleibt deutsch.
+- **Commits nur auf Zuruf**, klein und nach Thema getrennt: FPL-Header+Doku, Demo+Tests, Plan. Die Nachrichten sind englisch und kurz, mit `Co-Authored-By`, **nie** mit einer `Claude-Session`-Zeile. Plan-Commits heißen `Update fpl_mouse_control_plan.md: Iteration N done`.
+- Der **Changelog** kommt in den unveröffentlichten Abschnitt **v1.0.1** (Window), keine neue Versionsstufe. Die Doku steht in `final_platform_layer.docs` (Seite `page_category_window_style`, Abschnitte `section_category_window_style_cursor…`).
+- **premake nicht komplett neu erzeugen:** Das würde 41 fremde Projektdateien ändern. Neue Projekte in einer Kopie erzeugen und nur deren Einträge übernehmen (Iteration 0, Stand).
+- Nach jeder Iteration: Block „Stand“ unter der Iteration, neue Befunde in 1.3, Folgepunkte in 7.2, dann den Merkzettel `project_fpl_mouse_control` im Memory nachziehen.
+
+### 0.5 Code-Landkarte (`final_platform_layer.h`, nach Namen suchen, die Zeilen wandern)
+
+- **Öffentliche API:** hinter `fplQueryCursorPosition` in der Gruppe `WindowBase`. `fplMouseEvent.deltaX/deltaY`.
+- **Zustand:** `fpl__MouseLockState` und `fpl__InputGrabState` direkt vor `fpl__PlatformWindowState` (Abschnitt PLATFORM_STATES), dort auch `inputGrab`, `hasFocus`, `isMinimized`. Kapitel 3 beschreibt den Zielzustand. Felder wie `frozenX`, `remainderX` und `nextRetryTimeMilliseconds` kommen erst mit ihrer Iteration dazu.
+- **Gemeinsame Logik** (COMMON, Block `FPL__COMMON_WINDOW_DEFINED`, direkt nach `fpl__IsFullscreenChangeAllowed`): `fpl__ReleaseAllPressedButtons`, `fpl__GetRequestedMouseLock`, `fpl__UpdateInputGrab` (der einzige Ort, der entscheidet, heute ohne Plattformaufruf), `fpl__HandleWindowFocusChanged`, `fpl__HandleWindowMinimizedChanged` und die sechs Setter/Getter (`fpl_common_api`).
+- **Deltas:** `fpl__HandleMouseMoveEvent` rechnet, `fpl__PushMouseMoveEvent` trägt ein.
+- **Win32:** `fpl__Win32WindowGotFocus/LostFocus` → `fpl__HandleWindowFocusChanged`. In `fpl__Win32MessageProc`: `WM_SIZE` (Minimieren), `WM_CLOSE/WM_DESTROY`, `WM_MOUSELEAVE`, `TrackMouseEvent` im Mausnachrichten-Block, `WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE` (dort muss Iteration 2 den Clip aussetzen). Die Win32-Version von `fplWarpWindowCursor` steht hinter `fplSetWindowCursorEnabled`. Der User32-Loader ist `fpl__Win32LoadApi`, mit Typedef `FPL__FUNC_WIN32_…`, Feld in `fpl__Win32Api.user` und `FPL__WIN32_GET_FUNCTION_ADDRESS`. `ClipCursor` ist schon geladen, `GetClipCursor` noch nicht.
+- **X11:** `fpl__X11HandleEvent` (`FocusIn/FocusOut` → `fpl__HandleWindowFocusChanged`, `EnterNotify` setzt die Delta-Basis zurück, `PropertyNotify` → `fpl__HandleWindowMinimizedChanged`, `ClientMessage`/`wmDeleteWindow`). Die X11-Version von `fplWarpWindowCursor` steht hinter `fplSetWindowCursorEnabled`. Eine neue X11-Funktion braucht **vier Stellen**, Vorlage ist `XWarpPointer`: `FPL__FUNC_X11_…` + Typedef, `extern` im `FPL_NO_RUNTIME_LINKING`-Block, Feld in `fpl__X11Api`, `FPL__POSIX_GET_FUNCTION_ADDRESS` in `fpl__LoadX11Api`. Konstanten kommen **zweimal** in die X11-ABI: einmal als Weiterleitung (`#define FPL__X11_X X`) und einmal als Zahl für die Builds ohne X11-Header.
+- **Nicht betroffen, aber wichtig:** Win32 pumpt nur in `fplWindowUpdate`/`fplPollEvent` (Message-Fiber), `fplWindowUpdate` leert die interne Queue.
+
+### 0.6 Nächster Schritt: Iteration 2 (Maus-Grab) als Schrittliste
+
+1. **X11-ABI:** `FPL__X11_GrabModeAsync` (1), `FPL__X11_GrabSuccess` (0), `FPL__X11_AlreadyGrabbed` (1), `FPL__X11_GrabInvalidTime` (2), `FPL__X11_GrabNotViewable` (3), `FPL__X11_GrabFrozen` (4), jeweils in beiden Zweigen. `FPL__X11_CurrentTime` und die Event-Masken gibt es schon.
+2. **X11-Loader:** `XGrabPointer` und `XUngrabPointer` an den vier Stellen aus 0.5.
+3. **Gemeinsam:** Eine Vorwärtsdeklaration `fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState)`, definiert im Win32- und im X11-Fensterteil. `fpl__UpdateInputGrab` ruft sie, wenn gewünscht ≠ angewendet, und merkt sich `appliedMouseLock` nur bei Erfolg. Bei einem vorübergehenden Fehlschlag setzt es ein neues Feld `nextRetryTimeMilliseconds`, und `fplWindowUpdate`/`fplPollEvent` wiederholen höchstens alle `grabRetryIntervalMilliseconds` (50 ms, benannte Konstante). `Relative` liefert dort bis Iteration 3 `false`.
+4. **X11 anwenden:** `Confined` = `XGrabPointer(display, window, True, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync, GrabModeAsync, window, None, CurrentTime)`, auswerten nach 2.3 (`GrabNotViewable` wird bei `Shown`/`Restored` sowieso neu versucht). `Free` = `XUngrabPointer(display, CurrentTime)` + `XFlush`. Eigene Pointer-Grabs erzeugen `EnterNotify`/`LeaveNotify` mit `NotifyGrab`, das setzt nur die Delta-Basis zurück, das ist in Ordnung.
+5. **Win32 anwenden:** `Confined` = Client-Rechteck in Bildschirmkoordinaten (`GetClientRect` + zweimal `ClientToScreen`), `ClipCursor` nur, wenn es sich von `GetClipCursor` unterscheidet (neu laden). Das angewendete Rechteck und „gehört uns“ werden gemerkt. `Free` = `ClipCursor(NULL)` nur, wenn das aktuelle Rechteck das eigene ist. Neu setzen bei `WM_WINDOWPOSCHANGED` und alle 3 s beim Pumpen (benannte Konstante). Im modalen Verschiebe-Loop und während `isFrameInteraction` aussetzen, dafür ein gemeinsames Flag, das `fpl__UpdateInputGrab` wie den Fokus berücksichtigt.
+6. **Setter freischalten:** `fplSetWindowMouseGrab(true)` speichert die Anforderung und ruft `fpl__UpdateInputGrab`, die Warnung entfällt.
+7. **Warp begrenzen:** Solange `appliedMouseLock == Confined`, begrenzt `fplWarpWindowCursor` das Ziel auf `[0, Breite−1] × [0, Höhe−1]`.
+8. **Tests** (Demo-Parameter `--mouse-grab` und Strg+Alt+M gibt es schon): `mouse_grab_confines` (`xdotool mousemove 0 0`, danach `xdotool getmouselocation` im Rechteck aus `xdotool getwindowgeometry`), `mouse_grab_released_on_focus_loss` (B aktivieren, Zeiger kommt raus), `mouse_grab_restored_on_focus_gain`, `mouse_grab_follows_resize` (`xdotool windowsize`), `mouse_grab_retries_when_already_grabbed` (ein kleiner python-xlib-Client hält den Pointer 1 s, danach muss der Grab der Demo greifen). **Diese Tests sperren den echten Mauszeiger ein:** immer mit `timeout -s KILL`, vorher fragen.
+9. **Doku und Changelog:** Abschnitt „Grabbing the mouse“ in der Doku, eine Changelog-Zeile für `fplSetWindowMouseGrab`/`fplIsWindowMouseGrabbed`, Punkte für die Handprüfliste 4.4.
+10. Build-Matrix, Tests (mit Freigabe), Abschnitt „Stand“ unter Iteration 2, dann fragen, ob committet werden soll.
+
+### 0.7 Fallen, die schon Zeit gekostet haben
+
+- `xdotool key --window W` geht bei einem fokussierten Fenster über XTEST. Beendet sich das Ziel beim Tastendruck, bleiben Tasten im X-Server gedrückt. Deshalb Demos nur per Signal beenden.
+- FPL setzt unter X11 kein `WM_NAME`, `xdotool search --name` findet die Fenster nicht. Gesucht wird mit `--pid` (Kind-PID des `timeout`-Wrappers über `pgrep -P`).
+- KWin kann eine Fenster-ID wiederverwenden (X-Fehler bei schnellen Neustarts). Das Skript wiederholt einen Test mit X-Fehler bis zu dreimal.
+- Win32 verliert die Events vom Fensteraufbau (1.3), unter wine kommt deshalb kein erstes `gotfocus`. Tests dürfen sich unter Win32 nicht auf das erste `gotfocus` verlassen.
+- Ein Test, der schneller fertig ist, als das Skript eine Aktivierung bestätigen kann, darf die Aktivierung nicht prüfen (warp_selftest).
+- clangd zeigt im Editor Fehler für `final_platform_layer.h` und die Demo (`Unknown type name 'uint32_t'`, `-fdiagnostics-plain-output`). Das liegt an der `compile_commands.json` mit gcc-Flags im Build-Verzeichnis und ist kein echter Fehler, maßgeblich ist der Build.
+- gcc meldet bei `-O3` seit Iteration 1 `-Wstringop-overflow` in `fplAtomicLoadU64` (inlined in `fpl__WaitForThreadsStopped`). Das ist ein Fehlalarm durch verschobenes Inlining, der Code ist unverändert (7.2).
 
 ---
 
@@ -309,7 +374,7 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 - Fokusverlust: `fpl__HandleWindowFocusChanged` schickt für jede noch gedrückte Taste und Maustaste ein Release-Event und danach `LostFocus`, für alle Apps. Win32 und X11 schieben ihre Fokus-Events nur noch darüber.
 - Doku: Warp-Abschnitt und Hinweise zu Deltas und Fokusverlust in `final_platform_layer.docs`, drei Zeilen im Changelog v1.0.1.
 - Demo: Deltas im Log, Tastenkürzel Strg+Alt+G/M/R/K/W, Parameter `--mouse-grab`, `--relative-mouse`, `--keyboard-grab` und `--selftest`. Der Selbsttest startet nach dem Fokus oder spätestens nach 2 s, warpt auf vier Ecken und die Mitte und prüft Zielposition, Delta 0 und einen gleichbleibenden Bildschirm-Ursprung.
-- **Abnahme:** X11: alle 9 Tests grün (`mouse_move`, `move_deltas`, `no_delta_after_reenter`, `warp_selftest`, `key_press_release`, `focus_switch`, `focus_loss_releases_keys`, `alt_tab_without_grab_switches`, `no_stuck_alt_after_alt_tab`), der rote Test aus Iteration 0 ist damit behoben. Win32 unter wine: Selbsttest grün (alle fünf Ziele, Delta 0). Die Win32-Abnahme auf echtem Windows steht noch aus. Build-Matrix grün: `FPL_InputGrab`, `FPL_Window`, `FPL_Input`, `FPL_Test`, `FPL_NoRuntimeLinking`, `FPL_NoPlatformIncludes`, `FPL_ImGui` mit gcc und clang, MinGW x64/x86 für `FPL_InputGrab`, `FPL_Window`, `FPL_Input` und `FPL_Test` (`-O2`, siehe 1.3). Keine neue Warnung aus dem neuen Code.
+- **Abnahme:** X11: alle 9 Tests grün (`mouse_move`, `move_deltas`, `no_delta_after_reenter`, `warp_selftest`, `key_press_release`, `focus_switch`, `focus_loss_releases_keys`, `alt_tab_without_grab_switches`, `no_stuck_alt_after_alt_tab`), der rote Test aus Iteration 0 ist damit behoben. Win32 unter wine: Selbsttest grün (alle fünf Ziele, Delta 0). Die Win32-Abnahme auf echtem Windows kommt gesammelt in Iteration 6 (7.1). Build-Matrix grün: `FPL_InputGrab`, `FPL_Window`, `FPL_Input`, `FPL_Test`, `FPL_NoRuntimeLinking`, `FPL_NoPlatformIncludes`, `FPL_ImGui` mit gcc und clang, MinGW x64/x86 für `FPL_InputGrab`, `FPL_Window`, `FPL_Input` und `FPL_Test` (`-O2`, siehe 1.3). Keine neue Warnung aus dem neuen Code.
 - Gefunden: Win32 verliert die Events vom Fensteraufbau, `FPL_Test` ist auf `develop` rot (beides 1.3 und 7.2). Im Testskript lief der Selbsttest schneller durch, als das Skript die Aktivierung bestätigen konnte. Das Skript prüft die Aktivierung dort nicht mehr.
 
 ### Iteration 2 — Maus einsperren
@@ -341,7 +406,7 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 
 - Changelog vollständig, Doku-Seite mit Beispiel (qemu-artige Schleife aus 2.1), Readme der Demo mit Handprüfliste.
 - `FPL_Test`: reine Hilfsfunktionen ohne Fenster prüfen (Umrechnung absolut → relativ, Restsammlung, evdev→Satz-1-Tabelle ohne Doppelungen, `sizeof(fplMouseEvent)` und `sizeof(fplEvent)` in `TestSizes`).
-- Build-Matrix aus 6 und die Win32-Abnahme auf echtem Windows.
+- Build-Matrix aus 6 und die **gesammelte Win32-Abnahme auf echtem Windows** für alle Iterationen (7.1): Handprüfliste 4.4 und der Selbsttest der Demo.
 
 ---
 
@@ -374,6 +439,8 @@ Nach Iteration 0 abgestimmt. Die ersten vier Punkte hat der Nutzer ausdrücklich
 | Relative Deltas | roh und unbeschleunigt, beschleunigt nur in der X11-Rückfallebene | 2.4 |
 | Win32-Hook | Fensterthread, SDL-Tastenmenge inklusive Modifier | 2.5, 8 |
 | Cursorbild | eigener Folgeplan | 7.2 |
+| Win32-Events vom Fensteraufbau (1.3) | **eigener Branch** von `develop` (`fpl/win32-init-events`), danach `develop` in diesen Branch mergen | 0.1, 7.2 |
+| Abnahme auf echtem Windows | **gesammelt in Iteration 6**, bis dahin MinGW + wine | 4.3, Iteration 6 |
 
 ### 7.2 Folgepunkte (nicht in diesem Plan)
 
@@ -385,7 +452,7 @@ Nach Iteration 0 abgestimmt. Die ersten vier Punkte hat der Nutzer ausdrücklich
 - **Mäuse mit hoher Abtastrate** (4–8 kHz): `GetRawInputBuffer` statt einer `WM_INPUT` pro Paket. SDL3 liest Raw Input dafür in einem eigenen Thread.
 - **Wayland nativ:** FPL hat kein Wayland-Backend. Unter XWayland greift der Pointer nur über die Pointer-Constraints des Compositors, und `XGrabKeyboard` blockiert Compositor-Kürzel wohl nicht (ungeprüft).
 - **Mehrere Fenster** (qemu Multi-Head): FPL kennt nur ein Fenster.
-- **Win32-Events vom Fensteraufbau** nicht verwerfen (1.3): etwa das erste `fpl__ClearInternalEvents()` nach der Initialisierung auslassen, oder die Queue erst leeren, wenn die App sie einmal gelesen hat. Das ändert das Verhalten von `fplWindowUpdate()` und gehört deshalb nicht einfach in diesen Branch.
+- **Win32-Events vom Fensteraufbau** nicht verwerfen (1.3): etwa das erste `fpl__ClearInternalEvents()` nach der Initialisierung auslassen, oder die Queue erst leeren, wenn die App sie einmal gelesen hat. Das ändert das Verhalten von `fplWindowUpdate()`. **Entschieden:** eigener Branch `fpl/win32-init-events` von `develop` (7.1).
 - **`FPL_Test` wieder grün bekommen** (1.3): `double free` bei `-O3`, Prozess-Lebensdauer-Test bei `-O2`, `ForceInlineTest` unter MinGW.
 - **`-Wstringop-overflow` in `fpl__WaitForThreadsStopped`**: gcc meldet bei `-O3` einen Fehlalarm in `fplAtomicLoadU64`, seit sich das Inlining durch Iteration 1 verschoben hat. Der Code ist unverändert.
 - **`WM_NAME` unter X11** zusätzlich zu `_NET_WM_NAME` setzen (`XStoreName` bzw. `XSetWMName`), damit ältere Fenstermanager und Werkzeuge wie `xdotool search --name` den Titel sehen (1.3).
