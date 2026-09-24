@@ -54,7 +54,9 @@ Ein qemu-Frontend braucht darüber hinaus **physische Tastencodes**, die Seitent
 - **X11-Maustasten 8/9** werden nicht auf `fplMouseButtonType_X1`/`X2` abgebildet, das gibt es nur unter Win32 (schon im Viewer-Plan 7.2 vermerkt).
 - **Horizontales Mausrad:** `WM_MOUSEHWHEEL` ist ein Platzhalter („Step 9“, `:20176`), X11-Tasten 6/7 werden ignoriert, und `fplMouseEvent` hat nur ein `wheelDelta`.
 - **`fplMouseState.wheelDeltaX/Y`** sind als „accumulated since last poll“ dokumentiert, werden aber nirgends geschrieben.
-- **Tastenzustand nach Fokusverlust (Verdacht, wird in Iteration 0 geprüft):** Wird eine Taste losgelassen, während das Fenster keinen Fokus hat, sieht FPL das `Release` nie. `fpl__HandleKeyboardButtonEvent` (`:14533`) meldet den nächsten Druck dieser Taste dann als `Repeat`. Typischer Fall: Alt+Tab weg und zurück. SDL gleicht das beim Fokusverlust aus (`SDL_ResetKeyboard`), qemu-gtk mit `qkbd_state_lift_all_keys`.
+- **Tastenzustand nach Fokusverlust (in Iteration 0 bestätigt):** Wird eine Taste losgelassen, während das Fenster keinen Fokus hat, sieht FPL das `Release` nie. `fpl__HandleKeyboardButtonEvent` (`:14533`) meldet den nächsten Druck dieser Taste dann als `Repeat`. Nachgestellt mit Alt+Tab weg und zurück: Das Fenster sieht Alt gedrückt, KWin übernimmt mit Tab die Tastatur, das Loslassen von Alt geht an KWin, und der nächste echte Alt-Druck kommt als `state=repeat` an (Test `no_stuck_alt_after_alt_tab`). SDL gleicht das beim Fokusverlust aus (`SDL_ResetKeyboard`), qemu-gtk mit `qkbd_state_lift_all_keys`.
+- **X11-Modifier** (`fpl__X11TranslateModifierFlags`, `:28149`): Ist Strg, Umschalt, Alt oder Super gedrückt, setzt FPL immer **beide** Flags (links und rechts), weil X11 im Zustandsfeld keine Seite kennt. `LockMask` und `Mod2Mask` werden gar nicht ausgewertet, `CapsLock` und `NumLock` fehlen unter X11 also in `modifiers`. Für qemu ist das egal, weil qemu den Tastenzustand selbst führt. Für eine eigene Modifier-Führung (2.5) muss man es aber wissen.
+- **X11 setzt kein `WM_NAME`** (gefunden in Iteration 0): Der Fenstertitel steht nur in `_NET_WM_NAME`, `WM_CLASS` wird einmal aus dem Starttitel gesetzt. Werkzeuge, die nach ICCCM `WM_NAME` lesen, finden das Fenster nicht über den Titel, darunter `xdotool search --name`. Das Testskript sucht deshalb über die Prozess-ID. Eine kleine FPL-Korrektur, die nicht zu diesem Plan gehört (7.2).
 - **X11-Loader:** Weder `XGrabPointer`, `XUngrabPointer`, `XGrabKeyboard`, `XUngrabKeyboard` und `XWarpPointer` noch `XQueryExtension`, `XGetEventData` und `XFreeEventData` werden geladen, libXi gar nicht. Für `FPL_NO_PLATFORM_INCLUDES` müssen alle Konstanten (`GrabModeAsync`, `GrabSuccess`, `AlreadyGrabbed`, `GrabNotViewable`, `GrabFrozen`, `XI_RawMotion`, `XIAllMasterDevices`) und Typen (`XGenericEventCookie`, `XIEventMask`, `XIRawEvent`, `XIValuatorState`) selbst definiert werden, wie beim Rest der X11-ABI.
 
 ---
@@ -63,31 +65,23 @@ Ein qemu-Frontend braucht darüber hinaus **physische Tastencodes**, die Seitent
 
 ### 2.1 Die API
 
-Drei Stellschrauben, jede mit Setter und Getter nach dem Muster der vorhandenen Fensterfunktionen:
+**Entschieden am 2026-09-24: getrennte Schalter wie bei SDL.** Drei Schalter und ein Warp, jeder Schalter mit Getter:
 
 ```c
-/**
-* @enum fplWindowMouseMode
-* @brief How the mouse cursor behaves inside the window.
-*/
-typedef enum fplWindowMouseMode {
-	//! The cursor moves freely, mouse events carry window positions (Default).
-	fplWindowMouseMode_Free = 0,
-	//! The cursor cannot leave the client area, mouse events carry window positions.
-	fplWindowMouseMode_Confined,
-	//! The cursor is hidden and locked, move events carry raw unaccelerated deltas.
-	fplWindowMouseMode_Relative,
-} fplWindowMouseMode;
+//! Keeps the cursor inside the client area of the window.
+fpl_platform_api bool fplSetWindowMouseGrab(const bool enabled);
+fpl_platform_api bool fplIsWindowMouseGrabbed(void);
 
-fpl_platform_api bool fplSetWindowMouseMode(const fplWindowMouseMode mode);
-fpl_platform_api fplWindowMouseMode fplGetWindowMouseMode(void);
+//! Hides and locks the cursor, move events carry raw unaccelerated deltas. Locks the cursor regardless of the mouse grab.
+fpl_platform_api bool fplSetWindowRelativeMouse(const bool enabled);
+fpl_platform_api bool fplIsWindowRelativeMouse(void);
 
 //! System shortcuts (Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc, Alt+F4) go to the window instead of the window manager or the shell.
-fpl_platform_api bool fplSetWindowKeyboardGrabEnabled(const bool enabled);
-fpl_platform_api bool fplIsWindowKeyboardGrabEnabled(void);
+fpl_platform_api bool fplSetWindowKeyboardGrab(const bool enabled);
+fpl_platform_api bool fplIsWindowKeyboardGrabbed(void);
 
 //! Moves the cursor to a position in window coordinates, the same coordinates the mouse events use.
-fpl_platform_api bool fplSetWindowCursorPosition(const int32_t x, const int32_t y);
+fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
 ```
 
 Dazu bekommt `fplMouseEvent` zwei Felder:
@@ -99,18 +93,21 @@ Dazu bekommt `fplMouseEvent` zwei Felder:
 	int32_t deltaY;
 ```
 
+**Zusammenspiel der beiden Maus-Schalter:** Der relative Modus gewinnt. Solange er an ist, ist der Cursor versteckt und festgehalten, egal was der Maus-Grab sagt. Wird er ausgeschaltet, gilt wieder der Maus-Grab, der Cursor ist also eingesperrt oder frei. Intern wird aus beiden Schaltern genau ein wirksamer Zustand (frei, eingesperrt, relativ), und nur diesen kennen die Plattformteile (3). So gibt es trotz zweier Schalter keine ungültige Kombination.
+
 Warum diese Form:
-- **Ein Modus statt zweier Schalter für Maus-Grab und relativ.** Relativ ohne Einsperren ergibt nirgends einen Sinn, und relativ mit sichtbarem Cursor auch nicht. Mit einem Enum gibt es keine ungültigen Kombinationen.
+- **Getrennte Schalter wie SDL** (`SDL_SetWindowMouseGrab`, `SDL_SetWindowRelativeMouseMode`, `SDL_SetWindowKeyboardGrab`, `SDL_WarpMouseInWindow`): Wer SDL kennt, findet sich sofort zurecht. Ein Frontend kann den relativen Modus ein- und ausschalten, ohne sich den Grab-Zustand zu merken.
 - **Tastatur-Grab getrennt**, weil er unabhängig ist: qemu im absoluten Modus (usb-tablet) greift nur die Tastatur, ein Spiel im relativen Modus meistens nur die Maus.
 - **Warp in Fensterkoordinaten**, weil qemu (`dpy_mouse_set`) und die Warp-Rückfallebene genau die brauchen. `fplQueryCursorPosition` bleibt bei Bildschirmkoordinaten.
 - **Deltas in jedem Move-Event**, nicht nur im relativen Modus. Wer nur `mouseX`/`mouseY` liest, merkt nichts.
+- **Die Getter liefern den angeforderten Zustand**, nicht den wirksamen (2.2).
 
 So sieht ein qemu-Frontend damit aus:
 
 ```c
 // Grab after a click or Ctrl+Alt+G, the guest has a relative mouse (PS/2)
-fplSetWindowKeyboardGrabEnabled(true);
-fplSetWindowMouseMode(fplWindowMouseMode_Relative);
+fplSetWindowKeyboardGrab(true);
+fplSetWindowRelativeMouse(true);
 
 // Inside the event loop
 if (ev.mouse.type == fplMouseEventType_Move && isGrabbed) {
@@ -120,22 +117,22 @@ if (ev.mouse.type == fplMouseEventType_Move && isGrabbed) {
 }
 
 // Ungrab
-fplSetWindowMouseMode(fplWindowMouseMode_Free);
-fplSetWindowKeyboardGrabEnabled(false);
+fplSetWindowRelativeMouse(false);
+fplSetWindowKeyboardGrab(false);
 ```
 
 ### 2.2 Zustandsmodell: angefordert und wirksam
 
 - FPL speichert den **angeforderten** Zustand, und die Getter liefern ihn. **Wirksam** ist er nur, solange das Fenster den Fokus hat, sichtbar und nicht minimiert ist. Das ist das Modell von SDL (`SDL_UpdateWindowGrab`).
-- **Fokusverlust, Minimieren, Verstecken, der modale Verschiebe-/Größen-Loop unter Win32 und `fplWindowShutdown()`** heben den Grab beim Betriebssystem auf, die Anforderung bleibt. Kommt der Fokus zurück, stellt FPL den Grab wieder her. Wer die qemu-SDL-Semantik will (Fokusverlust beendet den Grab), setzt bei `LostFocus` selbst `Free` und `false`.
+- **Fokusverlust, Minimieren, Verstecken, der modale Verschiebe-/Größen-Loop unter Win32 und `fplWindowShutdown()`** heben den Grab beim Betriebssystem auf, die Anforderung bleibt. Kommt der Fokus zurück, stellt FPL den Grab wieder her. Wer die qemu-SDL-Semantik will (Fokusverlust beendet den Grab), schaltet bei `LostFocus` selbst alle drei Schalter aus.
 - Eine **zentrale Funktion** `fpl__UpdateInputGrab()` gleicht angefordert und wirksam ab. Aufgerufen wird sie von den Settern, bei Fokus, Minimieren/Wiederherstellen, Zeigen/Verstecken, Vollbild, Größe/Position (Win32-Clip-Rechteck) und beim Beenden. Eine zweite Stelle, die Grabs anfasst, gibt es nicht.
 - **Vorübergehende Fehlschläge werden wiederholt:** Direkt nach Alt+Tab hält KWin die Tastatur oft noch selbst, `XGrabKeyboard` liefert dann `AlreadyGrabbed`. SDL wiederholt blockierend 100 × 50 ms. FPL wiederholt stattdessen **nicht blockierend** in `fplWindowUpdate()`/`fplPollEvent()`, höchstens alle `grabRetryIntervalMilliseconds` (50 ms), solange angefordert und fokussiert.
 - **Rückgabewert der Setter:** `false` nur, wenn der Wunsch grundsätzlich nicht erfüllbar ist (kein Fenster, ungültiger Wert, Plattform ohne Umsetzung). Ein vorübergehender Fehlschlag gibt `true` zurück und wird wiederholt.
-- **Fokusverlust lässt alle gedrückten Tasten und Maustasten los** (Release-Events, wie SDL). Sonst bleiben nach einem aufgehobenen Grab Strg oder Alt im Gast hängen (Entscheidung 7.1).
-- **Cursor-Sichtbarkeit:** Der relative Modus versteckt den Cursor, egal was `fplSetWindowCursorEnabled` sagt. Beim Verlassen gilt wieder dessen Wert. `Confined` lässt die Sichtbarkeit, wie sie ist.
+- **Fokusverlust lässt alle gedrückten Tasten und Maustasten los** (Release-Events, wie SDL), und zwar **für alle Apps**, nicht nur mit Grab (entschieden am 2026-09-24). Sonst bleiben nach einem aufgehobenen Grab Strg oder Alt im Gast hängen, und nach Alt+Tab kommt die nächste Alt-Taste als `Repeat` an (Iteration 0).
+- **Cursor-Sichtbarkeit:** Der relative Modus versteckt den Cursor, egal was `fplSetWindowCursorEnabled` sagt. Beim Verlassen gilt wieder dessen Wert. Der Maus-Grab lässt die Sichtbarkeit, wie sie ist.
 - **Verlassen des relativen Modus:** Der Cursor erscheint an der Stelle, an der der Modus begonnen hat (eingefrorene Position). So macht es qemu-gtk (`gd_ungrab_pointer`), und so erwarten es Spiele.
 
-### 2.3 Maus einsperren (`Confined`)
+### 2.3 Maus einsperren (Maus-Grab)
 
 **X11:** `XGrabPointer(display, window, owner_events=True, ButtonPress|ButtonRelease|PointerMotion, GrabModeAsync, GrabModeAsync, confine_to=window, cursor=None, CurrentTime)`. `GrabSuccess` heißt wirksam. `AlreadyGrabbed`, `GrabFrozen` und `GrabInvalidTime` führen zur Wiederholung (2.2). `GrabNotViewable` (Fenster nicht abgebildet) wird bei `Shown`/`Restored` erneut versucht. Ändert sich die Fenstergeometrie, hält der X-Server den Zeiger von selbst im Fenster. Aufheben mit `XUngrabPointer` + `XFlush`.
 
@@ -149,13 +146,13 @@ Gemeinsam: Der Cursor ist versteckt und festgehalten. Move-Events tragen in `del
 - Einschalten: Position merken (`GetCursorPos`), Cursor verstecken, `RegisterRawInputDevices({0x01, 0x02, dwFlags=0, hwndTarget=window})`. Ohne `RIDEV_NOLEGACY` (Tasten-Nachrichten, `SetCapture` und die Titelleiste funktionieren weiter) und ohne `RIDEV_INPUTSINK` (nur im Vordergrund). `ClipCursor` auf ein 1×1-Rechteck in der Client-Mitte, damit Klicks im Fenster landen und der unsichtbare Cursor nirgends hin kann.
 - `WM_INPUT`: `GetRawInputData` in einen Stack-Puffer. `MOUSE_MOVE_RELATIVE` liefert `lLastX`/`lLastY` direkt. **`MOUSE_MOVE_ABSOLUTE`** (RDP, VM-Tablets wie qemu usb-tablet oder VMware, Stifte) wird von 0..65535 auf den (virtuellen) Desktop umgerechnet (`MOUSE_VIRTUAL_DESKTOP`) und gegen die vorige Position gerechnet. Das erste Paket setzt nur die Basis. Aus Touch erzeugte Eingaben (`GetMessageExtraInfo() & 0x80`) werden übersprungen. `WM_INPUT` geht danach weiter an `DefWindowProc`, wie verlangt.
 - `WM_MOUSEMOVE` wird im relativen Modus ignoriert, Tasten und Rad kommen weiter über die normalen Nachrichten, mit der eingefrorenen Position.
-- Ausschalten: `RIDEV_REMOVE`, Clip-Rechteck zurück (frei oder `Confined`), `SetCursorPos` auf die eingefrorene Position, Sichtbarkeit wiederherstellen.
+- Ausschalten: `RIDEV_REMOVE`, Clip-Rechteck zurück (frei oder eingesperrt, je nach Maus-Grab), `SetCursorPos` auf die eingefrorene Position, Sichtbarkeit wiederherstellen.
 
 **X11, bevorzugt XInput2:**
 - Beim Fensteraufbau wird libXi **optional** geladen (`libXi.so.6`, `libXi.so`, wie Xinerama). Danach folgen `XQueryExtension("XInputExtension")` für den Opcode und `XIQueryVersion` ≥ 2.0. Fehlt etwas, gilt die Rückfallebene.
 - Einschalten: `XISelectEvents(root, XIAllMasterDevices, XI_RawMotion)`, und zwar **nur während der relative Modus wirksam ist**. SDL wählt es dauerhaft aus, das erzeugt ohne Nutzen Verkehr für jede Mausbewegung auf dem ganzen Bildschirm. Dazu `XGrabPointer` mit `confine_to=window` und dem unsichtbaren Cursor, dann ein Warp in die Fenstermitte.
 - Event-Schleife: `GenericEvent` → `XGetEventData` → Opcode und `XI_RawMotion` prüfen → `raw_values` der Valuatoren 0 und 1 (Reihenfolge nach gesetzten Maskenbits) → Delta. **Absolute Valuatoren** (VM-Tablets, Grafiktabletts) werden pro `sourceid` über `XIQueryDevice` erkannt und gegen den Vorwert gerechnet. SDL rechnet dort `prev - cur`, das Vorzeichen sieht verdreht aus, FPL rechnet `cur - prev`. Danach `XFreeEventData`. Core-`MotionNotify` wird im relativen Modus ignoriert.
-- Ausschalten: leere Maske, `XUngrabPointer` (oder zurück zu `Confined`), `XWarpPointer` auf die eingefrorene Position.
+- Ausschalten: leere Maske, `XUngrabPointer` (oder weiter eingesperrt, wenn der Maus-Grab an ist), `XWarpPointer` auf die eingefrorene Position.
 
 **X11-Rückfallebene ohne XI2 (Warp zur Mitte):** Pointer-Grab und unsichtbarer Cursor wie oben. Jedes `MotionNotify` außerhalb der Mitte ergibt `delta = position - mitte`, danach folgt ein Warp zur Mitte. Ein `MotionNotify` genau auf der Mitte ist das Echo des Warps und wird verworfen. Diese Deltas sind **beschleunigt**, das wird dokumentiert. Die Rückfallebene lässt sich mit dem neuen Define `FPL_NO_X11_XINPUT2` erzwingen. Das braucht der Test, und `FPL_NO_RUNTIME_LINKING`-Builds kommen damit ohne `-lXi` aus.
 
@@ -174,12 +171,12 @@ Gemeinsam: Der Cursor ist versteckt und festgehalten. Move-Events tragen in `del
 
 ### 2.6 Warp
 
-`fplSetWindowCursorPosition(x, y)` nimmt Fensterkoordinaten, der Ursprung liegt oben links wie bei den Maus-Events. Unter Win32 folgen `ClientToScreen` und `SetCursorPos`, unter X11 `XWarpPointer(display, None, window, 0, 0, 0, 0, x, y)` und `XFlush`. Das System schickt danach selbst eine Bewegung. FPL setzt seine „letzte Position“ vorher auf das Ziel, sodass dieses Move-Event das Delta 0 hat. Die SDL-Maßnahmen gegen Win32-Zittern (dreifaches `SetCursorPos`, verspätete `WM_MOUSEMOVE` verwerfen) werden nur übernommen, wenn der Test das Problem zeigt. Bei `Confined` wird das Ziel auf den Client-Bereich begrenzt. **Im relativen Modus wird nicht wirklich gewarpt**, es wird nur die eingefrorene Position versetzt, an der der Cursor beim Verlassen wieder erscheint. qemu warpt so bei `dpy_mouse_set`. Gibt es kein Fenster oder ist es versteckt oder minimiert, liefert die Funktion `false`.
+`fplWarpWindowCursor(x, y)` nimmt Fensterkoordinaten, der Ursprung liegt oben links wie bei den Maus-Events. Unter Win32 folgen `ClientToScreen` und `SetCursorPos`, unter X11 `XWarpPointer(display, None, window, 0, 0, 0, 0, x, y)` und `XFlush`. Das System schickt danach selbst eine Bewegung. FPL setzt seine „letzte Position“ vorher auf das Ziel, sodass dieses Move-Event das Delta 0 hat. Die SDL-Maßnahmen gegen Win32-Zittern (dreifaches `SetCursorPos`, verspätete `WM_MOUSEMOVE` verwerfen) werden nur übernommen, wenn der Test das Problem zeigt. Mit Maus-Grab wird das Ziel auf den Client-Bereich begrenzt. **Im relativen Modus wird nicht wirklich gewarpt**, es wird nur die eingefrorene Position versetzt, an der der Cursor beim Verlassen wieder erscheint. qemu warpt so bei `dpy_mouse_set`. Gibt es kein Fenster oder ist es versteckt oder minimiert, liefert die Funktion `false`.
 
 ### 2.7 Deltas in Move-Events
 
-- `Free` und `Confined`: Differenz zum vorigen Move-Event des Fensters. Nach Enter, Fokusgewinn und Warp ist das Delta 0.
-- `Relative`: rohe Zählwerte (2.4).
+- Ohne relativen Modus (frei oder eingesperrt): Differenz zum vorigen Move-Event des Fensters. Nach Enter, Fokusgewinn und Warp ist das Delta 0.
+- Im relativen Modus: rohe Zählwerte (2.4).
 - `fplMouseState` (Polling) bekommt vorerst keine Deltas, qemu arbeitet mit Events (7.2).
 
 ### 2.8 Was ein qemu-Frontend darüber hinaus braucht
@@ -202,12 +199,20 @@ Gemeinsam: Der Cursor ist versteckt und festgehalten. Move-Events tragen in `del
 Plattformneutraler Zustand in `fpl__PlatformWindowState`:
 
 ```c
+// The one mouse state the platform parts know, made from the mouse grab and the relative mouse switch
+typedef enum fpl__MouseLockState {
+	fpl__MouseLockState_Free = 0,
+	fpl__MouseLockState_Confined,
+	fpl__MouseLockState_Relative,
+} fpl__MouseLockState;
+
 typedef struct fpl__InputGrabState {
 	// Requested by the user, kept while the window has no focus
-	fplWindowMouseMode requestedMouseMode;
+	fpl_b32 requestedMouseGrab;
+	fpl_b32 requestedRelativeMouse;
 	fpl_b32 requestedKeyboardGrab;
 	// What is currently applied at the operating system
-	fplWindowMouseMode appliedMouseMode;
+	fpl__MouseLockState appliedMouseLock;
 	fpl_b32 appliedKeyboardGrab;
 	// Position where relative mode started, the cursor returns there
 	int32_t frozenX;
@@ -229,7 +234,7 @@ Plattformteile:
 - **X11** (`fpl__X11WindowState`): `bool pointerGrabbed`, `bool keyboardGrabbed`. XI2-Zustand: Opcode, verfügbar, ausgewählt, Tabelle absoluter Quellgeräte, vorige absolute Werte. Dazu die Warp-Mitte der Rückfallebene. `fpl__X11SubplatformState` bekommt `fpl__XInput2Api xinput2` neben `xrandr` und `xinerama`.
 
 Ablauf:
-- `fpl__UpdateInputGrab(appState)` ist der einzige Ort, der wirksame Grabs setzt oder aufhebt. Er vergleicht angefordert mit wirksam unter der Bedingung „fokussiert, sichtbar, nicht minimiert“ und ruft die Plattformfunktionen `fpl__Win32ApplyMouseMode`/`fpl__X11ApplyMouseMode` und `…ApplyKeyboardGrab`.
+- `fpl__UpdateInputGrab(appState)` ist der einzige Ort, der wirksame Grabs setzt oder aufhebt. Er vergleicht angefordert mit wirksam unter der Bedingung „fokussiert, sichtbar, nicht minimiert“ und ruft die Plattformfunktionen `fpl__Win32ApplyMouseLock`/`fpl__X11ApplyMouseLock` und `…ApplyKeyboardGrab`. Den gewünschten `fpl__MouseLockState` rechnet eine kleine plattformneutrale Funktion aus den beiden Maus-Schaltern aus (relativ vor Grab).
 - Win32: `WM_INPUT` wird im Fensterproc an `fpl__InputBackendWin32_HandleNativeEvent` weitergereicht, wie die übrigen Maus-Nachrichten. Der Hook-Callback ruft direkt `fpl__HandleKeyboardButtonEvent`.
 - X11: `GenericEvent` kommt als neuer Fall in die Event-Schleife neben `KeyPress`/`MotionNotify` und wird an `fpl__InputBackendX11Kbm_HandleNativeEvent` weitergereicht.
 - Die Wiederholung aus 2.2 und die Clip-Auffrischung aus 2.3 laufen am Ende von `fplWindowUpdate()` und `fplPollEvent()`.
@@ -246,13 +251,13 @@ Neue X11-Funktionen im Loader: `XGrabPointer`, `XUngrabPointer`, `XGrabKeyboard`
 C99, Software-Backbuffer (kein GL nötig):
 - Die Demo zeichnet ein Fadenkreuz an der Mausposition, im relativen Modus an einer virtuellen Position, die aus den Deltas aufsummiert und am Rand gestoppt wird. Die Titelzeile zeigt Modus, Tastatur-Grab, Fokus und die letzte Taste.
 - `--log-events` schreibt jedes Event als eine maschinenlesbare Zeile auf stdout (`move x=… y=… dx=… dy=…`, `key down vk=… scan=… mods=…`, `focus lost`). Die Testskripte werten genau das aus.
-- Tasten nach qemu-Art: Strg+Alt+G schaltet den vollen Grab (Tastatur + relativ) um, Strg+Alt+M den Mausmodus, Strg+Alt+K den Tastatur-Grab, Strg+Alt+W warpt zur Mitte, Strg+Alt+Q beendet. Die Tastenkürzel selbst werden nicht als „Gast-Taste“ geloggt.
-- Parameter: `--mouse-mode=free|confined|relative`, `--keyboard-grab`, `--timeout=<s>` (beendet sich selbst, Sicherheitsnetz), `--selftest` (Warp-Prüfungen ohne Nutzer), `--no-grab` (zum Debuggen, 8), `--log-core-motion` (im relativen Modus zusätzlich die beschleunigte Core-Bewegung, Iteration 3), `--stall=<ms>` (künstliche Pause pro Frame für den Hook-Test, 4.4).
+- Tasten nach qemu-Art: Strg+Alt+G schaltet den vollen Grab (Tastatur + relativ) um, Strg+Alt+M den Maus-Grab, Strg+Alt+R den relativen Modus, Strg+Alt+K den Tastatur-Grab, Strg+Alt+W warpt zur Mitte, Strg+Alt+Q beendet. Die Tastenkürzel selbst werden nicht als „Gast-Taste“ geloggt.
+- Parameter: `--mouse-grab`, `--relative-mouse`, `--keyboard-grab`, `--timeout=<s>` (beendet sich selbst, Sicherheitsnetz), `--selftest` (Warp-Prüfungen ohne Nutzer), `--no-grab` (zum Debuggen, 8), `--log-core-motion` (im relativen Modus zusätzlich die beschleunigte Core-Bewegung, Iteration 3), `--stall=<ms>` (künstliche Pause pro Frame für den Hook-Test, 4.4).
 - CMake ist maßgeblich, `premake5.lua`, `Makefile` und `.vcxproj` werden nachgezogen.
 
 ### 4.2 Automatische Tests unter X11
 
-`demos/FPL_InputGrab/tests/run_grab_tests.sh` treibt die Demo mit `xdotool` (XTEST-Eingaben unterliegen Grabs und Confinement wie echte). Jeder Lauf läuft unter `timeout -s KILL`, denn stirbt der Client, gibt der X-Server alle Grabs frei. Ein X-Fehler wird wie im Viewer bis zu dreimal wiederholt. **Das Skript greift für einige Sekunden die echte Tastatur und Maus des Nutzers.** Es sagt das vor dem Start an und läuft nicht in Schleifen.
+`demos/FPL_InputGrab/tests/run_grab_tests.sh` treibt die Demo mit `xdotool` (XTEST-Eingaben unterliegen Grabs und Confinement wie echte). Jeder Lauf läuft unter `timeout -s KILL`, denn stirbt der Client, gibt der X-Server alle Grabs frei. Demos werden per Signal beendet, nie über ihr Tastenkürzel, und nach jedem Test wird geprüft, dass keine Taste im X-Server gedrückt geblieben ist (Iteration 0, Stand). Ein X-Fehler wird wie im Viewer bis zu dreimal wiederholt. **Das Skript greift für einige Sekunden die echte Tastatur und Maus des Nutzers.** Es sagt das vor dem Start an und läuft nicht in Schleifen.
 
 ### 4.3 Win32
 
@@ -277,13 +282,21 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 - Ausgangsstand festhalten: Alt+Tab und Super gehen an KWin (aktives Fenster wechselt, per `xdotool getactivewindow`). Den Verdacht aus 1.3 prüfen (nach Alt+Tab weg und zurück meldet der nächste Alt-Druck `Repeat`?), das Ergebnis kommt in 1.3.
 - **Abnahme:** Die Demo baut mit gcc und clang unter Linux und mit MinGW x64/x86, das Testskript läuft durch und dokumentiert den Ausgangsstand.
 
+**Stand (2026-09-24):**
+- Erledigt: Branch auf `develop` gesetzt (Abschnitt 0). `demos/FPL_InputGrab` (C99, Software-Backbuffer): Fadenkreuz, Fokusrahmen, Titelzeile mit Fokus und letzter Taste, `--log-events`, `--timeout`, `--stall`, `--window`, `--title`, Strg+Alt+Q. CMake maßgeblich. `premake5.lua`, `Makefile` und `.vcxproj` stammen aus premake und sind bis auf die GUID gleich denen von `FPL_Window`. Im Workspace-`Makefile`, in der Solution und in `demos_final_platform_layer_premake5.lua` stehen nur die Einträge der neuen Demo.
+- Builds: gcc und clang (`-Wall -Wextra`), MinGW x64 und x86, keine Warnung aus der Demo. Die übrigen Warnungen kommen aus `final_platform_layer.h` und sind nicht neu. Unter wine startet die x64-Version, loggt Events und endet über `--timeout`. Unter wine kam allerdings kein `gotfocus`, das wird in Iteration 1 mit angesehen.
+- `tests/run_grab_tests.sh` mit fünf Tests, Ergebnis: `mouse_move`, `key_press_release`, `focus_switch` und `alt_tab_without_grab_switches` grün. **`no_stuck_alt_after_alt_tab` rot:** Der erste Alt-Druck nach der Rückkehr kommt als `repeat`, der Verdacht aus 1.3 ist damit bestätigt. Der Test bleibt rot, bis Iteration 1 das Loslassen bei Fokusverlust einbaut.
+- Ausgangsstand festgehalten: Ohne Grab wechselt KWin bei Alt+Tab das Fenster, die Demo sieht nur Alt gedrückt und dann den Fokusverlust.
+- Beim Testen gefunden und im Skript behoben: `xdotool key --window` geht bei einem **fokussierten** Fenster über XTEST. Beendet sich die Demo beim Q-Druck ihres Strg+Alt+Q, bricht xdotool am zerstörten Fenster ab und lässt Strg, Alt und Q nie los. Die Tasten blieben im X-Server gedrückt (Strg+Q lief als Autorepeat in den nächsten Test). Das Skript beendet Demos jetzt per Signal, prüft nach jedem Test mit python-xlib (`query_keymap`), ob Tasten hängen, lässt sie über XTEST los und wertet den Test dann als rot.
+- Beim Testen gefunden, gehört nicht zu diesem Plan: FPL setzt unter X11 kein `WM_NAME` (1.3, 7.2), und das Workspace-`Makefile` ist gegenüber premake veraltet (`FPL_Process` fehlt). Ein komplettes Neuerzeugen per premake würde 41 Projektdateien ändern.
+
 ### Iteration 1 — API, Zustandsmodell, Warp, Deltas
 
 - Öffentliche Deklarationen aus 2.1 mit Doxygen, Abschnitt „Maus- und Tastatursteuerung“ in `final_platform_layer.docs` (neben `section_category_window_style_cursor`).
-- `fpl__InputGrabState`, `fpl__UpdateInputGrab` mit allen Aufrufstellen aus 3. Die Setter nehmen vorerst nur `Free` und `false` an.
-- `fplSetWindowCursorPosition` unter Win32 und X11 (`XWarpPointer` in den Loader).
+- `fpl__InputGrabState`, `fpl__UpdateInputGrab` mit allen Aufrufstellen aus 3. Die drei Schalter lehnen `true` vorerst mit `false` ab, bis ihre Iteration sie umsetzt.
+- `fplWarpWindowCursor` unter Win32 und X11 (`XWarpPointer` in den Loader).
 - `deltaX`/`deltaY` in Move-Events (2.7).
-- Loslassen aller gedrückten Tasten und Maustasten bei Fokusverlust (falls in 7.1 so entschieden).
+- Loslassen aller gedrückten Tasten und Maustasten bei Fokusverlust, für alle Apps (2.2). Damit wird `no_stuck_alt_after_alt_tab` grün.
 - `--selftest`: Warp auf fünf Positionen (Ecken, Mitte) → `fplQueryCursorPosition` = Client-Ursprung + Ziel, das nächste Move-Event hat Delta 0.
 - **Abnahme:** Der Selbsttest ist unter X11 grün, unter wine und auf Windows ebenso. Bei Handbewegung ist die Summe der Deltas gleich der Positionsdifferenz (Testskript mit `xdotool mousemove`). Kein hängender Modifier nach Alt+Tab. Die Build-Matrix aus 6 ist grün.
 
@@ -305,7 +318,7 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 - Win32-Hook nach 2.5: SDL-Tastenmenge, eigene Modifier-Führung, AltGr, einmaliges Durchreichen, `DefWindowProc`-Sperre, Neuinstallation.
 - **Abnahme X11 (automatisch):** Mit Grab loggt die Demo `alt+Tab`, `super` und `alt+F4`, und das aktive Fenster wechselt nicht. Ohne Grab wechselt es. Text-Events kommen während des Grabs weiter an. Win32 nach Handprüfliste.
 
-### Iteration 5 — Was qemu darüber hinaus braucht (Umfang nach 7.1)
+### Iteration 5 — Was qemu darüber hinaus braucht
 
 - `scanCode` (Satz 1) unter Win32 und X11, evdev→Satz-1-Tabelle.
 - X11-Maustasten 8/9 → X1/X2, horizontales Rad auf beiden Plattformen.
@@ -334,20 +347,21 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 
 ## 7. Entscheidungen und Folgepunkte
 
-### 7.1 Zu entscheiden (mit Empfehlung)
+### 7.1 Entschieden am 2026-09-24
 
-| Punkt | Empfehlung | Alternative | Wo |
-|---|---|---|---|
-| API-Form | ein Maus-Modus-Enum + Tastatur-Schalter + Warp | getrennte Schalter für Grab und relativ (SDL-Stil) | 2.1 |
-| Namen | `fplSetWindowMouseMode`, `fplSetWindowKeyboardGrabEnabled`, `fplSetWindowCursorPosition` | `…MouseGrab`, `fplWarpWindowCursor` | 2.1 |
-| Grab bei Fokusverlust | aussetzen und wiederherstellen (Anforderung bleibt) | Anforderung löschen (qemu-sdl2-Semantik), das kann die App selbst tun | 2.2 |
-| Tasten bei Fokusverlust loslassen | ja, für alle Apps (Release-Events) | nur, solange ein Grab angefordert ist | 2.2, Iteration 1 |
-| Relative Deltas | roh und unbeschleunigt, beschleunigt nur in der X11-Rückfallebene | zusätzlicher Modus „relativ beschleunigt“ | 2.4 |
-| Win32-Hook | Fensterthread, SDL-Tastenmenge inklusive Modifier | eigener Hook-Thread, der alle Tasten abfängt (keine Text-Events während des Grabs) | 2.5, 8 |
-| Alt+F4 beim Tastatur-Grab | geht an die App (wie qemu/SDL) | schließt weiterhin | 2.5 |
-| Iteration 5 in diesem Plan | ja, sonst ist das Frontend unter Win32 nicht benutzbar (VK statt physischer Taste) | eigener Folgeplan | 2.8 |
-| Format von `scanCode` | PC Satz 1 (`0xE0xx`), passt zu Win32 und PC-Emulatoren (86Box, 8086sim), qemu hat `atset1_to_linux` | Linux-evdev (X11 direkt) oder USB-HID (SDL-Stil) | 2.8 |
-| Cursorbild | eigener Folgeplan | in Iteration 5 | 7.2 |
+Nach Iteration 0 abgestimmt. Die ersten vier Punkte hat der Nutzer ausdrücklich entschieden, die übrigen sind wie empfohlen übernommen.
+
+| Punkt | Entscheidung | Wo im Plan |
+|---|---|---|
+| API-Form | **getrennte Schalter** wie SDL: `fplSetWindowMouseGrab`, `fplSetWindowRelativeMouse`, `fplSetWindowKeyboardGrab`, `fplWarpWindowCursor` (statt eines Modus-Enums). Der relative Modus gewinnt über den Maus-Grab. | 2.1 |
+| Tasten bei Fokusverlust loslassen | **ja, für alle Apps** (Release-Events) | 2.2, Iteration 1 |
+| Iteration 5 | **gehört in diesen Plan** | 2.8, Iteration 5 |
+| Format von `scanCode` | **PC Satz 1**, erweiterte Tasten als `0xE0xx`, Pause als `0xE11D`, 0 = unbekannt | 2.8 |
+| Alt+F4 beim Tastatur-Grab | **geht an die App**, das Fenster schließt nicht | 2.5 |
+| Grab bei Fokusverlust | aussetzen und wiederherstellen, die Anforderung bleibt | 2.2 |
+| Relative Deltas | roh und unbeschleunigt, beschleunigt nur in der X11-Rückfallebene | 2.4 |
+| Win32-Hook | Fensterthread, SDL-Tastenmenge inklusive Modifier | 2.5, 8 |
+| Cursorbild | eigener Folgeplan | 7.2 |
 
 ### 7.2 Folgepunkte (nicht in diesem Plan)
 
@@ -359,6 +373,7 @@ Die Reihenfolge geht vom Fundament (Zustandsmodell, Warp, Deltas) über das Eins
 - **Mäuse mit hoher Abtastrate** (4–8 kHz): `GetRawInputBuffer` statt einer `WM_INPUT` pro Paket. SDL3 liest Raw Input dafür in einem eigenen Thread.
 - **Wayland nativ:** FPL hat kein Wayland-Backend. Unter XWayland greift der Pointer nur über die Pointer-Constraints des Compositors, und `XGrabKeyboard` blockiert Compositor-Kürzel wohl nicht (ungeprüft).
 - **Mehrere Fenster** (qemu Multi-Head): FPL kennt nur ein Fenster.
+- **`WM_NAME` unter X11** zusätzlich zu `_NET_WM_NAME` setzen (`XStoreName` bzw. `XSetWMName`), damit ältere Fenstermanager und Werkzeuge wie `xdotool search --name` den Titel sehen (1.3).
 
 ---
 
