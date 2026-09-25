@@ -7,8 +7,9 @@
 # The mouse grab tests lock the real pointer inside a demo window, and the retry test lets a small python-xlib client hold the pointer
 # for two seconds, clicks go nowhere then.
 #
-# Usage: run_grab_tests.sh [--demo=<path>] [--tests=<name,...>] [--list]
-#   --demo   FPL_InputGrab executable (default: Release build, then Debug build under demos/build/FPL_InputGrab)
+# Usage: run_grab_tests.sh [--demo=<path>] [--fallback-demo=<path>] [--tests=<name,...>] [--list]
+#   --demo            FPL_InputGrab executable (default: Release build, then Debug build under demos/build/FPL_InputGrab)
+#   --fallback-demo   FPL_InputGrab_NoXInput2 executable for the relative_fallback_* tests (default: next to the demo)
 #   --tests  only these tests, see --list
 #   --list   print the test names and quit
 # Logs and report.md go to demos/build/FPL_InputGrab/tests, which is ignored by git.
@@ -43,6 +44,14 @@ maximumTestAttempts=3
 outsideDistance=30
 # Another client holds the pointer this long in the retry test, the demo must get the focus meanwhile
 pointerHoldSeconds=2
+# Relative moves of the relative mode tests and their sums, small enough to never reach an edge of the window from its center
+relativeMoves=("10 0" "0 7" "-4 -3" "25 12" "-6 20")
+relativeSumX=25
+relativeSumY=36
+relativeLargestStep=25
+# A position inside the window where the relative mode starts in the tests that end it again
+startInsideX=100
+startInsideY=50
 
 # --- Window placement (top left corner of the screen, out of the way) --------------------------------------------------------
 
@@ -57,15 +66,17 @@ resizedHeight=300
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
-allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab)
+allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab relative_delta_sum relative_hides_and_keeps_pointer relative_returns_to_start relative_warp_moves_start relative_released_on_focus_loss relative_fallback_delta_sum relative_fallback_hides_and_keeps_pointer relative_fallback_returns_to_start)
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
 demo=""
+fallbackDemo=""
 selectedTests="${allTests[*]}"
 for argument in "$@"; do
 	case "$argument" in
 		--demo=*) demo="${argument#--demo=}" ;;
+		--fallback-demo=*) fallbackDemo="${argument#--fallback-demo=}" ;;
 		--tests=*) selectedTests="${argument#--tests=}"; selectedTests="${selectedTests//,/ }" ;;
 		--list) printf '%s\n' "${allTests[@]}"; exit 0 ;;
 		*) echo "Unknown argument '$argument'" >&2; exit 2 ;;
@@ -83,6 +94,15 @@ if [ -z "$demo" ] || [ ! -x "$demo" ]; then
 	echo "FPL_InputGrab executable not found, build it or pass --demo=<path>" >&2
 	exit 2
 fi
+if [ -z "$fallbackDemo" ]; then
+	fallbackDemo="$(dirname "$demo")/FPL_InputGrab_NoXInput2"
+fi
+if [[ " $selectedTests " == *" relative_fallback_"* ]] && [ ! -x "$fallbackDemo" ]; then
+	echo "FPL_InputGrab_NoXInput2 executable not found, build it or pass --fallback-demo=<path>" >&2
+	exit 2
+fi
+# The executable StartDemo runs, the fallback tests set it to the build without XInput2
+demoBinary="$demo"
 for testName in $selectedTests; do
 	if [[ " ${allTests[*]} " != *" $testName "* ]]; then
 		echo "Unknown test '$testName', see --list" >&2
@@ -186,7 +206,7 @@ StartDemo() {
 	local title="FPLInputGrabTest-$currentTest-$instanceName-$$"
 	demoLog="$outputDirectory/$currentTest-$instanceName.log"
 	demoErrorLog="$outputDirectory/$currentTest-$instanceName.err"
-	timeout -s KILL "$((demoTimeoutSeconds + killGraceSeconds))" "$demo" --log-events --timeout="$demoTimeoutSeconds" --window="$windowSize" --title="$title" "$@" > "$demoLog" 2> "$demoErrorLog" &
+	timeout -s KILL "$((demoTimeoutSeconds + killGraceSeconds))" "$demoBinary" --log-events --timeout="$demoTimeoutSeconds" --window="$windowSize" --title="$title" "$@" > "$demoLog" 2> "$demoErrorLog" &
 	local wrapperPid=$!
 	startedWrapperPids+=("$wrapperPid")
 	if ! WaitForLogLine "$demoLog" 0 "demo ready" > /dev/null; then
@@ -351,6 +371,68 @@ print("released", flush=True)
 PYTHON_END
 	startedWrapperPids+=("$!")
 	holderPid="$!"
+}
+
+# Prints "invisible" when the current cursor image has no visible pixel (XFixes), "visible" otherwise
+ReadCursorVisibility() {
+	python3 - << 'PYTHON_END'
+from Xlib import display
+xDisplay = display.Display()
+xDisplay.xfixes_query_version()
+cursorImage = xDisplay.xfixes_get_cursor_image(xDisplay.screen().root)
+alphaShift = 24
+isVisible = any((pixel >> alphaShift) != 0 for pixel in cursorImage.cursor_image)
+print("visible" if isVisible else "invisible")
+PYTHON_END
+}
+
+# Sends the relative moves of the relative mode tests through XTEST
+SendRelativeMoves() {
+	local move
+	for move in "${relativeMoves[@]}"; do
+		# shellcheck disable=SC2086
+		xdotool mousemove_relative -- $move
+	done
+}
+
+# Waits until the move events after <mark> add up to the given sums. Sets movedSumX, movedSumY and movedPositions (the distinct x,y of those events).
+ExpectMoveSum() {
+	local logFile="$1"
+	local mark="$2"
+	local expectedX="$3"
+	local expectedY="$4"
+	local deadline=$((SECONDS + waitSeconds))
+	local sums
+	while :; do
+		sums=$(tail -n +"$((mark + 1))" "$logFile" | awk '/ mouse move / { for (i = 1; i <= NF; ++i) { split($i, pair, "="); if (pair[1] == "dx") { sumX += pair[2] } else if (pair[1] == "dy") { sumY += pair[2] } else if (pair[1] == "x") { x = pair[2] } else if (pair[1] == "y") { position[x "," pair[2]] = 1 } } } END { list = ""; for (p in position) { list = list " " p }; printf "%d %d%s", sumX, sumY, list }')
+		read -r movedSumX movedSumY movedPositions <<< "$sums"
+		if [ "$movedSumX" -eq "$expectedX" ] && [ "$movedSumY" -eq "$expectedY" ]; then
+			return 0
+		fi
+		if [ "$SECONDS" -gt "$deadline" ]; then
+			Fail "move deltas add up to $movedSumX,$movedSumY instead of $expectedX,$expectedY"
+			return 1
+		fi
+		sleep "$pollIntervalSeconds"
+	done
+}
+
+# Fails when a move event after the first gotfocus has a step larger than the given one, like a jump when the relative mode starts
+ExpectNoJumpAfterFocus() {
+	local logFile="$1"
+	local largestStep="$2"
+	local focusLine largestSeen
+	focusLine=$(LineNumberOf "$logFile" 0 "window gotfocus")
+	if [ -z "$focusLine" ]; then
+		Fail "no gotfocus in $(basename "$logFile")"
+		return 1
+	fi
+	largestSeen=$(tail -n +"$focusLine" "$logFile" | awk '/ mouse move / { for (i = 1; i <= NF; ++i) { split($i, pair, "="); if (pair[1] == "dx" || pair[1] == "dy") { step = pair[2] < 0 ? -pair[2] : pair[2]; if (step > largest) { largest = step } } } } END { printf "%d", largest }')
+	if [ "$largestSeen" -gt "$largestStep" ]; then
+		Fail "a move event after gotfocus has a step of $largestSeen, the largest move sent was $largestStep"
+		return 1
+	fi
+	return 0
 }
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
@@ -635,6 +717,159 @@ Test_mouse_grab_retries_when_already_grabbed() {
 	StopDemo "$processA"
 	StopDemo "$processB"
 	return 0
+}
+
+# The relative mode reports the raw movement: a known series of XTEST moves adds up to the same sum, and every move event keeps the position where the mode started
+Test_relative_delta_sum() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --relative-mouse || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	SendRelativeMoves
+	ExpectMoveSum "$logFile" "$mark" "$relativeSumX" "$relativeSumY" || return 1
+	if [ "$(wc -w <<< "$movedPositions")" -ne 1 ]; then
+		Fail "the move events carry several positions ($movedPositions), expected the one where the mode started"
+		return 1
+	fi
+	ExpectNoJumpAfterFocus "$logFile" "$relativeLargestStep" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# The cursor is invisible and can not leave the window
+Test_relative_hides_and_keeps_pointer() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --relative-mouse || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" visibility
+	ActivateDemo "$window" "$logFile" || return 1
+	ReadClientArea "$window"
+	ExpectPointerConfined "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	ExpectPointerConfined "$((areaLeft + areaWidth + outsideDistance))" "$((areaTop + areaHeight + outsideDistance))" || return 1
+	visibility=$(ReadCursorVisibility)
+	if [ "$visibility" != "invisible" ]; then
+		Fail "the cursor is $visibility in the relative mode"
+		return 1
+	fi
+	StopDemo "$processId"
+	return 0
+}
+
+# Ending the relative mode puts the cursor back where the mode started, and it is visible again
+Test_relative_returns_to_start() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark visibility
+	ActivateDemo "$window" "$logFile" || return 1
+	ReadClientArea "$window"
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove --window "$window" "$startInsideX" "$startInsideY"
+	ExpectLogLine "$logFile" "$mark" "mouse move x=$startInsideX y=$startInsideY " || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool key ctrl+alt+r
+	ExpectLogLine "$logFile" "$mark" "grab relative requested=on result=1" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	SendRelativeMoves
+	ExpectMoveSum "$logFile" "$mark" "$relativeSumX" "$relativeSumY" || return 1
+	if [ "$movedPositions" != "$startInsideX,$startInsideY" ]; then
+		Fail "the move events carry $movedPositions, expected the start position $startInsideX,$startInsideY"
+		return 1
+	fi
+	mark=$(LogLineCount "$logFile")
+	xdotool key ctrl+alt+r
+	ExpectLogLine "$logFile" "$mark" "grab relative requested=off result=1" || return 1
+	sleep "$settleSeconds"
+	ReadPointer
+	if [ "$pointerX" -ne "$((areaLeft + startInsideX))" ] || [ "$pointerY" -ne "$((areaTop + startInsideY))" ]; then
+		Fail "the pointer is at $pointerX,$pointerY after the relative mode, expected $((areaLeft + startInsideX)),$((areaTop + startInsideY))"
+		return 1
+	fi
+	visibility=$(ReadCursorVisibility)
+	if [ "$visibility" != "visible" ]; then
+		Fail "the cursor is $visibility after the relative mode"
+		return 1
+	fi
+	StopDemo "$processId"
+	return 0
+}
+
+# A warp in the relative mode moves the position the events carry and where the cursor appears afterwards, not the hidden cursor
+Test_relative_warp_moves_start() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --relative-mouse || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark warpLine centerX centerY
+	ActivateDemo "$window" "$logFile" || return 1
+	ReadClientArea "$window"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool key ctrl+alt+w
+	warpLine=$(WaitForLogLine "$logFile" "$mark" "warp x=[0-9]+ y=[0-9]+ result=1")
+	if [ -z "$warpLine" ]; then
+		Fail "no warp in the log"
+		return 1
+	fi
+	centerX=$(sed -E 's/.* warp x=([0-9]+) .*/\1/' <<< "$warpLine")
+	centerY=$(sed -E 's/.* y=([0-9]+) .*/\1/' <<< "$warpLine")
+	mark=$(LogLineCount "$logFile")
+	SendRelativeMoves
+	ExpectMoveSum "$logFile" "$mark" "$relativeSumX" "$relativeSumY" || return 1
+	if [ "$movedPositions" != "$centerX,$centerY" ]; then
+		Fail "the move events carry $movedPositions after the warp, expected $centerX,$centerY"
+		return 1
+	fi
+	mark=$(LogLineCount "$logFile")
+	xdotool key ctrl+alt+r
+	ExpectLogLine "$logFile" "$mark" "grab relative requested=off result=1" || return 1
+	sleep "$settleSeconds"
+	ReadPointer
+	if [ "$pointerX" -ne "$((areaLeft + centerX))" ] || [ "$pointerY" -ne "$((areaTop + centerY))" ]; then
+		Fail "the pointer is at $pointerX,$pointerY after the relative mode, expected the warp target $((areaLeft + centerX)),$((areaTop + centerY))"
+		return 1
+	fi
+	StopDemo "$processId"
+	return 0
+}
+
+# Another window gets the focus: no more raw movement, and the pointer is free
+Test_relative_released_on_focus_loss() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --relative-mouse || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowA" "$logA" || return 1
+	ReadClientArea "$windowA"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logA")
+	SendRelativeMoves
+	ExpectMoveSum "$logA" "$mark" "$relativeSumX" "$relativeSumY" || return 1
+	mark=$(LogLineCount "$logA")
+	ActivateDemo "$windowB" "$logB" || return 1
+	ExpectLogLine "$logA" "$mark" "window lostfocus" || return 1
+	ExpectPointerFree "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	mark=$(LogLineCount "$logA")
+	SendRelativeMoves
+	sleep "$settleSeconds"
+	if grep -q " mouse move " <(tail -n +"$((mark + 1))" "$logA"); then
+		Fail "demo A still got move events without the focus"
+		return 1
+	fi
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# The same with the build without XInput2, which warps the cursor back to the window center after every motion
+Test_relative_fallback_delta_sum() {
+	local demoBinary="$fallbackDemo"
+	Test_relative_delta_sum
+}
+
+Test_relative_fallback_hides_and_keeps_pointer() {
+	local demoBinary="$fallbackDemo"
+	Test_relative_hides_and_keeps_pointer
+}
+
+Test_relative_fallback_returns_to_start() {
+	local demoBinary="$fallbackDemo"
+	Test_relative_returns_to_start
 }
 
 # --- Runner ------------------------------------------------------------------------------------------------------------------

@@ -145,3 +145,18 @@ if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
 			$<TARGET_FILE_DIR:${PROJECT_NAME}>/${MY_RESOURCE_FOLDER}
 	)
 endif()
+
+# -----------------------------------------------------------------------------
+#
+# Second build without XInput2, the tests of the relative mouse mode run against its warp fallback as well
+#
+# -----------------------------------------------------------------------------
+
+if(UNIX AND NOT APPLE)
+	set(THIS_FALLBACK_NAME ${PROJECT_NAME}_NoXInput2)
+	add_executable(${THIS_FALLBACK_NAME} ${MY_TRANSLATION_UNITS})
+	target_compile_features(${THIS_FALLBACK_NAME} PUBLIC c_std_99)
+	target_compile_definitions(${THIS_FALLBACK_NAME} PRIVATE ${MY_DEFINES} FPL_NO_X11_XINPUT2)
+	target_include_directories(${THIS_FALLBACK_NAME} PRIVATE ${MY_INCLUDE_DIRS})
+	target_link_libraries(${THIS_FALLBACK_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
+endif()

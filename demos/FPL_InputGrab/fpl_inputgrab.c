@@ -19,6 +19,7 @@ Description:
 	Parameters:
 	  --log-events         Write every event as one line to the standard output
 	  --log-fpl            Write the log messages of FPL down to the verbose level, like a refused grab that is tried again
+	  --log-core-motion    Also write the cursor motion of the X server ("mouse core x= y="), which is accelerated, next to the raw deltas of the relative mode (X11 only)
 	  --mouse-grab         Request the mouse grab at the start
 	  --relative-mouse     Request the relative mouse mode at the start
 	  --keyboard-grab      Request the keyboard grab at the start
@@ -51,6 +52,7 @@ Changelog:
 	## 2026-09-25
 	- FPL log messages in the log (--log-fpl)
 	- Self test with --mouse-grab: warps outside of the window end at the edges of the client area
+	- Relative mouse mode: the crosshair follows the sum of the deltas and stops at the edges, core motion log (--log-core-motion)
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -124,6 +126,7 @@ typedef struct DemoOptions {
 	uint32_t stallMilliseconds;
 	bool logEvents;
 	bool logFplVerbose;
+	bool logCoreMotion;
 	bool requestMouseGrab;
 	bool requestRelativeMouse;
 	bool requestKeyboardGrab;
@@ -161,10 +164,17 @@ typedef struct DemoState {
 	fplMilliseconds startTime;
 	int32_t mouseX;
 	int32_t mouseY;
+	// Crosshair of the relative mode, the sum of the deltas, stopped at the edges of the window
+	int32_t virtualX;
+	int32_t virtualY;
+	// Size of the client area, from the start and the resize events
+	int32_t windowWidth;
+	int32_t windowHeight;
 	fplKey lastKey;
 	fplButtonState lastKeyState;
 	int exitCode;
 	bool hasMousePosition;
+	bool hasVirtualPosition;
 	bool hasFocus;
 	bool hasLastKey;
 	bool isDirty;
@@ -343,6 +353,7 @@ static void PrintHelp(void) {
 	fplConsoleOut("FPL_InputGrab - test bench for keyboard grab, mouse confinement, cursor warping and relative mouse mode\n");
 	fplConsoleOut("  --log-events         Write every event as one line to the standard output\n");
 	fplConsoleOut("  --log-fpl            Write the log messages of FPL down to the verbose level\n");
+	fplConsoleOut("  --log-core-motion    Also write the accelerated cursor motion of the X server (X11 only)\n");
 	fplConsoleOut("  --mouse-grab         Request the mouse grab at the start\n");
 	fplConsoleOut("  --relative-mouse     Request the relative mouse mode at the start\n");
 	fplConsoleOut("  --keyboard-grab      Request the keyboard grab at the start\n");
@@ -377,6 +388,8 @@ static ParseResult ParseArguments(const int argumentCount, char **arguments, Dem
 			outOptions->logEvents = true;
 		} else if (fplIsStringEqual(argument, "--log-fpl")) {
 			outOptions->logFplVerbose = true;
+		} else if (fplIsStringEqual(argument, "--log-core-motion")) {
+			outOptions->logCoreMotion = true;
 		} else if (fplIsStringEqual(argument, "--mouse-grab")) {
 			outOptions->requestMouseGrab = true;
 		} else if (fplIsStringEqual(argument, "--relative-mouse")) {
@@ -462,8 +475,10 @@ static void Render(const DemoState *state, fplVideoBackBuffer *backBuffer) {
 	FillRectangle(backBuffer, 0, 0, width, height, backgroundColor);
 	uint32_t frameColor = state->hasFocus ? focusFrameFocusedColor : focusFrameUnfocusedColor;
 	DrawFocusFrame(backBuffer, frameColor);
-	if (state->hasMousePosition) {
-		uint32_t crosshairColor = state->hasFocus ? crosshairFocusedColor : crosshairUnfocusedColor;
+	uint32_t crosshairColor = state->hasFocus ? crosshairFocusedColor : crosshairUnfocusedColor;
+	if (state->hasVirtualPosition) {
+		DrawCrosshair(backBuffer, state->virtualX, state->virtualY, crosshairColor);
+	} else if (state->hasMousePosition) {
 		DrawCrosshair(backBuffer, state->mouseX, state->mouseY, crosshairColor);
 	}
 }
@@ -741,10 +756,34 @@ static void CheckSelfTestMove(DemoState *state, const fplMouseEvent *mouseEvent)
 	AdvanceSelfTest(state);
 }
 
+// In the relative mode the move events keep the position where the mode started, the crosshair follows the sum of the deltas instead
+static void UpdateVirtualPosition(DemoState *state, const fplMouseEvent *mouseEvent) {
+	bool isRelative = fplIsWindowRelativeMouse() && state->hasFocus;
+	if (!isRelative) {
+		state->hasVirtualPosition = false;
+		return;
+	}
+	if (!state->hasVirtualPosition) {
+		state->virtualX = mouseEvent->mouseX;
+		state->virtualY = mouseEvent->mouseY;
+		state->hasVirtualPosition = true;
+	}
+	int32_t lastX = fplMax(state->windowWidth - 1, 0);
+	int32_t lastY = fplMax(state->windowHeight - 1, 0);
+	int32_t movedX = state->virtualX + mouseEvent->deltaX;
+	int32_t movedY = state->virtualY + mouseEvent->deltaY;
+	int32_t limitedX = fplMin(movedX, lastX);
+	int32_t limitedY = fplMin(movedY, lastY);
+	state->virtualX = fplMax(limitedX, 0);
+	state->virtualY = fplMax(limitedY, 0);
+}
+
 static void HandleWindowEvent(DemoState *state, const fplWindowEvent *windowEvent) {
 	switch (windowEvent->type) {
 		case fplWindowEventType_GotFocus:
 			state->hasFocus = true;
+			// The relative mode starts again at the cursor position
+			state->hasVirtualPosition = false;
 			state->isTitleDirty = true;
 			LogEvent(state, "window gotfocus");
 			break;
@@ -754,6 +793,8 @@ static void HandleWindowEvent(DemoState *state, const fplWindowEvent *windowEven
 			LogEvent(state, "window lostfocus");
 			break;
 		case fplWindowEventType_Resized:
+			state->windowWidth = (int32_t)windowEvent->size.width;
+			state->windowHeight = (int32_t)windowEvent->size.height;
 			LogEvent(state, "window resized w=%u h=%u", windowEvent->size.width, windowEvent->size.height);
 			break;
 		case fplWindowEventType_PositionChanged:
@@ -807,6 +848,7 @@ static void HandleMouseEvent(DemoState *state, const fplMouseEvent *mouseEvent) 
 	switch (mouseEvent->type) {
 		case fplMouseEventType_Move:
 			LogEvent(state, "mouse move x=%d y=%d dx=%d dy=%d", mouseEvent->mouseX, mouseEvent->mouseY, mouseEvent->deltaX, mouseEvent->deltaY);
+			UpdateVirtualPosition(state, mouseEvent);
 			if (state->options.runSelfTest) {
 				CheckSelfTestMove(state, mouseEvent);
 			}
@@ -851,6 +893,20 @@ static bool ProcessEvents(DemoState *state) {
 	return hadEvents;
 }
 
+#if defined(FPL_SUBPLATFORM_X11) && !defined(FPL_NO_PLATFORM_INCLUDES)
+// Sees every X event before FPL does. The core motion is the accelerated cursor movement, which the relative mode does not report.
+static bool LogCoreMotion(const fplPlatformType platformType, void *windowState, void *rawEventData, void *userData) {
+	(void)platformType;
+	(void)windowState;
+	const DemoState *state = (const DemoState *)userData;
+	const XEvent *xEvent = (const XEvent *)rawEventData;
+	if (xEvent->type == MotionNotify) {
+		LogEvent(state, "mouse core x=%d y=%d", xEvent->xmotion.x, xEvent->xmotion.y);
+	}
+	return false;
+}
+#endif
+
 static bool IsTimeoutReached(const DemoState *state) {
 	if (state->options.timeoutSeconds == 0) {
 		return false;
@@ -883,6 +939,14 @@ int main(int argc, char **args) {
 	settings.window.windowSize.height = state.options.windowHeight;
 	settings.video.backend = fplVideoBackendType_Software;
 	settings.video.isAutoSize = true;
+	if (state.options.logCoreMotion) {
+#if defined(FPL_SUBPLATFORM_X11) && !defined(FPL_NO_PLATFORM_INCLUDES)
+		settings.window.callbacks.eventCallback = LogCoreMotion;
+		settings.window.callbacks.eventUserData = &state;
+#else
+		fplConsoleError("--log-core-motion is only supported on X11\n");
+#endif
+	}
 
 	if (!fplPlatformInit(fplInitFlags_Video, &settings)) {
 		fplConsoleError("Failed to initialize the platform\n");
@@ -894,6 +958,8 @@ int main(int argc, char **args) {
 
 	fplWindowSize windowSize = fplZeroInit;
 	fplGetWindowSize(&windowSize);
+	state.windowWidth = (int32_t)windowSize.width;
+	state.windowHeight = (int32_t)windowSize.height;
 	LogEvent(&state, "demo ready w=%u h=%u", windowSize.width, windowSize.height);
 
 	if (state.options.requestMouseGrab) {
