@@ -1016,6 +1016,26 @@
 			}
 		} break;
 
+		case fplMouseEventType_HorizontalWheel:
+		{
+			float wheelDelta = currentEvent.mouse.wheelDelta;
+			if (wheelDelta < 0.0f) {
+				// Mouse-wheel left
+			} else if (wheelDelta > 0.0f) {
+				// Mouse-wheel right
+			}
+		} break;
+
+		case fplMouseEventType_Enter:
+		{
+			// The cursor came into the client area, at mouseX and mouseY
+		} break;
+
+		case fplMouseEventType_Leave:
+		{
+			// The cursor left the client area
+		} break;
+
 		case fplMouseEventType_Move:
 		{
 			int mouseX = currentEvent.mouse.mouseX;
@@ -1030,6 +1050,12 @@
 
 	@note Any mouse button event contains the position of the click as well.
 
+	@note The side buttons of a mouse (back and forward) are @ref fplMouseButtonType_X1 and @ref fplMouseButtonType_X2.
+
+	@note The horizontal wheel (a tilted wheel or a touchpad) has its own event type, so a handler for @ref fplMouseEventType_Wheel only ever sees the vertical wheel. Several wheel events can come in one frame, add their deltas up. [X11] reports whole steps of one, [Win32] fractions for smooth wheels.
+
+	@note The enter and leave events come once per crossing of the client area edge and always take turns. The mouse grab and the relative mouse mode keep the cursor inside, the only crossing then is the enter when they pull the cursor in. [Win32] has no message for the cursor coming in, the enter event comes with the first move inside the client area.
+
 	@note The delta of a move event is the difference to the previous move event. It is zero for the first move after the cursor entered the window, after the window got the focus back and after @ref fplWarpWindowCursor(), so none of these ever shows up as movement.
 
 	@note When the window loses the focus, every key and mouse button that it still holds as pressed gets a release event before the @ref fplWindowEventType_LostFocus event. The real release goes to another window, so without it the key would stay pressed and come back as a repeat.
@@ -1039,6 +1065,9 @@
 	Keyboard event data are stored in the @ref fplKeyboardEvent structure.<br>
 	<br>
 	You can either check for the original @ref fplKeyboardEvent.keyCode or use the fplKeyboardEvent.mappedKey field - which is much easier and less error-prone.<br>
+	<br>
+	Every button event also has the physical key in @ref fplKeyboardEvent.scanCode, as PC scan code set 1. It does not depend on the keyboard layout and is the same on every platform: the key right of Tab is 0x10, which is Q on a US keyboard and A on a French one.<br>
+	Extended keys have the prefix 0xE0, like the right Ctrl (0xE01D) and the keypad Enter (0xE01C), and Pause is 0xE11D. Use it for everything that belongs to a place on the keyboard, like WASD movement or passing the keys on to a virtual machine.<br>
 
 	@code{.c}
 	switch (currentEvent.keyboard.type) {
@@ -1073,6 +1102,12 @@
 		} break;
 	}
 	@endcode
+
+	@note A key without a scan code (some multimedia keys, a key a program sent without one) reports zero. Alt+Print and Ctrl+Pause report the codes of Print (0xE037) and Pause, the keyboard sends its own codes for them, but it is the same key.
+
+	@note [X11] The scan code comes from the Linux evdev key code, which the X server reports plus 8.
+
+	@note [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) give their button events like any other key, the composed text comes as one character input event.
 
 	@subsection subsection_category_window_events_handle_event_type_gamepad Gamepad events
 

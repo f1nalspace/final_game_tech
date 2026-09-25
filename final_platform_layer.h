@@ -284,6 +284,12 @@ SOFTWARE.
 	- Changed: fplWarpWindowCursor() in the relative mouse mode moves the position the mouse events carry and where the cursor appears when the mode ends
 	- Changed: [Win32] fplSetWindowCursorEnabled() no longer registers the mouse for raw input, which did nothing but broke a raw input registration of the application
 	- New: Added functions fplSetWindowKeyboardGrab() and fplIsWindowKeyboardGrabbed() - system shortcuts like Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc and Alt+F4 go to the window instead of the window manager or the shell (X11 XGrabKeyboard, Win32 low level keyboard hook)
+	- New: Added field scanCode to fplKeyboardEvent, the physical key as PC scan code set 1 (extended keys as 0xE0xx, Pause as 0xE11D) - independent of the keyboard layout and the same on Win32 and X11
+	- New: Added fplMouseEventType_HorizontalWheel for the horizontal mouse wheel, wheelDelta is positive to the right ([Win32] WM_MOUSEHWHEEL, [X11] buttons 6 and 7) - it has its own type, so code that handles fplMouseEventType_Wheel only ever sees the vertical wheel
+	- New: Added fplMouseEventType_Enter and fplMouseEventType_Leave, the cursor entered or left the client area
+	- New: [X11] The mouse buttons 8 and 9 are reported as fplMouseButtonType_X1 and fplMouseButtonType_X2, like the side buttons on Win32 - an array indexed by fplMouseEvent.mouseButton needs fplMouseButtonType_MaxCount entries
+	- Fixed: [Win32] Mouse wheel events carried the cursor position in screen coordinates instead of window coordinates
+	- Fixed: [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) gave no button press event, because the input method took the key - the press is reported now, the text still comes from the input method
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -3848,6 +3854,7 @@ typedef XKeyEvent fpl__X11_XKeyEvent;
 typedef XButtonEvent fpl__X11_XButtonEvent;
 typedef XMotionEvent fpl__X11_XMotionEvent;
 typedef XFocusChangeEvent fpl__X11_XFocusChangeEvent;
+typedef XCrossingEvent fpl__X11_XCrossingEvent;
 typedef XExposeEvent fpl__X11_XExposeEvent;
 typedef XConfigureEvent fpl__X11_XConfigureEvent;
 typedef XPropertyEvent fpl__X11_XPropertyEvent;
@@ -3906,6 +3913,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_NotifyNormal NotifyNormal
 #define FPL__X11_NotifyGrab NotifyGrab
 #define FPL__X11_NotifyUngrab NotifyUngrab
+#define FPL__X11_NotifyInferior NotifyInferior
 #define FPL__X11_GrabModeAsync GrabModeAsync
 #define FPL__X11_GrabSuccess GrabSuccess
 #define FPL__X11_AlreadyGrabbed AlreadyGrabbed
@@ -4173,6 +4181,24 @@ typedef struct fpl__X11_XFocusChangeEvent {
 	int detail;
 } fpl__X11_XFocusChangeEvent;
 
+typedef struct fpl__X11_XCrossingEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	fpl__X11_Window window;
+	fpl__X11_Window root;
+	fpl__X11_Window subwindow;
+	fpl__X11_Time time;
+	int x, y;
+	int x_root, y_root;
+	int mode;
+	int detail;
+	fpl__X11_Bool same_screen;
+	fpl__X11_Bool focus;
+	unsigned int state;
+} fpl__X11_XCrossingEvent;
+
 typedef struct fpl__X11_XExposeEvent {
 	int type;
 	unsigned long serial;
@@ -4277,6 +4303,7 @@ typedef union fpl__X11_XEvent {
 	fpl__X11_XButtonEvent xbutton;
 	fpl__X11_XMotionEvent xmotion;
 	fpl__X11_XFocusChangeEvent xfocus;
+	fpl__X11_XCrossingEvent xcrossing;
 	fpl__X11_XExposeEvent xexpose;
 	fpl__X11_XConfigureEvent xconfigure;
 	fpl__X11_XPropertyEvent xproperty;
@@ -4429,6 +4456,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_NotifyNormal 0
 #define FPL__X11_NotifyGrab 1
 #define FPL__X11_NotifyUngrab 2
+#define FPL__X11_NotifyInferior 2
 #define FPL__X11_GrabModeAsync 1
 #define FPL__X11_GrabSuccess 0
 #define FPL__X11_AlreadyGrabbed 1
@@ -10472,6 +10500,8 @@ typedef struct fplKeyboardEvent {
 	fplButtonState buttonState;
 	//! Mapped key.
 	fplKey mappedKey;
+	//! Physical key of a button event as PC scan code set 1, the same key gives the same code on every keyboard layout and platform. Extended keys have the prefix 0xE0 (right Ctrl is 0xE01D), Pause is 0xE11D, zero when the key has no scan code and for text input.
+	uint32_t scanCode;
 } fplKeyboardEvent;
 
 /**
@@ -10487,6 +10517,12 @@ typedef enum fplMouseEventType {
 	fplMouseEventType_Button,
 	//! Mouse wheel event.
 	fplMouseEventType_Wheel,
+	//! Horizontal mouse wheel event (a tilted wheel or a touchpad), wheelDelta is positive to the right.
+	fplMouseEventType_HorizontalWheel,
+	//! The cursor entered the client area of the window.
+	fplMouseEventType_Enter,
+	//! The cursor left the client area of the window.
+	fplMouseEventType_Leave,
 } fplMouseEventType;
 
 /**
@@ -10504,7 +10540,7 @@ typedef struct fplMouseEvent {
 	int32_t mouseX;
 	//! Mouse Y-Position.
 	int32_t mouseY;
-	//! Mouse wheel delta.
+	//! Mouse wheel delta. Vertical for @ref fplMouseEventType_Wheel, positive when the wheel turned up (away from the user). Horizontal for @ref fplMouseEventType_HorizontalWheel, positive to the right.
 	float wheelDelta;
 	//! Horizontal movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped.
 	int32_t deltaX;
@@ -14223,6 +14259,9 @@ typedef struct fpl__X11CursorState {
 typedef struct fpl__X11IMState {
 	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
 	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
+	// The time of the last press of each key code the input method took, its button is reported already.
+	// An input method in its own process (XIM of ibus or fcitx) gives back a key it does not use with the same time, only its text is missing then.
+	fpl__X11_Time filteredPressTimes[256];
 } fpl__X11IMState;
 
 // Colormap + ownership flag
@@ -14413,10 +14452,14 @@ typedef struct fpl__InputGrabState {
 typedef struct {
 	fplKey keyMap[256];
 	fplButtonState keyStates[256];
+	// The scan code of the last event of each key code, the release on focus loss reports it
+	uint32_t keyScanCodes[256];
 	uint64_t keyPressTimes[256];
 	fplButtonState mouseStates[5];
 	fpl__InputGrabState inputGrab;
 	fpl_b32 isRunning;
+	// Whether the cursor is over the client area, the enter and leave events are only sent when this changes
+	fpl_b32 isMouseInside;
 	// Set by fplSetWindowVisibility() or initialVisibility, the window is not shown and not managed by the window manager
 	fpl_b32 isHidden;
 	// Tracked from the focus and window state changes, a grab is only active while the window has the focus and is not minimized
@@ -14446,6 +14489,8 @@ typedef enum fpl__NativeInputEventKind {
 	fpl__NativeInputEventKind_None = 0,
 	fpl__NativeInputEventKind_Win32Msg,
 	fpl__NativeInputEventKind_X11Event,
+	// A key press the X11 input method took for a composition (a dead key or the key that ends it), it gives the key button but no text
+	fpl__NativeInputEventKind_X11FilteredKeyEvent,
 	fpl__NativeInputEventKind_Custom,
 } fpl__NativeInputEventKind;
 
@@ -14862,11 +14907,12 @@ fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vi
 // window-only block below) so the no-window input backends can push events directly without
 // requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
 // + repeat tracking on top of these primitives.
-fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Button;
 	newEvent.keyboard.keyCode = keyCode;
+	newEvent.keyboard.scanCode = scanCode;
 	newEvent.keyboard.modifiers = modifiers;
 	newEvent.keyboard.buttonState = buttonState;
 	newEvent.keyboard.mappedKey = mappedKey;
@@ -14893,10 +14939,10 @@ fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, co
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
-	newEvent.mouse.type = fplMouseEventType_Wheel;
+	newEvent.mouse.type = wheelType;
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
@@ -14965,7 +15011,16 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+// PC scan codes of set 1 that fplKeyboardEvent.scanCode reports, the platforms make them from their own codes
+#define FPL__SCANCODE_EXTENDED_PREFIX 0xE000
+#define FPL__SCANCODE_NUM_LOCK 0x45
+#define FPL__SCANCODE_PAUSE 0xE11D
+#define FPL__SCANCODE_PRINT 0xE037
+// The keyboard sends Print with Alt as SysRq and Pause with Ctrl as Break, they are the same physical keys
+#define FPL__SCANCODE_ALT_PRINT 0x54
+#define FPL__SCANCODE_CTRL_PAUSE 0xE046
+
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const uint32_t scanCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 #if defined(FPL_LOG_KEY_EVENTS)
 	const char *buttonStateName = "";
 	if (buttonState == fplButtonState_Press)
@@ -14981,7 +15036,9 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 	bool repeat = false;
 	if (force) {
 		repeat = (buttonState == fplButtonState_Repeat);
-		windowState->keyStates[keyCode] = buttonState;
+		if (keyCode < fplArrayCount(windowState->keyStates)) {
+			windowState->keyStates[keyCode] = buttonState;
+		}
 	} else {
 		if (keyCode < fplArrayCount(windowState->keyStates)) {
 			if ((buttonState == fplButtonState_Release) && (windowState->keyStates[keyCode] == fplButtonState_Release)) {
@@ -14993,7 +15050,10 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 			windowState->keyStates[keyCode] = buttonState;
 		}
 	}
-	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
+	if (keyCode < fplArrayCount(windowState->keyScanCodes)) {
+		windowState->keyScanCodes[keyCode] = scanCode;
+	}
+	fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
 fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
@@ -15041,11 +15101,36 @@ fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowStat
 	fpl__PushMouseMoveEvent(x, y, deltaX, deltaY);
 }
 
-fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
+// The wheel type is fplMouseEventType_Wheel or fplMouseEventType_HorizontalWheel
+fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
 	int32_t reportedX;
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
-	fpl__PushMouseWheelEvent(reportedX, reportedY, wheelDelta);
+	fpl__PushMouseWheelEvent(wheelType, reportedX, reportedY, wheelDelta);
+}
+
+fpl_internal void fpl__PushMouseCrossingEvent(const fplMouseEventType type, const int32_t x, const int32_t y) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Mouse;
+	newEvent.mouse.type = type;
+	newEvent.mouse.mouseButton = fplMouseButtonType_None;
+	newEvent.mouse.mouseX = x;
+	newEvent.mouse.mouseY = y;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+// Only a change is reported, so enter and leave always take turns. The mouse grab and the relative mode keep the cursor inside, the only crossing then is the enter when they pull the cursor in.
+fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const bool isInside) {
+	bool wasInside = windowState->isMouseInside != 0;
+	if (wasInside == isInside) {
+		return;
+	}
+	windowState->isMouseInside = isInside;
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fplMouseEventType type = isInside ? fplMouseEventType_Enter : fplMouseEventType_Leave;
+	fpl__PushMouseCrossingEvent(type, reportedX, reportedY);
 }
 
 // @NOTE(final): Callback used for setup a window before it is created
@@ -17001,7 +17086,8 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 		if (windowState->keyStates[keyCode] != fplButtonState_Release) {
 			windowState->keyStates[keyCode] = fplButtonState_Release;
 			fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
-			fpl__PushKeyboardButtonEvent(keyCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
+			uint32_t scanCode = windowState->keyScanCodes[keyCode];
+			fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
 		}
 	}
 	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
@@ -19310,6 +19396,30 @@ fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
 // A down key in the key state of a thread, see GetKeyboardState()
 #define FPL__WIN32_KEY_STATE_DOWN 0x80
 
+// Makes the PC set 1 scan code from the scan code and the extended flag of a key message or the low level hook
+fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uint32_t virtualKey, const uint32_t messageScanCode, const bool isExtendedKey) {
+	// Windows swaps the scan codes of Pause (0x45) and NumLock (0xE045), wine has others for them, the key codes tell them apart everywhere
+	if (virtualKey == VK_PAUSE) {
+		return(FPL__SCANCODE_PAUSE);
+	}
+	if (virtualKey == VK_NUMLOCK) {
+		return(FPL__SCANCODE_NUM_LOCK);
+	}
+	uint32_t scanCode;
+	if (messageScanCode != 0) {
+		scanCode = isExtendedKey ? (FPL__SCANCODE_EXTENDED_PREFIX | messageScanCode) : messageScanCode;
+	} else {
+		// Keys sent by programs may come without a scan code
+		scanCode = wapi->user.MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC_EX);
+	}
+	if (scanCode == FPL__SCANCODE_ALT_PRINT) {
+		scanCode = FPL__SCANCODE_PRINT;
+	} else if (scanCode == FPL__SCANCODE_CTRL_PAUSE) {
+		scanCode = FPL__SCANCODE_PAUSE;
+	}
+	return(scanCode);
+}
+
 // The keys the keyboard grab takes away from the system, like SDL: Win, Alt and Ctrl, so they reach the window in the same order as the keys they are combined with,
 // Tab and Esc for Alt+Tab, Alt+Esc and Ctrl+Esc, and Print for the screen capture.
 fpl_internal bool fpl__Win32IsHookedKey(const DWORD virtualKey) {
@@ -19395,10 +19505,12 @@ fpl_internal void fpl__Win32ReportHookedKey(fpl__PlatformAppState *appState, con
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	const fpl__Win32WindowState *windowState = &appState->window.win32;
 	DWORD reportedKey = fpl__Win32GetReportedHookedKey(hookData->vkCode);
+	bool isExtendedKey = (hookData->flags & LLKHF_EXTENDED) != 0;
+	uint32_t scanCode = fpl__Win32GetScanCode(wapi, hookData->vkCode, hookData->scanCode, isExtendedKey);
 	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->hookedModifiers;
 	fplButtonState buttonState = isUp ? fplButtonState_Release : fplButtonState_Press;
-	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, (uint64_t)reportedKey, modifiers, buttonState, false);
+	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, (uint64_t)reportedKey, scanCode, modifiers, buttonState, false);
 #else
 	(void)appState;
 	(void)hookData;
@@ -19775,13 +19887,6 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
-		case WM_MOUSELEAVE:
-		{
-			win32Window->isTrackingMouseLeave = false;
-			// The cursor comes back somewhere else, its first move must not count the way outside as movement
-			appState->window.inputGrab.hasLastMove = false;
-		} break;
-
 		case WM_LBUTTONDOWN:
 		case WM_LBUTTONUP:
 		case WM_RBUTTONDOWN:
@@ -19793,7 +19898,13 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_MOUSEMOVE:
 		case WM_MOUSEWHEEL:
 		case WM_MOUSEHWHEEL:
+		case WM_MOUSELEAVE:
 		{
+			if (msg == WM_MOUSELEAVE) {
+				win32Window->isTrackingMouseLeave = false;
+				// The cursor comes back somewhere else, its first move must not count the way outside as movement
+				appState->window.inputGrab.hasLastMove = false;
+			}
 			if (msg == WM_MOUSEMOVE && !win32Window->isTrackingMouseLeave) {
 				TRACKMOUSEEVENT trackMouseEvent = fplZeroInit;
 				trackMouseEvent.cbSize = sizeof(trackMouseEvent);
@@ -21349,10 +21460,14 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			uint64_t keyCode = msg->wParam;
 			bool isDown = (msg->lParam & (1 << 31)) == 0;
 			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
+			WORD keyFlags = HIWORD(msg->lParam);
+			uint32_t messageScanCode = LOBYTE(keyFlags);
+			bool isExtendedKey = (keyFlags & KF_EXTENDED) != 0;
+			uint32_t scanCode = fpl__Win32GetScanCode(wapi, (uint32_t)keyCode, messageScanCode, isExtendedKey);
 			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
-			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
+			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, scanCode, modifiers, keyState, false);
 			return true;
 		}
 
@@ -21414,25 +21529,47 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
 			int32_t mouseX = GET_X_LPARAM(msg->lParam);
 			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			// Windows has no message for the cursor coming in, it is the first move inside the client area after WM_MOUSELEAVE (a captured cursor moves outside too)
+			if (!appState->window.isMouseInside) {
+				RECT clientRect;
+				bool isInsideClientArea = false;
+				if (wapi->user.GetClientRect(msg->hwnd, &clientRect)) {
+					isInsideClientArea = mouseX >= clientRect.left && mouseX < clientRect.right && mouseY >= clientRect.top && mouseY < clientRect.bottom;
+				}
+				if (isInsideClientArea) {
+					fpl__HandleMouseCrossingEvent(&appState->window, mouseX, mouseY, true);
+				}
+			}
 			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
 			return true;
 		}
 
-		case WM_MOUSEWHEEL:
+		case WM_MOUSELEAVE:
 		{
+			if (eventsDisabled) return true;
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
-			int32_t mouseX = GET_X_LPARAM(msg->lParam);
-			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
-			short zDelta = GET_WHEEL_DELTA_WPARAM(msg->wParam);
-			float wheelDelta = zDelta / (float)WHEEL_DELTA;
-			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+			// The message has no position, the cursor is already outside
+			POINT cursorPosition = fplZeroInit;
+			if (wapi->user.GetCursorPos(&cursorPosition)) {
+				wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
+			}
+			fpl__HandleMouseCrossingEvent(&appState->window, cursorPosition.x, cursorPosition.y, false);
 			return true;
 		}
 
+		case WM_MOUSEWHEEL:
 		case WM_MOUSEHWHEEL:
 		{
-			// Horizontal wheel is forwarded but not yet surfaced through fpl__HandleMouseWheelEvent.
-			// Step 9 will extend the public mouse-event API with a horizontal axis.
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			// Unlike the other mouse messages the wheel messages carry the position in screen coordinates
+			POINT cursorPosition;
+			cursorPosition.x = GET_X_LPARAM(msg->lParam);
+			cursorPosition.y = GET_Y_LPARAM(msg->lParam);
+			wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
+			short wheelRotation = GET_WHEEL_DELTA_WPARAM(msg->wParam);
+			float wheelDelta = wheelRotation / (float)WHEEL_DELTA;
+			fplMouseEventType wheelType = (msg->message == WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
+			fpl__HandleMouseWheelEvent(&appState->window, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
 			return true;
 		}
 
@@ -29386,6 +29523,106 @@ fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11Win
 	}
 }
 
+// X11 key codes are the Linux evdev key codes plus 8, the evdev and libinput drivers both use them
+#define FPL__X11_EVDEV_KEYCODE_OFFSET 8
+// The evdev key codes 1 (Esc) up to 83 (keypad period) are the PC set 1 scan codes already
+#define FPL__EVDEV_LAST_SET1_IDENTICAL_KEY 83
+
+typedef struct fpl__EvdevScanCode {
+	uint16_t evdevCode;
+	uint16_t scanCode;
+} fpl__EvdevScanCode;
+
+// PC set 1 scan codes of the evdev keys above 83, by the key names of linux/input-event-codes.h.
+// KEY_ZENKAKUHANKAKU (85) is left out, it has the same scan code as F24.
+fpl_globalvar const fpl__EvdevScanCode fpl__global_EvdevScanCodeTable[] = {
+	{ 86, 0x56 }, // KEY_102ND, the ISO key next to the left Shift
+	{ 87, 0x57 }, // KEY_F11
+	{ 88, 0x58 }, // KEY_F12
+	{ 89, 0x73 }, // KEY_RO
+	{ 90, 0x78 }, // KEY_KATAKANA
+	{ 91, 0x77 }, // KEY_HIRAGANA
+	{ 92, 0x79 }, // KEY_HENKAN
+	{ 93, 0x70 }, // KEY_KATAKANAHIRAGANA
+	{ 94, 0x7B }, // KEY_MUHENKAN
+	{ 95, 0x5C }, // KEY_KPJPCOMMA
+	{ 96, 0xE01C }, // KEY_KPENTER
+	{ 97, 0xE01D }, // KEY_RIGHTCTRL
+	{ 98, 0xE035 }, // KEY_KPSLASH
+	{ 99, 0xE037 }, // KEY_SYSRQ, the Print key
+	{ 100, 0xE038 }, // KEY_RIGHTALT
+	{ 102, 0xE047 }, // KEY_HOME
+	{ 103, 0xE048 }, // KEY_UP
+	{ 104, 0xE049 }, // KEY_PAGEUP
+	{ 105, 0xE04B }, // KEY_LEFT
+	{ 106, 0xE04D }, // KEY_RIGHT
+	{ 107, 0xE04F }, // KEY_END
+	{ 108, 0xE050 }, // KEY_DOWN
+	{ 109, 0xE051 }, // KEY_PAGEDOWN
+	{ 110, 0xE052 }, // KEY_INSERT
+	{ 111, 0xE053 }, // KEY_DELETE
+	{ 113, 0xE020 }, // KEY_MUTE
+	{ 114, 0xE02E }, // KEY_VOLUMEDOWN
+	{ 115, 0xE030 }, // KEY_VOLUMEUP
+	{ 116, 0xE05E }, // KEY_POWER
+	{ 117, 0x59 }, // KEY_KPEQUAL
+	{ 119, 0xE11D }, // KEY_PAUSE
+	{ 121, 0x7E }, // KEY_KPCOMMA
+	{ 122, 0xF2 }, // KEY_HANGEUL
+	{ 123, 0xF1 }, // KEY_HANJA
+	{ 124, 0x7D }, // KEY_YEN
+	{ 125, 0xE05B }, // KEY_LEFTMETA
+	{ 126, 0xE05C }, // KEY_RIGHTMETA
+	{ 127, 0xE05D }, // KEY_COMPOSE, the menu key
+	{ 128, 0xE068 }, // KEY_STOP
+	{ 140, 0xE021 }, // KEY_CALC
+	{ 142, 0xE05F }, // KEY_SLEEP
+	{ 143, 0xE063 }, // KEY_WAKEUP
+	{ 155, 0xE06C }, // KEY_MAIL
+	{ 156, 0xE066 }, // KEY_BOOKMARKS
+	{ 157, 0xE06B }, // KEY_COMPUTER
+	{ 158, 0xE06A }, // KEY_BACK
+	{ 159, 0xE069 }, // KEY_FORWARD
+	{ 163, 0xE019 }, // KEY_NEXTSONG
+	{ 164, 0xE022 }, // KEY_PLAYPAUSE
+	{ 165, 0xE010 }, // KEY_PREVIOUSSONG
+	{ 166, 0xE024 }, // KEY_STOPCD
+	{ 172, 0xE032 }, // KEY_HOMEPAGE
+	{ 173, 0xE067 }, // KEY_REFRESH
+	{ 183, 0x64 }, // KEY_F13
+	{ 184, 0x65 }, // KEY_F14
+	{ 185, 0x66 }, // KEY_F15
+	{ 186, 0x67 }, // KEY_F16
+	{ 187, 0x68 }, // KEY_F17
+	{ 188, 0x69 }, // KEY_F18
+	{ 189, 0x6A }, // KEY_F19
+	{ 190, 0x6B }, // KEY_F20
+	{ 191, 0x6C }, // KEY_F21
+	{ 192, 0x6D }, // KEY_F22
+	{ 193, 0x6E }, // KEY_F23
+	{ 194, 0x76 }, // KEY_F24
+	{ 217, 0xE065 }, // KEY_SEARCH
+	{ 226, 0xE06D }, // KEY_MEDIA
+};
+
+// The PC set 1 scan code of a X11 key code, zero for a key without one
+fpl_internal uint32_t fpl__X11GetScanCode(const uint64_t keyCode) {
+	if (keyCode < FPL__X11_EVDEV_KEYCODE_OFFSET) {
+		return(0);
+	}
+	uint64_t evdevCode = keyCode - FPL__X11_EVDEV_KEYCODE_OFFSET;
+	if (evdevCode <= FPL__EVDEV_LAST_SET1_IDENTICAL_KEY) {
+		return((uint32_t)evdevCode);
+	}
+	for (size_t entryIndex = 0; entryIndex < fplArrayCount(fpl__global_EvdevScanCodeTable); ++entryIndex) {
+		const fpl__EvdevScanCode *entry = &fpl__global_EvdevScanCodeTable[entryIndex];
+		if (entry->evdevCode == evdevCode) {
+			return(entry->scanCode);
+		}
+	}
+	return(0);
+}
+
 fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11WindowState *windowState) {
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
 
@@ -29721,6 +29958,14 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 //
 // ############################################################################
 #if defined(FPL__ENABLE_INPUT_X11)
+// The pointer buttons after the vertical wheel (4 and 5) have no names in Xlib: the horizontal wheel and the side buttons
+#define FPL__X11_BUTTON_WHEEL_LEFT 6
+#define FPL__X11_BUTTON_WHEEL_RIGHT 7
+#define FPL__X11_BUTTON_BACK 8
+#define FPL__X11_BUTTON_FORWARD 9
+// X11 times are milliseconds in 32 bits that wrap around, a difference below half of that range counts as forward in time
+#define FPL__X11_TIME_HALF_RANGE 0x80000000u
+
 // Resolve the Display + window pair used for polling. In windowed mode the user
 // window's display is preferred so polling and event delivery stay in sync; in
 // detached mode the backend's own private connection + root window are used.
@@ -29873,7 +30118,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	fplAssertPtr(backend);
 	fplAssertPtr(nev);
 	if (!backend->isInitialized) return false;
-	if (nev->kind != fpl__NativeInputEventKind_X11Event) return false;
+	bool isFilteredKeyEvent = nev->kind == fpl__NativeInputEventKind_X11FilteredKeyEvent;
+	if (nev->kind != fpl__NativeInputEventKind_X11Event && !isFilteredKeyEvent) return false;
 	if (nev->payload == fpl_null) return false;
 	fpl__X11_XEvent *ev = (fpl__X11_XEvent *)nev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -29900,12 +30146,27 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			fpl__X11_Time lastPressTime = winState->keyPressTimes[keyCode];
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
 			FPL_LOG_TRACE(FPL__MODULE_X11, "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+			fpl__X11IMState *inputMethod = &x11WinState->im;
 			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
 				if (keyCode) {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
+					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, scanCode, modifiers, fplButtonState_Press, false);
+					if (isFilteredKeyEvent) {
+						inputMethod->filteredPressTimes[keyCode] = keyTime;
+					} else {
+						fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+					}
 				}
 				winState->keyPressTimes[keyCode] = keyTime;
+			} else if (!isFilteredKeyEvent) {
+				// The input method gives a key back with the time it took it, the same key may have been taken once more since then
+				fpl__X11_Time filteredPressTime = inputMethod->filteredPressTimes[keyCode];
+				uint32_t timeUntilFilteredPress = (uint32_t)(filteredPressTime - keyTime);
+				bool isGivenBackByInputMethod = filteredPressTime != 0 && timeUntilFilteredPress < FPL__X11_TIME_HALF_RANGE;
+				if (isGivenBackByInputMethod) {
+					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				}
 			}
 			return true;
 		}
@@ -29926,11 +30187,13 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			}
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			uint32_t scanCode = fpl__X11GetScanCode(keyCode);
+			fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
 			if (isRepeat) {
 				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
 			} else {
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, scanCode, modifiers, fplButtonState_Release, true);
 			}
 			return true;
 		}
@@ -29947,13 +30210,21 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
 				} else if (ev->xbutton.button == FPL__X11_Button3) {
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
+				} else if (ev->xbutton.button == FPL__X11_BUTTON_BACK) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X1, fplButtonState_Press);
+				} else if (ev->xbutton.button == FPL__X11_BUTTON_FORWARD) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X2, fplButtonState_Press);
 				}
 			}
 			// Wheel is unconditional (matches the previous Win32 + X11 behavior).
 			if (ev->xbutton.button == FPL__X11_Button4) {
-				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_Wheel, x, y, 1.0f);
 			} else if (ev->xbutton.button == FPL__X11_Button5) {
-				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_Wheel, x, y, -1.0f);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_WHEEL_LEFT) {
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_HorizontalWheel, x, y, -1.0f);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_WHEEL_RIGHT) {
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_HorizontalWheel, x, y, 1.0f);
 			}
 			return true;
 		}
@@ -29970,6 +30241,10 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
 			} else if (ev->xbutton.button == FPL__X11_Button3) {
 				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_BACK) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X1, fplButtonState_Release);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_FORWARD) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X2, fplButtonState_Release);
 			}
 			return true;
 		}
@@ -29979,6 +30254,24 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (eventsDisabled) return true;
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
 			fpl__HandleMouseMoveEvent(winState, ev->xmotion.x, ev->xmotion.y);
+			return true;
+		}
+
+		case FPL__X11_EnterNotify:
+		case FPL__X11_LeaveNotify:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			// A grab moves the pointer focus without the pointer moving, and a child window is still inside.
+			// Only a grab that ends while the pointer is over the window says something true: the pointer is inside now.
+			const fpl__X11_XCrossingEvent *crossingEvent = &ev->xcrossing;
+			bool isInside = ev->type == FPL__X11_EnterNotify;
+			bool isPointerCrossing = crossingEvent->mode == FPL__X11_NotifyNormal || (isInside && crossingEvent->mode == FPL__X11_NotifyUngrab);
+			bool isChildCrossing = crossingEvent->detail == FPL__X11_NotifyInferior;
+			if (!isPointerCrossing || isChildCrossing) {
+				return true;
+			}
+			fpl__HandleMouseCrossingEvent(winState, crossingEvent->x, crossingEvent->y, isInside);
 			return true;
 		}
 
@@ -30124,7 +30417,22 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	// Let the input method consume events it needs (dead keys, compose sequences).
 	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
+#if defined(FPL__ENABLE_INPUT)
+	// The local input method clears the key code of the key that ends a composition, so the key code is saved before.
+	unsigned int keyCodeBeforeFilter = (ev->type == FPL__X11_KeyPress) ? ev->xkey.keycode : 0;
+#endif
 	if (x11Api->XFilterEvent != fpl_null && x11Api->XFilterEvent(ev, FPL__X11_None)) {
+#if defined(FPL__ENABLE_INPUT)
+		// A dead key or the key that ends a composition still went down, only its text belongs to the input method
+		if (keyCodeBeforeFilter != 0) {
+			fpl__X11_XEvent filteredKeyEvent = *ev;
+			filteredKeyEvent.xkey.keycode = keyCodeBeforeFilter;
+			fpl__NativeInputEvent nev = fplZeroInit;
+			nev.kind = fpl__NativeInputEventKind_X11FilteredKeyEvent;
+			nev.payload = (void *)&filteredKeyEvent;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
+		}
+#endif
 		return;
 	}
 
@@ -30393,7 +30701,13 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ButtonPress:
 		case FPL__X11_ButtonRelease:
 		case FPL__X11_MotionNotify:
+		case FPL__X11_EnterNotify:
+		case FPL__X11_LeaveNotify:
 		{
+			if (ev->type == FPL__X11_EnterNotify) {
+				// The cursor comes back somewhere else, its first move must not count the way outside as movement
+				winState->inputGrab.hasLastMove = false;
+			}
 			// The relative mode without raw motion measures the motion against the window center instead
 			bool isWarpRelativeMotion = ev->type == FPL__X11_MotionNotify && x11WinState->relativeMouse.isActive;
 #if !defined(FPL_NO_X11_XINPUT2)
@@ -30442,12 +30756,6 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				return;
 			}
 			fpl__HandleWindowFocusChanged(appState, false);
-		} break;
-
-		case FPL__X11_EnterNotify:
-		{
-			// The cursor comes back somewhere else, its first move must not count the way outside as movement
-			winState->inputGrab.hasLastMove = false;
 		} break;
 
 		case FPL__X11_PropertyNotify:
