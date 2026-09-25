@@ -278,6 +278,8 @@ SOFTWARE.
 	- New: Added function fplWarpWindowCursor() that moves the cursor to a position in window coordinates, the move event that follows has a delta of zero
 	- New: Added fields deltaX and deltaY to fplMouseEvent, the movement since the previous move event - zero for the first move after the cursor entered the window, the focus came back or the cursor was warped
 	- Fixed: A key or mouse button that was released while the window had no focus stayed pressed, so its next press came back as fplButtonState_Repeat (e.g. Alt after Alt+Tab) - losing the focus now releases every key and mouse button the window still holds as pressed, before the fplWindowEventType_LostFocus event
+	- New: Added functions fplSetWindowMouseGrab() and fplIsWindowMouseGrabbed() that keep the cursor inside the client area - the grab is only active while the window has the focus, is shown and is not minimized, and a grab another program blocks is tried again while the events are pumped
+	- Changed: fplWarpWindowCursor() limits the target to the client area while the mouse is grabbed
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -3899,6 +3901,12 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_NotifyNormal NotifyNormal
 #define FPL__X11_NotifyGrab NotifyGrab
 #define FPL__X11_NotifyUngrab NotifyUngrab
+#define FPL__X11_GrabModeAsync GrabModeAsync
+#define FPL__X11_GrabSuccess GrabSuccess
+#define FPL__X11_AlreadyGrabbed AlreadyGrabbed
+#define FPL__X11_GrabInvalidTime GrabInvalidTime
+#define FPL__X11_GrabNotViewable GrabNotViewable
+#define FPL__X11_GrabFrozen GrabFrozen
 #define FPL__X11_KeyPress KeyPress
 #define FPL__X11_KeyRelease KeyRelease
 #define FPL__X11_ButtonPress ButtonPress
@@ -4404,6 +4412,12 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_NotifyNormal 0
 #define FPL__X11_NotifyGrab 1
 #define FPL__X11_NotifyUngrab 2
+#define FPL__X11_GrabModeAsync 1
+#define FPL__X11_GrabSuccess 0
+#define FPL__X11_AlreadyGrabbed 1
+#define FPL__X11_GrabInvalidTime 2
+#define FPL__X11_GrabNotViewable 3
+#define FPL__X11_GrabFrozen 4
 #define FPL__X11_KeyPress 2
 #define FPL__X11_KeyRelease 3
 #define FPL__X11_ButtonPress 4
@@ -10741,7 +10755,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 * @param[in] y The vertical position in the client area, starting at the top edge.
 * @return Returns true when the cursor was moved, false when there is no visible window.
 * @note The move event that follows the warp has a delta of zero, so the warp itself never shows up as movement.
-* @note Positions outside of the client area are allowed, unless the mouse is grabbed (@ref fplSetWindowMouseGrab()).
+* @note Positions outside of the client area are allowed. While the mouse is grabbed (@ref fplSetWindowMouseGrab()), the target is limited to the client area.
 */
 fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
 
@@ -10751,6 +10765,7 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
 * @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
 * @note The grab is only active while the window has the focus, is shown and is not minimized. FPL releases it when that ends and restores it when the window gets the focus back, the request stays.
 * @note The relative mouse mode (@ref fplSetWindowRelativeMouse()) always locks the cursor, regardless of this setting.
+* @note When another program holds the mouse, the grab is tried again while the events are pumped, see @ref section_category_window_style_cursor_grab.
 */
 fpl_common_api bool fplSetWindowMouseGrab(const bool enabled);
 
@@ -12409,6 +12424,8 @@ typedef FPL__FUNC_WIN32_GetRawInputDeviceList(fpl__win32_func_GetRawInputDeviceL
 typedef FPL__FUNC_WIN32_GetRawInputDeviceInfoW(fpl__win32_func_GetRawInputDeviceInfoW);
 #define FPL__FUNC_WIN32_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
 typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
+#define FPL__FUNC_WIN32_GetClipCursor(name) BOOL WINAPI name(LPRECT lpRect)
+typedef FPL__FUNC_WIN32_GetClipCursor(fpl__win32_func_GetClipCursor);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 #define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
@@ -12533,6 +12550,7 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetRawInputDeviceList *GetRawInputDeviceList;
 	fpl__win32_func_GetRawInputDeviceInfoW *GetRawInputDeviceInfoW;
 	fpl__win32_func_ClipCursor *ClipCursor;
+	fpl__win32_func_GetClipCursor *GetClipCursor;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
@@ -12668,6 +12686,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceList, GetRawInputDeviceList);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceInfoW, GetRawInputDeviceInfoW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClipCursor, GetClipCursor);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardLayout, GetKeyboardLayout);
@@ -12770,6 +12789,13 @@ typedef struct fpl__Win32WindowState {
 	fpl_b32 isFrameInteraction;
 	// WM_MOUSELEAVE is only sent once per TrackMouseEvent, so it is armed again with the next WM_MOUSEMOVE
 	fpl_b32 isTrackingMouseLeave;
+	// The mouse grab: the clip rectangle FPL applied in screen coordinates, whether the current clip rectangle is still that one and when it was applied last
+	RECT appliedClipRect;
+	fplMilliseconds lastClipRefreshTime;
+	fpl_b32 ownsClipRect;
+	// The mouse lock waits while the user works with the window frame: in the move/size and menu loops, and after a click that activated the window until its buttons are released
+	uint32_t modalLoopDepth;
+	fpl_b32 isActivationClickPending;
 } fpl__Win32WindowState;
 #endif // FPL__ENABLE_WINDOW
 
@@ -13307,6 +13333,10 @@ typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
 #define FPL__FUNC_X11_XWarpPointer(name) int name(fpl__X11_Display *display, fpl__X11_Window src_w, fpl__X11_Window dest_w, int src_x, int src_y, unsigned int src_width, unsigned int src_height, int dest_x, int dest_y)
 typedef FPL__FUNC_X11_XWarpPointer(fpl__func_x11_XWarpPointer);
+#define FPL__FUNC_X11_XGrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Window grab_window, fpl__X11_Bool owner_events, unsigned int event_mask, int pointer_mode, int keyboard_mode, fpl__X11_Window confine_to, fpl__X11_Cursor cursor, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XGrabPointer(fpl__func_x11_XGrabPointer);
+#define FPL__FUNC_X11_XUngrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XUngrabPointer(fpl__func_x11_XUngrabPointer);
 #define FPL__FUNC_X11_XConvertSelection(name) int name(fpl__X11_Display *display, fpl__X11_Atom selection, fpl__X11_Atom target, fpl__X11_Atom property, fpl__X11_Window requestor, fpl__X11_Time time)
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 #define FPL__FUNC_X11_XInitThreads(name) fpl__X11_Status name(void)
@@ -13420,6 +13450,8 @@ extern FPL__FUNC_X11_XSync(XSync);
 extern FPL__FUNC_X11_XTranslateCoordinates(XTranslateCoordinates);
 extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
 extern FPL__FUNC_X11_XWarpPointer(XWarpPointer);
+extern FPL__FUNC_X11_XGrabPointer(XGrabPointer);
+extern FPL__FUNC_X11_XUngrabPointer(XUngrabPointer);
 extern FPL__FUNC_X11_XUnmapWindow(XUnmapWindow);
 extern FPL__FUNC_X11_XUnsetICFocus(XUnsetICFocus);
 extern FPL__FUNC_X11_Xutf8LookupString(Xutf8LookupString);
@@ -13485,6 +13517,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
 	fpl__func_x11_XWarpPointer *XWarpPointer;
+	fpl__func_x11_XGrabPointer *XGrabPointer;
+	fpl__func_x11_XUngrabPointer *XUngrabPointer;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
@@ -13586,6 +13620,8 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWarpPointer, XWarpPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabPointer, XGrabPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabPointer, XUngrabPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
@@ -14087,6 +14123,9 @@ typedef struct fpl__InputGrabState {
 	int32_t lastMoveX;
 	int32_t lastMoveY;
 	fpl_b32 hasLastMove;
+	// A grab the operating system refused for now, because another program holds it, is tried again while pumping the events
+	fplMilliseconds nextRetryTimeMilliseconds;
+	fpl_b32 isRetryPending;
 } fpl__InputGrabState;
 
 typedef struct {
@@ -14101,6 +14140,8 @@ typedef struct {
 	// Tracked from the focus and window state changes, a grab is only active while the window has the focus and is not minimized
 	fpl_b32 hasFocus;
 	fpl_b32 isMinimized;
+	// Set by the platform while the user works with the window frame (Win32 move/size loop, a click that activated the window), the mouse is not locked then
+	fpl_b32 isMouseLockSuspended;
 	// The state a hidden window gets when it is shown, fplWindowState_Unknown when there is nothing to apply
 	fplWindowState pendingState;
 
@@ -16680,6 +16721,12 @@ fpl_internal fpl__MouseLockState fpl__GetRequestedMouseLock(const fpl__InputGrab
 	return(fpl__MouseLockState_Free);
 }
 
+// A grab the operating system refused for now is tried again after this time while the events are pumped, SDL waits the same time between its attempts
+#define FPL__GRAB_RETRY_INTERVAL_MILLISECONDS 50
+
+// Applies a mouse state at the operating system, implemented by the Win32 and the X11 window part. Returns false when the operating system refused it for now, it is tried again then.
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState);
+
 // The only place that decides which grab is active: a requested grab is active while the window runs, has the focus, is shown and is not minimized
 fpl_internal void fpl__UpdateInputGrab(fpl__PlatformAppState *appState) {
 	fpl__PlatformWindowState *windowState = &appState->window;
@@ -16688,12 +16735,56 @@ fpl_internal void fpl__UpdateInputGrab(fpl__PlatformAppState *appState) {
 	fpl__MouseLockState wantedMouseLock = fpl__MouseLockState_Free;
 	bool wantedKeyboardGrab = false;
 	if (isGrabAllowed) {
-		wantedMouseLock = fpl__GetRequestedMouseLock(inputGrab);
+		if (!windowState->isMouseLockSuspended) {
+			wantedMouseLock = fpl__GetRequestedMouseLock(inputGrab);
+		}
 		wantedKeyboardGrab = inputGrab->requestedKeyboardGrab != 0;
 	}
-	// No platform applies a grab yet, the setters refuse every request that would need one
-	inputGrab->appliedMouseLock = wantedMouseLock;
+	bool isRetryNeeded = false;
+	if (wantedMouseLock != inputGrab->appliedMouseLock) {
+		bool isApplied = fpl__PlatformApplyMouseLock(appState, wantedMouseLock);
+		if (isApplied) {
+			inputGrab->appliedMouseLock = wantedMouseLock;
+		} else {
+			isRetryNeeded = true;
+		}
+	}
+	// No platform applies the keyboard grab yet, its setter refuses every request that would need one
 	inputGrab->appliedKeyboardGrab = wantedKeyboardGrab;
+	if (isRetryNeeded) {
+		fplMilliseconds now = fplMillisecondsQuery();
+		inputGrab->nextRetryTimeMilliseconds = now + FPL__GRAB_RETRY_INTERVAL_MILLISECONDS;
+	}
+	inputGrab->isRetryPending = isRetryNeeded;
+}
+
+// Called while the events are pumped, tries a refused grab again once the retry interval has passed
+fpl_internal void fpl__RetryInputGrab(fpl__PlatformAppState *appState) {
+	const fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	if (!inputGrab->isRetryPending) {
+		return;
+	}
+	fplMilliseconds now = fplMillisecondsQuery();
+	if (now >= inputGrab->nextRetryTimeMilliseconds) {
+		fpl__UpdateInputGrab(appState);
+	}
+}
+
+// The operating system keeps a warp inside the client area while the mouse is confined, the target is limited the same way so the base of the next move delta is the real position
+fpl_internal void fpl__LimitWarpToConfinedArea(const fpl__PlatformAppState *appState, int32_t *x, int32_t *y) {
+	if (appState->window.inputGrab.appliedMouseLock != fpl__MouseLockState_Confined) {
+		return;
+	}
+	fplWindowSize windowSize = fplZeroInit;
+	if (!fplGetWindowSize(&windowSize)) {
+		return;
+	}
+	int32_t maximumX = fplMax((int32_t)windowSize.width - 1, 0);
+	int32_t maximumY = fplMax((int32_t)windowSize.height - 1, 0);
+	int32_t limitedX = fplMin(*x, maximumX);
+	int32_t limitedY = fplMin(*y, maximumY);
+	*x = fplMax(limitedX, 0);
+	*y = fplMax(limitedY, 0);
 }
 
 // The platforms call this instead of pushing the focus events themselves
@@ -16717,12 +16808,8 @@ fpl_internal void fpl__HandleWindowMinimizedChanged(fpl__PlatformAppState *appSt
 
 fpl_common_api bool fplSetWindowMouseGrab(const bool enabled) {
 	FPL__CheckPlatform(false);
-	if (enabled) {
-		FPL__WARNING(FPL__MODULE_WINDOW, "The mouse grab is not implemented yet");
-		return(false);
-	}
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	appState->window.inputGrab.requestedMouseGrab = false;
+	appState->window.inputGrab.requestedMouseGrab = enabled;
 	fpl__UpdateInputGrab(appState);
 	return(true);
 }
@@ -18568,6 +18655,157 @@ fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__Platfo
 	wapi->user.DispatchMessageW(msg);
 }
 
+// Other programs can reset the clip rectangle, so it is applied again after this time while the events are pumped, like SDL does
+#define FPL__WIN32_CLIP_REFRESH_INTERVAL_MILLISECONDS 3000
+
+// The client area of the window in screen coordinates, the rectangle the mouse grab confines the cursor to
+fpl_internal bool fpl__Win32GetClientScreenRect(const fpl__Win32Api *wapi, const HWND windowHandle, RECT *outRect) {
+	RECT clientRect;
+	if (!wapi->user.GetClientRect(windowHandle, &clientRect)) {
+		return(false);
+	}
+	POINT topLeft = fplZeroInit;
+	topLeft.x = clientRect.left;
+	topLeft.y = clientRect.top;
+	POINT bottomRight = fplZeroInit;
+	bottomRight.x = clientRect.right;
+	bottomRight.y = clientRect.bottom;
+	if (!wapi->user.ClientToScreen(windowHandle, &topLeft) || !wapi->user.ClientToScreen(windowHandle, &bottomRight)) {
+		return(false);
+	}
+	outRect->left = topLeft.x;
+	outRect->top = topLeft.y;
+	outRect->right = bottomRight.x;
+	outRect->bottom = bottomRight.y;
+	return(true);
+}
+
+fpl_internal bool fpl__Win32IsRectEqual(const RECT *a, const RECT *b) {
+	bool result = a->left == b->left && a->top == b->top && a->right == b->right && a->bottom == b->bottom;
+	return(result);
+}
+
+// Frees the cursor, but only when the current clip rectangle is still the one FPL applied, another program may have set its own meanwhile
+fpl_internal void fpl__Win32ReleaseClipCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	if (!windowState->ownsClipRect) {
+		return;
+	}
+	windowState->ownsClipRect = false;
+	RECT currentClipRect;
+	if (!wapi->user.GetClipCursor(&currentClipRect)) {
+		return;
+	}
+	// The system cuts the applied rectangle to the screen, so the current one lies inside the applied one while it is still FPL's
+	POINT firstCorner = fplZeroInit;
+	firstCorner.x = currentClipRect.left;
+	firstCorner.y = currentClipRect.top;
+	POINT lastCorner = fplZeroInit;
+	lastCorner.x = currentClipRect.right - 1;
+	lastCorner.y = currentClipRect.bottom - 1;
+	bool isFirstCornerInside = wapi->user.PtInRect(&windowState->appliedClipRect, firstCorner) == TRUE;
+	bool isLastCornerInside = wapi->user.PtInRect(&windowState->appliedClipRect, lastCorner) == TRUE;
+	if (isFirstCornerInside && isLastCornerInside) {
+		wapi->user.ClipCursor(fpl_null);
+	}
+}
+
+// Confines the cursor to the client area. The rectangle is applied again on every move of the window and every few seconds, so ClipCursor() is only called when it differs.
+fpl_internal bool fpl__Win32ClipCursorToClientArea(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	RECT clientScreenRect;
+	if (!fpl__Win32GetClientScreenRect(wapi, windowState->windowHandle, &clientScreenRect)) {
+		return(false);
+	}
+	// An empty client area can not hold the cursor, the next WM_WINDOWPOSCHANGED applies the rectangle once the window has a size again
+	if (clientScreenRect.right <= clientScreenRect.left || clientScreenRect.bottom <= clientScreenRect.top) {
+		fpl__Win32ReleaseClipCursor(wapi, windowState);
+		return(true);
+	}
+	RECT currentClipRect;
+	bool hasCurrentClipRect = wapi->user.GetClipCursor(&currentClipRect) == TRUE;
+	bool isAlreadyApplied = hasCurrentClipRect && fpl__Win32IsRectEqual(&currentClipRect, &clientScreenRect);
+	if (!isAlreadyApplied && !wapi->user.ClipCursor(&clientScreenRect)) {
+		return(false);
+	}
+	windowState->appliedClipRect = clientScreenRect;
+	windowState->ownsClipRect = true;
+	return(true);
+}
+
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	switch (lockState) {
+		case fpl__MouseLockState_Free:
+		{
+			fpl__Win32ReleaseClipCursor(wapi, windowState);
+			return(true);
+		}
+
+		case fpl__MouseLockState_Confined:
+		{
+			if (windowState->windowHandle == fpl_null) {
+				return(false);
+			}
+			if (!fpl__Win32ClipCursorToClientArea(wapi, windowState)) {
+				if (!appState->window.inputGrab.isRetryPending) {
+					FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "ClipCursor failed, trying again");
+				}
+				return(false);
+			}
+			windowState->lastClipRefreshTime = fplMillisecondsQuery();
+			return(true);
+		}
+
+		default:
+			// The relative mouse mode is not implemented yet, its setter refuses every request
+			return(false);
+	}
+}
+
+fpl_internal bool fpl__Win32IsMouseLockSuspended(const fpl__Win32WindowState *windowState) {
+	bool result = windowState->modalLoopDepth > 0 || windowState->isActivationClickPending;
+	return(result);
+}
+
+fpl_internal void fpl__Win32UpdateMouseLockSuspension(fpl__PlatformAppState *appState) {
+	bool isSuspended = fpl__Win32IsMouseLockSuspended(&appState->window.win32);
+	bool wasSuspended = appState->window.isMouseLockSuspended != 0;
+	if (isSuspended != wasSuspended) {
+		appState->window.isMouseLockSuspended = isSuspended;
+		fpl__UpdateInputGrab(appState);
+	}
+}
+
+fpl_internal bool fpl__Win32IsAnyClickButtonDown(const fpl__Win32Api *wapi) {
+	// GetAsyncKeyState() reads the physical buttons, so swapped buttons need no special case
+	bool isLeftButtonDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+	bool isRightButtonDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+	bool result = isLeftButtonDown || isRightButtonDown;
+	return(result);
+}
+
+// Runs while the events are pumped: ends a pending activation click once its buttons are released, applies the clip rectangle again and retries a refused grab
+fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (windowState->isActivationClickPending) {
+		bool isClickButtonDown = fpl__Win32IsAnyClickButtonDown(wapi);
+		if (!isClickButtonDown) {
+			windowState->isActivationClickPending = false;
+			fpl__Win32UpdateMouseLockSuspension(appState);
+		}
+	}
+	if (appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Confined) {
+		fplMilliseconds now = fplMillisecondsQuery();
+		fplMilliseconds timeSinceClipRefresh = now - windowState->lastClipRefreshTime;
+		if (timeSinceClipRefresh >= FPL__WIN32_CLIP_REFRESH_INTERVAL_MILLISECONDS) {
+			fpl__Win32ClipCursorToClientArea(wapi, windowState);
+			windowState->lastClipRefreshTime = now;
+		}
+	}
+	fpl__RetryInputGrab(appState);
+}
+
 fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppState *appState) {
 	fpl__Win32AppState *win32State = &appState->win32;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
@@ -18583,7 +18821,11 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 }
 
 fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
-	fpl__HandleWindowFocusChanged(fpl__global__AppState, true);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	// The click that activated the window may be on the title bar or on a frame button, the mouse is locked once its buttons are released
+	windowState->isActivationClickPending = fpl__Win32IsAnyClickButtonDown(wapi);
+	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(appState, true);
 	if (!windowState->isCursorActive) {
 		fpl__Win32HideCursor(wapi, windowState);
 	}
@@ -18597,7 +18839,10 @@ fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win3
 	if (!windowState->isCursorActive) {
 		fpl__Win32ShowCursor(wapi, windowState);
 	}
-	fpl__HandleWindowFocusChanged(fpl__global__AppState, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	windowState->isActivationClickPending = false;
+	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(appState, false);
 	return true;
 }
 
@@ -18773,6 +19018,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (!win32Window->isCursorActive) {
 				fpl__Win32ShowCursor(wapi, win32Window);
 			}
+			// Moving, sizing and the menus need the cursor outside of the client area
+			++win32Window->modalLoopDepth;
+			fpl__Win32UpdateMouseLockSuspension(appState);
 		} break;
 
 		case WM_EXITSIZEMOVE:
@@ -18780,6 +19028,18 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			if (!win32Window->isCursorActive) {
 				fpl__Win32HideCursor(wapi, win32Window);
+			}
+			if (win32Window->modalLoopDepth > 0) {
+				--win32Window->modalLoopDepth;
+			}
+			fpl__Win32UpdateMouseLockSuspension(appState);
+		} break;
+
+		case WM_WINDOWPOSCHANGED:
+		{
+			// The clip rectangle is in screen coordinates and does not follow the window by itself
+			if (appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Confined) {
+				fpl__Win32ClipCursorToClientArea(wapi, win32Window);
 			}
 		} break;
 
@@ -22738,9 +22998,12 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
 	if (windowState->windowHandle == fpl_null || appState->window.isHidden || appState->window.isMinimized) {
 		return(false);
 	}
+	int32_t targetX = x;
+	int32_t targetY = y;
+	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
 	POINT screenPosition = fplZeroInit;
-	screenPosition.x = x;
-	screenPosition.y = y;
+	screenPosition.x = targetX;
+	screenPosition.y = targetY;
 	if (!wapi->user.ClientToScreen(windowState->windowHandle, &screenPosition)) {
 		return(false);
 	}
@@ -22749,8 +23012,8 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
 	}
 	// The WM_MOUSEMOVE that follows the warp gets a delta of zero
 	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
-	inputGrab->lastMoveX = x;
-	inputGrab->lastMoveY = y;
+	inputGrab->lastMoveX = targetX;
+	inputGrab->lastMoveY = targetY;
 	inputGrab->hasLastMove = true;
 	return(true);
 }
@@ -22784,6 +23047,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
 		// Queue is empty, we have no events left
 		if (!fpl__HasInternalEvents()) {
+			fpl__Win32RefreshInputGrab(appState);
 			return(false);
 		}
 	}
@@ -22794,6 +23058,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	}
 
 	// No events left
+	fpl__Win32RefreshInputGrab(appState);
 	return(false);
 }
 
@@ -22815,12 +23080,14 @@ fpl_platform_api void fplPollEvents(void) {
 		}
 	}
 	fpl__ClearInternalEvents();
+	fpl__Win32RefreshInputGrab(appState);
 }
 
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__ClearInternalEvents();
+	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
 		fpl__InputSystem_Update(&appState->input);
@@ -29539,6 +29806,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	}
 
 	// Both queues are truly empty
+	fpl__RetryInputGrab(appState);
 	return(false);
 }
 
@@ -29554,6 +29822,7 @@ fpl_platform_api void fplPollEvents(void) {
 		fpl__X11HandleEvent(subplatform, appState, &ev);
 	}
 	fpl__ClearInternalEvents();
+	fpl__RetryInputGrab(appState);
 }
 
 fpl_platform_api bool fplWindowUpdate(void) {
@@ -29564,6 +29833,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 
 	fpl__ClearInternalEvents();
+	fpl__RetryInputGrab(appState);
 
 #if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
@@ -29612,15 +29882,74 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
 	if (windowState->core.window == 0 || appState->window.isHidden || appState->window.isMinimized) {
 		return(false);
 	}
+	int32_t targetX = x;
+	int32_t targetY = y;
+	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
 	// A source window of None warps from anywhere, the zero sized source rectangle is ignored then
-	x11Api->XWarpPointer(windowState->display, FPL__X11_None, windowState->core.window, 0, 0, 0, 0, x, y);
+	x11Api->XWarpPointer(windowState->display, FPL__X11_None, windowState->core.window, 0, 0, 0, 0, targetX, targetY);
 	x11Api->XFlush(windowState->display);
 	// The MotionNotify that follows the warp gets a delta of zero
 	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
-	inputGrab->lastMoveX = x;
-	inputGrab->lastMoveY = y;
+	inputGrab->lastMoveX = targetX;
+	inputGrab->lastMoveY = targetY;
 	inputGrab->hasLastMove = true;
 	return(true);
+}
+
+// Pointer events of the grab, owner_events is set, so the events inside the window arrive through the event mask of the window as usual
+#define FPL__X11_POINTER_GRAB_EVENT_MASK ((unsigned int)(FPL__X11_ButtonPressMask | FPL__X11_ButtonReleaseMask | FPL__X11_PointerMotionMask))
+
+fpl_internal const char *fpl__X11GetGrabResultName(const int grabResult) {
+	switch (grabResult) {
+		case FPL__X11_GrabSuccess:
+			return "GrabSuccess";
+		case FPL__X11_AlreadyGrabbed:
+			return "AlreadyGrabbed";
+		case FPL__X11_GrabInvalidTime:
+			return "GrabInvalidTime";
+		case FPL__X11_GrabNotViewable:
+			return "GrabNotViewable";
+		case FPL__X11_GrabFrozen:
+			return "GrabFrozen";
+		default:
+			return "Unknown";
+	}
+}
+
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11_Window window = windowState->core.window;
+	if (windowState->display == fpl_null || window == 0) {
+		return(lockState == fpl__MouseLockState_Free);
+	}
+	switch (lockState) {
+		case fpl__MouseLockState_Free:
+		{
+			x11Api->XUngrabPointer(windowState->display, FPL__X11_CurrentTime);
+			x11Api->XFlush(windowState->display);
+			return(true);
+		}
+
+		case fpl__MouseLockState_Confined:
+		{
+			// confine_to keeps the pointer inside the window, the X server follows moves and resizes of the window by itself
+			int grabResult = x11Api->XGrabPointer(windowState->display, window, FPL__X11_True, FPL__X11_POINTER_GRAB_EVENT_MASK, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, window, FPL__X11_None, FPL__X11_CurrentTime);
+			if (grabResult == FPL__X11_GrabSuccess) {
+				return(true);
+			}
+			// AlreadyGrabbed and GrabFrozen: another client holds the pointer, like the window manager right after Alt+Tab. GrabNotViewable: the window is not mapped yet.
+			if (!appState->window.inputGrab.isRetryPending) {
+				const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
+				FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabPointer failed with %s, trying again", grabResultName);
+			}
+			return(false);
+		}
+
+		default:
+			// The relative mouse mode is not implemented yet, its setter refuses every request
+			return(false);
+	}
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
@@ -42145,6 +42474,9 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if (appState != fpl_null) {
+		// The app may release the platform without fplWindowShutdown(), and the Win32 clip rectangle would outlive the window
+		appState->window.isRunning = false;
+		fpl__UpdateInputGrab(appState);
 #	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
 #	elif defined(FPL_SUBPLATFORM_X11)

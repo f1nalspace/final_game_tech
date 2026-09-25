@@ -1360,6 +1360,30 @@
 	}
 	@endcode
 
+	@note While the mouse is grabbed (@ref section_category_window_style_cursor_grab), the target is limited to the client area, like the cursor itself.
+
+	@section section_category_window_style_cursor_grab Grabbing the mouse
+
+	Use @ref fplSetWindowMouseGrab() to keep the cursor inside the client area of the window, for example for a game or a virtual machine display.<br>
+	The cursor stays visible, only its movement ends at the edges of the client area. The cage follows the window when it is moved, resized or switches to fullscreen.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Keep the cursor inside the window
+	fplSetWindowMouseGrab(true);
+
+	// Let it move freely again
+	fplSetWindowMouseGrab(false);
+
+	// The requested state, also while the grab is not active
+	bool isGrabbed = fplIsWindowMouseGrabbed();
+	@endcode
+
+	@note The grab is only active while the window has the focus, is shown and is not minimized. FPL releases it when that ends and restores it when the window gets the focus back, the request itself stays. An application that wants to end the grab on focus loss calls fplSetWindowMouseGrab(false) on @ref fplWindowEventType_LostFocus.
+	@note When another program holds the mouse (X11: the window manager right after Alt+Tab), the grab can not be applied at once. FPL tries again while the events are pumped (@ref fplWindowUpdate(), @ref fplPollEvent(), @ref fplPollEvents()), so the grab becomes active a moment later.
+	@note [Win32] While the window is moved or resized with the mouse, while a menu is open and after a click that activated the window, the cursor is not grabbed until the mouse buttons are released. Other programs can reset the cursor clip rectangle, FPL applies it again every few seconds.
+	@note [X11] A grabbed mouse belongs to the application for the whole desktop. When a debugger stops the application while the mouse is grabbed, the mouse can not leave the window until the application continues or ends.
+
 	@section section_category_window_style_title Get/Set the window title
 
 	By default, the window has an unnamed title. Use @ref fplSetWindowTitle to set a window title on runtime.<br>
