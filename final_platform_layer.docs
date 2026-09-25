@@ -1384,6 +1384,33 @@
 	@note [Win32] While the window is moved or resized with the mouse, while a menu is open and after a click that activated the window, the cursor is not grabbed until the mouse buttons are released. Other programs can reset the cursor clip rectangle, FPL applies it again every few seconds.
 	@note [X11] A grabbed mouse belongs to the application for the whole desktop. When a debugger stops the application while the mouse is grabbed, the mouse can not leave the window until the application continues or ends.
 
+	@section section_category_window_style_cursor_relative Relative mouse mode
+
+	Use @ref fplSetWindowRelativeMouse() for a camera in a game or a virtual machine with a relative mouse. The cursor is hidden and locked, and the move events carry the raw movement of the device in @ref fplMouseEvent.deltaX and @ref fplMouseEvent.deltaY, without the acceleration of the operating system and without ever ending at an edge.<br>
+	All mouse events carry the position where the mode started in @ref fplMouseEvent.mouseX and @ref fplMouseEvent.mouseY. When the mode ends, the cursor appears again at that position.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	fplSetWindowRelativeMouse(true);
+
+	fplEvent ev;
+	while (fplPollEvent(&ev)) {
+		if (ev.type == fplEventType_Mouse && ev.mouse.type == fplMouseEventType_Move) {
+			cameraYaw += ev.mouse.deltaX * mouseSensitivity;
+			cameraPitch += ev.mouse.deltaY * mouseSensitivity;
+		}
+	}
+
+	fplSetWindowRelativeMouse(false);
+	@endcode
+
+	@note The relative mode wins over the mouse grab (@ref section_category_window_style_cursor_grab): while it is active, the cursor is locked regardless of @ref fplSetWindowMouseGrab(). When it ends, the mouse grab applies again.
+	@note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized, FPL ends and restores it by itself.
+	@note @ref fplWarpWindowCursor() does not move the hidden cursor in the relative mode, it moves the position the events carry and where the cursor appears afterwards.
+	@note Devices that report absolute positions (remote desktop, virtual machine tablets, graphics tablets) are turned into movement in screen pixels.
+	@note [Win32] The movement comes from raw input (WM_INPUT). While the mode is active, the application must not register the mouse for raw input itself.
+	@note [X11] The movement comes from the raw events of XInput2 (libXi, loaded at runtime). Without it, or when FPL_NO_X11_XINPUT2 is defined, FPL warps the cursor back to the window center after every motion, and the deltas are accelerated like the cursor. Builds with FPL_NO_RUNTIME_LINKING link libXi then (-lXi), unless FPL_NO_X11_XINPUT2 is defined.
+
 	@section section_category_window_style_title Get/Set the window title
 
 	By default, the window has an unnamed title. Use @ref fplSetWindowTitle to set a window title on runtime.<br>
@@ -4874,6 +4901,15 @@
 			<td>Window</td>
 			<td>FPL_NO_WINDOW</td>
 			<td>Define this to disable Window Support entirely.</td>
+			<td>Not set by default</td>
+		</tr>
+		<tr>
+			<td>Window</td>
+			<td>FPL_NO_X11_XINPUT2</td>
+			<td>
+				[X11] Define this to leave out XInput2 (libXi), which the relative mouse mode uses for the raw movement.<br>
+				The relative mode then warps the cursor back to the window center, and its deltas are accelerated like the cursor. Builds with FPL_NO_RUNTIME_LINKING need no -lXi then.
+			</td>
 			<td>Not set by default</td>
 		</tr>
 

@@ -280,6 +280,9 @@ SOFTWARE.
 	- Fixed: A key or mouse button that was released while the window had no focus stayed pressed, so its next press came back as fplButtonState_Repeat (e.g. Alt after Alt+Tab) - losing the focus now releases every key and mouse button the window still holds as pressed, before the fplWindowEventType_LostFocus event
 	- New: Added functions fplSetWindowMouseGrab() and fplIsWindowMouseGrabbed() that keep the cursor inside the client area - the grab is only active while the window has the focus, is shown and is not minimized, and a grab another program blocks is tried again while the events are pumped
 	- Changed: fplWarpWindowCursor() limits the target to the client area while the mouse is grabbed
+	- New: Added functions fplSetWindowRelativeMouse() and fplIsWindowRelativeMouse() for a hidden, locked cursor whose move events carry the raw unaccelerated device movement - Win32 raw input, X11 XInput2 with a warp fallback (FPL_NO_X11_XINPUT2 forces it)
+	- Changed: fplWarpWindowCursor() in the relative mouse mode moves the position the mouse events carry and where the cursor appears when the mode ends
+	- Changed: [Win32] fplSetWindowCursorEnabled() no longer registers the mouse for raw input, which did nothing but broke a raw input registration of the application
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -3838,6 +3841,7 @@ typedef Bool fpl__X11_Bool;
 typedef Status fpl__X11_Status;
 typedef XPointer fpl__X11_XPointer;
 typedef XEvent fpl__X11_XEvent;
+typedef XGenericEventCookie fpl__X11_XGenericEventCookie;
 typedef XAnyEvent fpl__X11_XAnyEvent;
 typedef XKeyEvent fpl__X11_XKeyEvent;
 typedef XButtonEvent fpl__X11_XButtonEvent;
@@ -4254,6 +4258,17 @@ typedef struct fpl__X11_XClientMessageEvent {
 	} data;
 } fpl__X11_XClientMessageEvent;
 
+typedef struct fpl__X11_XGenericEventCookie {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	int extension;
+	int evtype;
+	unsigned int cookie;
+	void *data;
+} fpl__X11_XGenericEventCookie;
+
 typedef union fpl__X11_XEvent {
 	int type;
 	fpl__X11_XAnyEvent xany;
@@ -4268,6 +4283,7 @@ typedef union fpl__X11_XEvent {
 	fpl__X11_XSelectionRequestEvent xselectionrequest;
 	fpl__X11_XSelectionClearEvent xselectionclear;
 	fpl__X11_XClientMessageEvent xclient;
+	fpl__X11_XGenericEventCookie xcookie;
 	long pad[24];
 } fpl__X11_XEvent;
 
@@ -10780,7 +10796,10 @@ fpl_common_api bool fplIsWindowMouseGrabbed(void);
 * @param[in] enabled Set to true to enable the relative mouse mode.
 * @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
 * @note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized.
-* @note When the relative mode ends, the cursor appears again where it was when the mode started.
+* @note While the mode is active, every mouse event carries the position where the mode started in @ref fplMouseEvent.mouseX and @ref fplMouseEvent.mouseY. @ref fplWarpWindowCursor() moves that position instead of the hidden cursor.
+* @note When the relative mode ends, the cursor appears again at that position.
+* @note [X11] The raw movement needs XInput2 (libXi). Without it, or with FPL_NO_X11_XINPUT2, FPL warps the cursor back to the window center and the deltas are accelerated like the cursor.
+* @see @ref section_category_window_style_cursor_relative
 */
 fpl_common_api bool fplSetWindowRelativeMouse(const bool enabled);
 
@@ -11685,6 +11704,7 @@ fpl_common_api const char *fplGetVersion(void) {
 #define FPL__MODULE_X11 "X11"
 #define FPL__MODULE_XRANDR "XrandR"
 #define FPL__MODULE_XINERAMA "Xinerama"
+#define FPL__MODULE_XINPUT2 "XInput2"
 #define FPL__MODULE_GLX "GLX"
 
 //
@@ -12426,6 +12446,10 @@ typedef FPL__FUNC_WIN32_GetRawInputDeviceInfoW(fpl__win32_func_GetRawInputDevice
 typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
 #define FPL__FUNC_WIN32_GetClipCursor(name) BOOL WINAPI name(LPRECT lpRect)
 typedef FPL__FUNC_WIN32_GetClipCursor(fpl__win32_func_GetClipCursor);
+#define FPL__FUNC_WIN32_GetRawInputData(name) UINT WINAPI name(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader)
+typedef FPL__FUNC_WIN32_GetRawInputData(fpl__win32_func_GetRawInputData);
+#define FPL__FUNC_WIN32_GetSystemMetrics(name) int WINAPI name(int nIndex)
+typedef FPL__FUNC_WIN32_GetSystemMetrics(fpl__win32_func_GetSystemMetrics);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 #define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
@@ -12551,6 +12575,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetRawInputDeviceInfoW *GetRawInputDeviceInfoW;
 	fpl__win32_func_ClipCursor *ClipCursor;
 	fpl__win32_func_GetClipCursor *GetClipCursor;
+	fpl__win32_func_GetRawInputData *GetRawInputData;
+	fpl__win32_func_GetSystemMetrics *GetSystemMetrics;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
@@ -12687,6 +12713,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceInfoW, GetRawInputDeviceInfoW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClipCursor, GetClipCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputData, GetRawInputData);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetSystemMetrics, GetSystemMetrics);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardLayout, GetKeyboardLayout);
@@ -12796,6 +12824,11 @@ typedef struct fpl__Win32WindowState {
 	// The mouse lock waits while the user works with the window frame: in the move/size and menu loops, and after a click that activated the window until its buttons are released
 	uint32_t modalLoopDepth;
 	fpl_b32 isActivationClickPending;
+	// The relative mouse mode: raw mouse input is registered for the window, and the previous position of a device that reports absolute positions (remote desktop, virtual machine tablets, pens)
+	double lastAbsoluteRawX;
+	double lastAbsoluteRawY;
+	fpl_b32 hasLastAbsoluteRaw;
+	fpl_b32 isRelativeMouseActive;
 } fpl__Win32WindowState;
 #endif // FPL__ENABLE_WINDOW
 
@@ -13337,6 +13370,14 @@ typedef FPL__FUNC_X11_XWarpPointer(fpl__func_x11_XWarpPointer);
 typedef FPL__FUNC_X11_XGrabPointer(fpl__func_x11_XGrabPointer);
 #define FPL__FUNC_X11_XUngrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
 typedef FPL__FUNC_X11_XUngrabPointer(fpl__func_x11_XUngrabPointer);
+#define FPL__FUNC_X11_XQueryExtension(name) fpl__X11_Bool name(fpl__X11_Display *display, const char *name_str, int *major_opcode_return, int *first_event_return, int *first_error_return)
+typedef FPL__FUNC_X11_XQueryExtension(fpl__func_x11_XQueryExtension);
+#define FPL__FUNC_X11_XGetEventData(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_XGenericEventCookie *cookie)
+typedef FPL__FUNC_X11_XGetEventData(fpl__func_x11_XGetEventData);
+#define FPL__FUNC_X11_XFreeEventData(name) void name(fpl__X11_Display *display, fpl__X11_XGenericEventCookie *cookie)
+typedef FPL__FUNC_X11_XFreeEventData(fpl__func_x11_XFreeEventData);
+#define FPL__FUNC_X11_XNextRequest(name) unsigned long name(fpl__X11_Display *display)
+typedef FPL__FUNC_X11_XNextRequest(fpl__func_x11_XNextRequest);
 #define FPL__FUNC_X11_XConvertSelection(name) int name(fpl__X11_Display *display, fpl__X11_Atom selection, fpl__X11_Atom target, fpl__X11_Atom property, fpl__X11_Window requestor, fpl__X11_Time time)
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 #define FPL__FUNC_X11_XInitThreads(name) fpl__X11_Status name(void)
@@ -13452,6 +13493,10 @@ extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
 extern FPL__FUNC_X11_XWarpPointer(XWarpPointer);
 extern FPL__FUNC_X11_XGrabPointer(XGrabPointer);
 extern FPL__FUNC_X11_XUngrabPointer(XUngrabPointer);
+extern FPL__FUNC_X11_XQueryExtension(XQueryExtension);
+extern FPL__FUNC_X11_XGetEventData(XGetEventData);
+extern FPL__FUNC_X11_XFreeEventData(XFreeEventData);
+extern FPL__FUNC_X11_XNextRequest(XNextRequest);
 extern FPL__FUNC_X11_XUnmapWindow(XUnmapWindow);
 extern FPL__FUNC_X11_XUnsetICFocus(XUnsetICFocus);
 extern FPL__FUNC_X11_Xutf8LookupString(Xutf8LookupString);
@@ -13519,6 +13564,10 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XWarpPointer *XWarpPointer;
 	fpl__func_x11_XGrabPointer *XGrabPointer;
 	fpl__func_x11_XUngrabPointer *XUngrabPointer;
+	fpl__func_x11_XQueryExtension *XQueryExtension;
+	fpl__func_x11_XGetEventData *XGetEventData;
+	fpl__func_x11_XFreeEventData *XFreeEventData;
+	fpl__func_x11_XNextRequest *XNextRequest;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
@@ -13622,6 +13671,10 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWarpPointer, XWarpPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabPointer, XGrabPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabPointer, XUngrabPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryExtension, XQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetEventData, XGetEventData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeEventData, XFreeEventData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XNextRequest, XNextRequest);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
@@ -13886,10 +13939,151 @@ fpl_internal bool fpl__LoadXineramaApi(fpl__XineramaApi *xineramaApi) {
 	return(result);
 }
 
+//
+// XInput2 Api (optional), raw mouse motion for the relative mouse mode. FPL_NO_X11_XINPUT2 leaves it out, the relative mode warps the cursor back to the window center then.
+//
+#if !defined(FPL_NO_X11_XINPUT2)
+#define FPL__X11_XI_RawMotion 17
+#define FPL__X11_XIAllMasterDevices 1
+#define FPL__X11_XIValuatorClass 2
+#define FPL__X11_XIModeAbsolute 1
+// Event masks of XInput2 are byte arrays with one bit per event type, like XIMaskLen(), XISetMask() and XIMaskIsSet()
+#define FPL__X11_XI_MASK_LENGTH(eventType) (((eventType) >> 3) + 1)
+#define FPL__X11_XI_SET_MASK(mask, bit) (((unsigned char *)(mask))[(bit) >> 3] |= (unsigned char)(1 << ((bit) & 7)))
+#define FPL__X11_XI_IS_MASK_SET(mask, bit) ((((const unsigned char *)(mask))[(bit) >> 3] & (1 << ((bit) & 7))) != 0)
+
+typedef struct fpl__X11_XIEventMask {
+	int deviceid;
+	int mask_len;
+	unsigned char *mask;
+} fpl__X11_XIEventMask;
+
+typedef struct fpl__X11_XIValuatorState {
+	int mask_len;
+	unsigned char *mask;
+	double *values;
+} fpl__X11_XIValuatorState;
+
+typedef struct fpl__X11_XIRawEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	int extension;
+	int evtype;
+	fpl__X11_Time time;
+	int deviceid;
+	int sourceid;
+	int detail;
+	int flags;
+	fpl__X11_XIValuatorState valuators;
+	double *raw_values;
+} fpl__X11_XIRawEvent;
+
+typedef struct fpl__X11_XIAnyClassInfo {
+	int type;
+	int sourceid;
+} fpl__X11_XIAnyClassInfo;
+
+typedef struct fpl__X11_XIValuatorClassInfo {
+	int type;
+	int sourceid;
+	int number;
+	fpl__X11_Atom label;
+	double min;
+	double max;
+	double value;
+	int resolution;
+	int mode;
+} fpl__X11_XIValuatorClassInfo;
+
+typedef struct fpl__X11_XIDeviceInfo {
+	int deviceid;
+	char *name;
+	int use;
+	int attachment;
+	fpl__X11_Bool enabled;
+	int num_classes;
+	fpl__X11_XIAnyClassInfo **classes;
+} fpl__X11_XIDeviceInfo;
+
+#define FPL__FUNC_XI_XIQueryVersion(name) fpl__X11_Status name(fpl__X11_Display *display, int *major_version_inout, int *minor_version_inout)
+typedef FPL__FUNC_XI_XIQueryVersion(fpl__func_xi_XIQueryVersion);
+#define FPL__FUNC_XI_XISelectEvents(name) int name(fpl__X11_Display *display, fpl__X11_Window win, fpl__X11_XIEventMask *masks, int num_masks)
+typedef FPL__FUNC_XI_XISelectEvents(fpl__func_xi_XISelectEvents);
+#define FPL__FUNC_XI_XIQueryDevice(name) fpl__X11_XIDeviceInfo *name(fpl__X11_Display *display, int deviceid, int *ndevices_return)
+typedef FPL__FUNC_XI_XIQueryDevice(fpl__func_xi_XIQueryDevice);
+#define FPL__FUNC_XI_XIFreeDeviceInfo(name) void name(fpl__X11_XIDeviceInfo *info)
+typedef FPL__FUNC_XI_XIFreeDeviceInfo(fpl__func_xi_XIFreeDeviceInfo);
+
+// Direct extern declarations for non-runtime-linking builds, FPL never includes the XInput2 header. The library exports C symbols.
+#if defined(FPL_NO_RUNTIME_LINKING)
+#if defined(__cplusplus)
+extern "C" {
+#endif
+extern FPL__FUNC_XI_XIQueryVersion(XIQueryVersion);
+extern FPL__FUNC_XI_XISelectEvents(XISelectEvents);
+extern FPL__FUNC_XI_XIQueryDevice(XIQueryDevice);
+extern FPL__FUNC_XI_XIFreeDeviceInfo(XIFreeDeviceInfo);
+#if defined(__cplusplus)
+}
+#endif
+#endif
+
+typedef struct fpl__XInput2Api {
+	void *libHandle;
+	fpl__func_xi_XIQueryVersion *XIQueryVersion;
+	fpl__func_xi_XISelectEvents *XISelectEvents;
+	fpl__func_xi_XIQueryDevice *XIQueryDevice;
+	fpl__func_xi_XIFreeDeviceInfo *XIFreeDeviceInfo;
+	fpl_b32 isLoaded;
+} fpl__XInput2Api;
+
+fpl_internal void fpl__UnloadXInput2Api(fpl__XInput2Api *xinput2Api) {
+	fplAssert(xinput2Api != fpl_null);
+	if (xinput2Api->libHandle != fpl_null) {
+		dlclose(xinput2Api->libHandle);
+	}
+	fplClearStruct(xinput2Api);
+}
+
+fpl_internal bool fpl__LoadXInput2Api(fpl__XInput2Api *xinput2Api) {
+	fplAssert(xinput2Api != fpl_null);
+	const char *libFileNames[] = {
+		"libXi.so.6",
+		"libXi.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xinput2Api);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XINPUT2, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIQueryVersion, XIQueryVersion);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XISelectEvents, XISelectEvents);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIQueryDevice, XIQueryDevice);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIFreeDeviceInfo, XIFreeDeviceInfo);
+			xinput2Api->libHandle = libHandle;
+			xinput2Api->isLoaded = true;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXInput2Api(xinput2Api);
+	}
+	return(result);
+}
+#endif // !FPL_NO_X11_XINPUT2
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
 	fpl__XrandRApi xrandr;
 	fpl__XineramaApi xinerama;
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__XInput2Api xinput2;
+#endif
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -13999,8 +14193,52 @@ typedef struct fpl__X11ColormapState {
 	bool ownsColorMap;   // true only when we created the colormap (custom-visual path); a default colormap must not be freed
 } fpl__X11ColormapState;
 
+#if !defined(FPL_NO_X11_XINPUT2)
+// Raw motion comes per source device, so absolute devices (tablets, virtual machine tablets) are remembered with their range and previous value
+#define FPL__X11_XINPUT2_MAX_DEVICES 8
+#define FPL__X11_XINPUT2_AXIS_COUNT 2
+typedef struct fpl__X11XInput2Device {
+	double minimum[FPL__X11_XINPUT2_AXIS_COUNT];
+	double maximum[FPL__X11_XINPUT2_AXIS_COUNT];
+	double previous[FPL__X11_XINPUT2_AXIS_COUNT];
+	int deviceId;
+	bool isAbsolute[FPL__X11_XINPUT2_AXIS_COUNT];
+	bool hasPrevious[FPL__X11_XINPUT2_AXIS_COUNT];
+} fpl__X11XInput2Device;
+#endif
+
+// The relative mouse mode: raw motion from XInput2 when the server has it, otherwise every motion is warped back to the window center
+typedef struct fpl__X11RelativeMouseState {
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__X11XInput2Device devices[FPL__X11_XINPUT2_MAX_DEVICES];
+	uint32_t deviceCount;
+	uint32_t nextDeviceSlot;
+	int xinput2Opcode;
+	int rootWidth;
+	int rootHeight;
+	bool isXInput2Checked;
+	bool isXInput2Available;
+	bool isRawMotionSelected;
+#endif
+	// Warp fallback: the serial of the last warp to the center, motion events from before it are relative to the previous motion, the ones after it to the center
+	unsigned long pendingWarpSerial;
+	// Client size for the warp center. The tracked window info is still empty when the first FocusIn comes, so the size is asked for at the start and follows ConfigureNotify.
+	int32_t clientWidth;
+	int32_t clientHeight;
+	int32_t warpCenterX;
+	int32_t warpCenterY;
+	int32_t lastMotionX;
+	int32_t lastMotionY;
+	// Root position of the window origin at the previous motion. A motion that sees another origin comes from a moved window, the server pushed the confined pointer along.
+	int32_t windowOriginX;
+	int32_t windowOriginY;
+	bool isWarpPending;
+	bool isActive;
+} fpl__X11RelativeMouseState;
+
 typedef struct fpl__X11WindowState {
 	fpl__X11WindowStateInfo lastWindowStateInfo;
+	fpl__X11RelativeMouseState relativeMouse;
 	fpl__X11ColormapState colormap;
 	fpl__X11_Display *display;
 	fpl__X11WindowCore core;
@@ -14123,6 +14361,12 @@ typedef struct fpl__InputGrabState {
 	int32_t lastMoveX;
 	int32_t lastMoveY;
 	fpl_b32 hasLastMove;
+	// Cursor position where the relative mode started, all mouse events carry it while the mode is active and the cursor returns there
+	int32_t frozenX;
+	int32_t frozenY;
+	// Fractional parts of the raw relative movement that do not add up to a whole count yet
+	double remainderX;
+	double remainderY;
 	// A grab the operating system refused for now, because another program holds it, is tried again while pumping the events
 	fplMilliseconds nextRetryTimeMilliseconds;
 	fpl_b32 isRetryPending;
@@ -14719,15 +14963,34 @@ fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *window
 	fpl__PushKeyboardInputEvent(textCode, mappedKey);
 }
 
+// In the relative mode the cursor sits somewhere hidden, so the mouse events carry the position where the mode started
+fpl_internal void fpl__GetReportedMousePosition(const fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, int32_t *outX, int32_t *outY) {
+	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	if (inputGrab->appliedMouseLock == fpl__MouseLockState_Relative) {
+		*outX = inputGrab->frozenX;
+		*outY = inputGrab->frozenY;
+	} else {
+		*outX = x;
+		*outY = y;
+	}
+}
+
 fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	if (mouseButton < fplArrayCount(windowState->mouseStates)) {
 		windowState->mouseStates[(int)mouseButton] = buttonState;
 	}
-	fpl__PushMouseButtonEvent(x, y, mouseButton, buttonState);
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, buttonState);
 }
 
 fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
 	fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	// The relative mode reports the raw device movement instead, the cursor movement is accelerated and ends at the edges
+	if (inputGrab->appliedMouseLock == fpl__MouseLockState_Relative) {
+		return;
+	}
 	int32_t deltaX = 0;
 	int32_t deltaY = 0;
 	if (inputGrab->hasLastMove) {
@@ -14741,7 +15004,10 @@ fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowStat
 }
 
 fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
-	fpl__PushMouseWheelEvent(x, y, wheelDelta);
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fpl__PushMouseWheelEvent(reportedX, reportedY, wheelDelta);
 }
 
 // @NOTE(final): Callback used for setup a window before it is created
@@ -16701,11 +16967,14 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 		}
 	}
 	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, inputGrab->lastMoveX, inputGrab->lastMoveY, &reportedX, &reportedY);
 	for (uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(windowState->mouseStates); ++buttonIndex) {
 		if (windowState->mouseStates[buttonIndex] != fplButtonState_Release) {
 			windowState->mouseStates[buttonIndex] = fplButtonState_Release;
 			fplMouseButtonType mouseButton = (fplMouseButtonType)buttonIndex;
-			fpl__PushMouseButtonEvent(inputGrab->lastMoveX, inputGrab->lastMoveY, mouseButton, fplButtonState_Release);
+			fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, fplButtonState_Release);
 		}
 	}
 }
@@ -16770,11 +17039,8 @@ fpl_internal void fpl__RetryInputGrab(fpl__PlatformAppState *appState) {
 	}
 }
 
-// The operating system keeps a warp inside the client area while the mouse is confined, the target is limited the same way so the base of the next move delta is the real position
-fpl_internal void fpl__LimitWarpToConfinedArea(const fpl__PlatformAppState *appState, int32_t *x, int32_t *y) {
-	if (appState->window.inputGrab.appliedMouseLock != fpl__MouseLockState_Confined) {
-		return;
-	}
+// Limits a position in window coordinates to the client area
+fpl_internal void fpl__LimitToClientArea(int32_t *x, int32_t *y) {
 	fplWindowSize windowSize = fplZeroInit;
 	if (!fplGetWindowSize(&windowSize)) {
 		return;
@@ -16785,6 +17051,75 @@ fpl_internal void fpl__LimitWarpToConfinedArea(const fpl__PlatformAppState *appS
 	int32_t limitedY = fplMin(*y, maximumY);
 	*x = fplMax(limitedX, 0);
 	*y = fplMax(limitedY, 0);
+}
+
+// The operating system keeps a warp inside the client area while the mouse is confined, the target is limited the same way so the base of the next move delta is the real position
+fpl_internal void fpl__LimitWarpToConfinedArea(const fpl__PlatformAppState *appState, int32_t *x, int32_t *y) {
+	if (appState->window.inputGrab.appliedMouseLock != fpl__MouseLockState_Confined) {
+		return;
+	}
+	fpl__LimitToClientArea(x, y);
+}
+
+// A warp in the relative mode does not move the hidden cursor, it only moves the position the mouse events carry and where the cursor appears when the mode ends. Returns false outside of the relative mode.
+fpl_internal bool fpl__WarpFrozenMousePosition(fpl__PlatformAppState *appState, const int32_t x, const int32_t y) {
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	if (inputGrab->appliedMouseLock != fpl__MouseLockState_Relative) {
+		return(false);
+	}
+	int32_t frozenX = x;
+	int32_t frozenY = y;
+	fpl__LimitToClientArea(&frozenX, &frozenY);
+	inputGrab->frozenX = frozenX;
+	inputGrab->frozenY = frozenY;
+	return(true);
+}
+
+// The platforms call this when the relative mode starts, with the cursor position in window coordinates
+fpl_internal void fpl__FreezeMousePosition(fpl__InputGrabState *inputGrab, const int32_t cursorX, const int32_t cursorY) {
+	int32_t frozenX = cursorX;
+	int32_t frozenY = cursorY;
+	fpl__LimitToClientArea(&frozenX, &frozenY);
+	inputGrab->frozenX = frozenX;
+	inputGrab->frozenY = frozenY;
+	inputGrab->remainderX = 0.0;
+	inputGrab->remainderY = 0.0;
+}
+
+// The platforms call this after the cursor was put back to the frozen position, so the next move event has a delta of zero
+fpl_internal void fpl__ThawMousePosition(fpl__InputGrabState *inputGrab) {
+	inputGrab->lastMoveX = inputGrab->frozenX;
+	inputGrab->lastMoveY = inputGrab->frozenY;
+	inputGrab->hasLastMove = true;
+}
+
+// Raw movement of the relative mode in device counts. Fractions are kept until they add up to whole counts, every whole count becomes a move event with the frozen position.
+fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState, const double deltaX, const double deltaY) {
+#if defined(FPL__ENABLE_INPUT)
+	if (appState->currentSettings.input.disabledEvents) {
+		return;
+	}
+	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) {
+		return;
+	}
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	double totalX = inputGrab->remainderX + deltaX;
+	double totalY = inputGrab->remainderY + deltaY;
+	// The cast cuts toward zero, so the remainder keeps the sign of the movement
+	int32_t countX = (int32_t)totalX;
+	int32_t countY = (int32_t)totalY;
+	inputGrab->remainderX = totalX - (double)countX;
+	inputGrab->remainderY = totalY - (double)countY;
+	if (countX == 0 && countY == 0) {
+		return;
+	}
+	fpl__PushMouseMoveEvent(inputGrab->frozenX, inputGrab->frozenY, countX, countY);
+#else
+	// Without the input system no mouse event reaches the application at all
+	(void)appState;
+	(void)deltaX;
+	(void)deltaY;
+#endif
 }
 
 // The platforms call this instead of pushing the focus events themselves
@@ -16823,12 +17158,8 @@ fpl_common_api bool fplIsWindowMouseGrabbed(void) {
 
 fpl_common_api bool fplSetWindowRelativeMouse(const bool enabled) {
 	FPL__CheckPlatform(false);
-	if (enabled) {
-		FPL__WARNING(FPL__MODULE_WINDOW, "The relative mouse mode is not implemented yet");
-		return(false);
-	}
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	appState->window.inputGrab.requestedRelativeMouse = false;
+	appState->window.inputGrab.requestedRelativeMouse = enabled;
 	fpl__UpdateInputGrab(appState);
 	return(true);
 }
@@ -18562,36 +18893,26 @@ fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fp
 }
 
 fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
-	if (window->isCursorActive) {
+	// The relative mouse mode hides the cursor, regardless of fplSetWindowCursorEnabled()
+	if (window->isCursorActive && !window->isRelativeMouseActive) {
 		wapi->user.SetCursor(fpl__win32_LoadCursor(fpl_null, IDC_ARROW));
 	} else {
 		wapi->user.SetCursor(fpl_null);
 	}
 }
 
-fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32WindowState *window, const bool state) {
-	// @NOTE(final): We use RAWINPUT to remove the mouse device entirely when it needs to be hidden
-	if (!state) {
-		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, 0, window->windowHandle);
-		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
-			FPL__ERROR(FPL__MODULE_WINDOW, "Failed register raw input mouse device for window handle '%p'", window->windowHandle);
-		}
-	} else {
-		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, RIDEV_REMOVE, fpl_null);
-		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
-			FPL__ERROR(FPL__MODULE_WINDOW, "Failed to unregister raw input mouse device");
-		}
-	}
+// Applies the cursor of the window right away, when the cursor is over the client area. Raw input is not involved, it belongs to the relative mouse mode alone.
+fpl_internal void fpl__Win32RefreshCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
 	if (fpl__Win32IsCursorInWindow(wapi, window)) {
 		fpl__Win32LoadCursor(wapi, window);
 	}
 }
 
 fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
-	fpl__Win32SetCursorState(wapi, window, false);
+	fpl__Win32RefreshCursor(wapi, window);
 }
 fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
-	fpl__Win32SetCursorState(wapi, window, true);
+	fpl__Win32RefreshCursor(wapi, window);
 }
 #endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the modifier helper without a window)
 
@@ -18709,8 +19030,22 @@ fpl_internal void fpl__Win32ReleaseClipCursor(const fpl__Win32Api *wapi, fpl__Wi
 	}
 }
 
-// Confines the cursor to the client area. The rectangle is applied again on every move of the window and every few seconds, so ClipCursor() is only called when it differs.
-fpl_internal bool fpl__Win32ClipCursorToClientArea(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+// The rectangle a mouse lock confines the cursor to: the client area for the mouse grab, one pixel in its middle for the relative mode, so clicks land in the window and the hidden cursor goes nowhere
+fpl_internal void fpl__Win32GetMouseLockRect(const RECT *clientScreenRect, const fpl__MouseLockState lockState, RECT *outRect) {
+	if (lockState == fpl__MouseLockState_Relative) {
+		LONG centerX = (clientScreenRect->left + clientScreenRect->right) / 2;
+		LONG centerY = (clientScreenRect->top + clientScreenRect->bottom) / 2;
+		outRect->left = centerX;
+		outRect->top = centerY;
+		outRect->right = centerX + 1;
+		outRect->bottom = centerY + 1;
+	} else {
+		*outRect = *clientScreenRect;
+	}
+}
+
+// Confines the cursor for the mouse grab or the relative mode. The rectangle is applied again on every move of the window and every few seconds, so ClipCursor() is only called when it differs.
+fpl_internal bool fpl__Win32ApplyClipRect(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState, const fpl__MouseLockState lockState) {
 	RECT clientScreenRect;
 	if (!fpl__Win32GetClientScreenRect(wapi, windowState->windowHandle, &clientScreenRect)) {
 		return(false);
@@ -18720,46 +19055,166 @@ fpl_internal bool fpl__Win32ClipCursorToClientArea(const fpl__Win32Api *wapi, fp
 		fpl__Win32ReleaseClipCursor(wapi, windowState);
 		return(true);
 	}
+	RECT lockRect;
+	fpl__Win32GetMouseLockRect(&clientScreenRect, lockState, &lockRect);
 	RECT currentClipRect;
 	bool hasCurrentClipRect = wapi->user.GetClipCursor(&currentClipRect) == TRUE;
-	bool isAlreadyApplied = hasCurrentClipRect && fpl__Win32IsRectEqual(&currentClipRect, &clientScreenRect);
-	if (!isAlreadyApplied && !wapi->user.ClipCursor(&clientScreenRect)) {
+	bool isAlreadyApplied = hasCurrentClipRect && fpl__Win32IsRectEqual(&currentClipRect, &lockRect);
+	if (!isAlreadyApplied && !wapi->user.ClipCursor(&lockRect)) {
 		return(false);
 	}
-	windowState->appliedClipRect = clientScreenRect;
+	windowState->appliedClipRect = lockRect;
 	windowState->ownsClipRect = true;
 	return(true);
+}
+
+// Moves the cursor to a position in window coordinates
+fpl_internal bool fpl__Win32WarpCursor(const fpl__Win32Api *wapi, const HWND windowHandle, const int32_t x, const int32_t y) {
+	POINT screenPosition = fplZeroInit;
+	screenPosition.x = x;
+	screenPosition.y = y;
+	if (!wapi->user.ClientToScreen(windowHandle, &screenPosition)) {
+		return(false);
+	}
+	bool result = wapi->user.SetCursorPos(screenPosition.x, screenPosition.y) == TRUE;
+	return(result);
+}
+
+// Raw input of the generic desktop page, mouse usage
+#define FPL__WIN32_HID_USAGE_PAGE_GENERIC 0x01
+#define FPL__WIN32_HID_USAGE_GENERIC_MOUSE 0x02
+
+// Registers the raw mouse input for the window and freezes the cursor position, the relative mode reports the device movement from WM_INPUT
+fpl_internal bool fpl__Win32StartRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	POINT cursorPosition;
+	if (!wapi->user.GetCursorPos(&cursorPosition) || !wapi->user.ScreenToClient(windowState->windowHandle, &cursorPosition)) {
+		return(false);
+	}
+	// Without RIDEV_NOLEGACY the button, wheel and key messages keep coming, without RIDEV_INPUTSINK only while the window is in the foreground
+	RAWINPUTDEVICE rawMouseDevice = fplZeroInit;
+	rawMouseDevice.usUsagePage = FPL__WIN32_HID_USAGE_PAGE_GENERIC;
+	rawMouseDevice.usUsage = FPL__WIN32_HID_USAGE_GENERIC_MOUSE;
+	rawMouseDevice.dwFlags = 0;
+	rawMouseDevice.hwndTarget = windowState->windowHandle;
+	if (!wapi->user.RegisterRawInputDevices(&rawMouseDevice, 1, sizeof(rawMouseDevice))) {
+		return(false);
+	}
+	fpl__FreezeMousePosition(&appState->window.inputGrab, cursorPosition.x, cursorPosition.y);
+	windowState->hasLastAbsoluteRaw = false;
+	windowState->isRelativeMouseActive = true;
+	return(true);
+}
+
+// Removes the raw mouse input, the cursor appears again where the relative mode started
+fpl_internal void fpl__Win32StopRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	RAWINPUTDEVICE rawMouseDevice = fplZeroInit;
+	rawMouseDevice.usUsagePage = FPL__WIN32_HID_USAGE_PAGE_GENERIC;
+	rawMouseDevice.usUsage = FPL__WIN32_HID_USAGE_GENERIC_MOUSE;
+	rawMouseDevice.dwFlags = RIDEV_REMOVE;
+	rawMouseDevice.hwndTarget = fpl_null;
+	if (!wapi->user.RegisterRawInputDevices(&rawMouseDevice, 1, sizeof(rawMouseDevice))) {
+		FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Failed to remove the raw mouse input");
+	}
+	windowState->isRelativeMouseActive = false;
+	bool isWindowVisible = !appState->window.isHidden && !appState->window.isMinimized;
+	if (windowState->windowHandle != fpl_null && isWindowVisible) {
+		if (fpl__Win32WarpCursor(wapi, windowState->windowHandle, inputGrab->frozenX, inputGrab->frozenY)) {
+			fpl__ThawMousePosition(inputGrab);
+		}
+	}
+	fpl__Win32RefreshCursor(wapi, windowState);
 }
 
 fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
-	switch (lockState) {
-		case fpl__MouseLockState_Free:
-		{
-			fpl__Win32ReleaseClipCursor(wapi, windowState);
-			return(true);
-		}
-
-		case fpl__MouseLockState_Confined:
-		{
-			if (windowState->windowHandle == fpl_null) {
-				return(false);
-			}
-			if (!fpl__Win32ClipCursorToClientArea(wapi, windowState)) {
-				if (!appState->window.inputGrab.isRetryPending) {
-					FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "ClipCursor failed, trying again");
-				}
-				return(false);
-			}
-			windowState->lastClipRefreshTime = fplMillisecondsQuery();
-			return(true);
-		}
-
-		default:
-			// The relative mouse mode is not implemented yet, its setter refuses every request
-			return(false);
+	bool wasRelative = appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Relative;
+	bool isRelative = lockState == fpl__MouseLockState_Relative;
+	bool startsRelative = isRelative && !wasRelative;
+	bool stopsRelative = wasRelative && !isRelative;
+	if (lockState != fpl__MouseLockState_Free && windowState->windowHandle == fpl_null) {
+		return(false);
 	}
+	if (startsRelative && !fpl__Win32StartRelativeMouse(appState)) {
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Registering the raw mouse input failed, trying again");
+		}
+		return(false);
+	}
+	if (lockState == fpl__MouseLockState_Free) {
+		fpl__Win32ReleaseClipCursor(wapi, windowState);
+	} else if (fpl__Win32ApplyClipRect(wapi, windowState, lockState)) {
+		windowState->lastClipRefreshTime = fplMillisecondsQuery();
+	} else {
+		if (startsRelative) {
+			fpl__Win32StopRelativeMouse(appState);
+		}
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "ClipCursor failed, trying again");
+		}
+		return(false);
+	}
+	if (startsRelative) {
+		// WM_SETCURSOR keeps the cursor hidden from now on, but the cursor does not move before the next one
+		fpl__Win32RefreshCursor(wapi, windowState);
+	}
+	if (stopsRelative) {
+		fpl__Win32StopRelativeMouse(appState);
+	}
+	return(true);
+}
+
+// Raw absolute positions go from 0 to this value over the whole (virtual) desktop
+#define FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM 65535.0
+// Mouse input that Windows makes from pen or touch input carries this signature in its extra information, the touch flag tells both apart
+#define FPL__WIN32_PEN_OR_TOUCH_SIGNATURE_MASK 0xFFFFFF00
+#define FPL__WIN32_PEN_OR_TOUCH_SIGNATURE 0xFF515700
+#define FPL__WIN32_TOUCH_SIGNATURE_FLAG 0x80
+
+// WM_INPUT in the relative mode: relative devices report counts directly, absolute ones (remote desktop, virtual machine tablets, pens) a position whose change is the movement
+fpl_internal void fpl__Win32HandleRawMouseInput(fpl__PlatformAppState *appState, const HRAWINPUT rawInputHandle) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	RAWINPUT rawInput;
+	UINT rawInputSize = sizeof(rawInput);
+	UINT readSize = wapi->user.GetRawInputData(rawInputHandle, RID_INPUT, &rawInput, &rawInputSize, sizeof(RAWINPUTHEADER));
+	if (readSize == (UINT)-1 || rawInput.header.dwType != RIM_TYPEMOUSE) {
+		return;
+	}
+	const RAWMOUSE *rawMouse = &rawInput.data.mouse;
+	// Touch is no mouse movement, SDL skips it the same way
+	ULONG extraInformation = rawMouse->ulExtraInformation;
+	bool isPenOrTouch = (extraInformation & FPL__WIN32_PEN_OR_TOUCH_SIGNATURE_MASK) == FPL__WIN32_PEN_OR_TOUCH_SIGNATURE;
+	bool isTouch = isPenOrTouch && (extraInformation & FPL__WIN32_TOUCH_SIGNATURE_FLAG) != 0;
+	if (isTouch) {
+		return;
+	}
+	bool isAbsolute = (rawMouse->usFlags & MOUSE_MOVE_ABSOLUTE) != 0;
+	if (!isAbsolute) {
+		fpl__HandleRelativeMouseMotion(appState, (double)rawMouse->lLastX, (double)rawMouse->lLastY);
+		return;
+	}
+	bool isVirtualDesktop = (rawMouse->usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+	int widthMetric = isVirtualDesktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN;
+	int heightMetric = isVirtualDesktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN;
+	int desktopWidth = wapi->user.GetSystemMetrics(widthMetric);
+	int desktopHeight = wapi->user.GetSystemMetrics(heightMetric);
+	double positionX = (double)rawMouse->lLastX / FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM * (double)desktopWidth;
+	double positionY = (double)rawMouse->lLastY / FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM * (double)desktopHeight;
+	// The first position after the start only sets the base
+	if (windowState->hasLastAbsoluteRaw) {
+		double deltaX = positionX - windowState->lastAbsoluteRawX;
+		double deltaY = positionY - windowState->lastAbsoluteRawY;
+		fpl__HandleRelativeMouseMotion(appState, deltaX, deltaY);
+	}
+	windowState->lastAbsoluteRawX = positionX;
+	windowState->lastAbsoluteRawY = positionY;
+	windowState->hasLastAbsoluteRaw = true;
 }
 
 fpl_internal bool fpl__Win32IsMouseLockSuspended(const fpl__Win32WindowState *windowState) {
@@ -18795,11 +19250,12 @@ fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
 			fpl__Win32UpdateMouseLockSuspension(appState);
 		}
 	}
-	if (appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Confined) {
+	fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+	if (appliedMouseLock != fpl__MouseLockState_Free) {
 		fplMilliseconds now = fplMillisecondsQuery();
 		fplMilliseconds timeSinceClipRefresh = now - windowState->lastClipRefreshTime;
 		if (timeSinceClipRefresh >= FPL__WIN32_CLIP_REFRESH_INTERVAL_MILLISECONDS) {
-			fpl__Win32ClipCursorToClientArea(wapi, windowState);
+			fpl__Win32ApplyClipRect(wapi, windowState, appliedMouseLock);
 			windowState->lastClipRefreshTime = now;
 		}
 	}
@@ -19038,8 +19494,18 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_WINDOWPOSCHANGED:
 		{
 			// The clip rectangle is in screen coordinates and does not follow the window by itself
-			if (appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Confined) {
-				fpl__Win32ClipCursorToClientArea(wapi, win32Window);
+			fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+			if (appliedMouseLock != fpl__MouseLockState_Free) {
+				fpl__Win32ApplyClipRect(wapi, win32Window, appliedMouseLock);
+			}
+		} break;
+
+		case WM_INPUT:
+		{
+			// Raw input is only registered in the relative mode, DefWindowProc() has to see the message afterwards
+			if (win32Window->isRelativeMouseActive) {
+				HRAWINPUT rawInputHandle = (HRAWINPUT)lParam;
+				fpl__Win32HandleRawMouseInput(appState, rawInputHandle);
 			}
 		} break;
 
@@ -22998,16 +23464,13 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
 	if (windowState->windowHandle == fpl_null || appState->window.isHidden || appState->window.isMinimized) {
 		return(false);
 	}
+	if (fpl__WarpFrozenMousePosition(appState, x, y)) {
+		return(true);
+	}
 	int32_t targetX = x;
 	int32_t targetY = y;
 	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
-	POINT screenPosition = fplZeroInit;
-	screenPosition.x = targetX;
-	screenPosition.y = targetY;
-	if (!wapi->user.ClientToScreen(windowState->windowHandle, &screenPosition)) {
-		return(false);
-	}
-	if (!wapi->user.SetCursorPos(screenPosition.x, screenPosition.y)) {
+	if (!fpl__Win32WarpCursor(wapi, windowState->windowHandle, targetX, targetY)) {
 		return(false);
 	}
 	// The WM_MOUSEMOVE that follows the warp gets a delta of zero
@@ -28015,6 +28478,9 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__UnloadXInput2Api(&subplatform->xinput2);
+#endif
 	fpl__UnloadXineramaApi(&subplatform->xinerama);
 	fpl__UnloadXrandRApi(&subplatform->xrandr);
 	fpl__UnloadX11Api(&subplatform->api);
@@ -28033,6 +28499,12 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	if (!fpl__LoadXineramaApi(&subplatform->xinerama)) {
 		FPL__WARNING(FPL__MODULE_XINERAMA, "Xinerama not available, falling back");
 	}
+#if !defined(FPL_NO_X11_XINPUT2)
+	// Only the relative mouse mode needs it, without it the mode warps the cursor back to the window center
+	if (!fpl__LoadXInput2Api(&subplatform->xinput2)) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "XInput2 not available, the relative mouse mode reports accelerated movement");
+	}
+#endif
 	return true;
 }
 
@@ -29363,6 +29835,10 @@ fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl_
 	}
 }
 
+// The relative mouse mode, defined next to the grab functions further down
+fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev);
+fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -29392,6 +29868,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 #		endif
+			// The warp fallback of the relative mouse mode keeps the cursor in the middle of the client area
+			x11WinState->relativeMouse.clientWidth = (int32_t)ev->xconfigure.width;
+			x11WinState->relativeMouse.clientHeight = (int32_t)ev->xconfigure.height;
+
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
 				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
@@ -29642,12 +30122,26 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ButtonRelease:
 		case FPL__X11_MotionNotify:
 		{
+			// The relative mode without raw motion measures the motion against the window center instead
+			bool isWarpRelativeMotion = ev->type == FPL__X11_MotionNotify && x11WinState->relativeMouse.isActive;
+#if !defined(FPL_NO_X11_XINPUT2)
+			isWarpRelativeMotion = isWarpRelativeMotion && !x11WinState->relativeMouse.isRawMotionSelected;
+#endif
+			if (isWarpRelativeMotion) {
+				fpl__X11HandleWarpRelativeMotion(appState, &ev->xmotion);
+				break;
+			}
 #if defined(FPL__ENABLE_INPUT)
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11Event;
 			nev.payload = (void *)ev;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 #endif
+		} break;
+
+		case FPL__X11_GenericEvent:
+		{
+			fpl__X11HandleGenericEvent(appState, ev);
 		} break;
 
 		case FPL__X11_Expose:
@@ -29845,6 +30339,23 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	return(result);
 }
 
+// A cursor without visible pixels, made once and used by fplSetWindowCursorEnabled() and the relative mouse mode
+fpl_internal fpl__X11_Cursor fpl__X11GetInvisibleCursor(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->cursor.invisibleCursor == 0) {
+		char zero[8] = fplZeroInit;
+		fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->core.window, zero, 1, 1);
+		if (blank != 0) {
+			fpl__X11_XColor dummy = fplZeroInit;
+			windowState->cursor.invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+			// The source pixmap is no longer needed once the cursor exists.
+			if (x11Api->XFreePixmap != fpl_null) {
+				x11Api->XFreePixmap(windowState->display, blank);
+			}
+		}
+	}
+	return(windowState->cursor.invisibleCursor);
+}
+
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -29854,24 +30365,19 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	if (value) {
 		x11Api->XUndefineCursor(windowState->display, windowState->core.window);
 	} else {
-		if (windowState->cursor.invisibleCursor == 0) {
-			char zero[8] = fplZeroInit;
-			fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->core.window, zero, 1, 1);
-			if (blank != 0) {
-				fpl__X11_XColor dummy = fplZeroInit;
-				windowState->cursor.invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
-				// The source pixmap is no longer needed once the cursor exists.
-				if (x11Api->XFreePixmap != fpl_null) {
-					x11Api->XFreePixmap(windowState->display, blank);
-				}
-			}
-		}
-		if (windowState->cursor.invisibleCursor != 0) {
-			x11Api->XDefineCursor(windowState->display, windowState->core.window, windowState->cursor.invisibleCursor);
+		fpl__X11_Cursor invisibleCursor = fpl__X11GetInvisibleCursor(x11Api, windowState);
+		if (invisibleCursor != 0) {
+			x11Api->XDefineCursor(windowState->display, windowState->core.window, invisibleCursor);
 		}
 	}
 	x11Api->XFlush(windowState->display);
 	windowState->cursor.cursorEnabled = value;
+}
+
+// Moves the pointer to a position in window coordinates. A source window of None warps from anywhere, the zero sized source rectangle is ignored then.
+fpl_internal void fpl__X11WarpPointer(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const int32_t x, const int32_t y) {
+	x11Api->XWarpPointer(windowState->display, FPL__X11_None, windowState->core.window, 0, 0, 0, 0, x, y);
+	x11Api->XFlush(windowState->display);
 }
 
 fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
@@ -29882,12 +30388,13 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
 	if (windowState->core.window == 0 || appState->window.isHidden || appState->window.isMinimized) {
 		return(false);
 	}
+	if (fpl__WarpFrozenMousePosition(appState, x, y)) {
+		return(true);
+	}
 	int32_t targetX = x;
 	int32_t targetY = y;
 	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
-	// A source window of None warps from anywhere, the zero sized source rectangle is ignored then
-	x11Api->XWarpPointer(windowState->display, FPL__X11_None, windowState->core.window, 0, 0, 0, 0, targetX, targetY);
-	x11Api->XFlush(windowState->display);
+	fpl__X11WarpPointer(x11Api, windowState, targetX, targetY);
 	// The MotionNotify that follows the warp gets a delta of zero
 	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
 	inputGrab->lastMoveX = targetX;
@@ -29916,11 +30423,301 @@ fpl_internal const char *fpl__X11GetGrabResultName(const int grabResult) {
 	}
 }
 
-fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+// Grabs the pointer inside the window, with the given cursor: None keeps the cursor of the window, the relative mode uses the invisible one
+fpl_internal bool fpl__X11GrabPointer(fpl__PlatformAppState *appState, const fpl__X11_Cursor cursor) {
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_Window window = windowState->core.window;
-	if (windowState->display == fpl_null || window == 0) {
+	// confine_to keeps the pointer inside the window, the X server follows moves and resizes of the window by itself
+	int grabResult = x11Api->XGrabPointer(windowState->display, window, FPL__X11_True, FPL__X11_POINTER_GRAB_EVENT_MASK, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, window, cursor, FPL__X11_CurrentTime);
+	if (grabResult == FPL__X11_GrabSuccess) {
+		return(true);
+	}
+	// AlreadyGrabbed and GrabFrozen: another client holds the pointer, like the window manager right after Alt+Tab. GrabNotViewable: the window is not mapped yet.
+	if (!appState->window.inputGrab.isRetryPending) {
+		const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
+		FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabPointer failed with %s, trying again", grabResultName);
+	}
+	return(false);
+}
+
+#if !defined(FPL_NO_X11_XINPUT2)
+// Asks once per window whether the server has XInput 2.0, which the raw motion needs
+fpl_internal bool fpl__X11IsXInput2Available(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	if (relativeMouse->isXInput2Checked) {
+		return(relativeMouse->isXInput2Available);
+	}
+	relativeMouse->isXInput2Checked = true;
+	if (!xinput2Api->isLoaded) {
+		return(false);
+	}
+	int opcode = 0;
+	int firstEvent = 0;
+	int firstError = 0;
+	if (!x11Api->XQueryExtension(windowState->display, "XInputExtension", &opcode, &firstEvent, &firstError)) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput extension, the relative mouse mode reports accelerated movement");
+		return(false);
+	}
+	// The raw events on the root window need version 2.0, the server answers with the version both sides support
+	const int requiredMajorVersion = 2;
+	const int requiredMinorVersion = 0;
+	int majorVersion = requiredMajorVersion;
+	int minorVersion = requiredMinorVersion;
+	fpl__X11_Status versionStatus = xinput2Api->XIQueryVersion(windowState->display, &majorVersion, &minorVersion);
+	if (versionStatus != FPL__X11_Success || majorVersion < requiredMajorVersion) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput 2.0, the relative mouse mode reports accelerated movement");
+		return(false);
+	}
+	relativeMouse->xinput2Opcode = opcode;
+	relativeMouse->isXInput2Available = true;
+	return(true);
+}
+
+// Raw motion is only selected while the relative mode is active, it comes for every mouse movement on the whole screen
+fpl_internal bool fpl__X11SelectRawMotion(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	unsigned char maskBits[FPL__X11_XI_MASK_LENGTH(FPL__X11_XI_RawMotion)] = fplZeroInit;
+	if (enabled) {
+		FPL__X11_XI_SET_MASK(maskBits, FPL__X11_XI_RawMotion);
+	}
+	fpl__X11_XIEventMask eventMask = fplZeroInit;
+	eventMask.deviceid = FPL__X11_XIAllMasterDevices;
+	eventMask.mask_len = (int)sizeof(maskBits);
+	eventMask.mask = maskBits;
+	int selectStatus = xinput2Api->XISelectEvents(windowState->display, windowState->core.root, &eventMask, 1);
+	bool result = selectStatus == FPL__X11_Success;
+	return(result);
+}
+
+// Finds a device in the cache, or asks the server whether its X and Y valuators are absolute and what range they have
+fpl_internal fpl__X11XInput2Device *fpl__X11GetXInput2Device(fpl__PlatformAppState *appState, const int deviceId) {
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	for (uint32_t deviceIndex = 0; deviceIndex < relativeMouse->deviceCount; ++deviceIndex) {
+		if (relativeMouse->devices[deviceIndex].deviceId == deviceId) {
+			return(&relativeMouse->devices[deviceIndex]);
+		}
+	}
+	// A full cache replaces its entries in turn, a relative mode rarely sees more than one or two devices
+	uint32_t slotIndex = relativeMouse->nextDeviceSlot;
+	relativeMouse->nextDeviceSlot = (slotIndex + 1) % FPL__X11_XINPUT2_MAX_DEVICES;
+	if (relativeMouse->deviceCount < FPL__X11_XINPUT2_MAX_DEVICES) {
+		++relativeMouse->deviceCount;
+	}
+	fpl__X11XInput2Device *device = &relativeMouse->devices[slotIndex];
+	fplClearStruct(device);
+	device->deviceId = deviceId;
+	int infoCount = 0;
+	fpl__X11_XIDeviceInfo *deviceInfo = xinput2Api->XIQueryDevice(windowState->display, deviceId, &infoCount);
+	if (deviceInfo == fpl_null) {
+		return(device);
+	}
+	for (int classIndex = 0; classIndex < deviceInfo->num_classes; ++classIndex) {
+		const fpl__X11_XIAnyClassInfo *classInfo = deviceInfo->classes[classIndex];
+		if (classInfo->type != FPL__X11_XIValuatorClass) {
+			continue;
+		}
+		const fpl__X11_XIValuatorClassInfo *valuatorInfo = (const fpl__X11_XIValuatorClassInfo *)classInfo;
+		if (valuatorInfo->number < 0 || valuatorInfo->number >= FPL__X11_XINPUT2_AXIS_COUNT) {
+			continue;
+		}
+		int axis = valuatorInfo->number;
+		device->isAbsolute[axis] = valuatorInfo->mode == FPL__X11_XIModeAbsolute && valuatorInfo->max > valuatorInfo->min;
+		device->minimum[axis] = valuatorInfo->min;
+		device->maximum[axis] = valuatorInfo->max;
+	}
+	xinput2Api->XIFreeDeviceInfo(deviceInfo);
+	return(device);
+}
+
+// XI_RawMotion: the raw values come in the order of the set mask bits, valuator 0 is X and 1 is Y. Relative devices report counts, absolute ones a position whose change is the movement.
+fpl_internal void fpl__X11HandleRawMotion(fpl__PlatformAppState *appState, const fpl__X11_XIRawEvent *rawEvent) {
+	const fpl__X11RelativeMouseState *relativeMouse = &appState->window.x11.relativeMouse;
+	double rawValues[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	bool hasRawValue[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	const double *nextRawValue = rawEvent->raw_values;
+	int valuatorCount = rawEvent->valuators.mask_len * 8;
+	int axisCount = fplMin(valuatorCount, FPL__X11_XINPUT2_AXIS_COUNT);
+	for (int axis = 0; axis < axisCount; ++axis) {
+		if (FPL__X11_XI_IS_MASK_SET(rawEvent->valuators.mask, axis)) {
+			rawValues[axis] = *nextRawValue;
+			hasRawValue[axis] = true;
+			++nextRawValue;
+		}
+	}
+	// Old libXi versions leave the source device at zero
+	int deviceId = rawEvent->sourceid != 0 ? rawEvent->sourceid : rawEvent->deviceid;
+	fpl__X11XInput2Device *device = fpl__X11GetXInput2Device(appState, deviceId);
+	int rootExtents[FPL__X11_XINPUT2_AXIS_COUNT] = { relativeMouse->rootWidth, relativeMouse->rootHeight };
+	double deltas[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	for (int axis = 0; axis < FPL__X11_XINPUT2_AXIS_COUNT; ++axis) {
+		if (!hasRawValue[axis]) {
+			continue;
+		}
+		if (!device->isAbsolute[axis]) {
+			deltas[axis] = rawValues[axis];
+			continue;
+		}
+		// An absolute device covers the whole screen, the change of its position is scaled to screen pixels
+		if (device->hasPrevious[axis]) {
+			double range = device->maximum[axis] - device->minimum[axis];
+			double change = rawValues[axis] - device->previous[axis];
+			deltas[axis] = change / range * (double)rootExtents[axis];
+		}
+		device->previous[axis] = rawValues[axis];
+		device->hasPrevious[axis] = true;
+	}
+	fpl__HandleRelativeMouseMotion(appState, deltas[0], deltas[1]);
+}
+#endif // !FPL_NO_X11_XINPUT2
+
+// GenericEvent: the raw motion of XInput2 while the relative mode is active
+fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
+#if !defined(FPL_NO_X11_XINPUT2)
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__X11_XGenericEventCookie *cookie = &ev->xcookie;
+	if (!relativeMouse->isRawMotionSelected || cookie->extension != relativeMouse->xinput2Opcode) {
+		return;
+	}
+	if (!x11Api->XGetEventData(windowState->display, cookie)) {
+		return;
+	}
+	if (cookie->evtype == FPL__X11_XI_RawMotion) {
+		const fpl__X11_XIRawEvent *rawEvent = (const fpl__X11_XIRawEvent *)cookie->data;
+		fpl__X11HandleRawMotion(appState, rawEvent);
+	}
+	x11Api->XFreeEventData(windowState->display, cookie);
+#else
+	(void)appState;
+	(void)ev;
+#endif
+}
+
+// Warps the pointer to the window center for the fallback of the relative mode, and remembers the serial of the warp request
+fpl_internal void fpl__X11WarpPointerToCenter(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	relativeMouse->warpCenterX = relativeMouse->clientWidth / 2;
+	relativeMouse->warpCenterY = relativeMouse->clientHeight / 2;
+	relativeMouse->pendingWarpSerial = x11Api->XNextRequest(windowState->display);
+	relativeMouse->isWarpPending = true;
+	fpl__X11WarpPointer(x11Api, windowState, relativeMouse->warpCenterX, relativeMouse->warpCenterY);
+}
+
+// The relative mode without XInput2: the pointer is warped back to the window center, so the movement never ends at an edge. Motion events carry the serial of
+// the last request the server processed, the ones from before the warp are measured from the previous motion, the first one after it from the center.
+// The warp itself causes a motion onto the center, which then has no movement, and so does a motion that comes from moving the window.
+// These deltas are accelerated like the cursor.
+fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	int32_t motionX = (int32_t)motionEvent->x;
+	int32_t motionY = (int32_t)motionEvent->y;
+	int32_t windowOriginX = (int32_t)motionEvent->x_root - motionX;
+	int32_t windowOriginY = (int32_t)motionEvent->y_root - motionY;
+	bool hasWindowMoved = windowOriginX != relativeMouse->windowOriginX || windowOriginY != relativeMouse->windowOriginY;
+	relativeMouse->windowOriginX = windowOriginX;
+	relativeMouse->windowOriginY = windowOriginY;
+	// The serials wrap around on 32 bit, the signed difference stays right across the wrap
+	long serialsSinceWarp = (long)(motionEvent->serial - relativeMouse->pendingWarpSerial);
+	if (relativeMouse->isWarpPending && serialsSinceWarp >= 0) {
+		relativeMouse->lastMotionX = relativeMouse->warpCenterX;
+		relativeMouse->lastMotionY = relativeMouse->warpCenterY;
+		relativeMouse->isWarpPending = false;
+	}
+	int32_t deltaX = motionX - relativeMouse->lastMotionX;
+	int32_t deltaY = motionY - relativeMouse->lastMotionY;
+	relativeMouse->lastMotionX = motionX;
+	relativeMouse->lastMotionY = motionY;
+	if (!hasWindowMoved) {
+		fpl__HandleRelativeMouseMotion(appState, (double)deltaX, (double)deltaY);
+	}
+	// One warp at a time, the motions until it arrives are still measured from each other
+	bool isAtWarpCenter = motionX == relativeMouse->warpCenterX && motionY == relativeMouse->warpCenterY;
+	if (!relativeMouse->isWarpPending && !isAtWarpCenter) {
+		fpl__X11WarpPointerToCenter(x11Api, windowState);
+	}
+}
+
+// Starts the relative mode: the pointer is grabbed with the invisible cursor, its position is frozen, the raw motion is selected when XInput2 is there and the pointer goes to the window center
+fpl_internal bool fpl__X11StartRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__X11_Cursor invisibleCursor = fpl__X11GetInvisibleCursor(x11Api, windowState);
+	if (!fpl__X11GrabPointer(appState, invisibleCursor)) {
+		return(false);
+	}
+	fpl__X11_Window rootWindow = 0;
+	fpl__X11_Window childWindow = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int windowX = 0;
+	int windowY = 0;
+	unsigned int buttonMask = 0;
+	x11Api->XQueryPointer(windowState->display, windowState->core.window, &rootWindow, &childWindow, &rootX, &rootY, &windowX, &windowY, &buttonMask);
+	fpl__FreezeMousePosition(&appState->window.inputGrab, windowX, windowY);
+	// Motion events from before the warp to the center are measured from here
+	relativeMouse->lastMotionX = (int32_t)windowX;
+	relativeMouse->lastMotionY = (int32_t)windowY;
+	relativeMouse->windowOriginX = (int32_t)(rootX - windowX);
+	relativeMouse->windowOriginY = (int32_t)(rootY - windowY);
+	fplWindowSize clientSize = fplZeroInit;
+	if (fplGetWindowSize(&clientSize)) {
+		relativeMouse->clientWidth = (int32_t)clientSize.width;
+		relativeMouse->clientHeight = (int32_t)clientSize.height;
+	}
+#if !defined(FPL_NO_X11_XINPUT2)
+	relativeMouse->isRawMotionSelected = false;
+	relativeMouse->deviceCount = 0;
+	relativeMouse->nextDeviceSlot = 0;
+	if (fpl__X11IsXInput2Available(appState)) {
+		fpl__X11_XWindowAttributes rootAttributes = fplZeroInit;
+		x11Api->XGetWindowAttributes(windowState->display, windowState->core.root, &rootAttributes);
+		relativeMouse->rootWidth = rootAttributes.width;
+		relativeMouse->rootHeight = rootAttributes.height;
+		relativeMouse->isRawMotionSelected = fpl__X11SelectRawMotion(appState, true);
+	}
+#endif
+	relativeMouse->isActive = true;
+	fpl__X11WarpPointerToCenter(x11Api, windowState);
+	return(true);
+}
+
+// Ends the relative mode, the pointer appears again where the mode started
+fpl_internal void fpl__X11StopRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+#if !defined(FPL_NO_X11_XINPUT2)
+	if (relativeMouse->isRawMotionSelected) {
+		fpl__X11SelectRawMotion(appState, false);
+		relativeMouse->isRawMotionSelected = false;
+	}
+#endif
+	relativeMouse->isActive = false;
+	relativeMouse->isWarpPending = false;
+	bool isWindowVisible = !appState->window.isHidden && !appState->window.isMinimized;
+	if (isWindowVisible) {
+		fpl__X11WarpPointer(x11Api, windowState, inputGrab->frozenX, inputGrab->frozenY);
+		fpl__ThawMousePosition(inputGrab);
+	}
+}
+
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool wasRelative = appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Relative;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
 		return(lockState == fpl__MouseLockState_Free);
 	}
 	switch (lockState) {
@@ -29928,28 +30725,29 @@ fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, c
 		{
 			x11Api->XUngrabPointer(windowState->display, FPL__X11_CurrentTime);
 			x11Api->XFlush(windowState->display);
-			return(true);
-		}
+		} break;
 
 		case fpl__MouseLockState_Confined:
 		{
-			// confine_to keeps the pointer inside the window, the X server follows moves and resizes of the window by itself
-			int grabResult = x11Api->XGrabPointer(windowState->display, window, FPL__X11_True, FPL__X11_POINTER_GRAB_EVENT_MASK, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, window, FPL__X11_None, FPL__X11_CurrentTime);
-			if (grabResult == FPL__X11_GrabSuccess) {
-				return(true);
+			// Coming from the relative mode, the new grab replaces the one with the invisible cursor
+			if (!fpl__X11GrabPointer(appState, FPL__X11_None)) {
+				return(false);
 			}
-			// AlreadyGrabbed and GrabFrozen: another client holds the pointer, like the window manager right after Alt+Tab. GrabNotViewable: the window is not mapped yet.
-			if (!appState->window.inputGrab.isRetryPending) {
-				const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
-				FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabPointer failed with %s, trying again", grabResultName);
-			}
-			return(false);
+		} break;
+
+		case fpl__MouseLockState_Relative:
+		{
+			bool result = fpl__X11StartRelativeMouse(appState);
+			return(result);
 		}
 
 		default:
-			// The relative mouse mode is not implemented yet, its setter refuses every request
 			return(false);
 	}
+	if (wasRelative) {
+		fpl__X11StopRelativeMouse(appState);
+	}
+	return(true);
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {

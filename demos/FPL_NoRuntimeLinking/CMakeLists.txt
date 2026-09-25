@@ -35,7 +35,7 @@ elseif(UNIX)
 	# Math + threads
 	list(APPEND MY_EXTERNAL_LIBS m pthread)
 
-	# Window + input (X11, XRandR, Xinerama)
+	# Window + input (X11, XRandR, Xinerama, XInput2)
 	find_package(X11 REQUIRED)
 	list(APPEND MY_EXTERNAL_LIBS X11::X11)
 	if(TARGET X11::Xrandr)
@@ -43,6 +43,12 @@ elseif(UNIX)
 	endif()
 	if(TARGET X11::Xinerama)
 		list(APPEND MY_EXTERNAL_LIBS X11::Xinerama)
+	endif()
+	# Raw mouse motion of the relative mouse mode (XInput2), without the library FPL_NO_X11_XINPUT2 leaves it out
+	if(TARGET X11::Xi)
+		list(APPEND MY_EXTERNAL_LIBS X11::Xi)
+	else()
+		set(MY_NO_XINPUT2 ON)
 	endif()
 
 	# Video (OpenGL + GLX)
@@ -93,6 +99,9 @@ set(MY_DEFINES
 	-DFPL_IMPLEMENTATION
 	-DFPL_NO_RUNTIME_LINKING
 	)
+if(MY_NO_XINPUT2)
+	list(APPEND MY_DEFINES -DFPL_NO_X11_XINPUT2)
+endif()
 
 # -----------------------------------------------------------------------------
 #
