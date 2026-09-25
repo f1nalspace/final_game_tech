@@ -33,7 +33,7 @@ Description:
 
 	Log format, one event per line:
 	  t=<ms since start> <category> <name> [key=value ...]
-	  e.g. "t=1520 key button state=press code=38 key=A mods=0x0" or "t=1733 mouse move x=100 y=50 dx=3 dy=-1"
+	  e.g. "t=1520 key button state=press code=38 scan=0x1e key=A mods=0x0" or "t=1733 mouse move x=100 y=50 dx=3 dy=-1"
 	  The self test lines ("selftest ...") and the FPL log lines ("fpl level=<level> <message> (<function>:<line>)") are written even without --log-events.
 	  Without --log-fpl only the FPL warnings and errors are written.
 
@@ -53,6 +53,7 @@ Changelog:
 	- FPL log messages in the log (--log-fpl)
 	- Self test with --mouse-grab: warps outside of the window end at the edges of the client area
 	- Relative mouse mode: the crosshair follows the sum of the deltas and stops at the edges, core motion log (--log-core-motion)
+	- Scan codes in the key lines, both wheel axes, mouse enter and leave
 
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
@@ -832,8 +833,9 @@ static void HandleKeyboardEvent(DemoState *state, const fplKeyboardEvent *keyboa
 		const char *stateName = GetButtonStateName(keyboardEvent->buttonState);
 		const char *keyName = GetKeyNameOrUnknown(keyboardEvent->mappedKey);
 		unsigned long long keyCode = (unsigned long long)keyboardEvent->keyCode;
+		unsigned int scanCode = (unsigned int)keyboardEvent->scanCode;
 		unsigned int modifiers = (unsigned int)keyboardEvent->modifiers;
-		LogEvent(state, "key button state=%s code=%llu key=%s mods=0x%x", stateName, keyCode, keyName, modifiers);
+		LogEvent(state, "key button state=%s code=%llu scan=0x%x key=%s mods=0x%x", stateName, keyCode, scanCode, keyName, modifiers);
 		state->lastKey = keyboardEvent->mappedKey;
 		state->lastKeyState = keyboardEvent->buttonState;
 		state->hasLastKey = true;
@@ -860,7 +862,16 @@ static void HandleMouseEvent(DemoState *state, const fplMouseEvent *mouseEvent) 
 			LogEvent(state, "mouse button name=%s state=%s x=%d y=%d", buttonName, stateName, mouseEvent->mouseX, mouseEvent->mouseY);
 		} break;
 		case fplMouseEventType_Wheel:
-			LogEvent(state, "mouse wheel delta=%.2f x=%d y=%d", mouseEvent->wheelDelta, mouseEvent->mouseX, mouseEvent->mouseY);
+			LogEvent(state, "mouse wheel dx=%.2f dy=%.2f x=%d y=%d", 0.0f, mouseEvent->wheelDelta, mouseEvent->mouseX, mouseEvent->mouseY);
+			break;
+		case fplMouseEventType_HorizontalWheel:
+			LogEvent(state, "mouse wheel dx=%.2f dy=%.2f x=%d y=%d", mouseEvent->wheelDelta, 0.0f, mouseEvent->mouseX, mouseEvent->mouseY);
+			break;
+		case fplMouseEventType_Enter:
+			LogEvent(state, "mouse enter x=%d y=%d", mouseEvent->mouseX, mouseEvent->mouseY);
+			break;
+		case fplMouseEventType_Leave:
+			LogEvent(state, "mouse leave x=%d y=%d", mouseEvent->mouseX, mouseEvent->mouseY);
 			break;
 		default:
 			break;

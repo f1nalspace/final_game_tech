@@ -7,6 +7,8 @@
 # The mouse grab tests lock the real pointer inside a demo window, and the retry tests let a small python-xlib client hold the pointer
 # or the keyboard for two seconds, clicks and keys go nowhere then. The keyboard grab tests send Alt+Tab, Alt+F4 and Super,
 # a keyboard grab that does not work lets KWin switch or close windows or open its launcher.
+# The scan code test switches the keyboard layout of the X server to us and de for a few seconds (setxkbmap) and restores the saved keymap afterwards,
+# also when the script is interrupted. It sends every key of a 105 key keyboard to a demo that grabs the keyboard, the lock keys twice.
 #
 # Usage: run_grab_tests.sh [--demo=<path>] [--fallback-demo=<path>] [--tests=<name,...>] [--list]
 #   --demo            FPL_InputGrab executable (default: Release build, then Debug build under demos/build/FPL_InputGrab)
@@ -53,6 +55,34 @@ relativeLargestStep=25
 # A position inside the window where the relative mode starts in the tests that end it again
 startInsideX=100
 startInsideY=50
+# Pause between two fake key events of the scan code test, so no release and press of the same key share a timestamp and look like a key repeat
+keyEventPauseSeconds=0.02
+# The layouts of the scan code test and a key that is somewhere else in the second one (Y and Z are swapped in the German layout), which shows that the layout did change
+scanCodeLayouts=(us de)
+layoutProbeKeycode=29
+layoutProbeKeys=(Y Z)
+
+# --- Scan codes --------------------------------------------------------------------------------------------------------------
+
+# X key code (evdev + 8) and PC set 1 scan code of every key of a 105 key keyboard (ISO), the expected values of the scan code test
+scanCodeTable=(
+	"9 0x1" # Escape
+	"67 0x3b" "68 0x3c" "69 0x3d" "70 0x3e" "71 0x3f" "72 0x40" "73 0x41" "74 0x42" "75 0x43" "76 0x44" # F1 to F10
+	"95 0x57" "96 0x58" # F11, F12
+	"107 0xe037" "78 0x46" "127 0xe11d" # Print, Scroll Lock, Pause
+	"49 0x29" "10 0x2" "11 0x3" "12 0x4" "13 0x5" "14 0x6" "15 0x7" "16 0x8" "17 0x9" "18 0xa" "19 0xb" "20 0xc" "21 0xd" "22 0xe" # ` 1 to 0 - = Backspace
+	"23 0xf" "24 0x10" "25 0x11" "26 0x12" "27 0x13" "28 0x14" "29 0x15" "30 0x16" "31 0x17" "32 0x18" "33 0x19" "34 0x1a" "35 0x1b" "36 0x1c" # Tab Q to P [ ] Return
+	"66 0x3a" "38 0x1e" "39 0x1f" "40 0x20" "41 0x21" "42 0x22" "43 0x23" "44 0x24" "45 0x25" "46 0x26" "47 0x27" "48 0x28" "51 0x2b" # Caps Lock A to L ; ' #
+	"50 0x2a" "94 0x56" "52 0x2c" "53 0x2d" "54 0x2e" "55 0x2f" "56 0x30" "57 0x31" "58 0x32" "59 0x33" "60 0x34" "61 0x35" "62 0x36" # Left Shift, <>, Z to M , . /, Right Shift
+	"37 0x1d" "133 0xe05b" "64 0x38" "65 0x39" "108 0xe038" "134 0xe05c" "135 0xe05d" "105 0xe01d" # Left Ctrl, Left Super, Left Alt, Space, Right Alt, Right Super, Menu, Right Ctrl
+	"118 0xe052" "110 0xe047" "112 0xe049" "119 0xe053" "115 0xe04f" "117 0xe051" # Insert, Home, Page Up, Delete, End, Page Down
+	"111 0xe048" "113 0xe04b" "116 0xe050" "114 0xe04d" # Up, Left, Down, Right
+	"77 0x45" "106 0xe035" "63 0x37" "82 0x4a" # Num Lock, keypad / * -
+	"79 0x47" "80 0x48" "81 0x49" "86 0x4e" "83 0x4b" "84 0x4c" "85 0x4d" # keypad 7 8 9 + 4 5 6
+	"87 0x4f" "88 0x50" "89 0x51" "104 0xe01c" "90 0x52" "91 0x53" # keypad 1 2 3 Enter 0 .
+)
+# Caps Lock, Num Lock and Scroll Lock toggle a state of the X server, they are sent twice so the state stays as it was
+lockKeycodes=(66 77 78)
 
 # --- Window placement (top left corner of the screen, out of the way) --------------------------------------------------------
 
@@ -67,7 +97,7 @@ resizedHeight=300
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
-allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab relative_delta_sum relative_hides_and_keeps_pointer relative_returns_to_start relative_warp_moves_start relative_released_on_focus_loss relative_fallback_delta_sum relative_fallback_hides_and_keeps_pointer relative_fallback_returns_to_start keyboard_grab_keeps_alt_tab keyboard_grab_keeps_alt_f4 keyboard_grab_text_input keyboard_grab_released_on_focus_loss keyboard_grab_retries_when_already_grabbed keyboard_grab_keeps_super)
+allTests=(mouse_move move_deltas no_delta_after_reenter mouse_enter_leave mouse_side_buttons mouse_horizontal_wheel warp_selftest key_press_release scan_codes_layout_independent focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab relative_delta_sum relative_hides_and_keeps_pointer relative_returns_to_start relative_warp_moves_start relative_released_on_focus_loss relative_fallback_delta_sum relative_fallback_hides_and_keeps_pointer relative_fallback_returns_to_start keyboard_grab_keeps_alt_tab keyboard_grab_keeps_alt_f4 keyboard_grab_text_input keyboard_grab_released_on_focus_loss keyboard_grab_retries_when_already_grabbed keyboard_grab_keeps_super)
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
@@ -138,7 +168,48 @@ KillAllDemos() {
 	done
 	startedWrapperPids=()
 }
-trap KillAllDemos EXIT
+
+# The keymap of the X server before the scan code test changed the layout, restored on exit
+savedKeymapFile=""
+savedLayoutArguments=()
+
+SaveKeyboardLayout() {
+	savedKeymapFile="$outputDirectory/saved-keymap.xkb"
+	local rules="" model="" layout="" variant="" options="" name value
+	while IFS=: read -r name value; do
+		value="${value#"${value%%[![:space:]]*}"}"
+		case "$name" in
+			rules) rules="$value" ;;
+			model) model="$value" ;;
+			layout) layout="$value" ;;
+			variant) variant="$value" ;;
+			options) options="$value" ;;
+		esac
+	done < <(setxkbmap -query)
+	savedLayoutArguments=(-rules "$rules" -model "$model" -layout "$layout" -variant "$variant" -option "")
+	if [ -n "$options" ]; then
+		savedLayoutArguments+=(-option "$options")
+	fi
+	xkbcomp -xkb "$DISPLAY" "$savedKeymapFile" 2> /dev/null
+}
+
+# setxkbmap brings back the layout names the desktop reads, the keymap file every detail of the keymap
+RestoreKeyboardLayout() {
+	if [ -z "$savedKeymapFile" ]; then
+		return
+	fi
+	setxkbmap "${savedLayoutArguments[@]}"
+	if [ -s "$savedKeymapFile" ]; then
+		xkbcomp -w 0 "$savedKeymapFile" "$DISPLAY" 2> /dev/null
+	fi
+	savedKeymapFile=""
+}
+
+CleanUp() {
+	KillAllDemos
+	RestoreKeyboardLayout
+}
+trap CleanUp EXIT
 
 Fail() {
 	failureReason="$1"
@@ -281,6 +352,23 @@ xDisplay = display.Display()
 for keycodeText in sys.argv[1:]:
     xtest.fake_input(xDisplay, X.KeyRelease, int(keycodeText))
 xDisplay.sync()
+PYTHON_END
+}
+
+# Presses and releases each given keycode through XTEST, with a short pause between the events
+SendKeycodes() {
+	python3 - "$keyEventPauseSeconds" "$@" << 'PYTHON_END'
+import sys
+import time
+from Xlib import X, display
+from Xlib.ext import xtest
+xDisplay = display.Display()
+pauseSeconds = float(sys.argv[1])
+for keycodeText in sys.argv[2:]:
+    for eventType in (X.KeyPress, X.KeyRelease):
+        xtest.fake_input(xDisplay, eventType, int(keycodeText))
+        xDisplay.sync()
+        time.sleep(pauseSeconds)
 PYTHON_END
 }
 
@@ -495,6 +583,189 @@ Test_no_delta_after_reenter() {
 	ExpectLogLine "$logFile" "$mark" "mouse move x=300 y=200 dx=0 dy=0$" || return 1
 	StopDemo "$processId"
 	return 0
+}
+
+# Prints "enter" and "leave" for the crossing events after <mark>, in their order and on one line
+ListCrossings() {
+	local logFile="$1"
+	local mark="$2"
+	tail -n +"$((mark + 1))" "$logFile" | grep -o -E " mouse (enter|leave) " | awk '{ printf "%s%s", separator, $2; separator = " " }'
+}
+
+# Waits until the crossing events after <mark> are exactly the expected ones, "enter leave ..." or "" for none
+ExpectCrossings() {
+	local logFile="$1"
+	local mark="$2"
+	local expected="$3"
+	local crossings
+	sleep "$settleSeconds"
+	crossings=$(ListCrossings "$logFile" "$mark")
+	if [ "$crossings" != "$expected" ]; then
+		Fail "crossing events '$crossings' instead of '$expected'"
+		return 1
+	fi
+	return 0
+}
+
+# One enter and one leave event per crossing of the client area edge, with the position in window coordinates. A drag out of the window, which the X server keeps in the window with an implicit grab, still gives its leave.
+# The own mouse grab and the relative mode move the pointer focus without the pointer crossing anything, they give no crossing events.
+Test_mouse_enter_leave() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	ReadClientArea "$window"
+	local outsideX=$((areaLeft + areaWidth + outsideDistance))
+	local insideX=$((areaLeft + startInsideX))
+	local insideY=$((areaTop + startInsideY))
+	xdotool mousemove "$outsideX" "$insideY"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove "$insideX" "$insideY"
+	ExpectLogLine "$logFile" "$mark" "mouse enter x=$startInsideX y=$startInsideY$" || return 1
+	xdotool mousemove "$outsideX" "$insideY"
+	ExpectLogLine "$logFile" "$mark" "mouse leave x=$((areaWidth + outsideDistance)) y=$startInsideY$" || return 1
+	xdotool mousemove "$insideX" "$insideY"
+	xdotool mousemove "$outsideX" "$insideY"
+	ExpectCrossings "$logFile" "$mark" "enter leave enter leave" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool mousemove "$insideX" "$insideY"
+	xdotool mousedown 1
+	xdotool mousemove "$outsideX" "$insideY"
+	xdotool mouseup 1
+	ExpectCrossings "$logFile" "$mark" "enter leave" || { Note "drag out"; return 1; }
+	xdotool mousemove "$insideX" "$insideY"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool key ctrl+alt+m
+	ExpectLogLine "$logFile" "$mark" "grab mouse requested=on result=1" || return 1
+	ExpectPointerConfined "$outsideX" "$insideY" || return 1
+	xdotool key ctrl+alt+m
+	ExpectLogLine "$logFile" "$mark" "grab mouse requested=off result=1" || return 1
+	xdotool key ctrl+alt+r
+	ExpectLogLine "$logFile" "$mark" "grab relative requested=on result=1" || return 1
+	sleep "$settleSeconds"
+	xdotool key ctrl+alt+r
+	ExpectLogLine "$logFile" "$mark" "grab relative requested=off result=1" || return 1
+	ExpectCrossings "$logFile" "$mark" "" || { Note "mouse grab and relative mode"; return 1; }
+	StopDemo "$processId"
+	return 0
+}
+
+# X11 buttons 8 and 9 are the side buttons X1 (back) and X2 (forward)
+Test_mouse_side_buttons() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	xdotool mousemove --window "$window" "$startInsideX" "$startInsideY"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool click 8
+	ExpectLogLine "$logFile" "$mark" "mouse button name=x1 state=press x=$startInsideX y=$startInsideY$" || return 1
+	ExpectLogLine "$logFile" "$mark" "mouse button name=x1 state=release " || return 1
+	xdotool click 9
+	ExpectLogLine "$logFile" "$mark" "mouse button name=x2 state=press x=$startInsideX y=$startInsideY$" || return 1
+	ExpectLogLine "$logFile" "$mark" "mouse button name=x2 state=release " || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# X11 buttons 6 and 7 are the horizontal wheel, left is negative, the vertical wheel (4 up, 5 down) keeps its axis
+Test_mouse_horizontal_wheel() {
+	StartDemo A "$firstWindowX" "$firstWindowY" || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	xdotool mousemove --window "$window" "$startInsideX" "$startInsideY"
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool click 6
+	ExpectLogLine "$logFile" "$mark" "mouse wheel dx=-1.00 dy=0.00 x=$startInsideX y=$startInsideY$" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool click 7
+	ExpectLogLine "$logFile" "$mark" "mouse wheel dx=1.00 dy=0.00 " || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool click 4
+	ExpectLogLine "$logFile" "$mark" "mouse wheel dx=0.00 dy=1.00 " || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool click 5
+	ExpectLogLine "$logFile" "$mark" "mouse wheel dx=0.00 dy=-1.00 " || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# Runs the demo in one keyboard layout, sends every key of the scan code table and checks the scan code of its first press.
+# The key of the probe keycode must have the given name, which shows that the layout really changed.
+CheckScanCodesInLayout() {
+	local layout="$1"
+	local expectedProbeKey="$2"
+	if ! setxkbmap "$layout"; then
+		Fail "setxkbmap $layout failed"
+		return 1
+	fi
+	StartDemo "$layout" "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark entry keycode expectedScanCode
+	local keycodes=()
+	for entry in "${scanCodeTable[@]}"; do
+		keycodes+=("${entry%% *}")
+	done
+	ActivateDemo "$window" "$logFile" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	local sentKeycodes=("${keycodes[@]}" "${lockKeycodes[@]}")
+	SendKeycodes "${sentKeycodes[@]}"
+	# Every key gives one release line, a key that got lost shows up in the check below
+	local deadline=$((SECONDS + waitSeconds)) releaseCount
+	while [ "$SECONDS" -le "$deadline" ]; do
+		releaseCount=$(tail -n +"$((mark + 1))" "$logFile" | grep -c " key button state=release ")
+		if [ "$releaseCount" -ge "${#sentKeycodes[@]}" ]; then
+			break
+		fi
+		sleep "$pollIntervalSeconds"
+	done
+	# The keycode, scan code and key name of the first press of every key
+	local firstPresses
+	firstPresses=$(tail -n +"$((mark + 1))" "$logFile" | awk '/ key button state=press / { code = ""; scan = ""; key = ""; for (i = 1; i <= NF; ++i) { split($i, pair, "="); if (pair[1] == "code") { code = pair[2] } else if (pair[1] == "scan") { scan = pair[2] } else if (pair[1] == "key") { key = pair[2] } } if (!(code in seen)) { seen[code] = 1; print code, scan, key } }')
+	local wrongKeys=() pressLine reportedScanCode reportedKey
+	for entry in "${scanCodeTable[@]}"; do
+		read -r keycode expectedScanCode <<< "$entry"
+		pressLine=$(grep -m1 "^$keycode " <<< "$firstPresses")
+		if [ -z "$pressLine" ]; then
+			wrongKeys+=("$keycode:missing")
+			continue
+		fi
+		read -r keycode reportedScanCode reportedKey <<< "$pressLine"
+		if [ "$((reportedScanCode))" -ne "$((expectedScanCode))" ]; then
+			wrongKeys+=("$keycode:$reportedScanCode!=$expectedScanCode")
+		fi
+	done
+	if [ "${#wrongKeys[@]}" -gt 0 ]; then
+		Fail "layout $layout: ${#wrongKeys[@]} keys with a wrong scan code (keycode:reported!=expected): ${wrongKeys[*]}"
+		return 1
+	fi
+	pressLine=$(grep -m1 "^$layoutProbeKeycode " <<< "$firstPresses")
+	read -r keycode reportedScanCode reportedKey <<< "$pressLine"
+	if [ "$reportedKey" != "$expectedProbeKey" ]; then
+		Fail "layout $layout: keycode $layoutProbeKeycode is key $reportedKey instead of $expectedProbeKey, the layout did not change"
+		return 1
+	fi
+	StopDemo "$processId"
+	return 0
+}
+
+# Every key of a 105 key keyboard has its PC set 1 scan code, with the US layout just like with the German one.
+# The demo grabs the keyboard, so Print, Super and the lock keys go to it and not to the desktop. The saved layout comes back afterwards.
+Test_scan_codes_layout_independent() {
+	SaveKeyboardLayout
+	local layoutIndex testResult=0
+	for layoutIndex in "${!scanCodeLayouts[@]}"; do
+		CheckScanCodesInLayout "${scanCodeLayouts[$layoutIndex]}" "${layoutProbeKeys[$layoutIndex]}"
+		testResult=$?
+		KillAllDemos
+		if [ "$testResult" -ne 0 ]; then
+			break
+		fi
+	done
+	RestoreKeyboardLayout
+	return "$testResult"
 }
 
 # Runs the self test of the demo with the given extra parameters and checks its result
