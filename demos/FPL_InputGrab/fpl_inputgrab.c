@@ -18,10 +18,12 @@ Description:
 
 	Parameters:
 	  --log-events         Write every event as one line to the standard output
+	  --log-fpl            Write the log messages of FPL down to the verbose level, like a refused grab that is tried again
 	  --mouse-grab         Request the mouse grab at the start
 	  --relative-mouse     Request the relative mouse mode at the start
 	  --keyboard-grab      Request the keyboard grab at the start
-	  --selftest           Warp the cursor to five positions and check the move events and the screen positions, the exit code is 1 when a check fails
+	  --selftest           Warp the cursor to five positions and check the move events and the screen positions, the exit code is 1 when a check fails.
+	                       With --mouse-grab it also warps to two positions outside of the window, which must end at the edges of the client area.
 	  --timeout=<seconds>  Quit by itself after this time, the safety net for tests that grab the input
 	  --stall=<ms>         Sleep this long in every frame, simulates a main loop that pumps the events rarely
 	  --window=<w>x<h>     Inner size of the window (Default: 640x400)
@@ -31,7 +33,8 @@ Description:
 	Log format, one event per line:
 	  t=<ms since start> <category> <name> [key=value ...]
 	  e.g. "t=1520 key button state=press code=38 key=A mods=0x0" or "t=1733 mouse move x=100 y=50 dx=3 dy=-1"
-	  The self test lines ("selftest ...") are written even without --log-events.
+	  The self test lines ("selftest ...") and the FPL log lines ("fpl level=<level> <message> (<function>:<line>)") are written even without --log-events.
+	  Without --log-fpl only the FPL warnings and errors are written.
 
 Requirements:
 	- C99 Compiler
@@ -45,6 +48,10 @@ Changelog:
 	- Initial version: event log, crosshair, focus border, timeout, stall
 	- Move deltas in the log, grab hotkeys and parameters, warp self test
 
+	## 2026-09-25
+	- FPL log messages in the log (--log-fpl)
+	- Self test with --mouse-grab: warps outside of the window end at the edges of the client area
+
 License:
 	Copyright (c) 2017-2026 Torsten Spaete
 	MIT License (See LICENSE file)
@@ -52,6 +59,7 @@ License:
 */
 
 #define FPL_IMPLEMENTATION
+#define FPL_LOGGING
 #define FPL_NO_VIDEO_OPENGL
 #define FPL_NO_VIDEO_VULKAN
 #define FPL_NO_AUDIO
@@ -91,8 +99,10 @@ static const uint32_t focusFrameUnfocusedColor = 0xFF5A5A5A;
 #define LOG_MESSAGE_CAPACITY 512
 #define TITLE_CAPACITY 256
 
-// Self test: four corners and the center
-#define SELF_TEST_TARGET_COUNT 5
+// Self test: four corners and the center, with the mouse grab two more targets outside of the window
+#define SELF_TEST_INSIDE_TARGET_COUNT 5
+#define SELF_TEST_OUTSIDE_TARGET_COUNT 2
+#define SELF_TEST_MAX_TARGET_COUNT (SELF_TEST_INSIDE_TARGET_COUNT + SELF_TEST_OUTSIDE_TARGET_COUNT)
 
 // The self test starts this long after the window got the focus, so a test script can place the window first
 static const fplMilliseconds selfTestStartDelayMilliseconds = 1000;
@@ -102,6 +112,8 @@ static const fplMilliseconds selfTestFocusFallbackMilliseconds = 2000;
 static const fplMilliseconds selfTestMoveTimeoutMilliseconds = 2000;
 // Distance of the corner targets from the edges of the client area
 static const int32_t selfTestEdgeMargin = 10;
+// Distance of the targets outside of the window from the client area, the mouse grab limits them to the edges
+static const int32_t selfTestOutsideDistance = 50;
 
 typedef struct DemoOptions {
 	char titlePrefix[TITLE_CAPACITY];
@@ -111,6 +123,7 @@ typedef struct DemoOptions {
 	uint32_t timeoutSeconds;
 	uint32_t stallMilliseconds;
 	bool logEvents;
+	bool logFplVerbose;
 	bool requestMouseGrab;
 	bool requestRelativeMouse;
 	bool requestKeyboardGrab;
@@ -126,10 +139,14 @@ typedef enum SelfTestPhase {
 } SelfTestPhase;
 
 typedef struct SelfTestState {
-	int32_t targetX[SELF_TEST_TARGET_COUNT];
-	int32_t targetY[SELF_TEST_TARGET_COUNT];
+	// Where the warp goes and where the cursor must end, which differs for the targets outside of a grabbed window
+	int32_t targetX[SELF_TEST_MAX_TARGET_COUNT];
+	int32_t targetY[SELF_TEST_MAX_TARGET_COUNT];
+	int32_t expectedX[SELF_TEST_MAX_TARGET_COUNT];
+	int32_t expectedY[SELF_TEST_MAX_TARGET_COUNT];
 	fplMilliseconds phaseStartTime;
 	SelfTestPhase phase;
+	uint32_t targetCount;
 	uint32_t targetIndex;
 	uint32_t failureCount;
 	// Screen position of the client area origin, found with the first warp
@@ -190,6 +207,49 @@ static void LogSelfTest(const DemoState *state, const char *format, ...) {
 	va_start(argList, format);
 	WriteLogLine(state, format, argList);
 	va_end(argList);
+}
+
+// The log callback of FPL has no user pointer, it reaches the demo state for the time stamps through this one
+static const DemoState *fplLogTargetState = fpl_null;
+
+static const char *GetLogLevelName(const fplLogLevel level) {
+	switch (level) {
+		case fplLogLevel_Critical:
+			return "critical";
+		case fplLogLevel_Error:
+			return "error";
+		case fplLogLevel_Warning:
+			return "warning";
+		case fplLogLevel_Info:
+			return "info";
+		case fplLogLevel_Verbose:
+			return "verbose";
+		case fplLogLevel_Debug:
+			return "debug";
+		case fplLogLevel_Trace:
+			return "trace";
+		default:
+			return "unknown";
+	}
+}
+
+static void WriteFplLogMessage(const char *functionName, const int lineNumber, const fplLogLevel level, const char *message) {
+	if (fplLogTargetState == fpl_null) {
+		return;
+	}
+	const char *levelName = GetLogLevelName(level);
+	LogSelfTest(fplLogTargetState, "fpl level=%s %s (%s:%d)", levelName, message, functionName, lineNumber);
+}
+
+// Routes the FPL log into the event log, the tests look for messages like a refused grab
+static void SetupFplLog(const DemoState *state) {
+	fplLogTargetState = state;
+	fplLogSettings logSettings = fplZeroInit;
+	logSettings.writers[0].flags = fplLogWriterFlags_Custom;
+	logSettings.writers[0].custom.callback = WriteFplLogMessage;
+	logSettings.maxLevel = state->options.logFplVerbose ? fplLogLevel_Verbose : fplLogLevel_Warning;
+	logSettings.isInitialized = true;
+	fplSetLogSettings(&logSettings);
 }
 
 static const char *GetOnOffName(const bool value) {
@@ -282,6 +342,7 @@ static bool TryParseWindowSize(const char *text, uint32_t *outWidth, uint32_t *o
 static void PrintHelp(void) {
 	fplConsoleOut("FPL_InputGrab - test bench for keyboard grab, mouse confinement, cursor warping and relative mouse mode\n");
 	fplConsoleOut("  --log-events         Write every event as one line to the standard output\n");
+	fplConsoleOut("  --log-fpl            Write the log messages of FPL down to the verbose level\n");
 	fplConsoleOut("  --mouse-grab         Request the mouse grab at the start\n");
 	fplConsoleOut("  --relative-mouse     Request the relative mouse mode at the start\n");
 	fplConsoleOut("  --keyboard-grab      Request the keyboard grab at the start\n");
@@ -314,6 +375,8 @@ static ParseResult ParseArguments(const int argumentCount, char **arguments, Dem
 			return ParseResult_Help;
 		} else if (fplIsStringEqual(argument, "--log-events")) {
 			outOptions->logEvents = true;
+		} else if (fplIsStringEqual(argument, "--log-fpl")) {
+			outOptions->logFplVerbose = true;
 		} else if (fplIsStringEqual(argument, "--mouse-grab")) {
 			outOptions->requestMouseGrab = true;
 		} else if (fplIsStringEqual(argument, "--relative-mouse")) {
@@ -535,7 +598,7 @@ static void FinishSelfTest(DemoState *state) {
 static void AdvanceSelfTest(DemoState *state) {
 	SelfTestState *selfTest = &state->selfTest;
 	++selfTest->targetIndex;
-	if (selfTest->targetIndex >= SELF_TEST_TARGET_COUNT) {
+	if (selfTest->targetIndex >= selfTest->targetCount) {
 		FinishSelfTest(state);
 	} else {
 		selfTest->phase = SelfTestPhase_Warp;
@@ -550,25 +613,49 @@ static void FailSelfTest(DemoState *state, const char *reason) {
 	AdvanceSelfTest(state);
 }
 
-static void PrepareSelfTestTargets(SelfTestState *selfTest) {
+static void PrepareSelfTestTargets(SelfTestState *selfTest, const bool withOutsideTargets) {
 	fplWindowSize windowSize = fplZeroInit;
 	fplGetWindowSize(&windowSize);
-	int32_t right = (int32_t)windowSize.width - 1 - selfTestEdgeMargin;
-	int32_t bottom = (int32_t)windowSize.height - 1 - selfTestEdgeMargin;
+	int32_t lastX = (int32_t)windowSize.width - 1;
+	int32_t lastY = (int32_t)windowSize.height - 1;
+	int32_t right = lastX - selfTestEdgeMargin;
+	int32_t bottom = lastY - selfTestEdgeMargin;
 	int32_t centerX = (int32_t)windowSize.width / 2;
 	int32_t centerY = (int32_t)windowSize.height / 2;
-	int32_t xs[SELF_TEST_TARGET_COUNT] = { selfTestEdgeMargin, right, selfTestEdgeMargin, right, centerX };
-	int32_t ys[SELF_TEST_TARGET_COUNT] = { selfTestEdgeMargin, selfTestEdgeMargin, bottom, bottom, centerY };
-	for (uint32_t targetIndex = 0; targetIndex < SELF_TEST_TARGET_COUNT; ++targetIndex) {
-		selfTest->targetX[targetIndex] = xs[targetIndex];
-		selfTest->targetY[targetIndex] = ys[targetIndex];
+	int32_t insideXs[SELF_TEST_INSIDE_TARGET_COUNT] = { selfTestEdgeMargin, right, selfTestEdgeMargin, right, centerX };
+	int32_t insideYs[SELF_TEST_INSIDE_TARGET_COUNT] = { selfTestEdgeMargin, selfTestEdgeMargin, bottom, bottom, centerY };
+	for (uint32_t targetIndex = 0; targetIndex < SELF_TEST_INSIDE_TARGET_COUNT; ++targetIndex) {
+		selfTest->targetX[targetIndex] = insideXs[targetIndex];
+		selfTest->targetY[targetIndex] = insideYs[targetIndex];
+		selfTest->expectedX[targetIndex] = insideXs[targetIndex];
+		selfTest->expectedY[targetIndex] = insideYs[targetIndex];
 	}
+	selfTest->targetCount = SELF_TEST_INSIDE_TARGET_COUNT;
+	if (!withOutsideTargets) {
+		return;
+	}
+	// Above left and below right of the window, the grab keeps them at the nearest corner of the client area
+	int32_t outsideXs[SELF_TEST_OUTSIDE_TARGET_COUNT] = { -selfTestOutsideDistance, lastX + selfTestOutsideDistance };
+	int32_t outsideYs[SELF_TEST_OUTSIDE_TARGET_COUNT] = { -selfTestOutsideDistance, lastY + selfTestOutsideDistance };
+	int32_t limitedXs[SELF_TEST_OUTSIDE_TARGET_COUNT] = { 0, lastX };
+	int32_t limitedYs[SELF_TEST_OUTSIDE_TARGET_COUNT] = { 0, lastY };
+	for (uint32_t outsideIndex = 0; outsideIndex < SELF_TEST_OUTSIDE_TARGET_COUNT; ++outsideIndex) {
+		uint32_t targetIndex = SELF_TEST_INSIDE_TARGET_COUNT + outsideIndex;
+		selfTest->targetX[targetIndex] = outsideXs[outsideIndex];
+		selfTest->targetY[targetIndex] = outsideYs[outsideIndex];
+		selfTest->expectedX[targetIndex] = limitedXs[outsideIndex];
+		selfTest->expectedY[targetIndex] = limitedYs[outsideIndex];
+	}
+	selfTest->targetCount = SELF_TEST_MAX_TARGET_COUNT;
 }
 
 static void WarpToSelfTestTarget(DemoState *state) {
 	SelfTestState *selfTest = &state->selfTest;
-	int32_t targetX = selfTest->targetX[selfTest->targetIndex];
-	int32_t targetY = selfTest->targetY[selfTest->targetIndex];
+	uint32_t targetIndex = selfTest->targetIndex;
+	int32_t targetX = selfTest->targetX[targetIndex];
+	int32_t targetY = selfTest->targetY[targetIndex];
+	int32_t expectedX = selfTest->expectedX[targetIndex];
+	int32_t expectedY = selfTest->expectedY[targetIndex];
 	if (!fplWarpWindowCursor(targetX, targetY)) {
 		FailSelfTest(state, "warp-returned-false");
 		return;
@@ -579,14 +666,14 @@ static void WarpToSelfTestTarget(DemoState *state) {
 		FailSelfTest(state, "cursor-position-unknown");
 		return;
 	}
-	int32_t originX = screenX - targetX;
-	int32_t originY = screenY - targetY;
+	int32_t originX = screenX - expectedX;
+	int32_t originY = screenY - expectedY;
 	if (!selfTest->hasClientOrigin) {
 		selfTest->clientOriginX = originX;
 		selfTest->clientOriginY = originY;
 		selfTest->hasClientOrigin = true;
 	} else if (originX != selfTest->clientOriginX || originY != selfTest->clientOriginY) {
-		LogSelfTest(state, "selftest screen x=%d y=%d expected-x=%d expected-y=%d", screenX, screenY, selfTest->clientOriginX + targetX, selfTest->clientOriginY + targetY);
+		LogSelfTest(state, "selftest screen x=%d y=%d expected-x=%d expected-y=%d", screenX, screenY, selfTest->clientOriginX + expectedX, selfTest->clientOriginY + expectedY);
 		FailSelfTest(state, "screen-position");
 		return;
 	}
@@ -613,7 +700,7 @@ static void UpdateSelfTest(DemoState *state) {
 		} break;
 		case SelfTestPhase_WaitForStart:
 			if (phaseDuration >= selfTestStartDelayMilliseconds) {
-				PrepareSelfTestTargets(selfTest);
+				PrepareSelfTestTargets(selfTest, state->options.requestMouseGrab);
 				selfTest->targetIndex = 0;
 				selfTest->phase = SelfTestPhase_Warp;
 			}
@@ -639,8 +726,10 @@ static void CheckSelfTestMove(DemoState *state, const fplMouseEvent *mouseEvent)
 	uint32_t targetIndex = selfTest->targetIndex;
 	int32_t targetX = selfTest->targetX[targetIndex];
 	int32_t targetY = selfTest->targetY[targetIndex];
-	// Other moves (the cursor on its way into the window) are ignored until the target arrives or the wait times out
-	if (mouseEvent->mouseX != targetX || mouseEvent->mouseY != targetY) {
+	int32_t expectedX = selfTest->expectedX[targetIndex];
+	int32_t expectedY = selfTest->expectedY[targetIndex];
+	// Other moves (the cursor on its way into the window) are ignored until the expected position arrives or the wait times out
+	if (mouseEvent->mouseX != expectedX || mouseEvent->mouseY != expectedY) {
 		return;
 	}
 	if (mouseEvent->deltaX != 0 || mouseEvent->deltaY != 0) {
@@ -648,7 +737,7 @@ static void CheckSelfTestMove(DemoState *state, const fplMouseEvent *mouseEvent)
 		FailSelfTest(state, "move-delta-not-zero");
 		return;
 	}
-	LogSelfTest(state, "selftest target=%u x=%d y=%d result=pass", targetIndex, targetX, targetY);
+	LogSelfTest(state, "selftest target=%u x=%d y=%d arrived-x=%d arrived-y=%d result=pass", targetIndex, targetX, targetY, expectedX, expectedY);
 	AdvanceSelfTest(state);
 }
 
@@ -784,6 +873,10 @@ int main(int argc, char **args) {
 		return 1;
 	}
 
+	// The log times count from here, so the FPL messages of the initialization are in the log with small times as well
+	state.startTime = fplMillisecondsQuery();
+	SetupFplLog(&state);
+
 	fplSettings settings = fplMakeDefaultSettings();
 	fplCopyString(state.options.titlePrefix, settings.window.title, fplArrayCount(settings.window.title));
 	settings.window.windowSize.width = state.options.windowWidth;
@@ -796,7 +889,6 @@ int main(int argc, char **args) {
 		return 1;
 	}
 
-	state.startTime = fplMillisecondsQuery();
 	state.isDirty = true;
 	state.isTitleDirty = true;
 

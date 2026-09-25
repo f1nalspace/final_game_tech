@@ -4,6 +4,8 @@
 # WARNING: The tests open small windows, move the real mouse pointer and send key presses to the focused window, including Alt+Tab.
 # Tests that grab the keyboard or the mouse hold the real input for a few seconds. Every demo runs under "timeout -s KILL",
 # and an X client that is killed loses all its grabs. Do not run this in a loop without telling the person at the desk.
+# The mouse grab tests lock the real pointer inside a demo window, and the retry test lets a small python-xlib client hold the pointer
+# for two seconds, clicks go nowhere then.
 #
 # Usage: run_grab_tests.sh [--demo=<path>] [--tests=<name,...>] [--list]
 #   --demo   FPL_InputGrab executable (default: Release build, then Debug build under demos/build/FPL_InputGrab)
@@ -37,6 +39,10 @@ selfTestWaitSeconds=15
 outsideOffsetX=700
 # A demo that dies of an X error is started again, see the X window id reuse race in plans/fpl_imageviewer_plan.md section 8
 maximumTestAttempts=3
+# Distance of pointer targets outside of the client area, far enough to leave it, close enough to stay away from the screen edges and their corner actions
+outsideDistance=30
+# Another client holds the pointer this long in the retry test, the demo must get the focus meanwhile
+pointerHoldSeconds=2
 
 # --- Window placement (top left corner of the screen, out of the way) --------------------------------------------------------
 
@@ -45,10 +51,13 @@ firstWindowY=60
 secondWindowX=720
 secondWindowY=60
 windowSize="640x400"
+# The window size the resize test sets, smaller than the start size, so a cage that does not follow would let the pointer out
+resizedWidth=400
+resizedHeight=300
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
-allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab)
+allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab)
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
@@ -258,6 +267,92 @@ HadXError() {
 	grep -q "X Error" "$outputDirectory/$currentTest"-*.err 2> /dev/null
 }
 
+# --- Pointer helpers ---------------------------------------------------------------------------------------------------------
+
+# Reads the client area of a window in screen coordinates into areaLeft, areaTop, areaWidth and areaHeight.
+# xdotool translates the origin of a reparented window to the root, which is the origin of the client area.
+ReadClientArea() {
+	local window="$1"
+	local WINDOW X Y WIDTH HEIGHT SCREEN
+	eval "$(xdotool getwindowgeometry --shell "$window")"
+	areaLeft="$X"
+	areaTop="$Y"
+	areaWidth="$WIDTH"
+	areaHeight="$HEIGHT"
+}
+
+# Reads the pointer position in screen coordinates into pointerX and pointerY
+ReadPointer() {
+	local X Y SCREEN WINDOW
+	eval "$(xdotool getmouselocation --shell)"
+	pointerX="$X"
+	pointerY="$Y"
+}
+
+IsPointerInsideArea() {
+	local areaRight=$((areaLeft + areaWidth))
+	local areaBottom=$((areaTop + areaHeight))
+	[ "$pointerX" -ge "$areaLeft" ] && [ "$pointerX" -lt "$areaRight" ] && [ "$pointerY" -ge "$areaTop" ] && [ "$pointerY" -lt "$areaBottom" ]
+}
+
+# Moves the pointer to a screen position outside of the client area read last, until the grab keeps it inside. Tried several times, the grab follows the focus asynchronously.
+ExpectPointerConfined() {
+	local targetX="$1"
+	local targetY="$2"
+	local deadline=$((SECONDS + waitSeconds))
+	while [ "$SECONDS" -le "$deadline" ]; do
+		xdotool mousemove "$targetX" "$targetY"
+		ReadPointer
+		if IsPointerInsideArea; then
+			return 0
+		fi
+		sleep "$pollIntervalSeconds"
+	done
+	Fail "pointer at $pointerX,$pointerY after moving to $targetX,$targetY, outside of the client area $areaLeft,$areaTop ${areaWidth}x$areaHeight"
+	return 1
+}
+
+# Moves the pointer to a screen position until it arrives there, no grab holds it back anymore
+ExpectPointerFree() {
+	local targetX="$1"
+	local targetY="$2"
+	local deadline=$((SECONDS + waitSeconds))
+	while [ "$SECONDS" -le "$deadline" ]; do
+		xdotool mousemove "$targetX" "$targetY"
+		ReadPointer
+		if [ "$pointerX" -eq "$targetX" ] && [ "$pointerY" -eq "$targetY" ]; then
+			return 0
+		fi
+		sleep "$pollIntervalSeconds"
+	done
+	Fail "pointer stays at $pointerX,$pointerY instead of $targetX,$targetY, the grab was not released"
+	return 1
+}
+
+# Holds an active pointer grab of another client on the root window for the given time. Sets holderLog, which gets "grab <status>" and "released".
+StartPointerHolder() {
+	local holdSeconds="$1"
+	holderLog="$outputDirectory/$currentTest-holder.log"
+	timeout -s KILL "$((holdSeconds + killGraceSeconds))" python3 - "$holdSeconds" > "$holderLog" 2>&1 << 'PYTHON_END' &
+import sys
+import time
+from Xlib import X, display
+holdSeconds = float(sys.argv[1])
+xDisplay = display.Display()
+root = xDisplay.screen().root
+eventMask = X.ButtonPressMask | X.ButtonReleaseMask | X.PointerMotionMask
+status = root.grab_pointer(False, eventMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, X.CurrentTime)
+xDisplay.sync()
+print("grab %d" % status, flush=True)
+time.sleep(holdSeconds)
+xDisplay.ungrab_pointer(X.CurrentTime)
+xDisplay.sync()
+print("released", flush=True)
+PYTHON_END
+	startedWrapperPids+=("$!")
+	holderPid="$!"
+}
+
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
 # Mouse positions arrive in window coordinates
@@ -311,9 +406,9 @@ Test_no_delta_after_reenter() {
 	return 0
 }
 
-# The demo warps the cursor to the corners and the center and checks the move events and the screen positions itself
-Test_warp_selftest() {
-	StartDemo A "$firstWindowX" "$firstWindowY" --selftest || return 1
+# Runs the self test of the demo with the given extra parameters and checks its result
+RunSelfTest() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --selftest "$@" || return 1
 	local window="$demoWindow" logFile="$demoLog" resultLine
 	# A new window usually has the focus already, and the self test may be over before an activation could be confirmed, so the activation is not checked here
 	xdotool windowactivate "$window" > /dev/null 2>&1
@@ -327,6 +422,16 @@ Test_warp_selftest() {
 		return 1
 	fi
 	return 0
+}
+
+# The demo warps the cursor to the corners and the center and checks the move events and the screen positions itself
+Test_warp_selftest() {
+	RunSelfTest
+}
+
+# With the mouse grab the self test also warps outside of the window, the cursor must end at the nearest corner of the client area
+Test_warp_limited_by_mouse_grab() {
+	RunSelfTest --mouse-grab
 }
 
 # A key press gives a press, a text input and a release event
@@ -443,6 +548,90 @@ Test_no_stuck_alt_after_alt_tab() {
 		Fail "first Alt after returning: '${altLine#t=* }'"
 		return 1
 	fi
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# The mouse grab keeps the pointer inside the client area, above left and below right of it
+Test_mouse_grab_confines() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --mouse-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid"
+	ActivateDemo "$window" "$logFile" || return 1
+	ReadClientArea "$window"
+	ExpectPointerConfined "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	ExpectPointerConfined "$((areaLeft + areaWidth + outsideDistance))" "$((areaTop + areaHeight + outsideDistance))" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# Another window gets the focus: the grab is released and the pointer leaves the window, the request stays
+Test_mouse_grab_released_on_focus_loss() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --mouse-grab || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowA" "$logA" || return 1
+	ReadClientArea "$windowA"
+	ExpectPointerConfined "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	mark=$(LogLineCount "$logA")
+	ActivateDemo "$windowB" "$logB" || return 1
+	ExpectLogLine "$logA" "$mark" "window lostfocus" || return 1
+	ExpectPointerFree "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# The grab comes back when the window gets the focus again
+Test_mouse_grab_restored_on_focus_gain() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --mouse-grab || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid"
+	ActivateDemo "$windowB" "$logB" || return 1
+	ReadClientArea "$windowA"
+	ExpectPointerFree "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	ActivateDemo "$windowA" "$logA" || return 1
+	ExpectPointerConfined "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# The cage follows the client area when the window gets smaller
+Test_mouse_grab_follows_resize() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --mouse-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	mark=$(LogLineCount "$logFile")
+	xdotool windowsize "$window" "$resizedWidth" "$resizedHeight"
+	ExpectLogLine "$logFile" "$mark" "window resized w=$resizedWidth h=$resizedHeight$" || return 1
+	ReadClientArea "$window"
+	if [ "$areaWidth" -ne "$resizedWidth" ] || [ "$areaHeight" -ne "$resizedHeight" ]; then
+		Fail "client area is ${areaWidth}x$areaHeight after the resize, expected ${resizedWidth}x$resizedHeight"
+		return 1
+	fi
+	ExpectPointerConfined "$((areaLeft + areaWidth + outsideDistance))" "$((areaTop + areaHeight + outsideDistance))" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# Another client holds the pointer when the window gets the focus: XGrabPointer fails with AlreadyGrabbed, FPL tries again and gets the grab once the other client lets go
+Test_mouse_grab_retries_when_already_grabbed() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --mouse-grab --log-fpl || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowB" "$logB" || return 1
+	ReadClientArea "$windowA"
+	StartPointerHolder "$pointerHoldSeconds"
+	ExpectLogLine "$holderLog" 0 "^grab 0$" || return 1
+	mark=$(LogLineCount "$logA")
+	ActivateDemo "$windowA" "$logA" || return 1
+	ExpectLogLine "$logA" "$mark" "XGrabPointer failed with AlreadyGrabbed" || return 1
+	ExpectLogLine "$holderLog" 0 "^released$" || return 1
+	ExpectPointerConfined "$((areaLeft - outsideDistance))" "$((areaTop - outsideDistance))" || return 1
 	StopDemo "$processA"
 	StopDemo "$processB"
 	return 0
