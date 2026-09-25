@@ -223,6 +223,7 @@ SOFTWARE.
 	- New: The standard-input of a child can be inherited, closed immediately, filled from a text, pulled from a callback or written by the caller while the process runs
 	- New: Scripts and whole command lines can be started through the default shell (ComSpec/cmd.exe or /bin/sh) or through a named interpreter
 	- New: Process creation flags for waiting, treating a non-zero exit code as an error, hiding the console window, detaching the child, stopping the whole process tree and killing the child when the own process exits
+	- New: Added flag fplProcessFlags_NoTerminal that starts a child without a controlling terminal, so a password or host key prompt on /dev/tty fails at once instead of hanging in the terminal the application was started from - [POSIX] a session of its own through setsid(), without detaching the child otherwise, [Win32] no effect
 
 	#### Threading
 	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
@@ -7615,6 +7616,8 @@ typedef enum fplProcessFlags {
 	fplProcessFlags_LineBuffered = 1 << 5,
 	//! Report a non-zero exit code as @ref fplProcessResultType_FailedWithExitCode.
 	fplProcessFlags_TreatNonZeroExitAsError = 1 << 6,
+	//! Start the child without a controlling terminal (POSIX only), so a prompt it opens on /dev/tty fails right away instead of waiting in the terminal the parent was started from. The child gets a session of its own the way @ref fplProcessFlags_Detached gives it one, and stays everything else a child is: captured, waited for, stopped and killed on parent exit. Has no effect on Windows, which has no /dev/tty.
+	fplProcessFlags_NoTerminal = 1 << 7,
 } fplProcessFlags;
 //! fplProcessFlags operator overloads for C++
 FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessFlags);
@@ -26940,6 +26943,9 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	bool useOwnProcessGroup = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
 	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
 	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	bool hasNoTerminal = (context->flags & fplProcessFlags_NoTerminal) == fplProcessFlags_NoTerminal;
+	// A new session is what takes the controlling terminal away, and it is the only way to do so
+	bool startsOwnSession = isDetached || hasNoTerminal;
 #if defined(FPL_PLATFORM_LINUX)
 	// The child compares this against its parent id, to detect a parent that has exited between the fork and the prctl
 	pid_t parentProcessId = getpid();
@@ -27004,9 +27010,9 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 			dup2(nullInputFd, STDIN_FILENO);
 			close(nullInputFd);
 		}
-		if (isDetached) {
+		if (startsOwnSession) {
 			// A new session detaches the child from the terminal of the parent, so a Ctrl+C there does not
-			// reach it anymore. It makes the child a process group leader as well.
+			// reach it anymore and an open of /dev/tty fails with ENXIO. It makes the child a process group leader as well.
 			setsid();
 		} else if (useOwnProcessGroup) {
 			setpgid(0, 0);
@@ -27060,9 +27066,10 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		close(nullInputFd);
 		nullInputFd = -1;
 	}
-	if (useOwnProcessGroup && !isDetached) {
+	if (useOwnProcessGroup && !startsOwnSession) {
 		// Called in both processes on purpose, so the group exists no matter which process is scheduled first.
-		// A detached child gets its group from setsid() and that one cannot be repeated from here.
+		// A child with a session of its own gets its group from setsid() and that one cannot be repeated from here.
+		// Calling it anyway would even break it: a child the parent made a group leader first is refused by setsid().
 		setpgid(childProcessId, childProcessId);
 	}
 
@@ -27107,7 +27114,7 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 	outHandle->streams = streams;
 	outHandle->internalHandle.posix.pid = (int32_t)childProcessId;
-	outHandle->internalHandle.posix.pgid = (useOwnProcessGroup || isDetached) ? (int32_t)childProcessId : 0;
+	outHandle->internalHandle.posix.pgid = (useOwnProcessGroup || startsOwnSession) ? (int32_t)childProcessId : 0;
 	outHandle->id = (uint64_t)childProcessId;
 	outHandle->flags = context->flags;
 	outHandle->isValid = true;
