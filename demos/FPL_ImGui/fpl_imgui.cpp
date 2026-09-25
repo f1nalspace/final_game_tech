@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-09-25
+	- Fixed: The side mouse buttons (X1, X2) wrote past the end of the mouse button states, ImGui only knows three buttons
+
     ## 2019-08-13
     - Fixed compiler warnings for GCC
 
@@ -412,7 +415,11 @@ int main(int argc, char **args) {
 							} break;
 							case fplMouseEventType_Button:
 							{
-								currentMouseStates[(int32_t)event.mouse.mouseButton] = event.mouse.buttonState >= fplButtonState_Press;
+								// ImGui knows left, right and middle only, the side buttons X1 and X2 come after them
+								int32_t mouseButtonIndex = (int32_t)event.mouse.mouseButton;
+								if(mouseButtonIndex >= 0 && mouseButtonIndex < (int32_t)fplArrayCount(currentMouseStates)) {
+									currentMouseStates[mouseButtonIndex] = event.mouse.buttonState >= fplButtonState_Press;
+								}
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;
