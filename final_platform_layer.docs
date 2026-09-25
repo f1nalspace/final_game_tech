@@ -1411,6 +1411,36 @@
 	@note [Win32] The movement comes from raw input (WM_INPUT). While the mode is active, the application must not register the mouse for raw input itself.
 	@note [X11] The movement comes from the raw events of XInput2 (libXi, loaded at runtime). Without it, or when FPL_NO_X11_XINPUT2 is defined, FPL warps the cursor back to the window center after every motion, and the deltas are accelerated like the cursor. Builds with FPL_NO_RUNTIME_LINKING link libXi then (-lXi), unless FPL_NO_X11_XINPUT2 is defined.
 
+	@section section_category_window_style_keyboard_grab Grabbing the keyboard
+
+	Use @ref fplSetWindowKeyboardGrab() so that system shortcuts like Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc and Alt+F4 go to the window instead of the window manager or the shell, for example for a virtual machine display.<br>
+	All other keys and the text input work as before.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// Grab the keyboard and the mouse, like a virtual machine does after a click into its display
+	fplSetWindowKeyboardGrab(true);
+	fplSetWindowRelativeMouse(true);
+
+	// Ctrl+Alt+G gives both back, the keys reach the application because the keyboard is grabbed
+	if (ev.type == fplEventType_Keyboard && ev.keyboard.type == fplKeyboardEventType_Button && ev.keyboard.buttonState == fplButtonState_Press) {
+		bool isCtrlDown = (ev.keyboard.modifiers & (fplKeyboardModifierFlags_LCtrl | fplKeyboardModifierFlags_RCtrl)) != 0;
+		bool isAltDown = (ev.keyboard.modifiers & (fplKeyboardModifierFlags_LAlt | fplKeyboardModifierFlags_RAlt)) != 0;
+		if (isCtrlDown && isAltDown && ev.keyboard.mappedKey == fplKey_G) {
+			fplSetWindowRelativeMouse(false);
+			fplSetWindowKeyboardGrab(false);
+		}
+	}
+	@endcode
+
+	@note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized, FPL ends and restores it by itself.
+	@note Alt+F4 does not close the window while the keyboard is grabbed. The application gets the keys and needs its own way to end the grab or to quit.
+	@note [X11] FPL grabs the keyboard with XGrabKeyboard(). What the X server does itself before any client sees the keys can not be grabbed: the virtual terminal switch (Ctrl+Alt+F1..F12), Ctrl+Alt+Backspace when it is enabled, and Magic SysRq.
+	@note [X11] A grabbed keyboard belongs to the application for the whole desktop. When a debugger stops the application while the keyboard is grabbed, no other window gets keys until the application continues or ends. Switch to a virtual terminal to end it then.
+	@note [Win32] FPL installs a low level keyboard hook (WH_KEYBOARD_LL) that takes Win, Alt, Ctrl, Tab, Esc and Print away from the system and reports them itself, so they stay in order with the other keys. Ctrl+Alt+Del and Win+L can never be grabbed.
+	@note [Win32] Windows removes a low level hook that takes longer than the LowLevelHooksTimeout of the system, and it delays every key of the desktop until then. The hook runs while the application pumps its events, so pump them often (at least every 100 ms). FPL installs a lost hook again, as soon as it notices.
+	@note [Win32] While the keyboard is grabbed, Alt, F10 and Alt+Space do not open the window menus.
+
 	@section section_category_window_style_title Get/Set the window title
 
 	By default, the window has an unnamed title. Use @ref fplSetWindowTitle to set a window title on runtime.<br>

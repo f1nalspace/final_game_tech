@@ -283,6 +283,7 @@ SOFTWARE.
 	- New: Added functions fplSetWindowRelativeMouse() and fplIsWindowRelativeMouse() for a hidden, locked cursor whose move events carry the raw unaccelerated device movement - Win32 raw input, X11 XInput2 with a warp fallback (FPL_NO_X11_XINPUT2 forces it)
 	- Changed: fplWarpWindowCursor() in the relative mouse mode moves the position the mouse events carry and where the cursor appears when the mode ends
 	- Changed: [Win32] fplSetWindowCursorEnabled() no longer registers the mouse for raw input, which did nothing but broke a raw input registration of the application
+	- New: Added functions fplSetWindowKeyboardGrab() and fplIsWindowKeyboardGrabbed() - system shortcuts like Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc and Alt+F4 go to the window instead of the window manager or the shell (X11 XGrabKeyboard, Win32 low level keyboard hook)
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -10815,6 +10816,8 @@ fpl_common_api bool fplIsWindowRelativeMouse(void);
 * @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
 * @note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized.
 * @note Some key combinations can never be grabbed, for example Ctrl+Alt+Del on Win32 or the virtual terminal switch on X11.
+* @note Alt+F4 does not close the window while the keyboard is grabbed, the application gets the keys and needs its own way to end the grab.
+* @see @ref section_category_window_style_keyboard_grab
 */
 fpl_common_api bool fplSetWindowKeyboardGrab(const bool enabled);
 
@@ -12450,6 +12453,16 @@ typedef FPL__FUNC_WIN32_GetClipCursor(fpl__win32_func_GetClipCursor);
 typedef FPL__FUNC_WIN32_GetRawInputData(fpl__win32_func_GetRawInputData);
 #define FPL__FUNC_WIN32_GetSystemMetrics(name) int WINAPI name(int nIndex)
 typedef FPL__FUNC_WIN32_GetSystemMetrics(fpl__win32_func_GetSystemMetrics);
+#define FPL__FUNC_WIN32_SetWindowsHookExW(name) HHOOK WINAPI name(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId)
+typedef FPL__FUNC_WIN32_SetWindowsHookExW(fpl__win32_func_SetWindowsHookExW);
+#define FPL__FUNC_WIN32_UnhookWindowsHookEx(name) BOOL WINAPI name(HHOOK hhk)
+typedef FPL__FUNC_WIN32_UnhookWindowsHookEx(fpl__win32_func_UnhookWindowsHookEx);
+#define FPL__FUNC_WIN32_CallNextHookEx(name) LRESULT WINAPI name(HHOOK hhk, int nCode, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_CallNextHookEx(fpl__win32_func_CallNextHookEx);
+#define FPL__FUNC_WIN32_GetKeyboardState(name) BOOL WINAPI name(PBYTE lpKeyState)
+typedef FPL__FUNC_WIN32_GetKeyboardState(fpl__win32_func_GetKeyboardState);
+#define FPL__FUNC_WIN32_SetKeyboardState(name) BOOL WINAPI name(LPBYTE lpKeyState)
+typedef FPL__FUNC_WIN32_SetKeyboardState(fpl__win32_func_SetKeyboardState);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 #define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
@@ -12577,6 +12590,11 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetClipCursor *GetClipCursor;
 	fpl__win32_func_GetRawInputData *GetRawInputData;
 	fpl__win32_func_GetSystemMetrics *GetSystemMetrics;
+	fpl__win32_func_SetWindowsHookExW *SetWindowsHookExW;
+	fpl__win32_func_UnhookWindowsHookEx *UnhookWindowsHookEx;
+	fpl__win32_func_CallNextHookEx *CallNextHookEx;
+	fpl__win32_func_GetKeyboardState *GetKeyboardState;
+	fpl__win32_func_SetKeyboardState *SetKeyboardState;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
@@ -12715,6 +12733,11 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClipCursor, GetClipCursor);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputData, GetRawInputData);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetSystemMetrics, GetSystemMetrics);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowsHookExW, SetWindowsHookExW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_UnhookWindowsHookEx, UnhookWindowsHookEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CallNextHookEx, CallNextHookEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardState, GetKeyboardState);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetKeyboardState, SetKeyboardState);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardLayout, GetKeyboardLayout);
@@ -12829,6 +12852,11 @@ typedef struct fpl__Win32WindowState {
 	double lastAbsoluteRawY;
 	fpl_b32 hasLastAbsoluteRaw;
 	fpl_b32 isRelativeMouseActive;
+	// The keyboard grab: the low level keyboard hook, the modifiers it swallows and therefore tracks itself, and the hooked keys that were down when it was installed
+	HHOOK keyboardHook;
+	fplKeyboardModifierFlags hookedModifiers;
+	fpl_b32 isAltGrControlDown;
+	uint8_t isDownBeforeHook[256];
 } fpl__Win32WindowState;
 #endif // FPL__ENABLE_WINDOW
 
@@ -13370,6 +13398,10 @@ typedef FPL__FUNC_X11_XWarpPointer(fpl__func_x11_XWarpPointer);
 typedef FPL__FUNC_X11_XGrabPointer(fpl__func_x11_XGrabPointer);
 #define FPL__FUNC_X11_XUngrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
 typedef FPL__FUNC_X11_XUngrabPointer(fpl__func_x11_XUngrabPointer);
+#define FPL__FUNC_X11_XGrabKeyboard(name) int name(fpl__X11_Display *display, fpl__X11_Window grab_window, fpl__X11_Bool owner_events, int pointer_mode, int keyboard_mode, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XGrabKeyboard(fpl__func_x11_XGrabKeyboard);
+#define FPL__FUNC_X11_XUngrabKeyboard(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XUngrabKeyboard(fpl__func_x11_XUngrabKeyboard);
 #define FPL__FUNC_X11_XQueryExtension(name) fpl__X11_Bool name(fpl__X11_Display *display, const char *name_str, int *major_opcode_return, int *first_event_return, int *first_error_return)
 typedef FPL__FUNC_X11_XQueryExtension(fpl__func_x11_XQueryExtension);
 #define FPL__FUNC_X11_XGetEventData(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_XGenericEventCookie *cookie)
@@ -13493,6 +13525,8 @@ extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
 extern FPL__FUNC_X11_XWarpPointer(XWarpPointer);
 extern FPL__FUNC_X11_XGrabPointer(XGrabPointer);
 extern FPL__FUNC_X11_XUngrabPointer(XUngrabPointer);
+extern FPL__FUNC_X11_XGrabKeyboard(XGrabKeyboard);
+extern FPL__FUNC_X11_XUngrabKeyboard(XUngrabKeyboard);
 extern FPL__FUNC_X11_XQueryExtension(XQueryExtension);
 extern FPL__FUNC_X11_XGetEventData(XGetEventData);
 extern FPL__FUNC_X11_XFreeEventData(XFreeEventData);
@@ -13564,6 +13598,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XWarpPointer *XWarpPointer;
 	fpl__func_x11_XGrabPointer *XGrabPointer;
 	fpl__func_x11_XUngrabPointer *XUngrabPointer;
+	fpl__func_x11_XGrabKeyboard *XGrabKeyboard;
+	fpl__func_x11_XUngrabKeyboard *XUngrabKeyboard;
 	fpl__func_x11_XQueryExtension *XQueryExtension;
 	fpl__func_x11_XGetEventData *XGetEventData;
 	fpl__func_x11_XFreeEventData *XFreeEventData;
@@ -13671,6 +13707,8 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWarpPointer, XWarpPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabPointer, XGrabPointer);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabPointer, XUngrabPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabKeyboard, XGrabKeyboard);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabKeyboard, XUngrabKeyboard);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryExtension, XQueryExtension);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetEventData, XGetEventData);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeEventData, XFreeEventData);
@@ -16993,8 +17031,9 @@ fpl_internal fpl__MouseLockState fpl__GetRequestedMouseLock(const fpl__InputGrab
 // A grab the operating system refused for now is tried again after this time while the events are pumped, SDL waits the same time between its attempts
 #define FPL__GRAB_RETRY_INTERVAL_MILLISECONDS 50
 
-// Applies a mouse state at the operating system, implemented by the Win32 and the X11 window part. Returns false when the operating system refused it for now, it is tried again then.
+// Applies a mouse state or the keyboard grab at the operating system, implemented by the Win32 and the X11 window part. Returns false when the operating system refused it for now, it is tried again then.
 fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState);
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled);
 
 // The only place that decides which grab is active: a requested grab is active while the window runs, has the focus, is shown and is not minimized
 fpl_internal void fpl__UpdateInputGrab(fpl__PlatformAppState *appState) {
@@ -17018,8 +17057,16 @@ fpl_internal void fpl__UpdateInputGrab(fpl__PlatformAppState *appState) {
 			isRetryNeeded = true;
 		}
 	}
-	// No platform applies the keyboard grab yet, its setter refuses every request that would need one
-	inputGrab->appliedKeyboardGrab = wantedKeyboardGrab;
+	// The keyboard grab does not wait for the mouse lock suspension, the user can not reach the window frame with the keyboard
+	bool isKeyboardGrabApplied = inputGrab->appliedKeyboardGrab != 0;
+	if (wantedKeyboardGrab != isKeyboardGrabApplied) {
+		bool isApplied = fpl__PlatformApplyKeyboardGrab(appState, wantedKeyboardGrab);
+		if (isApplied) {
+			inputGrab->appliedKeyboardGrab = wantedKeyboardGrab;
+		} else {
+			isRetryNeeded = true;
+		}
+	}
 	if (isRetryNeeded) {
 		fplMilliseconds now = fplMillisecondsQuery();
 		inputGrab->nextRetryTimeMilliseconds = now + FPL__GRAB_RETRY_INTERVAL_MILLISECONDS;
@@ -17173,12 +17220,8 @@ fpl_common_api bool fplIsWindowRelativeMouse(void) {
 
 fpl_common_api bool fplSetWindowKeyboardGrab(const bool enabled) {
 	FPL__CheckPlatform(false);
-	if (enabled) {
-		FPL__WARNING(FPL__MODULE_WINDOW, "The keyboard grab is not implemented yet");
-		return(false);
-	}
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	appState->window.inputGrab.requestedKeyboardGrab = false;
+	appState->window.inputGrab.requestedKeyboardGrab = enabled;
 	fpl__UpdateInputGrab(appState);
 	return(true);
 }
@@ -19262,6 +19305,221 @@ fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
 	fpl__RetryInputGrab(appState);
 }
 
+// AltGr sends a left Ctrl with this scan code before the right Alt, the right Alt alone stands for AltGr then
+#define FPL__WIN32_ALTGR_FAKE_CONTROL_SCANCODE 0x21D
+// A down key in the key state of a thread, see GetKeyboardState()
+#define FPL__WIN32_KEY_STATE_DOWN 0x80
+
+// The keys the keyboard grab takes away from the system, like SDL: Win, Alt and Ctrl, so they reach the window in the same order as the keys they are combined with,
+// Tab and Esc for Alt+Tab, Alt+Esc and Ctrl+Esc, and Print for the screen capture.
+fpl_internal bool fpl__Win32IsHookedKey(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LWIN:
+		case VK_RWIN:
+		case VK_LMENU:
+		case VK_RMENU:
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+		case VK_TAB:
+		case VK_ESCAPE:
+		case VK_SNAPSHOT:
+			return(true);
+		default:
+			return(false);
+	}
+}
+
+// WM_KEYDOWN reports Alt and Ctrl with their side independent key code, the hook reports them the same way
+fpl_internal DWORD fpl__Win32GetReportedHookedKey(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LMENU:
+		case VK_RMENU:
+			return(VK_MENU);
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+			return(VK_CONTROL);
+		default:
+			return(virtualKey);
+	}
+}
+
+fpl_internal fplKeyboardModifierFlags fpl__Win32GetHookedModifierFlag(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LWIN:
+			return(fplKeyboardModifierFlags_LSuper);
+		case VK_RWIN:
+			return(fplKeyboardModifierFlags_RSuper);
+		case VK_LMENU:
+			return(fplKeyboardModifierFlags_LAlt);
+		case VK_RMENU:
+			return(fplKeyboardModifierFlags_RAlt);
+		case VK_LCONTROL:
+			return(fplKeyboardModifierFlags_LCtrl);
+		case VK_RCONTROL:
+			return(fplKeyboardModifierFlags_RCtrl);
+		default:
+			return(fplKeyboardModifierFlags_None);
+	}
+}
+
+// The system does not know the swallowed Alt and Ctrl, so TranslateMessage() would make the text without them (AltGr+Q would give q instead of @).
+// The key state of the thread, which TranslateMessage() reads, gets them here.
+fpl_internal void fpl__Win32UpdateThreadModifierState(const fpl__Win32Api *wapi, const fpl__Win32WindowState *windowState) {
+	BYTE keyState[256];
+	if (!wapi->user.GetKeyboardState(keyState)) {
+		return;
+	}
+	fplKeyboardModifierFlags hookedModifiers = windowState->hookedModifiers;
+	bool isLeftAltDown = (hookedModifiers & fplKeyboardModifierFlags_LAlt) != 0;
+	bool isRightAltDown = (hookedModifiers & fplKeyboardModifierFlags_RAlt) != 0;
+	bool isLeftControlDown = (hookedModifiers & fplKeyboardModifierFlags_LCtrl) != 0 || windowState->isAltGrControlDown;
+	bool isRightControlDown = (hookedModifiers & fplKeyboardModifierFlags_RCtrl) != 0;
+	keyState[VK_LMENU] = isLeftAltDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_RMENU] = isRightAltDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_MENU] = (isLeftAltDown || isRightAltDown) ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_LCONTROL] = isLeftControlDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_RCONTROL] = isRightControlDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_CONTROL] = (isLeftControlDown || isRightControlDown) ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	wapi->user.SetKeyboardState(keyState);
+}
+
+// Reports a key the hook swallowed, the same way WM_KEYDOWN and WM_KEYUP would
+fpl_internal void fpl__Win32ReportHookedKey(fpl__PlatformAppState *appState, const KBDLLHOOKSTRUCT *hookData, const bool isUp) {
+#if defined(FPL__ENABLE_INPUT)
+	if (appState->currentSettings.input.disabledEvents) {
+		return;
+	}
+	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) {
+		return;
+	}
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	DWORD reportedKey = fpl__Win32GetReportedHookedKey(hookData->vkCode);
+	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->hookedModifiers;
+	fplButtonState buttonState = isUp ? fplButtonState_Release : fplButtonState_Press;
+	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, (uint64_t)reportedKey, modifiers, buttonState, false);
+#else
+	(void)appState;
+	(void)hookData;
+	(void)isUp;
+#endif
+}
+
+// The low level keyboard hook of the keyboard grab. Windows calls it in the thread that installed it, while that thread pumps its messages.
+fpl_internal LRESULT CALLBACK fpl__Win32KeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) {
+		return(0);
+	}
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (code != HC_ACTION) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	// The hook is removed when the window loses the focus, until then another window may already be in front
+	HWND foregroundWindow = wapi->user.GetForegroundWindow();
+	if (foregroundWindow != windowState->windowHandle) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	const KBDLLHOOKSTRUCT *hookData = (const KBDLLHOOKSTRUCT *)lParam;
+	bool isUp = (hookData->flags & LLKHF_UP) != 0;
+	if (hookData->scanCode == FPL__WIN32_ALTGR_FAKE_CONTROL_SCANCODE) {
+		windowState->isAltGrControlDown = !isUp;
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+		return(1);
+	}
+	DWORD virtualKey = hookData->vkCode;
+	if (!fpl__Win32IsHookedKey(virtualKey)) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	fplKeyboardModifierFlags modifierFlag = fpl__Win32GetHookedModifierFlag(virtualKey);
+	if (modifierFlag != fplKeyboardModifierFlags_None) {
+		if (isUp) {
+			windowState->hookedModifiers &= ~modifierFlag;
+		} else {
+			windowState->hookedModifiers |= modifierFlag;
+		}
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+	}
+	fpl__Win32ReportHookedKey(appState, hookData, isUp);
+	// A key that was down before the hook came gets its first release through, so the system does not keep it pressed
+	if (isUp && virtualKey < fplArrayCount(windowState->isDownBeforeHook) && windowState->isDownBeforeHook[virtualKey]) {
+		windowState->isDownBeforeHook[virtualKey] = 0;
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	return(1);
+}
+
+// Installs the low level keyboard hook in the window thread, while the keyboard grab is active. Windows removes a hook that takes longer than LowLevelHooksTimeout without telling,
+// so the main loop has to pump the events often (at least every 100 ms).
+fpl_internal bool fpl__Win32InstallKeyboardHook(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	for (DWORD virtualKey = 0; virtualKey < fplArrayCount(windowState->isDownBeforeHook); ++virtualKey) {
+		bool isDown = fpl__Win32IsHookedKey(virtualKey) && fpl__Win32IsKeyDown(wapi, (int)virtualKey);
+		windowState->isDownBeforeHook[virtualKey] = isDown ? 1 : 0;
+	}
+	windowState->hookedModifiers = fplKeyboardModifierFlags_None;
+	windowState->isAltGrControlDown = false;
+	HINSTANCE moduleHandle = fpl__global__InitState.win32.appInstance;
+	windowState->keyboardHook = wapi->user.SetWindowsHookExW(WH_KEYBOARD_LL, fpl__Win32KeyboardHookProc, moduleHandle, 0);
+	bool result = windowState->keyboardHook != fpl_null;
+	return(result);
+}
+
+fpl_internal void fpl__Win32RemoveKeyboardHook(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (windowState->keyboardHook != fpl_null) {
+		wapi->user.UnhookWindowsHookEx(windowState->keyboardHook);
+		windowState->keyboardHook = fpl_null;
+	}
+	// The releases of modifiers that are still down may go to another window, so the key state of the thread must not keep them
+	bool hadHookedModifiers = windowState->hookedModifiers != fplKeyboardModifierFlags_None || windowState->isAltGrControlDown;
+	windowState->hookedModifiers = fplKeyboardModifierFlags_None;
+	windowState->isAltGrControlDown = false;
+	if (hadHookedModifiers) {
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+	}
+}
+
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (!enabled) {
+		fpl__Win32RemoveKeyboardHook(appState);
+		return(true);
+	}
+	if (windowState->windowHandle == fpl_null) {
+		return(false);
+	}
+	if (!fpl__Win32InstallKeyboardHook(appState)) {
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Installing the low level keyboard hook failed, trying again");
+		}
+		return(false);
+	}
+	return(true);
+}
+
+// A key the hook takes away from the system arrived as a normal message, so Windows removed the hook (it took longer than LowLevelHooksTimeout), it is installed again
+fpl_internal void fpl__Win32CheckKeyboardHookLost(fpl__PlatformAppState *appState, const WPARAM virtualKey) {
+	if (!appState->window.inputGrab.appliedKeyboardGrab) {
+		return;
+	}
+	bool isHookedKey = virtualKey == VK_MENU || virtualKey == VK_CONTROL || fpl__Win32IsHookedKey((DWORD)virtualKey);
+	if (!isHookedKey) {
+		return;
+	}
+	FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "The low level keyboard hook was lost, installing it again");
+	fpl__Win32RemoveKeyboardHook(appState);
+	fpl__Win32InstallKeyboardHook(appState);
+}
+
 fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppState *appState) {
 	fpl__Win32AppState *win32State = &appState->win32;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
@@ -19394,6 +19652,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
+			if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+				fpl__Win32CheckKeyboardHookLost(appState, wParam);
+			}
 #if defined(FPL__ENABLE_INPUT)
 			MSG forwarded = fplZeroInit;
 			forwarded.hwnd = hwnd;
@@ -19405,6 +19666,11 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			ev.payload = (void *)&forwarded;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
+			// With the keyboard grab F10 and Alt+Space do not open the menus, the keys belong to the application
+			bool isSystemKey = msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
+			if (isSystemKey && appState->window.inputGrab.appliedKeyboardGrab) {
+				return 0;
+			}
 		} break;
 
 		case WM_CHAR:
@@ -19587,6 +19853,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_SYSCOMMAND:
 		{
 			WPARAM masked = wParam & 0xFFF0;
+			// The keyboard menu (Alt, F10, Alt+Space) stays closed while the keyboard is grabbed
+			if (masked == SC_KEYMENU && appState->window.inputGrab.appliedKeyboardGrab) {
+				return 0;
+			}
 			switch (masked) {
 				case SC_SCREENSAVE:
 				case SC_MONITORPOWER: {
@@ -21079,7 +21349,9 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			uint64_t keyCode = msg->wParam;
 			bool isDown = (msg->lParam & (1 << 31)) == 0;
 			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
-			fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
+			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
+			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
 			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
 			return true;
 		}
@@ -30748,6 +31020,32 @@ fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, c
 		fpl__X11StopRelativeMouse(appState);
 	}
 	return(true);
+}
+
+// An active keyboard grab beats the passive grabs of the window manager, so Alt+Tab, Super and Alt+F4 reach the window. What the X server does itself before any client sees the keys
+// (virtual terminal switch with Ctrl+Alt+F1..F12, Ctrl+Alt+Backspace when enabled) and Magic SysRq can not be grabbed.
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(!enabled);
+	}
+	if (!enabled) {
+		x11Api->XUngrabKeyboard(windowState->display, FPL__X11_CurrentTime);
+		x11Api->XFlush(windowState->display);
+		return(true);
+	}
+	// The focus events of the own grab come with NotifyGrab and NotifyUngrab, the event loop ignores them already
+	int grabResult = x11Api->XGrabKeyboard(windowState->display, windowState->core.window, FPL__X11_True, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, FPL__X11_CurrentTime);
+	if (grabResult == FPL__X11_GrabSuccess) {
+		return(true);
+	}
+	// AlreadyGrabbed: the window manager still holds the keyboard, like right after Alt+Tab
+	if (!appState->window.inputGrab.isRetryPending) {
+		const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
+		FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabKeyboard failed with %s, trying again", grabResultName);
+	}
+	return(false);
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
