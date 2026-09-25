@@ -4,8 +4,9 @@
 # WARNING: The tests open small windows, move the real mouse pointer and send key presses to the focused window, including Alt+Tab.
 # Tests that grab the keyboard or the mouse hold the real input for a few seconds. Every demo runs under "timeout -s KILL",
 # and an X client that is killed loses all its grabs. Do not run this in a loop without telling the person at the desk.
-# The mouse grab tests lock the real pointer inside a demo window, and the retry test lets a small python-xlib client hold the pointer
-# for two seconds, clicks go nowhere then.
+# The mouse grab tests lock the real pointer inside a demo window, and the retry tests let a small python-xlib client hold the pointer
+# or the keyboard for two seconds, clicks and keys go nowhere then. The keyboard grab tests send Alt+Tab, Alt+F4 and Super,
+# a keyboard grab that does not work lets KWin switch or close windows or open its launcher.
 #
 # Usage: run_grab_tests.sh [--demo=<path>] [--fallback-demo=<path>] [--tests=<name,...>] [--list]
 #   --demo            FPL_InputGrab executable (default: Release build, then Debug build under demos/build/FPL_InputGrab)
@@ -42,8 +43,8 @@ outsideOffsetX=700
 maximumTestAttempts=3
 # Distance of pointer targets outside of the client area, far enough to leave it, close enough to stay away from the screen edges and their corner actions
 outsideDistance=30
-# Another client holds the pointer this long in the retry test, the demo must get the focus meanwhile
-pointerHoldSeconds=2
+# Another client holds the pointer or the keyboard this long in the retry tests, the demo must get the focus meanwhile
+inputHoldSeconds=2
 # Relative moves of the relative mode tests and their sums, small enough to never reach an edge of the window from its center
 relativeMoves=("10 0" "0 7" "-4 -3" "25 12" "-6 20")
 relativeSumX=25
@@ -66,7 +67,7 @@ resizedHeight=300
 
 # --- Tests -------------------------------------------------------------------------------------------------------------------
 
-allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab relative_delta_sum relative_hides_and_keeps_pointer relative_returns_to_start relative_warp_moves_start relative_released_on_focus_loss relative_fallback_delta_sum relative_fallback_hides_and_keeps_pointer relative_fallback_returns_to_start)
+allTests=(mouse_move move_deltas no_delta_after_reenter warp_selftest key_press_release focus_switch focus_loss_releases_keys alt_tab_without_grab_switches no_stuck_alt_after_alt_tab mouse_grab_confines mouse_grab_released_on_focus_loss mouse_grab_restored_on_focus_gain mouse_grab_follows_resize mouse_grab_retries_when_already_grabbed warp_limited_by_mouse_grab relative_delta_sum relative_hides_and_keeps_pointer relative_returns_to_start relative_warp_moves_start relative_released_on_focus_loss relative_fallback_delta_sum relative_fallback_hides_and_keeps_pointer relative_fallback_returns_to_start keyboard_grab_keeps_alt_tab keyboard_grab_keeps_alt_f4 keyboard_grab_text_input keyboard_grab_released_on_focus_loss keyboard_grab_retries_when_already_grabbed keyboard_grab_keeps_super)
 
 # --- Arguments ---------------------------------------------------------------------------------------------------------------
 
@@ -349,23 +350,31 @@ ExpectPointerFree() {
 	return 1
 }
 
-# Holds an active pointer grab of another client on the root window for the given time. Sets holderLog, which gets "grab <status>" and "released".
-StartPointerHolder() {
-	local holdSeconds="$1"
+# Holds an active grab of another client on the root window for the given time, "pointer" or "keyboard". Sets holderLog, which gets "grab <status>" and "released".
+StartInputHolder() {
+	local device="$1"
+	local holdSeconds="$2"
 	holderLog="$outputDirectory/$currentTest-holder.log"
-	timeout -s KILL "$((holdSeconds + killGraceSeconds))" python3 - "$holdSeconds" > "$holderLog" 2>&1 << 'PYTHON_END' &
+	timeout -s KILL "$((holdSeconds + killGraceSeconds))" python3 - "$device" "$holdSeconds" > "$holderLog" 2>&1 << 'PYTHON_END' &
 import sys
 import time
 from Xlib import X, display
-holdSeconds = float(sys.argv[1])
+device = sys.argv[1]
+holdSeconds = float(sys.argv[2])
 xDisplay = display.Display()
 root = xDisplay.screen().root
-eventMask = X.ButtonPressMask | X.ButtonReleaseMask | X.PointerMotionMask
-status = root.grab_pointer(False, eventMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, X.CurrentTime)
+if device == "keyboard":
+    status = root.grab_keyboard(False, X.GrabModeAsync, X.GrabModeAsync, X.CurrentTime)
+else:
+    eventMask = X.ButtonPressMask | X.ButtonReleaseMask | X.PointerMotionMask
+    status = root.grab_pointer(False, eventMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, X.CurrentTime)
 xDisplay.sync()
 print("grab %d" % status, flush=True)
 time.sleep(holdSeconds)
-xDisplay.ungrab_pointer(X.CurrentTime)
+if device == "keyboard":
+    xDisplay.ungrab_keyboard(X.CurrentTime)
+else:
+    xDisplay.ungrab_pointer(X.CurrentTime)
 xDisplay.sync()
 print("released", flush=True)
 PYTHON_END
@@ -707,7 +716,7 @@ Test_mouse_grab_retries_when_already_grabbed() {
 	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
 	ActivateDemo "$windowB" "$logB" || return 1
 	ReadClientArea "$windowA"
-	StartPointerHolder "$pointerHoldSeconds"
+	StartInputHolder pointer "$inputHoldSeconds"
 	ExpectLogLine "$holderLog" 0 "^grab 0$" || return 1
 	mark=$(LogLineCount "$logA")
 	ActivateDemo "$windowA" "$logA" || return 1
@@ -870,6 +879,129 @@ Test_relative_fallback_hides_and_keeps_pointer() {
 Test_relative_fallback_returns_to_start() {
 	local demoBinary="$fallbackDemo"
 	Test_relative_returns_to_start
+}
+
+# Fails when the active window is not the given one. A window that shows up in front instead (KWin switcher or launcher) is closed with Escape.
+ExpectActiveWindow() {
+	local window="$1"
+	local what="$2"
+	local activeWindow
+	activeWindow=$(xdotool getactivewindow 2> /dev/null)
+	if [ "$activeWindow" != "$window" ]; then
+		xdotool key Escape
+		Fail "$what, the active window is $activeWindow instead of $window"
+		return 1
+	fi
+	return 0
+}
+
+# With the keyboard grab Alt+Tab goes to the window, the window manager does not switch. The grab comes back with the focus, demo A lost it to B at the start.
+Test_keyboard_grab_keeps_alt_tab() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowB" "$logB" || return 1
+	ActivateDemo "$windowA" "$logA" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logA")
+	xdotool key alt+Tab
+	sleep "$settleSeconds"
+	ExpectActiveWindow "$windowA" "Alt+Tab switched the window" || return 1
+	ExpectLogLine "$logA" "$mark" "key button state=press .* key=Tab " || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# With the keyboard grab Alt+F4 goes to the window, the window manager does not close it
+Test_keyboard_grab_keeps_alt_f4() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool key alt+F4
+	sleep "$settleSeconds"
+	if ! kill -0 "$processId" 2> /dev/null || grep -q "window closed" <(tail -n +"$((mark + 1))" "$logFile"); then
+		Fail "Alt+F4 closed the demo"
+		return 1
+	fi
+	ExpectLogLine "$logFile" "$mark" "key button state=press .* key=F4 " || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# The text input keeps working while the keyboard is grabbed
+Test_keyboard_grab_text_input() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool key a
+	ExpectLogLine "$logFile" "$mark" "key input code=97$" || return 1
+	StopDemo "$processId"
+	return 0
+}
+
+# Another window gets the focus: the grab is released, so Alt+Tab from there switches back to demo A
+Test_keyboard_grab_released_on_focus_loss() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowA" "$logA" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logA")
+	ActivateDemo "$windowB" "$logB" || return 1
+	ExpectLogLine "$logA" "$mark" "window lostfocus" || return 1
+	sleep "$settleSeconds"
+	xdotool key alt+Tab
+	sleep "$settleSeconds"
+	ExpectActiveWindow "$windowA" "Alt+Tab from demo B did not switch back to demo A" || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# Another client holds the keyboard when the window gets the focus: XGrabKeyboard fails with AlreadyGrabbed, FPL tries again and gets the grab once the other client lets go
+Test_keyboard_grab_retries_when_already_grabbed() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab --log-fpl || return 1
+	local windowA="$demoWindow" logA="$demoLog" processA="$demoPid"
+	StartDemo B "$secondWindowX" "$secondWindowY" || return 1
+	local windowB="$demoWindow" logB="$demoLog" processB="$demoPid" mark
+	ActivateDemo "$windowB" "$logB" || return 1
+	StartInputHolder keyboard "$inputHoldSeconds"
+	ExpectLogLine "$holderLog" 0 "^grab 0$" || return 1
+	mark=$(LogLineCount "$logA")
+	ActivateDemo "$windowA" "$logA" || return 1
+	ExpectLogLine "$logA" "$mark" "XGrabKeyboard failed with AlreadyGrabbed" || return 1
+	ExpectLogLine "$holderLog" 0 "^released$" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logA")
+	xdotool key alt+Tab
+	sleep "$settleSeconds"
+	ExpectActiveWindow "$windowA" "Alt+Tab switched the window after the other client let go" || return 1
+	ExpectLogLine "$logA" "$mark" "key button state=press .* key=Tab " || return 1
+	StopDemo "$processA"
+	StopDemo "$processB"
+	return 0
+}
+
+# With the keyboard grab Super goes to the window, the launcher of the desktop does not open
+Test_keyboard_grab_keeps_super() {
+	StartDemo A "$firstWindowX" "$firstWindowY" --keyboard-grab || return 1
+	local window="$demoWindow" logFile="$demoLog" processId="$demoPid" mark
+	ActivateDemo "$window" "$logFile" || return 1
+	sleep "$settleSeconds"
+	mark=$(LogLineCount "$logFile")
+	xdotool key super
+	sleep "$settleSeconds"
+	ExpectActiveWindow "$window" "Super opened something" || return 1
+	ExpectLogLine "$logFile" "$mark" "key button state=press .* key=LeftSuper " || return 1
+	StopDemo "$processId"
+	return 0
 }
 
 # --- Runner ------------------------------------------------------------------------------------------------------------------
