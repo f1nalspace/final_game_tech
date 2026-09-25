@@ -331,6 +331,9 @@ SOFTWARE.
 	- Changed: A checked box is drawn as a TICK now, where it used to be a filled square - in fuiCheckbox, in fuiMenuItemCheck and on a checked row of fuiCheckTreeView alike.
 	  A filled square is what a Mixed row is drawn as, and next to each other the two were one size apart: a box wholly checked read as half of it.
 	  Unchecked stays an empty box and Mixed stays the small filled square. A radio button keeps its square dot, having no half state it could be taken for.
+	- New: fuiDrawArrowGlyph with fuiArrowDirection, a filled triangle pointing up, down, left or right. fuiDrawCollapseGlyph is that triangle pointing right or down, and draws through it now.
+	- New: fuiBadge with fuiMeasureBadge and fuiDrawBadge, a small arrow with a text behind it - an arrow pointing up and a 2 - for a count that stands behind a caption. The arrow is drawn, as tall as the digits of the font and on their baseline, so a font baked for Latin-1 needs no arrow of its own.
+	- New: fuiToolStripCommandEx, a strip command with a badge behind its label. On a row the button grows by a space and the badge, and label and badge are centred on it as one caption. The badge is the caller's and not the table's, because it changes from frame to frame. fuiToolStripCommand runs through it.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -3304,6 +3307,62 @@ fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, c
 */
 fui_api void fuiDrawCloseGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color, const float thickness);
 
+/**
+* @enum fuiArrowDirection
+* @brief Which way an arrow glyph points.
+*/
+typedef enum fuiArrowDirection {
+	//! The tip at the top edge of its box
+	fuiArrowDirection_Up = 0,
+	//! The tip at the bottom edge
+	fuiArrowDirection_Down,
+	//! The tip at the left edge
+	fuiArrowDirection_Left,
+	//! The tip at the right edge
+	fuiArrowDirection_Right,
+} fuiArrowDirection;
+
+/**
+* @brief Draws a filled triangle that points one way.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] glyphBox The box the triangle fills exactly: its tip on the middle of one edge, its base along the opposite edge, in pixels.
+* @param[in] direction Which way it points @ref fuiArrowDirection.
+* @param[in] color The fill color.
+* @note Drawn rather than typed, like @ref fuiDrawCollapseGlyph - which is this glyph pointing right or down. A font baked for Latin-1 has no arrows at all, and one that has them makes them whatever size it likes.
+*/
+fui_api void fuiDrawArrowGlyph(fuiContext *context, const fuiRect glyphBox, const fuiArrowDirection direction, const fuiColor color);
+
+/**
+* @struct fuiBadge
+* @brief A small arrow with a text behind it, like an arrow pointing up and a 2, which stands behind a caption and says something about it.
+* @note The badge knows nothing of what its text means. A caller showing how far a branch is ahead says so by the direction and the count, and the badge only draws them.
+*/
+typedef struct fuiBadge {
+	//! What stands behind the arrow, usually a count. Null or empty is no badge at all, which is measured as nothing and draws nothing
+	const char *text;
+	//! Which way the arrow points @ref fuiArrowDirection
+	fuiArrowDirection arrowDirection;
+} fuiBadge;
+
+/**
+* @brief Returns how wide a badge is drawn: its arrow, the gap behind it and its text, in pixels.
+* @param[in] context Reference to the context @ref fuiContext.
+* @param[in] badge Reference to the badge @ref fuiBadge, may be null.
+* @return Returns the width, or zero for no badge.
+* @note The room between a caption and the badge behind it is the caller's. A space of the font is what the tool strip leaves, see @ref fuiToolStripCommandEx.
+*/
+fui_api float fuiMeasureBadge(const fuiContext *context, const fuiBadge *badge);
+
+/**
+* @brief Draws a badge at the left edge of a box, vertically centered on it the way a caption is.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box, in pixels. The badge starts at its left edge and is clipped to it.
+* @param[in] badge Reference to the badge @ref fuiBadge, may be null.
+* @param[in] color The color of both the arrow and the text.
+* @note The arrow is as tall as the digits of the font and stands on the same baseline, so arrow and count read as one word with the caption in front of it.
+*/
+fui_api void fuiDrawBadge(fuiContext *context, const fuiRect rect, const fuiBadge *badge, const fuiColor color);
+
 // ****************************************************************************
 //
 // > Tooltip
@@ -4384,6 +4443,19 @@ fui_api bool fuiToolStripButton(fuiContext *context, const char *label);
 * @note A command that is a switch (@ref fuiCommand.isChecked) is drawn the way @ref fuiToolStripToggle draws a toggle, lit and pushed in while it is on.
 */
 fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, void *userData);
+
+/**
+* @brief One button in the open tool strip that runs a command, with a badge behind its label.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] table Reference to the command table @ref fuiCommandTable.
+* @param[in] id Identifies the command.
+* @param[in] badge Reference to the badge @ref fuiBadge behind the label, may be null. Without a text it is no badge, and the button is exactly what @ref fuiToolStripCommand draws.
+* @param[in] userData The caller's context, handed to the predicates and the callback.
+* @return Returns true on the frame the command ran.
+* @note A horizontal strip makes the button wider by a space and the badge, so it grows and shrinks with the badge. Label and badge are drawn in the same color, muted while the command is disabled.
+* @note The badge is the caller's and not the command's, because it changes from frame to frame while what the table says about a command does not.
+*/
+fui_api bool fuiToolStripCommandEx(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, const fuiBadge *badge, void *userData);
 
 /**
 * @brief One button in the open tool strip that stays lit while its mode is the active one.
@@ -8138,6 +8210,14 @@ fui_api void fuiDrawTextBlock(fuiContext *context, const char *text, const size_
 #define FUI__SCROLL_LAYOUT_HEIGHT 1000000.0f
 //! Side of a title bar icon, as a fraction of the font height. Half an em is about what the character it replaces inked
 #define FUI__TITLE_BAR_ICON_FONT_FRACTION 0.5f
+//! How much wider the arrow of a badge is than tall: an equilateral triangle, which is what the arrows of a font look like
+#define FUI__BADGE_ARROW_ASPECT 1.15f
+//! The gap between the arrow of a badge and its text, as a fraction of the font height
+#define FUI__BADGE_ARROW_GAP_FRACTION 0.05f
+//! The character whose ink says how tall the arrow of a badge is. A badge holds a count, and its arrow stands as tall as the digits beside it
+#define FUI__BADGE_DIGIT_CODEPOINT ((uint32_t)'0')
+//! How tall the digits are taken to be when the font has no glyph for the one above, as a fraction of its ascent
+#define FUI__BADGE_DIGIT_ASCENT_FRACTION 0.72f
 //! How many diagonal ticks a resize grip is drawn from
 #define FUI__RESIZE_GRIP_TICK_COUNT 3
 //! Vertical padding above and below the text of a group box title bar
@@ -8533,7 +8613,7 @@ fui_api float fuiTitleBarIconSize(const fuiContext *context) {
 	return(result);
 }
 
-fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, const bool isCollapsed, const fuiColor color) {
+fui_api void fuiDrawArrowGlyph(fuiContext *context, const fuiRect glyphBox, const fuiArrowDirection direction, const fuiColor color) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
 		return;
@@ -8542,19 +8622,43 @@ fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, c
 	float right = glyphBox.x + glyphBox.w;
 	float top = glyphBox.y;
 	float bottom = glyphBox.y + glyphBox.h;
+	float middleX = (left + right) * 0.5f;
+	float middleY = (top + bottom) * 0.5f;
 	fuiVec2 corners[3];
-	if(isCollapsed) {
-		// Pointing right, at content that is folded away.
-		corners[0] = fuiV2(left, top);
-		corners[1] = fuiV2(left, bottom);
-		corners[2] = fuiV2(right, (top + bottom) * 0.5f);
-	} else {
-		// Pointing down, at content that is open.
-		corners[0] = fuiV2(left, top);
-		corners[1] = fuiV2(right, top);
-		corners[2] = fuiV2((left + right) * 0.5f, bottom);
+	switch(direction) {
+		case fuiArrowDirection_Up:
+			corners[0] = fuiV2(left, bottom);
+			corners[1] = fuiV2(right, bottom);
+			corners[2] = fuiV2(middleX, top);
+			break;
+		case fuiArrowDirection_Down:
+			corners[0] = fuiV2(left, top);
+			corners[1] = fuiV2(right, top);
+			corners[2] = fuiV2(middleX, bottom);
+			break;
+		case fuiArrowDirection_Left:
+			corners[0] = fuiV2(right, top);
+			corners[1] = fuiV2(right, bottom);
+			corners[2] = fuiV2(left, middleY);
+			break;
+		case fuiArrowDirection_Right:
+		default:
+			corners[0] = fuiV2(left, top);
+			corners[1] = fuiV2(left, bottom);
+			corners[2] = fuiV2(right, middleY);
+			break;
 	}
 	fuiDrawPolygon(context, corners, 3, color);
+}
+
+fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, const bool isCollapsed, const fuiColor color) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	// Pointing right at content that is folded away, and down at content that is open.
+	fuiArrowDirection direction = isCollapsed ? fuiArrowDirection_Right : fuiArrowDirection_Down;
+	fuiDrawArrowGlyph(context, glyphBox, direction, color);
 }
 
 fui_api void fuiDrawCloseGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color, const float thickness) {
@@ -8736,6 +8840,13 @@ fui_inline float fui__FloorToPixel(const float value) {
 		truncated -= 1;
 	}
 	return((float)truncated);
+}
+
+//! Rounds a coordinate to the NEAREST whole pixel
+fui_inline float fui__RoundToPixel(const float value) {
+	const float halfPixel = 0.5f;
+	float result = fui__FloorToPixel(value + halfPixel);
+	return(result);
 }
 
 //! Rounds a coordinate UP to a whole pixel
@@ -12671,6 +12782,102 @@ fui_inline fuiRect fui__StripNextSlot(fuiContext *context, const float thickness
 	return(slot);
 }
 
+// ----------------------------------------------------------------------------
+// > Badge
+// ----------------------------------------------------------------------------
+
+//! Whether a badge says anything at all. One without a text is no badge, so a caller can hand the same badge on every frame and only fill its text while there is something to count
+fui_inline bool fui__BadgeIsThere(const fuiBadge *badge) {
+	bool result = (badge != fui_null) && (badge->text != fui_null) && (badge->text[0] != 0);
+	return(result);
+}
+
+/*
+Where the ink of a digit stands in a line of text: how far below the top of the line it begins, and how tall it is. Both in pixels.
+
+Read off the font's own glyph for a zero rather than off a metric, because the ascent reaches up to the accents above the capitals, and an arrow that tall would tower over the count beside it.
+*/
+fui_inline void fui__MeasureDigitInk(const fuiContext *context, const float pixelHeight, float *outTopBelowLine, float *outHeight) {
+	const fuiFont *font = context->font;
+	float baselineBelowLine = font->metrics.ascent * pixelHeight;
+	fuiGlyph digitGlyph;
+	bool fontHasTheDigit = false;
+	if(font->getGlyph != fui_null) {
+		fontHasTheDigit = font->getGlyph(font->userData, FUI__BADGE_DIGIT_CODEPOINT, &digitGlyph);
+	}
+	bool digitHasInk = fontHasTheDigit && (digitGlyph.size.y > 0.0f);
+	if(!digitHasInk) {
+		float guessedHeight = baselineBelowLine * FUI__BADGE_DIGIT_ASCENT_FRACTION;
+		*outTopBelowLine = baselineBelowLine - guessedHeight;
+		*outHeight = guessedHeight;
+		return;
+	}
+	*outTopBelowLine = baselineBelowLine + digitGlyph.offset.y * pixelHeight;
+	*outHeight = digitGlyph.size.y * pixelHeight;
+}
+
+//! How wide the arrow of a badge is and the gap behind it, both following from the digits it stands beside
+fui_inline void fui__MeasureBadgeArrow(const fuiContext *context, const float pixelHeight, float *outArrowWidth, float *outArrowGap) {
+	float digitTopBelowLine = 0.0f;
+	float digitHeight = 0.0f;
+	fui__MeasureDigitInk(context, pixelHeight, &digitTopBelowLine, &digitHeight);
+	float arrowHeight = fui__RoundToPixel(digitHeight);
+	float arrowWidth = arrowHeight * FUI__BADGE_ARROW_ASPECT;
+	*outArrowWidth = fui__RoundToPixel(arrowWidth);
+	*outArrowGap = pixelHeight * FUI__BADGE_ARROW_GAP_FRACTION;
+}
+
+fui_api float fuiMeasureBadge(const fuiContext *context, const fuiBadge *badge) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || context->font == fui_null) {
+		return(0.0f);
+	}
+	bool badgeIsThere = fui__BadgeIsThere(badge);
+	if(!badgeIsThere) {
+		return(0.0f);
+	}
+	float pixelHeight = context->theme.fontHeight;
+	float arrowWidth = 0.0f;
+	float arrowGap = 0.0f;
+	fui__MeasureBadgeArrow(context, pixelHeight, &arrowWidth, &arrowGap);
+	fuiVec2 textSize = fuiMeasureText(context, badge->text, 0, pixelHeight);
+	float result = arrowWidth + arrowGap + textSize.x;
+	return(result);
+}
+
+fui_api void fuiDrawBadge(fuiContext *context, const fuiRect rect, const fuiBadge *badge, const fuiColor color) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || context->font == fui_null) {
+		return;
+	}
+	bool badgeIsThere = fui__BadgeIsThere(badge);
+	if(!badgeIsThere) {
+		return;
+	}
+	float pixelHeight = context->theme.fontHeight;
+	float arrowWidth = 0.0f;
+	float arrowGap = 0.0f;
+	fui__MeasureBadgeArrow(context, pixelHeight, &arrowWidth, &arrowGap);
+
+	// The line is placed the way fui__DrawTextLeftAligned places the text behind the arrow, so the arrow stands on the baseline of the digits beside it.
+	float lineHeight = fui__LineExtent(context->font, pixelHeight);
+	float lineTop = rect.y + (rect.h - lineHeight) * 0.5f;
+	float digitTopBelowLine = 0.0f;
+	float digitHeight = 0.0f;
+	fui__MeasureDigitInk(context, pixelHeight, &digitTopBelowLine, &digitHeight);
+	// On whole pixels, so the tip stands in the middle of the base rather than a pixel beside it.
+	float arrowLeft = fui__RoundToPixel(rect.x);
+	float arrowTop = fui__RoundToPixel(lineTop + digitTopBelowLine);
+	float arrowHeight = fui__RoundToPixel(digitHeight);
+	fuiRect arrowBox = fuiRectMake(arrowLeft, arrowTop, arrowWidth, arrowHeight);
+	fuiPushClip(context, rect);
+	fuiDrawArrowGlyph(context, arrowBox, badge->arrowDirection, color);
+	fuiPopClip(context);
+
+	float textX = arrowLeft + arrowWidth + arrowGap;
+	fui__DrawTextLeftAligned(context, rect, textX, badge->text, color);
+}
+
 //! How much of the flow axis a labelled strip item takes: its text on a row, the theme's row height in a column
 fui_inline float fui__StripItemThickness(const fuiContext *context, const char *label) {
 	if(context->stripAxis == fuiAxis_Horizontal) {
@@ -12741,8 +12948,60 @@ fui_api bool fuiToolStripButton(fuiContext *context, const char *label) {
 	return(result);
 }
 
+//! How much a badge adds to a strip item behind its label on a row: a space of the font, and the badge. Nothing for no badge
+fui_inline float fui__StripBadgeThickness(const fuiContext *context, const fuiBadge *badge) {
+	bool badgeIsThere = fui__BadgeIsThere(badge);
+	if(!badgeIsThere || context->font == fui_null) {
+		return(0.0f);
+	}
+	float spaceWidth = context->font->metrics.spaceAdvance * context->theme.fontHeight;
+	float badgeWidth = fuiMeasureBadge(context, badge);
+	float result = spaceWidth + badgeWidth;
+	return(result);
+}
+
+//! Draws a caption starting at textX, and the badge behind it a space further on
+fui_inline void fui__DrawCaptionWithBadge(fuiContext *context, const fuiRect rect, const float textX, const char *label, const fuiBadge *badge, const fuiColor color) {
+	fui__DrawTextLeftAligned(context, rect, textX, label, color);
+	bool badgeIsThere = fui__BadgeIsThere(badge);
+	if(!badgeIsThere || context->font == fui_null) {
+		return;
+	}
+	float pixelHeight = context->theme.fontHeight;
+	fuiVec2 labelSize = fuiMeasureText(context, label, 0, pixelHeight);
+	float spaceWidth = context->font->metrics.spaceAdvance * pixelHeight;
+	float badgeLeft = textX + labelSize.x + spaceWidth;
+	float badgeWidth = rect.x + rect.w - badgeLeft;
+	if(badgeWidth <= 0.0f) {
+		return;
+	}
+	fuiRect badgeRect = fuiRectMake(badgeLeft, rect.y, badgeWidth, rect.h);
+	fuiDrawBadge(context, badgeRect, badge, color);
+}
+
+//! A strip button with a badge behind its label, drawn and nothing else: the box a button has, and label and badge centred on it as ONE caption, the way a button centres its label
+fui_inline void fui__DrawStripButtonWithBadge(fuiContext *context, const fuiRect slot, const char *label, const fuiBadge *badge, const bool enabled, const fuiInteraction interaction) {
+	const fuiTheme *theme = &context->theme;
+	fuiColor fill = enabled ? fui__WidgetFillColor(context, interaction) : theme->widgetTrackColor;
+	fuiColor labelColor = enabled ? theme->textColor : theme->textMutedColor;
+	bool buttonIsPushed = interaction.isHeld;
+	fui__Relief relief = buttonIsPushed ? fui__Relief_Sunken : fui__Relief_Raised;
+	fui__DrawBevelBox(context, slot, fill, relief);
+	fuiRect labelRect = fui__PressedContentRect(context, slot, interaction.isHeld);
+
+	fuiVec2 labelSize = fuiMeasureText(context, label, 0, theme->fontHeight);
+	float badgeThickness = fui__StripBadgeThickness(context, badge);
+	float captionWidth = labelSize.x + badgeThickness;
+	// Too wide for its box, it starts at the left inset and is cropped at the far edge, the same as a button's caption.
+	float textX = labelRect.x + theme->widgetPaddingX;
+	if(captionWidth < labelRect.w) {
+		textX = labelRect.x + (labelRect.w - captionWidth) * 0.5f;
+	}
+	fui__DrawCaptionWithBadge(context, labelRect, textX, label, badge, labelColor);
+}
+
 //! A strip button that may be lit, drawn and nothing else. Shared by the toggle and by a command that is a switch, so the two cannot come to look different
-fui_inline void fui__DrawStripToggle(fuiContext *context, const fuiRect slot, const char *label, const bool isActive, const bool enabled, const fuiInteraction interaction) {
+fui_inline void fui__DrawStripToggle(fuiContext *context, const fuiRect slot, const char *label, const fuiBadge *badge, const bool isActive, const bool enabled, const fuiInteraction interaction) {
 	const fuiTheme *theme = &context->theme;
 
 	// A lit button takes the accent, a disabled one the recessed track, and the rest follow the usual states.
@@ -12763,10 +13022,17 @@ fui_inline void fui__DrawStripToggle(fuiContext *context, const fuiRect slot, co
 	fui__DrawBevelBox(context, slot, fill, relief);
 	bool labelIsPressed = enabled && (isActive || interaction.isHeld);
 	fuiRect labelRect = fui__PressedContentRect(context, slot, labelIsPressed);
-	fui__DrawTextInRect(context, labelRect, label, labelColor);
+	float textX = labelRect.x + theme->widgetPaddingX;
+	fui__DrawCaptionWithBadge(context, labelRect, textX, label, badge, labelColor);
 }
 
 fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, void *userData) {
+	const fuiBadge *noBadge = fui_null;
+	bool result = fuiToolStripCommandEx(context, table, id, noBadge, userData);
+	return(result);
+}
+
+fui_api bool fuiToolStripCommandEx(fuiContext *context, const fuiCommandTable *table, const fuiCommandId id, const fuiBadge *badge, void *userData) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
 		return(false);
@@ -12777,7 +13043,13 @@ fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *tab
 	}
 	bool enabled = fuiCommandIsEnabled(command, userData);
 
+	// On a row the badge makes the button wider, in a column every item is as long as the column already.
 	float thickness = fui__StripItemThickness(context, command->label);
+	bool badgeIsThere = fui__BadgeIsThere(badge);
+	if(badgeIsThere && context->stripAxis == fuiAxis_Horizontal) {
+		float badgeThickness = fui__StripBadgeThickness(context, badge);
+		thickness += badgeThickness;
+	}
 	fuiRect slot = fui__StripNextSlot(context, thickness);
 
 	// The same interaction as fuiCommandButton, WITHOUT the shortcut text: a strip sizes itself to the label.
@@ -12790,7 +13062,9 @@ fui_api bool fuiToolStripCommand(fuiContext *context, const fuiCommandTable *tab
 	bool isASwitch = (command->isChecked != fui_null);
 	if(isASwitch) {
 		bool isChecked = fuiCommandIsChecked(command, userData);
-		fui__DrawStripToggle(context, slot, command->label, isChecked, enabled, interaction);
+		fui__DrawStripToggle(context, slot, command->label, badge, isChecked, enabled, interaction);
+	} else if(badgeIsThere) {
+		fui__DrawStripButtonWithBadge(context, slot, command->label, badge, enabled, interaction);
 	} else {
 		fui__DrawButton(context, slot, command->label, enabled, interaction);
 	}
@@ -12817,7 +13091,8 @@ fui_api bool fuiToolStripToggle(fuiContext *context, const char *label, const bo
 	if(enabled) {
 		interaction = fuiInteract(context, widgetId, slot);
 	}
-	fui__DrawStripToggle(context, slot, label, isActive, enabled, interaction);
+	const fuiBadge *noBadge = fui_null;
+	fui__DrawStripToggle(context, slot, label, noBadge, isActive, enabled, interaction);
 	return(interaction.wasClicked);
 }
 
