@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-09-25
+	- Mouse enter and leave events
+
 	## 2025-03-25
 	- Transitioned to a simple window demo
 
@@ -148,6 +151,17 @@ int main(int argc, char **args) {
 								int32_t x = ev.mouse.mouseX;
 								int32_t y = ev.mouse.mouseY;
 							} break;
+
+							// The cursor entered or left the client area
+							case fplMouseEventType_Enter:
+							case fplMouseEventType_Leave:
+							{
+								int32_t x = ev.mouse.mouseX;
+								int32_t y = ev.mouse.mouseY;
+							} break;
+
+							default:
+								break;
 						}
 					} break;
 
