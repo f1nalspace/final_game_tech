@@ -81,12 +81,29 @@ extern uint32_t fgbInputSimApply(fgbInputSimulator *sim, struct fgbSystem *syste
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+
+// Compares two strings without case. strcasecmp() is POSIX and missing in the MSVC runtime, so the names are compared here.
+static bool fgbInputSim__IsEqualIgnoreCase(const char *left, const char *right) {
+	for (;;) {
+		int leftChar = tolower((unsigned char)*left);
+		int rightChar = tolower((unsigned char)*right);
+		if (leftChar != rightChar) {
+			return false;
+		}
+		if (leftChar == 0) {
+			return true;
+		}
+		++left;
+		++right;
+	}
+}
 
 static bool fgbInputSim__ParseButton(const char *name, uint8_t *outButton) {
 	static const char *buttonNames[] = { "start", "select", "a", "b", "up", "down", "left", "right" };
 	const size_t buttonNameCount = sizeof(buttonNames) / sizeof(buttonNames[0]);
 	for (size_t buttonIndex = 0; buttonIndex < buttonNameCount; ++buttonIndex) {
-		if (strcasecmp(buttonNames[buttonIndex], name) == 0) {
+		if (fgbInputSim__IsEqualIgnoreCase(buttonNames[buttonIndex], name)) {
 			*outButton = (uint8_t)(fgbButtonType_Start + buttonIndex);
 			return true;
 		}
@@ -171,11 +188,11 @@ extern bool fgbInputSimLoadFromFile(fgbInputSimulator *sim, const char *filePath
 		}
 
 		bool appended;
-		if (strcasecmp("down", actionToken) == 0) {
+		if (fgbInputSim__IsEqualIgnoreCase("down", actionToken)) {
 			appended = fgbInputSim__AppendEvent(sim, frame, button, true);
-		} else if (strcasecmp("up", actionToken) == 0) {
+		} else if (fgbInputSim__IsEqualIgnoreCase("up", actionToken)) {
 			appended = fgbInputSim__AppendEvent(sim, frame, button, false);
-		} else if (strcasecmp("press", actionToken) == 0) {
+		} else if (fgbInputSim__IsEqualIgnoreCase("press", actionToken)) {
 			uint32_t holdFrames = FGB_INPUT_SIM_DEFAULT_PRESS_HOLD_FRAMES;
 			if (holdToken != NULL) {
 				char *holdEnd = NULL;
