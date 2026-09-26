@@ -215,6 +215,16 @@ static void TestSizes(void) {
 	ftAssertSizeEquals(4, sizeof(uintptr_t));
 	ftAssertSizeEquals(4, sizeof(size_t));
 #endif
+
+	// Keyboard and mouse events must never make the event union grow, the gamepad event is its largest member
+	ftAssertSizeEquals(32, sizeof(fplMouseEvent));
+	ftAssert(sizeof(fplKeyboardEvent) <= sizeof(fplGamepadEvent));
+	ftAssert(sizeof(fplMouseEvent) <= sizeof(fplGamepadEvent));
+#if defined(FT_ARCH_X64)
+	ftAssertSizeEquals(32, sizeof(fplKeyboardEvent));
+	ftAssertSizeEquals(112, sizeof(fplGamepadEvent));
+	ftAssertSizeEquals(120, sizeof(fplEvent));
+#endif
 }
 
 // File-scope structs for fplOffsetOf / fplMin / fplMax tests (C99 has no
