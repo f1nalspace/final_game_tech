@@ -168,6 +168,7 @@ Start with `--keyboard-grab --log-events --log-fpl`.
 - [ ] Alt alone and F10 do not open a menu: the next letter is text input (`key input`) as usual.
 - [ ] Ctrl+A gives `key input code=1` and `mods=0x4` in the key line.
 - [ ] AltGr+Q on a German layout gives `@` (`key input code=64`), no extra left Ctrl press in the log.
+- [ ] Ctrl and Alt do not touch Num Lock: no `code=144` lines show up between the key lines, and the `0x200` bit in `mods` stays as it is (wine toggles Num Lock after every hooked Ctrl or Alt, Windows must not).
 - [ ] Ctrl+Alt+Del works (it can not be grabbed), afterwards no key is stuck: the next Ctrl, Alt and Del presses are `state=press`.
 - [ ] Ctrl+Alt+K ends the grab while Ctrl and Alt are held, after releasing them they are not stuck (Win opens the start menu again, Alt+Tab switches again).
 - [ ] With `--stall=500` the grab keeps working, or the hook is installed again after the first Win or Alt+Tab that got through (`The low level keyboard hook was lost, installing it again` with `--log-fpl`).
@@ -180,8 +181,10 @@ Start with `--log-events`.
 - [ ] Every key of the keyboard gives the scan code of the table below, press and release.
 - [ ] Alt+Print gives `scan=0xe037`, Ctrl+Pause gives `scan=0xe11d`, Pause gives `scan=0xe11d`, Num Lock gives `scan=0x45`, the menu key gives `scan=0xe05d`.
 - [ ] Enter and keypad Enter are different (`0x1c` and `0xe01c`), so are the left and right Ctrl, Alt and Shift.
+- [ ] Each key has its own pressed state: hold the left Shift, then the right Shift, let go of the left one first and then the right one. The log shows two presses (`state=press`, never `repeat`) and two releases, with `scan=0x2a` and `scan=0x36`. The same in the other order, and the same with left and right Ctrl, Enter and keypad Enter, and Home and keypad 7 with Num Lock off.
+- [ ] After that, a single left Shift press is `state=press` again (the release that Windows does not send for the first Shift is made by FPL).
 - [ ] A dead key (`^` on a German layout) comes as a key press and release, `^` then `1` gives one text input of `¹`.
-- [ ] With `--keyboard-grab` the hooked keys give the same codes: left Win `0xe05b`, right Win `0xe05c`, left Ctrl `0x1d`, right Ctrl `0xe01d`, left Alt `0x38`, right Alt `0xe038`, Tab `0xf`, Esc `0x1`.
+- [ ] With `--keyboard-grab` the hooked keys give the same codes: left Win `0xe05b`, right Win `0xe05c`, left Ctrl `0x1d`, right Ctrl `0xe01d`, left Alt `0x38`, right Alt `0xe038`, Tab `0xf`, Esc `0x1`. Holding left and right Ctrl (or Alt) gives two presses and two releases there as well.
 - [ ] The side buttons come as `name=x1` (back) and `name=x2` (forward).
 - [ ] The horizontal wheel comes as `mouse wheel dx=` with a positive value to the right, the vertical wheel as `mouse wheel dy=`, both with window coordinates in `x`/`y` (0,0 is the top left corner of the client area).
 - [ ] `mouse enter` and `mouse leave` come once per crossing of the client area edge, also when dragging with a pressed button out of the window.
@@ -208,5 +211,4 @@ The same table is `scanCodeTable` in `tests/run_grab_tests.sh`, where the X11 te
 ### Known Win32 limits, not failures
 
 - The first `window gotfocus` is missing, Win32 loses the events of the window creation.
-- The key state is kept per virtual key: both Shift keys (and Enter and keypad Enter) share one state. Pressing the second while the first is held gives `state=repeat`, and releasing both may give only one release. The scan codes are right.
 - Under wine only: the menu key comes as `0x5f`, right Ctrl as `0x1d` followed by `0xe01d`, and the horizontal wheel has screen coordinates. Windows must not show any of that.
