@@ -7917,7 +7917,11 @@ fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle);
 * @param[in] handle Reference to the process handle @ref fplProcessHandle.
 * @return Returns true when the request was sent, false otherwise.
 * @note On POSIX this sends a SIGTERM. Windows has no equivalent, so a console control event is sent instead, which requires @ref fplProcessFlags_KillProcessTree to be set.
+<<<<<<< Updated upstream
 * @note On Windows the control event only reaches a child that is already attached to the console, so it must not be sent right after @ref fplProcessStart. A child that is not attached yet either never sees the event and keeps running, or it is ended while it is still initializing, which reports a startup failure as its exit code instead of the control-event exit code. Wait for the child to be up, for example with a short @ref fplProcessWait, before asking it to stop.
+=======
+* @note [Win32] A process that is still starting up can not handle the control event yet. It fails with 0xC0000142 (STATUS_DLL_INIT_FAILED), and Windows shows an error dialog that keeps it alive until somebody closes it. Ask for a stop only once the process runs, for example after its first output.
+>>>>>>> Stashed changes
 */
 fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle);
 

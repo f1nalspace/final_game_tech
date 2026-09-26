@@ -32,6 +32,7 @@ License:
 #define FPL_TEST_CHILD_ARGUMENT_ERROR "--child-error"
 #define FPL_TEST_CHILD_ARGUMENT_EXIT "--child-exit"
 #define FPL_TEST_CHILD_ARGUMENT_SLEEP "--child-sleep"
+#define FPL_TEST_CHILD_ARGUMENT_READY_SLEEP "--child-ready-sleep"
 #define FPL_TEST_CHILD_ARGUMENT_CHECK_ARGS "--child-checkargs"
 #define FPL_TEST_CHILD_ARGUMENT_CHECK_FILE "--child-checkfile"
 #define FPL_TEST_CHILD_ARGUMENT_BOTH "--child-both"
@@ -92,6 +93,10 @@ static const char *processTestScriptText = "text-from-the-script";
 static const int32_t processTestScriptExitCode = 7;
 // Number of milliseconds we wait for a child that was asked to stop gracefully
 static const fplTimeoutValue processTestStopTimeout = 5000;
+// The line a child writes as soon as it runs, before it sleeps
+static const char *processTestReadyText = "child-ready";
+// How often the parent looks for the ready line of a child
+static const uint32_t processTestReadyPollIntervalInMilliseconds = 10;
 
 // Arguments passed to the child, so it can verify that they arrived unchanged
 static const char *processTestArgumentValues[] = {
@@ -115,6 +120,8 @@ typedef enum ProcessTestChildMode {
 	ProcessTestChildMode_Exit,
 	//! Sleep for the requested number of milliseconds.
 	ProcessTestChildMode_Sleep,
+	//! Write a ready line to the standard-output, then sleep for the requested number of milliseconds.
+	ProcessTestChildMode_ReadySleep,
 	//! Compare the passed arguments against the expected ones.
 	ProcessTestChildMode_CheckArgs,
 	//! Check whether the relative file exists in the current work directory.
@@ -146,6 +153,9 @@ static ProcessTestChildMode ProcessTestsGetChildMode(const int argc, char *args[
 	}
 	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_SLEEP)) {
 		return(ProcessTestChildMode_Sleep);
+	}
+	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_READY_SLEEP)) {
+		return(ProcessTestChildMode_ReadySleep);
 	}
 	if (fplIsStringEqual(modeArgument, FPL_TEST_CHILD_ARGUMENT_CHECK_ARGS)) {
 		return(ProcessTestChildMode_CheckArgs);
@@ -285,6 +295,19 @@ static int ProcessTestsRunAsChild(const ProcessTestChildMode mode, const int arg
 		case ProcessTestChildMode_Sleep:
 		{
 			if (firstValue != fpl_null) {
+				int32_t sleepTimeInMilliseconds = fplStringToS32(firstValue);
+				fplThreadSleep((uint32_t)sleepTimeInMilliseconds);
+				result = processTestChildSuccessExitCode;
+			}
+		} break;
+
+		case ProcessTestChildMode_ReadySleep:
+		{
+			if (firstValue != fpl_null) {
+				// The standard-output is a pipe here, so the line has to leave the buffer of the runtime at once
+				fplConsoleOut(processTestReadyText);
+				fplConsoleOut("\n");
+				fflush(stdout);
 				int32_t sleepTimeInMilliseconds = fplStringToS32(firstValue);
 				fplThreadSleep((uint32_t)sleepTimeInMilliseconds);
 				result = processTestChildSuccessExitCode;
@@ -1536,6 +1559,26 @@ static void ProcessTestsShellScript(const ProcessTestPaths *paths) {
 }
 
 // The flags that change how a child is created must not change how it is started, waited for and reported
+// Pumps the output of the child until its ready line arrived. On Windows a console control event that arrives while the child is still starting up
+// makes it fail with 0xC0000142 (STATUS_DLL_INIT_FAILED) and an error dialog, so a graceful stop is only requested once the child runs.
+static bool ProcessTestsWaitForChildReady(fplProcessHandle *handle, const ProcessTestOutputCollector *collector) {
+	size_t readyTextLen = fplGetStringLength(processTestReadyText);
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	for (;;) {
+		fplProcessUpdate(handle);
+		bool hasReadyText = (collector->outputLen >= readyTextLen) && fplIsStringEqualLen(collector->outputText, readyTextLen, processTestReadyText, readyTextLen);
+		if (hasReadyText) {
+			return(true);
+		}
+		fplMilliseconds currentTime = fplMillisecondsQuery();
+		fplMilliseconds elapsedTime = currentTime - startTime;
+		if (elapsedTime >= processTestStopTimeout) {
+			return(false);
+		}
+		fplThreadSleep(processTestReadyPollIntervalInMilliseconds);
+	}
+}
+
 static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 	ftMsg("Test Process creation flags\n");
 	char argumentLine[FPL_MAX_BUFFER_LENGTH];
@@ -1558,11 +1601,15 @@ static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 		// A graceful stop needs the process tree flag on Windows, because a console control event is
 		// sent to the process group instead of a signal
 		char sleepArgumentLine[FPL_MAX_BUFFER_LENGTH];
-		fplStringFormat(sleepArgumentLine, fplArrayCount(sleepArgumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_SLEEP, processTestLongSleepInMilliseconds);
+		fplStringFormat(sleepArgumentLine, fplArrayCount(sleepArgumentLine), "%s %d", FPL_TEST_CHILD_ARGUMENT_READY_SLEEP, processTestLongSleepInMilliseconds);
+		ProcessTestOutputCollector collector = fplZeroInit;
 		fplProcessContext context = fplZeroInit;
 		context.name = paths->executableFilePath;
 		context.argumentLine = sleepArgumentLine;
 		context.flags = fplProcessFlags_KillProcessTree;
+		context.captureFlags = fplProcessCaptureFlags_RedirectOutput;
+		context.outputCallback = ProcessTestsCollectOutput;
+		context.userData = &collector;
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult startResult = fplZeroInit;
 		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
