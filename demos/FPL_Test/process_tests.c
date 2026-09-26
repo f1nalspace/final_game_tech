@@ -1558,7 +1558,6 @@ static void ProcessTestsShellScript(const ProcessTestPaths *paths) {
 	fplFileDelete(scriptFilePath);
 }
 
-// The flags that change how a child is created must not change how it is started, waited for and reported
 // Pumps the output of the child until its ready line arrived. On Windows a console control event that arrives while the child is still starting up
 // makes it fail with 0xC0000142 (STATUS_DLL_INIT_FAILED) and an error dialog, so a graceful stop is only requested once the child runs.
 static bool ProcessTestsWaitForChildReady(fplProcessHandle *handle, const ProcessTestOutputCollector *collector) {
@@ -1579,6 +1578,7 @@ static bool ProcessTestsWaitForChildReady(fplProcessHandle *handle, const Proces
 	}
 }
 
+// The flags that change how a child is created must not change how it is started, waited for and reported
 static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 	ftMsg("Test Process creation flags\n");
 	char argumentLine[FPL_MAX_BUFFER_LENGTH];
@@ -1613,14 +1613,8 @@ static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult startResult = fplZeroInit;
 		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
-		// A console control event only reaches a child that is already attached to the console, and a child
-		// that is put into a job starts suspended on top of that. An event sent right after the start is
-		// therefore either lost, so the child keeps running, or it hits the child while it is still
-		// initializing, which ends it with a startup failure instead of a control-event exit. Letting the
-		// child come up first is what makes the graceful stop deterministic.
-		fplProcessResult warmupResult = fplZeroInit;
-		ftIsFalse(fplProcessWait(&handle, processTestShortTimeout, &warmupResult));
-		fplProcessFreeResult(&warmupResult);
+		// A console control event only reaches a child that is already attached to the console, so the stop is requested once the child wrote its ready line
+		ftIsTrue(ProcessTestsWaitForChildReady(&handle, &collector));
 		ftIsTrue(fplProcessRequestStop(&handle));
 		fplProcessResult stopResult = fplZeroInit;
 		ftIsTrue(fplProcessWait(&handle, processTestStopTimeout, &stopResult));
