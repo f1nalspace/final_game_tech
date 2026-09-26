@@ -180,11 +180,14 @@ SOFTWARE.
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
+	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
+	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
 	- Several bugfixes
 
 	### Breaking Changes
 	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText(), so the clipboard comes first in the name and the verb after it
 	- Changed: fplClipboardGetText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
+	- Changed: [X11] Builds with FPL_NO_RUNTIME_LINKING need libXi now (-lXi) for the relative mouse mode, define FPL_NO_X11_XINPUT2 to build without it
 
 	### Details
 
@@ -295,6 +298,7 @@ SOFTWARE.
 	- Changed: Refactored internal X11 states into separate structs
 	- Changed: Refactored internal X11 functions init/release into separate functions
 	- New: The clipboard releases the text it owns when another application takes the selection away
+	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
 
 	## v1.0.0
 
@@ -10542,9 +10546,9 @@ typedef struct fplMouseEvent {
 	int32_t mouseY;
 	//! Mouse wheel delta. Vertical for @ref fplMouseEventType_Wheel, positive when the wheel turned up (away from the user). Horizontal for @ref fplMouseEventType_HorizontalWheel, positive to the right.
 	float wheelDelta;
-	//! Horizontal movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped.
+	//! Horizontal movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped. In the relative mouse mode the raw movement of the device.
 	int32_t deltaX;
-	//! Vertical movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped.
+	//! Vertical movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped. In the relative mouse mode the raw movement of the device.
 	int32_t deltaY;
 } fplMouseEvent;
 
@@ -10809,6 +10813,8 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
 * @return Returns true when the cursor was moved, false when there is no visible window.
 * @note The move event that follows the warp has a delta of zero, so the warp itself never shows up as movement.
 * @note Positions outside of the client area are allowed. While the mouse is grabbed (@ref fplSetWindowMouseGrab()), the target is limited to the client area.
+* @note In the relative mouse mode (@ref fplSetWindowRelativeMouse()) the hidden cursor stays where it is, the warp moves the position the mouse events carry and where the cursor appears when the mode ends.
+* @see @ref section_category_window_style_cursor_warp
 */
 fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
 
@@ -10819,6 +10825,7 @@ fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
 * @note The grab is only active while the window has the focus, is shown and is not minimized. FPL releases it when that ends and restores it when the window gets the focus back, the request stays.
 * @note The relative mouse mode (@ref fplSetWindowRelativeMouse()) always locks the cursor, regardless of this setting.
 * @note When another program holds the mouse, the grab is tried again while the events are pumped, see @ref section_category_window_style_cursor_grab.
+* @see @ref section_category_window_style_input_capture
 */
 fpl_common_api bool fplSetWindowMouseGrab(const bool enabled);
 
@@ -10837,6 +10844,7 @@ fpl_common_api bool fplIsWindowMouseGrabbed(void);
 * @note When the relative mode ends, the cursor appears again at that position.
 * @note [X11] The raw movement needs XInput2 (libXi). Without it, or with FPL_NO_X11_XINPUT2, FPL warps the cursor back to the window center and the deltas are accelerated like the cursor.
 * @see @ref section_category_window_style_cursor_relative
+* @see @ref section_category_window_style_input_capture
 */
 fpl_common_api bool fplSetWindowRelativeMouse(const bool enabled);
 
@@ -10854,6 +10862,7 @@ fpl_common_api bool fplIsWindowRelativeMouse(void);
 * @note Some key combinations can never be grabbed, for example Ctrl+Alt+Del on Win32 or the virtual terminal switch on X11.
 * @note Alt+F4 does not close the window while the keyboard is grabbed, the application gets the keys and needs its own way to end the grab.
 * @see @ref section_category_window_style_keyboard_grab
+* @see @ref section_category_window_style_input_capture
 */
 fpl_common_api bool fplSetWindowKeyboardGrab(const bool enabled);
 

@@ -1060,6 +1060,8 @@
 
 	@note When the window loses the focus, every key and mouse button that it still holds as pressed gets a release event before the @ref fplWindowEventType_LostFocus event. The real release goes to another window, so without it the key would stay pressed and come back as a repeat.
 
+	@note The cursor can be moved (@ref section_category_window_style_cursor_warp), kept inside the window (@ref section_category_window_style_cursor_grab) or hidden and locked for raw movement (@ref section_category_window_style_cursor_relative). In the relative mouse mode the delta is the raw movement of the device, and every mouse event carries the position where the mode started.
+
 	@subsection subsection_category_window_events_handle_event_type_keyboard Keyboard events
 
 	Keyboard event data are stored in the @ref fplKeyboardEvent structure.<br>
@@ -1071,13 +1073,13 @@
 
 	@code{.c}
 	switch (currentEvent.keyboard.type) {
-		case fplKeyboardEventType_KeyButton:
+		case fplKeyboardEventType_Button:
 		{
 			fplButtonState state = currentEvent.keyboard.buttonState;
 
 			// ... Handle the key code
 			uint64_t keyCode = currentEvent.keyboard.keyCode;
-			if (state >= fplButtonState_Pressed) {
+			if (state >= fplButtonState_Press) {
 				if (keyCode == 65 || keyCode == 97) {
 					// Letter A is held down
 				}
@@ -1087,16 +1089,16 @@
 
 			// ... handle the mapped key
 			fplKey mappedKey = currentEvent.keyboard.mappedKey;
-			if (state == fplButtonState_Released) {
+			if (state == fplButtonState_Release) {
 				if (mappedKey == fplKey_F1) {
 					// F1 key pressed
 				}
 			}
 		} break;
 
-		case fplKeyboardEventType_CharInput:
+		case fplKeyboardEventType_Input:
 		{
-			if(currentEvent.keyboard.keyCode > 0 && event.keyboard.keyCode < 0x10000) {
+			if(currentEvent.keyboard.keyCode > 0 && currentEvent.keyboard.keyCode < 0x10000) {
 				// Handle character input
 			}
 		} break;
@@ -1108,6 +1110,8 @@
 	@note [X11] The scan code comes from the Linux evdev key code, which the X server reports plus 8.
 
 	@note [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) give their button events like any other key, the composed text comes as one character input event.
+
+	@note System shortcuts like Alt+Tab or the Super/Win key reach the window only while the keyboard is grabbed (@ref section_category_window_style_keyboard_grab). Passing the keys on to a virtual machine is shown in @ref section_category_window_style_input_capture.
 
 	@subsection subsection_category_window_events_handle_event_type_gamepad Gamepad events
 
@@ -1396,6 +1400,7 @@
 	@endcode
 
 	@note While the mouse is grabbed (@ref section_category_window_style_cursor_grab), the target is limited to the client area, like the cursor itself.
+	@note In the relative mouse mode (@ref section_category_window_style_cursor_relative), the warp moves the position the mouse events carry and where the cursor appears when the mode ends, the hidden cursor stays where it is.
 
 	@section section_category_window_style_cursor_grab Grabbing the mouse
 
@@ -1418,6 +1423,7 @@
 	@note When another program holds the mouse (X11: the window manager right after Alt+Tab), the grab can not be applied at once. FPL tries again while the events are pumped (@ref fplWindowUpdate(), @ref fplPollEvent(), @ref fplPollEvents()), so the grab becomes active a moment later.
 	@note [Win32] While the window is moved or resized with the mouse, while a menu is open and after a click that activated the window, the cursor is not grabbed until the mouse buttons are released. Other programs can reset the cursor clip rectangle, FPL applies it again every few seconds.
 	@note [X11] A grabbed mouse belongs to the application for the whole desktop. When a debugger stops the application while the mouse is grabbed, the mouse can not leave the window until the application continues or ends.
+	@note For a hidden cursor that reports raw movement instead of stopping at the edges, use the relative mouse mode (@ref section_category_window_style_cursor_relative). To move the cursor yourself, see @ref section_category_window_style_cursor_warp.
 
 	@section section_category_window_style_cursor_relative Relative mouse mode
 
@@ -1445,6 +1451,7 @@
 	@note Devices that report absolute positions (remote desktop, virtual machine tablets, graphics tablets) are turned into movement in screen pixels.
 	@note [Win32] The movement comes from raw input (WM_INPUT). While the mode is active, the application must not register the mouse for raw input itself.
 	@note [X11] The movement comes from the raw events of XInput2 (libXi, loaded at runtime). Without it, or when FPL_NO_X11_XINPUT2 is defined, FPL warps the cursor back to the window center after every motion, and the deltas are accelerated like the cursor. Builds with FPL_NO_RUNTIME_LINKING link libXi then (-lXi), unless FPL_NO_X11_XINPUT2 is defined.
+	@note All other mouse events work as described in @ref subsection_category_window_events_handle_event_type_mouse. How the relative mode and the keyboard grab work together for a virtual machine display is shown in @ref section_category_window_style_input_capture.
 
 	@section section_category_window_style_keyboard_grab Grabbing the keyboard
 
@@ -1475,6 +1482,98 @@
 	@note [Win32] FPL installs a low level keyboard hook (WH_KEYBOARD_LL) that takes Win, Alt, Ctrl, Tab, Esc and Print away from the system and reports them itself, so they stay in order with the other keys. Ctrl+Alt+Del and Win+L can never be grabbed.
 	@note [Win32] Windows removes a low level hook that takes longer than the LowLevelHooksTimeout of the system, and it delays every key of the desktop until then. The hook runs while the application pumps its events, so pump them often (at least every 100 ms). FPL installs a lost hook again, as soon as it notices.
 	@note [Win32] While the keyboard is grabbed, Alt, F10 and Alt+Space do not open the window menus.
+	@note The keys themselves come as keyboard events (@ref subsection_category_window_events_handle_event_type_keyboard), with the physical key in @ref fplKeyboardEvent.scanCode. How it all works together for a virtual machine display is shown in @ref section_category_window_style_input_capture.
+
+	@section section_category_window_style_input_capture Capturing keyboard and mouse for a virtual machine
+
+	A virtual machine display (like the SDL or GTK display of qemu) puts everything above together: after a hotkey or a click into the display, it grabs the keyboard, switches to the relative mouse mode and passes the raw movement and the physical keys on to the guest. The same hotkey gives both back.<br>
+	While it is not captured, a guest with an absolute pointing device (a tablet) gets the cursor position, and the keyboard follows the cursor: it is grabbed while the cursor is over the display, like "grab on hover".<br>
+	The demo FPL_InputGrab in the repository does the same with its own hotkeys and logs every event.<br>
+
+	<b>Example:</b>
+	@code{.c}
+	// The virtual machine side, not part of FPL
+	void GuestKey(uint32_t scanCode, bool isDown);
+	void GuestRelativeMove(int32_t deltaX, int32_t deltaY);
+	void GuestAbsolutePosition(int32_t x, int32_t y);
+	void GuestButton(fplMouseButtonType button, bool isDown);
+	void GuestWheel(float verticalDelta, float horizontalDelta);
+
+	static void ApplyCapture(const bool isCaptured, const bool isCursorInside) {
+		bool isKeyboardGrabbed = isCaptured || isCursorInside;
+		fplSetWindowKeyboardGrab(isKeyboardGrabbed);
+		fplSetWindowRelativeMouse(isCaptured);
+	}
+
+	bool isCaptured = false;
+	bool isCursorInside = false;
+	while (fplWindowUpdate()) {
+		fplEvent ev;
+		while (fplPollEvent(&ev)) {
+			if (ev.type == fplEventType_Keyboard && ev.keyboard.type == fplKeyboardEventType_Button) {
+				bool isCtrlDown = (ev.keyboard.modifiers & (fplKeyboardModifierFlags_LCtrl | fplKeyboardModifierFlags_RCtrl)) != 0;
+				bool isAltDown = (ev.keyboard.modifiers & (fplKeyboardModifierFlags_LAlt | fplKeyboardModifierFlags_RAlt)) != 0;
+				bool isHotkey = isCtrlDown && isAltDown && ev.keyboard.mappedKey == fplKey_G;
+				if (isHotkey) {
+					// Ctrl+Alt+G captures and gives back, the hotkey itself never reaches the guest
+					if (ev.keyboard.buttonState == fplButtonState_Press) {
+						isCaptured = !isCaptured;
+						ApplyCapture(isCaptured, isCursorInside);
+					}
+				} else {
+					// The physical key, the guest applies its own keyboard layout. A repeat is a press again.
+					bool isDown = ev.keyboard.buttonState >= fplButtonState_Press;
+					GuestKey(ev.keyboard.scanCode, isDown);
+				}
+			} else if (ev.type == fplEventType_Mouse) {
+				switch (ev.mouse.type) {
+					case fplMouseEventType_Move:
+					{
+						if (isCaptured) {
+							GuestRelativeMove(ev.mouse.deltaX, ev.mouse.deltaY);
+						} else {
+							GuestAbsolutePosition(ev.mouse.mouseX, ev.mouse.mouseY);
+						}
+					} break;
+
+					case fplMouseEventType_Button:
+					{
+						bool isDown = ev.mouse.buttonState >= fplButtonState_Press;
+						GuestButton(ev.mouse.mouseButton, isDown);
+					} break;
+
+					case fplMouseEventType_Wheel:
+					{
+						GuestWheel(ev.mouse.wheelDelta, 0.0f);
+					} break;
+
+					case fplMouseEventType_HorizontalWheel:
+					{
+						GuestWheel(0.0f, ev.mouse.wheelDelta);
+					} break;
+
+					case fplMouseEventType_Enter:
+					case fplMouseEventType_Leave:
+					{
+						isCursorInside = ev.mouse.type == fplMouseEventType_Enter;
+						ApplyCapture(isCaptured, isCursorInside);
+					} break;
+
+					default:
+						break;
+				}
+			}
+		}
+
+		// ... Draw the display of the guest
+	}
+	@endcode
+
+	@note Losing the focus suspends the grabs and releases every key and mouse button that is still held, so the guest gets a release for each of them and no key stays pressed. When the focus comes back, FPL restores the grabs by itself. A display that ends the capture on focus loss, like the SDL display of qemu, sets isCaptured to false and calls ApplyCapture() on @ref fplWindowEventType_LostFocus.
+	@note The scan code is PC scan code set 1, which a PC guest takes as it is. Other key codes, like Linux evdev codes or USB HID usages, are made from it with a table. Keys without a scan code report zero and are best left out.
+	@note When the guest moves its own cursor while it has an absolute pointing device, @ref fplWarpWindowCursor() puts the host cursor there. The move event that follows has a delta of zero and the position the guest already knows.
+	@note While the relative mouse mode holds the cursor, there are no enter and leave events. The only one is the enter when the mode pulls the cursor into the window, see @ref subsection_category_window_events_handle_event_type_mouse.
+	@note A guest with only a relative mouse (PS/2) gets no mouse input until it is captured, usually a click into the display captures it then.
 
 	@section section_category_window_style_title Get/Set the window title
 
@@ -1809,7 +1908,7 @@
 	if (fplPollMouseState(&mouseState)) {
 		int mousePosX = mouseState.x;
 		int mousePosY = mouseState.y;
-		if (mouseState.buttonStates[fplMouseButtonType_Left] >= fplButtonState_Pressed) {
+		if (mouseState.buttonStates[fplMouseButtonType_Left] >= fplButtonState_Press) {
 			// Left mouse button down
 		}
 	}
