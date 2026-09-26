@@ -295,6 +295,7 @@ SOFTWARE.
 	- Fixed: [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) gave no button press event, because the input method took the key - the press is reported now, the text still comes from the input method
 	- Fixed: [Win32] The pressed state of the keys was kept per virtual key, so the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock shared one - holding both came as a press and a repeat, and one of the two releases was dropped. The state is kept per physical key (scan code) now
 	- Fixed: [Win32] While both Shift keys are down, Windows sends no release for the one that is let go first - FPL releases it by itself now, like SDL
+	- Fixed: [Win32] When the system takes a shortcut like Win+Space or Win+G, Windows sends no release for the Win key, so it stayed down - FPL releases it by itself now, like SDL
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -15032,6 +15033,8 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 #define FPL__SCANCODE_EXTENDED_PREFIX 0xE000
 #define FPL__SCANCODE_LEFT_SHIFT 0x2A
 #define FPL__SCANCODE_RIGHT_SHIFT 0x36
+#define FPL__SCANCODE_LEFT_WIN 0xE05B
+#define FPL__SCANCODE_RIGHT_WIN 0xE05C
 #define FPL__SCANCODE_NUM_LOCK 0x45
 #define FPL__SCANCODE_PAUSE 0xE11D
 #define FPL__SCANCODE_PRINT 0xE037
@@ -21499,30 +21502,42 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 // A down key in the result of GetKeyState() and GetAsyncKeyState()
 #define FPL__WIN32_KEY_DOWN_FLAG 0x8000
 
+// Reports the release of a key that is still down for FPL while the key state of the thread has it up already, as of the message that was retrieved last
+fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, const uint32_t scanCode, const int sideVirtualKey) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__PlatformWindowState *windowState = &appState->window;
+	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)sideVirtualKey);
+	if (windowState->keyStates[keySlot] == fplButtonState_Release) {
+		return;
+	}
+	SHORT threadKeyState = wapi->user.GetKeyState(sideVirtualKey);
+	bool isDown = (threadKeyState & FPL__WIN32_KEY_DOWN_FLAG) != 0;
+	if (isDown) {
+		return;
+	}
+	uint64_t keyCode = windowState->keyCodes[keySlot];
+	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
+	uint64_t time = GetTickCount();
+	fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
+}
+
 // Windows loses the release of the Shift key that is let go first while both are down, only the one let go last gets its WM_KEYUP.
 // The key state of the thread knows it is up as of the key message that was just handled, so a Shift that is still down for FPL gets its release right after that message, like SDL does it.
 fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState) {
-	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	fpl__PlatformWindowState *windowState = &appState->window;
-	const uint32_t shiftScanCodes[] = { FPL__SCANCODE_LEFT_SHIFT, FPL__SCANCODE_RIGHT_SHIFT };
-	const int shiftVirtualKeys[] = { VK_LSHIFT, VK_RSHIFT };
-	for (uint32_t shiftIndex = 0; shiftIndex < fplArrayCount(shiftScanCodes); ++shiftIndex) {
-		uint32_t scanCode = shiftScanCodes[shiftIndex];
-		uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, VK_SHIFT);
-		if (windowState->keyStates[keySlot] == fplButtonState_Release) {
-			continue;
-		}
-		SHORT threadKeyState = wapi->user.GetKeyState(shiftVirtualKeys[shiftIndex]);
-		bool isDown = (threadKeyState & FPL__WIN32_KEY_DOWN_FLAG) != 0;
-		if (isDown) {
-			continue;
-		}
-		uint64_t keyCode = windowState->keyCodes[keySlot];
-		fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
-		fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
-		uint64_t time = GetTickCount();
-		fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
+}
+
+// Windows sends no WM_KEYUP for the Win key when the system takes a shortcut like Win+Space or Win+G, only the key state of the thread knows it is up.
+// No other message has to follow, so it is checked before every key message (the release comes before the next key) and when the message queue is empty, like SDL does it.
+// While the keyboard grab is on, the hook reports Win itself and keeps it away from the system, so the thread never has it down.
+fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState) {
+	if (appState->window.win32.keyboardHook != fpl_null) {
+		return;
 	}
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
 }
 
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
@@ -21555,6 +21570,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
+			fpl__Win32ReleaseLostWinKeys(appState);
 			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
 			fpl__Win32ReleaseLostShiftKeys(appState);
 			return true;
@@ -24006,6 +24022,10 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event from the OS message queue
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
+		// A lost release is returned right away, the next fplWindowUpdate() would clear it
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+		fpl__Win32ReleaseLostWinKeys(appState);
+#	endif
 		// Queue is empty, we have no events left
 		if (!fpl__HasInternalEvents()) {
 			fpl__Win32RefreshInputGrab(appState);
