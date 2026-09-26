@@ -1566,6 +1566,14 @@ static void ProcessTestsCreationFlags(const ProcessTestPaths *paths) {
 		fplProcessHandle handle = fplZeroInit;
 		fplProcessResult startResult = fplZeroInit;
 		ftIsTrue(fplProcessStart(&context, &handle, &startResult));
+		// A console control event only reaches a child that is already attached to the console, and a child
+		// that is put into a job starts suspended on top of that. An event sent right after the start is
+		// therefore either lost, so the child keeps running, or it hits the child while it is still
+		// initializing, which ends it with a startup failure instead of a control-event exit. Letting the
+		// child come up first is what makes the graceful stop deterministic.
+		fplProcessResult warmupResult = fplZeroInit;
+		ftIsFalse(fplProcessWait(&handle, processTestShortTimeout, &warmupResult));
+		fplProcessFreeResult(&warmupResult);
 		ftIsTrue(fplProcessRequestStop(&handle));
 		fplProcessResult stopResult = fplZeroInit;
 		ftIsTrue(fplProcessWait(&handle, processTestStopTimeout, &stopResult));
