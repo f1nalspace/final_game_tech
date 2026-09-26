@@ -296,6 +296,7 @@ SOFTWARE.
 	- Fixed: [Win32] The pressed state of the keys was kept per virtual key, so the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock shared one - holding both came as a press and a repeat, and one of the two releases was dropped. The state is kept per physical key (scan code) now
 	- Fixed: [Win32] While both Shift keys are down, Windows sends no release for the one that is let go first - FPL releases it by itself now, like SDL
 	- Fixed: [Win32] When the system takes a shortcut like Win+Space or Win+G, Windows sends no release for the Win key, so it stayed down - FPL releases it by itself now, like SDL
+	- Fixed: [X11] WM_NAME and WM_ICON_NAME are set again
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -3879,6 +3880,7 @@ typedef XWindowAttributes fpl__X11_XWindowAttributes;
 typedef XVisualInfo fpl__X11_XVisualInfo;
 typedef XSizeHints fpl__X11_XSizeHints;
 typedef XTextProperty fpl__X11_XTextProperty;
+typedef XICCEncodingStyle fpl__X11_XICCEncodingStyle;
 typedef XClassHint fpl__X11_XClassHint;
 typedef XGCValues fpl__X11_XGCValues;
 typedef XColor fpl__X11_XColor;
@@ -3895,6 +3897,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XLookupChars XLookupChars
 #define FPL__X11_XLookupKeySym XLookupKeySym
 #define FPL__X11_XLookupBoth XLookupBoth
+#define FPL__X11_XStdICCTextStyle XStdICCTextStyle
 #define FPL__X11_XIMPreeditNothing XIMPreeditNothing
 #define FPL__X11_XIMStatusNothing XIMStatusNothing
 #define FPL__X11_XNInputStyle XNInputStyle
@@ -3986,6 +3989,8 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XA_ATOM XA_ATOM
 #define FPL__X11_XA_CARDINAL XA_CARDINAL
 #define FPL__X11_XA_STRING XA_STRING
+#define FPL__X11_XA_WM_ICON_NAME XA_WM_ICON_NAME
+#define FPL__X11_XA_WM_NAME XA_WM_NAME
 
 #define FPL__X11_XK_0 XK_0
 #define FPL__X11_XK_1 XK_1
@@ -4413,8 +4418,15 @@ typedef struct fpl__X11_XClassHint {
 	char *res_class;
 } fpl__X11_XClassHint;
 
-// Opaque incomplete type, only ever used through a pointer
-typedef struct fpl__X11_XTextPropertyRec fpl__X11_XTextProperty;
+typedef struct fpl__X11_XTextProperty {
+	unsigned char *value;
+	fpl__X11_Atom encoding;
+	int format;
+	unsigned long nitems;
+} fpl__X11_XTextProperty;
+
+// XICCEncodingStyle is an enum in Xlib, so it is passed as an int
+typedef int fpl__X11_XICCEncodingStyle;
 
 // Opaque incomplete type, only ever used through a pointer
 typedef struct fpl__X11_XGCValuesRec fpl__X11_XGCValues;
@@ -4438,6 +4450,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XLookupChars 2
 #define FPL__X11_XLookupKeySym 3
 #define FPL__X11_XLookupBoth 4
+#define FPL__X11_XStdICCTextStyle 3
 #define FPL__X11_XIMPreeditNothing 0x0008L
 #define FPL__X11_XIMStatusNothing 0x0400L
 #define FPL__X11_XNInputStyle "inputStyle"
@@ -4529,6 +4542,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XA_ATOM ((fpl__X11_Atom)4)
 #define FPL__X11_XA_CARDINAL ((fpl__X11_Atom)6)
 #define FPL__X11_XA_STRING ((fpl__X11_Atom)31)
+#define FPL__X11_XA_WM_ICON_NAME ((fpl__X11_Atom)37)
+#define FPL__X11_XA_WM_NAME ((fpl__X11_Atom)39)
 
 #define FPL__X11_XK_0 0x0030
 #define FPL__X11_XK_1 0x0031
@@ -13431,6 +13446,8 @@ typedef FPL__FUNC_X11_XChangeProperty(fpl__func_x11_XChangeProperty);
 typedef FPL__FUNC_X11_XDeleteProperty(fpl__func_x11_XDeleteProperty);
 #define FPL__FUNC_X11_XStringListToTextProperty(name) fpl__X11_Status name(char** list, int count, fpl__X11_XTextProperty* text_prop_return)
 typedef FPL__FUNC_X11_XStringListToTextProperty(fpl__func_x11_XStringListToTextProperty);
+#define FPL__FUNC_X11_Xutf8TextListToTextProperty(name) int name(fpl__X11_Display *display, char **list, int count, fpl__X11_XICCEncodingStyle style, fpl__X11_XTextProperty *text_prop_return)
+typedef FPL__FUNC_X11_Xutf8TextListToTextProperty(fpl__func_x11_Xutf8TextListToTextProperty);
 #define FPL__FUNC_X11_XSetWMIconName(name) void name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XTextProperty *text_prop)
 typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
 #define FPL__FUNC_X11_XSetWMName(name) void name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XTextProperty *text_prop)
@@ -13568,6 +13585,7 @@ extern FPL__FUNC_X11_XSetWMNormalHints(XSetWMNormalHints);
 extern FPL__FUNC_X11_XSetWMProtocols(XSetWMProtocols);
 extern FPL__FUNC_X11_XStoreName(XStoreName);
 extern FPL__FUNC_X11_XStringListToTextProperty(XStringListToTextProperty);
+extern FPL__FUNC_X11_Xutf8TextListToTextProperty(Xutf8TextListToTextProperty);
 extern FPL__FUNC_X11_XSync(XSync);
 extern FPL__FUNC_X11_XTranslateCoordinates(XTranslateCoordinates);
 extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
@@ -13639,6 +13657,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XChangeProperty *XChangeProperty;
 	fpl__func_x11_XDeleteProperty *XDeleteProperty;
 	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
+	fpl__func_x11_Xutf8TextListToTextProperty *Xutf8TextListToTextProperty;
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
 	fpl__func_x11_XSetClassHint *XSetClassHint;
@@ -13748,6 +13767,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XChangeProperty, XChangeProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDeleteProperty, XDeleteProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XStringListToTextProperty, XStringListToTextProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_Xutf8TextListToTextProperty, Xutf8TextListToTextProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMIconName, XSetWMIconName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMName, XSetWMName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetClassHint, XSetClassHint);
@@ -32289,8 +32309,29 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
 }
 
+// Sets WM_NAME and WM_ICON_NAME as STRING or COMPOUND_TEXT (like GLFW), or as UTF8_STRING when Xlib cannot convert the title without loss (like SDL)
+fpl_internal void fpl__X11SetICCCMWindowTitle(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const char *title) {
+	char *titleList[] = { (char *)title };
+	const int titleListCount = (int)fplArrayCount(titleList);
+	fpl__X11_XTextProperty titleProperty = fplZeroInit;
+	// Negative is an error, positive is the number of characters that had no match in the target encoding
+	const int conversionResult = x11Api->Xutf8TextListToTextProperty(windowState->display, titleList, titleListCount, FPL__X11_XStdICCTextStyle, &titleProperty);
+	if (conversionResult == FPL__X11_Success) {
+		x11Api->XSetWMName(windowState->display, windowState->core.window, &titleProperty);
+		x11Api->XSetWMIconName(windowState->display, windowState->core.window, &titleProperty);
+	} else {
+		const int utf8PropertyFormat = 8;
+		const int titleLength = (int)fplGetStringLength(title);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_NAME, windowState->wm.utf8String, utf8PropertyFormat, FPL__X11_PropModeReplace, (const unsigned char *)title, titleLength);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_ICON_NAME, windowState->wm.utf8String, utf8PropertyFormat, FPL__X11_PropModeReplace, (const unsigned char *)title, titleLength);
+	}
+	if (titleProperty.value != fpl_null) {
+		x11Api->XFree(titleProperty.value);
+	}
+}
+
 fpl_platform_api void fplSetWindowTitle(const char *title) {
-	// @NOTE(final/X11): The title is published via _NET_WM_NAME / _NET_WM_ICON_NAME. EWMH window managers pick it up.
+	// @NOTE(final/X11): The title is set as _NET_WM_NAME / _NET_WM_ICON_NAME (EWMH) and as WM_NAME / WM_ICON_NAME (ICCCM, e.g. xprop, "xdotool search --name").
 	// GNOME requires WM_CLASS (set in fpl__X11InitWindow) to associate the window with an application name.
 
 	FPL__CheckArgumentNullNoRet(title);
@@ -32311,6 +32352,8 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 		windowState->netWM.netWMIconName, windowState->wm.utf8String, 8,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)title, (int)fplGetStringLength(title));
+
+	fpl__X11SetICCCMWindowTitle(x11Api, windowState, title);
 
 	x11Api->XFlush(windowState->display);
 }
