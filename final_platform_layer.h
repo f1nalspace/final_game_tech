@@ -293,6 +293,8 @@ SOFTWARE.
 	- New: [X11] The mouse buttons 8 and 9 are reported as fplMouseButtonType_X1 and fplMouseButtonType_X2, like the side buttons on Win32 - an array indexed by fplMouseEvent.mouseButton needs fplMouseButtonType_MaxCount entries
 	- Fixed: [Win32] Mouse wheel events carried the cursor position in screen coordinates instead of window coordinates
 	- Fixed: [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) gave no button press event, because the input method took the key - the press is reported now, the text still comes from the input method
+	- Fixed: [Win32] The pressed state of the keys was kept per virtual key, so the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock shared one - holding both came as a press and a repeat, and one of the two releases was dropped. The state is kept per physical key (scan code) now
+	- Fixed: [Win32] While both Shift keys are down, Windows sends no release for the one that is let go first - FPL releases it by itself now, like SDL
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -14458,11 +14460,16 @@ typedef struct fpl__InputGrabState {
 	fpl_b32 isRetryPending;
 } fpl__InputGrabState;
 
+// Number of key state slots, one per physical key: X11 uses the key code as the slot, Win32 the scan code (see fpl__Win32GetKeyStateSlot())
+#define FPL__KEY_STATE_SLOT_COUNT 0x300
+
 typedef struct {
 	fplKey keyMap[256];
-	fplButtonState keyStates[256];
-	// The scan code of the last event of each key code, the release on focus loss reports it
-	uint32_t keyScanCodes[256];
+	// Pressed state of each physical key, so two keys with the same key code (left and right Shift on Win32) do not share it
+	fplButtonState keyStates[FPL__KEY_STATE_SLOT_COUNT];
+	// The key code and the scan code of the last event of each slot, the release on focus loss reports them
+	uint64_t keyCodes[FPL__KEY_STATE_SLOT_COUNT];
+	uint32_t keyScanCodes[FPL__KEY_STATE_SLOT_COUNT];
 	uint64_t keyPressTimes[256];
 	fplButtonState mouseStates[5];
 	fpl__InputGrabState inputGrab;
@@ -15022,6 +15029,8 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 
 // PC scan codes of set 1 that fplKeyboardEvent.scanCode reports, the platforms make them from their own codes
 #define FPL__SCANCODE_EXTENDED_PREFIX 0xE000
+#define FPL__SCANCODE_LEFT_SHIFT 0x2A
+#define FPL__SCANCODE_RIGHT_SHIFT 0x36
 #define FPL__SCANCODE_NUM_LOCK 0x45
 #define FPL__SCANCODE_PAUSE 0xE11D
 #define FPL__SCANCODE_PRINT 0xE037
@@ -15029,7 +15038,8 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 #define FPL__SCANCODE_ALT_PRINT 0x54
 #define FPL__SCANCODE_CTRL_PAUSE 0xE046
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const uint32_t scanCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+// The key slot stands for the physical key and keeps its pressed state, see FPL__KEY_STATE_SLOT_COUNT
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint32_t keySlot, const uint64_t keyCode, const uint32_t scanCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 #if defined(FPL_LOG_KEY_EVENTS)
 	const char *buttonStateName = "";
 	if (buttonState == fplButtonState_Press)
@@ -15042,25 +15052,27 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 #endif
 
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+	bool isValidSlot = keySlot < fplArrayCount(windowState->keyStates);
 	bool repeat = false;
 	if (force) {
 		repeat = (buttonState == fplButtonState_Repeat);
-		if (keyCode < fplArrayCount(windowState->keyStates)) {
-			windowState->keyStates[keyCode] = buttonState;
+		if (isValidSlot) {
+			windowState->keyStates[keySlot] = buttonState;
 		}
 	} else {
-		if (keyCode < fplArrayCount(windowState->keyStates)) {
-			if ((buttonState == fplButtonState_Release) && (windowState->keyStates[keyCode] == fplButtonState_Release)) {
+		if (isValidSlot) {
+			if ((buttonState == fplButtonState_Release) && (windowState->keyStates[keySlot] == fplButtonState_Release)) {
 				return;
 			}
-			if ((buttonState == fplButtonState_Press) && (windowState->keyStates[keyCode] >= fplButtonState_Press)) {
+			if ((buttonState == fplButtonState_Press) && (windowState->keyStates[keySlot] >= fplButtonState_Press)) {
 				repeat = true;
 			}
-			windowState->keyStates[keyCode] = buttonState;
+			windowState->keyStates[keySlot] = buttonState;
 		}
 	}
-	if (keyCode < fplArrayCount(windowState->keyScanCodes)) {
-		windowState->keyScanCodes[keyCode] = scanCode;
+	if (isValidSlot) {
+		windowState->keyCodes[keySlot] = keyCode;
+		windowState->keyScanCodes[keySlot] = scanCode;
 	}
 	fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
@@ -15118,6 +15130,8 @@ fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowSta
 	fpl__PushMouseWheelEvent(wheelType, reportedX, reportedY, wheelDelta);
 }
 
+// Only the keyboard and mouse backends of the input system report the crossings
+#if defined(FPL__ENABLE_INPUT_WIN32) || defined(FPL__ENABLE_INPUT_X11)
 fpl_internal void fpl__PushMouseCrossingEvent(const fplMouseEventType type, const int32_t x, const int32_t y) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
@@ -15141,6 +15155,7 @@ fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *window
 	fplMouseEventType type = isInside ? fplMouseEventType_Enter : fplMouseEventType_Leave;
 	fpl__PushMouseCrossingEvent(type, reportedX, reportedY);
 }
+#endif // FPL__ENABLE_INPUT_WIN32 || FPL__ENABLE_INPUT_X11
 
 // @NOTE(final): Callback used for setup a window before it is created
 #define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
@@ -17091,11 +17106,12 @@ fpl_internal bool fpl__IsFullscreenChangeAllowed(const fpl__PlatformAppState *ap
 
 // Releases every key and mouse button the window still holds as pressed. The window lost the focus, so their releases go to another window.
 fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *windowState) {
-	for (uint32_t keyCode = 0; keyCode < fplArrayCount(windowState->keyStates); ++keyCode) {
-		if (windowState->keyStates[keyCode] != fplButtonState_Release) {
-			windowState->keyStates[keyCode] = fplButtonState_Release;
+	for (uint32_t keySlot = 0; keySlot < fplArrayCount(windowState->keyStates); ++keySlot) {
+		if (windowState->keyStates[keySlot] != fplButtonState_Release) {
+			windowState->keyStates[keySlot] = fplButtonState_Release;
+			uint64_t keyCode = windowState->keyCodes[keySlot];
 			fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
-			uint32_t scanCode = windowState->keyScanCodes[keyCode];
+			uint32_t scanCode = windowState->keyScanCodes[keySlot];
 			fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
 		}
 	}
@@ -19405,6 +19421,7 @@ fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
 // A down key in the key state of a thread, see GetKeyboardState()
 #define FPL__WIN32_KEY_STATE_DOWN 0x80
 
+#if defined(FPL__ENABLE_INPUT)
 // Makes the PC set 1 scan code from the scan code and the extended flag of a key message or the low level hook
 fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uint32_t virtualKey, const uint32_t messageScanCode, const bool isExtendedKey) {
 	// Windows swaps the scan codes of Pause (0x45) and NumLock (0xE045), wine has others for them, the key codes tell them apart everywhere
@@ -19421,6 +19438,10 @@ fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uin
 		// Keys sent by programs may come without a scan code
 		scanCode = wapi->user.MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC_EX);
 	}
+	// A prefix without a code is no key (wine maps an extended virtual key it has no scan code for to 0xE000)
+	if (scanCode == FPL__SCANCODE_EXTENDED_PREFIX) {
+		scanCode = 0;
+	}
 	if (scanCode == FPL__SCANCODE_ALT_PRINT) {
 		scanCode = FPL__SCANCODE_PRINT;
 	} else if (scanCode == FPL__SCANCODE_CTRL_PAUSE) {
@@ -19428,6 +19449,30 @@ fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uin
 	}
 	return(scanCode);
 }
+
+// Key state slots of Win32: the plain scan codes keep their value, the extended ones (0xE0xx) come behind them, and keys without a scan code get a slot per virtual key after that.
+// Pause (0xE11D) would share its low byte with the right Ctrl (0xE01D), it takes the slot of the extended scan code zero, which fpl__Win32GetScanCode() never reports.
+#define FPL__WIN32_KEY_SLOT_SCANCODE_MASK 0xFF
+#define FPL__WIN32_KEY_SLOT_EXTENDED_BASE 0x100
+#define FPL__WIN32_KEY_SLOT_PAUSE FPL__WIN32_KEY_SLOT_EXTENDED_BASE
+#define FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_BASE 0x200
+#define FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_MASK 0xFF
+
+// The key state slot of a physical key. The virtual key would give the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock one slot each.
+fpl_internal uint32_t fpl__Win32GetKeyStateSlot(const uint32_t scanCode, const uint32_t virtualKey) {
+	if (scanCode == FPL__SCANCODE_PAUSE) {
+		return(FPL__WIN32_KEY_SLOT_PAUSE);
+	}
+	if (scanCode == 0) {
+		uint32_t virtualKeySlot = FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_BASE + (virtualKey & FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_MASK);
+		return(virtualKeySlot);
+	}
+	uint32_t scanCodeByte = scanCode & FPL__WIN32_KEY_SLOT_SCANCODE_MASK;
+	bool isExtendedKey = (scanCode & FPL__SCANCODE_EXTENDED_PREFIX) == FPL__SCANCODE_EXTENDED_PREFIX;
+	uint32_t slot = isExtendedKey ? (FPL__WIN32_KEY_SLOT_EXTENDED_BASE + scanCodeByte) : scanCodeByte;
+	return(slot);
+}
+#endif // FPL__ENABLE_INPUT
 
 // The keys the keyboard grab takes away from the system, like SDL: Win, Alt and Ctrl, so they reach the window in the same order as the keys they are combined with,
 // Tab and Esc for Alt+Tab, Alt+Esc and Ctrl+Esc, and Print for the screen capture.
@@ -19448,6 +19493,7 @@ fpl_internal bool fpl__Win32IsHookedKey(const DWORD virtualKey) {
 	}
 }
 
+#if defined(FPL__ENABLE_INPUT)
 // WM_KEYDOWN reports Alt and Ctrl with their side independent key code, the hook reports them the same way
 fpl_internal DWORD fpl__Win32GetReportedHookedKey(const DWORD virtualKey) {
 	switch (virtualKey) {
@@ -19461,6 +19507,7 @@ fpl_internal DWORD fpl__Win32GetReportedHookedKey(const DWORD virtualKey) {
 			return(virtualKey);
 	}
 }
+#endif // FPL__ENABLE_INPUT
 
 fpl_internal fplKeyboardModifierFlags fpl__Win32GetHookedModifierFlag(const DWORD virtualKey) {
 	switch (virtualKey) {
@@ -19516,10 +19563,11 @@ fpl_internal void fpl__Win32ReportHookedKey(fpl__PlatformAppState *appState, con
 	DWORD reportedKey = fpl__Win32GetReportedHookedKey(hookData->vkCode);
 	bool isExtendedKey = (hookData->flags & LLKHF_EXTENDED) != 0;
 	uint32_t scanCode = fpl__Win32GetScanCode(wapi, hookData->vkCode, hookData->scanCode, isExtendedKey);
+	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, hookData->vkCode);
 	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->hookedModifiers;
 	fplButtonState buttonState = isUp ? fplButtonState_Release : fplButtonState_Press;
-	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, (uint64_t)reportedKey, scanCode, modifiers, buttonState, false);
+	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, keySlot, (uint64_t)reportedKey, scanCode, modifiers, buttonState, false);
 #else
 	(void)appState;
 	(void)hookData;
@@ -21447,6 +21495,35 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 }
 
 #if defined(FPL__ENABLE_WINDOW)
+// A down key in the result of GetKeyState() and GetAsyncKeyState()
+#define FPL__WIN32_KEY_DOWN_FLAG 0x8000
+
+// Windows loses the release of the Shift key that is let go first while both are down, only the one let go last gets its WM_KEYUP.
+// The key state of the thread knows it is up as of the key message that was just handled, so a Shift that is still down for FPL gets its release right after that message, like SDL does it.
+fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__PlatformWindowState *windowState = &appState->window;
+	const uint32_t shiftScanCodes[] = { FPL__SCANCODE_LEFT_SHIFT, FPL__SCANCODE_RIGHT_SHIFT };
+	const int shiftVirtualKeys[] = { VK_LSHIFT, VK_RSHIFT };
+	for (uint32_t shiftIndex = 0; shiftIndex < fplArrayCount(shiftScanCodes); ++shiftIndex) {
+		uint32_t scanCode = shiftScanCodes[shiftIndex];
+		uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, VK_SHIFT);
+		if (windowState->keyStates[keySlot] == fplButtonState_Release) {
+			continue;
+		}
+		SHORT threadKeyState = wapi->user.GetKeyState(shiftVirtualKeys[shiftIndex]);
+		bool isDown = (threadKeyState & FPL__WIN32_KEY_DOWN_FLAG) != 0;
+		if (isDown) {
+			continue;
+		}
+		uint64_t keyCode = windowState->keyCodes[keySlot];
+		fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+		fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
+		uint64_t time = GetTickCount();
+		fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
+	}
+}
+
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
 	fplAssertPtr(backend);
 	fplAssertPtr(ev);
@@ -21473,10 +21550,12 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			uint32_t messageScanCode = LOBYTE(keyFlags);
 			bool isExtendedKey = (keyFlags & KF_EXTENDED) != 0;
 			uint32_t scanCode = fpl__Win32GetScanCode(wapi, (uint32_t)keyCode, messageScanCode, isExtendedKey);
+			uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)keyCode);
 			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
-			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, scanCode, modifiers, keyState, false);
+			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
+			fpl__Win32ReleaseLostShiftKeys(appState);
 			return true;
 		}
 
@@ -30151,6 +30230,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 				return true;
 			}
+			// Every physical key has its own X11 key code, so the key code is the key state slot
+			uint32_t keySlot = (uint32_t)keyCode;
 			fpl__X11_Time keyTime = ev->xkey.time;
 			fpl__X11_Time lastPressTime = winState->keyPressTimes[keyCode];
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
@@ -30160,7 +30241,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				if (keyCode) {
 					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
 					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, scanCode, modifiers, fplButtonState_Press, false);
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keySlot, keyCode, scanCode, modifiers, fplButtonState_Press, false);
 					if (isFilteredKeyEvent) {
 						inputMethod->filteredPressTimes[keyCode] = keyTime;
 					} else {
@@ -30196,13 +30277,14 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			}
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			uint32_t keySlot = (uint32_t)keyCode;
 			uint32_t scanCode = fpl__X11GetScanCode(keyCode);
 			fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
 			if (isRepeat) {
 				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
 			} else {
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, scanCode, modifiers, fplButtonState_Release, true);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, true);
 			}
 			return true;
 		}

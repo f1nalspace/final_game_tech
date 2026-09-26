@@ -1109,6 +1109,8 @@
 
 	@note [X11] The scan code comes from the Linux evdev key code, which the X server reports plus 8.
 
+	@note Every physical key has its own pressed state, even when it shares the key code with another one (like the left and right Shift or Enter and the keypad Enter on Win32). Holding both gives two presses and two releases, each with its own scan code.
+
 	@note [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) give their button events like any other key, the composed text comes as one character input event.
 
 	@note System shortcuts like Alt+Tab or the Super/Win key reach the window only while the keyboard is grabbed (@ref section_category_window_style_keyboard_grab). Passing the keys on to a virtual machine is shown in @ref section_category_window_style_input_capture.
