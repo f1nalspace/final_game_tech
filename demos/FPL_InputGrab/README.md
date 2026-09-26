@@ -183,6 +183,7 @@ Start with `--log-events`.
 - [ ] Enter and keypad Enter are different (`0x1c` and `0xe01c`), so are the left and right Ctrl, Alt and Shift.
 - [ ] Each key has its own pressed state: hold the left Shift, then the right Shift, let go of the left one first and then the right one. The log shows two presses (`state=press`, never `repeat`) and two releases, with `scan=0x2a` and `scan=0x36`. The same in the other order, and the same with left and right Ctrl, Enter and keypad Enter, and Home and keypad 7 with Num Lock off.
 - [ ] After that, a single left Shift press is `state=press` again (the release that Windows does not send for the first Shift is made by FPL).
+- [ ] Without the keyboard grab, Win+Space (switch the layout, twice to get back) and Win+G (Game Bar, Esc to close it): after letting go of Win, the log shows `key=LeftSuper state=release` at once, without pressing another key, and the next Win press is `state=press`. With a letter pressed right after letting go of Win, the release comes before the letter. The same with the right Win key, if the keyboard has one.
 - [ ] A dead key (`^` on a German layout) comes as a key press and release, `^` then `1` gives one text input of `¹`.
 - [ ] With `--keyboard-grab` the hooked keys give the same codes: left Win `0xe05b`, right Win `0xe05c`, left Ctrl `0x1d`, right Ctrl `0xe01d`, left Alt `0x38`, right Alt `0xe038`, Tab `0xf`, Esc `0x1`. Holding left and right Ctrl (or Alt) gives two presses and two releases there as well.
 - [ ] The side buttons come as `name=x1` (back) and `name=x2` (forward).
