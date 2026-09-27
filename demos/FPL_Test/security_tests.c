@@ -331,6 +331,25 @@ static void fsec__Path_DirectoryListEmptyPathIsWorkingDirectory(void) {
 	FSEC_ASSERT_EQ_SZ(emptyPathCount, workingDirectoryCount);
 }
 
+// fplDirectoryListBegin/Next never return "." and "..", a recursive traversal would otherwise never end
+static void fsec__Path_DirectoryListSkipsDotEntries(void) {
+	fsec__Banner("paths", "fplDirectoryListBegin skips . and ..");
+	const char *currentDirectoryName = ".";
+	const char *parentDirectoryName = "..";
+	const char *matchAllFilter = "*";
+	size_t dotEntryCount = 0;
+	fplFileEntry entry = fplZeroInit;
+	for (bool hasEntry = fplDirectoryListBegin(currentDirectoryName, matchAllFilter, &entry); hasEntry; hasEntry = fplDirectoryListNext(&entry)) {
+		bool isCurrentDirectory = fplIsStringEqual(entry.name, currentDirectoryName);
+		bool isParentDirectory = fplIsStringEqual(entry.name, parentDirectoryName);
+		if (isCurrentDirectory || isParentDirectory) {
+			++dotEntryCount;
+		}
+	}
+	fplDirectoryListEnd(&entry);
+	FSEC_ASSERT_EQ_SZ(dotEntryCount, 0);
+}
+
 void FPLSecurityTests_Paths(void) {
 	fsec__Path_CombineNoDoubleSeparators();
 	fsec__Path_CombineBoundedDoesNotOverflow();
@@ -339,6 +358,7 @@ void FPLSecurityTests_Paths(void) {
 	fsec__Path_ExtractFilePathRootAndBareName();
 	fsec__Path_CombineEmptyFirstPath();
 	fsec__Path_DirectoryListEmptyPathIsWorkingDirectory();
+	fsec__Path_DirectoryListSkipsDotEntries();
 }
 
 /* ===========================================================================
