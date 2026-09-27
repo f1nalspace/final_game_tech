@@ -2946,6 +2946,7 @@ int main(int argc, char** argv) {
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
 	ViewerParameters defaultParams = fplZeroInit;
 	defaultParams.preview = true;
+	defaultParams.recursive = true;
 	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
 	defaultParams.upKernel = DEFAULT_UP_KERNEL;
 	defaultParams.background = DEFAULT_BACKGROUND;
@@ -3135,7 +3136,7 @@ int main(int argc, char** argv) {
 								for (size_t fileIndex = 0; fileIndex < ev.window.dropFiles.fileCount; ++fileIndex) {
 									const char* filePath = ev.window.dropFiles.files[fileIndex];
 									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
-									if (LoadPicturesPath(state, filePath, false, &startPicIndex)) {
+									if (LoadPicturesPath(state, filePath, true, &startPicIndex)) {
 										// A new folder starts with the start view
 										state->view = state->startView;
 										state->activeFileIndex = (int)startPicIndex;
