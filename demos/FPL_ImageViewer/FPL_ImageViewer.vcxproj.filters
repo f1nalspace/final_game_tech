@@ -15,6 +15,21 @@
     <ClInclude Include="..\dependencies\stb\stb_truetype.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\final_ui.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_fonts.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_backend_gl3.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_font_stbtt.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_input_fpl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
     <ClInclude Include="shadersources.h" />
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="version.h" />

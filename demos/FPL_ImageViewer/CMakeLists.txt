@@ -20,6 +20,11 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"../../final_ui.h"
+	"../additions/fui_backend_gl3.h"
+	"../additions/fui_input_fpl.h"
+	"../additions/fui_font_stbtt.h"
+	"../additions/final_fonts.h"
 	"logging.h"
 	"shadersources.h"
 	"viewtransform.h"

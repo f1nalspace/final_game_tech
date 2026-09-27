@@ -963,7 +963,7 @@ static void SelfTestPyramidFolder(SelfTest* test, const char* folderPath, const 
 		PictureInfo info;
 		ImagePixels pixels = fplZeroInit;
 		char message[IMAGE_LOADER_MESSAGE_SIZE];
-		ImageLoadResult loadResult = ImageLoaderRegistryLoad(&registry, &fileSource.source, extension, -1, &loaderEntry, &info, &pixels, message, sizeof(message));
+		ImageLoadResult loadResult = ImageLoaderRegistryLoad(&registry, &fileSource.source, extension, -1, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
 		ImageFileSourceClose(&fileSource);
 		if (loadResult != ImageLoadResult_Success) {
 			continue;

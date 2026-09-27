@@ -18,12 +18,16 @@ Requirements:
 	- Final Dynamic OpenGL
 	- OpenGL 3.3 core profile
 	- STB_image (the default loader, others are optional)
+	- STB_truetype, final_ui.h and from demos/additions: fui_backend_gl3.h, fui_input_fpl.h, fui_font_stbtt.h, final_fonts.h
 
 Author:
 	Torsten Spaete
 
 Changelog:
 	## v0.6.0
+	- New: Info line at the top with file name, size, bpp and zoom, already while loading; I or --no-info hides it
+	- New: N or --relative-path shows the path relative to the opened folder, shortened at the front when too long
+	- New: final_ui.h draws the interface through the new OpenGL 3.3 backend fui_backend_gl3.h
 	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits, the window it needs for OpenGL stays hidden
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
@@ -54,6 +58,7 @@ Changelog:
 	- New: --lod-source=auto|0 and --lod-kernel=mitchell|lanczos2 for comparisons, --bench-lod=<file> measures decode and levels on every SIMD level, --write-pyramid=<folder> writes all levels as PAM, --selftest=<folder> also compares every SIMD level on the pictures of the folder
 	- Changed: The folder scan takes every extension of every loader
 	- Changed: The loading progress only moves forward: reading and decoding fill 70 %, the levels 95 %, then the upload; a PNG counts its reading up to a quarter of the first phase and then shows a running segment while stb_image inflates it
+	- Changed: The loading progress bar moved below the info line
 	- Changed: The resample passes run in bands of output rows, so the intermediate texture stays below 64 MB at any scale, and the log shows the GPU time of both passes with the band count
 	- Changed: A load job that meets a cancel is dropped, the reload queues everything it needs again
 	- Fixed: Two load threads could take the same picture slot
@@ -203,6 +208,20 @@ License:
 
 #include "selftest.h"
 
+// final_ui draws the info line over the picture (plan section 2.8)
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb/stb_truetype.h>
+#include <final_fonts.h>
+
+#define FUI_IMPLEMENTATION
+#include <final_ui.h>
+#define FUI_STBTT_IMPLEMENTATION
+#include <fui_font_stbtt.h>
+#define FUI_GL3_IMPLEMENTATION
+#include <fui_backend_gl3.h>
+#define FUI_INPUT_FPL_IMPLEMENTATION
+#include <fui_input_fpl.h>
+
 char ToLowerCase(char ch) {
 	if (ch >= 'A' && ch <= 'Z') {
 		ch = 'a' + (ch - 'A');
@@ -280,6 +299,8 @@ typedef struct ViewPicture {
 	volatile float progress;
 	// The loader works on without knowing how far it is, the bar shows a running animation after progress
 	volatile bool isProgressIndeterminate;
+	// info holds what the loader read about fileIndex, set before the pixels are decoded; info, hasInfo and fileIndex change under ViewerState::pictureInfoMutex
+	bool hasInfo;
 	size_t fileIndex;
 	volatile LoadedPictureState state;
 } ViewPicture;
@@ -379,6 +400,10 @@ typedef struct ViewerParameters {
 	bool listLoaders;
 	bool recursive;
 	bool preview;
+	// The info line at the top, I and --no-info
+	bool showInfo;
+	// The info line shows the path relative to the opened folder instead of the file name, N and --relative-path
+	bool showRelativePath;
 	bool runSelfTest;
 	// --lod-source=0: the resample pipeline always reads level 0, for reference comparisons
 	bool isFullSourceLevelForced;
@@ -442,6 +467,23 @@ static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
 #define KEYBOARD_PAN_VIEWPORT_SHARE 0.125f
 // Kernel of the 2:1 reductions of the level chain (plan section 2.3)
 #define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
+
+// Info line (plan section 2.8): a translucent bar over the full width at the top, the file name on the left, size, bpp and zoom on the right
+static const float InfoLineTextPixelHeight = 16.0f;
+static const float InfoLinePaddingX = 8.0f;
+static const float InfoLinePaddingY = 5.0f;
+// Smallest space between the file name and the right part
+static const float InfoLineSeparationWidth = 24.0f;
+// Over a white picture the bar is still dark enough for the gray details, about 5:1
+static const float InfoLineBackgroundOpacity = 0.7f;
+static const float InfoLineNameBrightness = 1.0f;
+static const float InfoLineDetailBrightness = 0.8f;
+// Bitstream Vera Sans, Latin-1 so umlauts in file names show, everything above shows the replacement.
+// Baked at twice the drawn size: thin strokes keep their full brightness, baked at the drawn size they came out visibly softer.
+#define INFO_FONT_BAKE_PIXEL_HEIGHT 32.0f
+#define INFO_FONT_FIRST_CODEPOINT 0x20
+#define INFO_FONT_LAST_CODEPOINT 0xFF
+#define INFO_FONT_ATLAS_SIDE 512
 
 // Load progress phases (plan section 2.9): reading and decoding, then the level chain, then the upload
 static const float ProgressDecodeStart = 0.0f;
@@ -533,6 +575,17 @@ typedef struct ViewerState {
 
 	// Every picture is read through these loaders, stb_image first
 	ImageLoaderRegistry loaderRegistry;
+	// Guards info, hasInfo and fileIndex of the view pictures, a load thread writes them while the info line reads them
+	fplMutexHandle pictureInfoMutex;
+
+	// final_ui draws the info line, every polled event goes to its input bridge first (plan section 2.8)
+	fuiContext ui;
+	fuiFplInput uiInput;
+	fuiGL3Backend uiBackend;
+	fuiStbttFont uiBakedFont;
+	fuiFont uiFont;
+	uint32_t uiFontTexture;
+	bool isUserInterfaceReady;
 
 	// Size of the window client area, updated every frame
 	ViewSize viewportSize;
@@ -724,6 +777,14 @@ static void ClearPictureData(ImageLoaderRegistry* registry, ViewPicture* viewPic
 	image->loaderEntry = -1;
 }
 
+// Forgets what a loader read about the picture, the info line shows nothing of it until a load reads it again
+static void ResetPictureInfo(ViewerState* state, ViewPicture* picture) {
+	fplMutexLock(&state->pictureInfoMutex);
+	fplClearStruct(&picture->info);
+	picture->hasInfo = false;
+	fplMutexUnlock(&state->pictureInfoMutex);
+}
+
 // Main thread only, releases the textures as well
 static void ClearViewPictures(ViewerState* state) {
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
@@ -732,19 +793,20 @@ static void ClearViewPictures(ViewerState* state) {
 		state->viewPictures[i].isProgressIndeterminate = false;
 		ClearPictureData(&state->loaderRegistry, &state->viewPictures[i], false);
 		ResampleResultRelease(&state->viewPictures[i].thumbnail);
+		ResetPictureInfo(state, &state->viewPictures[i]);
 	}
 }
 
 // Reads one file through the loader registry: the loader chosen with the L key alone, otherwise the selected candidates with fallback.
-// Used by the load threads, --decode-all, --bench-lod and --write-pyramid.
-static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, ImageSourceProgressFunction* progress, void* progressUserData, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
+// Used by the load threads, --decode-all, --bench-lod and --write-pyramid. The optional info function gets the info before the pixels are decoded.
+static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, ImageSourceProgressFunction* progress, void* progressUserData, ImageLoaderInfoFunction* infoFunction, void* infoUserData, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
 	ImageFileSource fileSource;
 	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, progress, progressUserData)) {
 		fplStringFormat(message, messageSize, "file cannot be opened");
 		return(ImageLoadResult_Corrupt);
 	}
 	const char* extension = fplExtractFileExtension(filePath);
-	ImageLoadResult result = ImageLoaderRegistryLoad(registry, &fileSource.source, extension, forcedLoaderEntry, outLoaderEntry, outInfo, outPixels, message, messageSize);
+	ImageLoadResult result = ImageLoaderRegistryLoad(registry, &fileSource.source, extension, forcedLoaderEntry, infoFunction, infoUserData, outLoaderEntry, outInfo, outPixels, message, messageSize);
 	ImageFileSourceClose(&fileSource);
 	return(result);
 }
@@ -771,6 +833,17 @@ static void ReportPictureLevelsProgress(void* userData, const float fraction) {
 	float value = ProgressDecodeEnd + fraction * (ProgressLevelsEnd - ProgressDecodeEnd);
 	picture->isProgressIndeterminate = false;
 	RaisePictureProgress(picture, value);
+}
+
+// The info line shows size and bpp while the pixels are still decoded
+static void PublishPictureInfo(void* userData, const PictureInfo* info) {
+	PictureLoadThread* loadThread = (PictureLoadThread*)userData;
+	ViewerState* state = loadThread->state;
+	ViewPicture* picture = loadThread->context.viewPic;
+	fplMutexLock(&state->pictureInfoMutex);
+	picture->info = *info;
+	picture->hasInfo = true;
+	fplMutexUnlock(&state->pictureInfoMutex);
 }
 
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
@@ -807,9 +880,12 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 		ClearPictureData(&state->loaderRegistry, loadedPic, true);
 		loadedPic->progress = 0.0f;
 		loadedPic->isProgressIndeterminate = false;
+		fplMutexLock(&state->pictureInfoMutex);
 		loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
-		fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
 		fplClearStruct(&loadedPic->info);
+		loadedPic->hasInfo = false;
+		fplMutexUnlock(&state->pictureInfoMutex);
+		fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
 		loadThread->context.viewPic = loadedPic;
 
 		flogWrite("Load picture '%s' [%zu]", loadedPic->filePath, loadedPic->fileIndex);
@@ -817,7 +893,7 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 		ImagePixels pixels = fplZeroInit;
 		int32_t loaderEntry = -1;
 		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
-		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, ReportPictureDecodeProgress, loadedPic, &loaderEntry, &info, &pixels, message, sizeof(message));
+		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, ReportPictureDecodeProgress, loadedPic, PublishPictureInfo, loadThread, &loaderEntry, &info, &pixels, message, sizeof(message));
 		bool isCanceled = loadThread->shutdown || loadThread->context.canceled;
 		if (result == ImageLoadResult_Success && isCanceled) {
 			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
@@ -865,7 +941,10 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			image->width = pixels.width;
 			image->height = pixels.height;
 			image->levelCount = pyramid.levelCount;
+			fplMutexLock(&state->pictureInfoMutex);
 			loadedPic->info = info;
+			loadedPic->hasInfo = true;
+			fplMutexUnlock(&state->pictureInfoMutex);
 			RaisePictureProgress(loadedPic, ProgressLevelsEnd);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
 		} else {
@@ -1098,6 +1177,24 @@ static bool IsPictureCopied(const ViewerState* state, const ViewPicture* picture
 	return(result);
 }
 
+// "fit 25 %" while the zoom mode fits the picture, "150 %" or "37.5 %" otherwise
+static void FormatZoomText(const ViewerState* state, const ViewTransform* transform, char* buffer, const size_t bufferSize) {
+	const float percentPerScale = 100.0f;
+	const float wholePercentTolerance = 0.05f;
+	float percent = transform->scale * percentPerScale;
+	float roundedPercent = roundf(percent);
+	bool isWholePercent = fabsf(percent - roundedPercent) < wholePercentTolerance;
+	char percentText[FPL_MAX_NAME_LENGTH];
+	if (isWholePercent) {
+		fplStringFormat(percentText, fplArrayCount(percentText), "%.0f %%", roundedPercent);
+	} else {
+		fplStringFormat(percentText, fplArrayCount(percentText), "%.1f %%", percent);
+	}
+	bool isFitMode = state->view.zoomMode == ViewZoomMode_Fit || state->view.zoomMode == ViewZoomMode_ShrinkToFit;
+	bool isFitted = isFitMode && transform->scale == transform->fitScale;
+	fplStringFormat(buffer, bufferSize, "%s%s", (isFitted ? "fit " : ""), percentText);
+}
+
 // Sets the title only when it changed, so it can be called every frame
 static void UpdateWindowTitle(ViewerState* state) {
 	const char* downArrow = "\xE2\x86\x93";
@@ -1141,23 +1238,13 @@ static void UpdateWindowTitle(ViewerState* state) {
 	}
 
 	// Zoom (fit when the zoom mode fits the picture), the center once the picture is larger than the viewport, the view and wheel modes when they are not the defaults.
-	// The info line of iteration 7 takes this over.
+	// The info line shows the zoom as well.
 	char viewText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
 	if (hasTransform) {
-		const float wholePercentTolerance = 0.05f;
 		const float half = 0.5f;
-		float percent = transform.scale * percentPerScale;
-		float roundedPercent = roundf(percent);
-		bool isWholePercent = fabsf(percent - roundedPercent) < wholePercentTolerance;
-		char percentText[FPL_MAX_NAME_LENGTH];
-		if (isWholePercent) {
-			fplStringFormat(percentText, fplArrayCount(percentText), "%.0f %%", roundedPercent);
-		} else {
-			fplStringFormat(percentText, fplArrayCount(percentText), "%.1f %%", percent);
-		}
-		bool isFitMode = state->view.zoomMode == ViewZoomMode_Fit || state->view.zoomMode == ViewZoomMode_ShrinkToFit;
-		bool isFitted = isFitMode && transform.scale == transform.fitScale;
-		fplStringFormat(viewText, fplArrayCount(viewText), " | %s%s", (isFitted ? "fit " : ""), percentText);
+		char zoomText[FPL_MAX_NAME_LENGTH];
+		FormatZoomText(state, &transform, zoomText, fplArrayCount(zoomText));
+		fplStringFormat(viewText, fplArrayCount(viewText), " | %s", zoomText);
 		float viewportWidth = (float)state->viewportSize.width;
 		float viewportHeight = (float)state->viewportSize.height;
 		bool isMovable = transform.imageRect.width > viewportWidth || transform.imageRect.height > viewportHeight;
@@ -1392,6 +1479,8 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* windowValue = MatchLongParameter(argument, "--window");
 			const char* zoomValue = MatchLongParameter(argument, "--zoom");
 			const char* noPreviewValue = MatchLongParameter(argument, "--no-preview");
+			const char* noInfoValue = MatchLongParameter(argument, "--no-info");
+			const char* relativePathValue = MatchLongParameter(argument, "--relative-path");
 			const char* selfTestValue = MatchLongParameter(argument, "--selftest");
 			const char* downFilterValue = MatchLongParameter(argument, "--down-filter");
 			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
@@ -1421,6 +1510,12 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (noPreviewValue != fpl_null) {
 				params->preview = false;
 				isValid = *noPreviewValue == 0;
+			} else if (noInfoValue != fpl_null) {
+				params->showInfo = false;
+				isValid = *noInfoValue == 0;
+			} else if (relativePathValue != fpl_null) {
+				params->showRelativePath = true;
+				isValid = *relativePathValue == 0;
 			} else if (selfTestValue != fpl_null) {
 				params->runSelfTest = true;
 				params->selfTestFolder = *selfTestValue != 0 ? selfTestValue : fpl_null;
@@ -1650,7 +1745,7 @@ static void DecodeAllThreadProc(const fplThreadHandle* thread, void* data) {
 		ImagePixels pixels = fplZeroInit;
 		fplTimestamp start = fplTimestampQuery();
 		result->loaderEntry = -1;
-		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
+		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
 		fplTimestamp finish = fplTimestampQuery();
 		result->milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
 		if (result->result == ImageLoadResult_Success) {
@@ -1748,7 +1843,7 @@ static int WritePyramidLevels(ViewerState* state, const char* picturePath, const
 	PictureInfo info = fplZeroInit;
 	ImagePixels pixels = fplZeroInit;
 	char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
-	ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+	ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
 	if (loadResult != ImageLoadResult_Success) {
 		const char* resultName = ImageLoadResultGetName(loadResult);
 		fplConsoleFormatError("Failed to load '%s': %s (%s)\n", picturePath, resultName, message);
@@ -1816,7 +1911,7 @@ static int BenchmarkLevels(ViewerState* state, const char* picturePath) {
 		}
 		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
 		fplTimestamp start = fplTimestampQuery();
-		ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+		ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
 		fplTimestamp finish = fplTimestampQuery();
 		if (loadResult != ImageLoadResult_Success) {
 			const char* resultName = ImageLoadResultGetName(loadResult);
@@ -2023,6 +2118,7 @@ static void Kill(ViewerState* state) {
 	ShutdownLoadThreads(state);
 	ClearPictureFiles(state);
 	ClearViewPictures(state);
+	fplMutexDestroy(&state->pictureInfoMutex);
 }
 
 static void Clear(ViewerState* state) {
@@ -2062,6 +2158,51 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 		}
 	}
 	return(result);
+}
+
+static void ReleaseUserInterface(ViewerState* state) {
+	if (state->isUserInterfaceReady) {
+		fuiRelease(&state->ui);
+	}
+	if (state->uiFontTexture != 0) {
+		fuiGL3DeleteTexture(state->uiFontTexture);
+		state->uiFontTexture = 0;
+	}
+	fuiGL3Release(&state->uiBackend);
+	fuiStbttFontRelease(&state->uiBakedFont);
+	state->isUserInterfaceReady = false;
+}
+
+// final_ui with Bitstream Vera Sans for the info line (plan section 2.8)
+static bool InitUserInterface(ViewerState* state) {
+	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
+	bakeSettings.pixelHeight = INFO_FONT_BAKE_PIXEL_HEIGHT;
+	bakeSettings.firstCodePoint = INFO_FONT_FIRST_CODEPOINT;
+	bakeSettings.codePointCount = INFO_FONT_LAST_CODEPOINT - INFO_FONT_FIRST_CODEPOINT + 1;
+	bakeSettings.atlasWidth = INFO_FONT_ATLAS_SIDE;
+	bakeSettings.atlasHeight = INFO_FONT_ATLAS_SIDE;
+	const char* failure = fpl_null;
+	if (!fuiStbttFontBake(&state->uiBakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
+		failure = "the font could not be baked";
+	} else if (!fuiGL3Init(&state->uiBackend)) {
+		failure = state->uiBackend.errorLog;
+	} else if (!fuiGL3UploadFontAtlas(state->uiBakedFont.atlasPixels, state->uiBakedFont.atlasWidth, state->uiBakedFont.atlasHeight, &state->uiFontTexture)) {
+		failure = "the font atlas could not be uploaded";
+	} else {
+		state->uiFont = fuiStbttFontToFuiFont(&state->uiBakedFont, (fuiTextureId)state->uiFontTexture);
+		if (!fuiInit(&state->ui, &state->uiFont, fpl_null)) {
+			failure = "the context could not be created";
+		}
+	}
+	if (failure != fpl_null) {
+		fplConsoleFormatError("Failed to initialize the user interface: %s\n", failure);
+		flogWrite("Failed to initialize the user interface: %s", failure);
+		ReleaseUserInterface(state);
+		return(false);
+	}
+	state->isUserInterfaceReady = true;
+	fuiFplInputInit(&state->uiInput);
+	return(true);
 }
 
 static bool Init(ViewerState* state) {
@@ -2108,6 +2249,10 @@ static bool Init(ViewerState* state) {
 		return(false);
 	}
 
+	if (!InitUserInterface(state)) {
+		return(false);
+	}
+
 	state->downKernel = state->params.downKernel;
 	state->upKernel = state->params.upKernel;
 	state->background = state->params.background;
@@ -2131,6 +2276,7 @@ static bool Init(ViewerState* state) {
 	state->doPictureReload = false;
 
 	// Allocate and startup load threads
+	fplMutexInit(&state->pictureInfoMutex);
 	size_t threadCount;
 	if (state->params.threadCount > 0) {
 		threadCount = fplMax(fplMin(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
@@ -2451,6 +2597,195 @@ static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) 
 	}
 }
 
+static bool IsPathSeparator(const char c) {
+	bool result = c == '/' || c == '\\';
+	return(result);
+}
+
+// The file name of the active picture, with N the path relative to the opened folder
+static const char* GetActivePictureDisplayPath(const ViewerState* state) {
+	const char* filePath = state->pictureFiles[state->activeFileIndex].filePath;
+	if (!state->params.showRelativePath) {
+		const char* fileName = fplExtractFileName(filePath);
+		return(fileName);
+	}
+	size_t rootLength = fplGetStringLength(state->rootPath);
+	bool isInsideRoot = rootLength > 0 && strncmp(filePath, state->rootPath, rootLength) == 0;
+	if (!isInsideRoot) {
+		return(filePath);
+	}
+	bool isFolderBoundary = IsPathSeparator(filePath[rootLength]) || IsPathSeparator(state->rootPath[rootLength - 1]);
+	if (!isFolderBoundary) {
+		return(filePath);
+	}
+	const char* relativePath = filePath + rootLength;
+	while (IsPathSeparator(*relativePath)) {
+		++relativePath;
+	}
+	return(relativePath);
+}
+
+// Shortens a path at the FRONT until it fits, because the file name matters more than its folders: whole folders go first (".../folder/name.jpg"), then characters of the name
+static void TruncatePathFrontToWidth(const fuiContext* ui, const char* path, const float maxWidth, const float pixelHeight, char* buffer, const size_t bufferSize) {
+	const char* ellipsis = "...";
+	size_t pathLength = fplGetStringLength(path);
+	fuiVec2 pathSize = fuiMeasureText(ui, path, pathLength, pixelHeight);
+	if (pathSize.x <= maxWidth) {
+		fplCopyString(path, buffer, bufferSize);
+		return;
+	}
+
+	// Whole folders: every cut lands on a separator, which stays in front of the rest
+	size_t nameStart = 0;
+	for (size_t offset = 0; offset < pathLength; ++offset) {
+		if (IsPathSeparator(path[offset])) {
+			nameStart = offset + 1;
+		}
+	}
+	for (size_t offset = 1; offset < nameStart; ++offset) {
+		if (!IsPathSeparator(path[offset])) {
+			continue;
+		}
+		fplStringFormat(buffer, bufferSize, "%s%s", ellipsis, path + offset);
+		fuiVec2 size = fuiMeasureText(ui, buffer, 0, pixelHeight);
+		if (size.x <= maxWidth) {
+			return;
+		}
+	}
+
+	// Then characters of the name, whole UTF-8 sequences only
+	size_t offset = nameStart;
+	while (offset < pathLength) {
+		fuiDecodeUtf8(path, pathLength, &offset);
+		fplStringFormat(buffer, bufferSize, "%s%s", ellipsis, path + offset);
+		fuiVec2 size = fuiMeasureText(ui, buffer, 0, pixelHeight);
+		if (size.x <= maxWidth) {
+			return;
+		}
+	}
+
+	// Not even the ellipsis fits
+	buffer[0] = 0;
+}
+
+// What a loader read about the active file, while it loads or once it is there; false before that, outIsFailed when no loader could read it
+static bool GetActivePictureInfo(ViewerState* state, PictureInfo* outInfo, bool* outIsFailed) {
+	*outIsFailed = false;
+	bool hasActivePicture = state->activeFileIndex > -1 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return(false);
+	}
+	// The slot may still hold another file while the pictures around the active one are loaded again
+	ViewPicture* picture = &state->viewPictures[state->viewPictureIndex];
+	fplMutexLock(&state->pictureInfoMutex);
+	bool isActiveFile = picture->fileIndex == (size_t)state->activeFileIndex;
+	bool result = isActiveFile && picture->hasInfo;
+	if (result) {
+		*outInfo = picture->info;
+	}
+	LoadedPictureState pictureState = fplAtomicLoadS32(&picture->state);
+	*outIsFailed = isActiveFile && pictureState == LoadedPictureState_Error;
+	fplMutexUnlock(&state->pictureInfoMutex);
+	return(result);
+}
+
+static void AppendInfoLinePart(const char* part, char* buffer, const size_t bufferSize) {
+	const char* separator = " \xC2\xB7 ";
+	if (buffer[0] != 0) {
+		fplStringAppend(separator, buffer, bufferSize);
+	}
+	fplStringAppend(part, buffer, bufferSize);
+}
+
+// Right part of the info line, e.g. "4032 × 3024 · 24 bpp · fit 25 %", with the size as displayed (turned by the orientation)
+static void BuildInfoLineDetails(ViewerState* state, char* buffer, const size_t bufferSize) {
+	const char* timesSign = "\xC3\x97";
+	buffer[0] = 0;
+
+	PictureInfo info;
+	bool isFailed = false;
+	if (GetActivePictureInfo(state, &info, &isFailed)) {
+		ViewSize storedSize = fplStructInit(ViewSize, info.width, info.height);
+		ViewSize displayedSize = ComputeViewOrientedSize((uint32_t)info.orientation, storedSize);
+		const char* paletteText = info.isPalette ? " (palette)" : "";
+		char sizeText[FPL_MAX_NAME_LENGTH];
+		char depthText[FPL_MAX_NAME_LENGTH];
+		fplStringFormat(sizeText, fplArrayCount(sizeText), "%u %s %u", displayedSize.width, timesSign, displayedSize.height);
+		fplStringFormat(depthText, fplArrayCount(depthText), "%u bpp%s", info.bitsPerPixel, paletteText);
+		AppendInfoLinePart(sizeText, buffer, bufferSize);
+		AppendInfoLinePart(depthText, buffer, bufferSize);
+	}
+	if (isFailed) {
+		AppendInfoLinePart("cannot be read", buffer, bufferSize);
+	}
+
+	ViewTransform transform;
+	if (GetActivePictureTransform(state, &transform)) {
+		char zoomText[FPL_MAX_NAME_LENGTH];
+		FormatZoomText(state, &transform, zoomText, fplArrayCount(zoomText));
+		AppendInfoLinePart(zoomText, buffer, bufferSize);
+	}
+}
+
+// Height of the info line bar in pixels, 0 while it is hidden
+static float GetInfoLineHeight(const ViewerState* state) {
+	bool isShown = state->params.showInfo && state->isUserInterfaceReady && state->activeFileIndex > -1;
+	if (!isShown) {
+		return(0.0f);
+	}
+	const float bothSides = 2.0f;
+	float lineHeight = fuiGetLineHeight(&state->ui, InfoLineTextPixelHeight);
+	float barHeight = lineHeight + InfoLinePaddingY * bothSides;
+	float result = ceilf(barHeight);
+	return(result);
+}
+
+// Over the full width at the top: the file name on the left, shortened at the front when space runs out, the details right aligned and never shortened
+static void DrawInfoLine(ViewerState* state, const ViewSize viewportSize) {
+	float barHeight = GetInfoLineHeight(state);
+	if (barHeight <= 0.0f) {
+		return;
+	}
+	fuiContext* ui = &state->ui;
+	float viewportWidth = (float)viewportSize.width;
+	fuiRect barRect = fuiRectMake(0.0f, 0.0f, viewportWidth, barHeight);
+	fuiColor barColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, InfoLineBackgroundOpacity);
+	fuiDrawRect(ui, barRect, barColor);
+
+	// Whole pixels, so every line starts on the same row of the atlas texels
+	const float half = 0.5f;
+	float lineHeight = fuiGetLineHeight(ui, InfoLineTextPixelHeight);
+	float textTop = floorf((barHeight - lineHeight) * half);
+
+	char detailsText[FPL_MAX_BUFFER_LENGTH];
+	BuildInfoLineDetails(state, detailsText, fplArrayCount(detailsText));
+	fuiVec2 detailsSize = fuiMeasureText(ui, detailsText, 0, InfoLineTextPixelHeight);
+	float detailsLeft = floorf(viewportWidth - InfoLinePaddingX - detailsSize.x);
+	fuiVec2 detailsPosition = fuiV2(detailsLeft, textTop);
+	fuiColor detailsColor = fuiColorRGB(InfoLineDetailBrightness, InfoLineDetailBrightness, InfoLineDetailBrightness);
+	fuiDrawText(ui, detailsText, 0, detailsPosition, InfoLineTextPixelHeight, detailsColor);
+
+	bool hasDetails = detailsText[0] != 0;
+	float nameRight = hasDetails ? detailsLeft - InfoLineSeparationWidth : viewportWidth - InfoLinePaddingX;
+	float nameMaxWidth = nameRight - InfoLinePaddingX;
+	const char* displayPath = GetActivePictureDisplayPath(state);
+	char nameText[FPL_MAX_PATH_LENGTH];
+	TruncatePathFrontToWidth(ui, displayPath, nameMaxWidth, InfoLineTextPixelHeight, nameText, fplArrayCount(nameText));
+	fuiVec2 namePosition = fuiV2(InfoLinePaddingX, textTop);
+	fuiColor nameColor = fuiColorRGB(InfoLineNameBrightness, InfoLineNameBrightness, InfoLineNameBrightness);
+	fuiDrawText(ui, nameText, 0, namePosition, InfoLineTextPixelHeight, nameColor);
+}
+
+// The interface over the finished picture, drawn by final_ui (plan section 2.8)
+static void RenderUserInterface(ViewerState* state, const ViewSize viewportSize) {
+	fuiFplInputBuild(&state->uiInput);
+	fuiBeginFrame(&state->ui, &state->uiInput.input, fuiPass_Both);
+	DrawInfoLine(state, viewportSize);
+	fuiEndFrame(&state->ui);
+	const fuiDrawData* drawData = fuiGetDrawData(&state->ui);
+	fuiGL3Render(&state->uiBackend, drawData);
+}
+
 // Draws into the bound framebuffer, the resample passes run before and keep that binding
 static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 	state->viewportSize = viewportSize;
@@ -2497,7 +2832,7 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
 		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
 		if (pictureState == LoadedPictureState_LoadingData) {
-			// Progress bar centered at the top
+			// Progress bar centered at the top, below the info line
 			const float progressPadding = 4.0f;
 			const float progressWidthFactor = 0.5f;
 			const float progressAspectRatio = 400.0f / 10.0f;
@@ -2508,10 +2843,12 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 			float progressWidth = viewportWidth * progressWidthFactor;
 			float progressHeight = progressWidth / progressAspectRatio;
 			float progressLeft = (viewportWidth - progressWidth) * 0.5f;
+			float infoLineHeight = GetInfoLineHeight(state);
+			float progressTop = infoLineHeight + progressPadding;
 			float progress = activePicture->progress;
 			float filledWidth = progressWidth * progress;
-			ViewRect filledRect = fplStructInit(ViewRect, progressLeft, progressPadding, filledWidth, progressHeight);
-			ViewRect borderRect = fplStructInit(ViewRect, progressLeft, progressPadding, progressWidth, progressHeight);
+			ViewRect filledRect = fplStructInit(ViewRect, progressLeft, progressTop, filledWidth, progressHeight);
+			ViewRect borderRect = fplStructInit(ViewRect, progressLeft, progressTop, progressWidth, progressHeight);
 			DrawSolidRectangle(state, viewportSize, filledRect, progressFillColor);
 			if (activePicture->isProgressIndeterminate) {
 				// A segment runs back and forth over the rest of the decode phase, the frame is drawn anyway while the picture loads
@@ -2523,7 +2860,7 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 				float remaining = fplMax(ProgressDecodeEnd - progress, 0.0f);
 				float segment = remaining * ProgressIndeterminateSegmentShare;
 				float segmentStart = progress + (remaining - segment) * triangle;
-				ViewRect runningRect = fplStructInit(ViewRect, progressLeft + progressWidth * segmentStart, progressPadding, progressWidth * segment, progressHeight);
+				ViewRect runningRect = fplStructInit(ViewRect, progressLeft + progressWidth * segmentStart, progressTop, progressWidth * segment, progressHeight);
 				DrawSolidRectangle(state, viewportSize, runningRect, progressRunningColor);
 			}
 			DrawLinedRectangle(state, viewportSize, borderRect, progressBorderColor, progressBorderWidth);
@@ -2946,6 +3283,7 @@ int main(int argc, char** argv) {
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
 	ViewerParameters defaultParams = fplZeroInit;
 	defaultParams.preview = true;
+	defaultParams.showInfo = true;
 	defaultParams.recursive = true;
 	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
 	defaultParams.upKernel = DEFAULT_UP_KERNEL;
@@ -3033,6 +3371,7 @@ int main(int argc, char** argv) {
 	if (isRenderToFile) {
 		// Nothing but the picture itself goes into the file
 		state->params.preview = false;
+		state->params.showInfo = false;
 	}
 
 	flogWrite("Initial Parameters:");
@@ -3040,6 +3379,7 @@ int main(int argc, char** argv) {
 	flogWrite("Preload count: %zu", state->params.preloadCount);
 	flogWrite("Thread count: %zu", state->params.threadCount);
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
+	flogWrite("Info line: %s", (state->params.showInfo ? (state->params.showRelativePath ? "relative path" : "file name") : "off"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
 	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
 	flogWrite("Zoom mode: %d, scale: %f, center: %.3f, %.3f", (int)state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
@@ -3123,11 +3463,15 @@ int main(int argc, char** argv) {
 			bool hasDrawnFrame = false;
 			ViewSize lastViewportSize = fplZeroInit;
 			while (!isRenderToFile && fplWindowUpdate()) {
-				// Events
+				// Events: the interface bridge sees every event first, the viewer gets mouse and keyboard only while the interface of the last frame does not want them
 				bool hasEvents = false;
+				bool isMouseForInterface = fuiWantsMouse(&state->ui);
+				bool isKeyboardForInterface = fuiWantsKeyboard(&state->ui);
+				fuiFplInputBeginEvents(&state->uiInput);
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
 					hasEvents = true;
+					fuiFplInputHandleEvent(&state->uiInput, &ev);
 					switch (ev.type) {
 						case fplEventType_Window:
 						{
@@ -3148,7 +3492,7 @@ int main(int argc, char** argv) {
 
 						case fplEventType_Keyboard:
 						{
-							if (ev.keyboard.type == fplKeyboardEventType_Button) {
+							if (ev.keyboard.type == fplKeyboardEventType_Button && !isKeyboardForInterface) {
 								int shiftFlags = (int)fplKeyboardModifierFlags_LShift | (int)fplKeyboardModifierFlags_RShift;
 								bool isShiftDown = ((int)ev.keyboard.modifiers & shiftFlags) != 0;
 								fplKey key = ev.keyboard.mappedKey;
@@ -3258,6 +3602,10 @@ int main(int argc, char** argv) {
 										bool isAutoNearestOn = state->nearestFromScale > 0.0f;
 										state->nearestFromScale = isAutoNearestOn ? 0.0f : state->nearestFromToggleScale;
 										flogWrite("Auto Nearest %s", (isAutoNearestOn ? "off" : "on"));
+									} else if (ev.keyboard.mappedKey == fplKey_I) {
+										state->params.showInfo = !state->params.showInfo;
+									} else if (ev.keyboard.mappedKey == fplKey_N) {
+										state->params.showRelativePath = !state->params.showRelativePath;
 									}
 								}
 							}
@@ -3265,7 +3613,11 @@ int main(int argc, char** argv) {
 
 						case fplEventType_Mouse:
 						{
-							HandleMouseEvent(state, &ev.mouse);
+							// A release always reaches the viewer, so a drag that started on the picture also ends over the interface
+							bool isButtonRelease = ev.mouse.type == fplMouseEventType_Button && ev.mouse.buttonState == fplButtonState_Release;
+							if (!isMouseForInterface || isButtonRelease) {
+								HandleMouseEvent(state, &ev.mouse);
+							}
 						} break;
 
 						default:
@@ -3289,6 +3641,7 @@ int main(int argc, char** argv) {
 				bool needsFrame = !hasDrawnFrame || hasEvents || isViewportChanged || arePicturesChanging;
 				if (needsFrame && !isViewportEmpty) {
 					RenderFrame(state, viewportSize);
+					RenderUserInterface(state, viewportSize);
 					fplVideoFlip();
 					hasDrawnFrame = true;
 				} else {
@@ -3305,6 +3658,7 @@ int main(int argc, char** argv) {
 		}
 		ResampleResultRelease(&state->viewResult);
 		ResamplePipelineRelease(&state->pipeline);
+		ReleaseUserInterface(state);
 		fglUnloadOpenGL();
 	}
 	if (isPlatformInitialized) {

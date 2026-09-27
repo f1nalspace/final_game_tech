@@ -131,6 +131,9 @@ struct ImageSource {
 // Gets the progress of a source: the read position, or what the loader reports
 typedef void ImageSourceProgressFunction(void *userData, const float fraction, const bool isIndeterminate);
 
+// Gets the picture info as soon as a loader has read it, before the pixels are decoded; once more for every fallback loader that reads it again
+typedef void ImageLoaderInfoFunction(void *userData, const PictureInfo *info);
+
 typedef struct ImageLoader ImageLoader;
 typedef ImageLoaderMatch ImageLoaderProbeFunction(const ImageLoader *loader, const uint8_t *header, size_t headerSize, const char *fileExtension);
 typedef ImageLoadResult ImageLoaderReadInfoFunction(const ImageLoader *loader, ImageSource *source, PictureInfo *outInfo, char *message, size_t messageSize);
@@ -250,7 +253,8 @@ extern void ImageLoaderRegistryReleasePixels(ImageLoaderRegistry *registry, cons
 
 // Selects the candidates and tries them in turn (info, then pixels) until one succeeds.
 // A forced entry (>= 0) is tried alone, without fallback. On success outEntry names the loader that owns the pixels.
-extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, ImageSource *source, const char *fileExtension, const int32_t forcedEntry, int32_t *outEntry, PictureInfo *outInfo, ImagePixels *outPixels, char *message, const size_t messageSize);
+// The optional info function gets the info of every candidate that read it, before that candidate decodes.
+extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, ImageSource *source, const char *fileExtension, const int32_t forcedEntry, ImageLoaderInfoFunction *infoFunction, void *infoUserData, int32_t *outEntry, PictureInfo *outInfo, ImagePixels *outPixels, char *message, const size_t messageSize);
 
 #endif // IMAGE_LOADER_H
 
@@ -993,7 +997,7 @@ static void ImageLoaderLogAttempt(const ImageLoaderRegistry *registry, const int
 	registry->log(line);
 }
 
-extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, ImageSource *source, const char *fileExtension, const int32_t forcedEntry, int32_t *outEntry, PictureInfo *outInfo, ImagePixels *outPixels, char *message, const size_t messageSize) {
+extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, ImageSource *source, const char *fileExtension, const int32_t forcedEntry, ImageLoaderInfoFunction *infoFunction, void *infoUserData, int32_t *outEntry, PictureInfo *outInfo, ImagePixels *outPixels, char *message, const size_t messageSize) {
 	int32_t candidates[IMAGE_LOADER_MAX_COUNT];
 	uint32_t candidateCount;
 	if (forcedEntry >= 0) {
@@ -1017,6 +1021,9 @@ extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, Im
 		char reason[IMAGE_LOADER_MESSAGE_SIZE] = { 0 };
 		result = ImageLoaderRegistryReadInfo(registry, entryIndex, source, outInfo, reason, sizeof(reason));
 		if (result == ImageLoadResult_Success) {
+			if (infoFunction != NULL) {
+				infoFunction(infoUserData, outInfo);
+			}
 			result = ImageLoaderRegistryDecode(registry, entryIndex, source, outPixels, reason, sizeof(reason));
 			if (result == ImageLoadResult_Success) {
 				*outEntry = entryIndex;
