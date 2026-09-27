@@ -246,6 +246,7 @@ SOFTWARE.
 	- Fixed: fplPathCombine() put a separator in front of the first path when all paths before it were empty, so an empty directory and "file" were combined into the absolute path "/file"
 	- Fixed: [POSIX] fplDirectoryListBegin() found nothing for an empty path, it lists the current working directory now, just like on Win32
 	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
+	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -9322,6 +9323,7 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
 * @note `path` and `filter` are copied into fixed-size buffers inside `entry`; the caller may free or reuse the source strings immediately after this call returns.
+* @note The entries "." and ".." are never returned.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
@@ -9332,6 +9334,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 * @return Returns true when there was a next file, otherwise false if not.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no entries are found, the resources are automatically cleaned up.
+* @note The entries "." and ".." are never returned.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry);
@@ -27199,6 +27202,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
+	const char *currentDirectoryName = ".";
+	const char *parentDirectoryName = "..";
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
@@ -27208,6 +27213,12 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 				closedir(dirHandle);
 				fplClearStruct(entry);
 				break;
+			}
+			// Skipped like on Win32, a recursive traversal would otherwise never end
+			bool isCurrentDirectory = fplIsStringEqual(dp->d_name, currentDirectoryName);
+			bool isParentDirectory = fplIsStringEqual(dp->d_name, parentDirectoryName);
+			if (isCurrentDirectory || isParentDirectory) {
+				continue;
 			}
 			if (fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter)) {
 				fpl__PosixFillFileEntry(dp, entry);
