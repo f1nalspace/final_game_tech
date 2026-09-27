@@ -20,6 +20,7 @@ cannot give at all is drained from the queue instead: typed characters, the whee
 - Include this AFTER final_platform_layer.h and final_ui.h
 - Define FUI_INPUT_FPL_IMPLEMENTATION in ONE translation unit before including it
 - Call fuiFplInputInit once, then Pump and Build once per frame before fuiBeginFrame
+- A host that polls the event queue itself calls BeginEvents instead of Pump, hands every polled event to HandleEvent and then calls Build
 
 --- Usage ---
 
@@ -31,6 +32,19 @@ cannot give at all is drained from the queue instead: typed characters, the whee
 		fuiBeginFrame(&context, &bridge.input, fuiPass_Both);
 		...
 		fuiEndFrame(&context);
+	}
+
+The same with a host that needs the events itself, e.g. for dropped files:
+
+	while(fplWindowUpdate()) {
+		fuiFplInputBeginEvents(&bridge);
+		fplEvent event;
+		while(fplPollEvent(&event)) {
+			fuiFplInputHandleEvent(&bridge, &event);
+			HandleMyEvent(&event);
+		}
+		fuiFplInputBuild(&bridge);
+		...
 	}
 
 --- License ---
@@ -93,8 +107,24 @@ fui_api void fuiFplInputInit(fuiFplInput *bridge);
 * @brief Drains the event queue for the things polling cannot give: typed characters, the wheel, the focus and whether the window is minimized.
 * @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
 * @note Call this once per frame, BEFORE @ref fuiFplInputBuild.
+* @note The events are gone afterwards. A host that needs them itself polls the queue on its own, see @ref fuiFplInputBeginEvents.
 */
 fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge);
+
+/**
+* @brief Starts a frame of events for a host that polls the queue itself: forgets the wheel, the typed characters and the right press of the previous frame.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @note Call this once per frame before the first @ref fuiFplInputHandleEvent, and @ref fuiFplInputBuild after the last one.
+*/
+fui_api void fuiFplInputBeginEvents(fuiFplInput *bridge);
+
+/**
+* @brief Takes one event the host polled itself, for the things polling cannot give: typed characters, the wheel, the focus and whether the window is minimized.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @param[in] event The polled event, the bridge only reads it.
+* @note Every event can be handed over, the ones the bridge has no use for are ignored. The host still gets to handle the same event afterwards.
+*/
+fui_api void fuiFplInputHandleEvent(fuiFplInput *bridge, const fplEvent *event);
 
 /**
 * @brief Fills this frame's fuiInput from the polled device state and the drained events.
@@ -182,56 +212,63 @@ fui_api void fuiFplInputInit(fuiFplInput *bridge) {
 	bridge->lastTimestamp = fplTimestampQuery();
 }
 
-fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge) {
+fui_api void fuiFplInputBeginEvents(fuiFplInput *bridge) {
 	bridge->wheelThisFrame = 0.0f;
 	bridge->typedCount = 0;
 	bridge->rightPressedThisFrame = false;
+}
 
+fui_api void fuiFplInputHandleEvent(fuiFplInput *bridge, const fplEvent *event) {
+	switch(event->type) {
+		case fplEventType_Window:
+		{
+			if(event->window.type == fplWindowEventType_GotFocus) {
+				bridge->windowHasFocus = true;
+			} else if(event->window.type == fplWindowEventType_LostFocus) {
+				bridge->windowHasFocus = false;
+			} else if(event->window.type == fplWindowEventType_Minimized) {
+				bridge->windowIsMinimized = true;
+			} else if(event->window.type == fplWindowEventType_Restored || event->window.type == fplWindowEventType_Maximized || event->window.type == fplWindowEventType_Shown) {
+				// A minimized window can come back maximized rather than restored. And X11 reports no state at all for one that comes back fullscreen, only that it is shown again.
+				bridge->windowIsMinimized = false;
+			}
+		} break;
+
+		case fplEventType_Keyboard:
+		{
+			if(event->keyboard.type == fplKeyboardEventType_Input) {
+				// The FULL codepoint, not a byte. final_ui.h takes codepoints precisely so that a
+				// platform layer narrowing this to a char cannot corrupt anything above U+00FF.
+				uint32_t codePoint = (uint32_t)event->keyboard.keyCode;
+				bool isPrintable = (codePoint >= 32u) && (codePoint != 127u);
+				if(isPrintable && bridge->typedCount < (int32_t)FUI_MAX_TEXT_INPUT) {
+					bridge->typedCodePoints[bridge->typedCount++] = codePoint;
+				}
+			}
+		} break;
+
+		case fplEventType_Mouse:
+		{
+			if(event->mouse.type == fplMouseEventType_Wheel) {
+				bridge->wheelThisFrame += event->mouse.wheelDelta;
+			} else if(event->mouse.type == fplMouseEventType_Button) {
+				bool isRightPress = (event->mouse.mouseButton == fplMouseButtonType_Right) && (event->mouse.buttonState != fplButtonState_Release);
+				if(isRightPress) {
+					bridge->rightPressedThisFrame = true;
+				}
+			}
+		} break;
+
+		default:
+			break;
+	}
+}
+
+fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge) {
+	fuiFplInputBeginEvents(bridge);
 	fplEvent event;
 	while(fplPollEvent(&event)) {
-		switch(event.type) {
-			case fplEventType_Window:
-			{
-				if(event.window.type == fplWindowEventType_GotFocus) {
-					bridge->windowHasFocus = true;
-				} else if(event.window.type == fplWindowEventType_LostFocus) {
-					bridge->windowHasFocus = false;
-				} else if(event.window.type == fplWindowEventType_Minimized) {
-					bridge->windowIsMinimized = true;
-				} else if(event.window.type == fplWindowEventType_Restored || event.window.type == fplWindowEventType_Maximized || event.window.type == fplWindowEventType_Shown) {
-					// A minimized window can come back maximized rather than restored. And X11 reports no state at all for one that comes back fullscreen, only that it is shown again.
-					bridge->windowIsMinimized = false;
-				}
-			} break;
-
-			case fplEventType_Keyboard:
-			{
-				if(event.keyboard.type == fplKeyboardEventType_Input) {
-					// The FULL codepoint, not a byte. final_ui.h takes codepoints precisely so that a
-					// platform layer narrowing this to a char cannot corrupt anything above U+00FF.
-					uint32_t codePoint = (uint32_t)event.keyboard.keyCode;
-					bool isPrintable = (codePoint >= 32u) && (codePoint != 127u);
-					if(isPrintable && bridge->typedCount < (int32_t)FUI_MAX_TEXT_INPUT) {
-						bridge->typedCodePoints[bridge->typedCount++] = codePoint;
-					}
-				}
-			} break;
-
-			case fplEventType_Mouse:
-			{
-				if(event.mouse.type == fplMouseEventType_Wheel) {
-					bridge->wheelThisFrame += event.mouse.wheelDelta;
-				} else if(event.mouse.type == fplMouseEventType_Button) {
-					bool isRightPress = (event.mouse.mouseButton == fplMouseButtonType_Right) && (event.mouse.buttonState != fplButtonState_Release);
-					if(isRightPress) {
-						bridge->rightPressedThisFrame = true;
-					}
-				}
-			} break;
-
-			default:
-				break;
-		}
+		fuiFplInputHandleEvent(bridge, &event);
 	}
 }
 
