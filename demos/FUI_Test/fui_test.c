@@ -4,6 +4,7 @@ Name:
 
 Description:
 	An interactive demo for final_ui.h, on FPL and legacy OpenGL.
+	With --gl3 the same interface is drawn on an OpenGL 3.3 core profile through fui_backend_gl3.h instead, so both backends can be compared on the same frame.
 
 	Everything the library has: a menu bar with a submenu, a context menu, a command table whose
 	shortcuts fire from the keyboard AND print themselves into their own menu rows, tool strips, floating
@@ -29,10 +30,12 @@ Description:
 Requirements:
 	- C99 compiler
 	- OpenGL 1.1 (fixed function, which is all the backend here uses)
+	- OpenGL 3.3 core profile with --gl3
 
 Build (from the repository root):
 	gcc -std=c99 demos/FUI_Test/fui_test.c -I . -I demos/additions -I demos/dependencies -o fui_test -lm -ldl
 	./fui_test
+	./fui_test --gl3
 
 	Or with cmake:  cmake -S demos/FUI_Test -B build/fui_test && cmake --build build/fui_test
 
@@ -62,6 +65,9 @@ License:
 #define FUI_GL1_IMPLEMENTATION
 #include <fui_backend_gl1.h>
 
+#define FUI_GL3_IMPLEMENTATION
+#include <fui_backend_gl3.h>
+
 #define FUI_INPUT_FPL_IMPLEMENTATION
 #include <fui_input_fpl.h>
 
@@ -74,7 +80,18 @@ License:
 // Named in the status bar, because FUI_Framework builds this same interface on the Final Framework and a
 // screenshot of either one has to say which is which. This demo keeps the theme's default amber accent; the
 // other one restains it.
-#define DEMO_HOST_LABEL "FPL + OpenGL 1.1"
+#define DEMO_HOST_LABEL_GL1 "FPL + OpenGL 1.1"
+#define DEMO_HOST_LABEL_GL3 "FPL + OpenGL 3.3 core"
+// Command line switch that draws through fui_backend_gl3.h on a core profile instead of the fixed function backend
+#define DEMO_GL3_ARGUMENT "--gl3"
+#define DEMO_GL3_MAJOR_VERSION 3
+#define DEMO_GL3_MINOR_VERSION 3
+// Grid lines the core profile path sends to the GPU per draw call, two vertices of two floats each
+#define DEMO_GRID_BATCH_LINE_COUNT 512
+#define DEMO_GRID_VERTICES_PER_LINE 2
+#define DEMO_GRID_FLOATS_PER_LINE 4
+// Bytes of a shader compiler log the core profile path prints
+#define DEMO_SHADER_LOG_CAPACITY 512
 #define DEMO_WINDOW_WIDTH 1560
 #define DEMO_WINDOW_HEIGHT 800
 
@@ -211,6 +228,8 @@ typedef struct DemoState {
 
 	char statusMessage[DEMO_STATUS_MESSAGE_MAX];
 	float framesPerSecond;
+	//! Which backend draws, said in the status bar
+	const char *hostLabel;
 
 	/*
 		Whether the interface owned the cursor at the END of the previous frame.
@@ -1473,7 +1492,7 @@ static void BuildStatusBar(fuiContext *ui, DemoState *demo, const fuiRect status
 	// Which of the two demos this is, said out loud - FUI_Framework builds the same interface and says its own
 	// host here. The right hand items are laid out from the right edge inwards, so this one ends up furthest
 	// left of them.
-	fuiStatusTextRight(ui, DEMO_HOST_LABEL);
+	fuiStatusTextRight(ui, demo->hostLabel);
 	fuiEndStatusBar(ui);
 }
 
@@ -1537,16 +1556,244 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 }
 
 // ----------------------------------------------------------------------------
+// The two backends
+// ----------------------------------------------------------------------------
+
+//! Which backend draws the interface and the grid behind it: the fixed function one by default, the core profile one with --gl3
+typedef struct DemoRenderer {
+	//! The interface backend of the core profile path, unused on the fixed function path
+	fuiGL3Backend gl3Backend;
+	//! The grid of the core profile path: GL_LINES from a buffer, because a core profile has no glBegin
+	GLuint gridProgram;
+	GLuint gridVertexArray;
+	GLuint gridVertexBuffer;
+	GLint gridLocationProjection;
+	GLint gridLocationColor;
+	bool isCoreProfile;
+} DemoRenderer;
+
+// Window pixels to clip space through the same matrix as the glOrtho of the fixed function path, so both put the lines on the same pixels
+static const char *g_demoGridVertexSource =
+	"#version 330 core\n"
+	"layout(location = 0) in vec2 inPosition;\n"
+	"uniform mat4 projection;\n"
+	"void main() {\n"
+	"	gl_Position = projection * vec4(inPosition, 0.0, 1.0);\n"
+	"}\n";
+
+static const char *g_demoGridFragmentSource =
+	"#version 330 core\n"
+	"uniform vec4 lineColor;\n"
+	"out vec4 outColor;\n"
+	"void main() {\n"
+	"	outColor = lineColor;\n"
+	"}\n";
+
+static GLuint DemoCompileGridShader(const GLenum type, const char *source) {
+	GLuint shader = glCreateShader(type);
+	glShaderSource(shader, 1, &source, fpl_null);
+	glCompileShader(shader);
+	GLint compileStatus = GL_FALSE;
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &compileStatus);
+	if(compileStatus != GL_TRUE) {
+		char log[DEMO_SHADER_LOG_CAPACITY] = fplZeroInit;
+		glGetShaderInfoLog(shader, (GLsizei)sizeof(log), fpl_null, log);
+		fprintf(stderr, "failed to compile the grid shader: %s\n", log);
+		glDeleteShader(shader);
+		return 0;
+	}
+	return shader;
+}
+
+static bool DemoCreateGridProgram(DemoRenderer *renderer) {
+	GLuint vertexShader = DemoCompileGridShader(GL_VERTEX_SHADER, g_demoGridVertexSource);
+	GLuint fragmentShader = DemoCompileGridShader(GL_FRAGMENT_SHADER, g_demoGridFragmentSource);
+	bool result = false;
+	if(vertexShader != 0 && fragmentShader != 0) {
+		GLuint program = glCreateProgram();
+		glAttachShader(program, vertexShader);
+		glAttachShader(program, fragmentShader);
+		glLinkProgram(program);
+		GLint linkStatus = GL_FALSE;
+		glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
+		if(linkStatus == GL_TRUE) {
+			renderer->gridProgram = program;
+			renderer->gridLocationProjection = glGetUniformLocation(program, "projection");
+			renderer->gridLocationColor = glGetUniformLocation(program, "lineColor");
+			result = true;
+		} else {
+			fprintf(stderr, "failed to link the grid program\n");
+			glDeleteProgram(program);
+		}
+	}
+	if(vertexShader != 0) {
+		glDeleteShader(vertexShader);
+	}
+	if(fragmentShader != 0) {
+		glDeleteShader(fragmentShader);
+	}
+	return result;
+}
+
+static void DemoRendererRelease(DemoRenderer *renderer) {
+	if(!renderer->isCoreProfile) {
+		return;
+	}
+	if(renderer->gridVertexBuffer != 0) {
+		glDeleteBuffers(1, &renderer->gridVertexBuffer);
+	}
+	if(renderer->gridVertexArray != 0) {
+		glDeleteVertexArrays(1, &renderer->gridVertexArray);
+	}
+	if(renderer->gridProgram != 0) {
+		glDeleteProgram(renderer->gridProgram);
+	}
+	fuiGL3Release(&renderer->gl3Backend);
+}
+
+static bool DemoRendererInit(DemoRenderer *renderer, const bool isCoreProfile) {
+	fplClearStruct(renderer);
+	renderer->isCoreProfile = isCoreProfile;
+	if(!isCoreProfile) {
+		return true;
+	}
+	if(!fuiGL3Init(&renderer->gl3Backend)) {
+		fprintf(stderr, "failed to initialize the OpenGL 3.3 backend: %s\n", renderer->gl3Backend.errorLog);
+		return false;
+	}
+	if(!DemoCreateGridProgram(renderer)) {
+		DemoRendererRelease(renderer);
+		return false;
+	}
+	const GLuint positionLocation = 0;
+	const GLint componentsPerPosition = 2;
+	glGenVertexArrays(1, &renderer->gridVertexArray);
+	glGenBuffers(1, &renderer->gridVertexBuffer);
+	glBindVertexArray(renderer->gridVertexArray);
+	glBindBuffer(GL_ARRAY_BUFFER, renderer->gridVertexBuffer);
+	glEnableVertexAttribArray(positionLocation);
+	glVertexAttribPointer(positionLocation, componentsPerPosition, GL_FLOAT, GL_FALSE, 0, fpl_null);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	return true;
+}
+
+static bool DemoUploadCoverage(const DemoRenderer *renderer, const unsigned char *alphaPixels, const uint32_t width, const uint32_t height, uint32_t *outTexture) {
+	if(renderer->isCoreProfile) {
+		return fuiGL3UploadFontAtlas(alphaPixels, width, height, outTexture);
+	}
+	return fuiGL1UploadFontAtlas(alphaPixels, width, height, outTexture);
+}
+
+static bool DemoUploadImageRGBA(const DemoRenderer *renderer, const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture) {
+	if(renderer->isCoreProfile) {
+		return fuiGL3UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
+	}
+	return fuiGL1UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
+}
+
+static void DemoDeleteTexture(const DemoRenderer *renderer, const uint32_t texture) {
+	if(renderer->isCoreProfile) {
+		fuiGL3DeleteTexture(texture);
+	} else {
+		fuiGL1DeleteTexture(texture);
+	}
+}
+
+static void DemoRenderInterface(DemoRenderer *renderer, const fuiDrawData *drawData) {
+	if(renderer->isCoreProfile) {
+		fuiGL3Render(&renderer->gl3Backend, drawData);
+	} else {
+		fuiGL1Render(drawData);
+	}
+}
+
+//! Draws the lines collected so far and starts the next batch
+static void DemoFlushGridLines(const float *lineVertices, uint32_t *lineCount) {
+	if(*lineCount == 0) {
+		return;
+	}
+	GLsizeiptr batchBytes = (GLsizeiptr)(*lineCount * DEMO_GRID_FLOATS_PER_LINE * sizeof(float));
+	glBufferData(GL_ARRAY_BUFFER, batchBytes, lineVertices, GL_STREAM_DRAW);
+	GLsizei vertexCount = (GLsizei)(*lineCount * DEMO_GRID_VERTICES_PER_LINE);
+	glDrawArrays(GL_LINES, 0, vertexCount);
+	*lineCount = 0;
+}
+
+static void DemoAddGridLine(float *lineVertices, uint32_t *lineCount, const float startX, const float startY, const float endX, const float endY) {
+	float *line = lineVertices + (*lineCount * DEMO_GRID_FLOATS_PER_LINE);
+	line[0] = startX;
+	line[1] = startY;
+	line[2] = endX;
+	line[3] = endY;
+	++*lineCount;
+	if(*lineCount == DEMO_GRID_BATCH_LINE_COUNT) {
+		DemoFlushGridLines(lineVertices, lineCount);
+	}
+}
+
+//! The grid of the core profile path: the same lines in the same order and color as the glBegin of the fixed function path
+static void RenderBackdropGridCore(const DemoRenderer *renderer, const fuiColor lineColor, const float spacing, const int32_t windowWidth, const int32_t windowHeight) {
+	const double clipSpaceSize = 2.0;
+	const float clipSpaceLeft = -1.0f;
+	const float clipSpaceTop = 1.0f;
+	const float depthScale = -1.0f;
+	float pixelToClipScaleX = (float)(clipSpaceSize / (double)windowWidth);
+	float pixelToClipScaleY = (float)(-clipSpaceSize / (double)windowHeight);
+	const float projection[16] = {
+		pixelToClipScaleX, 0.0f, 0.0f, 0.0f,
+		0.0f, pixelToClipScaleY, 0.0f, 0.0f,
+		0.0f, 0.0f, depthScale, 0.0f,
+		clipSpaceLeft, clipSpaceTop, 0.0f, 1.0f,
+	};
+	glUseProgram(renderer->gridProgram);
+	glUniformMatrix4fv(renderer->gridLocationProjection, 1, GL_FALSE, projection);
+	glUniform4f(renderer->gridLocationColor, lineColor.r, lineColor.g, lineColor.b, lineColor.a);
+	glBindVertexArray(renderer->gridVertexArray);
+	glBindBuffer(GL_ARRAY_BUFFER, renderer->gridVertexBuffer);
+
+	float lineVertices[DEMO_GRID_BATCH_LINE_COUNT * DEMO_GRID_FLOATS_PER_LINE];
+	uint32_t lineCount = 0;
+	float width = (float)windowWidth;
+	float height = (float)windowHeight;
+	for(float x = 0.0f; x < width; x += spacing) {
+		DemoAddGridLine(lineVertices, &lineCount, x, 0.0f, x, height);
+	}
+	for(float y = 0.0f; y < height; y += spacing) {
+		DemoAddGridLine(lineVertices, &lineCount, 0.0f, y, width, y);
+	}
+	DemoFlushGridLines(lineVertices, &lineCount);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	glUseProgram(0);
+}
+
+// ----------------------------------------------------------------------------
 // The world behind the interface
 // ----------------------------------------------------------------------------
 
 //! A grid, so there is something under the panels to see them float over -- and something fuiWantsMouse
 //! can protect. Drawn with the same OpenGL the backend uses, before the interface goes on top.
-static void RenderBackdrop(const DemoState *demo, const int32_t windowWidth, const int32_t windowHeight) {
+static void RenderBackdrop(const DemoRenderer *renderer, const DemoState *demo, const int32_t windowWidth, const int32_t windowHeight) {
 	glViewport(0, 0, (GLsizei)windowWidth, (GLsizei)windowHeight);
 	glClearColor(0.07f, 0.08f, 0.10f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	if(!demo->showGrid) {
+		return;
+	}
+
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	float spacing = demo->gridSize * demo->zoom;
+	if(spacing < 4.0f) {
+		spacing = 4.0f;
+	}
+	fuiColor lineColor = fuiColorRGBA(demo->tint.r, demo->tint.g, demo->tint.b, 0.10f);
+	if(renderer->isCoreProfile) {
+		RenderBackdropGridCore(renderer, lineColor, spacing, windowWidth, windowHeight);
 		return;
 	}
 
@@ -1556,15 +1803,7 @@ static void RenderBackdrop(const DemoState *demo, const int32_t windowWidth, con
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glDisable(GL_TEXTURE_2D);
-	glDisable(GL_SCISSOR_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	float spacing = demo->gridSize * demo->zoom;
-	if(spacing < 4.0f) {
-		spacing = 4.0f;
-	}
-	glColor4f(demo->tint.r, demo->tint.g, demo->tint.b, 0.10f);
+	glColor4f(lineColor.r, lineColor.g, lineColor.b, lineColor.a);
 	glBegin(GL_LINES);
 	for(float x = 0.0f; x < (float)windowWidth; x += spacing) {
 		glVertex2f(x, 0.0f);
@@ -1581,8 +1820,12 @@ static void RenderBackdrop(const DemoState *demo, const int32_t windowWidth, con
 // ----------------------------------------------------------------------------
 
 int main(int argc, char **argv) {
-	(void)argc;
-	(void)argv;
+	bool useCoreProfile = false;
+	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+		if(fplIsStringEqual(argv[argumentIndex], DEMO_GL3_ARGUMENT)) {
+			useCoreProfile = true;
+		}
+	}
 
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
@@ -1590,8 +1833,14 @@ int main(int argc, char **argv) {
 	settings.window.windowSize.width = DEMO_WINDOW_WIDTH;
 	settings.window.windowSize.height = DEMO_WINDOW_HEIGHT;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	// Fixed function, because the backend next door is deliberately the smallest one that can exist.
-	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+	if(useCoreProfile) {
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
+		settings.video.graphics.opengl.majorVersion = DEMO_GL3_MAJOR_VERSION;
+		settings.video.graphics.opengl.minorVersion = DEMO_GL3_MINOR_VERSION;
+	} else {
+		// Fixed function, because the backend next door is deliberately the smallest one that can exist.
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+	}
 	settings.video.isVSync = true;
 
 	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_Video, &settings)) {
@@ -1600,6 +1849,13 @@ int main(int argc, char **argv) {
 	}
 	if(!fglLoadOpenGL(true)) {
 		fprintf(stderr, "failed to load OpenGL\n");
+		fplPlatformRelease();
+		return 1;
+	}
+
+	DemoRenderer renderer;
+	if(!DemoRendererInit(&renderer, useCoreProfile)) {
+		fglUnloadOpenGL();
 		fplPlatformRelease();
 		return 1;
 	}
@@ -1613,15 +1869,17 @@ int main(int argc, char **argv) {
 	bakeSettings.atlasHeight = DEMO_FONT_ATLAS_SIDE;
 	if(!fuiStbttFontBake(&bakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
 		fprintf(stderr, "failed to bake the font\n");
+		DemoRendererRelease(&renderer);
 		fglUnloadOpenGL();
 		fplPlatformRelease();
 		return 1;
 	}
 
 	uint32_t atlasTexture = 0;
-	if(!fuiGL1UploadFontAtlas(bakedFont.atlasPixels, bakedFont.atlasWidth, bakedFont.atlasHeight, &atlasTexture)) {
+	if(!DemoUploadCoverage(&renderer, bakedFont.atlasPixels, bakedFont.atlasWidth, bakedFont.atlasHeight, &atlasTexture)) {
 		fprintf(stderr, "failed to upload the font atlas\n");
 		fuiStbttFontRelease(&bakedFont);
+		DemoRendererRelease(&renderer);
 		fglUnloadOpenGL();
 		fplPlatformRelease();
 		return 1;
@@ -1631,8 +1889,9 @@ int main(int argc, char **argv) {
 	fuiContext ui;
 	if(!fuiInit(&ui, &font, fpl_null)) {
 		fprintf(stderr, "failed to initialize the user interface\n");
-		fuiGL1DeleteTexture(atlasTexture);
+		DemoDeleteTexture(&renderer, atlasTexture);
 		fuiStbttFontRelease(&bakedFont);
+		DemoRendererRelease(&renderer);
 		fglUnloadOpenGL();
 		fplPlatformRelease();
 		return 1;
@@ -1646,6 +1905,7 @@ int main(int argc, char **argv) {
 
 	DemoState demo;
 	DemoInit(&demo);
+	demo.hostLabel = useCoreProfile ? DEMO_HOST_LABEL_GL3 : DEMO_HOST_LABEL_GL1;
 
 	// The other textures, and the only assets in the demo that are not a font: four icon cells the demo draws
 	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of
@@ -1659,7 +1919,7 @@ int main(int argc, char **argv) {
 	unsigned char iconPixels[DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT];
 	DemoDrawIconSheet(iconPixels);
 	uint32_t iconTexture = 0;
-	if(fuiGL1UploadFontAtlas(iconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, &iconTexture)) {
+	if(DemoUploadCoverage(&renderer, iconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, &iconTexture)) {
 		demo.iconSheet = (fuiTextureId)iconTexture;
 		demo.iconSheetSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
 	}
@@ -1671,7 +1931,7 @@ int main(int argc, char **argv) {
 	DemoDrawColorIconSheet(colorIconPixels);
 	uint32_t colorIconTexture = 0;
 	const bool colorSheetIsFilteredLinearly = true;
-	if(fuiGL1UploadImageRGBA(colorIconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, colorSheetIsFilteredLinearly, &colorIconTexture)) {
+	if(DemoUploadImageRGBA(&renderer, colorIconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, colorSheetIsFilteredLinearly, &colorIconTexture)) {
 		demo.iconSheetColor = (fuiTextureId)colorIconTexture;
 		demo.iconSheetColorSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
 	}
@@ -1700,21 +1960,22 @@ int main(int argc, char **argv) {
 		// Asked here and nowhere else: this is the first moment the answer is complete for this frame.
 		demo.uiOwnedTheMouseLastFrame = fuiWantsMouse(&ui);
 
-		RenderBackdrop(&demo, bridge.input.windowSize.x, bridge.input.windowSize.y);
-		fuiGL1Render(fuiGetDrawData(&ui));
+		RenderBackdrop(&renderer, &demo, bridge.input.windowSize.x, bridge.input.windowSize.y);
+		DemoRenderInterface(&renderer, fuiGetDrawData(&ui));
 
 		fplVideoFlip();
 	}
 
 	fuiRelease(&ui);
 	if(iconTexture != 0) {
-		fuiGL1DeleteTexture(iconTexture);
+		DemoDeleteTexture(&renderer, iconTexture);
 	}
 	if(colorIconTexture != 0) {
-		fuiGL1DeleteTexture(colorIconTexture);
+		DemoDeleteTexture(&renderer, colorIconTexture);
 	}
-	fuiGL1DeleteTexture(atlasTexture);
+	DemoDeleteTexture(&renderer, atlasTexture);
 	fuiStbttFontRelease(&bakedFont);
+	DemoRendererRelease(&renderer);
 	fglUnloadOpenGL();
 	fplPlatformRelease();
 	return 0;
