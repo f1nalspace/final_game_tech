@@ -9,6 +9,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-09-25
+	- Fixed: With several mouse wheel events in one frame only the last one counted, the wheel deltas of a frame are added up now
+
 	## 2026-07-26
 	- Fixed: A key pressed AND released between two once-per-frame keyboard polls lost its edge entirely (a shortcut or a jump tapped inside one long frame simply did not happen); halfTransitionCount is now raised to the real press/release count seen in the event stream, while endedDown stays the polled truth
 	- Note: The event queue is drained BEFORE the OS keyboard state is read, and the two are independent sources (GetAsyncKeyState / XQueryKeymap), so a key released between those two reads leaves an odd edge count against an unchanged poll. Only a count whose parity matches the polled start->end transition is consumed; the odd half carries into the next frame and pairs up there. Carried halves are dropped when the window activation toggles
@@ -395,7 +398,8 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 
 					case fplMouseEventType_Wheel:
 					{
-						currentInput->mouse.wheelDelta = event.mouse.wheelDelta;
+						// Several wheel events can come in one frame, the mouse input starts at zero every frame
+						currentInput->mouse.wheelDelta += event.mouse.wheelDelta;
 					} break;
 
 				    default:

@@ -49,6 +49,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-09-25
+	- Fixed: With several mouse wheel events in one frame only the last one counted, the wheel deltas of a frame are added up now
+
 	## 2026-08-26
 	- Added an information dialog with an About, How to Use, Controls, Features and Libraries page
 	- Added the information icon in the bottom left corner of both views, which is what opens that dialog
@@ -3563,7 +3566,8 @@ static void ProcessEvents(Application *app, const InputState *oldInput, InputSta
 
 					case fplMouseEventType_Wheel:
 					{
-						newInput->mouse.wheelDelta = ev.mouse.wheelDelta;
+						// Several wheel events can come in one frame, the mouse input starts at zero every frame
+						newInput->mouse.wheelDelta += ev.mouse.wheelDelta;
 					} break;
 
 					default:

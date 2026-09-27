@@ -6,82 +6,11 @@ cmake_minimum_required(VERSION 3.10)
 #
 # -----------------------------------------------------------------------------
 
-project(FPL_NoRuntimeLinking CXX)
+project(FPL_InputGrab C)
 
-set(MY_COMPILER "cpp11")
+set(MY_COMPILER "c99")
 
 set(MY_EXTERNAL_LIBS "")
-
-# -----------------------------------------------------------------------------
-# FPL_NO_RUNTIME_LINKING setup
-#
-# FPL normally dlopen()'s its platform libraries at runtime. With runtime
-# linking disabled FPL references those symbols directly, so every platform
-# library FPL touches (window, video, audio) must be link-time linked here.
-# Done per-platform - only the libs the current OS actually uses.
-# -----------------------------------------------------------------------------
-
-if(WIN32)
-	# Win32 libraries (window, input, video, audio)
-	list(APPEND MY_EXTERNAL_LIBS
-		kernel32 user32 shell32 gdi32 ole32
-		opengl32 xinput dsound
-		)
-	find_package(Vulkan)
-	if(Vulkan_FOUND)
-		list(APPEND MY_EXTERNAL_LIBS Vulkan::Vulkan)
-	endif()
-elseif(UNIX)
-	# Math + threads
-	list(APPEND MY_EXTERNAL_LIBS m pthread)
-
-	# Window + input (X11, XRandR, Xinerama, XInput2)
-	find_package(X11 REQUIRED)
-	list(APPEND MY_EXTERNAL_LIBS X11::X11)
-	if(TARGET X11::Xrandr)
-		list(APPEND MY_EXTERNAL_LIBS X11::Xrandr)
-	endif()
-	if(TARGET X11::Xinerama)
-		list(APPEND MY_EXTERNAL_LIBS X11::Xinerama)
-	endif()
-	# Raw mouse motion of the relative mouse mode (XInput2), without the library FPL_NO_X11_XINPUT2 leaves it out
-	if(TARGET X11::Xi)
-		list(APPEND MY_EXTERNAL_LIBS X11::Xi)
-	else()
-		set(MY_NO_XINPUT2 ON)
-	endif()
-
-	# Video (OpenGL + GLX)
-	find_package(OpenGL REQUIRED)
-	list(APPEND MY_EXTERNAL_LIBS OpenGL::GL)
-	if(TARGET OpenGL::GLX)
-		list(APPEND MY_EXTERNAL_LIBS OpenGL::GLX)
-	endif()
-
-	# Video (Vulkan) - FPL compiles the Vulkan backend when its header is present
-	find_package(Vulkan)
-	if(Vulkan_FOUND)
-		list(APPEND MY_EXTERNAL_LIBS Vulkan::Vulkan)
-	endif()
-
-	# Audio - FPL compiles each backend only when its dev header is present,
-	# so link only the audio libs actually installed on this system.
-	find_package(ALSA)
-	if(ALSA_FOUND)
-		list(APPEND MY_EXTERNAL_LIBS ALSA::ALSA)
-	endif()
-	find_package(PkgConfig QUIET)
-	if(PkgConfig_FOUND)
-		pkg_check_modules(PULSE QUIET libpulse)
-		if(PULSE_FOUND)
-			list(APPEND MY_EXTERNAL_LIBS ${PULSE_LIBRARIES})
-		endif()
-		pkg_check_modules(PIPEWIRE QUIET libpipewire-0.3)
-		if(PIPEWIRE_FOUND)
-			list(APPEND MY_EXTERNAL_LIBS ${PIPEWIRE_LIBRARIES})
-		endif()
-	endif()
-endif()
 
 set(MY_INCLUDE_DIRS
 	"../../"
@@ -92,16 +21,11 @@ set(MY_HEADER_FILES
 	)
 
 set(MY_TRANSLATION_UNITS
-	"fpl_noruntimelinking.cpp"
+	"fpl_inputgrab.c"
 	)
 
-set(MY_DEFINES
-	-DFPL_IMPLEMENTATION
-	-DFPL_NO_RUNTIME_LINKING
-	)
-if(MY_NO_XINPUT2)
-	list(APPEND MY_DEFINES -DFPL_NO_X11_XINPUT2)
-endif()
+# FPL_IMPLEMENTATION is defined in the source, so the Visual Studio and premake builds need no extra define
+set(MY_DEFINES "")
 
 # -----------------------------------------------------------------------------
 #
@@ -220,4 +144,19 @@ if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
 			${CMAKE_SOURCE_DIR}/${MY_RESOURCE_FOLDER}
 			$<TARGET_FILE_DIR:${PROJECT_NAME}>/${MY_RESOURCE_FOLDER}
 	)
+endif()
+
+# -----------------------------------------------------------------------------
+#
+# Second build without XInput2, the tests of the relative mouse mode run against its warp fallback as well
+#
+# -----------------------------------------------------------------------------
+
+if(UNIX AND NOT APPLE)
+	set(THIS_FALLBACK_NAME ${PROJECT_NAME}_NoXInput2)
+	add_executable(${THIS_FALLBACK_NAME} ${MY_TRANSLATION_UNITS})
+	target_compile_features(${THIS_FALLBACK_NAME} PUBLIC c_std_99)
+	target_compile_definitions(${THIS_FALLBACK_NAME} PRIVATE ${MY_DEFINES} FPL_NO_X11_XINPUT2)
+	target_include_directories(${THIS_FALLBACK_NAME} PRIVATE ${MY_INCLUDE_DIRS})
+	target_link_libraries(${THIS_FALLBACK_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
 endif()

@@ -340,6 +340,7 @@ group "Graphics"
 	
 group "Input"
 	include "FPL_Input/premake5";
+	include "FPL_InputGrab/premake5";
 	include "FPL_ConsoleInput/premake5";
 
 group "Window"
