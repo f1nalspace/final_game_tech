@@ -14,10 +14,10 @@ Description:
 
 	This is also the smallest honest answer to "what does it take to use this library". Four things:
 
-	  1. Bake a font and upload its atlas                (fuiStbttFontBake + fuiGL1UploadFontAtlas)
+	  1. Bake a font and upload its atlas                (fuiStbttFontBake + fuiGL1UploadFontAtlas or fuiGL3UploadFontAtlas)
 	  2. Fill a fuiInput each frame                      (BuildInput, below - about sixty lines)
 	  3. Build the interface between begin and end       (BuildUserInterface, below)
-	  4. Drain fuiGetDrawData through a backend          (fuiGL1Render)
+	  4. Drain fuiGetDrawData through a backend          (fuiGL1Render or fuiGL3Render)
 
 	final_ui.h itself pulls in nothing but the C standard library. FPL, stb_truetype and OpenGL all appear
 	in THIS file and in the two headers next to it, never in the library.
@@ -198,7 +198,7 @@ typedef struct DemoState {
 	//! The coverage sheet, drawn into an alpha bitmap at startup and uploaded like the font atlas
 	fuiTextureId iconSheet;
 	fuiVec2 iconSheetSize;
-	//! The same shapes in four channels, uploaded through fuiGL1UploadImageRGBA
+	//! The same shapes in four channels, uploaded through fuiGL1UploadImageRGBA or fuiGL3UploadImageRGBA
 	fuiTextureId iconSheetColor;
 	fuiVec2 iconSheetColorSize;
 
@@ -1622,7 +1622,9 @@ static bool DemoCreateGridProgram(DemoRenderer *renderer) {
 			renderer->gridLocationColor = glGetUniformLocation(program, "lineColor");
 			result = true;
 		} else {
-			fprintf(stderr, "failed to link the grid program\n");
+			char log[DEMO_SHADER_LOG_CAPACITY] = fplZeroInit;
+			glGetProgramInfoLog(program, (GLsizei)sizeof(log), fpl_null, log);
+			fprintf(stderr, "failed to link the grid program: %s\n", log);
 			glDeleteProgram(program);
 		}
 	}
@@ -1779,7 +1781,9 @@ static void RenderBackdrop(const DemoRenderer *renderer, const DemoState *demo, 
 	glViewport(0, 0, (GLsizei)windowWidth, (GLsizei)windowHeight);
 	glClearColor(0.07f, 0.08f, 0.10f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
-	if(!demo->showGrid) {
+	// A minimized window has no size to build a projection from
+	bool hasArea = windowWidth > 0 && windowHeight > 0;
+	if(!demo->showGrid || !hasArea) {
 		return;
 	}
 
@@ -1911,11 +1915,11 @@ int main(int argc, char **argv) {
 	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of
 	// plain text rows rather than a reason not to start.
 	//
-	// Both sheets are 128 by 32, which is a power of two in BOTH axes on purpose. This backend is OpenGL 1.1
+	// Both sheets are 128 by 32, which is a power of two in BOTH axes on purpose. The fixed function backend is OpenGL 1.1
 	// with no extension test in it, and a size of any other shape was only ever guaranteed from OpenGL 2.0 on -
 	// so a sheet of five 48 pixel cells wants rounding up to 256 by 64 with the spare cells left empty, rather
 	// than going up at its natural 240 by 48. A current driver takes either without complaint; the habit is for
-	// the old implementations this backend is also meant to run on.
+	// the old implementations that backend is also meant to run on.
 	unsigned char iconPixels[DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT];
 	DemoDrawIconSheet(iconPixels);
 	uint32_t iconTexture = 0;
@@ -1924,7 +1928,7 @@ int main(int argc, char **argv) {
 		demo.iconSheetSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
 	}
 
-	// The colored one takes the OTHER road into the backend: four channels through fuiGL1UploadImageRGBA rather
+	// The colored one takes the OTHER road into the backend: four channels through the RGBA upload rather
 	// than one through the atlas call. Linear, because the 32 pixel cells are drawn at 44 and a nearest filter
 	// would show every step of the scale.
 	unsigned char colorIconPixels[DEMO_ICON_SHEET_COLOR_BYTES];
