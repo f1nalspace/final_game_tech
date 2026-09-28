@@ -5,19 +5,38 @@ fui_backend_gl3.h
 
 A render backend for final_ui.h on an OpenGL 3.3 CORE profile: one shader program, one vertex array, a vertex and an index buffer streamed every frame, and a white texel for untextured geometry.
 
-It draws the same pixels as fui_backend_gl1.h, without the fixed function pipeline and the client arrays a core context no longer has.
+It draws the same colors as fui_backend_gl1.h, without the fixed function pipeline and the client arrays a core context no longer has.
+Only the alpha written into the framebuffer differs: it adds up instead of being squared, so an opaque framebuffer stays opaque under a translucent panel.
 Texture times vertex color is all the shader does, so text, rectangles and images all go through the same program: untextured commands bind the white texel and the font atlas is swizzled to white with its coverage in alpha.
+
+--- Drawing over a host scene ---
 
 Unlike the GL1 backend this one is meant to draw on top of a scene somebody else owns.
 It saves every piece of state it touches and puts it back, so the host does not have to know what an interface pass changes.
+It also sets everything a host may have left that would keep its triangles from reaching the framebuffer whole: depth, stencil, culling, polygon mode, primitive restart, rasterizer discard, logic op and color mask.
+A clip origin the host moved to the upper left with glClipControl (OpenGL 4.5) is followed, the interface stays upright.
+Left to the host: the bound framebuffer and its draw buffers (only the first one gets a defined value), clip distances, alpha to coverage, the sample mask, and in a compatibility profile the fixed function fragment state such as GL_ALPHA_TEST.
 
 --- Getting started ---
 
+- Needs a desktop OpenGL 3.3 context, core or compatibility profile. OpenGL ES and WebGL have neither the swizzle nor glPolygonMode it uses
 - Include this AFTER a header that declares the OpenGL 3.3 core entry points (final_dynamic_opengl.h will do)
 - Define FUI_GL3_IMPLEMENTATION in ONE translation unit before including it
-- Call fuiGL3Init once while the context is current, and fuiGL3Release before the context goes away
+- Call fuiGL3Init once while the context is current, and fuiGL3Release before the context goes away or before Init runs again on the same backend
+- One fuiGL3Backend per context, because a vertex array is never shared between contexts, and every call with that context current on the calling thread
+- Fill fuiInput::windowSize with the FRAMEBUFFER size in pixels, the viewport and the scissor come from it
 - Upload the font atlas once with fuiGL3UploadFontAtlas, and pass the texture it returns to the fuiFont
 - Upload a COLORED sheet -- an icon sheet, a preview image -- with fuiGL3UploadImageRGBA instead
+- Works with FUI_USE_16BIT_INDICES as well
+
+--- Textures of your own ---
+
+A texture handed to fuiDrawImage or put into a fuiFont is drawn exactly as it samples, so one of your own has to be:
+- a GL_TEXTURE_2D name, which also means FUI_TEXTURE_ID_TYPE stays an integer type
+- complete: with only level 0 the min filter must not be a mipmap filter, or it samples black
+- a normalized format without sRGB: an sRGB texture is decoded to linear light while GL_FRAMEBUFFER_SRGB is off, and comes out darker
+- four channels: a one channel texture draws red, only fuiGL3UploadFontAtlas swizzles its coverage into alpha
+A sheet cut into cells and drawn with the linear filter can pick up the edge texel of the cell next to it, so leave a texel of empty space between the cells.
 
 --- Usage ---
 
@@ -85,6 +104,10 @@ typedef struct fuiGL3Backend {
 	size_t indexBufferCapacity;
 	//! Why @ref fuiGL3Init failed: the compiler or linker log of a shader, or which object could not be created
 	char errorLog[FUI_GL3_ERROR_LOG_CAPACITY];
+	//! True on a 4.3 or newer context, where a host may have enabled GL_PRIMITIVE_RESTART_FIXED_INDEX
+	bool hasPrimitiveRestartFixedIndex;
+	//! True on a 4.5 or newer context, where a host may have moved the clip origin with glClipControl
+	bool canQueryClipOrigin;
 	//! True between a successful @ref fuiGL3Init and @ref fuiGL3Release
 	bool isInitialized;
 } fuiGL3Backend;
@@ -94,6 +117,7 @@ typedef struct fuiGL3Backend {
 * @param[out] backend Reference to the backend @ref fuiGL3Backend to initialize.
 * @return Returns true when everything was created, false with the reason in fuiGL3Backend::errorLog otherwise.
 * @note Needs a current OpenGL 3.3 core (or compatible) context. Whatever was created before a failure is deleted again.
+* @note Starts from a cleared struct, so a backend that is still initialized has to go through @ref fuiGL3Release first or its objects leak.
 */
 fui_api bool fuiGL3Init(fuiGL3Backend *backend);
 
@@ -101,6 +125,7 @@ fui_api bool fuiGL3Init(fuiGL3Backend *backend);
 * @brief Deletes everything @ref fuiGL3Init created.
 * @param[in,out] backend Reference to the backend @ref fuiGL3Backend.
 * @note Textures uploaded through this header are NOT deleted here, they belong to the caller.
+* @note Safe to call twice, and on a backend that was zeroed but never initialized.
 */
 fui_api void fuiGL3Release(fuiGL3Backend *backend);
 
@@ -110,9 +135,10 @@ fui_api void fuiGL3Release(fuiGL3Backend *backend);
 * @param[in] width Width of the atlas in texels.
 * @param[in] height Height of the atlas in texels.
 * @param[out] outTexture Receives the OpenGL texture name.
-* @return Returns true when the texture was created.
+* @return Returns true when the texture was created, false as well when a side is larger than GL_MAX_TEXTURE_SIZE.
 * @note The atlas stays one channel on the GPU (GL_R8), a swizzle reads it as white with the coverage in alpha.
 *       GL_ALPHA and GL_LUMINANCE_ALPHA, which the GL1 backend uses, do not exist in a core profile.
+* @note The texture binding of the active unit, the pixel unpack buffer and the unpack alignment, row length and skips are restored afterwards.
 */
 fui_api bool fuiGL3UploadFontAtlas(const unsigned char *alphaPixels, const uint32_t width, const uint32_t height, uint32_t *outTexture);
 
@@ -123,8 +149,9 @@ fui_api bool fuiGL3UploadFontAtlas(const unsigned char *alphaPixels, const uint3
 * @param[in] height Height of the image in texels.
 * @param[in] useLinearFilter Smooths the image when it is drawn at another size, rather than keeping its texels hard.
 * @param[out] outTexture Receives the OpenGL texture name.
-* @return Returns true when the texture was created.
+* @return Returns true when the texture was created, false as well when a side is larger than GL_MAX_TEXTURE_SIZE.
 * @note The alpha is expected STRAIGHT rather than premultiplied, the same blend as in the GL1 backend.
+* @note The texture binding of the active unit, the pixel unpack buffer and the unpack alignment, row length and skips are restored afterwards.
 */
 fui_api bool fuiGL3UploadImageRGBA(const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture);
 
@@ -138,7 +165,7 @@ fui_api void fuiGL3DeleteTexture(const uint32_t texture);
 * @brief Draws one finished frame of user interface into the bound framebuffer.
 * @param[in,out] backend Reference to the backend @ref fuiGL3Backend, its buffers grow when a frame needs more.
 * @param[in] drawData The draw data from @ref fuiGetDrawData.
-* @note Everything it changes is restored afterwards: program, vertex array, array buffer, active texture unit, texture and sampler of unit 0, blending, scissor, depth test, face culling, stencil test, viewport and GL_FRAMEBUFFER_SRGB.
+* @note Everything it changes is restored afterwards: program, vertex array, array buffer, active texture unit, texture and sampler of unit 0, blending, scissor, depth test, face culling, stencil test, viewport, polygon mode, primitive restart (also the fixed index one from 4.3), rasterizer discard, logic op, color mask and GL_FRAMEBUFFER_SRGB.
 */
 fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData);
 
@@ -164,6 +191,16 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData);
 #define FUI__GL3_MINIMUM_BUFFER_BYTES (64u * 1024u)
 //! Bytes of a compiler or linker log that are kept, the error log adds the name of the stage in front
 #define FUI__GL3_INFO_LOG_CAPACITY 512
+//! GL_PRIMITIVE_RESTART_FIXED_INDEX of OpenGL 4.3, spelled out because a loader for 3.3 does not declare it
+#define FUI__GL3_PRIMITIVE_RESTART_FIXED_INDEX 0x8D69
+//! The first version that has GL_PRIMITIVE_RESTART_FIXED_INDEX
+#define FUI__GL3_FIXED_INDEX_MAJOR_VERSION 4
+#define FUI__GL3_FIXED_INDEX_MINOR_VERSION 3
+//! GL_CLIP_ORIGIN of OpenGL 4.5, spelled out because a loader for 3.3 does not declare it
+#define FUI__GL3_CLIP_ORIGIN 0x935C
+//! The first version that has glClipControl and GL_CLIP_ORIGIN
+#define FUI__GL3_CLIP_CONTROL_MAJOR_VERSION 4
+#define FUI__GL3_CLIP_CONTROL_MINOR_VERSION 5
 
 // Window pixels to clip space through the same matrix glOrtho(0, width, height, 0, -1, 1) gives the GL1 backend.
 // A full matrix times vector puts every vertex on exactly the position the fixed function pipeline computes, a scale and an offset did not: glyph edges came out one or two levels apart.
@@ -209,12 +246,18 @@ typedef struct fui__GL3SavedState {
 	GLint blendEquationAlpha;
 	GLint scissorBox[4];
 	GLint viewport[4];
+	GLint polygonMode[2];
+	GLboolean colorWriteMask[4];
 	GLboolean isBlendEnabled;
 	GLboolean isScissorTestEnabled;
 	GLboolean isDepthTestEnabled;
 	GLboolean isCullFaceEnabled;
 	GLboolean isStencilTestEnabled;
 	GLboolean isFramebufferSRGBEnabled;
+	GLboolean isPrimitiveRestartEnabled;
+	GLboolean isPrimitiveRestartFixedIndexEnabled;
+	GLboolean isRasterizerDiscardEnabled;
+	GLboolean isColorLogicOpEnabled;
 } fui__GL3SavedState;
 
 //! The unpack state a texture upload depends on, read before and written back after
@@ -311,6 +354,15 @@ static void fui__GL3RestoreUnpackState(const fui__GL3SavedUnpackState *saved) {
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, saved->skipPixels);
 }
 
+//! Checked before an upload rather than through glGetError afterwards, which would also swallow errors the host has not read yet
+static bool fui__GL3FitsMaxTextureSize(const uint32_t width, const uint32_t height) {
+	GLint maxTextureSize = 0;
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+	bool widthFits = width <= (uint32_t)maxTextureSize;
+	bool heightFits = height <= (uint32_t)maxTextureSize;
+	return(widthFits && heightFits);
+}
+
 static void fui__GL3SetTextureSampling(const GLint textureFilter) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureFilter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureFilter);
@@ -326,7 +378,13 @@ static void fui__GL3SetTextureSampling(const GLint textureFilter) {
 static void fui__GL3StreamBuffer(const GLenum target, size_t *capacity, const void *data, const size_t size) {
 	if(size > *capacity) {
 		size_t newCapacity = (*capacity > 0) ? *capacity : (size_t)FUI__GL3_MINIMUM_BUFFER_BYTES;
+		const size_t largestDoublableCapacity = SIZE_MAX / 2u;
 		while(newCapacity < size) {
+			// Doubling would wrap around first on a 32 bit build, the exact size is the last step then
+			if(newCapacity > largestDoublableCapacity) {
+				newCapacity = size;
+				break;
+			}
 			newCapacity *= 2u;
 		}
 		*capacity = newCapacity;
@@ -343,7 +401,7 @@ static void fui__GL3SetEnabled(const GLenum capability, const GLboolean isEnable
 	}
 }
 
-static void fui__GL3SaveState(fui__GL3SavedState *saved) {
+static void fui__GL3SaveState(const fuiGL3Backend *backend, fui__GL3SavedState *saved) {
 	glGetIntegerv(GL_CURRENT_PROGRAM, &saved->program);
 	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &saved->vertexArray);
 	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &saved->arrayBuffer);
@@ -360,16 +418,36 @@ static void fui__GL3SaveState(fui__GL3SavedState *saved) {
 	glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &saved->blendEquationAlpha);
 	glGetIntegerv(GL_SCISSOR_BOX, saved->scissorBox);
 	glGetIntegerv(GL_VIEWPORT, saved->viewport);
+	// Front and back, a driver that answers with one value leaves the back untouched and it follows the front
+	const GLint polygonModeNotWritten = 0;
+	saved->polygonMode[0] = GL_FILL;
+	saved->polygonMode[1] = polygonModeNotWritten;
+	glGetIntegerv(GL_POLYGON_MODE, saved->polygonMode);
+	if(saved->polygonMode[1] == polygonModeNotWritten) {
+		saved->polygonMode[1] = saved->polygonMode[0];
+	}
+	glGetBooleanv(GL_COLOR_WRITEMASK, saved->colorWriteMask);
 	saved->isBlendEnabled = glIsEnabled(GL_BLEND);
 	saved->isScissorTestEnabled = glIsEnabled(GL_SCISSOR_TEST);
 	saved->isDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
 	saved->isCullFaceEnabled = glIsEnabled(GL_CULL_FACE);
 	saved->isStencilTestEnabled = glIsEnabled(GL_STENCIL_TEST);
 	saved->isFramebufferSRGBEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
+	saved->isPrimitiveRestartEnabled = glIsEnabled(GL_PRIMITIVE_RESTART);
+	saved->isPrimitiveRestartFixedIndexEnabled = GL_FALSE;
+	if(backend->hasPrimitiveRestartFixedIndex) {
+		saved->isPrimitiveRestartFixedIndexEnabled = glIsEnabled(FUI__GL3_PRIMITIVE_RESTART_FIXED_INDEX);
+	}
+	saved->isRasterizerDiscardEnabled = glIsEnabled(GL_RASTERIZER_DISCARD);
+	saved->isColorLogicOpEnabled = glIsEnabled(GL_COLOR_LOGIC_OP);
 }
 
-static void fui__GL3RestoreState(const fui__GL3SavedState *saved) {
-	glUseProgram((GLuint)saved->program);
+static void fui__GL3RestoreState(const fuiGL3Backend *backend, const fui__GL3SavedState *saved) {
+	// A host program deleted while it was current is gone for good once the interface switched away, binding its name again would fail
+	GLuint savedProgram = (GLuint)saved->program;
+	bool isSavedProgramAlive = (savedProgram == 0) || glIsProgram(savedProgram);
+	GLuint restoredProgram = isSavedProgramAlive ? savedProgram : 0;
+	glUseProgram(restoredProgram);
 	glBindVertexArray((GLuint)saved->vertexArray);
 	glBindBuffer(GL_ARRAY_BUFFER, (GLuint)saved->arrayBuffer);
 	glActiveTexture(GL_TEXTURE0);
@@ -380,12 +458,33 @@ static void fui__GL3RestoreState(const fui__GL3SavedState *saved) {
 	glBlendFuncSeparate((GLenum)saved->blendSourceRGB, (GLenum)saved->blendDestinationRGB, (GLenum)saved->blendSourceAlpha, (GLenum)saved->blendDestinationAlpha);
 	glScissor(saved->scissorBox[0], saved->scissorBox[1], (GLsizei)saved->scissorBox[2], (GLsizei)saved->scissorBox[3]);
 	glViewport(saved->viewport[0], saved->viewport[1], (GLsizei)saved->viewport[2], (GLsizei)saved->viewport[3]);
+	// Only a compatibility context can have front and back apart, and only there GL_FRONT and GL_BACK are allowed on their own
+	if(saved->polygonMode[0] == saved->polygonMode[1]) {
+		glPolygonMode(GL_FRONT_AND_BACK, (GLenum)saved->polygonMode[0]);
+	} else {
+		glPolygonMode(GL_FRONT, (GLenum)saved->polygonMode[0]);
+		glPolygonMode(GL_BACK, (GLenum)saved->polygonMode[1]);
+	}
+	glColorMask(saved->colorWriteMask[0], saved->colorWriteMask[1], saved->colorWriteMask[2], saved->colorWriteMask[3]);
 	fui__GL3SetEnabled(GL_BLEND, saved->isBlendEnabled);
 	fui__GL3SetEnabled(GL_SCISSOR_TEST, saved->isScissorTestEnabled);
 	fui__GL3SetEnabled(GL_DEPTH_TEST, saved->isDepthTestEnabled);
 	fui__GL3SetEnabled(GL_CULL_FACE, saved->isCullFaceEnabled);
 	fui__GL3SetEnabled(GL_STENCIL_TEST, saved->isStencilTestEnabled);
 	fui__GL3SetEnabled(GL_FRAMEBUFFER_SRGB, saved->isFramebufferSRGBEnabled);
+	fui__GL3SetEnabled(GL_PRIMITIVE_RESTART, saved->isPrimitiveRestartEnabled);
+	if(backend->hasPrimitiveRestartFixedIndex) {
+		fui__GL3SetEnabled(FUI__GL3_PRIMITIVE_RESTART_FIXED_INDEX, saved->isPrimitiveRestartFixedIndexEnabled);
+	}
+	fui__GL3SetEnabled(GL_RASTERIZER_DISCARD, saved->isRasterizerDiscardEnabled);
+	fui__GL3SetEnabled(GL_COLOR_LOGIC_OP, saved->isColorLogicOpEnabled);
+}
+
+static bool fui__GL3IsVersionAtLeast(const GLint majorVersion, const GLint minorVersion, const GLint requiredMajorVersion, const GLint requiredMinorVersion) {
+	if(majorVersion != requiredMajorVersion) {
+		return(majorVersion > requiredMajorVersion);
+	}
+	return(minorVersion >= requiredMinorVersion);
 }
 
 fui_api bool fuiGL3Init(fuiGL3Backend *backend) {
@@ -400,6 +499,14 @@ fui_api bool fuiGL3Init(fuiGL3Backend *backend) {
 	}
 	backend->locationProjection = glGetUniformLocation(backend->program, "projection");
 	backend->locationTexture = glGetUniformLocation(backend->program, "sourceTexture");
+
+	// Asked once here: the enums of 4.3 and 4.5 are invalid below those versions, and NVIDIA hands out exactly 3.3 when 3.3 core is asked for
+	GLint majorVersion = 0;
+	GLint minorVersion = 0;
+	glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+	glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+	backend->hasPrimitiveRestartFixedIndex = fui__GL3IsVersionAtLeast(majorVersion, minorVersion, FUI__GL3_FIXED_INDEX_MAJOR_VERSION, FUI__GL3_FIXED_INDEX_MINOR_VERSION);
+	backend->canQueryClipOrigin = fui__GL3IsVersionAtLeast(majorVersion, minorVersion, FUI__GL3_CLIP_CONTROL_MAJOR_VERSION, FUI__GL3_CLIP_CONTROL_MINOR_VERSION);
 
 	const GLsizei bufferCount = 2;
 	GLuint vertexArray = 0;
@@ -499,6 +606,10 @@ fui_api bool fuiGL3UploadFontAtlas(const unsigned char *alphaPixels, const uint3
 	if(alphaPixels == fui_null || outTexture == fui_null || width == 0 || height == 0) {
 		return(false);
 	}
+	bool fitsMaxTextureSize = fui__GL3FitsMaxTextureSize(width, height);
+	if(!fitsMaxTextureSize) {
+		return(false);
+	}
 
 	fui__GL3SavedUnpackState savedUnpack;
 	fui__GL3SaveUnpackState(&savedUnpack);
@@ -523,6 +634,10 @@ fui_api bool fuiGL3UploadFontAtlas(const unsigned char *alphaPixels, const uint3
 
 fui_api bool fuiGL3UploadImageRGBA(const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture) {
 	if(rgbaPixels == fui_null || outTexture == fui_null || width == 0 || height == 0) {
+		return(false);
+	}
+	bool fitsMaxTextureSize = fui__GL3FitsMaxTextureSize(width, height);
+	if(!fitsMaxTextureSize) {
 		return(false);
 	}
 
@@ -566,26 +681,45 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData) {
 	}
 
 	fui__GL3SavedState saved;
-	fui__GL3SaveState(&saved);
+	fui__GL3SaveState(backend, &saved);
 
 	glViewport(0, 0, windowWidth, windowHeight);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_STENCIL_TEST);
 	glDisable(GL_FRAMEBUFFER_SRGB);
+	// Whatever else a host may have left that keeps the triangles from reaching the framebuffer whole
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glDisable(GL_PRIMITIVE_RESTART);
+	if(backend->hasPrimitiveRestartFixedIndex) {
+		glDisable(FUI__GL3_PRIMITIVE_RESTART_FIXED_INDEX);
+	}
+	glDisable(GL_RASTERIZER_DISCARD);
+	glDisable(GL_COLOR_LOGIC_OP);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glEnable(GL_BLEND);
 	glBlendEquation(GL_FUNC_ADD);
 	// The color blends like in the GL1 backend. The alpha adds up instead of being squared, so an opaque framebuffer stays opaque under a translucent panel.
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_SCISSOR_TEST);
 
+	// A clip origin in the upper left (glClipControl) turns clip space upside down, so the projection turns it back. Scissor and viewport stay in window coordinates either way.
+	bool isClipOriginUpperLeft = false;
+	if(backend->canQueryClipOrigin) {
+		GLint clipOrigin = GL_LOWER_LEFT;
+		glGetIntegerv(FUI__GL3_CLIP_ORIGIN, &clipOrigin);
+		isClipOriginUpperLeft = (clipOrigin == GL_UPPER_LEFT);
+	}
+
 	// y-down window pixels to clip space: x' = x * 2 / width - 1 and y' = 1 - y * 2 / height, column major like glOrtho builds it
 	const double clipSpaceSize = 2.0;
 	const float clipSpaceLeft = -1.0f;
-	const float clipSpaceTop = 1.0f;
+	const float clipSpaceTopLowerLeftOrigin = 1.0f;
 	const float depthScale = -1.0f;
+	float clipSpaceTop = isClipOriginUpperLeft ? -clipSpaceTopLowerLeftOrigin : clipSpaceTopLowerLeftOrigin;
+	double clipSpaceHeight = isClipOriginUpperLeft ? clipSpaceSize : -clipSpaceSize;
 	float pixelToClipScaleX = (float)(clipSpaceSize / (double)windowWidth);
-	float pixelToClipScaleY = (float)(-clipSpaceSize / (double)windowHeight);
+	float pixelToClipScaleY = (float)(clipSpaceHeight / (double)windowHeight);
 	const float projection[16] = {
 		pixelToClipScaleX, 0.0f, 0.0f, 0.0f,
 		0.0f, pixelToClipScaleY, 0.0f, 0.0f,
@@ -661,7 +795,7 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData) {
 		glDrawElements(GL_TRIANGLES, (GLsizei)command->indexCount, indexType, indexPointer);
 	}
 
-	fui__GL3RestoreState(&saved);
+	fui__GL3RestoreState(backend, &saved);
 }
 
 #endif // FUI_GL3_IMPLEMENTATION
