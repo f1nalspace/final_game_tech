@@ -334,6 +334,8 @@ SOFTWARE.
 	- New: fuiDrawArrowGlyph with fuiArrowDirection, a filled triangle pointing up, down, left or right. fuiDrawCollapseGlyph is that triangle pointing right or down, and draws through it now.
 	- New: fuiBadge with fuiMeasureBadge and fuiDrawBadge, a small arrow with a text behind it - an arrow pointing up and a 2 - for a count that stands behind a caption. The arrow is drawn, as tall as the digits of the font and on their baseline, so a font baked for Latin-1 needs no arrow of its own.
 	- New: fuiToolStripCommandEx, a strip command with a badge behind its label. On a row the button grows by a space and the badge, and label and badge are centred on it as one caption. The badge is the caller's and not the table's, because it changes from frame to frame. fuiToolStripCommand runs through it.
+	- Fixed: A multiline text field that scrolls could never show its last line. Its scrollbar was handed the height of the whole field as the part that is seen, where only the rows are - the field keeps an inset above and below them.
+	  So the bar stopped that inset short of the end, and rounded to a whole line the view came to rest one line before the last. The bar is handed the height of the rows now, and ends where the last line is.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -10563,7 +10565,8 @@ fui_inline bool fui__TextInputBuild(fuiContext *context, const fuiRect rect, con
 		float contentLength = (float)window.totalLineCount * rowStep;
 		fuiRect scrollTrack = fuiRectMake(rect.x + rect.w - gutterWidth, rect.y, gutterWidth, rect.h);
 		fuiPushId(context, id);
-		scroll = fuiScrollbarVertical(context, scrollTrack, "__textScrollbar", scroll, rect.h, contentLength);
+		// What is SEEN is the rows and not the whole box, which keeps an inset above and below them. Handed the box, the bar stopped that inset short of the last line.
+		scroll = fuiScrollbarVertical(context, scrollTrack, "__textScrollbar", scroll, window.rowsHeight, contentLength);
 		fuiPopId(context);
 
 		int32_t lastPossibleFirstLine = fuiMaxI(window.totalLineCount - window.visibleLineCount, 0);
