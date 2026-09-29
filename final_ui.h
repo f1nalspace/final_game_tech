@@ -336,6 +336,8 @@ SOFTWARE.
 	- New: fuiToolStripCommandEx, a strip command with a badge behind its label. On a row the button grows by a space and the badge, and label and badge are centred on it as one caption. The badge is the caller's and not the table's, because it changes from frame to frame. fuiToolStripCommand runs through it.
 	- Fixed: A multiline text field that scrolls could never show its last line. Its scrollbar was handed the height of the whole field as the part that is seen, where only the rows are - the field keeps an inset above and below them.
 	  So the bar stopped that inset short of the end, and rounded to a whole line the view came to rest one line before the last. The bar is handed the height of the rows now, and ends where the last line is.
+	- Fixed: A menu popup is drawn over everything, wherever it was built. A context menu opened on a row near the bottom of a panel was painted over by every widget built after that panel, the popup being drawn where it was built.
+	  The popups are now a run of commands that is lifted to the end of the frame the way an open combo list is, and after the list, so a context menu about an entry of the list lies on it. Neither a context menu nor a menu bar has to be built last anymore.
 
 	# v0.9.6:
 	Two additions a VIEWER needs and an editor does not - a tree row may say a second thing on its right
@@ -2374,6 +2376,11 @@ typedef struct fuiContext {
 	//! every command names its own indices absolutely, so not one vertex is touched by the lift
 	uint32_t overlayCommandStart;
 	uint32_t overlayCommandEnd;
+	//! Where the run of the menu popups begins, and one past where it ends. A popup floats over everything, but it is built wherever its caller builds it - a context menu in the middle of a panel - so its commands are lifted to the end of the buffer as well. After the list, because a context menu about an entry of an open combo list has to lie ON the list
+	uint32_t popupOverlayCommandStart;
+	uint32_t popupOverlayCommandEnd;
+	//! Whether the first popup of this frame began that run. The end moves on with every popup that ends, so a submenu built inside its parent and the parent's frame drawn after it are both in it
+	bool popupOverlayHasBegun;
 	//! No draw command merges into one that lies before this point in the buffer, which is what keeps an
 	//! overlay's run unbroken while it is lifted. Only ever consulted by a caller that turned batching on
 	uint32_t drawMergeBarrier;
@@ -4281,7 +4288,7 @@ fui_api bool fuiCommandButton(fuiContext *context, const fuiRect rect, const fui
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the bar, and scopes the identifiers of the menus in it.
 * @param[in] rect The strip the titles flow across, in pixels.
-* @note Popups float ABOVE everything else, so build the bar AFTER the panels it covers.
+* @note Popups float ABOVE everything else wherever the bar is built, because they are lifted to the end of the frame.
 * @note Ask @ref fuiMenuBarHeight for the height rather than picking one, and @ref fuiLayoutDock for the strip itself.
 * @note Always pair with @ref fuiEndMenuBar.
 */
@@ -6751,8 +6758,7 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		}
 	}
 
-	// Before the tooltip rather than after it: an open combo list is lifted over the panels it covers, and
-	// the tooltip box goes over everything including the list.
+	// Before the tooltip rather than after it: an open combo list and the menu popups are lifted over the panels they cover, and the tooltip box goes over everything including them.
 	fui__LiftOverlayCommands(context);
 
 	fui__DrawPendingTooltip(context);
@@ -6798,6 +6804,9 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 	// The overlay is a run of commands inside the buffer this just emptied, so both markers go with it.
 	context->overlayCommandStart = 0;
 	context->overlayCommandEnd = 0;
+	context->popupOverlayCommandStart = 0;
+	context->popupOverlayCommandEnd = 0;
+	context->popupOverlayHasBegun = false;
 	context->drawMergeBarrier = 0;
 
 	// Default to the one-pass contract. fuiBeginFrame calls this first and then says what the pass really
@@ -6922,18 +6931,17 @@ fui_inline void fui__PushClipAbsolute(fuiContext *context, const fuiRect rect) {
 // ----------------------------------------------------------------------------
 // > Overlay
 //
-// Everything the library draws goes into ONE command buffer in the order it was built, and that order is
-// the z order: what is written later covers what was written before it. It is the whole of how a menu
-// popup floats over a panel - the caller is told to build its menu bar last, and does.
+// Everything the library draws goes into ONE command buffer in the order it was built, and that order is the z order: what is written later covers what was written before it.
 //
-// A combo list cannot ask that of anybody. It belongs to a widget sitting halfway down a panel, and the
-// rows of that panel go on being built after it. So the commands its list writes are marked as they go in
-// and lifted to the END of the buffer once the frame is finished. What moves is the ORDER and nothing
-// else: every command names its vertices and its indices by absolute offset, so not one of them has to be
-// rewritten to be drawn somewhere else in the sequence.
+// A combo list cannot rely on that.
+// It belongs to a widget sitting halfway down a panel, and the rows of that panel go on being built after it.
+// So the commands its list writes are marked as they go in and lifted to the END of the buffer once the frame is finished.
+// What moves is the ORDER and nothing else: every command names its vertices and its indices by absolute offset, so not one of them has to be rewritten to be drawn somewhere else in the sequence.
 //
-// One overlay is open at a time, which is all a combo needs and the reason this is three fields rather
-// than a stack of layers.
+// A menu popup is lifted the same way, as a second run after the list.
+// A context menu is built wherever its caller builds it, usually right beside the list or tree it is about, and would otherwise be painted over by everything built after that.
+//
+// One overlay is open at a time, and one menu tree, which is all a combo and a menu need and the reason this is a handful of fields rather than a stack of layers.
 // ----------------------------------------------------------------------------
 
 //! Reverses one half open range of draw commands in place
@@ -6976,29 +6984,58 @@ fui_inline void fui__EndOverlay(fuiContext *context) {
 	fuiEndFrame lifts before it draws the tooltip, so a tooltip box still lands on top of an open list, and
 	fuiEndDrawFrame lifts again for a caller that built a frame with no input at all.
 */
-static void fui__LiftOverlayCommands(fuiContext *context) {
-	uint32_t firstOverlayCommand = context->overlayCommandStart;
-	uint32_t onePastLastOverlayCommand = context->overlayCommandEnd;
+static bool fui__LiftCommandRun(fuiContext *context, const uint32_t firstRunCommand, const uint32_t onePastLastRunCommand) {
 	uint32_t commandCount = context->commandBuffer.count;
-	context->overlayCommandStart = 0;
-	context->overlayCommandEnd = 0;
-	context->drawMergeBarrier = 0;
-
-	bool runIsEmpty = (onePastLastOverlayCommand <= firstOverlayCommand);
-	bool runRanPastTheBuffer = (onePastLastOverlayCommand > commandCount);
+	bool runIsEmpty = (onePastLastRunCommand <= firstRunCommand);
+	bool runRanPastTheBuffer = (onePastLastRunCommand > commandCount);
 	// Nothing was built after it, so it is already the last thing drawn and the rotation would be a no-op.
-	bool runIsAlreadyLast = (onePastLastOverlayCommand >= commandCount);
+	bool runIsAlreadyLast = (onePastLastRunCommand >= commandCount);
 	if(runIsEmpty || runRanPastTheBuffer || runIsAlreadyLast) {
-		return;
+		return(false);
 	}
 
 	fuiDrawCommand *commands = (fuiDrawCommand *)context->commandBuffer.items;
 	if(commands == fui_null) {
+		return(false);
+	}
+	fui__ReverseCommands(commands, firstRunCommand, onePastLastRunCommand);
+	fui__ReverseCommands(commands, onePastLastRunCommand, commandCount);
+	fui__ReverseCommands(commands, firstRunCommand, commandCount);
+	return(true);
+}
+
+/*
+	Lifts the open combo list, and after it the menu popups.
+
+	Two runs and not one, because a context menu about an entry of the list is built wherever the caller builds it - usually right after the combo, but with anything in between - and it has to end up on top of the list rather than under it. Lifting the popups LAST is what puts them there.
+
+	The list's rotation moves every command built after it forward by the length of the list. A popup run that lay behind the list is therefore found that much further forward before it is lifted in turn. One that lay in front of it did not move at all.
+*/
+static void fui__LiftOverlayCommands(fuiContext *context) {
+	uint32_t firstListCommand = context->overlayCommandStart;
+	uint32_t onePastLastListCommand = context->overlayCommandEnd;
+	uint32_t firstPopupCommand = context->popupOverlayCommandStart;
+	uint32_t onePastLastPopupCommand = context->popupOverlayCommandEnd;
+	bool popupRunWasRecorded = context->popupOverlayHasBegun;
+	context->overlayCommandStart = 0;
+	context->overlayCommandEnd = 0;
+	context->popupOverlayCommandStart = 0;
+	context->popupOverlayCommandEnd = 0;
+	context->popupOverlayHasBegun = false;
+	context->drawMergeBarrier = 0;
+
+	bool listRunWasLifted = fui__LiftCommandRun(context, firstListCommand, onePastLastListCommand);
+	if(!popupRunWasRecorded) {
 		return;
 	}
-	fui__ReverseCommands(commands, firstOverlayCommand, onePastLastOverlayCommand);
-	fui__ReverseCommands(commands, onePastLastOverlayCommand, commandCount);
-	fui__ReverseCommands(commands, firstOverlayCommand, commandCount);
+
+	bool popupRunLayBehindTheList = (firstPopupCommand >= onePastLastListCommand);
+	if(listRunWasLifted && popupRunLayBehindTheList) {
+		uint32_t listLength = onePastLastListCommand - firstListCommand;
+		firstPopupCommand -= listLength;
+		onePastLastPopupCommand -= listLength;
+	}
+	(void)fui__LiftCommandRun(context, firstPopupCommand, onePastLastPopupCommand);
 }
 
 // ----------------------------------------------------------------------------
@@ -7027,11 +7064,10 @@ fui_inline bool fui__CursorIsOver(const fuiContext *context, const fuiRect rect)
 	if(fui__ModalBlocksInput(context)) {
 		return(false);
 	}
-	// An open menu owns the cursor. Its popup floats above the panels but is BUILT last, so a widget under
-	// it would take the very same click a moment before the row does - clicking File > Save would also press
-	// whatever sits beneath the popup. The menu itself never asks through here, so gating ordinary widgets
-	// leaves the menu live. It is what every desktop menu does: while one is open, a click anywhere else
-	// only dismisses it.
+	// An open menu owns the cursor.
+	// Its popup is DRAWN over the panels but not necessarily built after them, so a widget under it would take the very same click the row does - clicking File > Save would also press whatever sits beneath the popup.
+	// The menu itself never asks through here, so gating ordinary widgets leaves the menu live.
+	// It is what every desktop menu does: while one is open, a click anywhere else only dismisses it.
 	if(context->menuOpenDepth > 0) {
 		return(false);
 	}
@@ -12341,6 +12377,16 @@ static void fui__MenuBeginPopup(fuiContext *context, fuiMenuFrame *frame, const 
 	frame->cursorY = frame->popupRect.y - scroll;
 	frame->widestItem = 0.0f;
 
+	// A popup is built wherever its caller builds it - a context menu right beside the list it is about, in the middle of a panel - and has to lie over everything built after that, an open combo list included.
+	// So the popups are a run of their own that is lifted to the end of the frame after the list, and the first of them is where that run begins.
+	// One menu tree is open at a time and a submenu is built inside its parent, so the popups of a frame are one piece.
+	if(!context->popupOverlayHasBegun) {
+		context->popupOverlayCommandStart = context->commandBuffer.count;
+		context->popupOverlayCommandEnd = context->commandBuffer.count;
+		context->popupOverlayHasBegun = true;
+	}
+	context->drawMergeBarrier = context->commandBuffer.count;
+
 	// The clip ignores the enclosing one on purpose: a submenu's box sits OUTSIDE its parent popup, and
 	// clipping it to the parent would leave nothing of it but the text.
 	fui__PushClipAbsolute(context, frame->popupRect);
@@ -12370,6 +12416,9 @@ static void fui__MenuEndPopup(fuiContext *context, const fuiMenuFrame *frame, co
 	// width of the popup - would paint over the stroke it sits against.
 	fui__DrawChromeFrame(context, frame->popupRect);
 	fuiPopClip(context);
+	// Every popup that ends moves the end of the popup run on, so a submenu built inside its parent and the parent's own frame drawn after it both belong to it.
+	context->popupOverlayCommandEnd = context->commandBuffer.count;
+	context->drawMergeBarrier = context->commandBuffer.count;
 	fuiWidgetState *state = fui__WidgetStateGet(context, id);
 	if(state != fui_null) {
 		// The scroll is added back, because what is remembered is how tall ALL the rows are and not how
