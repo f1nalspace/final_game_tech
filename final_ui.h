@@ -331,6 +331,19 @@ SOFTWARE.
 	- Changed: A checked box is drawn as a TICK now, where it used to be a filled square - in fuiCheckbox, in fuiMenuItemCheck and on a checked row of fuiCheckTreeView alike.
 	  A filled square is what a Mixed row is drawn as, and next to each other the two were one size apart: a box wholly checked read as half of it.
 	  Unchecked stays an empty box and Mixed stays the small filled square. A radio button keeps its square dot, having no half state it could be taken for.
+	- New: fuiComboBoxDesc with fuiComboDesc and fuiComboAction, for a combo that is more than a column of radio buttons folded away - a branch picker, whose list is browsed rather than answered once.
+	  An entry may carry a tick (markedIndex) and a separator line along its top edge (separatorAbove), which is how "this is the current one" and "local above, remote below" are said without a second widget.
+	  With clickKeepsListOpen a click picks and the list STAYS open, so what the pick shows behind it can be looked at, and a double click on the same row activates it and shuts the list.
+	  A right press on a row picks it and reports it as contextIndex, in every combo, and leaves the list open for the context menu the caller opens there. listIsOpen says whether this combo's own list is open, which fuiComboIsOpen cannot.
+	  fuiComboBox and fuiComboBoxEx run through it and behave exactly as before.
+	- New: fuiListBoxDesc with fuiListDesc, the same tick and separators for a list box, so a dialog can show the list a combo drops open. fuiListBox and fuiListBoxEx run through it.
+	  fuiListAction reports the row a double click activated and the row a right press went down on, as contextIndex. A right press selects its row, the way a tree and a combo do, and opening the context menu is the caller's.
+	- New: fuiDrawCheckGlyph, the tick of a checked box and a marked list row, for a caller that marks something outside of a list the same way.
+	- New: fuiTabControlEx, the same headers with the chosen tab kept by the caller. For a strip built under one id for several documents, each of which shows its own tab, and for choosing a tab from outside. fuiTabControl runs through it.
+	- Changed: Escape with a menu open over a combo list shuts the menu and leaves the list. A press on the list while that menu is up only shuts the menu, a press into the menu that is not on a row leaves both, and a menu row that is chosen shuts both. A menu bar title clicked while a list is open still dismisses the list.
+	- Fixed: fuiOpenDialog takes the keyboard away from the widget that had it. A dialog blocked the cursor for everything behind it, but not the keys, which only ask which widget is focused.
+	  A combo box that opened a question after a pick kept the focus, was built before the question on the next frame, and answered enter by dropping its list open again - the question never saw the key.
+	  The same went for a text field under a message box. A field of the dialog takes the focus when it asks for it, as before.
 	- New: fuiDrawArrowGlyph with fuiArrowDirection, a filled triangle pointing up, down, left or right. fuiDrawCollapseGlyph is that triangle pointing right or down, and draws through it now.
 	- New: fuiBadge with fuiMeasureBadge and fuiDrawBadge, a small arrow with a text behind it - an arrow pointing up and a 2 - for a count that stands behind a caption. The arrow is drawn, as tall as the digits of the font and on their baseline, so a font baked for Latin-1 needs no arrow of its own.
 	- New: fuiToolStripCommandEx, a strip command with a badge behind its label. On a row the button grows by a space and the badge, and label and badge are centred on it as one caption. The badge is the caller's and not the table's, because it changes from frame to frame. fuiToolStripCommand runs through it.
@@ -2512,6 +2525,8 @@ typedef struct fuiContext {
 	//! Set once the cursor was over a menu bar or an open popup this build, which is what tells a press
 	//! that landed anywhere else that it is a dismissal
 	bool menuOwnsTheMouse;
+	//! Whether a menu was already open when this frame began. A press on a menu that was up before it is a press INTO that menu, while a press that opens one - a menu bar title clicked while a combo list is open - is a press outside the list
+	bool menuWasOpenWhenTheFrameBegan;
 	//! Menu containers open right now during this build, the innermost one last
 	fuiMenuFrame menuStack[FUI_MAX_MENU_DEPTH];
 	//! How many entries of menuStack are in use
@@ -3317,6 +3332,15 @@ fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, c
 fui_api void fuiDrawCloseGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color, const float thickness);
 
 /**
+* @brief Draws the tick a checked box and a marked list row show.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] glyphBox The square a check box would take, in pixels. The tick keeps the same distance to its edges a checked box keeps.
+* @param[in] color The stroke color.
+* @note For marking something outside of a list or a menu the way a list row is marked, so the two ticks come out alike.
+*/
+fui_api void fuiDrawCheckGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color);
+
+/**
 * @enum fuiArrowDirection
 * @brief Which way an arrow glyph points.
 */
@@ -4094,6 +4118,58 @@ fui_api bool fuiComboBox(fuiContext *context, const fuiRect rect, const char *id
 fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows, const bool enabled, const char *emptyText);
 
 /**
+* @struct fuiComboDesc
+* @brief Everything a combo box shows besides what is picked, and how its list answers a click.
+* @note Cleared to zero it is a combo with no entries: set markedIndex to minus one when no entry is to carry a tick, since zero marks the first.
+*/
+typedef struct fuiComboDesc {
+	//! One label per entry
+	const char *const *items;
+	//! How many entries there are
+	int32_t count;
+	//! How many rows drop open before the list scrolls. 0 for @ref FUI_COMBO_VISIBLE_ROWS
+	int32_t maxVisibleRows;
+	//! Which entry carries a tick in the open list - the one that is current or active, the way a checked menu row is. Minus one for none
+	int32_t markedIndex;
+	//! One flag per entry, true where a separator line is drawn along the top edge of its row. Null for none. The line takes no room of its own, so a row index stays an entry index
+	const bool *separatorAbove;
+	//! What the closed box reads when nothing is picked, or null for an empty box
+	const char *emptyText;
+	//! False draws it muted and ignores all input. A disabled combo still says what is picked
+	bool enabled;
+	//! True for a list that stays open when a row is clicked: the click picks, a double click on the same row activates it and shuts the list. False for the usual pick and shut
+	bool clickKeepsListOpen;
+} fuiComboDesc;
+
+/**
+* @struct fuiComboAction
+* @brief What a combo build came to besides its selection. Read it straight after the call, like a return value.
+*/
+typedef struct fuiComboAction {
+	//! OUT: Which entry was activated by a double click, in a list that stays open when clicked. Minus one when none was
+	int32_t activatedIndex;
+	//! OUT: Which entry the right button went down on, which is the entry a context menu is about. Minus one when none was
+	int32_t contextIndex;
+	//! OUT: Whether THIS combo's list is open after the build. @ref fuiComboIsOpen answers for any list, and a caller that treats its own list differently from all others needs this one
+	bool listIsOpen;
+} fuiComboAction;
+
+/**
+* @brief A combo box described by a @ref fuiComboDesc, reporting what else happened in its list.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The area the CLOSED box sits in, in pixels.
+* @param[in] id Identifies the combo.
+* @param[in] desc What the combo shows and how its list answers a click @ref fuiComboDesc.
+* @param[in,out] selectedIndex Which entry is picked, changed in place. Minus one for none.
+* @param[out] outAction What else happened @ref fuiComboAction. May be null.
+* @return Returns true on the frame the selection changed.
+* @note A right press on a row picks it, reports it as contextIndex and leaves the list open, in every combo. Opening a context menu there with @ref fuiOpenContextMenu is the caller's.
+* @note A menu that opens while a list is open is drawn ON the list. Escape shuts that menu first and only the next escape shuts the list. A press on the list while the menu is up only shuts the menu, and a menu row that is chosen shuts both.
+* @note @ref fuiComboBox and @ref fuiComboBoxEx are this with a description of their parameters and no action.
+*/
+fui_api bool fuiComboBoxDesc(fuiContext *context, const fuiRect rect, const char *id, const fuiComboDesc *desc, int32_t *selectedIndex, fuiComboAction *outAction);
+
+/**
 * @brief Whether any combo box has its list dropped open.
 * @param[in] context Reference to the context @ref fuiContext.
 * @return Returns true while one is open.
@@ -4868,6 +4944,49 @@ fui_api bool fuiListBox(fuiContext *context, const fuiRect rect, const char *id,
 fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated);
 
 /**
+* @struct fuiListDesc
+* @brief Everything a list box shows besides what is selected.
+* @note Cleared to zero it is an empty list: set markedIndex to minus one when no row is to carry a tick, since zero marks the first.
+*/
+typedef struct fuiListDesc {
+	//! The strings, one per row. May be null for a list of icons ALONE
+	const char *const *items;
+	//! How many rows there are
+	int32_t count;
+	//! The icon sheet @ref fuiListIcons, or null for a list of plain text
+	const fuiListIcons *icons;
+	//! Which row carries a tick - the one that is current or active, the way a checked menu row is. Minus one for none
+	int32_t markedIndex;
+	//! One flag per row, true where a separator line is drawn along its top edge. Null for none. The line takes no room of its own
+	const bool *separatorAbove;
+} fuiListDesc;
+
+/**
+* @struct fuiListAction
+* @brief What a list box build came to besides its selection. Read it straight after the call, like a return value.
+*/
+typedef struct fuiListAction {
+	//! OUT: Which row was activated by a double click. Minus one when none was
+	int32_t activatedIndex;
+	//! OUT: Which row the right button went down on, which is the row a context menu is about. Minus one when none was
+	int32_t contextIndex;
+} fuiListAction;
+
+/**
+* @brief A list box described by a @ref fuiListDesc, the same list a combo described by @ref fuiComboDesc drops open.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box the list sits in, in pixels.
+* @param[in] id Identifies the list.
+* @param[in] desc What the list shows @ref fuiListDesc.
+* @param[in,out] selectedIndex Which row is selected, changed in place. Minus one for none.
+* @param[out] outAction What else happened @ref fuiListAction. May be null.
+* @return Returns true on the frame the selection changed.
+* @note A right press on a row selects it and reports it as contextIndex, the way a tree and a combo do. Opening a context menu there with @ref fuiOpenContextMenu is the caller's.
+* @note @ref fuiListBox and @ref fuiListBoxEx are this with a description of their parameters.
+*/
+fui_api bool fuiListBoxDesc(fuiContext *context, const fuiRect rect, const char *id, const fuiListDesc *desc, int32_t *selectedIndex, fuiListAction *outAction);
+
+/**
 * @brief A dialog picking one entry out of a flat list, or naming a new one.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the dialog, the same string @ref fuiOpenDialog was given.
@@ -5012,6 +5131,19 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 *       yourself, which is what lets a tab hold anything at all.
 */
 fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount);
+
+/**
+* @brief A row of tab headers whose chosen tab is kept by the CALLER rather than under the id.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The strip the headers fill, in pixels.
+* @param[in] id Identifies the headers for the clicks on them. Nothing is remembered under it.
+* @param[in] tabs What each header says.
+* @param[in] tabCount How many headers there are.
+* @param[in,out] activeTab Which tab is showing. Held inside [0, tabCount), and set to the header that was clicked.
+* @return Returns true when a click chose another tab on this build.
+* @note For a strip that is built under the same id for several things it stands for - one per document, say - and has to show another tab for each of them. It is also how a tab is chosen from outside, by writing the index.
+*/
+fui_api bool fuiTabControlEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount, int32_t *activeTab);
 
 // ****************************************************************************
 //
@@ -6688,6 +6820,9 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		context->active = FUI_ID_NONE;
 	}
 
+	// Asked BEFORE the menus answer the press and the escape below, because what an open combo list does with the same press and the same escape depends on whether a menu was up to take them first.
+	bool aMenuWasUpForThisInput = (context->menuOpenDepth > 0);
+
 	if(context->menuOpenDepth > 0) {
 		// Escape closes the whole tree, and so does a press that landed on no bar and no popup. Resolved here
 		// rather than where the popup is built, because "outside every menu" is only knowable once they all are.
@@ -6712,11 +6847,23 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		// Everything an open menu is dismissed by dismisses an open list too, for the same reason and in the
 		// same place: "outside the list" is only knowable once the whole build is done.
 		bool anyButtonWentDown = context->mouseWentDown[FUI_MOUSE_LEFT] || context->mouseWentDown[FUI_MOUSE_MIDDLE] || context->mouseWentDown[FUI_MOUSE_RIGHT];
-		bool dismissedByAPress = anyButtonWentDown && !context->comboOwnsTheMouse;
+		/*
+			A menu that was already up over the list - a context menu about one of its entries - answers the press first.
+
+			A press it KEPT, on its popup but not on a row, is a press into the menu and leaves the list alone. A press that CHOSE a row closed the menu, and what a context menu over a list does is about the entry, so the list goes with it.
+			A menu that only opened this frame is not one the press went into: a menu bar title clicked while a list is open dismisses the list like any other press outside it.
+		*/
+		bool pressWentIntoAMenu = anyButtonWentDown && context->menuWasOpenWhenTheFrameBegan && context->menuOwnsTheMouse;
+		bool menuIsStillOpen = (context->menuOpenDepth > 0);
+		bool pressWasKeptByTheMenu = pressWentIntoAMenu && menuIsStillOpen;
+		bool pressChoseAMenuRow = pressWentIntoAMenu && !menuIsStillOpen;
+		bool dismissedByAPress = (anyButtonWentDown && !context->comboOwnsTheMouse && !pressWasKeptByTheMenu) || pressChoseAMenuRow;
+		// Escape closes the menu over the list first, and only the next one closes the list.
+		bool escapeClosesTheList = fuiKeyWentDown(context, fuiKey_Escape) && !aMenuWasUpForThisInput;
 		// A list whose caller stopped building it - its panel folded shut, its tab switched behind it - is
 		// shut HERE. Left open it would go on freezing an interface that no longer shows it anywhere.
 		bool itsCallerIsGone = !context->comboWasBuiltThisFrame;
-		if(itsCallerIsGone || fuiKeyWentDown(context, fuiKey_Escape) || dismissedByAPress) {
+		if(itsCallerIsGone || escapeClosesTheList || dismissedByAPress) {
 			context->comboOpenId = FUI_ID_NONE;
 		}
 
@@ -6790,6 +6937,7 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 	// which ones are being built does not, and an unbalanced end must not leak into the next frame either.
 	context->menuStackDepth = 0;
 	context->menuOwnsTheMouse = false;
+	context->menuWasOpenWhenTheFrameBegan = (context->menuOpenDepth > 0);
 	context->modalBuildDepth = 0;
 	context->modalScopeId = FUI_ID_NONE;
 	context->stripIsActive = false;
@@ -8697,6 +8845,15 @@ fui_api void fuiDrawCollapseGlyph(fuiContext *context, const fuiRect glyphBox, c
 	// Pointing right at content that is folded away, and down at content that is open.
 	fuiArrowDirection direction = isCollapsed ? fuiArrowDirection_Right : fuiArrowDirection_Down;
 	fuiDrawArrowGlyph(context, glyphBox, direction, color);
+}
+
+fui_api void fuiDrawCheckGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	fuiRect markBox = fui__CheckMarkRect(context, glyphBox);
+	fui__DrawCheckTick(context, markBox, color);
 }
 
 fui_api void fuiDrawCloseGlyph(fuiContext *context, const fuiRect glyphBox, const fuiColor color, const float thickness) {
@@ -13305,6 +13462,10 @@ fui_api void fuiOpenDialog(fuiContext *context, const char *id) {
 	context->modalStack[context->modalDepth] = dialogId;
 	context->modalDepth += 1u;
 
+	// The keyboard is taken away from whatever widget behind the dialog had it. The dialog blocks the cursor for everything outside of it, but a key only asks which widget is focused - and a widget built before the dialog in the same frame would answer enter or space first, and the dialog would never see them.
+	// A field of the dialog takes the focus again when it asks for it, see fui__DialogFocusField.
+	context->focused = FUI_ID_NONE;
+
 	// Opening is the moment a dialog is PLACED, so it comes up centred however far the last one of its kind
 	// was dragged. A desktop dialog is a new window every time it is shown and lands wherever its template
 	// says; a prompt that reappears in the corner somebody parked the last one in is a prompt nobody sees.
@@ -13775,6 +13936,54 @@ fui_inline fuiRect fui__ListBoxDrawRowIcon(fuiContext *context, const fuiRect ro
 	return(textRect);
 }
 
+//! The row index that means "no row", for a list that marks none
+#define FUI__LIST_NO_ROW (-1)
+
+//! Draws the separator line a list row may carry along its top edge, in the colour and thickness a menu separator is drawn with. The first row never carries one, having nothing above it to be separated from
+fui_inline void fui__ListDrawSeparatorAbove(fuiContext *context, const fuiRect rowRect, const bool *separatorAbove, const int32_t rowIndex) {
+	bool rowHasASeparator = (separatorAbove != fui_null) && (rowIndex > 0) && separatorAbove[rowIndex];
+	if(!rowHasASeparator) {
+		return;
+	}
+	const fuiTheme *theme = &context->theme;
+	float lineThickness = theme->widgetBorderThickness;
+	// Half the stroke below the edge, so the whole line lies inside this row rather than half of it under the row above.
+	float lineY = rowRect.y + lineThickness * 0.5f;
+	float lineLeft = rowRect.x + theme->widgetPaddingX;
+	float lineRight = rowRect.x + rowRect.w - theme->widgetPaddingX;
+	fuiVec2 lineStart = fuiV2(lineLeft, lineY);
+	fuiVec2 lineEnd = fuiV2(lineRight, lineY);
+	fuiDrawLine(context, lineStart, lineEnd, theme->panelBorderColor, lineThickness);
+}
+
+/*
+Draws the tick of a list's marked row and answers the rectangle the rest of the row has left.
+
+The column is kept in EVERY row as soon as the list marks one, so the label of the marked row starts at the same x as the labels around it rather than being pushed aside by its own tick. A list that marks nothing keeps no column at all and looks exactly as it did.
+*/
+fui_inline fuiRect fui__ListDrawRowMark(fuiContext *context, const fuiRect rowRect, const int32_t markedIndex, const int32_t rowIndex) {
+	bool listMarksARow = (markedIndex != FUI__LIST_NO_ROW);
+	if(!listMarksARow) {
+		return(rowRect);
+	}
+	const fuiTheme *theme = &context->theme;
+	// The same well a checkbox is drawn in, left out, so the tick comes out the size a checked checkbox shows it at.
+	float markSide = fuiMinF(theme->fontHeight, rowRect.h);
+	float markLeft = rowRect.x + theme->widgetPaddingX;
+	float markTop = rowRect.y + (rowRect.h - markSide) * 0.5f;
+	bool rowIsMarked = (rowIndex == markedIndex);
+	if(rowIsMarked) {
+		fuiRect markWell = fuiRectMake(markLeft, markTop, markSide, markSide);
+		fuiRect markBox = fui__CheckMarkRect(context, markWell);
+		fui__DrawCheckTick(context, markBox, theme->accentColor);
+	}
+	// Whatever is drawn in the rest insets itself by the widget padding again, which is the gap between the tick and the label.
+	float columnWidth = theme->widgetPaddingX + markSide;
+	float restWidth = fuiMaxF(rowRect.w - columnWidth, 0.0f);
+	fuiRect result = fuiRectMake(rowRect.x + columnWidth, rowRect.y, restWidth, rowRect.h);
+	return(result);
+}
+
 //! Draws one column HEADER's icon and answers the rectangle its title has left
 /*
 	A header without an icon keeps its title flush against the left of its cell rather than being indented the
@@ -13802,13 +14011,17 @@ fui_inline fuiRect fui__ListDrawHeaderIcon(fuiContext *context, const fuiRect he
 	return(titleRect);
 }
 
-fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated) {
-	FUI_ASSERT(context != fui_null && id != fui_null && selectedIndex != fui_null);
-	if(context == fui_null || id == fui_null || selectedIndex == fui_null) {
+fui_api bool fuiListBoxDesc(fuiContext *context, const fuiRect rect, const char *id, const fuiListDesc *desc, int32_t *selectedIndex, fuiListAction *outAction) {
+	FUI_ASSERT(context != fui_null && id != fui_null && desc != fui_null && selectedIndex != fui_null);
+	if(context == fui_null || id == fui_null || desc == fui_null || selectedIndex == fui_null) {
 		return(false);
 	}
-	if(outWasActivated != fui_null) {
-		*outWasActivated = false;
+	const char *const *items = desc->items;
+	const int32_t count = desc->count;
+	const fuiListIcons *icons = desc->icons;
+	if(outAction != fui_null) {
+		outAction->activatedIndex = FUI__LIST_NO_ROW;
+		outAction->contextIndex = FUI__LIST_NO_ROW;
 	}
 	// A list of icons ALONE needs no items at all, its rows having nothing to say in words.
 	bool hasIcons = (icons != fui_null) && (icons->sheet != 0) && (icons->cellForRow != fui_null);
@@ -13873,7 +14086,10 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 		} else if(rowIsHovered) {
 			fuiDrawRect(context, rowRect, theme->widgetHoveredColor);
 		}
-		fuiRect textRect = fui__ListBoxDrawRowIcon(context, rowRect, rowHeight, icons, rowIndex);
+		fui__ListDrawSeparatorAbove(context, rowRect, desc->separatorAbove, rowIndex);
+		// The tick comes first and the icon after it, so a marked list with icons still lines its icons up in one column.
+		fuiRect rowRestRect = fui__ListDrawRowMark(context, rowRect, desc->markedIndex, rowIndex);
+		fuiRect textRect = fui__ListBoxDrawRowIcon(context, rowRestRect, rowHeight, icons, rowIndex);
 		if(!iconsAreAlone) {
 			fui__DrawTextInRect(context, textRect, items[rowIndex], theme->textColor);
 		}
@@ -13890,8 +14106,8 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 				*selectedIndex = rowIndex;
 				selectionChanged = true;
 			}
-			if(isSecondClick && outWasActivated != fui_null) {
-				*outWasActivated = true;
+			if(isSecondClick && outAction != fui_null) {
+				outAction->activatedIndex = rowIndex;
 			}
 			if(state != fui_null) {
 				state->lastClickTime = context->timeSeconds;
@@ -13900,9 +14116,40 @@ fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *i
 			context->mouseDownConsumed[FUI_MOUSE_LEFT] = true;
 			context->focused = listId;
 		}
+
+		bool rightWentDownHere = rowIsHovered && context->mouseWentDown[FUI_MOUSE_RIGHT] && !context->mouseDownConsumed[FUI_MOUSE_RIGHT];
+		if(rightWentDownHere) {
+			// The row is selected as well, because a menu that acts on "the selected row" and a menu opened on a row
+			// the user never selected would otherwise act on two different things.
+			if(*selectedIndex != rowIndex) {
+				*selectedIndex = rowIndex;
+				selectionChanged = true;
+			}
+			if(outAction != fui_null) {
+				outAction->contextIndex = rowIndex;
+			}
+			context->mouseDownConsumed[FUI_MOUSE_RIGHT] = true;
+			context->focused = listId;
+		}
 	}
 	fuiPopClip(context);
 	fuiPopId(context);
+	return(selectionChanged);
+}
+
+fui_api bool fuiListBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const fuiListIcons *icons, bool *outWasActivated) {
+	fuiListDesc desc;
+	fui__ClearMemory(&desc, sizeof(desc));
+	desc.items = items;
+	desc.count = count;
+	desc.icons = icons;
+	desc.markedIndex = FUI__LIST_NO_ROW;
+	desc.separatorAbove = fui_null;
+	fuiListAction action;
+	bool selectionChanged = fuiListBoxDesc(context, rect, id, &desc, selectedIndex, &action);
+	if(outWasActivated != fui_null) {
+		*outWasActivated = (action.activatedIndex != FUI__LIST_NO_ROW);
+	}
 	return(selectionChanged);
 }
 
@@ -14029,8 +14276,10 @@ fui_inline fuiRect fui__ComboListRect(const fuiContext *context, const fuiRect b
 }
 
 //! One build of an open list, from its frame down to the row a click landed on. Returns true when the selection changed
-fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, const char *id, const fuiId comboId, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows) {
+fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, const char *id, const fuiId comboId, const fuiComboDesc *desc, int32_t *selectedIndex, const int32_t maxVisibleRows, fuiComboAction *action) {
 	const fuiTheme *theme = &context->theme;
+	const char *const *items = desc->items;
+	const int32_t count = desc->count;
 	float rowHeight = theme->menuItemHeight;
 	fuiRect listRect = fui__ComboListRect(context, boxRect, count, maxVisibleRows, rowHeight);
 
@@ -14063,6 +14312,12 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 			context->comboScroll -= context->mouseWheelDelta * rowHeight * FUI__SCROLL_WHEEL_ROWS;
 		}
 	}
+	// A menu open over the list - a context menu about one of its entries - freezes it, and the hit test above says no. A press on the list is still a press ON it, though: it shuts the menu and leaves the list, which is what the end of the frame reads this for.
+	bool aMenuIsOverTheList = (context->menuOpenDepth > 0);
+	bool cursorIsInsideTheFrozenList = aMenuIsOverTheList && context->inputIsActive && !fui__ModalBlocksInput(context) && fuiPointInRect(context->mousePosition, listRect);
+	if(cursorIsInsideTheFrozenList) {
+		context->comboOwnsTheMouse = true;
+	}
 
 	// Resolved and drawn BEFORE the rows, exactly as a list box does it, so the rows are laid out from the
 	// offset the bar has already had its say in rather than from one the wheel is about to change.
@@ -14091,16 +14346,20 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 	int32_t highlightBeforeTheKeys = fuiClampI(context->comboHighlightRow, -1, lastRow);
 	int32_t highlightRow = highlightBeforeTheKeys;
 	bool commitWanted = false;
-	if(fuiKeyRepeat(context, fuiKey_Down)) {
-		highlightRow = (highlightRow < 0) ? 0 : (highlightRow + 1);
-	} else if(fuiKeyRepeat(context, fuiKey_Up)) {
-		highlightRow = (highlightRow < 0) ? lastRow : (highlightRow - 1);
-	} else if(fuiKeyWentDown(context, fuiKey_Home)) {
-		highlightRow = 0;
-	} else if(fuiKeyWentDown(context, fuiKey_End)) {
-		highlightRow = lastRow;
-	} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Space)) {
-		commitWanted = true;
+	// A menu open over the list has the keyboard. The arrows that walk its rows must not walk the list underneath as well, and its enter must not pick an entry.
+	bool keysBelongToTheList = !aMenuIsOverTheList;
+	if(keysBelongToTheList) {
+		if(fuiKeyRepeat(context, fuiKey_Down)) {
+			highlightRow = (highlightRow < 0) ? 0 : (highlightRow + 1);
+		} else if(fuiKeyRepeat(context, fuiKey_Up)) {
+			highlightRow = (highlightRow < 0) ? lastRow : (highlightRow - 1);
+		} else if(fuiKeyWentDown(context, fuiKey_Home)) {
+			highlightRow = 0;
+		} else if(fuiKeyWentDown(context, fuiKey_End)) {
+			highlightRow = lastRow;
+		} else if(fuiKeyWentDown(context, fuiKey_Return) || fuiKeyWentDown(context, fuiKey_Space)) {
+			commitWanted = true;
+		}
 	}
 	highlightRow = fuiClampI(highlightRow, 0, lastRow);
 
@@ -14132,9 +14391,37 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 	}
 	context->comboHighlightRow = highlightRow;
 
-	if(cursorIsOnARow && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT]) {
+	/*
+		What a press on a row does.
+
+		In the usual list it picks and shuts. In a list that stays open it only picks, and a second press on the same row inside the double click window activates that row and shuts the list - timed against the same clock and by the same rule a list box uses.
+		The right button picks the row in every list and reports it for a context menu, and leaves the list open for that menu to open over.
+	*/
+	bool pickWanted = false;
+	bool rowWasActivated = false;
+	bool leftWentDownOnARow = cursorIsOnARow && context->mouseWentDown[FUI_MOUSE_LEFT] && !context->mouseDownConsumed[FUI_MOUSE_LEFT];
+	if(leftWentDownOnARow) {
 		context->mouseDownConsumed[FUI_MOUSE_LEFT] = true;
-		commitWanted = true;
+		if(desc->clickKeepsListOpen) {
+			pickWanted = true;
+			fuiWidgetState *state = fui__WidgetStateGet(context, comboId);
+			if(state != fui_null) {
+				float secondsSinceLastClick = context->timeSeconds - state->lastClickTime;
+				bool sameRowAsLastTime = (state->lastClickIndex == highlightRow);
+				rowWasActivated = sameRowAsLastTime && (secondsSinceLastClick <= FUI__DOUBLE_CLICK_SECONDS);
+				state->lastClickTime = context->timeSeconds;
+				// An activated row starts the count over, so a third press right after a double click is a first click again rather than a second double click.
+				state->lastClickIndex = rowWasActivated ? FUI__LIST_NO_ROW : highlightRow;
+			}
+		} else {
+			commitWanted = true;
+		}
+	}
+	bool rightWentDownOnARow = cursorIsOnARow && context->mouseWentDown[FUI_MOUSE_RIGHT] && !context->mouseDownConsumed[FUI_MOUSE_RIGHT];
+	if(rightWentDownOnARow) {
+		context->mouseDownConsumed[FUI_MOUSE_RIGHT] = true;
+		pickWanted = true;
+		action->contextIndex = highlightRow;
 	}
 
 	fuiPushClip(context, rowsBox);
@@ -14159,7 +14446,9 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 			// the arrow keys never loses sight of where it started.
 			fuiDrawRect(context, rowRect, theme->widgetActiveColor);
 		}
-		fui__DrawTextInRect(context, rowRect, items[rowIndex], theme->textColor);
+		fui__ListDrawSeparatorAbove(context, rowRect, desc->separatorAbove, rowIndex);
+		fuiRect labelRect = fui__ListDrawRowMark(context, rowRect, desc->markedIndex, rowIndex);
+		fui__DrawTextInRect(context, labelRect, items[rowIndex], theme->textColor);
 	}
 	fuiPopClip(context);
 
@@ -14171,13 +14460,18 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 	// A list with no entries has nothing to pick, so a press inside it only shuts it again. Without this
 	// the commit would write row zero into a selection that indexes an empty array.
 	bool thereIsSomethingToPick = (count > 0);
-	if(commitWanted && thereIsSomethingToPick) {
+	bool rowIsToBePicked = commitWanted || pickWanted;
+	if(rowIsToBePicked && thereIsSomethingToPick) {
 		if(*selectedIndex != highlightRow) {
 			*selectedIndex = highlightRow;
 			selectionChanged = true;
 		}
 	}
-	if(commitWanted) {
+	if(rowWasActivated && thereIsSomethingToPick) {
+		action->activatedIndex = highlightRow;
+	}
+	bool listShuts = commitWanted || rowWasActivated;
+	if(listShuts) {
 		fui__ComboClose(context);
 		// The keyboard goes back to the box, so the arrow keys go on stepping through the entries where
 		// they left off rather than falling through to whatever had the focus before.
@@ -14186,11 +14480,21 @@ fui_inline bool fui__ComboBuildList(fuiContext *context, const fuiRect boxRect, 
 	return(selectionChanged);
 }
 
-fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows, const bool enabled, const char *emptyText) {
-	FUI_ASSERT(context != fui_null && id != fui_null && selectedIndex != fui_null);
-	if(context == fui_null || id == fui_null || selectedIndex == fui_null) {
+fui_api bool fuiComboBoxDesc(fuiContext *context, const fuiRect rect, const char *id, const fuiComboDesc *desc, int32_t *selectedIndex, fuiComboAction *outAction) {
+	FUI_ASSERT(context != fui_null && id != fui_null && desc != fui_null && selectedIndex != fui_null);
+	// Answered into a local when the caller wants none of it, so everything below writes it without asking first.
+	fuiComboAction discardedAction;
+	fuiComboAction *action = (outAction != fui_null) ? outAction : &discardedAction;
+	action->activatedIndex = FUI__LIST_NO_ROW;
+	action->contextIndex = FUI__LIST_NO_ROW;
+	action->listIsOpen = false;
+	if(context == fui_null || id == fui_null || desc == fui_null || selectedIndex == fui_null) {
 		return(false);
 	}
+	const char *const *items = desc->items;
+	const int32_t count = desc->count;
+	const bool enabled = desc->enabled;
+	const char *emptyText = desc->emptyText;
 	if(items == fui_null && count > 0) {
 		return(false);
 	}
@@ -14284,11 +14588,29 @@ fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *
 	fui__DrawComboBox(context, rect, boxLabel, enabled, listIsOpen, interaction);
 
 	if(listIsOpen) {
-		int32_t visibleRows = (maxVisibleRows > 0) ? maxVisibleRows : (int32_t)FUI_COMBO_VISIBLE_ROWS;
-		if(fui__ComboBuildList(context, rect, id, comboId, items, count, selectedIndex, visibleRows)) {
+		int32_t visibleRows = (desc->maxVisibleRows > 0) ? desc->maxVisibleRows : (int32_t)FUI_COMBO_VISIBLE_ROWS;
+		if(fui__ComboBuildList(context, rect, id, comboId, desc, selectedIndex, visibleRows, action)) {
 			selectionChanged = true;
 		}
 	}
+	// Answered after the list had its say, since a picked or activated entry shuts it within this very build.
+	action->listIsOpen = (context->comboOpenId == comboId);
+	return(selectionChanged);
+}
+
+fui_api bool fuiComboBoxEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *items, const int32_t count, int32_t *selectedIndex, const int32_t maxVisibleRows, const bool enabled, const char *emptyText) {
+	fuiComboDesc desc;
+	fui__ClearMemory(&desc, sizeof(desc));
+	desc.items = items;
+	desc.count = count;
+	desc.maxVisibleRows = maxVisibleRows;
+	desc.markedIndex = FUI__LIST_NO_ROW;
+	desc.separatorAbove = fui_null;
+	desc.emptyText = emptyText;
+	desc.enabled = enabled;
+	desc.clickKeepsListOpen = false;
+	fuiComboAction *noAction = fui_null;
+	bool selectionChanged = fuiComboBoxDesc(context, rect, id, &desc, selectedIndex, noAction);
 	return(selectionChanged);
 }
 
@@ -14925,20 +15247,23 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 //! Gap between two tab headers
 #define FUI__TAB_HEADER_SPACING 2.0f
 
-fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount) {
-	FUI_ASSERT(context != fui_null && id != fui_null);
-	if(context == fui_null || id == fui_null || tabs == fui_null || tabCount <= 0) {
-		return(0);
+fui_api bool fuiTabControlEx(fuiContext *context, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount, int32_t *activeTabIndex) {
+	FUI_ASSERT(context != fui_null && id != fui_null && activeTabIndex != fui_null);
+	if(context == fui_null || id == fui_null || tabs == fui_null || tabCount <= 0 || activeTabIndex == fui_null) {
+		return(false);
 	}
 
 	const fuiTheme *theme = &context->theme;
-	fuiId controlId = fuiGetId(context, id);
-	fuiWidgetState *state = fui__WidgetStateGet(context, controlId);
+	int32_t lastTab = tabCount - 1;
+	int32_t activeTab = *activeTabIndex;
+	if(activeTab < 0) {
+		activeTab = 0;
+	} else if(activeTab > lastTab) {
+		activeTab = lastTab;
+	}
+	int32_t tabBeforeTheClicks = activeTab;
 
-	int32_t activeTab = (state != fui_null) ? state->activeTab : 0;
-	activeTab = (int32_t)fuiClampF((float)activeTab, 0.0f, (float)(tabCount - 1));
-
-	// The headers flow left to right, each as wide as what it says - a horizontal tool strip with a memory.
+	// The headers flow left to right, each as wide as what it says - a horizontal tool strip of which one is chosen.
 	fuiPushId(context, id);
 	float headerLeft = rect.x;
 	for(int32_t tabIndex = 0; tabIndex < tabCount; ++tabIndex) {
@@ -14982,6 +15307,21 @@ fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const cha
 	}
 	fuiPopId(context);
 
+	*activeTabIndex = activeTab;
+	bool anotherTabWasChosen = (activeTab != tabBeforeTheClicks);
+	return(anotherTabWasChosen);
+}
+
+fui_api int32_t fuiTabControl(fuiContext *context, const fuiRect rect, const char *id, const char *const *tabs, const int32_t tabCount) {
+	FUI_ASSERT(context != fui_null && id != fui_null);
+	if(context == fui_null || id == fui_null || tabs == fui_null || tabCount <= 0) {
+		return(0);
+	}
+	// The tab is remembered under the id here, and the headers are the same ones the caller-held variant builds.
+	fuiId controlId = fuiGetId(context, id);
+	fuiWidgetState *state = fui__WidgetStateGet(context, controlId);
+	int32_t activeTab = (state != fui_null) ? state->activeTab : 0;
+	(void)fuiTabControlEx(context, rect, id, tabs, tabCount, &activeTab);
 	if(state != fui_null) {
 		state->activeTab = activeTab;
 	}
