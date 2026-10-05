@@ -89,7 +89,7 @@ DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
 LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_winx64)
 TARGETDIR = ../build/FPL_Raytracer/WinX64_Debug
@@ -99,7 +99,7 @@ DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
 LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxx86)
 TARGETDIR = ../build/FPL_Raytracer/LinuxX86_Debug
@@ -189,7 +189,7 @@ DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
 LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -mwindows -s
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_winx64)
 TARGETDIR = ../build/FPL_Raytracer/WinX64_Release
@@ -199,7 +199,7 @@ DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
 LIBS +=
-ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -mwindows -s
+ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxx86)
 TARGETDIR = ../build/FPL_Raytracer/LinuxX86_Release
