@@ -213,7 +213,7 @@ C++ 2D fluid simulation with different scenarios and an integrated benchmarking 
 #### FPL_Raytracer
 Multi-threaded progressive CPU path tracer with physically based light transport:
 - Path tracing with next event estimation, multiple importance sampling and russian roulette
-- Light tracing for caustics, combined with the path tracer without bias
+- Light tracing and photon merging for caustics, combined with the path tracer by VCM weights
 - GGX conductors, mirrors, glass, coated plastic, area lights, sky with sun
 - BVH, interactive orbit camera with depth of field and low resolution preview
 - Deterministic tile job system on all CPU cores, uses the FPL software rendering backend
