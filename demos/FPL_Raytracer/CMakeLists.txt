@@ -25,6 +25,8 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"../additions/final_math.h"
+	"../additions/final_geometry.h"
 	)
 
 set(MY_TRANSLATION_UNITS

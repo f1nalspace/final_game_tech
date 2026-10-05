@@ -54,7 +54,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FPL_NoRuntimeLinking/       # FPL with static linking
 │   ├── FPL_OpenGL/                 # OpenGL rendering demo
 │   ├── FPL_Process/                # Starting and controlling child processes
-│   ├── FPL_Raytracer/              # Multi-threaded software raytracer
+│   ├── FPL_Raytracer/              # Multi-threaded progressive path tracer
 │   ├── FPL_SimpleAudio/            # Basic sine wave audio demo
 │   ├── FPL_Software/               # Software rendering demo
 │   ├── FPL_StaticLib_Client/       # Client linking against FPL static library
@@ -211,10 +211,13 @@ C++ 2D fluid simulation with different scenarios and an integrated benchmarking 
 - Has built-in benchmarking mode
 
 #### FPL_Raytracer
-Multi-threaded 3D software raytracer:
-- Inspired by "handmade ray" (Casey Muratori)
-- Tests multi-threading software video output
-- Uses FPL software rendering backend
+Multi-threaded progressive CPU path tracer with physically based light transport:
+- Path tracing with next event estimation, multiple importance sampling and russian roulette
+- Light tracing for caustics, combined with the path tracer without bias
+- GGX conductors, mirrors, glass, coated plastic, area lights, sky with sun
+- BVH, interactive orbit camera with depth of field and low resolution preview
+- Deterministic tile job system on all CPU cores, uses the FPL software rendering backend
+- Headless rendering to BMP/PFM via command line
 
 ### Demos that use Third-Party Libraries
 
