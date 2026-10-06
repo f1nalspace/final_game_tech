@@ -2026,7 +2026,7 @@ static void UpdateSounds(App &app, Slide *slide) {
 		if (sound.sourceId.value > 0 && sound.playId.value == 0 && slide->state.currentTime >= sound.startTime) {
 			AudioSource *source = AudioSystemGetSourceByID(audioSys, sound.sourceId);
 			if (source != nullptr) {
-				AudioPlayItemID playId = AudioSystemPlaySource(audioSys, source, false, 1.0f);
+				AudioPlayItemID playId = AudioSystemPlaySource(audioSys, source, false, 1.0f, 1.0f);
 				sound.playId = playId;
 			}
 		}
