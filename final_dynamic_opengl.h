@@ -115,7 +115,7 @@ SOFTWARE.
 
 /*!
 	\file final_dynamic_opengl.h
-	\version v1.0.0
+	\version v1.0.1
 	\author Torsten Spaete
 	\brief Final Dynamic OpenGL (FGL) - An open source C99 single file header OpenGL-Loader library.
 */
@@ -129,6 +129,10 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	# v1.0.1:
+	- New: Added function fglGetVersion() and the defines FGL_VERSION_MAJOR/MINOR/PATCH/STRING
+	- Fixed[Win32]: Included <Windows.h> instead of <windows.h>, which broke cross-compiling with MinGW on case-sensitive file systems
 
 	# v1.0.0:
 	- New: Added macro FGL_HAS_INCLUDE
@@ -309,6 +313,25 @@ SOFTWARE.
 #endif
 
 //
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FGL_VERSION_MAJOR 1
+#define FGL_VERSION_MINOR 0
+#define FGL_VERSION_PATCH 1
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FGL__STRINGIFY_EXPANDED(value) #value
+#define FGL__STRINGIFY(value) FGL__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FGL_VERSION_STRING FGL__STRINGIFY(FGL_VERSION_MAJOR) "." FGL__STRINGIFY(FGL_VERSION_MINOR) "." FGL__STRINGIFY(FGL_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fgl_api const char *fglGetVersion(void);
+
+//
 // Platform includes
 //
 #if defined(FGL_PLATFORM_WIN32)
@@ -321,7 +344,7 @@ SOFTWARE.
 #		ifndef WIN32_LEAN_AND_MEAN
 #			define WIN32_LEAN_AND_MEAN 1
 #		endif
-#		include <Windows.h>
+#		include <windows.h>
 
 	// Map the FGL Win32 ABI names onto the actual Windows.h types/constants
 #		define FGL_WIN32_API WINAPI
@@ -5765,6 +5788,10 @@ extern "C" {
 // ****************************************************************************
 #if defined(FGL_IMPLEMENTATION) && !defined(FGL_IMPLEMENTED)
 #	define FGL_IMPLEMENTED
+
+fgl_api const char *fglGetVersion(void) {
+	return FGL_VERSION_STRING;
+}
 
 #if !defined(FGL_AS_PRIVATE)
 		// *******************************************************************************

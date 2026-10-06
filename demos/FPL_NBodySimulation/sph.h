@@ -11,7 +11,7 @@
 #include <math.h>
 #include <float.h>
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "utils.h"
 
 //
@@ -180,7 +180,7 @@ struct SPHScenarioBody {
 		SPHScenarioBody result = SPHScenarioBody();
 		result.type = SPHScenarioBodyType::SPHScenarioBodyType_Circle;
 		result.position = position;
-		result.orientation = Mat2Identity();
+		result.orientation = M2fDefault();
 		result.radius = radius;
 		return(result);
 	}
@@ -189,7 +189,7 @@ struct SPHScenarioBody {
 		SPHScenarioBody result = SPHScenarioBody();
 		result.type = SPHScenarioBodyType::SPHScenarioBodyType_Plane;
 		result.position = position;
-		result.orientation = Mat2FromAxis(normal);
+		result.orientation = M2fFromAxis(normal);
 		result.radius = 0;
 		return(result);
 	}
@@ -199,7 +199,7 @@ struct SPHScenarioBody {
 		result.type = SPHScenarioBodyType::SPHScenarioBodyType_LineSegment;
 		result.radius = 0.0f;
 		result.position = position;
-		result.orientation = Mat2FromAngle(rotation);
+		result.orientation = M2fFromAngle(rotation);
 		result.vertexCount = 2;
 		result.localVerts[0] = a;
 		result.localVerts[1] = b;
@@ -211,7 +211,7 @@ struct SPHScenarioBody {
 		result.type = SPHScenarioBodyType::SPHScenarioBodyType_Polygon;
 		result.radius = 0;
 		result.position = position;
-		result.orientation = Mat2FromAngle(rotation);
+		result.orientation = M2fFromAngle(rotation);
 		result.vertexCount = 4;
 		result.localVerts[0] = V2f(ext.x, ext.y);
 		result.localVerts[1] = V2f(-ext.x, ext.y);
@@ -433,8 +433,8 @@ static SPHScenario SPHScenarios[] = {
 		//SPHScenarioBody::CreatePlane(V2f(0, kSPHBoundaryHalfHeight), V2f(0, -1)),
 		SPHScenarioBody::CreatePlane(V2f(-kSPHBoundaryHalfWidth, 0), V2f(1, 0)),
 		SPHScenarioBody::CreatePlane(V2f(kSPHBoundaryHalfWidth, 0), V2f(-1, 0)),
-		SPHScenarioBody::CreateBox(V2f(-1.5f, 1.0f), kDeg2Rad * -2.5f, V2f(3.5f, 0.1f)),
-		SPHScenarioBody::CreateBox(V2f(1.5f, -0.25f), kDeg2Rad * 2.5f, V2f(3.5f, 0.1f)),
+		SPHScenarioBody::CreateBox(V2f(-1.5f, 1.0f), F32Deg2Rad * -2.5f, V2f(3.5f, 0.1f)),
+		SPHScenarioBody::CreateBox(V2f(1.5f, -0.25f), F32Deg2Rad * 2.5f, V2f(3.5f, 0.1f)),
 		SPHScenarioBody::CreateCircle(V2f(-4.0f, -1.5f), 0.5f),
 		SPHScenarioBody::CreateBox(V2f(0, -kSPHBoundaryHalfHeight + 0.5f), 0, V2f(0.3f, 1.0f)),
 	},
@@ -469,7 +469,7 @@ force_inline Vec2i SPHComputeCellIndex(const Vec2f & p) {
 
 force_inline void SPHComputeDensity(const SPHParameters &params, const Vec2f &position, const Vec2f &neighborPosition, float outDensity[2]) {
 	Vec2f Rij = neighborPosition - position;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 
 	// @TODO: Make it branch-free
 	if (rijSquared < (params.kernelHeight * params.kernelHeight)) {
@@ -489,13 +489,13 @@ force_inline void SPHComputeDelta(const SPHParameters &params, const Vec2f &posi
 	// @TODO: Make it branch-free
 
 	Vec2f Rij = neighborPosition - position;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 	if (rijSquared < (params.kernelHeight * params.kernelHeight)) {
 		float rij = sqrtf(rijSquared);
-		Vec2f n = Vec2Normalize(Rij);
+		Vec2f n = V2fNormalize(Rij);
 		float term = 1.0f - rij * params.invKernelHeight;
 		float d = (deltaTime * deltaTime) * (pressure[0] * term + pressure[1] * (term * term));
-		*outDelta = Vec2MultScalar(n, d);
+		*outDelta = V2fMultScalar(n, d);
 	}
 }
 
@@ -503,15 +503,15 @@ force_inline void SPHComputeViscosityForce(const SPHParameters &params, const Ve
 	// @TODO: Make it branch-free
 
 	Vec2f Rij = neighborPosition - position;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 	if (rijSquared < (params.kernelHeight * params.kernelHeight)) {
 		float rij = sqrtf(rijSquared);
 		float q = rij * params.invKernelHeight;
-		Vec2f n = Vec2Normalize(Rij);
-		float u = Vec2Dot(velocity - neighborVelocity, n);
+		Vec2f n = V2fNormalize(Rij);
+		float u = V2fDot(velocity - neighborVelocity, n);
 		if (u > 0.0f) {
 			float f = (1.0f - q) * (params.linearViscosity * u + params.quadraticViscosity * (u * u));
-			*outForce = Vec2MultScalar(n, f);
+			*outForce = V2fMultScalar(n, f);
 		}
 	}
 }
@@ -520,7 +520,7 @@ force_inline void SPHSolvePlaneCollision(Vec2f *position, const Vec2f &normal, c
 	Vec2f p = normal * distance;
 	Vec2f particlePos = *position;
 	Vec2f delta = particlePos - p;
-	float proj = Vec2Dot(delta, normal);
+	float proj = V2fDot(delta, normal);
 	if (proj <= kSPHParticleCollisionRadius) {
 		float penetration = kSPHParticleCollisionRadius - proj;
 		particlePos += normal * penetration;
@@ -532,7 +532,7 @@ force_inline void SPHSolveCircleCollision(Vec2f *particlePosition, const Vec2f &
 	float bothRadius = circleRadius + kSPHParticleCollisionRadius;
 	Vec2f particlePos = *particlePosition;
 	Vec2f deltaPos = particlePos - circlePos;
-	float distanceSquared = Vec2Dot(deltaPos, deltaPos);
+	float distanceSquared = V2fDot(deltaPos, deltaPos);
 	if (distanceSquared <= bothRadius * bothRadius) {
 		Vec2f normal = V2f(0, -1);
 		float penetration = bothRadius;
@@ -551,8 +551,8 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 	Vec2f particlePos = *particlePosition;
 
 	Vec2f e = b - a;
-	float u = Vec2Dot(e, b - particlePos);
-	float v = Vec2Dot(e, particlePos - a);
+	float u = V2fDot(e, b - particlePos);
+	float v = V2fDot(e, particlePos - a);
 
 	Vec2f closest = V2f(0,0);
 	Vec2f normal = V2f(0,0);
@@ -561,27 +561,27 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 		// Region A
 		closest = a;
 		Vec2f d = particlePos - closest;
-		float dd = Vec2Dot(d, d);
+		float dd = V2fDot(d, d);
 		if (dd > bothRadius * bothRadius) {
 			return;
 		}
-		normal = Vec2Normalize(particlePos - closest);
+		normal = V2fNormalize(particlePos - closest);
 	} else if (u <= 0.0f) {
 		// Region B
 		closest = b;
 		Vec2f d = particlePos - closest;
-		float dd = Vec2Dot(d, d);
+		float dd = V2fDot(d, d);
 		if (dd > bothRadius * bothRadius) {
 			return;
 		}
-		normal = Vec2Normalize(particlePos - closest);
+		normal = V2fNormalize(particlePos - closest);
 	} else {
 		// Region AB
-		float den = Vec2Dot(e, e);
+		float den = V2fDot(e, e);
 		assert(den > 0.0f);
 		closest = (a * u + b * v) * (1.0f / den);
 		Vec2f d = particlePos - closest;
-		float dd = Vec2Dot(d, d);
+		float dd = V2fDot(d, d);
 		if (dd > bothRadius * bothRadius) {
 			return;
 		}
@@ -589,14 +589,14 @@ static void SPHSolveLineSegmentCollision(Vec2f *particlePosition, const Vec2f &a
 		normal = V2f(-e.y, e.x);
 
 		// Swap normal when on other side
-		if (Vec2Dot(normal, particlePos - a) < 0.0f) {
+		if (V2fDot(normal, particlePos - a) < 0.0f) {
 			normal = -normal;
 		}
-		normal = Vec2Normalize(normal);
+		normal = V2fNormalize(normal);
 	}
 
 	Vec2f deltaPos = particlePos - closest;
-	float distance = Vec2Dot(normal, deltaPos);
+	float distance = V2fDot(normal, deltaPos);
 	float penetration = bothRadius - distance;
 	particlePos += normal * penetration;
 	*particlePosition = particlePos;
@@ -611,8 +611,8 @@ static bool FindMTVCirclePolygon(const Vec2f &circlePosition, const size_t verte
 	for (size_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
 		Vec2f a = verts[vertexIndex];
 		Vec2f b = verts[(vertexIndex + 1) % vertexCount];
-		Vec2f n = Vec2Normalize(Vec2Cross(b - a, 1.0f));
-		float s = Vec2Dot(n, circlePosition - a);
+		Vec2f n = V2fNormalize(V2fCrossR(b - a, 1.0f));
+		float s = V2fDot(n, circlePosition - a);
 		if (s > radius) {
 			return false;
 		}
@@ -635,35 +635,35 @@ static bool FindMTVCirclePolygon(const Vec2f &circlePosition, const size_t verte
 	}
 
 	// Compute barycentric coordinates
-	float u1 = Vec2Dot(circlePosition - v1, v2 - v1);
-	float u2 = Vec2Dot(circlePosition - v2, v1 - v2);
+	float u1 = V2fDot(circlePosition - v1, v2 - v1);
+	float u2 = V2fDot(circlePosition - v2, v1 - v2);
 	if (u1 <= 0.0f) {
 		// Region A
-		if (Vec2DistanceSquared(circlePosition, v1) > radius * radius) {
+		if (V2fDistanceSquared(circlePosition, v1) > radius * radius) {
 			return false;
 		}
 
 		Vec2f distanceToEdge = circlePosition - v1;
-		normal = Vec2Normalize(distanceToEdge);
-		float penetration = radius - Vec2Dot(normal, distanceToEdge);
+		normal = V2fNormalize(distanceToEdge);
+		float penetration = radius - V2fDot(normal, distanceToEdge);
 		*mtv = normal * penetration;
 		return true;
 	} else if (u2 <= 0.0f) {
 		// Region B
-		if (Vec2DistanceSquared(circlePosition, v2) > radius * radius) {
+		if (V2fDistanceSquared(circlePosition, v2) > radius * radius) {
 			return false;
 		}
 
 		Vec2f distanceToEdge = circlePosition - v2;
-		normal = Vec2Normalize(distanceToEdge);
-		float penetration = radius - Vec2Dot(normal, distanceToEdge);
+		normal = V2fNormalize(distanceToEdge);
+		float penetration = radius - V2fDot(normal, distanceToEdge);
 		*mtv = normal * penetration;
 		return true;
 	} else {
 		// Region AB
-		Vec2f faceCenter = Vec2Lerp(v1, 0.5f, v2);
+		Vec2f faceCenter = V2fLerp(v1, 0.5f, v2);
 		Vec2f distanceToFace = circlePosition - faceCenter;
-		float s = Vec2Dot(distanceToFace, normal);
+		float s = V2fDot(distanceToFace, normal);
 		if (s > radius) {
 			return false;
 		}
@@ -689,7 +689,7 @@ force_inline Vec4f SPHGetParticleColor(const float restDensity, const float dens
 	// @TODO: This is are totally wrong, when the default parameters are different!
 	float r = pressure / (-10.0f);
 	float g = density / (restDensity);
-	float b = Vec2Length(velocity) / 10.0f;
+	float b = V2fLength(velocity) / 10.0f;
 
 	Vec4f result;
 	result.r = std::max(std::min(r, 1.0f), 0.0f);

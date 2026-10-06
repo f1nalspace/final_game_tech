@@ -127,7 +127,7 @@ fplStringAppend, fplStringAppendLen, fplEnforcePathSeparator,
 fplEnforcePathSeparatorLen, fplStringFormat, fplStringFormatArgs,
 fplPathCombine, fplPathNormalize, fplUTF8StringToWideString,
 fplWideStringToUTF8String, fplGetWindowTitle, fplGetExecutableFilePath,
-fplGetHomePath.
+fplGetHomePath, fplClipboardGetText.
 
 -------------------------------------------------------------------------------
 	License
@@ -160,7 +160,7 @@ SOFTWARE.
 
 /**
 	@file final_platform_layer.h
-	@version v1.0.0
+	@version v1.0.1
 	@author Torsten Spaete
 	@brief Final Platform Layer (FPL) - A C99 Single-Header-File Platform Abstraction Library
 */
@@ -171,6 +171,139 @@ SOFTWARE.
 /**
 	@page page_changelog Changelog
 	@tableofcontents
+
+	## v1.0.1
+
+	### Overview
+	- New process API for starting and controlling child processes and scripts (fplProcess*)
+	- Proper X11 input handling
+	- UTF8 decode and encode is now culture-invariant
+	- The clipboard has no size limit anymore, in neither direction
+	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
+	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
+	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
+	- Several bugfixes
+
+	### Breaking Changes
+	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText(), so the clipboard comes first in the name and the verb after it
+	- Changed: fplClipboardGetText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
+	- Changed: [X11] Builds with FPL_NO_RUNTIME_LINKING need libXi now (-lXi) for the relative mouse mode, define FPL_NO_X11_XINPUT2 to build without it
+
+	### Details
+
+	#### Core
+	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
+	- Fixed: [POSIX] Every log line was written twice, because the default log writers use the debug output in addition to the console and fplDebugOut() writes into the console on every platform but Windows - the default writers only use the debug output on Windows now
+	- Fixed: FPL_LOG_MULTIPLE_WRITERS did not compile anymore, the default settings still wrote the field logToError that was removed from fplLogWriterConsole (the error console is selected by fplLogWriterFlags_ErrorConsole)
+	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
+	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
+	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
+	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
+	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
+	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
+	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
+	- Fixed: fplX86CPUCapabilities.hasEM64T read bit 29 of CPUID leaf 1 (thermal monitor) instead of the long mode bit of the extended leaf 0x80000001, so it was always false on AMD CPUs
+
+	#### Process
+	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
+	- New: Added function fplProcessWait() that waits for a process with a timeout, while the redirected streams are pumped
+	- New: Added function fplProcessUpdate() that pumps the redirected streams of a process without blocking
+	- New: Added function fplProcessIsRunning() that checks the state of a process without blocking
+	- New: Added function fplProcessTryGetExitCode() that gets the exit code of an already exited process
+	- New: Added function fplProcessWriteInput() that writes into the standard-input of a running process
+	- New: Added function fplProcessCloseInput() that gives a running process the end-of-file on its standard-input
+	- New: Added function fplProcessRequestStop() that asks a process to stop gracefully
+	- New: Added function fplProcessStop() that stops a process forcefully
+	- New: Added function fplProcessClose() that releases a process handle and all its resources
+	- New: Added function fplProcessFreeResult() that releases the captured buffers of a fplProcessResult
+	- New: Added function fplProcessGetCurrentId() that returns the id of the own process
+	- New: Added struct fplProcessContext that stores every start parameter for fplProcessStart()
+	- New: Added struct fplProcessHandle, struct fplProcessResult and struct fplProcessBuffer
+	- New: Added enum fplProcessResultType, fplProcessFlags, fplProcessCaptureFlags, fplProcessInputMode, fplProcessShellMode and fplProcessStreamType
+	- New: Added typedef fpl_process_output_callback and fpl_process_input_callback with the macros FPL_FUNC_PROCESS_OUTPUT and FPL_FUNC_PROCESS_INPUT
+	- New: The standard-output/error of a child can be captured into buffers, pushed into a callback or both, separated or merged, with an optional capture limit and optional line buffering
+	- New: The standard-input of a child can be inherited, closed immediately, filled from a text, pulled from a callback or written by the caller while the process runs
+	- New: Scripts and whole command lines can be started through the default shell (ComSpec/cmd.exe or /bin/sh) or through a named interpreter
+	- New: Process creation flags for waiting, treating a non-zero exit code as an error, hiding the console window, detaching the child, stopping the whole process tree and killing the child when the own process exits
+	- New: Added flag fplProcessFlags_NoTerminal that starts a child without a controlling terminal, so a password or host key prompt on /dev/tty fails at once instead of hanging in the terminal the application was started from - [POSIX] a session of its own through setsid(), without detaching the child otherwise, [Win32] no effect
+
+	#### Threading
+	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
+	- Fixed: A thread wait could return as soon as the slot was reused by another thread; the slot identifier is cleared on reservation and checked by every wait
+	- Fixed: [POSIX] Two threads could join the very same pthread and hang forever, because a thread slot was marked free before its pthread was joined and the waiter read the handle out of the slot after that
+	- Fixed: [POSIX] Threads were created joinable but never joined once the slot was recycled, which leaked the thread descriptor and let pthread identifiers be reused - threads are created detached now
+	- Fixed: [Win32] fplThreadWaitForOne could wait on an already closed thread handle, or on a completely different thread when the slot was handed out again
+	- Fixed: [POSIX] fplThreadWaitForAll/Any returned false when every thread was already stopped before the call
+	- Fixed: [POSIX] fplConditionWait and fplSemaphoreWait with a timeout failed immediately with EINVAL whenever the deadline crossed a second boundary, because the nanoseconds of the absolute deadline were not carried over into the seconds - a wait loop with a 50 ms timeout busy spun for 5 % of the time
+	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
+	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
+	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
+
+	#### IO
+	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
+	- Fixed: fplExtractFilePath() left the destination untouched for an empty source path, it writes an empty string now
+	- Fixed: fplPathCombine() put a separator in front of the first path when all paths before it were empty, so an empty directory and "file" were combined into the absolute path "/file"
+	- Fixed: [POSIX] fplDirectoryListBegin() found nothing for an empty path, it lists the current working directory now, just like on Win32
+	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
+	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
+
+	#### Audio
+	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
+	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
+	- Fixed: [PipeWire] Audio initialization could hang forever when no PipeWire server was reachable, because stopping a thread loop right after starting it deadlocks inside libpipewire - the thread loop now waits until its thread has entered the loop (PipeWire 0.3.80 or newer)
+
+	#### Console
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError passed the UTF-8 byte count to WriteConsoleW instead of the converted wide character count, which read past the conversion buffer for any text longer than it
+	- Fixed: [Win32] fplConsoleOut/fplConsoleError silently wrote nothing for a text of 2048 characters or more, the text is now converted and written in parts without ever splitting a UTF-8 sequence
+
+	#### Input
+	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
+	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
+
+	#### Window
+	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
+	- New: Added field initialVisibility to fplWindowSettings, a window that starts hidden has a working video context but is never shown, so the window manager does not see it until it is shown
+	- New: Added function fplSetWindowVisibility() and fplGetWindowVisibility() to hide and show the window at runtime, a hidden window keeps its state and its video context
+	- Changed: fplSetWindowState() on a hidden window only remembers the state, it is applied when the window is shown
+	- Changed: fplSetWindowFullscreenSize(), fplSetWindowFullscreenRect(), fplEnableWindowFullscreen() and fplDisableWindowFullscreen() fail while the window is hidden, use fplSetWindowState(fplWindowState_Fullscreen) instead
+	- Changed: The enums fplWindowState and fplWindowVisibilityState are defined in front of fplWindowSettings, so they are always available
+	- Fixed: [Win32] Leaving fullscreen of a window that started in fullscreen asserted (or restored garbage), because the window placement to return to was never saved
+	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText()
+	- New: Added function fplClipboardSetTextLen() that puts a text of a given length on the clipboard, without needing a null-terminator
+	- Changed: fplClipboardGetText() follows the output buffer contract now - pass a null destination to ask for the size and call it again with a buffer of that size
+	- Removed: The clipboard has no size limit anymore, in neither direction - the text lives in dynamic memory instead of a fixed buffer
+	- Fixed: [X11] fplClipboardSetText() silently EMPTIED the clipboard for any text of 2048 bytes or more and still returned true, because the copy into the fixed buffer wrote nothing at all when the text did not fit
+	- Fixed: [X11] fplClipboardGetText() returned nothing when the owner served the text in chunks, the INCR protocol is now understood in both directions
+	- Fixed: [X11] fplClipboardGetText() swallowed the drag and drop answer and every window manager property change while it was waiting for the clipboard - those go the normal way now
+	- Fixed: [Win32] fplClipboardSetText() allocated the clipboard memory from the UTF-8 byte count instead of the converted wide character count
+	- Fixed: [X11] An application reading our clipboard that quits in the MIDDLE of the transfer took us down with it - Xlib answers a protocol error by killing the process, so the few calls that write into a foreign window catch their errors now
+	- New: Added function fplWarpWindowCursor() that moves the cursor to a position in window coordinates, the move event that follows has a delta of zero
+	- New: Added fields deltaX and deltaY to fplMouseEvent, the movement since the previous move event - zero for the first move after the cursor entered the window, the focus came back or the cursor was warped
+	- Fixed: A key or mouse button that was released while the window had no focus stayed pressed, so its next press came back as fplButtonState_Repeat (e.g. Alt after Alt+Tab) - losing the focus now releases every key and mouse button the window still holds as pressed, before the fplWindowEventType_LostFocus event
+	- New: Added functions fplSetWindowMouseGrab() and fplIsWindowMouseGrabbed() that keep the cursor inside the client area - the grab is only active while the window has the focus, is shown and is not minimized, and a grab another program blocks is tried again while the events are pumped
+	- Changed: fplWarpWindowCursor() limits the target to the client area while the mouse is grabbed
+	- New: Added functions fplSetWindowRelativeMouse() and fplIsWindowRelativeMouse() for a hidden, locked cursor whose move events carry the raw unaccelerated device movement - Win32 raw input, X11 XInput2 with a warp fallback (FPL_NO_X11_XINPUT2 forces it)
+	- Changed: fplWarpWindowCursor() in the relative mouse mode moves the position the mouse events carry and where the cursor appears when the mode ends
+	- Changed: [Win32] fplSetWindowCursorEnabled() no longer registers the mouse for raw input, which did nothing but broke a raw input registration of the application
+	- New: Added functions fplSetWindowKeyboardGrab() and fplIsWindowKeyboardGrabbed() - system shortcuts like Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc and Alt+F4 go to the window instead of the window manager or the shell (X11 XGrabKeyboard, Win32 low level keyboard hook)
+	- New: Added field scanCode to fplKeyboardEvent, the physical key as PC scan code set 1 (extended keys as 0xE0xx, Pause as 0xE11D) - independent of the keyboard layout and the same on Win32 and X11
+	- New: Added fplMouseEventType_HorizontalWheel for the horizontal mouse wheel, wheelDelta is positive to the right ([Win32] WM_MOUSEHWHEEL, [X11] buttons 6 and 7) - it has its own type, so code that handles fplMouseEventType_Wheel only ever sees the vertical wheel
+	- New: Added fplMouseEventType_Enter and fplMouseEventType_Leave, the cursor entered or left the client area
+	- New: [X11] The mouse buttons 8 and 9 are reported as fplMouseButtonType_X1 and fplMouseButtonType_X2, like the side buttons on Win32 - an array indexed by fplMouseEvent.mouseButton needs fplMouseButtonType_MaxCount entries
+	- Fixed: [Win32] Mouse wheel events carried the cursor position in screen coordinates instead of window coordinates
+	- Fixed: [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) gave no button press event, because the input method took the key - the press is reported now, the text still comes from the input method
+	- Fixed: [Win32] The pressed state of the keys was kept per virtual key, so the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock shared one - holding both came as a press and a repeat, and one of the two releases was dropped. The state is kept per physical key (scan code) now
+	- Fixed: [Win32] While both Shift keys are down, Windows sends no release for the one that is let go first - FPL releases it by itself now, like SDL
+	- Fixed: [Win32] When the system takes a shortcut like Win+Space or Win+G, Windows sends no release for the Win key, so it stayed down - FPL releases it by itself now, like SDL
+	- Fixed: [X11] WM_NAME and WM_ICON_NAME are set again
+
+	#### X11
+	- Changed: Refactored internal X11 states into separate structs
+	- Changed: Refactored internal X11 functions init/release into separate functions
+	- New: The clipboard releases the text it owns when another application takes the selection away
+	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
 
 	## v1.0.0
 
@@ -237,7 +370,7 @@ SOFTWARE.
 	- Improved: Better and consistent documentation of the entire public API
 	- Improved: Added fplStaticAssert checks in the non-opaque branch verifying that the real Win32/POSIX/X11 handle types fit into the opaque-branch buffers (catches portability breakage at compile time instead of corrupting memory at runtime)
 	- Improved: fplDateTime documentation now states explicitly that pre-1970 dates are intentionally not supported
-	- Improved: fplWideStringToUTF8String / fplUTF8StringToWideString now use wchar.h with mbrtowc / wcrtomb directly instead of doing redundant work
+	- Improved: [POSIX] fplWideStringToUTF8String / fplUTF8StringToWideString are now locale independent (manual UTF-8 encode/decode) instead of using the locale dependent mbrtowc / wcrtomb which failed under the "C" locale
 	- Improved: Simplified fplPathCombine by removing all internal memory allocation
 	- Improved: [POSIX] Improved fplOSGetVersionInfos() by adding support for retrieving detailed version information on BSD/macOS/other Unix systems
 	- Improved: [POSIX] fplCPUGetCoreCount was not working/compiling in FreeBSD
@@ -271,9 +404,15 @@ SOFTWARE.
 	- Removed: Removed ANDROID platform detection, because it was never supported in the first place
 
 	#### Threading
+	- New: Added function fplGetTotalThreadCount() that returns the number of thread slots currently managed by the bucket system
 	- New: [Unix] Added struct fplUnixSignalEvent
 	- New: [Unix] Implemented fplSignal* for Unix/BSD
+	- Changed: Internal thread storage is no longer a fixed array of FPL_MAX_THREAD_COUNT, threads are stored in a growable bucket list so the number of live threads is bounded only by OS/process limits (FPL_MAX_THREAD_COUNT is now the per-bucket capacity)
+	- Changed: Added macro FPL_MAX_THREAD_WAIT_COUNT for the per-call limit of fplThreadWaitForAll/Any (the thread wait helpers no longer reuse FPL_MAX_THREAD_COUNT which is now only the storage bucket size)
+	- Changed: Renamed macro FPL_MAX_SIGNAL_COUNT to FPL_MAX_SIGNAL_WAIT_COUNT, since signals are caller-owned and never stored by the library the value only ever bounded a single fplSignalWaitForAll/Any call (FPL_MAX_SIGNAL_COUNT is kept as a deprecated alias)
 	- Changed: [POSIX] `sched_getscheduler` POSIX standard coverage check
+	- Fixed: Two concurrent fplThreadCreate calls could be handed the same thread slot, the free slot is now found and reserved atomically under a lock
+	- Fixed: [Win32] A failed CreateThread leaked its reserved thread slot (it was never reset to Stopped)
 	- Removed: [POSIX] Removed unused pthread_setschedprio loader/typedef/API-table entry (not exported by FreeBSD libthr, never called by FPL)
 	- Fixed: [POSIX] Fixed pthread fpl__POSIXSemaphoreHandle was not used
 	- Fixed: [POSIX] fpl__PThreadLoadApi fails on missing pthread library in FreeBSD
@@ -327,6 +466,8 @@ SOFTWARE.
 	- Fixed: [X11] _NET_WM_ICON pixel packing promoted uint8_t operands to int before shifting — alpha/red values >= 128 overflowed the signed int (UB) and could corrupt the icon; bytes are now cast to unsigned long first
 	- Fixed[#58]: [X11] Window had no WM_CLASS set — GNOME/mutter treated it as an orphan and showed a generic icon and "Unknown" as name; WM_CLASS is now set from the window title via XSetClassHint
 	- Fixed[#181]: [X11] fpl__X11ParseUriPaths does not do any URI decoding, resulting in most-likely unuseable file paths
+	- Fixed[#194]: [X11] Text input produced wrong/garbage UTF-8 — now uses Xutf8LookupString via XIM/XIC (with XLookupString fallback) and supports dead-key/compose input
+	- Fixed: [X11] Non-ASCII text input (e.g. umlauts) produced no character event under the "C" locale, because the UTF-8 from Xutf8LookupString was decoded via the locale dependent fplUTF8StringToWideString — now decoded directly
 	- Changed: [X11] Window size and position are no longer overwritten on creation
 	- Changed: [X11] Default window size changed to 720p (1280x720)
 	- New: [X11] Full support for FPL_NO_PLATFORM_INCLUDES and FPL_OPAQUE_HANDLES - no X11 headers are required anymore
@@ -2529,8 +2670,11 @@ SOFTWARE.
 #endif
 
 //! Extern inline function
+// @NOTE(final): FPL_MULTI_TRANSLATION_UNIT switches "extern inline" (unity-only) to multi-TU-safe "static inline".
 #if defined(FPL_IS_CPP)
 #	define fpl_extern_inline inline
+#elif defined(FPL_MULTI_TRANSLATION_UNIT)
+#	define fpl_extern_inline static inline
 #else
 #	define fpl_extern_inline extern inline
 #endif
@@ -2625,6 +2769,28 @@ SOFTWARE.
 * @brief Common API.
 */
 #define fpl_common_api fpl__m_common_api
+
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FPL_VERSION_MAJOR 1
+#define FPL_VERSION_MINOR 0
+#define FPL_VERSION_PATCH 1
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FPL__STRINGIFY_EXPANDED(value) #value
+#define FPL__STRINGIFY(value) FPL__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FPL_VERSION_STRING FPL__STRINGIFY(FPL_VERSION_MAJOR) "." FPL__STRINGIFY(FPL_VERSION_MINOR) "." FPL__STRINGIFY(FPL_VERSION_PATCH)
+
+/**
+* @brief Gets the version of this library, built from the major/minor/patch constants.
+* @return Returns the null-terminated version string in the form of "major.minor.patch".
+*/
+fpl_common_api const char *fplGetVersion(void);
 
 //
 // Inlining
@@ -3691,25 +3857,31 @@ typedef Bool fpl__X11_Bool;
 typedef Status fpl__X11_Status;
 typedef XPointer fpl__X11_XPointer;
 typedef XEvent fpl__X11_XEvent;
+typedef XGenericEventCookie fpl__X11_XGenericEventCookie;
 typedef XAnyEvent fpl__X11_XAnyEvent;
 typedef XKeyEvent fpl__X11_XKeyEvent;
 typedef XButtonEvent fpl__X11_XButtonEvent;
 typedef XMotionEvent fpl__X11_XMotionEvent;
 typedef XFocusChangeEvent fpl__X11_XFocusChangeEvent;
+typedef XCrossingEvent fpl__X11_XCrossingEvent;
 typedef XExposeEvent fpl__X11_XExposeEvent;
 typedef XConfigureEvent fpl__X11_XConfigureEvent;
 typedef XPropertyEvent fpl__X11_XPropertyEvent;
 typedef XSelectionEvent fpl__X11_XSelectionEvent;
 typedef XSelectionRequestEvent fpl__X11_XSelectionRequestEvent;
+typedef XSelectionClearEvent fpl__X11_XSelectionClearEvent;
 typedef XClientMessageEvent fpl__X11_XClientMessageEvent;
 typedef XErrorEvent fpl__X11_XErrorEvent;
 typedef XErrorHandler fpl__X11_XErrorHandler;
 typedef XComposeStatus fpl__X11_XComposeStatus;
+typedef XIM fpl__X11_XIM;
+typedef XIC fpl__X11_XIC;
 typedef XSetWindowAttributes fpl__X11_XSetWindowAttributes;
 typedef XWindowAttributes fpl__X11_XWindowAttributes;
 typedef XVisualInfo fpl__X11_XVisualInfo;
 typedef XSizeHints fpl__X11_XSizeHints;
 typedef XTextProperty fpl__X11_XTextProperty;
+typedef XICCEncodingStyle fpl__X11_XICCEncodingStyle;
 typedef XClassHint fpl__X11_XClassHint;
 typedef XGCValues fpl__X11_XGCValues;
 typedef XColor fpl__X11_XColor;
@@ -3722,6 +3894,16 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_AnyPropertyType AnyPropertyType
 #define FPL__X11_CurrentTime CurrentTime
 #define FPL__X11_NoSymbol NoSymbol
+#define FPL__X11_XLookupNone XLookupNone
+#define FPL__X11_XLookupChars XLookupChars
+#define FPL__X11_XLookupKeySym XLookupKeySym
+#define FPL__X11_XLookupBoth XLookupBoth
+#define FPL__X11_XStdICCTextStyle XStdICCTextStyle
+#define FPL__X11_XIMPreeditNothing XIMPreeditNothing
+#define FPL__X11_XIMStatusNothing XIMStatusNothing
+#define FPL__X11_XNInputStyle XNInputStyle
+#define FPL__X11_XNClientWindow XNClientWindow
+#define FPL__X11_XNFocusWindow XNFocusWindow
 #define FPL__X11_InputOutput InputOutput
 #define FPL__X11_ZPixmap ZPixmap
 #define FPL__X11_XYBitmap XYBitmap
@@ -3742,16 +3924,27 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_NotifyNormal NotifyNormal
 #define FPL__X11_NotifyGrab NotifyGrab
 #define FPL__X11_NotifyUngrab NotifyUngrab
+#define FPL__X11_NotifyInferior NotifyInferior
+#define FPL__X11_GrabModeAsync GrabModeAsync
+#define FPL__X11_GrabSuccess GrabSuccess
+#define FPL__X11_AlreadyGrabbed AlreadyGrabbed
+#define FPL__X11_GrabInvalidTime GrabInvalidTime
+#define FPL__X11_GrabNotViewable GrabNotViewable
+#define FPL__X11_GrabFrozen GrabFrozen
 #define FPL__X11_KeyPress KeyPress
 #define FPL__X11_KeyRelease KeyRelease
 #define FPL__X11_ButtonPress ButtonPress
 #define FPL__X11_ButtonRelease ButtonRelease
 #define FPL__X11_MotionNotify MotionNotify
+#define FPL__X11_EnterNotify EnterNotify
+#define FPL__X11_LeaveNotify LeaveNotify
 #define FPL__X11_FocusIn FocusIn
 #define FPL__X11_FocusOut FocusOut
 #define FPL__X11_Expose Expose
 #define FPL__X11_ConfigureNotify ConfigureNotify
 #define FPL__X11_PropertyNotify PropertyNotify
+#define FPL__X11_PropertyNewValue PropertyNewValue
+#define FPL__X11_PropertyDelete PropertyDelete
 #define FPL__X11_SelectionClear SelectionClear
 #define FPL__X11_SelectionRequest SelectionRequest
 #define FPL__X11_SelectionNotify SelectionNotify
@@ -3797,6 +3990,8 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XA_ATOM XA_ATOM
 #define FPL__X11_XA_CARDINAL XA_CARDINAL
 #define FPL__X11_XA_STRING XA_STRING
+#define FPL__X11_XA_WM_ICON_NAME XA_WM_ICON_NAME
+#define FPL__X11_XA_WM_NAME XA_WM_NAME
 
 #define FPL__X11_XK_0 XK_0
 #define FPL__X11_XK_1 XK_1
@@ -3931,6 +4126,8 @@ typedef unsigned char fpl__X11_KeyCode;
 typedef int fpl__X11_Bool;
 typedef int fpl__X11_Status;
 typedef char *fpl__X11_XPointer;
+typedef struct fpl__X11_XIMRec *fpl__X11_XIM;   // opaque input method
+typedef struct fpl__X11_XICRec *fpl__X11_XIC;   // opaque input context
 typedef struct fpl__X11_XAnyEvent {
 	int type;
 	unsigned long serial;
@@ -3997,6 +4194,24 @@ typedef struct fpl__X11_XFocusChangeEvent {
 	int detail;
 } fpl__X11_XFocusChangeEvent;
 
+typedef struct fpl__X11_XCrossingEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	fpl__X11_Window window;
+	fpl__X11_Window root;
+	fpl__X11_Window subwindow;
+	fpl__X11_Time time;
+	int x, y;
+	int x_root, y_root;
+	int mode;
+	int detail;
+	fpl__X11_Bool same_screen;
+	fpl__X11_Bool focus;
+	unsigned int state;
+} fpl__X11_XCrossingEvent;
+
 typedef struct fpl__X11_XExposeEvent {
 	int type;
 	unsigned long serial;
@@ -4058,6 +4273,16 @@ typedef struct fpl__X11_XSelectionRequestEvent {
 	fpl__X11_Time time;
 } fpl__X11_XSelectionRequestEvent;
 
+typedef struct fpl__X11_XSelectionClearEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	fpl__X11_Window window;
+	fpl__X11_Atom selection;
+	fpl__X11_Time time;
+} fpl__X11_XSelectionClearEvent;
+
 typedef struct fpl__X11_XClientMessageEvent {
 	int type;
 	unsigned long serial;
@@ -4073,6 +4298,17 @@ typedef struct fpl__X11_XClientMessageEvent {
 	} data;
 } fpl__X11_XClientMessageEvent;
 
+typedef struct fpl__X11_XGenericEventCookie {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	int extension;
+	int evtype;
+	unsigned int cookie;
+	void *data;
+} fpl__X11_XGenericEventCookie;
+
 typedef union fpl__X11_XEvent {
 	int type;
 	fpl__X11_XAnyEvent xany;
@@ -4080,12 +4316,15 @@ typedef union fpl__X11_XEvent {
 	fpl__X11_XButtonEvent xbutton;
 	fpl__X11_XMotionEvent xmotion;
 	fpl__X11_XFocusChangeEvent xfocus;
+	fpl__X11_XCrossingEvent xcrossing;
 	fpl__X11_XExposeEvent xexpose;
 	fpl__X11_XConfigureEvent xconfigure;
 	fpl__X11_XPropertyEvent xproperty;
 	fpl__X11_XSelectionEvent xselection;
 	fpl__X11_XSelectionRequestEvent xselectionrequest;
+	fpl__X11_XSelectionClearEvent xselectionclear;
 	fpl__X11_XClientMessageEvent xclient;
+	fpl__X11_XGenericEventCookie xcookie;
 	long pad[24];
 } fpl__X11_XEvent;
 
@@ -4180,8 +4419,15 @@ typedef struct fpl__X11_XClassHint {
 	char *res_class;
 } fpl__X11_XClassHint;
 
-// Opaque incomplete type, only ever used through a pointer
-typedef struct fpl__X11_XTextPropertyRec fpl__X11_XTextProperty;
+typedef struct fpl__X11_XTextProperty {
+	unsigned char *value;
+	fpl__X11_Atom encoding;
+	int format;
+	unsigned long nitems;
+} fpl__X11_XTextProperty;
+
+// XICCEncodingStyle is an enum in Xlib, so it is passed as an int
+typedef int fpl__X11_XICCEncodingStyle;
 
 // Opaque incomplete type, only ever used through a pointer
 typedef struct fpl__X11_XGCValuesRec fpl__X11_XGCValues;
@@ -4201,6 +4447,16 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_AnyPropertyType 0L
 #define FPL__X11_CurrentTime 0L
 #define FPL__X11_NoSymbol 0L
+#define FPL__X11_XLookupNone 1
+#define FPL__X11_XLookupChars 2
+#define FPL__X11_XLookupKeySym 3
+#define FPL__X11_XLookupBoth 4
+#define FPL__X11_XStdICCTextStyle 3
+#define FPL__X11_XIMPreeditNothing 0x0008L
+#define FPL__X11_XIMStatusNothing 0x0400L
+#define FPL__X11_XNInputStyle "inputStyle"
+#define FPL__X11_XNClientWindow "clientWindow"
+#define FPL__X11_XNFocusWindow "focusWindow"
 #define FPL__X11_InputOutput 1
 #define FPL__X11_ZPixmap 2
 #define FPL__X11_XYBitmap 0
@@ -4221,16 +4477,27 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_NotifyNormal 0
 #define FPL__X11_NotifyGrab 1
 #define FPL__X11_NotifyUngrab 2
+#define FPL__X11_NotifyInferior 2
+#define FPL__X11_GrabModeAsync 1
+#define FPL__X11_GrabSuccess 0
+#define FPL__X11_AlreadyGrabbed 1
+#define FPL__X11_GrabInvalidTime 2
+#define FPL__X11_GrabNotViewable 3
+#define FPL__X11_GrabFrozen 4
 #define FPL__X11_KeyPress 2
 #define FPL__X11_KeyRelease 3
 #define FPL__X11_ButtonPress 4
 #define FPL__X11_ButtonRelease 5
 #define FPL__X11_MotionNotify 6
+#define FPL__X11_EnterNotify 7
+#define FPL__X11_LeaveNotify 8
 #define FPL__X11_FocusIn 9
 #define FPL__X11_FocusOut 10
 #define FPL__X11_Expose 12
 #define FPL__X11_ConfigureNotify 22
 #define FPL__X11_PropertyNotify 28
+#define FPL__X11_PropertyNewValue 0
+#define FPL__X11_PropertyDelete 1
 #define FPL__X11_SelectionClear 29
 #define FPL__X11_SelectionRequest 30
 #define FPL__X11_SelectionNotify 31
@@ -4276,6 +4543,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XA_ATOM ((fpl__X11_Atom)4)
 #define FPL__X11_XA_CARDINAL ((fpl__X11_Atom)6)
 #define FPL__X11_XA_STRING ((fpl__X11_Atom)31)
+#define FPL__X11_XA_WM_ICON_NAME ((fpl__X11_Atom)37)
+#define FPL__X11_XA_WM_NAME ((fpl__X11_Atom)39)
 
 #define FPL__X11_XK_0 0x0030
 #define FPL__X11_XK_1 0x0031
@@ -5612,8 +5881,14 @@ typedef struct fplX86CPUCapabilities {
 	bool hasAVX;
 	//! Has AVX2 support.
 	bool hasAVX2;
-	//! Has AVX512 support.
+	//! Has AVX512F (foundation) support.
 	bool hasAVX512;
+	//! Has AVX512BW support (byte and word instructions).
+	bool hasAVX512BW;
+	//! Has AVX512VL support (AVX-512 instructions on 128 and 256 bit registers).
+	bool hasAVX512VL;
+	//! Has AVX512VBMI support (byte permutes such as vpermb and vpermi2b).
+	bool hasAVX512VBMI;
 	//! Has FMA3 support.
 	bool hasFMA3;
 	//! Has EM64T support.
@@ -6603,6 +6878,36 @@ typedef union fplColor32 {
 fpl_common_api fplColor32 fplCreateColorRGBA(const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a);
 
 /**
+* @enum fplWindowState
+* @brief An enumeration containing the states of a window.
+*/
+typedef enum fplWindowState {
+	//! Unknown state.
+	fplWindowState_Unknown = 0,
+	//! Normal window state.
+	fplWindowState_Normal,
+	//! Iconify/Minimize window state.
+	fplWindowState_Iconify,
+	//! Maximize window state.
+	fplWindowState_Maximize,
+	//! Fullscreen state.
+	fplWindowState_Fullscreen,
+} fplWindowState;
+
+/**
+* @enum fplWindowVisibilityState
+* @brief An enumeration containing the visibility state of a window.
+*/
+typedef enum fplWindowVisibilityState {
+	//! Unknown state.
+	fplWindowVisibilityState_Unknown = 0,
+	//! Window is visible.
+	fplWindowVisibilityState_Show,
+	//! Window is hidden.
+	fplWindowVisibilityState_Hide,
+} fplWindowVisibilityState;
+
+/**
 * @struct fplWindowSettings
 * @brief Stores window settings, such as size, title, etc.
 */
@@ -6633,6 +6938,10 @@ typedef struct fplWindowSettings {
 	fpl_b32 isScreenSaverPrevented;
 	//! Is monitor power change prevented (true: prevents the monitor from powering off automatically, false: system behavior).
 	fpl_b32 isMonitorPowerPrevented;
+	//! The @ref fplWindowState the window starts in, @ref fplWindowState_Unknown is the same as @ref fplWindowState_Normal and @ref fplWindowState_Fullscreen is the same as isFullscreen.
+	fplWindowState initialState;
+	//! The @ref fplWindowVisibilityState the window starts with, @ref fplWindowVisibilityState_Unknown is the same as @ref fplWindowVisibilityState_Show. A hidden window has a working video context (e.g. for rendering into framebuffer objects), but is not managed by the window manager and has no taskbar entry.
+	fplWindowVisibilityState initialVisibility;
 } fplWindowSettings;
 
 /**
@@ -6864,6 +7173,15 @@ typedef struct fplMemorySettings {
 } fplMemorySettings;
 
 /**
+* @struct fplLocaleSettings
+* @brief Stores locale specific settings that may control how any string formatting is handled.
+*/
+typedef struct fplLocaleSettings {
+	//! A flag indicating whether any string formatting should be culture invariant or not. Setting this to true, may overwrite the user locales such LC_ALL, LC_NUMERIC, LC_TIME temporary.
+	fpl_b32 isCultureInvariant;
+} fplLocaleSettings;
+
+/**
 * @struct fplSettings
 * @brief Stores settings, such as window, video, etc.
 */
@@ -6880,6 +7198,8 @@ typedef struct fplSettings {
 	fplConsoleSettings console;
 	//! Memory settings.
 	fplMemorySettings memory;
+	//! Locale settings.
+	fplLocaleSettings locale;
 } fplSettings;
 
 /**
@@ -7020,7 +7340,7 @@ typedef enum fplLogWriterFlags {
 	fplLogWriterFlags_StandardConsole = 1 << 0,
 	//! Error-Console output.
 	fplLogWriterFlags_ErrorConsole = 1 << 1,
-	//! Debug output.
+	//! Debug output. Only Windows has a real one (OutputDebugString), on any other platform @ref fplDebugOut() writes into the standard-console instead.
 	fplLogWriterFlags_DebugOut = 1 << 2,
 	//! Custom output.
 	fplLogWriterFlags_Custom = 1 << 3,
@@ -7231,6 +7551,421 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle);
 
 /** @} */
 
+// ----------------------------------------------------------------------------
+/**
+* @defgroup Process Process functions
+* @brief This category contains functions for starting and controlling child processes.
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+// Forward declaration; the documented definition lives a few lines below.
+typedef struct fplProcessHandle fplProcessHandle;
+
+// Forward declaration of the internal stream state, do not use this in any way.
+typedef struct fpl__ProcessStreams fpl__ProcessStreams;
+
+/**
+* @enum fplProcessStreamType
+* @brief An enumeration of process stream types.
+*/
+typedef enum fplProcessStreamType {
+	//! No stream.
+	fplProcessStreamType_None = 0,
+	//! The standard-output stream.
+	fplProcessStreamType_Output,
+	//! The standard-error stream.
+	fplProcessStreamType_Error,
+} fplProcessStreamType;
+
+/**
+* @def FPL_FUNC_PROCESS_OUTPUT
+* @brief Defines a prototype for a function that receives redirected output/error text from a process.
+* @param[in] name The name of the function.
+*/
+#define FPL_FUNC_PROCESS_OUTPUT(name) void name(const fplProcessHandle *process, const fplProcessStreamType stream, const char *text, const size_t textLen, void *userData)
+
+/**
+* @typedef fpl_process_output_callback
+* @brief A callback that receives the redirected output/error text of a process, see @ref fplProcessContext.outputCallback.
+* @param[in] process Reference to the process handle @ref fplProcessHandle.
+* @param[in] stream The @ref fplProcessStreamType the text was read from.
+* @param[in] text The null-terminated text that was read.
+* @param[in] textLen The number of characters, without the null-terminator.
+* @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
+* @note The text is only valid for the duration of the call, copy it when you need to keep it.
+* @note The callback is called from the thread that calls @ref fplProcessWait() or @ref fplProcessUpdate(), never from a thread of its own.
+*/
+typedef FPL_FUNC_PROCESS_OUTPUT(fpl_process_output_callback);
+
+/**
+* @def FPL_FUNC_PROCESS_INPUT
+* @brief Defines a prototype for a function that provides the standard-input text for a process.
+* @param[in] name The name of the function.
+*/
+#define FPL_FUNC_PROCESS_INPUT(name) size_t name(const fplProcessHandle *process, char *targetBuffer, const size_t maxTargetBufferLen, void *userData)
+
+/**
+* @typedef fpl_process_input_callback
+* @brief A callback that provides the standard-input text of a process, see @ref fplProcessContext.inputCallback.
+* @param[in] process Reference to the process handle @ref fplProcessHandle.
+* @param[out] targetBuffer The target buffer to write the next input chunk into.
+* @param[in] maxTargetBufferLen The maximum number of characters the target buffer can hold.
+* @param[in] userData Reference to the opaque user data from @ref fplProcessContext.userData.
+* @return Returns the number of characters written into the target buffer or zero for closing the standard-input.
+*/
+typedef FPL_FUNC_PROCESS_INPUT(fpl_process_input_callback);
+
+/**
+* @enum fplProcessCaptureFlags
+* @brief An enumeration of capture/redirect flags for the output/error streams.
+*/
+typedef enum fplProcessCaptureFlags {
+	//! Do not capture anything, the child process inherits the streams of the parent process.
+	fplProcessCaptureFlags_None = 0,
+	//! Capture the standard-output stream.
+	fplProcessCaptureFlags_Output = 1 << 0,
+	//! Capture the standard-error stream.
+	fplProcessCaptureFlags_Error = 1 << 1,
+	//! Store the captured text in the buffers of @ref fplProcessResult.
+	fplProcessCaptureFlags_ToBuffer = 1 << 2,
+	//! Push the captured text into the @ref fpl_process_output_callback.
+	fplProcessCaptureFlags_ToCallback = 1 << 3,
+	//! Merge the error stream into the output stream, the same as "2>&1".
+	fplProcessCaptureFlags_Merged = 1 << 4,
+
+	//! Both the output and the error stream.
+	fplProcessCaptureFlags_Both = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_Error,
+	//! Capture only the output stream into the output buffer of the result.
+	fplProcessCaptureFlags_CaptureOutput = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_ToBuffer,
+	//! Capture only the error stream into the error buffer of the result.
+	fplProcessCaptureFlags_CaptureError = fplProcessCaptureFlags_Error | fplProcessCaptureFlags_ToBuffer,
+	//! Capture the output stream into the output buffer and the error stream into the error buffer of the result. Only the order inside one stream is kept, not the order between the two.
+	fplProcessCaptureFlags_CaptureSeparate = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer,
+	//! Capture both streams merged into the output buffer of the result.
+	fplProcessCaptureFlags_CaptureBoth = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToBuffer | fplProcessCaptureFlags_Merged,
+	//! Redirect only the output stream to the output callback.
+	fplProcessCaptureFlags_RedirectOutput = fplProcessCaptureFlags_Output | fplProcessCaptureFlags_ToCallback,
+	//! Redirect only the error stream to the output callback.
+	fplProcessCaptureFlags_RedirectError = fplProcessCaptureFlags_Error | fplProcessCaptureFlags_ToCallback,
+	//! Redirect both streams merged to the output callback.
+	fplProcessCaptureFlags_RedirectBoth = fplProcessCaptureFlags_Both | fplProcessCaptureFlags_ToCallback | fplProcessCaptureFlags_Merged,
+} fplProcessCaptureFlags;
+//! fplProcessCaptureFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessCaptureFlags);
+
+/**
+* @enum fplProcessInputMode
+* @brief An enumeration of standard-input modes.
+*/
+typedef enum fplProcessInputMode {
+	//! The child process inherits the standard-input of the parent process.
+	fplProcessInputMode_Inherit = 0,
+	//! The child process gets an immediate end-of-file on the standard-input.
+	fplProcessInputMode_None,
+	//! Write the text from @ref fplProcessContext.inputText into the standard-input and close it afterwards.
+	fplProcessInputMode_Text,
+	//! Pull the standard-input in chunks from the @ref fpl_process_input_callback, until it returns zero.
+	fplProcessInputMode_Callback,
+	//! Keep the standard-input open, so the caller can write into it with @ref fplProcessWriteInput().
+	fplProcessInputMode_Stream,
+} fplProcessInputMode;
+
+/**
+* @enum fplProcessShellMode
+* @brief An enumeration of shell execution modes.
+*/
+typedef enum fplProcessShellMode {
+	//! Execute the process directly, without any shell.
+	fplProcessShellMode_None = 0,
+	//! Execute the command line through the default system shell (the ComSpec of the environment or cmd.exe on Windows, /bin/sh on POSIX).
+	fplProcessShellMode_Default,
+	//! Execute the command line through the shell or interpreter from @ref fplProcessContext.shellPath.
+	fplProcessShellMode_Custom,
+} fplProcessShellMode;
+
+/**
+* @enum fplProcessFlags
+* @brief An enumeration of process creation/control flags.
+*/
+typedef enum fplProcessFlags {
+	//! No flags.
+	fplProcessFlags_None = 0,
+	//! Wait for the process to be terminated, before returning from @ref fplProcessStart().
+	fplProcessFlags_AutoWait = 1 << 0,
+	//! Do not create a console window for the child process (Windows only). Has no effect together with @ref fplProcessFlags_Detached.
+	fplProcessFlags_NoWindow = 1 << 1,
+	//! Detach the child process, so it survives the exit of the parent process. On Windows the child gets no console, on POSIX it gets its own session and is detached from the terminal.
+	fplProcessFlags_Detached = 1 << 2,
+	//! Stop the entire process tree instead of the direct child process only.
+	fplProcessFlags_KillProcessTree = 1 << 3,
+	//! Kill the child process automatically, when the parent process exits. Cannot be combined with @ref fplProcessFlags_Detached and is supported on Windows and Linux only.
+	fplProcessFlags_KillOnParentExit = 1 << 4,
+	//! Push the redirected text into the @ref fpl_process_output_callback as complete lines only. Has no effect on the captured buffers.
+	fplProcessFlags_LineBuffered = 1 << 5,
+	//! Report a non-zero exit code as @ref fplProcessResultType_FailedWithExitCode.
+	fplProcessFlags_TreatNonZeroExitAsError = 1 << 6,
+	//! Start the child without a controlling terminal (POSIX only), so a prompt it opens on /dev/tty fails right away instead of waiting in the terminal the parent was started from. The child gets a session of its own the way @ref fplProcessFlags_Detached gives it one, and stays everything else a child is: captured, waited for, stopped and killed on parent exit. Has no effect on Windows, which has no /dev/tty.
+	fplProcessFlags_NoTerminal = 1 << 7,
+} fplProcessFlags;
+//! fplProcessFlags operator overloads for C++
+FPL_ENUM_AS_FLAGS_OPERATORS(fplProcessFlags);
+
+/**
+* @struct fplProcessContext
+* @brief Stores the start parameters for @ref fplProcessStart().
+*/
+typedef struct fplProcessContext {
+	//! The filename or the path of the executable or script to run.
+	const char *name;
+	//! The full argument line, ignored when @ref fplProcessContext.arguments is set.
+	const char *argumentLine;
+	//! The arguments, without the executable itself.
+	const char **arguments;
+	//! The work directory path or fpl_null for using the current directory.
+	const char *workDir;
+	//! The path of the shell or interpreter, used for @ref fplProcessShellMode_Custom (for example "/bin/bash" or "powershell.exe").
+	const char *shellPath;
+	//! The argument that tells the shell to execute the command line or fpl_null for using the default argument ("-c" on POSIX, "/s /c" for the default shell and "/c" for a custom shell on Windows).
+	const char *shellArgument;
+	//! The text written into the standard-input, used for @ref fplProcessInputMode_Text.
+	const char *inputText;
+	//! The @ref fpl_process_output_callback that receives the redirected output/error text.
+	fpl_process_output_callback *outputCallback;
+	//! The @ref fpl_process_input_callback that provides the standard-input text, used for @ref fplProcessInputMode_Callback.
+	fpl_process_input_callback *inputCallback;
+	//! The user data passed through the callbacks.
+	void *userData;
+	//! The number of arguments.
+	size_t argumentCount;
+	//! The number of characters in @ref fplProcessContext.inputText or zero for computing the length automatically.
+	size_t inputTextLen;
+	//! The maximum number of bytes captured per buffer or zero for no limit.
+	size_t maxCaptureSize;
+	//! The @ref fplProcessCaptureFlags used for capturing/redirecting the output/error streams.
+	fplProcessCaptureFlags captureFlags;
+	//! The @ref fplProcessInputMode used for the standard-input.
+	fplProcessInputMode inputMode;
+	//! The @ref fplProcessShellMode used for executing the command line.
+	fplProcessShellMode shellMode;
+	//! The @ref fplProcessFlags used for creating/controlling the process.
+	fplProcessFlags flags;
+	//! The timeout in milliseconds for @ref fplProcessFlags_AutoWait. Use @ref FPL_TIMEOUT_INFINITE or zero for waiting indefinitely.
+	fplTimeoutValue waitTimeout;
+} fplProcessContext;
+
+/**
+* @enum fplProcessResultType
+* @brief An enumeration of process result types.
+*/
+typedef enum fplProcessResultType {
+	//! Unknown result or error.
+	fplProcessResultType_Unknown = -1,
+	//! The process was started and has exited normally, regardless of the exit code.
+	fplProcessResultType_Success = 0,
+	//! Any argument passed to a fplProcess* function is invalid (not the arguments of the process!).
+	fplProcessResultType_InvalidArguments,
+	//! The executable or script was not found.
+	fplProcessResultType_NotFound,
+	//! The executable or script is not allowed to be executed.
+	fplProcessResultType_AccessDenied,
+	//! The process failed to start.
+	fplProcessResultType_FailedToStart,
+	//! The process exited with a non-zero exit code and @ref fplProcessFlags_TreatNonZeroExitAsError was set.
+	fplProcessResultType_FailedWithExitCode,
+	//! The process was terminated by a signal (POSIX only).
+	fplProcessResultType_Terminated,
+	//! The process did not exit within the timeout.
+	fplProcessResultType_Timeout,
+	//! Not enough memory available.
+	fplProcessResultType_OutOfMemory,
+	//! The function is not implemented on this platform.
+	fplProcessResultType_NotImplemented,
+} fplProcessResultType;
+
+/**
+* @struct fplProcessBuffer
+* @brief Stores a captured text block, allocated by FPL and released by @ref fplProcessFreeResult().
+*/
+typedef struct fplProcessBuffer {
+	//! The null-terminated text or fpl_null when nothing was captured.
+	char *text;
+	//! The number of characters, without the null-terminator.
+	size_t len;
+} fplProcessBuffer;
+
+/**
+* @struct fplProcessResult
+* @brief Stores the result of a process start/wait.
+*/
+typedef struct fplProcessResult {
+	//! The captured standard-output, see @ref fplProcessBuffer.
+	fplProcessBuffer output;
+	//! The captured standard-error, see @ref fplProcessBuffer.
+	fplProcessBuffer error;
+	//! The raw exit code from the process.
+	int32_t exitCode;
+	//! The signal number that has terminated the process or zero (POSIX only).
+	int32_t terminationSignal;
+	//! The raw error code from the operating system (errno or GetLastError).
+	uint32_t nativeErrorCode;
+	//! The @ref fplProcessResultType.
+	fplProcessResultType type;
+	//! The process has exited normally.
+	fpl_b32 hasExited;
+	//! The captured text was truncated, because @ref fplProcessContext.maxCaptureSize was exceeded.
+	fpl_b32 isTruncated;
+} fplProcessResult;
+
+/**
+* @union fplInternalProcessHandle
+* @brief A union containing the internal process handle for any platform.
+*/
+typedef union fplInternalProcessHandle {
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! Win32 specifics.
+	struct {
+		//! The process handle.
+		fpl__Win32Handle processHandle;
+		//! The handle of the primary thread.
+		fpl__Win32Handle threadHandle;
+		//! The job object handle, used for controlling the process tree.
+		fpl__Win32Handle jobHandle;
+	} win32;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! POSIX specifics.
+	struct {
+		//! The process id.
+		int32_t pid;
+		//! The process group id.
+		int32_t pgid;
+	} posix;
+#endif
+} fplInternalProcessHandle;
+
+/**
+* @struct fplProcessHandle
+* @brief The process handle structure.
+*/
+typedef struct fplProcessHandle {
+	//! The internal process handle.
+	fplInternalProcessHandle internalHandle;
+	//! The internal stream state, do not touch.
+	fpl__ProcessStreams *streams;
+	//! The id of the process.
+	uint64_t id;
+	//! The @ref fplProcessFlags the process was started with.
+	fplProcessFlags flags;
+	//! The cached exit code, valid when the process has exited.
+	int32_t exitCode;
+	//! The cached signal number that has terminated the process or zero (POSIX only).
+	int32_t terminationSignal;
+	//! The process handle is valid.
+	fpl_b32 isValid;
+	//! The process has exited and the exit code is cached.
+	fpl_b32 hasExited;
+} fplProcessHandle;
+
+/**
+* @brief Starts a process with the specified context.
+* @param[in] context Reference to the process context @ref fplProcessContext.
+* @param[out] outHandle Reference to the process handle @ref fplProcessHandle.
+* @param[out] outResult Reference to the process result @ref fplProcessResult or fpl_null when the result is not needed.
+* @return Returns true when the process was started, false otherwise.
+* @note The handle must be released with @ref fplProcessClose(), even when the process has exited already.
+* @note The captured buffers in the result must be released with @ref fplProcessFreeResult().
+* @note Without a shell mode, a @ref fplProcessContext.name without any path separator is searched in the PATH of the environment.
+* @note A shell mode composes exactly one command line: @ref fplProcessContext.name and @ref fplProcessContext.argumentLine are taken over unchanged, so both may use shell syntax or be the source code of an interpreter, while the entries of @ref fplProcessContext.arguments are quoted. A program path containing spaces has to be quoted by the caller in that case.
+*/
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult);
+
+/**
+* @brief Pumps the redirected streams of the specified process, without blocking.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when at least one stream is still open, false otherwise.
+* @note Any @ref fpl_process_output_callback is called from the thread that calls this function.
+*/
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle);
+
+/**
+* @brief Waits for the specified process to be terminated, while pumping the redirected streams.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[in] timeout The timeout in milliseconds. Use @ref FPL_TIMEOUT_INFINITE or zero for waiting indefinitely.
+* @param[out] outResult Reference to the process result @ref fplProcessResult or fpl_null when the result is not needed.
+* @return Returns true when the process has exited, false when the timeout was exceeded or the wait has failed.
+* @note Use @ref fplProcessIsRunning() when you just want to check the state without blocking.
+*/
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult);
+
+/**
+* @brief Is the specified process still running?
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the process is still running, false otherwise.
+* @note This does not read from any redirected stream. When streams are captured, call @ref fplProcessUpdate() in the same loop, otherwise the process blocks as soon as it has filled the pipe buffer.
+*/
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle);
+
+/**
+* @brief Gets the exit code from the specified process, when it has exited already.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[out] outExitCode Reference to the exit code.
+* @return Returns true when the process has exited and the exit code was written, false otherwise.
+*/
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode);
+
+/**
+* @brief Writes the specified text into the standard-input of the process.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @param[in] text The text to write into the standard-input.
+* @param[in] textLen The number of characters or zero for computing the length automatically.
+* @return Returns the number of characters written.
+* @note This requires @ref fplProcessInputMode_Stream.
+*/
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen);
+
+/**
+* @brief Closes the standard-input of the process, so the process gets an end-of-file.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+*/
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle);
+
+/**
+* @brief Asks the specified process to stop gracefully.
+* @param[in] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the request was sent, false otherwise.
+* @note On POSIX this sends a SIGTERM. Windows has no equivalent, so a console control event is sent instead, which requires @ref fplProcessFlags_KillProcessTree to be set.
+* @note On Windows the control event only reaches a child that is already attached to the console, so it must not be sent right after @ref fplProcessStart. A child that is not attached yet either never sees the event and keeps running, or it is ended while it is still initializing with 0xC0000142 (STATUS_DLL_INIT_FAILED) instead of the control-event exit code, and Windows shows an error dialog that keeps it alive until somebody closes it. Ask for a stop only once the child runs, for example after its first output.
+*/
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle);
+
+/**
+* @brief Tries to forcefully stop the process from the specified handle.
+* @param[in] handle Reference to the process handle @ref fplProcessHandle.
+* @return Returns true when the process was stopped, false otherwise.
+*/
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle);
+
+/**
+* @brief Releases all resources of the specified process handle and resets it to zero.
+* @param[in, out] handle Reference to the process handle @ref fplProcessHandle.
+* @note This does not stop the process, it just releases the resources of the handle.
+* @note On POSIX the exit status of a still running process cannot be collected anymore after this call.
+*/
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle);
+
+/**
+* @brief Releases the captured buffers from the specified result and resets it to zero.
+* @param[in, out] result Reference to the process result @ref fplProcessResult.
+*/
+fpl_common_api void fplProcessFreeResult(fplProcessResult *result);
+
+/**
+* @brief Gets the id of the current process.
+* @return Returns the id of the current process.
+*/
+fpl_platform_api uint64_t fplProcessGetCurrentId(void);
+
+/** @} */
 // ----------------------------------------------------------------------------
 /**
 * @defgroup Debug Debug
@@ -7583,8 +8318,16 @@ fpl_common_api fplThreadState fplGetThreadState(fplThreadHandle *thread);
 fpl_common_api const fplThreadHandle *fplGetMainThread(void);
 
 /**
+* @brief Gets the total number of thread slots currently managed by the library.
+* @return Returns the number of thread slots allocated across all internal buckets.
+* @note This grows on demand as threads are created and is not a hard limit.
+*/
+fpl_common_api size_t fplGetTotalThreadCount(void);
+
+/**
 * @brief Gets the number of available threads.
 * @return Returns the number of available threads.
+* @note With dynamic thread storage this only reflects free slots in already-allocated buckets, more can always be created.
 */
 fpl_common_api size_t fplGetAvailableThreadCount(void);
 
@@ -8573,13 +9316,14 @@ fpl_platform_api bool fplDirectoryRemove(const char *path);
 
 /**
 * @brief Iterates through files/directories in the given directory.
-* @param[in] path The full path.
+* @param[in] path The full path. An empty path is the current working directory.
 * @param[in] filter The filter wildcard. If empty or null, it is rewritten internally to "*" (match all) and stored as such in the entry's internal root info.
 * @param[out] entry Reference to the file entry structure @ref fplFileEntry.
 * @return Returns true when there was a first entry found, false otherwise.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no initial entry is found, the resources are automatically cleaned up.
 * @note `path` and `filter` are copied into fixed-size buffers inside `entry`; the caller may free or reuse the source strings immediately after this call returns.
+* @note The entries "." and ".." are never returned.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry);
@@ -8590,6 +9334,7 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 * @return Returns true when there was a next file, otherwise false if not.
 * @note This function is not recursive, so it will traverse the first level only!
 * @note When no entries are found, the resources are automatically cleaned up.
+* @note The entries "." and ".." are never returned.
 * @see @ref section_category_io_paths_traversing
 */
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry);
@@ -8645,6 +9390,7 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 * @param[out] destPath The destination buffer.
 * @param[in] maxDestLen The total number of characters available in the destination buffer.
 * @return Returns the number of required/written characters, excluding the null-terminator.
+* @note A file name without any directory results in an empty path, a file in the root directory keeps the root separator (e.g. "/" or the drive root on Win32).
 * @see @ref subsection_category_io_paths_utils_extractfilepath
 */
 fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen);
@@ -8683,6 +9429,7 @@ fpl_common_api size_t fplChangeFileExtension(const char *filePath, const char *n
 * @param[in] pathCount The number of dynamic path arguments.
 * @param[in] ... The dynamic path arguments.
 * @return Returns the number of required/written characters, excluding the null-terminator.
+* @note Empty or null paths are skipped, so no separator is put in front of the first non-empty path.
 * @see @ref subsection_category_io_paths_utils_pathcombine
 */
 fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen, const size_t pathCount, ...);
@@ -9779,6 +10526,8 @@ typedef struct fplKeyboardEvent {
 	fplButtonState buttonState;
 	//! Mapped key.
 	fplKey mappedKey;
+	//! Physical key of a button event as PC scan code set 1, the same key gives the same code on every keyboard layout and platform. Extended keys have the prefix 0xE0 (right Ctrl is 0xE01D), Pause is 0xE11D, zero when the key has no scan code and for text input.
+	uint32_t scanCode;
 } fplKeyboardEvent;
 
 /**
@@ -9794,6 +10543,12 @@ typedef enum fplMouseEventType {
 	fplMouseEventType_Button,
 	//! Mouse wheel event.
 	fplMouseEventType_Wheel,
+	//! Horizontal mouse wheel event (a tilted wheel or a touchpad), wheelDelta is positive to the right.
+	fplMouseEventType_HorizontalWheel,
+	//! The cursor entered the client area of the window.
+	fplMouseEventType_Enter,
+	//! The cursor left the client area of the window.
+	fplMouseEventType_Leave,
 } fplMouseEventType;
 
 /**
@@ -9811,8 +10566,12 @@ typedef struct fplMouseEvent {
 	int32_t mouseX;
 	//! Mouse Y-Position.
 	int32_t mouseY;
-	//! Mouse wheel delta.
+	//! Mouse wheel delta. Vertical for @ref fplMouseEventType_Wheel, positive when the wheel turned up (away from the user). Horizontal for @ref fplMouseEventType_HorizontalWheel, positive to the right.
 	float wheelDelta;
+	//! Horizontal movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped. In the relative mouse mode the raw movement of the device.
+	int32_t deltaX;
+	//! Vertical movement since the previous move event in pixels, zero for the first move after the cursor entered the window, the focus came back or the cursor was warped. In the relative mouse mode the raw movement of the device.
+	int32_t deltaY;
 } fplMouseEvent;
 
 /**
@@ -9875,36 +10634,6 @@ fpl_platform_api void fplPollEvents(void);
 * @{
 */
 // ----------------------------------------------------------------------------
-
-/**
-* @enum fplWindowState
-* @brief An enumeration containing the states of a window.
-*/
-typedef enum fplWindowState {
-	//! Unknown state.
-	fplWindowState_Unknown = 0,
-	//! Normal window state.
-	fplWindowState_Normal,
-	//! Iconify/Minimize window state.
-	fplWindowState_Iconify,
-	//! Maximize window state.
-	fplWindowState_Maximize,
-	//! Fullscreen state.
-	fplWindowState_Fullscreen,
-} fplWindowState;
-
-/**
-* @enum fplWindowVisibilityState
-* @brief An enumeration containing the visibility state of a window.
-*/
-typedef enum fplWindowVisibilityState {
-	//! Unknown state.
-	fplWindowVisibilityState_Unknown = 0,
-	//! Window is visible.
-	fplWindowVisibilityState_Show,
-	//! Window is hidden.
-	fplWindowVisibilityState_Hide,
-} fplWindowVisibilityState;
 
 /**
 * @brief Gets the window running state as a boolean.
@@ -9987,6 +10716,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value);
 * @param[in] refreshRate The refresh rate in Hz. When set to zero the current display setting is used.
 * @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
 * @attention This may alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 
@@ -9999,6 +10729,7 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 * @param[in] height The height in virtual screen coordinates.
 * @return Returns true when the window was changed to the rectangle, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 
@@ -10006,6 +10737,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 * @brief Enables fullscreen mode on the nearest display.
 * @return Returns true when the window was changed to fullscreen, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplEnableWindowFullscreen(void);
 
@@ -10013,6 +10745,7 @@ fpl_platform_api bool fplEnableWindowFullscreen(void);
 * @brief Switches the window back to window mode.
 * @return Returns true when the window was changed to window mode, false otherwise.
 * @attention This will not alter the display resolution or the refresh rate.
+* @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
 fpl_platform_api bool fplDisableWindowFullscreen(void);
 
@@ -10053,6 +10786,7 @@ fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitle
 /**
 * @brief Gets the current window state.
 * @return Returns the current window state.
+* @note For a hidden window this is the state it gets when it is shown again.
 */
 fpl_platform_api fplWindowState fplGetWindowState(void);
 
@@ -10060,8 +10794,25 @@ fpl_platform_api fplWindowState fplGetWindowState(void);
 * @brief Changes the current window state.
 * @param[in] newState The new window state.
 * @return Returns true when the window state was changed, false otherwise.
+* @note A hidden window only remembers the new state, it is applied when the window is shown with @ref fplSetWindowVisibility().
 */
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+
+/**
+* @brief Gets the current visibility of the window.
+* @return Returns @ref fplWindowVisibilityState_Show when the window is shown, @ref fplWindowVisibilityState_Hide when it is hidden.
+* @note A minimized window still counts as shown.
+*/
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
+
+/**
+* @brief Shows or hides the window.
+* @param[in] newVisibility The new visibility.
+* @return Returns true when the window has the new visibility, false otherwise.
+* @note A hidden window keeps its state and its video context. It is not managed by the window manager and has no taskbar entry. Showing it applies the state it had or was given while it was hidden.
+* @note Pushes a @ref fplWindowEventType_Shown or @ref fplWindowEventType_Hidden event when the visibility changes.
+*/
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
 
 /**
 * @brief Enables or disables the input events for the window entirely.
@@ -10076,6 +10827,72 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled);
 * @param[out] outY Reference to the outgoing Y position.
 */
 fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY);
+
+/**
+* @brief Moves the cursor to a position in window coordinates, the same coordinates the mouse events use.
+* @param[in] x The horizontal position in the client area, starting at the left edge.
+* @param[in] y The vertical position in the client area, starting at the top edge.
+* @return Returns true when the cursor was moved, false when there is no visible window.
+* @note The move event that follows the warp has a delta of zero, so the warp itself never shows up as movement.
+* @note Positions outside of the client area are allowed. While the mouse is grabbed (@ref fplSetWindowMouseGrab()), the target is limited to the client area.
+* @note In the relative mouse mode (@ref fplSetWindowRelativeMouse()) the hidden cursor stays where it is, the warp moves the position the mouse events carry and where the cursor appears when the mode ends.
+* @see @ref section_category_window_style_cursor_warp
+*/
+fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y);
+
+/**
+* @brief Keeps the cursor inside the client area of the window, or lets it move freely again.
+* @param[in] enabled Set to true to keep the cursor inside the window.
+* @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
+* @note The grab is only active while the window has the focus, is shown and is not minimized. FPL releases it when that ends and restores it when the window gets the focus back, the request stays.
+* @note The relative mouse mode (@ref fplSetWindowRelativeMouse()) always locks the cursor, regardless of this setting.
+* @note When another program holds the mouse, the grab is tried again while the events are pumped, see @ref section_category_window_style_cursor_grab.
+* @see @ref section_category_window_style_input_capture
+*/
+fpl_common_api bool fplSetWindowMouseGrab(const bool enabled);
+
+/**
+* @brief Gets the requested mouse grab.
+* @return Returns true when the mouse grab is requested, even while it is not active because the window has no focus.
+*/
+fpl_common_api bool fplIsWindowMouseGrabbed(void);
+
+/**
+* @brief Enables or disables the relative mouse mode: the cursor is hidden and locked, and the move events carry the raw unaccelerated device movement in @ref fplMouseEvent.deltaX and @ref fplMouseEvent.deltaY.
+* @param[in] enabled Set to true to enable the relative mouse mode.
+* @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
+* @note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized.
+* @note While the mode is active, every mouse event carries the position where the mode started in @ref fplMouseEvent.mouseX and @ref fplMouseEvent.mouseY. @ref fplWarpWindowCursor() moves that position instead of the hidden cursor.
+* @note When the relative mode ends, the cursor appears again at that position.
+* @note [X11] The raw movement needs XInput2 (libXi). Without it, or with FPL_NO_X11_XINPUT2, FPL warps the cursor back to the window center and the deltas are accelerated like the cursor.
+* @see @ref section_category_window_style_cursor_relative
+* @see @ref section_category_window_style_input_capture
+*/
+fpl_common_api bool fplSetWindowRelativeMouse(const bool enabled);
+
+/**
+* @brief Gets the requested relative mouse mode.
+* @return Returns true when the relative mouse mode is requested, even while it is not active because the window has no focus.
+*/
+fpl_common_api bool fplIsWindowRelativeMouse(void);
+
+/**
+* @brief Grabs the keyboard, so system shortcuts like Alt+Tab, Super/Win, Alt+Esc, Ctrl+Esc and Alt+F4 go to the window instead of the window manager or the shell.
+* @param[in] enabled Set to true to grab the keyboard.
+* @return Returns true when the request was stored, false when it can not be fulfilled on this platform.
+* @note Like the mouse grab it is only active while the window has the focus, is shown and is not minimized.
+* @note Some key combinations can never be grabbed, for example Ctrl+Alt+Del on Win32 or the virtual terminal switch on X11.
+* @note Alt+F4 does not close the window while the keyboard is grabbed, the application gets the keys and needs its own way to end the grab.
+* @see @ref section_category_window_style_keyboard_grab
+* @see @ref section_category_window_style_input_capture
+*/
+fpl_common_api bool fplSetWindowKeyboardGrab(const bool enabled);
+
+/**
+* @brief Gets the requested keyboard grab.
+* @return Returns true when the keyboard grab is requested, even while it is not active because the window has no focus.
+*/
+fpl_common_api bool fplIsWindowKeyboardGrabbed(void);
 
 /** @} */
 
@@ -10176,19 +10993,31 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outMo
 // ----------------------------------------------------------------------------
 
 /**
-* @brief Retrieves the current clipboard text.
-* @param[out] dest The destination string buffer to write the clipboard text into.
-* @param[in] maxDestLen The total number of characters available in the destination buffer.
-* @return Returns true when the clipboard contained text which is copied into the destination buffer, false otherwise.
+* @brief Retrieves the current clipboard text, of any size.
+* @param[out] dest The destination string buffer to write the clipboard text into or fpl_null to query the required size only.
+* @param[in] maxDestLen The total number of characters available in the destination buffer, including the null-terminator.
+* @return Returns the number of characters required, excluding the null-terminator, or zero when the clipboard has no text, the buffer is too small or the transfer failed.
+* @note This follows the output buffer contract described in the file header - pass fpl_null as destination to get the size first and then call it a second time with a buffer of that size plus one.
+* @note The clipboard is read from the system on every call, so the size query and the actual read never disagree when another application changes the clipboard in between.
 */
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen);
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen);
+
+/**
+* @brief Overwrites the current clipboard text with the given one, limited by the number of characters.
+* @param[in] text The new clipboard string, it does not need to be null-terminated.
+* @param[in] textLen The number of characters to take from the text, excluding the null-terminator.
+* @return Returns true when the text in the clipboard was changed, false otherwise.
+* @note There is no size limit, the text is stored in dynamically allocated memory and served in chunks when the system requires it.
+*/
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen);
 
 /**
 * @brief Overwrites the current clipboard text with the given one.
 * @param[in] text The new clipboard string.
 * @return Returns true when the text in the clipboard was changed, false otherwise.
+* @see @ref fplClipboardSetTextLen
 */
-fpl_platform_api bool fplSetClipboardText(const char *text);
+fpl_common_api bool fplClipboardSetText(const char *text);
 
 /** @} */
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -10803,7 +11632,9 @@ fpl_main int main(int argc, char **args);
 // > WIN32_XINPUT
 // > WIN32_DINPUT
 // > WIN32_INPUT_KBM
+// > WIN32_PROCESS
 // > POSIX_SUBPLATFORM (Linux, Unix)
+// > POSIX_PROCESS
 // > STD_STRINGS_SUBPLATFORM
 // > STD_CONSOLE_SUBPLATFORM
 // > X11_SUBPLATFORM
@@ -10839,6 +11670,10 @@ fpl_main int main(int argc, char **args);
 // ****************************************************************************
 #if (defined(FPL_IMPLEMENTATION) || FPL_IS_IDE) && !defined(FPL__IMPLEMENTED)
 #define FPL__IMPLEMENTED
+
+fpl_common_api const char *fplGetVersion(void) {
+	return FPL_VERSION_STRING;
+}
 
 // ############################################################################
 //
@@ -10914,6 +11749,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_STRINGS "Strings"
 #define FPL__MODULE_PATHS "Paths"
 #define FPL__MODULE_ARGS "Arguments"
+#define FPL__MODULE_PROCESS "Process"
 
 #define FPL__MODULE_AUDIO "Audio"
 #define FPL__MODULE_AUDIO_DIRECTSOUND "DirectSound"
@@ -10938,6 +11774,7 @@ fpl_main int main(int argc, char **args);
 #define FPL__MODULE_X11 "X11"
 #define FPL__MODULE_XRANDR "XrandR"
 #define FPL__MODULE_XINERAMA "Xinerama"
+#define FPL__MODULE_XINPUT2 "XInput2"
 #define FPL__MODULE_GLX "GLX"
 
 //
@@ -10995,19 +11832,32 @@ fpl_internal const char *fpl__LogLevelToString(const fplLogLevel level) {
 	return(result);
 }
 
+// Only Windows has a real debug output, everywhere else fplDebugOut() writes into the standard-console.
+// Adding the flag by default would therefore print every single log line twice on those platforms.
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! Target the default writers use in addition to the console.
+#	define FPL__LOG_DEFAULT_ADDITIONAL_FLAGS fplLogWriterFlags_DebugOut
+	//! Target the default writer for debug messages uses.
+#	define FPL__LOG_DEFAULT_DEBUG_FLAGS fplLogWriterFlags_DebugOut
+#else
+	//! Target the default writers use in addition to the console.
+#	define FPL__LOG_DEFAULT_ADDITIONAL_FLAGS fplLogWriterFlags_None
+	//! Target the default writer for debug messages uses.
+#	define FPL__LOG_DEFAULT_DEBUG_FLAGS fplLogWriterFlags_StandardConsole
+#endif
+
 fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, const fplLogLevel level, const char *message) {
 	fplLogSettings *settings = &fpl__global__LogSettings;
 	if (!settings->isInitialized) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
-		settings->criticalWriter.console.logToError = true;
-		settings->criticalWriter.flags = fplLogWriterFlags_ErrorConsole | fplLogWriterFlags_DebugOut;
+		settings->criticalWriter.flags = fplLogWriterFlags_ErrorConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->errorWriter = settings->criticalWriter;
 		settings->warningWriter = settings->criticalWriter;
-		settings->infoWriter.flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+		settings->infoWriter.flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->verboseWriter = settings->infoWriter;
-		settings->debugWriter.flags = fplLogWriterFlags_DebugOut;
+		settings->debugWriter.flags = FPL__LOG_DEFAULT_DEBUG_FLAGS;
 #else
-		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | fplLogWriterFlags_DebugOut;
+		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 #endif
 		settings->maxLevel = fplLogLevel_Warning;
 		settings->isInitialized = true;
@@ -11584,6 +12434,10 @@ typedef FPL__FUNC_WIN32_SetCursor(fpl__win32_func_SetCursor);
 typedef FPL__FUNC_WIN32_GetCursor(fpl__win32_func_GetCursor);
 #define FPL__FUNC_WIN32_GetCursorPos(name) BOOL WINAPI name(LPPOINT lpPoint)
 typedef FPL__FUNC_WIN32_GetCursorPos(fpl__win32_func_GetCursorPos);
+#define FPL__FUNC_WIN32_SetCursorPos(name) BOOL WINAPI name(int X, int Y)
+typedef FPL__FUNC_WIN32_SetCursorPos(fpl__win32_func_SetCursorPos);
+#define FPL__FUNC_WIN32_TrackMouseEvent(name) BOOL WINAPI name(LPTRACKMOUSEEVENT lpEventTrack)
+typedef FPL__FUNC_WIN32_TrackMouseEvent(fpl__win32_func_TrackMouseEvent);
 #define FPL__FUNC_WIN32_WindowFromPoint(name) HWND WINAPI name(POINT Point)
 typedef FPL__FUNC_WIN32_WindowFromPoint(fpl__win32_func_WindowFromPoint);
 #define FPL__FUNC_WIN32_PtInRect(name) BOOL WINAPI name(CONST RECT *lprc, POINT pt)
@@ -11660,6 +12514,22 @@ typedef FPL__FUNC_WIN32_GetRawInputDeviceList(fpl__win32_func_GetRawInputDeviceL
 typedef FPL__FUNC_WIN32_GetRawInputDeviceInfoW(fpl__win32_func_GetRawInputDeviceInfoW);
 #define FPL__FUNC_WIN32_ClipCursor(name) BOOL WINAPI name(CONST RECT *lpRect)
 typedef FPL__FUNC_WIN32_ClipCursor(fpl__win32_func_ClipCursor);
+#define FPL__FUNC_WIN32_GetClipCursor(name) BOOL WINAPI name(LPRECT lpRect)
+typedef FPL__FUNC_WIN32_GetClipCursor(fpl__win32_func_GetClipCursor);
+#define FPL__FUNC_WIN32_GetRawInputData(name) UINT WINAPI name(HRAWINPUT hRawInput, UINT uiCommand, LPVOID pData, PUINT pcbSize, UINT cbSizeHeader)
+typedef FPL__FUNC_WIN32_GetRawInputData(fpl__win32_func_GetRawInputData);
+#define FPL__FUNC_WIN32_GetSystemMetrics(name) int WINAPI name(int nIndex)
+typedef FPL__FUNC_WIN32_GetSystemMetrics(fpl__win32_func_GetSystemMetrics);
+#define FPL__FUNC_WIN32_SetWindowsHookExW(name) HHOOK WINAPI name(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId)
+typedef FPL__FUNC_WIN32_SetWindowsHookExW(fpl__win32_func_SetWindowsHookExW);
+#define FPL__FUNC_WIN32_UnhookWindowsHookEx(name) BOOL WINAPI name(HHOOK hhk)
+typedef FPL__FUNC_WIN32_UnhookWindowsHookEx(fpl__win32_func_UnhookWindowsHookEx);
+#define FPL__FUNC_WIN32_CallNextHookEx(name) LRESULT WINAPI name(HHOOK hhk, int nCode, WPARAM wParam, LPARAM lParam)
+typedef FPL__FUNC_WIN32_CallNextHookEx(fpl__win32_func_CallNextHookEx);
+#define FPL__FUNC_WIN32_GetKeyboardState(name) BOOL WINAPI name(PBYTE lpKeyState)
+typedef FPL__FUNC_WIN32_GetKeyboardState(fpl__win32_func_GetKeyboardState);
+#define FPL__FUNC_WIN32_SetKeyboardState(name) BOOL WINAPI name(LPBYTE lpKeyState)
+typedef FPL__FUNC_WIN32_SetKeyboardState(fpl__win32_func_SetKeyboardState);
 #define FPL__FUNC_WIN32_PostQuitMessage(name) VOID WINAPI name(int nExitCode)
 typedef FPL__FUNC_WIN32_PostQuitMessage(fpl__win32_func_PostQuitMessage);
 #define FPL__FUNC_WIN32_CreateIconIndirect(name) HICON WINAPI name(PICONINFO piconinfo)
@@ -11775,6 +12645,8 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_MonitorFromPoint *MonitorFromPoint;
 	fpl__win32_func_MonitorFromWindow *MonitorFromWindow;
 	fpl__win32_func_GetCursorPos *GetCursorPos;
+	fpl__win32_func_SetCursorPos *SetCursorPos;
+	fpl__win32_func_TrackMouseEvent *TrackMouseEvent;
 	fpl__win32_func_WindowFromPoint *WindowFromPoint;
 	fpl__win32_func_ClientToScreen *ClientToScreen;
 	fpl__win32_func_PtInRect *PtInRect;
@@ -11782,6 +12654,14 @@ typedef struct fpl__Win32UserApi {
 	fpl__win32_func_GetRawInputDeviceList *GetRawInputDeviceList;
 	fpl__win32_func_GetRawInputDeviceInfoW *GetRawInputDeviceInfoW;
 	fpl__win32_func_ClipCursor *ClipCursor;
+	fpl__win32_func_GetClipCursor *GetClipCursor;
+	fpl__win32_func_GetRawInputData *GetRawInputData;
+	fpl__win32_func_GetSystemMetrics *GetSystemMetrics;
+	fpl__win32_func_SetWindowsHookExW *SetWindowsHookExW;
+	fpl__win32_func_UnhookWindowsHookEx *UnhookWindowsHookEx;
+	fpl__win32_func_CallNextHookEx *CallNextHookEx;
+	fpl__win32_func_GetKeyboardState *GetKeyboardState;
+	fpl__win32_func_SetKeyboardState *SetKeyboardState;
 	fpl__win32_func_PostQuitMessage *PostQuitMessage;
 	fpl__win32_func_CreateIconIndirect *CreateIconIndirect;
 	fpl__win32_func_GetKeyboardLayout *GetKeyboardLayout;
@@ -11877,6 +12757,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadCursorA, LoadCursorA);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadCursorW, LoadCursorW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetCursorPos, GetCursorPos);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetCursorPos, SetCursorPos);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_TrackMouseEvent, TrackMouseEvent);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_WindowFromPoint, WindowFromPoint);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadIconA, LoadIconA);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_LoadIconW, LoadIconW);
@@ -11915,6 +12797,14 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceList, GetRawInputDeviceList);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputDeviceInfoW, GetRawInputDeviceInfoW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_ClipCursor, ClipCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetClipCursor, GetClipCursor);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetRawInputData, GetRawInputData);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetSystemMetrics, GetSystemMetrics);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetWindowsHookExW, SetWindowsHookExW);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_UnhookWindowsHookEx, UnhookWindowsHookEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CallNextHookEx, CallNextHookEx);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardState, GetKeyboardState);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_SetKeyboardState, SetKeyboardState);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_PostQuitMessage, PostQuitMessage);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_CreateIconIndirect, CreateIconIndirect);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, userLibrary, userLibraryName, &wapi->user, fpl__win32_func_GetKeyboardLayout, GetKeyboardLayout);
@@ -12015,6 +12905,25 @@ typedef struct fpl__Win32WindowState {
 	int pixelFormat;
 	fpl_b32 isCursorActive;
 	fpl_b32 isFrameInteraction;
+	// WM_MOUSELEAVE is only sent once per TrackMouseEvent, so it is armed again with the next WM_MOUSEMOVE
+	fpl_b32 isTrackingMouseLeave;
+	// The mouse grab: the clip rectangle FPL applied in screen coordinates, whether the current clip rectangle is still that one and when it was applied last
+	RECT appliedClipRect;
+	fplMilliseconds lastClipRefreshTime;
+	fpl_b32 ownsClipRect;
+	// The mouse lock waits while the user works with the window frame: in the move/size and menu loops, and after a click that activated the window until its buttons are released
+	uint32_t modalLoopDepth;
+	fpl_b32 isActivationClickPending;
+	// The relative mouse mode: raw mouse input is registered for the window, and the previous position of a device that reports absolute positions (remote desktop, virtual machine tablets, pens)
+	double lastAbsoluteRawX;
+	double lastAbsoluteRawY;
+	fpl_b32 hasLastAbsoluteRaw;
+	fpl_b32 isRelativeMouseActive;
+	// The keyboard grab: the low level keyboard hook, the modifiers it swallows and therefore tracks itself, and the hooked keys that were down when it was installed
+	HHOOK keyboardHook;
+	fplKeyboardModifierFlags hookedModifiers;
+	fpl_b32 isAltGrControlDown;
+	uint8_t isDownBeforeHook[256];
 } fpl__Win32WindowState;
 #endif // FPL__ENABLE_WINDOW
 
@@ -12040,6 +12949,11 @@ typedef struct fpl__Win32WindowState {
 #	include <ctype.h> // isspace
 #	include <pwd.h> // getpwuid
 #	include <dirent.h> // DIR, dirent
+#	include <sys/wait.h> // waitpid, WIFEXITED
+#	include <poll.h> // poll, struct pollfd
+#	if defined(FPL_PLATFORM_LINUX)
+#		include <sys/prctl.h> // prctl, PR_SET_PDEATHSIG
+#	endif
 
 // Map st_atime/st_mtime/st_ctime to the POSIX.1-2008 nanosecond fields (st_atim.tv_sec, ...)
 // when available. On older POSIX or platforms without timespec stat fields, fall back to the
@@ -12065,10 +12979,11 @@ typedef struct fpl__Win32WindowState {
 #endif
 
 // Little macros for loading a library and getting proc address for POSIX
+// NOTE(final): These run inside loops over several library candidates (e.g. libpthread.so, libpthread.so.0), so a failed candidate is only a hint - the caller reports an error when no candidate could be loaded at all.
 #define FPL__POSIX_LOAD_LIBRARY_BREAK(mod, target, libName) \
 	(target) = dlopen(libName, FPL__POSIX_DL_LOADTYPE); \
 	if((target) == fpl_null) { \
-		FPL__WARNING(mod, "Failed loading library '%s'", (libName)); \
+		FPL_LOG_INFO(mod, "Unable to load library '%s'", (libName)); \
 		break; \
 	}
 
@@ -12076,7 +12991,7 @@ typedef struct fpl__Win32WindowState {
 #define FPL__POSIX_GET_FUNCTION_ADDRESS_BREAK(mod, libHandle, libName, target, type, name) \
 	(target)->name = (type *)dlsym(libHandle, #name); \
 	if ((target)->name == fpl_null) { \
-		FPL__WARNING(mod, "Failed getting procedure address '%s' from library '%s'", #name, libName); \
+		FPL_LOG_INFO(mod, "Unable to get procedure address '%s' from library '%s'", #name, libName); \
 		break; \
 	}
 #if !defined(FPL_NO_RUNTIME_LINKING)
@@ -12295,8 +13210,30 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 	return(result);
 }
 
+// Storing the value of a LC value, such as LC_ALL, LC_NUMERIC, etc.
+typedef char fpl__PosixLocaleName[256];
+
+typedef enum fpl__PosixLocaleFlags {
+	// No LC parameters was set
+	fpl__PosixLocaleFlags_None = 0,
+	// LC_ALL is set
+	fpl__PosixLocaleFlags_All = 1 << 0,
+	// LC_NUMERIC is set
+	fpl__PosixLocaleFlags_Numeric = 1 << 1,
+	// LC_TIME is set
+	fpl__PosixLocaleFlags_Time = 1 << 2,
+} fpl__PosixLocaleFlags;
+FPL_ENUM_AS_FLAGS_OPERATORS(fpl__PosixLocaleFlags);
+
+typedef struct fpl__PosixPreservedLocales {
+	fpl__PosixLocaleName allName;
+	fpl__PosixLocaleName numericName;
+	fpl__PosixLocaleName timeName;
+	fpl__PosixLocaleFlags flags;
+} fpl__PosixPreservedLocales;
+
 typedef struct fpl__PosixInitState {
-	int dummy;
+	fpl__PosixPreservedLocales preservedLocales;
 } fpl__PosixInitState;
 
 typedef struct fpl__PosixAppState {
@@ -12310,9 +13247,9 @@ typedef struct fpl__PosixAppState {
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
+
 typedef struct fpl__LinuxInitState {
-	char prevLocale[256];
-	fpl_b32 hasPrevLocale;
+	int dummy;
 } fpl__LinuxInitState;
 
 #if defined(FPL__ENABLE_INPUT_LINUX_JOYSTICK)
@@ -12345,6 +13282,12 @@ typedef struct fpl__InputLinuxJoystickGamepad {
 typedef struct fpl__InputBackendLinuxJoystick {
 	fpl__InputLinuxJoystickGamepad gamepads[FPL__INPUT_LINUX_JOYSTICK_MAX_JOYPAD_COUNT];
 	bool triedSlot[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
+	// Inode of the /dev/input/jsX node we last probed-and-rejected per slot. Opening a js node is expensive
+	// on some devices (gaming mice/virtual pads do heavy work on open -- measured 15-40ms each), so we must
+	// not re-open a node we already rejected every detection scan. Combined with triedSlot[], a slot whose
+	// current node inode still equals triedInode[] is skipped without the costly open(). The inode changes
+	// when the node is recreated (hotplug), which invalidates the skip and lets the new device be probed.
+	uint64_t triedInode[FPL__INPUT_LINUX_JOYSTICK_SCAN_COUNT];
 	uint64_t lastCheckTime;
 	bool isInitialized;
 } fpl__InputBackendLinuxJoystick;
@@ -12363,8 +13306,7 @@ typedef struct fpl__LinuxAppState {
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
 typedef struct fpl__UnixInitState {
-	char prevLocale[256];
-	fpl_b32 hasPrevLocale;
+	int dummy;
 } fpl__UnixInitState;
 
 typedef struct fpl__UnixAppState {
@@ -12454,12 +13396,35 @@ typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
 typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
 #define FPL__FUNC_X11_XMoveWindow(name) int name(fpl__X11_Display *display, fpl__X11_Window w, int x, int y)
 typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
+#define FPL__FUNC_X11_XDisplayKeycodes(name) fpl__X11_KeySym *name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
+typedef FPL__FUNC_X11_XDisplayKeycodes(fpl__func_x11_XDisplayKeycodes);
 #define FPL__FUNC_X11_XGetKeyboardMapping(name) fpl__X11_KeySym *name(fpl__X11_Display *display, fpl__X11_KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XLookupString(name) int name(fpl__X11_XKeyEvent* event_struct, char* buffer_return, int bytes_buffer, fpl__X11_KeySym* keysym_return, fpl__X11_XComposeStatus* status_in_out)
 typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
+#define FPL__FUNC_X11_XOpenIM(name) fpl__X11_XIM name(fpl__X11_Display *display, void *rdb, char *res_name, char *res_class)
+typedef FPL__FUNC_X11_XOpenIM(fpl__func_x11_XOpenIM);
+#define FPL__FUNC_X11_XCloseIM(name) fpl__X11_Status name(fpl__X11_XIM im)
+typedef FPL__FUNC_X11_XCloseIM(fpl__func_x11_XCloseIM);
+// XCreateIC is variadic: XIC XCreateIC(XIM im, ...) with NULL-terminated name/value pairs
+#define FPL__FUNC_X11_XCreateIC(name) fpl__X11_XIC name(fpl__X11_XIM im, ...)
+typedef FPL__FUNC_X11_XCreateIC(fpl__func_x11_XCreateIC);
+#define FPL__FUNC_X11_XDestroyIC(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XDestroyIC(fpl__func_x11_XDestroyIC);
+#define FPL__FUNC_X11_XSetICFocus(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XSetICFocus(fpl__func_x11_XSetICFocus);
+#define FPL__FUNC_X11_XUnsetICFocus(name) void name(fpl__X11_XIC ic)
+typedef FPL__FUNC_X11_XUnsetICFocus(fpl__func_x11_XUnsetICFocus);
+#define FPL__FUNC_X11_XSetLocaleModifiers(name) char *name(const char *modifier_list)
+typedef FPL__FUNC_X11_XSetLocaleModifiers(fpl__func_x11_XSetLocaleModifiers);
+#define FPL__FUNC_X11_Xutf8LookupString(name) int name(fpl__X11_XIC ic, fpl__X11_XKeyEvent *event, char *buffer_return, int bytes_buffer, fpl__X11_KeySym *keysym_return, fpl__X11_Status *status_return)
+typedef FPL__FUNC_X11_Xutf8LookupString(fpl__func_x11_Xutf8LookupString);
+#define FPL__FUNC_X11_XFilterEvent(name) fpl__X11_Bool name(fpl__X11_XEvent *event, fpl__X11_Window window)
+typedef FPL__FUNC_X11_XFilterEvent(fpl__func_x11_XFilterEvent);
 #define FPL__FUNC_X11_XSendEvent(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_Bool propagate, long event_mask, fpl__X11_XEvent *event_send)
 typedef FPL__FUNC_X11_XSendEvent(fpl__func_x11_XSendEvent);
+#define FPL__FUNC_X11_XMaxRequestSize(name) long name(fpl__X11_Display *display)
+typedef FPL__FUNC_X11_XMaxRequestSize(fpl__func_x11_XMaxRequestSize);
 #define FPL__FUNC_X11_XMatchVisualInfo(name) fpl__X11_Status name(fpl__X11_Display* display, int screen, int depth, int clazz, fpl__X11_XVisualInfo* vinfo_return)
 typedef FPL__FUNC_X11_XMatchVisualInfo(fpl__func_x11_XMatchVisualInfo);
 #define FPL__FUNC_X11_XCreateGC(name) fpl__X11_GC name(fpl__X11_Display* display, fpl__X11_Drawable d, unsigned long valuemask, fpl__X11_XGCValues* values)
@@ -12484,6 +13449,8 @@ typedef FPL__FUNC_X11_XChangeProperty(fpl__func_x11_XChangeProperty);
 typedef FPL__FUNC_X11_XDeleteProperty(fpl__func_x11_XDeleteProperty);
 #define FPL__FUNC_X11_XStringListToTextProperty(name) fpl__X11_Status name(char** list, int count, fpl__X11_XTextProperty* text_prop_return)
 typedef FPL__FUNC_X11_XStringListToTextProperty(fpl__func_x11_XStringListToTextProperty);
+#define FPL__FUNC_X11_Xutf8TextListToTextProperty(name) int name(fpl__X11_Display *display, char **list, int count, fpl__X11_XICCEncodingStyle style, fpl__X11_XTextProperty *text_prop_return)
+typedef FPL__FUNC_X11_Xutf8TextListToTextProperty(fpl__func_x11_Xutf8TextListToTextProperty);
 #define FPL__FUNC_X11_XSetWMIconName(name) void name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XTextProperty *text_prop)
 typedef FPL__FUNC_X11_XSetWMIconName(fpl__func_x11_XSetWMIconName);
 #define FPL__FUNC_X11_XSetWMName(name) void name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_XTextProperty *text_prop)
@@ -12494,6 +13461,24 @@ typedef FPL__FUNC_X11_XSetClassHint(fpl__func_x11_XSetClassHint);
 typedef FPL__FUNC_X11_XQueryKeymap(fpl__func_x11_XQueryKeymap);
 #define FPL__FUNC_X11_XQueryPointer(name) fpl__X11_Bool name(fpl__X11_Display* display, fpl__X11_Window w, fpl__X11_Window* root_return, fpl__X11_Window* child_return, int* root_x_return, int* root_y_return, int* win_x_return, int* win_y_return, unsigned int* mask_return)
 typedef FPL__FUNC_X11_XQueryPointer(fpl__func_x11_XQueryPointer);
+#define FPL__FUNC_X11_XWarpPointer(name) int name(fpl__X11_Display *display, fpl__X11_Window src_w, fpl__X11_Window dest_w, int src_x, int src_y, unsigned int src_width, unsigned int src_height, int dest_x, int dest_y)
+typedef FPL__FUNC_X11_XWarpPointer(fpl__func_x11_XWarpPointer);
+#define FPL__FUNC_X11_XGrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Window grab_window, fpl__X11_Bool owner_events, unsigned int event_mask, int pointer_mode, int keyboard_mode, fpl__X11_Window confine_to, fpl__X11_Cursor cursor, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XGrabPointer(fpl__func_x11_XGrabPointer);
+#define FPL__FUNC_X11_XUngrabPointer(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XUngrabPointer(fpl__func_x11_XUngrabPointer);
+#define FPL__FUNC_X11_XGrabKeyboard(name) int name(fpl__X11_Display *display, fpl__X11_Window grab_window, fpl__X11_Bool owner_events, int pointer_mode, int keyboard_mode, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XGrabKeyboard(fpl__func_x11_XGrabKeyboard);
+#define FPL__FUNC_X11_XUngrabKeyboard(name) int name(fpl__X11_Display *display, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XUngrabKeyboard(fpl__func_x11_XUngrabKeyboard);
+#define FPL__FUNC_X11_XQueryExtension(name) fpl__X11_Bool name(fpl__X11_Display *display, const char *name_str, int *major_opcode_return, int *first_event_return, int *first_error_return)
+typedef FPL__FUNC_X11_XQueryExtension(fpl__func_x11_XQueryExtension);
+#define FPL__FUNC_X11_XGetEventData(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_XGenericEventCookie *cookie)
+typedef FPL__FUNC_X11_XGetEventData(fpl__func_x11_XGetEventData);
+#define FPL__FUNC_X11_XFreeEventData(name) void name(fpl__X11_Display *display, fpl__X11_XGenericEventCookie *cookie)
+typedef FPL__FUNC_X11_XFreeEventData(fpl__func_x11_XFreeEventData);
+#define FPL__FUNC_X11_XNextRequest(name) unsigned long name(fpl__X11_Display *display)
+typedef FPL__FUNC_X11_XNextRequest(fpl__func_x11_XNextRequest);
 #define FPL__FUNC_X11_XConvertSelection(name) int name(fpl__X11_Display *display, fpl__X11_Atom selection, fpl__X11_Atom target, fpl__X11_Atom property, fpl__X11_Window requestor, fpl__X11_Time time)
 typedef FPL__FUNC_X11_XConvertSelection(fpl__func_x11_XConvertSelection);
 #define FPL__FUNC_X11_XInitThreads(name) fpl__X11_Status name(void)
@@ -12502,6 +13487,8 @@ typedef FPL__FUNC_X11_XInitThreads(fpl__func_x11_XInitThreads);
 typedef FPL__FUNC_X11_XSetErrorHandler(fpl__func_x11_XSetErrorHandler);
 #define FPL__FUNC_X11_XIconifyWindow(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, int screen_number)
 typedef FPL__FUNC_X11_XIconifyWindow(fpl__func_x11_XIconifyWindow);
+#define FPL__FUNC_X11_XWithdrawWindow(name) fpl__X11_Status name(fpl__X11_Display *display, fpl__X11_Window w, int screen_number)
+typedef FPL__FUNC_X11_XWithdrawWindow(fpl__func_x11_XWithdrawWindow);
 #define FPL__FUNC_X11_XAllocSizeHints(name) fpl__X11_XSizeHints *name(void)
 typedef FPL__FUNC_X11_XAllocSizeHints(fpl__func_x11_XAllocSizeHints);
 #define FPL__FUNC_X11_XSetWMNormalHints(name) void name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_XSizeHints *hints)
@@ -12516,6 +13503,8 @@ typedef FPL__FUNC_X11_XUndefineCursor(fpl__func_x11_XUndefineCursor);
 typedef FPL__FUNC_X11_XFreeCursor(fpl__func_x11_XFreeCursor);
 #define FPL__FUNC_X11_XCreateBitmapFromData(name) fpl__X11_Pixmap name(fpl__X11_Display *display, fpl__X11_Drawable d, const char *data, unsigned int width, unsigned int height)
 typedef FPL__FUNC_X11_XCreateBitmapFromData(fpl__func_x11_XCreateBitmapFromData);
+#define FPL__FUNC_X11_XFreePixmap(name) int name(fpl__X11_Display *display, fpl__X11_Pixmap pixmap)
+typedef FPL__FUNC_X11_XFreePixmap(fpl__func_x11_XFreePixmap);
 #define FPL__FUNC_X11_XCreatePixmapCursor(name) fpl__X11_Cursor name(fpl__X11_Display *display, fpl__X11_Pixmap source, fpl__X11_Pixmap mask, fpl__X11_XColor *foreground_color, fpl__X11_XColor *background_color, unsigned int x, unsigned int y)
 typedef FPL__FUNC_X11_XCreatePixmapCursor(fpl__func_x11_XCreatePixmapCursor);
 #define FPL__FUNC_X11_XSetSelectionOwner(name) int name(fpl__X11_Display *display, fpl__X11_Atom selection, fpl__X11_Window owner, fpl__X11_Time time)
@@ -12534,10 +13523,12 @@ extern FPL__FUNC_X11_XAllocSizeHints(XAllocSizeHints);
 extern FPL__FUNC_X11_XChangeProperty(XChangeProperty);
 extern FPL__FUNC_X11_XCheckTypedWindowEvent(XCheckTypedWindowEvent);
 extern FPL__FUNC_X11_XCloseDisplay(XCloseDisplay);
+extern FPL__FUNC_X11_XCloseIM(XCloseIM);
 extern FPL__FUNC_X11_XConvertSelection(XConvertSelection);
 extern FPL__FUNC_X11_XCreateBitmapFromData(XCreateBitmapFromData);
 extern FPL__FUNC_X11_XCreateColormap(XCreateColormap);
 extern FPL__FUNC_X11_XCreateGC(XCreateGC);
+extern FPL__FUNC_X11_XCreateIC(XCreateIC);
 extern FPL__FUNC_X11_XCreateImage(XCreateImage);
 extern FPL__FUNC_X11_XCreatePixmap(XCreatePixmap);
 extern FPL__FUNC_X11_XCreatePixmapCursor(XCreatePixmapCursor);
@@ -12548,28 +13539,35 @@ extern FPL__FUNC_X11_XDefaultScreen(XDefaultScreen);
 extern FPL__FUNC_X11_XDefaultVisual(XDefaultVisual);
 extern FPL__FUNC_X11_XDefineCursor(XDefineCursor);
 extern FPL__FUNC_X11_XDeleteProperty(XDeleteProperty);
+extern FPL__FUNC_X11_XDestroyIC(XDestroyIC);
 extern FPL__FUNC_X11_XDestroyWindow(XDestroyWindow);
 extern FPL__FUNC_X11_XEventsQueued(XEventsQueued);
+extern FPL__FUNC_X11_XFilterEvent(XFilterEvent);
 extern FPL__FUNC_X11_XFlush(XFlush);
 extern FPL__FUNC_X11_XFree(XFree);
 extern FPL__FUNC_X11_XFreeColormap(XFreeColormap);
 extern FPL__FUNC_X11_XFreeCursor(XFreeCursor);
+extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
+extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
 extern FPL__FUNC_X11_XGetKeyboardMapping(XGetKeyboardMapping);
 extern FPL__FUNC_X11_XGetSelectionOwner(XGetSelectionOwner);
 extern FPL__FUNC_X11_XGetWMNormalHints(XGetWMNormalHints);
 extern FPL__FUNC_X11_XGetWindowAttributes(XGetWindowAttributes);
 extern FPL__FUNC_X11_XGetWindowProperty(XGetWindowProperty);
 extern FPL__FUNC_X11_XIconifyWindow(XIconifyWindow);
+extern FPL__FUNC_X11_XWithdrawWindow(XWithdrawWindow);
 extern FPL__FUNC_X11_XInitThreads(XInitThreads);
 extern FPL__FUNC_X11_XInternAtom(XInternAtom);
 extern FPL__FUNC_X11_XLookupString(XLookupString);
 extern FPL__FUNC_X11_XMapRaised(XMapRaised);
+extern FPL__FUNC_X11_XMaxRequestSize(XMaxRequestSize);
 extern FPL__FUNC_X11_XMapWindow(XMapWindow);
 extern FPL__FUNC_X11_XMatchVisualInfo(XMatchVisualInfo);
 extern FPL__FUNC_X11_XMoveWindow(XMoveWindow);
 extern FPL__FUNC_X11_XNextEvent(XNextEvent);
 extern FPL__FUNC_X11_XOpenDisplay(XOpenDisplay);
+extern FPL__FUNC_X11_XOpenIM(XOpenIM);
 extern FPL__FUNC_X11_XPeekEvent(XPeekEvent);
 extern FPL__FUNC_X11_XPending(XPending);
 extern FPL__FUNC_X11_XPutImage(XPutImage);
@@ -12580,6 +13578,8 @@ extern FPL__FUNC_X11_XRootWindow(XRootWindow);
 extern FPL__FUNC_X11_XSelectInput(XSelectInput);
 extern FPL__FUNC_X11_XSendEvent(XSendEvent);
 extern FPL__FUNC_X11_XSetErrorHandler(XSetErrorHandler);
+extern FPL__FUNC_X11_XSetICFocus(XSetICFocus);
+extern FPL__FUNC_X11_XSetLocaleModifiers(XSetLocaleModifiers);
 extern FPL__FUNC_X11_XSetSelectionOwner(XSetSelectionOwner);
 extern FPL__FUNC_X11_XSetWMIconName(XSetWMIconName);
 extern FPL__FUNC_X11_XSetWMName(XSetWMName);
@@ -12588,10 +13588,22 @@ extern FPL__FUNC_X11_XSetWMNormalHints(XSetWMNormalHints);
 extern FPL__FUNC_X11_XSetWMProtocols(XSetWMProtocols);
 extern FPL__FUNC_X11_XStoreName(XStoreName);
 extern FPL__FUNC_X11_XStringListToTextProperty(XStringListToTextProperty);
+extern FPL__FUNC_X11_Xutf8TextListToTextProperty(Xutf8TextListToTextProperty);
 extern FPL__FUNC_X11_XSync(XSync);
 extern FPL__FUNC_X11_XTranslateCoordinates(XTranslateCoordinates);
 extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
+extern FPL__FUNC_X11_XWarpPointer(XWarpPointer);
+extern FPL__FUNC_X11_XGrabPointer(XGrabPointer);
+extern FPL__FUNC_X11_XUngrabPointer(XUngrabPointer);
+extern FPL__FUNC_X11_XGrabKeyboard(XGrabKeyboard);
+extern FPL__FUNC_X11_XUngrabKeyboard(XUngrabKeyboard);
+extern FPL__FUNC_X11_XQueryExtension(XQueryExtension);
+extern FPL__FUNC_X11_XGetEventData(XGetEventData);
+extern FPL__FUNC_X11_XFreeEventData(XFreeEventData);
+extern FPL__FUNC_X11_XNextRequest(XNextRequest);
 extern FPL__FUNC_X11_XUnmapWindow(XUnmapWindow);
+extern FPL__FUNC_X11_XUnsetICFocus(XUnsetICFocus);
+extern FPL__FUNC_X11_Xutf8LookupString(Xutf8LookupString);
 #endif
 
 typedef struct fpl__X11Api {
@@ -12622,8 +13634,18 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XGetWindowAttributes *XGetWindowAttributes;
 	fpl__func_x11_XResizeWindow *XResizeWindow;
 	fpl__func_x11_XMoveWindow *XMoveWindow;
+	fpl__func_x11_XDisplayKeycodes* XDisplayKeycodes;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XLookupString *XLookupString;
+	fpl__func_x11_XOpenIM *XOpenIM;
+	fpl__func_x11_XCloseIM *XCloseIM;
+	fpl__func_x11_XCreateIC *XCreateIC;
+	fpl__func_x11_XDestroyIC *XDestroyIC;
+	fpl__func_x11_XSetICFocus *XSetICFocus;
+	fpl__func_x11_XUnsetICFocus *XUnsetICFocus;
+	fpl__func_x11_XSetLocaleModifiers *XSetLocaleModifiers;
+	fpl__func_x11_Xutf8LookupString *Xutf8LookupString;
+	fpl__func_x11_XFilterEvent *XFilterEvent;
 	fpl__func_x11_XSendEvent *XSendEvent;
 	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
 	fpl__func_x11_XCreateGC *XCreateGC;
@@ -12633,19 +13655,31 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XCreateImage *XCreateImage;
 	fpl__func_x11_XCreatePixmap *XCreatePixmap;
 	fpl__func_x11_XSelectInput *XSelectInput;
+	fpl__func_x11_XMaxRequestSize *XMaxRequestSize;
 	fpl__func_x11_XGetWindowProperty *XGetWindowProperty;
 	fpl__func_x11_XChangeProperty *XChangeProperty;
 	fpl__func_x11_XDeleteProperty *XDeleteProperty;
 	fpl__func_x11_XStringListToTextProperty *XStringListToTextProperty;
+	fpl__func_x11_Xutf8TextListToTextProperty *Xutf8TextListToTextProperty;
 	fpl__func_x11_XSetWMIconName *XSetWMIconName;
 	fpl__func_x11_XSetWMName *XSetWMName;
 	fpl__func_x11_XSetClassHint *XSetClassHint;
 	fpl__func_x11_XQueryKeymap *XQueryKeymap;
 	fpl__func_x11_XQueryPointer *XQueryPointer;
+	fpl__func_x11_XWarpPointer *XWarpPointer;
+	fpl__func_x11_XGrabPointer *XGrabPointer;
+	fpl__func_x11_XUngrabPointer *XUngrabPointer;
+	fpl__func_x11_XGrabKeyboard *XGrabKeyboard;
+	fpl__func_x11_XUngrabKeyboard *XUngrabKeyboard;
+	fpl__func_x11_XQueryExtension *XQueryExtension;
+	fpl__func_x11_XGetEventData *XGetEventData;
+	fpl__func_x11_XFreeEventData *XFreeEventData;
+	fpl__func_x11_XNextRequest *XNextRequest;
 	fpl__func_x11_XConvertSelection *XConvertSelection;
 	fpl__func_x11_XInitThreads *XInitThreads;
 	fpl__func_x11_XSetErrorHandler *XSetErrorHandler;
 	fpl__func_x11_XIconifyWindow *XIconifyWindow;
+	fpl__func_x11_XWithdrawWindow *XWithdrawWindow;
 	fpl__func_x11_XAllocSizeHints *XAllocSizeHints;
 	fpl__func_x11_XSetWMNormalHints *XSetWMNormalHints;
 	fpl__func_x11_XGetWMNormalHints *XGetWMNormalHints;
@@ -12653,6 +13687,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XUndefineCursor *XUndefineCursor;
 	fpl__func_x11_XFreeCursor *XFreeCursor;
 	fpl__func_x11_XCreateBitmapFromData *XCreateBitmapFromData;
+	fpl__func_x11_XFreePixmap *XFreePixmap;
 	fpl__func_x11_XCreatePixmapCursor *XCreatePixmapCursor;
 	fpl__func_x11_XSetSelectionOwner *XSetSelectionOwner;
 	fpl__func_x11_XGetSelectionOwner *XGetSelectionOwner;
@@ -12709,8 +13744,18 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowAttributes, XGetWindowAttributes);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XResizeWindow, XResizeWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDisplayKeycodes, XDisplayKeycodes);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseIM, XCloseIM);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateIC, XCreateIC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDestroyIC, XDestroyIC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetICFocus, XSetICFocus);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUnsetICFocus, XUnsetICFocus);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetLocaleModifiers, XSetLocaleModifiers);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_Xutf8LookupString, Xutf8LookupString);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFilterEvent, XFilterEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
@@ -12720,19 +13765,31 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateImage, XCreateImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmap, XCreatePixmap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSelectInput, XSelectInput);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMaxRequestSize, XMaxRequestSize);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWindowProperty, XGetWindowProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XChangeProperty, XChangeProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDeleteProperty, XDeleteProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XStringListToTextProperty, XStringListToTextProperty);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_Xutf8TextListToTextProperty, Xutf8TextListToTextProperty);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMIconName, XSetWMIconName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMName, XSetWMName);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetClassHint, XSetClassHint);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryKeymap, XQueryKeymap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryPointer, XQueryPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWarpPointer, XWarpPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabPointer, XGrabPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabPointer, XUngrabPointer);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGrabKeyboard, XGrabKeyboard);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUngrabKeyboard, XUngrabKeyboard);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XQueryExtension, XQueryExtension);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetEventData, XGetEventData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeEventData, XFreeEventData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XNextRequest, XNextRequest);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XConvertSelection, XConvertSelection);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XInitThreads, XInitThreads);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetErrorHandler, XSetErrorHandler);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XIconifyWindow, XIconifyWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XWithdrawWindow, XWithdrawWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XAllocSizeHints, XAllocSizeHints);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMNormalHints, XSetWMNormalHints);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetWMNormalHints, XGetWMNormalHints);
@@ -12740,6 +13797,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XUndefineCursor, XUndefineCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeCursor, XFreeCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateBitmapFromData, XCreateBitmapFromData);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreePixmap, XFreePixmap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreatePixmapCursor, XCreatePixmapCursor);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetSelectionOwner, XSetSelectionOwner);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetSelectionOwner, XGetSelectionOwner);
@@ -12991,10 +14049,151 @@ fpl_internal bool fpl__LoadXineramaApi(fpl__XineramaApi *xineramaApi) {
 	return(result);
 }
 
+//
+// XInput2 Api (optional), raw mouse motion for the relative mouse mode. FPL_NO_X11_XINPUT2 leaves it out, the relative mode warps the cursor back to the window center then.
+//
+#if !defined(FPL_NO_X11_XINPUT2)
+#define FPL__X11_XI_RawMotion 17
+#define FPL__X11_XIAllMasterDevices 1
+#define FPL__X11_XIValuatorClass 2
+#define FPL__X11_XIModeAbsolute 1
+// Event masks of XInput2 are byte arrays with one bit per event type, like XIMaskLen(), XISetMask() and XIMaskIsSet()
+#define FPL__X11_XI_MASK_LENGTH(eventType) (((eventType) >> 3) + 1)
+#define FPL__X11_XI_SET_MASK(mask, bit) (((unsigned char *)(mask))[(bit) >> 3] |= (unsigned char)(1 << ((bit) & 7)))
+#define FPL__X11_XI_IS_MASK_SET(mask, bit) ((((const unsigned char *)(mask))[(bit) >> 3] & (1 << ((bit) & 7))) != 0)
+
+typedef struct fpl__X11_XIEventMask {
+	int deviceid;
+	int mask_len;
+	unsigned char *mask;
+} fpl__X11_XIEventMask;
+
+typedef struct fpl__X11_XIValuatorState {
+	int mask_len;
+	unsigned char *mask;
+	double *values;
+} fpl__X11_XIValuatorState;
+
+typedef struct fpl__X11_XIRawEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	int extension;
+	int evtype;
+	fpl__X11_Time time;
+	int deviceid;
+	int sourceid;
+	int detail;
+	int flags;
+	fpl__X11_XIValuatorState valuators;
+	double *raw_values;
+} fpl__X11_XIRawEvent;
+
+typedef struct fpl__X11_XIAnyClassInfo {
+	int type;
+	int sourceid;
+} fpl__X11_XIAnyClassInfo;
+
+typedef struct fpl__X11_XIValuatorClassInfo {
+	int type;
+	int sourceid;
+	int number;
+	fpl__X11_Atom label;
+	double min;
+	double max;
+	double value;
+	int resolution;
+	int mode;
+} fpl__X11_XIValuatorClassInfo;
+
+typedef struct fpl__X11_XIDeviceInfo {
+	int deviceid;
+	char *name;
+	int use;
+	int attachment;
+	fpl__X11_Bool enabled;
+	int num_classes;
+	fpl__X11_XIAnyClassInfo **classes;
+} fpl__X11_XIDeviceInfo;
+
+#define FPL__FUNC_XI_XIQueryVersion(name) fpl__X11_Status name(fpl__X11_Display *display, int *major_version_inout, int *minor_version_inout)
+typedef FPL__FUNC_XI_XIQueryVersion(fpl__func_xi_XIQueryVersion);
+#define FPL__FUNC_XI_XISelectEvents(name) int name(fpl__X11_Display *display, fpl__X11_Window win, fpl__X11_XIEventMask *masks, int num_masks)
+typedef FPL__FUNC_XI_XISelectEvents(fpl__func_xi_XISelectEvents);
+#define FPL__FUNC_XI_XIQueryDevice(name) fpl__X11_XIDeviceInfo *name(fpl__X11_Display *display, int deviceid, int *ndevices_return)
+typedef FPL__FUNC_XI_XIQueryDevice(fpl__func_xi_XIQueryDevice);
+#define FPL__FUNC_XI_XIFreeDeviceInfo(name) void name(fpl__X11_XIDeviceInfo *info)
+typedef FPL__FUNC_XI_XIFreeDeviceInfo(fpl__func_xi_XIFreeDeviceInfo);
+
+// Direct extern declarations for non-runtime-linking builds, FPL never includes the XInput2 header. The library exports C symbols.
+#if defined(FPL_NO_RUNTIME_LINKING)
+#if defined(__cplusplus)
+extern "C" {
+#endif
+extern FPL__FUNC_XI_XIQueryVersion(XIQueryVersion);
+extern FPL__FUNC_XI_XISelectEvents(XISelectEvents);
+extern FPL__FUNC_XI_XIQueryDevice(XIQueryDevice);
+extern FPL__FUNC_XI_XIFreeDeviceInfo(XIFreeDeviceInfo);
+#if defined(__cplusplus)
+}
+#endif
+#endif
+
+typedef struct fpl__XInput2Api {
+	void *libHandle;
+	fpl__func_xi_XIQueryVersion *XIQueryVersion;
+	fpl__func_xi_XISelectEvents *XISelectEvents;
+	fpl__func_xi_XIQueryDevice *XIQueryDevice;
+	fpl__func_xi_XIFreeDeviceInfo *XIFreeDeviceInfo;
+	fpl_b32 isLoaded;
+} fpl__XInput2Api;
+
+fpl_internal void fpl__UnloadXInput2Api(fpl__XInput2Api *xinput2Api) {
+	fplAssert(xinput2Api != fpl_null);
+	if (xinput2Api->libHandle != fpl_null) {
+		dlclose(xinput2Api->libHandle);
+	}
+	fplClearStruct(xinput2Api);
+}
+
+fpl_internal bool fpl__LoadXInput2Api(fpl__XInput2Api *xinput2Api) {
+	fplAssert(xinput2Api != fpl_null);
+	const char *libFileNames[] = {
+		"libXi.so.6",
+		"libXi.so",
+	};
+	bool result = false;
+	for (uint32_t index = 0; index < fplArrayCount(libFileNames); ++index) {
+		const char *libName = libFileNames[index];
+		fplClearStruct(xinput2Api);
+		do {
+			void *libHandle = fpl_null;
+			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_XINPUT2, libHandle, libName);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIQueryVersion, XIQueryVersion);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XISelectEvents, XISelectEvents);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIQueryDevice, XIQueryDevice);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_XINPUT2, libHandle, libName, xinput2Api, fpl__func_xi_XIFreeDeviceInfo, XIFreeDeviceInfo);
+			xinput2Api->libHandle = libHandle;
+			xinput2Api->isLoaded = true;
+			result = true;
+		} while (0);
+		if (result) {
+			break;
+		}
+		fpl__UnloadXInput2Api(xinput2Api);
+	}
+	return(result);
+}
+#endif // !FPL_NO_X11_XINPUT2
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
 	fpl__XrandRApi xrandr;
 	fpl__XineramaApi xinerama;
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__XInput2Api xinput2;
+#endif
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -13004,23 +14203,24 @@ typedef struct fpl__X11WindowStateInfo {
 	fplWindowSize size;
 } fpl__X11WindowStateInfo;
 
-typedef struct fpl__X11Xdnd {
-	int version;
-	fpl__X11_Window source;
-	fpl__X11_Atom format;
-} fpl__X11Xdnd;
-
-typedef struct fpl__X11WindowState {
-	fpl__X11WindowStateInfo lastWindowStateInfo;
-	fpl__X11_Colormap colorMap;
-	fpl__X11_Display *display;
-	fpl__X11Xdnd xdnd;
+// The actual window handles
+typedef struct fpl__X11WindowCore {
 	fpl__X11_Window root;
 	fpl__X11_Window window;
 	fpl__X11_Visual *visual;
+} fpl__X11WindowCore;
+
+// ICCCM / basic window-manager + type atoms
+typedef struct fpl__X11WMAtoms {
 	fpl__X11_Atom wmProtocols;
 	fpl__X11_Atom wmDeleteWindow;
 	fpl__X11_Atom wmState;
+	fpl__X11_Atom motifWMHints;
+	fpl__X11_Atom utf8String;
+} fpl__X11WMAtoms;
+
+// EWMH _NET_WM_* atoms
+typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netWMPing;
 	fpl__X11_Atom netWMState;
 	fpl__X11_Atom netWMStateFocused;
@@ -13032,9 +14232,14 @@ typedef struct fpl__X11WindowState {
 	fpl__X11_Atom netWMIcon;
 	fpl__X11_Atom netWMName;
 	fpl__X11_Atom netWMIconName;
-	fpl__X11_Atom utf8String;
-	fpl__X11_Atom motifWMHints;
-	// drag and drop
+	fpl__X11_Atom netWMStateAbove;
+} fpl__X11NetWMAtoms;
+
+// Drag and drop runtime state + atoms
+typedef struct fpl__X11XdndState {
+	int version;
+	fpl__X11_Window source;
+	fpl__X11_Atom format;
 	fpl__X11_Atom xdndAware;
 	fpl__X11_Atom xdndEnter;
 	fpl__X11_Atom xdndPosition;
@@ -13045,18 +14250,117 @@ typedef struct fpl__X11WindowState {
 	fpl__X11_Atom xdndSelection;
 	fpl__X11_Atom xdndTypeList;
 	fpl__X11_Atom textUriList;
-	// Window styles
-	fpl__X11_Atom netWMStateAbove;
-	// Cursor
-	fpl__X11_Cursor invisibleCursor;
-	bool cursorEnabled;
-	// Clipboard
+} fpl__X11XdndState;
+
+//! How many clipboard transfers to other applications may be served in chunks at the same time
+#define FPL__X11_MAX_CLIPBOARD_SENDS 4
+//! Alignment for every dynamically allocated clipboard buffer
+#define FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT 16
+//! How long one chunked clipboard transfer may be idle, before its slot is taken back from a receiver that went away
+#define FPL__X11_CLIPBOARD_TRANSFER_TIMEOUT_MS 10000
+//! How long the clipboard waits for the owner of the selection to answer
+#define FPL__X11_CLIPBOARD_RECEIVE_TIMEOUT_MS 500
+
+// One outgoing clipboard transfer that is served in chunks, because the text does not fit into a single X11 request (INCR protocol)
+typedef struct fpl__X11ClipboardSend {
+	// The text carried by this transfer, a snapshot of its own because a fplClipboardSetText in the middle of it must not pull the memory away
+	char *text;
+	size_t textLength;
+	size_t sentLength;
+	fplMilliseconds lastActivityTime;
+	fpl__X11_Window requestor;
+	fpl__X11_Atom property;
+	fpl__X11_Atom target;
+	bool isActive;
+} fpl__X11ClipboardSend;
+
+// Clipboard atoms + the owned text, which has no size limit and lives in dynamic memory
+typedef struct fpl__X11ClipboardState {
+	fpl__X11ClipboardSend sends[FPL__X11_MAX_CLIPBOARD_SENDS];
 	fpl__X11_Atom clipboardAtom;
 	fpl__X11_Atom targetsAtom;
 	fpl__X11_Atom incrAtom;
 	fpl__X11_Atom selectionPropAtom;
-	char clipboardOut[FPL_MAX_BUFFER_LENGTH];
-	size_t clipboardOutLen;
+	char *outgoingText;
+	size_t outgoingLength;
+} fpl__X11ClipboardState;
+
+// Cursor visibility state
+typedef struct fpl__X11CursorState {
+	fpl__X11_Cursor invisibleCursor;
+	bool cursorEnabled;
+} fpl__X11CursorState;
+
+// Input method / input context (develop-only, issue #194)
+typedef struct fpl__X11IMState {
+	fpl__X11_XIM xim;   // input method (may be 0 if unavailable)
+	fpl__X11_XIC xic;   // input context (may be 0 if unavailable)
+	// The time of the last press of each key code the input method took, its button is reported already.
+	// An input method in its own process (XIM of ibus or fcitx) gives back a key it does not use with the same time, only its text is missing then.
+	fpl__X11_Time filteredPressTimes[256];
+} fpl__X11IMState;
+
+// Colormap + ownership flag
+typedef struct fpl__X11ColormapState {
+	fpl__X11_Colormap colorMap;
+	bool ownsColorMap;   // true only when we created the colormap (custom-visual path); a default colormap must not be freed
+} fpl__X11ColormapState;
+
+#if !defined(FPL_NO_X11_XINPUT2)
+// Raw motion comes per source device, so absolute devices (tablets, virtual machine tablets) are remembered with their range and previous value
+#define FPL__X11_XINPUT2_MAX_DEVICES 8
+#define FPL__X11_XINPUT2_AXIS_COUNT 2
+typedef struct fpl__X11XInput2Device {
+	double minimum[FPL__X11_XINPUT2_AXIS_COUNT];
+	double maximum[FPL__X11_XINPUT2_AXIS_COUNT];
+	double previous[FPL__X11_XINPUT2_AXIS_COUNT];
+	int deviceId;
+	bool isAbsolute[FPL__X11_XINPUT2_AXIS_COUNT];
+	bool hasPrevious[FPL__X11_XINPUT2_AXIS_COUNT];
+} fpl__X11XInput2Device;
+#endif
+
+// The relative mouse mode: raw motion from XInput2 when the server has it, otherwise every motion is warped back to the window center
+typedef struct fpl__X11RelativeMouseState {
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__X11XInput2Device devices[FPL__X11_XINPUT2_MAX_DEVICES];
+	uint32_t deviceCount;
+	uint32_t nextDeviceSlot;
+	int xinput2Opcode;
+	int rootWidth;
+	int rootHeight;
+	bool isXInput2Checked;
+	bool isXInput2Available;
+	bool isRawMotionSelected;
+#endif
+	// Warp fallback: the serial of the last warp to the center, motion events from before it are relative to the previous motion, the ones after it to the center
+	unsigned long pendingWarpSerial;
+	// Client size for the warp center. The tracked window info is still empty when the first FocusIn comes, so the size is asked for at the start and follows ConfigureNotify.
+	int32_t clientWidth;
+	int32_t clientHeight;
+	int32_t warpCenterX;
+	int32_t warpCenterY;
+	int32_t lastMotionX;
+	int32_t lastMotionY;
+	// Root position of the window origin at the previous motion. A motion that sees another origin comes from a moved window, the server pushed the confined pointer along.
+	int32_t windowOriginX;
+	int32_t windowOriginY;
+	bool isWarpPending;
+	bool isActive;
+} fpl__X11RelativeMouseState;
+
+typedef struct fpl__X11WindowState {
+	fpl__X11WindowStateInfo lastWindowStateInfo;
+	fpl__X11RelativeMouseState relativeMouse;
+	fpl__X11ColormapState colormap;
+	fpl__X11_Display *display;
+	fpl__X11WindowCore core;
+	fpl__X11WMAtoms wm;
+	fpl__X11NetWMAtoms netWM;
+	fpl__X11XdndState xdnd;
+	fpl__X11ClipboardState clipboard;
+	fpl__X11CursorState cursor;
+	fpl__X11IMState im;
 	int screen;
 	int colorDepth;
 } fpl__X11WindowState;
@@ -13150,12 +14454,62 @@ typedef struct {
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
 
 #if defined(FPL__ENABLE_WINDOW)
+// The one mouse state the platforms apply, made from the mouse grab and the relative mouse request
+typedef enum fpl__MouseLockState {
+	fpl__MouseLockState_Free = 0,
+	fpl__MouseLockState_Confined,
+	fpl__MouseLockState_Relative,
+} fpl__MouseLockState;
+
+// Keyboard grab, mouse grab, relative mouse mode and the base for the move deltas
+typedef struct fpl__InputGrabState {
+	// Requested by the user, kept while the window has no focus
+	fpl_b32 requestedMouseGrab;
+	fpl_b32 requestedRelativeMouse;
+	fpl_b32 requestedKeyboardGrab;
+	// What is applied at the operating system right now
+	fpl__MouseLockState appliedMouseLock;
+	fpl_b32 appliedKeyboardGrab;
+	// Position of the previous move event, the base for the deltas of the next one
+	int32_t lastMoveX;
+	int32_t lastMoveY;
+	fpl_b32 hasLastMove;
+	// Cursor position where the relative mode started, all mouse events carry it while the mode is active and the cursor returns there
+	int32_t frozenX;
+	int32_t frozenY;
+	// Fractional parts of the raw relative movement that do not add up to a whole count yet
+	double remainderX;
+	double remainderY;
+	// A grab the operating system refused for now, because another program holds it, is tried again while pumping the events
+	fplMilliseconds nextRetryTimeMilliseconds;
+	fpl_b32 isRetryPending;
+} fpl__InputGrabState;
+
+// Number of key state slots, one per physical key: X11 uses the key code as the slot, Win32 the scan code (see fpl__Win32GetKeyStateSlot())
+#define FPL__KEY_STATE_SLOT_COUNT 0x300
+
 typedef struct {
 	fplKey keyMap[256];
-	fplButtonState keyStates[256];
+	// Pressed state of each physical key, so two keys with the same key code (left and right Shift on Win32) do not share it
+	fplButtonState keyStates[FPL__KEY_STATE_SLOT_COUNT];
+	// The key code and the scan code of the last event of each slot, the release on focus loss reports them
+	uint64_t keyCodes[FPL__KEY_STATE_SLOT_COUNT];
+	uint32_t keyScanCodes[FPL__KEY_STATE_SLOT_COUNT];
 	uint64_t keyPressTimes[256];
 	fplButtonState mouseStates[5];
+	fpl__InputGrabState inputGrab;
 	fpl_b32 isRunning;
+	// Whether the cursor is over the client area, the enter and leave events are only sent when this changes
+	fpl_b32 isMouseInside;
+	// Set by fplSetWindowVisibility() or initialVisibility, the window is not shown and not managed by the window manager
+	fpl_b32 isHidden;
+	// Tracked from the focus and window state changes, a grab is only active while the window has the focus and is not minimized
+	fpl_b32 hasFocus;
+	fpl_b32 isMinimized;
+	// Set by the platform while the user works with the window frame (Win32 move/size loop, a click that activated the window), the mouse is not locked then
+	fpl_b32 isMouseLockSuspended;
+	// The state a hidden window gets when it is shown, fplWindowState_Unknown when there is nothing to apply
+	fplWindowState pendingState;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
@@ -13176,6 +14530,8 @@ typedef enum fpl__NativeInputEventKind {
 	fpl__NativeInputEventKind_None = 0,
 	fpl__NativeInputEventKind_Win32Msg,
 	fpl__NativeInputEventKind_X11Event,
+	// A key press the X11 input method took for a composition (a dead key or the key that ends it), it gives the key button but no text
+	fpl__NativeInputEventKind_X11FilteredKeyEvent,
 	fpl__NativeInputEventKind_Custom,
 } fpl__NativeInputEventKind;
 
@@ -13592,11 +14948,12 @@ fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vi
 // window-only block below) so the no-window input backends can push events directly without
 // requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
 // + repeat tracking on top of these primitives.
-fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Button;
 	newEvent.keyboard.keyCode = keyCode;
+	newEvent.keyboard.scanCode = scanCode;
 	newEvent.keyboard.modifiers = modifiers;
 	newEvent.keyboard.buttonState = buttonState;
 	newEvent.keyboard.mappedKey = mappedKey;
@@ -13623,10 +14980,10 @@ fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, co
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
-	newEvent.mouse.type = fplMouseEventType_Wheel;
+	newEvent.mouse.type = wheelType;
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
@@ -13634,13 +14991,15 @@ fpl_internal void fpl__PushMouseWheelEvent(const int32_t x, const int32_t y, con
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y) {
+fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y, const int32_t deltaX, const int32_t deltaY) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Move;
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
+	newEvent.mouse.deltaX = deltaX;
+	newEvent.mouse.deltaY = deltaY;
 	fpl__PushInternalEvent(&newEvent);
 }
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -13693,7 +15052,21 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint64_t keyCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
+// PC scan codes of set 1 that fplKeyboardEvent.scanCode reports, the platforms make them from their own codes
+#define FPL__SCANCODE_EXTENDED_PREFIX 0xE000
+#define FPL__SCANCODE_LEFT_SHIFT 0x2A
+#define FPL__SCANCODE_RIGHT_SHIFT 0x36
+#define FPL__SCANCODE_LEFT_WIN 0xE05B
+#define FPL__SCANCODE_RIGHT_WIN 0xE05C
+#define FPL__SCANCODE_NUM_LOCK 0x45
+#define FPL__SCANCODE_PAUSE 0xE11D
+#define FPL__SCANCODE_PRINT 0xE037
+// The keyboard sends Print with Alt as SysRq and Pause with Ctrl as Break, they are the same physical keys
+#define FPL__SCANCODE_ALT_PRINT 0x54
+#define FPL__SCANCODE_CTRL_PAUSE 0xE046
+
+// The key slot stands for the physical key and keeps its pressed state, see FPL__KEY_STATE_SLOT_COUNT
+fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windowState, const uint64_t time, const uint32_t keySlot, const uint64_t keyCode, const uint32_t scanCode, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState, const bool force) {
 #if defined(FPL_LOG_KEY_EVENTS)
 	const char *buttonStateName = "";
 	if (buttonState == fplButtonState_Press)
@@ -13706,22 +15079,29 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 #endif
 
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+	bool isValidSlot = keySlot < fplArrayCount(windowState->keyStates);
 	bool repeat = false;
 	if (force) {
 		repeat = (buttonState == fplButtonState_Repeat);
-		windowState->keyStates[keyCode] = buttonState;
+		if (isValidSlot) {
+			windowState->keyStates[keySlot] = buttonState;
+		}
 	} else {
-		if (keyCode < fplArrayCount(windowState->keyStates)) {
-			if ((buttonState == fplButtonState_Release) && (windowState->keyStates[keyCode] == fplButtonState_Release)) {
+		if (isValidSlot) {
+			if ((buttonState == fplButtonState_Release) && (windowState->keyStates[keySlot] == fplButtonState_Release)) {
 				return;
 			}
-			if ((buttonState == fplButtonState_Press) && (windowState->keyStates[keyCode] >= fplButtonState_Press)) {
+			if ((buttonState == fplButtonState_Press) && (windowState->keyStates[keySlot] >= fplButtonState_Press)) {
 				repeat = true;
 			}
-			windowState->keyStates[keyCode] = buttonState;
+			windowState->keyStates[keySlot] = buttonState;
 		}
 	}
-	fpl__PushKeyboardButtonEvent(keyCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
+	if (isValidSlot) {
+		windowState->keyCodes[keySlot] = keyCode;
+		windowState->keyScanCodes[keySlot] = scanCode;
+	}
+	fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
 fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
@@ -13729,20 +15109,80 @@ fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *window
 	fpl__PushKeyboardInputEvent(textCode, mappedKey);
 }
 
+// In the relative mode the cursor sits somewhere hidden, so the mouse events carry the position where the mode started
+fpl_internal void fpl__GetReportedMousePosition(const fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, int32_t *outX, int32_t *outY) {
+	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	if (inputGrab->appliedMouseLock == fpl__MouseLockState_Relative) {
+		*outX = inputGrab->frozenX;
+		*outY = inputGrab->frozenY;
+	} else {
+		*outX = x;
+		*outY = y;
+	}
+}
+
 fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	if (mouseButton < fplArrayCount(windowState->mouseStates)) {
 		windowState->mouseStates[(int)mouseButton] = buttonState;
 	}
-	fpl__PushMouseButtonEvent(x, y, mouseButton, buttonState);
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, buttonState);
 }
 
 fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
-	fpl__PushMouseMoveEvent(x, y);
+	fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	// The relative mode reports the raw device movement instead, the cursor movement is accelerated and ends at the edges
+	if (inputGrab->appliedMouseLock == fpl__MouseLockState_Relative) {
+		return;
+	}
+	int32_t deltaX = 0;
+	int32_t deltaY = 0;
+	if (inputGrab->hasLastMove) {
+		deltaX = x - inputGrab->lastMoveX;
+		deltaY = y - inputGrab->lastMoveY;
+	}
+	inputGrab->lastMoveX = x;
+	inputGrab->lastMoveY = y;
+	inputGrab->hasLastMove = true;
+	fpl__PushMouseMoveEvent(x, y, deltaX, deltaY);
 }
 
-fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const float wheelDelta) {
-	fpl__PushMouseWheelEvent(x, y, wheelDelta);
+// The wheel type is fplMouseEventType_Wheel or fplMouseEventType_HorizontalWheel
+fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowState, const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fpl__PushMouseWheelEvent(wheelType, reportedX, reportedY, wheelDelta);
 }
+
+// Only the keyboard and mouse backends of the input system report the crossings
+#if defined(FPL__ENABLE_INPUT_WIN32) || defined(FPL__ENABLE_INPUT_X11)
+fpl_internal void fpl__PushMouseCrossingEvent(const fplMouseEventType type, const int32_t x, const int32_t y) {
+	fplEvent newEvent = fplZeroInit;
+	newEvent.type = fplEventType_Mouse;
+	newEvent.mouse.type = type;
+	newEvent.mouse.mouseButton = fplMouseButtonType_None;
+	newEvent.mouse.mouseX = x;
+	newEvent.mouse.mouseY = y;
+	fpl__PushInternalEvent(&newEvent);
+}
+
+// Only a change is reported, so enter and leave always take turns. The mouse grab and the relative mode keep the cursor inside, the only crossing then is the enter when they pull the cursor in.
+fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y, const bool isInside) {
+	bool wasInside = windowState->isMouseInside != 0;
+	if (wasInside == isInside) {
+		return;
+	}
+	windowState->isMouseInside = isInside;
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
+	fplMouseEventType type = isInside ? fplMouseEventType_Enter : fplMouseEventType_Leave;
+	fpl__PushMouseCrossingEvent(type, reportedX, reportedY);
+}
+#endif // FPL__ENABLE_INPUT_WIN32 || FPL__ENABLE_INPUT_X11
 
 // @NOTE(final): Callback used for setup a window before it is created
 #define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
@@ -13947,32 +15387,143 @@ fpl_internal void fpl__ArgumentMaxError(const char *funcName, const int line, co
 	}
 
 #if !defined(FPL_MAX_THREAD_COUNT)
-	// Maximum number of active threads you can have in your process
+	// Number of thread slots per internal bucket, the number of live threads is no longer limited to this,
+	// because the thread storage grows by appending more buckets on demand.
 #	define FPL_MAX_THREAD_COUNT 256
 #endif
 
-#if !defined(FPL_MAX_SIGNAL_COUNT)
-	// Maximum number of active signals you can wait for
-#	define FPL_MAX_SIGNAL_COUNT 256
+#if !defined(FPL_MAX_THREAD_WAIT_COUNT)
+	// Maximum number of threads you can wait for in a single fplThreadWaitForAll/fplThreadWaitForAny call.
+	// This is a per-call limit only and has nothing to do with how many threads you can create.
+#	define FPL_MAX_THREAD_WAIT_COUNT 256
 #endif
+
+// @DEPRECATED(final): FPL_MAX_SIGNAL_COUNT was a misnomer, signals are caller-owned and never stored by the
+// library, so the value only ever bounded a single multi-wait call. Honor a legacy user override here.
+#if defined(FPL_MAX_SIGNAL_COUNT) && !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+#	define FPL_MAX_SIGNAL_WAIT_COUNT FPL_MAX_SIGNAL_COUNT
+#endif
+
+#if !defined(FPL_MAX_SIGNAL_WAIT_COUNT)
+	// Maximum number of signals you can wait for in a single fplSignalWaitForAll/fplSignalWaitForAny call.
+	// On Windows the effective ceiling is MAXIMUM_WAIT_OBJECTS (64), because WaitForMultipleObjects is used.
+#	define FPL_MAX_SIGNAL_WAIT_COUNT 256
+#endif
+
+#if !defined(FPL_MAX_SIGNAL_COUNT)
+	// @DEPRECATED(final): Kept only as an alias for source compatibility, use FPL_MAX_SIGNAL_WAIT_COUNT instead.
+#	define FPL_MAX_SIGNAL_COUNT FPL_MAX_SIGNAL_WAIT_COUNT
+#endif
+
+// Number of thread slots allocated per bucket, also serves as the initial capacity.
+// Threads are no longer bounded by a single fixed array, buckets are appended on demand.
+#define FPL__THREAD_BUCKET_CAPACITY FPL_MAX_THREAD_COUNT
+
+// A single slab of thread handles, linked into a list owned by fpl__ThreadState.
+typedef struct fpl__ThreadBucket {
+	struct fpl__ThreadBucket *next;
+	size_t capacity;
+	fplThreadHandle *threads;
+} fpl__ThreadBucket;
 
 typedef struct fpl__ThreadState {
 	fplThreadHandle mainThread;
-	fplThreadHandle threads[FPL_MAX_THREAD_COUNT];
+	fpl__ThreadBucket *buckets;
+	volatile uint32_t lock;
 } fpl__ThreadState;
 
 fpl_globalvar fpl__ThreadState fpl__global__ThreadState = fplZeroInit;
 
+// Simple atomic spinlock guarding the bucket list, no init/destroy needed and the critical section is tiny.
+fpl_internal void fpl__LockThreadState(fpl__ThreadState *state) {
+	uint32_t previous = fplAtomicCompareAndSwapU32(&state->lock, 0, 1);
+	while (previous != 0) {
+		previous = fplAtomicCompareAndSwapU32(&state->lock, 0, 1);
+	}
+}
+
+fpl_internal void fpl__UnlockThreadState(fpl__ThreadState *state) {
+	fplAtomicStoreU32(&state->lock, 0);
+}
+
+// Allocates and appends a new bucket of zero-initialized thread slots to the end of the list.
+// Returns the new bucket or null when memory allocation fails. Must be called while holding the lock.
+fpl_internal fpl__ThreadBucket *fpl__AppendThreadBucket(fpl__ThreadState *state) {
+	const size_t bucketCapacity = FPL__THREAD_BUCKET_CAPACITY;
+	const size_t bucketAlignment = 16;
+	fpl__ThreadBucket *newBucket = (fpl__ThreadBucket *)fpl__AllocateDynamicMemory(sizeof(fpl__ThreadBucket), bucketAlignment);
+	if (newBucket == fpl_null) {
+		return(fpl_null);
+	}
+	size_t threadsSize = sizeof(fplThreadHandle) * bucketCapacity;
+	fplThreadHandle *threadsArray = (fplThreadHandle *)fpl__AllocateDynamicMemory(threadsSize, bucketAlignment);
+	if (threadsArray == fpl_null) {
+		fpl__ReleaseDynamicMemory(newBucket);
+		return(fpl_null);
+	}
+	// The dynamic allocator may use a custom callback that does not zero, so clear explicitly.
+	// A zeroed slot has currentState == fplThreadState_Stopped (0), which marks it free.
+	fplMemoryClear(newBucket, sizeof(fpl__ThreadBucket));
+	fplMemoryClear(threadsArray, threadsSize);
+	newBucket->capacity = bucketCapacity;
+	newBucket->threads = threadsArray;
+	if (state->buckets == fpl_null) {
+		state->buckets = newBucket;
+	} else {
+		fpl__ThreadBucket *tail = state->buckets;
+		while (tail->next != fpl_null) {
+			tail = tail->next;
+		}
+		tail->next = newBucket;
+	}
+	return(newBucket);
+}
+
+// Frees all thread buckets and resets the container so the platform can be re-initialized cleanly.
+fpl_internal void fpl__FreeThreadStateBuckets(fpl__ThreadState *state) {
+	fpl__LockThreadState(state);
+	fpl__ThreadBucket *bucket = state->buckets;
+	while (bucket != fpl_null) {
+		fpl__ThreadBucket *next = bucket->next;
+		fpl__ReleaseDynamicMemory(bucket->threads);
+		fpl__ReleaseDynamicMemory(bucket);
+		bucket = next;
+	}
+	state->buckets = fpl_null;
+	fpl__UnlockThreadState(state);
+}
+
+// Finds a free thread slot and reserves it atomically, allocating a new bucket when none is free.
+// Reserving (Stopped -> Starting) under the lock prevents two concurrent creates from grabbing the same slot.
 fpl_internal fplThreadHandle *fpl__GetFreeThread(void) {
+	fpl__ThreadState *state = &fpl__global__ThreadState;
+	fpl__LockThreadState(state);
 	fplThreadHandle *result = fpl_null;
-	for (uint32_t index = 0; index < FPL_MAX_THREAD_COUNT; ++index) {
-		fplThreadHandle *thread = fpl__global__ThreadState.threads + index;
-		fplThreadState state = fplGetThreadState(thread);
-		if (state == fplThreadState_Stopped) {
-			result = thread;
-			break;
+	fpl__ThreadBucket *bucket = state->buckets;
+	while ((result == fpl_null) && (bucket != fpl_null)) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState slotState = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (slotState == fplThreadState_Stopped) {
+				result = thread;
+				break;
+			}
+		}
+		bucket = bucket->next;
+	}
+	if (result == fpl_null) {
+		fpl__ThreadBucket *appendedBucket = fpl__AppendThreadBucket(state);
+		if (appendedBucket != fpl_null) {
+			result = appendedBucket->threads + 0;
 		}
 	}
+	if (result != fpl_null) {
+		// The identifier is cleared before the slot is reserved, so a waiter on the previous thread sees
+		// right away that the slot does not belong to its thread anymore
+		fplAtomicStoreU64((volatile uint64_t *)&result->id, 0);
+		fplAtomicStoreU32((volatile uint32_t *)&result->currentState, (uint32_t)fplThreadState_Starting);
+	}
+	fpl__UnlockThreadState(state);
 	return(result);
 }
 
@@ -14434,27 +15985,25 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 #define FPL__MEM_SHIFT_32 2
 #define FPL__MEM_MASK_32 0x00000003
 #define FPL__MEM_SHIFT_16 1
-#define FPL__MEM_MASK_16 0x0000000
+#define FPL__MEM_MASK_16 0x00000001
 
 // Clearing memory in chunks
 #define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
 	do { \
-		size_t setBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T setValue = 0; \
-			for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
-				uint32_t bitShift = bytesIncrement * 8; \
-				setValue |= ((T)value << bitShift); \
-			} \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock < dataBlockEnd) { \
-				*dataBlock++ = setValue; \
-				setBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (size) >> (shift); \
+		const size_t tailBytes = (size) & (mask); \
+		T setValue = 0; \
+		for (uint32_t bytesIncrement = 0; bytesIncrement < sizeof(T); ++bytesIncrement) { \
+			uint32_t bitShift = bytesIncrement * 8; \
+			setValue |= ((T)value << bitShift); \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + setBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
+		T *dataBlock = (T *)(memory); \
+		T *dataBlockEnd = dataBlock + blockCount; \
+		while (dataBlock < dataBlockEnd) { \
+			*dataBlock++ = setValue; \
+		} \
+		uint8_t *data8 = (uint8_t *)dataBlockEnd; \
+		uint8_t *data8End = data8 + tailBytes; \
 		while (data8 < data8End) { \
 			*data8++ = value; \
 		} \
@@ -14462,17 +16011,15 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 
 #define FPL__MEMORY_CLEAR(T, memory, size, shift, mask) \
 	do { \
-		size_t clearBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			T *dataBlock = (T *)(memory); \
-			T *dataBlockEnd = (T *)(memory) + (size >> shift); \
-			while (dataBlock < dataBlockEnd) { \
-				*dataBlock++ = 0; \
-				clearBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (size) >> (shift); \
+		const size_t tailBytes = (size) & (mask); \
+		T *dataBlock = (T *)(memory); \
+		T *dataBlockEnd = dataBlock + blockCount; \
+		while (dataBlock < dataBlockEnd) { \
+			*dataBlock++ = 0; \
 		} \
-		uint8_t *data8 = (uint8_t *)memory + clearBytes; \
-		uint8_t *data8End = (uint8_t *)memory + size; \
+		uint8_t *data8 = (uint8_t *)dataBlockEnd; \
+		uint8_t *data8End = data8 + tailBytes; \
 		while (data8 < data8End) { \
 			*data8++ = 0; \
 		} \
@@ -14480,19 +16027,17 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 
 #define FPL__MEMORY_COPY(T, source, sourceSize, dest, shift, mask) \
 	do { \
-		size_t copiedBytes = 0; \
-		if (sizeof(T) > sizeof(uint8_t)) { \
-			const T *sourceDataBlock = (const T *)(source); \
-			const T *sourceDataBlockEnd = (const T *)(source) + (sourceSize >> shift); \
-			T *destDataBlock = (T *)(dest); \
-			while (sourceDataBlock < sourceDataBlockEnd) { \
-				*destDataBlock++ = *sourceDataBlock++; \
-				copiedBytes += sizeof(T); \
-			} \
+		const size_t blockCount = (sourceSize) >> (shift); \
+		const size_t tailBytes = (sourceSize) & (mask); \
+		const T *sourceDataBlock = (const T *)(source); \
+		const T *sourceDataBlockEnd = sourceDataBlock + blockCount; \
+		T *destDataBlock = (T *)(dest); \
+		while (sourceDataBlock < sourceDataBlockEnd) { \
+			*destDataBlock++ = *sourceDataBlock++; \
 		} \
-		const uint8_t *sourceData8 = (const uint8_t *)source + copiedBytes; \
-		const uint8_t *sourceData8End = (const uint8_t *)source + sourceSize; \
-		uint8_t *destData8 = (uint8_t *)dest + copiedBytes; \
+		const uint8_t *sourceData8 = (const uint8_t *)sourceDataBlockEnd; \
+		const uint8_t *sourceData8End = sourceData8 + tailBytes; \
+		uint8_t *destData8 = (uint8_t *)destDataBlock; \
 		while (sourceData8 < sourceData8End) { \
 			*destData8++ = *sourceData8++; \
 		} \
@@ -14502,11 +16047,13 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_SET(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, value);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_SET(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, value);
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
@@ -14522,11 +16069,13 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (size % 8 == 0) {
+	// A word size is only used when the address is aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (size % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_CLEAR(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (size % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_CLEAR(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
@@ -14543,11 +16092,13 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
-	if (sourceSize % 8 == 0) {
+	// A word size is only used when both addresses are aligned to it as well, not just the size
+	const uintptr_t alignmentBits = (uintptr_t)sourceMem | (uintptr_t)targetMem | (uintptr_t)sourceSize;
+	if (alignmentBits % sizeof(uint64_t) == 0) {
 		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
-	} else if (sourceSize % 4 == 0) {
+	} else if (alignmentBits % sizeof(uint32_t) == 0) {
 		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
-	} else if (sourceSize % 2 == 0) {
+	} else if (alignmentBits % sizeof(uint16_t) == 0) {
 		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
@@ -14789,7 +16340,13 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	}
 
 	if (hasAVX512Support) {
+		const uint32_t LEAF7_EBX_BIT_AVX512BW = 30;
+		const uint32_t LEAF7_EBX_BIT_AVX512VL = 31;
+		const uint32_t LEAF7_ECX_BIT_AVX512VBMI = 1;
 		outCaps->x86.hasAVX512 = fplIsBitSet(info7.ebx, 16);
+		outCaps->x86.hasAVX512BW = fplIsBitSet(info7.ebx, LEAF7_EBX_BIT_AVX512BW);
+		outCaps->x86.hasAVX512VL = fplIsBitSet(info7.ebx, LEAF7_EBX_BIT_AVX512VL);
+		outCaps->x86.hasAVX512VBMI = fplIsBitSet(info7.ecx, LEAF7_ECX_BIT_AVX512VBMI);
 	}
 
 	outCaps->x86.hasFMA3 = fplIsBitSet(info1.ecx, 12);
@@ -14801,8 +16358,15 @@ fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
 	outCaps->x86.hasADX = fplIsBitSet(info7.ebx, 19);
 	outCaps->x86.hasF16C = fplIsBitSet(info1.ecx, 29);
 
-	if (fplCPUID(0x80000001, &tempLeaf)) {
-		outCaps->x86.hasEM64T = fplIsBitSet(info1.edx, 29);
+	// Long mode is reported in the extended leaf, which only exists when the highest extended leaf covers it
+	const uint32_t EXTENDED_LEAF_MAX_FUNCTION_ID = 0x80000000;
+	const uint32_t EXTENDED_LEAF_FEATURES = 0x80000001;
+	const uint32_t EXTENDED_EDX_BIT_LONG_MODE = 29;
+	fplCPUIDLeaf extendedInfo0 = fplZeroInit;
+	if (fplCPUID(EXTENDED_LEAF_MAX_FUNCTION_ID, &extendedInfo0) && extendedInfo0.eax >= EXTENDED_LEAF_FEATURES) {
+		if (fplCPUID(EXTENDED_LEAF_FEATURES, &tempLeaf)) {
+			outCaps->x86.hasEM64T = fplIsBitSet(tempLeaf.edx, EXTENDED_EDX_BIT_LONG_MODE);
+		}
 	}
 
 	return(true);
@@ -15087,26 +16651,144 @@ fpl_common_api const fplThreadHandle *fplGetMainThread(void) {
 	return(result);
 }
 
-fpl_common_api size_t fplGetAvailableThreadCount(void) {
+fpl_common_api size_t fplGetTotalThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
 	size_t result = 0;
-	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
-		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
-		if (state == fplThreadState_Stopped) {
-			++result;
-		}
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		result += bucket->capacity;
+		bucket = bucket->next;
 	}
+	fpl__UnlockThreadState(threadState);
+	return(result);
+}
+
+fpl_common_api size_t fplGetAvailableThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
+	size_t result = 0;
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (state == fplThreadState_Stopped) {
+				++result;
+			}
+		}
+		bucket = bucket->next;
+	}
+	fpl__UnlockThreadState(threadState);
 	return(result);
 }
 
 fpl_common_api size_t fplGetUsedThreadCount(void) {
+	fpl__ThreadState *threadState = &fpl__global__ThreadState;
+	fpl__LockThreadState(threadState);
 	size_t result = 0;
-	for (size_t threadIndex = 0; threadIndex < FPL_MAX_THREAD_COUNT; ++threadIndex) {
-		fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&fpl__global__ThreadState.threads[threadIndex].currentState);
-		if (state != fplThreadState_Stopped) {
-			++result;
+	fpl__ThreadBucket *bucket = threadState->buckets;
+	while (bucket != fpl_null) {
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			fplThreadHandle *thread = bucket->threads + slotIndex;
+			fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			if (state != fplThreadState_Stopped) {
+				++result;
+			}
+		}
+		bucket = bucket->next;
+	}
+	fpl__UnlockThreadState(threadState);
+	return(result);
+}
+
+// Number of state checks a thread wait spins before it starts sleeping, so a short wait stays fast
+#define FPL__THREAD_WAIT_SPIN_COUNT 100
+// Number of milliseconds a thread wait sleeps between two state checks, after the spinning is over
+#define FPL__THREAD_WAIT_SLICE_MILLISECONDS 1
+
+// Waits until the specified thread has stopped. The wait is done on the state in the thread slot and never on the
+// native handle: a thread closes/releases its own handle when it ends and the slot may be handed to a new thread
+// right after that, so a waiter that touches the handle can hit a released handle or a completely different thread.
+// Returns false only when the timeout was exceeded.
+fpl_internal bool fpl__WaitForThreadStopped(fplThreadHandle *thread, const fplTimeoutValue timeout) {
+	if (thread == fpl_null) {
+		return(false);
+	}
+	// A slot that was handed to a new thread carries a new identifier, which is how the waiter notices
+	// that the thread it was waiting for is gone already
+	uint64_t waitedThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	size_t spinCount = 0;
+	for (;;) {
+		fplThreadState state = fplGetThreadState(thread);
+		if (state == fplThreadState_Stopped) {
+			return(true);
+		}
+		uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+		if (currentThreadId != waitedThreadId) {
+			return(true);
+		}
+		if (timeout != FPL_TIMEOUT_INFINITE) {
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - startTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				return(false);
+			}
+		}
+		if (spinCount < FPL__THREAD_WAIT_SPIN_COUNT) {
+			++spinCount;
+			fplThreadYield();
+		} else {
+			fplThreadSleep(FPL__THREAD_WAIT_SLICE_MILLISECONDS);
 		}
 	}
-	return(result);
+}
+
+// Waits until at least the requested number of threads has stopped
+fpl_internal bool fpl__WaitForThreadsStopped(fplThreadHandle **threads, const size_t minCount, const size_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
+	FPL__CheckArgumentNull(threads, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
+	const size_t actualStride = (stride > 0) ? stride : sizeof(fplThreadHandle *);
+	for (size_t index = 0; index < maxCount; ++index) {
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		if (thread == fpl_null) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%zu' are not allowed to be null", index);
+			return(false);
+		}
+	}
+	uint64_t waitedThreadIds[FPL_MAX_THREAD_WAIT_COUNT];
+	for (size_t index = 0; index < maxCount; ++index) {
+		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+		waitedThreadIds[index] = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+	}
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	size_t spinCount = 0;
+	for (;;) {
+		size_t stoppedCount = 0;
+		for (size_t index = 0; index < maxCount; ++index) {
+			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
+			fplThreadState state = fplGetThreadState(thread);
+			uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+			if ((state == fplThreadState_Stopped) || (currentThreadId != waitedThreadIds[index])) {
+				++stoppedCount;
+			}
+		}
+		if (stoppedCount >= minCount) {
+			return(true);
+		}
+		if (timeout != FPL_TIMEOUT_INFINITE) {
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - startTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				return(false);
+			}
+		}
+		if (spinCount < FPL__THREAD_WAIT_SPIN_COUNT) {
+			++spinCount;
+			fplThreadYield();
+		} else {
+			fplThreadSleep(FPL__THREAD_WAIT_SLICE_MILLISECONDS);
+		}
+	}
 }
 
 //
@@ -15173,25 +16855,35 @@ fpl_common_api size_t fplFileGetSizeFromHandle(const fplFileHandle *fileHandle) 
 
 fpl_common_api size_t fplExtractFilePath(const char *sourcePath, char *destPath, const size_t maxDestLen) {
 	FPL__CheckArgumentNull(sourcePath, 0);
-	size_t sourceLen = fplGetStringLength(sourcePath);
-	size_t result = 0;
-	if (sourceLen > 0) {
-		size_t pathLen = 0;
-		const char *chPtr = (const char *)sourcePath;
-		while (*chPtr) {
-			if (*chPtr == FPL_PATH_SEPARATOR) {
-				pathLen = (size_t)(chPtr - sourcePath);
-			}
-			++chPtr;
+	size_t pathLen = 0;
+	const char *lastSeparator = fpl_null;
+	const char *chPtr = (const char *)sourcePath;
+	while (*chPtr) {
+		if (*chPtr == FPL_PATH_SEPARATOR) {
+			lastSeparator = chPtr;
 		}
-		result = pathLen;
-		if (destPath != fpl_null) {
-			size_t requiredDestLen = pathLen + 1;
-			FPL__CheckArgumentMin(maxDestLen, requiredDestLen, 0);
-			fplCopyStringLen(sourcePath, pathLen, destPath, maxDestLen);
+		++chPtr;
+	}
+	if (lastSeparator != fpl_null) {
+		pathLen = (size_t)(lastSeparator - sourcePath);
+		// The separator of the root directory is kept, otherwise "/file" would become "" instead of "/"
+		bool isRootSeparator = pathLen == 0;
+#if defined(FPL_PLATFORM_WINDOWS)
+		const size_t driveColonIndex = 1;
+		const size_t driveRootSeparatorIndex = 2;
+		bool isDriveRootSeparator = pathLen == driveRootSeparatorIndex && sourcePath[driveColonIndex] == ':';
+		isRootSeparator = isRootSeparator || isDriveRootSeparator;
+#endif
+		if (isRootSeparator) {
+			pathLen += 1;
 		}
 	}
-	return(result);
+	if (destPath != fpl_null) {
+		size_t requiredDestLen = pathLen + 1;
+		FPL__CheckArgumentMin(maxDestLen, requiredDestLen, 0);
+		fplCopyStringLen(sourcePath, pathLen, destPath, maxDestLen);
+	}
+	return(pathLen);
 }
 
 fpl_common_api const char *fplExtractFileExtension(const char *sourcePath) {
@@ -15318,7 +17010,8 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 		const size_t len = fplGetStringLength(path);
 
-		if (i > 0 && len > 0 && !prevHasTrailingSep) {
+		// No separator in front of the first non-empty path, otherwise an empty first path would turn "file" into the absolute path "/file"
+		if (totalLen > 0 && len > 0 && !prevHasTrailingSep) {
 			totalLen += 1; // separator
 		}
 
@@ -15350,7 +17043,7 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 
 			const size_t len = fplGetStringLength(path);
 
-			if (i > 0 && len > 0 && !prevHasTrailingSep) {
+			if (pos > 0 && len > 0 && !prevHasTrailingSep) {
 				destPath[pos++] = FPL_PATH_SEPARATOR;
 			}
 
@@ -15387,6 +17080,295 @@ fpl_common_api void fplSetWindowInputEvents(const bool enabled) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	appState->currentSettings.input.disabledEvents = !enabled;
+}
+
+// The state a new window starts in, isFullscreen and fplWindowState_Fullscreen are the same and fplWindowState_Unknown is fplWindowState_Normal
+fpl_internal fplWindowState fpl__GetInitialWindowState(const fplWindowSettings *windowSettings) {
+	if (windowSettings->isFullscreen || windowSettings->initialState == fplWindowState_Fullscreen) {
+		return(fplWindowState_Fullscreen);
+	}
+	if (windowSettings->initialState == fplWindowState_Unknown) {
+		return(fplWindowState_Normal);
+	}
+	return(windowSettings->initialState);
+}
+
+// A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown
+fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
+	appState->window.isHidden = true;
+	appState->window.pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
+	currentWindowSettings->isFullscreen = false;
+}
+
+// Applies the state a hidden window was given, right after it was shown
+fpl_internal void fpl__ApplyPendingWindowState(fpl__PlatformAppState *appState) {
+	fplWindowState pendingState = appState->window.pendingState;
+	appState->window.pendingState = fplWindowState_Unknown;
+	if (pendingState == fplWindowState_Fullscreen) {
+		const fplWindowSettings *windowSettings = &appState->currentSettings.window;
+		if (!windowSettings->isFullscreen) {
+			fplSetWindowFullscreenSize(true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
+		}
+	} else if (pendingState != fplWindowState_Unknown) {
+		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
+		if (pendingState == fplWindowState_Normal && appState->currentSettings.window.isFullscreen) {
+			fplSetWindowFullscreenSize(false, 0, 0, 0);
+		}
+		fplSetWindowState(pendingState);
+	}
+}
+
+// The fullscreen functions would show a hidden window on Win32 and are ignored by X11 window managers, so they fail while the window is hidden
+fpl_internal bool fpl__IsFullscreenChangeAllowed(const fpl__PlatformAppState *appState) {
+	if (appState->window.isHidden) {
+		FPL__WARNING(FPL__MODULE_WINDOW, "Fullscreen can not be changed while the window is hidden, show the window first or use fplSetWindowState(fplWindowState_Fullscreen)");
+		return(false);
+	}
+	return(true);
+}
+
+//
+// Focus handling and input grab (mouse grab, relative mouse mode, keyboard grab)
+//
+
+// Releases every key and mouse button the window still holds as pressed. The window lost the focus, so their releases go to another window.
+fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *windowState) {
+	for (uint32_t keySlot = 0; keySlot < fplArrayCount(windowState->keyStates); ++keySlot) {
+		if (windowState->keyStates[keySlot] != fplButtonState_Release) {
+			windowState->keyStates[keySlot] = fplButtonState_Release;
+			uint64_t keyCode = windowState->keyCodes[keySlot];
+			fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
+			uint32_t scanCode = windowState->keyScanCodes[keySlot];
+			fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
+		}
+	}
+	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	int32_t reportedX;
+	int32_t reportedY;
+	fpl__GetReportedMousePosition(windowState, inputGrab->lastMoveX, inputGrab->lastMoveY, &reportedX, &reportedY);
+	for (uint32_t buttonIndex = 0; buttonIndex < fplArrayCount(windowState->mouseStates); ++buttonIndex) {
+		if (windowState->mouseStates[buttonIndex] != fplButtonState_Release) {
+			windowState->mouseStates[buttonIndex] = fplButtonState_Release;
+			fplMouseButtonType mouseButton = (fplMouseButtonType)buttonIndex;
+			fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, fplButtonState_Release);
+		}
+	}
+}
+
+// The mouse state that follows from the requests, the relative mode wins over the mouse grab
+fpl_internal fpl__MouseLockState fpl__GetRequestedMouseLock(const fpl__InputGrabState *inputGrab) {
+	if (inputGrab->requestedRelativeMouse) {
+		return(fpl__MouseLockState_Relative);
+	}
+	if (inputGrab->requestedMouseGrab) {
+		return(fpl__MouseLockState_Confined);
+	}
+	return(fpl__MouseLockState_Free);
+}
+
+// A grab the operating system refused for now is tried again after this time while the events are pumped, SDL waits the same time between its attempts
+#define FPL__GRAB_RETRY_INTERVAL_MILLISECONDS 50
+
+// Applies a mouse state or the keyboard grab at the operating system, implemented by the Win32 and the X11 window part. Returns false when the operating system refused it for now, it is tried again then.
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState);
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled);
+
+// The only place that decides which grab is active: a requested grab is active while the window runs, has the focus, is shown and is not minimized
+fpl_internal void fpl__UpdateInputGrab(fpl__PlatformAppState *appState) {
+	fpl__PlatformWindowState *windowState = &appState->window;
+	fpl__InputGrabState *inputGrab = &windowState->inputGrab;
+	bool isGrabAllowed = windowState->isRunning && windowState->hasFocus && !windowState->isHidden && !windowState->isMinimized;
+	fpl__MouseLockState wantedMouseLock = fpl__MouseLockState_Free;
+	bool wantedKeyboardGrab = false;
+	if (isGrabAllowed) {
+		if (!windowState->isMouseLockSuspended) {
+			wantedMouseLock = fpl__GetRequestedMouseLock(inputGrab);
+		}
+		wantedKeyboardGrab = inputGrab->requestedKeyboardGrab != 0;
+	}
+	bool isRetryNeeded = false;
+	if (wantedMouseLock != inputGrab->appliedMouseLock) {
+		bool isApplied = fpl__PlatformApplyMouseLock(appState, wantedMouseLock);
+		if (isApplied) {
+			inputGrab->appliedMouseLock = wantedMouseLock;
+		} else {
+			isRetryNeeded = true;
+		}
+	}
+	// The keyboard grab does not wait for the mouse lock suspension, the user can not reach the window frame with the keyboard
+	bool isKeyboardGrabApplied = inputGrab->appliedKeyboardGrab != 0;
+	if (wantedKeyboardGrab != isKeyboardGrabApplied) {
+		bool isApplied = fpl__PlatformApplyKeyboardGrab(appState, wantedKeyboardGrab);
+		if (isApplied) {
+			inputGrab->appliedKeyboardGrab = wantedKeyboardGrab;
+		} else {
+			isRetryNeeded = true;
+		}
+	}
+	if (isRetryNeeded) {
+		fplMilliseconds now = fplMillisecondsQuery();
+		inputGrab->nextRetryTimeMilliseconds = now + FPL__GRAB_RETRY_INTERVAL_MILLISECONDS;
+	}
+	inputGrab->isRetryPending = isRetryNeeded;
+}
+
+// Called while the events are pumped, tries a refused grab again once the retry interval has passed
+fpl_internal void fpl__RetryInputGrab(fpl__PlatformAppState *appState) {
+	const fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	if (!inputGrab->isRetryPending) {
+		return;
+	}
+	fplMilliseconds now = fplMillisecondsQuery();
+	if (now >= inputGrab->nextRetryTimeMilliseconds) {
+		fpl__UpdateInputGrab(appState);
+	}
+}
+
+// Limits a position in window coordinates to the client area
+fpl_internal void fpl__LimitToClientArea(int32_t *x, int32_t *y) {
+	fplWindowSize windowSize = fplZeroInit;
+	if (!fplGetWindowSize(&windowSize)) {
+		return;
+	}
+	int32_t maximumX = fplMax((int32_t)windowSize.width - 1, 0);
+	int32_t maximumY = fplMax((int32_t)windowSize.height - 1, 0);
+	int32_t limitedX = fplMin(*x, maximumX);
+	int32_t limitedY = fplMin(*y, maximumY);
+	*x = fplMax(limitedX, 0);
+	*y = fplMax(limitedY, 0);
+}
+
+// The operating system keeps a warp inside the client area while the mouse is confined, the target is limited the same way so the base of the next move delta is the real position
+fpl_internal void fpl__LimitWarpToConfinedArea(const fpl__PlatformAppState *appState, int32_t *x, int32_t *y) {
+	if (appState->window.inputGrab.appliedMouseLock != fpl__MouseLockState_Confined) {
+		return;
+	}
+	fpl__LimitToClientArea(x, y);
+}
+
+// A warp in the relative mode does not move the hidden cursor, it only moves the position the mouse events carry and where the cursor appears when the mode ends. Returns false outside of the relative mode.
+fpl_internal bool fpl__WarpFrozenMousePosition(fpl__PlatformAppState *appState, const int32_t x, const int32_t y) {
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	if (inputGrab->appliedMouseLock != fpl__MouseLockState_Relative) {
+		return(false);
+	}
+	int32_t frozenX = x;
+	int32_t frozenY = y;
+	fpl__LimitToClientArea(&frozenX, &frozenY);
+	inputGrab->frozenX = frozenX;
+	inputGrab->frozenY = frozenY;
+	return(true);
+}
+
+// The platforms call this when the relative mode starts, with the cursor position in window coordinates
+fpl_internal void fpl__FreezeMousePosition(fpl__InputGrabState *inputGrab, const int32_t cursorX, const int32_t cursorY) {
+	int32_t frozenX = cursorX;
+	int32_t frozenY = cursorY;
+	fpl__LimitToClientArea(&frozenX, &frozenY);
+	inputGrab->frozenX = frozenX;
+	inputGrab->frozenY = frozenY;
+	inputGrab->remainderX = 0.0;
+	inputGrab->remainderY = 0.0;
+}
+
+// The platforms call this after the cursor was put back to the frozen position, so the next move event has a delta of zero
+fpl_internal void fpl__ThawMousePosition(fpl__InputGrabState *inputGrab) {
+	inputGrab->lastMoveX = inputGrab->frozenX;
+	inputGrab->lastMoveY = inputGrab->frozenY;
+	inputGrab->hasLastMove = true;
+}
+
+// Raw movement of the relative mode in device counts. Fractions are kept until they add up to whole counts, every whole count becomes a move event with the frozen position.
+fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState, const double deltaX, const double deltaY) {
+#if defined(FPL__ENABLE_INPUT)
+	if (appState->currentSettings.input.disabledEvents) {
+		return;
+	}
+	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) {
+		return;
+	}
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	double totalX = inputGrab->remainderX + deltaX;
+	double totalY = inputGrab->remainderY + deltaY;
+	// The cast cuts toward zero, so the remainder keeps the sign of the movement
+	int32_t countX = (int32_t)totalX;
+	int32_t countY = (int32_t)totalY;
+	inputGrab->remainderX = totalX - (double)countX;
+	inputGrab->remainderY = totalY - (double)countY;
+	if (countX == 0 && countY == 0) {
+		return;
+	}
+	fpl__PushMouseMoveEvent(inputGrab->frozenX, inputGrab->frozenY, countX, countY);
+#else
+	// Without the input system no mouse event reaches the application at all
+	(void)appState;
+	(void)deltaX;
+	(void)deltaY;
+#endif
+}
+
+// The platforms call this instead of pushing the focus events themselves
+fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState, const bool hasFocus) {
+	fpl__PlatformWindowState *windowState = &appState->window;
+	if (!hasFocus) {
+		fpl__ReleaseAllPressedButtons(windowState);
+	}
+	windowState->hasFocus = hasFocus;
+	// The cursor may have moved anywhere while another window had the focus
+	windowState->inputGrab.hasLastMove = false;
+	fplWindowEventType eventType = hasFocus ? fplWindowEventType_GotFocus : fplWindowEventType_LostFocus;
+	fpl__PushWindowStateEvent(eventType);
+	fpl__UpdateInputGrab(appState);
+}
+
+fpl_internal void fpl__HandleWindowMinimizedChanged(fpl__PlatformAppState *appState, const bool isMinimized) {
+	appState->window.isMinimized = isMinimized;
+	fpl__UpdateInputGrab(appState);
+}
+
+fpl_common_api bool fplSetWindowMouseGrab(const bool enabled) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	appState->window.inputGrab.requestedMouseGrab = enabled;
+	fpl__UpdateInputGrab(appState);
+	return(true);
+}
+
+fpl_common_api bool fplIsWindowMouseGrabbed(void) {
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->window.inputGrab.requestedMouseGrab != 0;
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowRelativeMouse(const bool enabled) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	appState->window.inputGrab.requestedRelativeMouse = enabled;
+	fpl__UpdateInputGrab(appState);
+	return(true);
+}
+
+fpl_common_api bool fplIsWindowRelativeMouse(void) {
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->window.inputGrab.requestedRelativeMouse != 0;
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowKeyboardGrab(const bool enabled) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	appState->window.inputGrab.requestedKeyboardGrab = enabled;
+	fpl__UpdateInputGrab(appState);
+	return(true);
+}
+
+fpl_common_api bool fplIsWindowKeyboardGrabbed(void) {
+	FPL__CheckPlatform(false);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	bool result = appState->window.inputGrab.requestedKeyboardGrab != 0;
+	return(result);
 }
 
 #define FPL__KEY_COUNT FPL__ENUM_COUNT(fplKey_First, fplKey_Last)
@@ -15725,6 +17707,13 @@ fpl_common_api const char *fplKeyGetName(const fplKey key) {
 	return(result);
 }
 
+fpl_common_api bool fplClipboardSetText(const char *text) {
+	FPL__CheckArgumentNull(text, false);
+	const size_t textLen = fplGetStringLength(text);
+	bool result = fplClipboardSetTextLen(text, textLen);
+	return(result);
+}
+
 #endif // FPL__ENABLE_WINDOW && FPL__COMMON_WINDOW_DEFINED
 
 //
@@ -15902,6 +17891,8 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isFloating = false;
 	window->isScreenSaverPrevented = false;
 	window->isMonitorPowerPrevented = false;
+	window->initialState = fplWindowState_Normal;
+	window->initialVisibility = fplWindowVisibilityState_Show;
 }
 
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
@@ -16376,6 +18367,455 @@ fpl_common_api void fplDebugFormatOut(const char *format, ...) {
 	}
 }
 
+
+//
+// Process
+//
+
+// Layout of a capture buffer allocation:
+//   [fpl__ProcessBufferHeader][text ... '\0']
+//    ^ the pointer returned by fpl__AllocateDynamicMemory()
+//                              ^ fplProcessBuffer.text
+// The header must live ON that pointer and never before it, because the allocator owns everything in front of it.
+#define FPL__PROCESS_BUFFER_MAGIC 0x50524F4342554653ULL
+#define FPL__PROCESS_MEMORY_ALIGNMENT 16
+
+typedef struct fpl__ProcessBufferHeader {
+	//! Magic value, used to detect a foreign or already released buffer.
+	uint64_t magic;
+	//! Number of bytes usable for the text, without the null-terminator.
+	size_t capacity;
+	//! Total number of bytes of the entire allocation.
+	size_t totalSize;
+} fpl__ProcessBufferHeader;
+
+// Number of bytes written into the standard-input in one go
+#define FPL__PROCESS_WRITE_CHUNK_SIZE 4096
+
+typedef struct fpl__ProcessStream {
+	//! The captured text, moved into the result when the process is waited for.
+	fplProcessBuffer capture;
+	//! The pending text of the current line, used for fplProcessFlags_LineBuffered.
+	char *lineBuffer;
+	//! Number of characters in the line buffer.
+	size_t lineBufferLen;
+	//! Number of characters the line buffer can hold.
+	size_t lineBufferCapacity;
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! The read end of the pipe.
+	fpl__Win32Handle readHandle;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! The read end of the pipe.
+	int readFd;
+#endif
+	//! The type of the stream.
+	fplProcessStreamType type;
+	//! The stream has reached the end.
+	fpl_b32 isEOF;
+} fpl__ProcessStream;
+
+typedef struct fpl__ProcessStreams {
+	//! The standard-output stream.
+	fpl__ProcessStream output;
+	//! The standard-error stream.
+	fpl__ProcessStream error;
+	//! The callback that receives the redirected output/error text.
+	fpl_process_output_callback *outputCallback;
+	//! The callback that provides the standard-input text.
+	fpl_process_input_callback *inputCallback;
+	//! The user data passed through the callbacks.
+	void *userData;
+	//! The text written into the standard-input, used for fplProcessInputMode_Text.
+	const char *inputText;
+	//! The maximum number of bytes captured per buffer or zero for no limit.
+	size_t maxCaptureSize;
+	//! Number of characters in fpl__ProcessStreams.inputText.
+	size_t inputTextLen;
+	//! Number of characters already written from fplProcessContext.inputText.
+	size_t inputOffset;
+	//! Number of characters in the pending chunk from the input callback.
+	size_t inputChunkLen;
+	//! Number of characters of the pending chunk that are written already.
+	size_t inputChunkOffset;
+#if defined(FPL_PLATFORM_WINDOWS)
+	//! The write end of the standard-input pipe.
+	fpl__Win32Handle inputHandle;
+#elif defined(FPL_SUBPLATFORM_POSIX)
+	//! The write end of the standard-input pipe.
+	int inputFd;
+#endif
+	//! The capture/redirect flags.
+	fplProcessCaptureFlags captureFlags;
+	//! The standard-input mode.
+	fplProcessInputMode inputMode;
+	//! The process flags.
+	fplProcessFlags flags;
+	//! The capture was truncated.
+	fpl_b32 isTruncated;
+	//! The pending chunk from the input callback, used for fplProcessInputMode_Callback.
+	char inputChunk[FPL__PROCESS_WRITE_CHUNK_SIZE];
+} fpl__ProcessStreams;
+
+// Number of bytes a capture buffer starts with, it doubles from there
+#define FPL__PROCESS_BUFFER_INITIAL_CAPACITY 4096
+// Number of bytes read from a stream in one go
+#define FPL__PROCESS_READ_CHUNK_SIZE 4096
+// Number of bytes a line buffer starts with, it doubles from there
+#define FPL__PROCESS_LINE_BUFFER_INITIAL_CAPACITY 256
+// Number of characters a single line can hold, a longer line is split hard at this length
+#define FPL__PROCESS_MAX_LINE_LENGTH 65536
+
+fpl_internal fpl__ProcessBufferHeader *fpl__GetProcessBufferHeader(const fplProcessBuffer *buffer) {
+	if (buffer->text == fpl_null) {
+		return(fpl_null);
+	}
+	uint8_t *headerBase = (uint8_t *)buffer->text - sizeof(fpl__ProcessBufferHeader);
+	fpl__ProcessBufferHeader *header = (fpl__ProcessBufferHeader *)headerBase;
+	if (header->magic != FPL__PROCESS_BUFFER_MAGIC) {
+		return(fpl_null);
+	}
+	return(header);
+}
+
+// Makes sure the buffer can hold the required number of characters. FPL has no reallocation,
+// so a bigger block is allocated and the old content is moved over.
+fpl_internal bool fpl__EnsureProcessBufferCapacity(fplProcessBuffer *buffer, const size_t requiredCapacity) {
+	fpl__ProcessBufferHeader *currentHeader = fpl__GetProcessBufferHeader(buffer);
+	size_t currentCapacity = (currentHeader != fpl_null) ? currentHeader->capacity : 0;
+	if (currentCapacity >= requiredCapacity) {
+		return(true);
+	}
+	size_t newCapacity = (currentCapacity > 0) ? currentCapacity : FPL__PROCESS_BUFFER_INITIAL_CAPACITY;
+	while (newCapacity < requiredCapacity) {
+		newCapacity *= 2;
+	}
+	// The extra byte is the null-terminator, so the captured text can be used as a normal string
+	size_t totalSize = sizeof(fpl__ProcessBufferHeader) + newCapacity + 1;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating %zu bytes for a process capture buffer", totalSize);
+		return(false);
+	}
+	fpl__ProcessBufferHeader *newHeader = (fpl__ProcessBufferHeader *)memory;
+	newHeader->magic = FPL__PROCESS_BUFFER_MAGIC;
+	newHeader->capacity = newCapacity;
+	newHeader->totalSize = totalSize;
+	char *newText = (char *)((uint8_t *)memory + sizeof(fpl__ProcessBufferHeader));
+	if (buffer->len > 0) {
+		fplMemoryCopy(buffer->text, buffer->len, newText);
+	}
+	newText[buffer->len] = 0;
+	if (currentHeader != fpl_null) {
+		currentHeader->magic = 0;
+		fpl__ReleaseDynamicMemory(currentHeader);
+	}
+	buffer->text = newText;
+	return(true);
+}
+
+// Makes sure the line buffer can hold the required number of characters. It grows the same way the capture buffer does.
+fpl_internal bool fpl__EnsureProcessLineBufferCapacity(fpl__ProcessStream *stream, const size_t requiredCapacity) {
+	if (stream->lineBufferCapacity >= requiredCapacity) {
+		return(true);
+	}
+	size_t newCapacity = (stream->lineBufferCapacity > 0) ? stream->lineBufferCapacity : FPL__PROCESS_LINE_BUFFER_INITIAL_CAPACITY;
+	while (newCapacity < requiredCapacity) {
+		newCapacity *= 2;
+	}
+	// The extra byte is the null-terminator, so the callback always gets a usable string
+	size_t totalSize = newCapacity + 1;
+	char *newLineBuffer = (char *)fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (newLineBuffer == fpl_null) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating %zu bytes for a process line buffer", totalSize);
+		return(false);
+	}
+	if (stream->lineBufferLen > 0) {
+		fplMemoryCopy(stream->lineBuffer, stream->lineBufferLen, newLineBuffer);
+	}
+	newLineBuffer[stream->lineBufferLen] = 0;
+	if (stream->lineBuffer != fpl_null) {
+		fpl__ReleaseDynamicMemory(stream->lineBuffer);
+	}
+	stream->lineBuffer = newLineBuffer;
+	stream->lineBufferCapacity = newCapacity;
+	return(true);
+}
+
+// Hands the pending line over to the output callback and starts a new one.
+// The line ending is never part of the text, a "\r\n" is normalized to "\n" the same way a text mode file read would.
+fpl_internal void fpl__EmitProcessStreamLine(fplProcessHandle *handle, fpl__ProcessStream *stream, const bool endsWithNewLine) {
+	fpl__ProcessStreams *streams = handle->streams;
+	size_t lineLen = stream->lineBufferLen;
+	if (endsWithNewLine && (lineLen > 0) && (stream->lineBuffer[lineLen - 1] == '\r')) {
+		--lineLen;
+	}
+	stream->lineBufferLen = 0;
+	// An empty line never allocated a buffer, the callback still has to get a usable empty string
+	const char *lineText = "";
+	if (stream->lineBuffer != fpl_null) {
+		stream->lineBuffer[lineLen] = 0;
+		lineText = stream->lineBuffer;
+	}
+	streams->outputCallback(handle, stream->type, lineText, lineLen, streams->userData);
+}
+
+// Appends text to the pending line. A child that never writes a line ending would grow the buffer without a limit,
+// so an overlong line is split hard and delivered as if it had ended there.
+fpl_internal bool fpl__AppendProcessStreamLineText(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	const char *cursor = text;
+	size_t remainingLen = textLen;
+	while (remainingLen > 0) {
+		size_t freeLen = FPL__PROCESS_MAX_LINE_LENGTH - stream->lineBufferLen;
+		size_t appendLen = (remainingLen < freeLen) ? remainingLen : freeLen;
+		if (!fpl__EnsureProcessLineBufferCapacity(stream, stream->lineBufferLen + appendLen)) {
+			return(false);
+		}
+		char *appendTarget = stream->lineBuffer + stream->lineBufferLen;
+		fplMemoryCopy(cursor, appendLen, appendTarget);
+		stream->lineBufferLen += appendLen;
+		cursor += appendLen;
+		remainingLen -= appendLen;
+		if (stream->lineBufferLen >= FPL__PROCESS_MAX_LINE_LENGTH) {
+			fpl__EmitProcessStreamLine(handle, stream, false);
+		}
+	}
+	return(true);
+}
+
+// Splits the text into complete lines and pushes every one of them into the output callback
+fpl_internal void fpl__PushProcessStreamTextAsLines(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	size_t segmentStart = 0;
+	while (segmentStart < textLen) {
+		size_t newLineIndex = segmentStart;
+		while ((newLineIndex < textLen) && (text[newLineIndex] != '\n')) {
+			++newLineIndex;
+		}
+		size_t segmentLen = newLineIndex - segmentStart;
+		if (!fpl__AppendProcessStreamLineText(handle, stream, text + segmentStart, segmentLen)) {
+			return;
+		}
+		if (newLineIndex < textLen) {
+			fpl__EmitProcessStreamLine(handle, stream, true);
+			segmentStart = newLineIndex + 1;
+		} else {
+			segmentStart = newLineIndex;
+		}
+	}
+}
+
+// Takes the text that was read from a stream and moves it into the configured sinks.
+// The text must be null-terminated, because the callback is documented to receive a usable string.
+fpl_internal void fpl__PushProcessStreamText(fplProcessHandle *handle, fpl__ProcessStream *stream, const char *text, const size_t textLen) {
+	if (textLen == 0) {
+		return;
+	}
+	fpl__ProcessStreams *streams = handle->streams;
+	bool useBuffer = (streams->captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
+	if (useBuffer) {
+		size_t writeLen = textLen;
+		if (streams->maxCaptureSize > 0) {
+			size_t remainingCapture = (stream->capture.len < streams->maxCaptureSize) ? (streams->maxCaptureSize - stream->capture.len) : 0;
+			if (writeLen > remainingCapture) {
+				writeLen = remainingCapture;
+				streams->isTruncated = true;
+			}
+		}
+		if (writeLen > 0) {
+			size_t requiredCapacity = stream->capture.len + writeLen;
+			if (fpl__EnsureProcessBufferCapacity(&stream->capture, requiredCapacity)) {
+				char *writeTarget = stream->capture.text + stream->capture.len;
+				fplMemoryCopy(text, writeLen, writeTarget);
+				stream->capture.len += writeLen;
+				stream->capture.text[stream->capture.len] = 0;
+			} else {
+				streams->isTruncated = true;
+			}
+		}
+	}
+	bool useCallback = (streams->captureFlags & fplProcessCaptureFlags_ToCallback) == fplProcessCaptureFlags_ToCallback;
+	if (useCallback && (streams->outputCallback != fpl_null)) {
+		// The callback never gets a truncated text, maxCaptureSize only limits the buffer
+		bool useLineBuffer = (streams->flags & fplProcessFlags_LineBuffered) == fplProcessFlags_LineBuffered;
+		if (useLineBuffer) {
+			fpl__PushProcessStreamTextAsLines(handle, stream, text, textLen);
+		} else {
+			streams->outputCallback(handle, stream->type, text, textLen, streams->userData);
+		}
+	}
+}
+
+// Returns the next piece of standard-input text that still has to be written, or null when there is nothing left.
+// Only the modes that FPL feeds on its own are handled here, fplProcessInputMode_Stream is driven by the caller.
+fpl_internal const char *fpl__GetProcessInputChunk(fplProcessHandle *handle, size_t *outChunkLen) {
+	fpl__ProcessStreams *streams = handle->streams;
+	if (streams->inputMode == fplProcessInputMode_Text) {
+		if (streams->inputOffset >= streams->inputTextLen) {
+			return(fpl_null);
+		}
+		*outChunkLen = streams->inputTextLen - streams->inputOffset;
+		return(streams->inputText + streams->inputOffset);
+	}
+	if (streams->inputMode == fplProcessInputMode_Callback) {
+		if (streams->inputChunkOffset >= streams->inputChunkLen) {
+			// The previous chunk is written completely, so the next one is pulled. Zero ends the standard-input.
+			size_t chunkLen = streams->inputCallback(handle, streams->inputChunk, fplArrayCount(streams->inputChunk), streams->userData);
+			if (chunkLen == 0) {
+				return(fpl_null);
+			}
+			if (chunkLen > fplArrayCount(streams->inputChunk)) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "The input callback returned %zu characters, but the chunk only holds %zu", chunkLen, fplArrayCount(streams->inputChunk));
+				chunkLen = fplArrayCount(streams->inputChunk);
+			}
+			streams->inputChunkLen = chunkLen;
+			streams->inputChunkOffset = 0;
+		}
+		*outChunkLen = streams->inputChunkLen - streams->inputChunkOffset;
+		return(streams->inputChunk + streams->inputChunkOffset);
+	}
+	return(fpl_null);
+}
+
+fpl_internal void fpl__AdvanceProcessInput(fpl__ProcessStreams *streams, const size_t writtenLen) {
+	if (streams->inputMode == fplProcessInputMode_Text) {
+		streams->inputOffset += writtenLen;
+	} else if (streams->inputMode == fplProcessInputMode_Callback) {
+		streams->inputChunkOffset += writtenLen;
+	}
+}
+
+// Is the standard-input fed by FPL itself? The stream mode is written by the caller and must never be pumped.
+fpl_internal bool fpl__IsProcessInputPumped(const fplProcessInputMode inputMode) {
+	return((inputMode == fplProcessInputMode_Text) || (inputMode == fplProcessInputMode_Callback));
+}
+
+// Marks the stream as finished. A last line without a line ending is delivered here, so nothing is lost at the end.
+fpl_internal void fpl__MarkProcessStreamEndOfFile(fplProcessHandle *handle, fpl__ProcessStream *stream) {
+	stream->isEOF = true;
+	if (stream->lineBufferLen > 0) {
+		fpl__EmitProcessStreamLine(handle, stream, false);
+	}
+}
+
+// Hands the captured buffers over to the result. They are moved and not copied, so the result owns them from here on.
+fpl_internal void fpl__MoveProcessStreamBuffers(fpl__ProcessStreams *streams, fplProcessResult *outResult) {
+	outResult->output = streams->output.capture;
+	outResult->error = streams->error.capture;
+	fplClearStruct(&streams->output.capture);
+	fplClearStruct(&streams->error.capture);
+	outResult->isTruncated = streams->isTruncated;
+}
+
+// Releases every capture buffer that was never handed over to a result, plus the line buffers
+fpl_internal void fpl__ReleaseProcessStreamBuffers(fpl__ProcessStreams *streams) {
+	fpl__ProcessStream *streamList[] = { &streams->output, &streams->error };
+	for (size_t streamIndex = 0; streamIndex < fplArrayCount(streamList); ++streamIndex) {
+		fpl__ProcessStream *stream = streamList[streamIndex];
+		fpl__ProcessBufferHeader *header = fpl__GetProcessBufferHeader(&stream->capture);
+		if (header != fpl_null) {
+			header->magic = 0;
+			fpl__ReleaseDynamicMemory(header);
+		}
+		fplClearStruct(&stream->capture);
+		if (stream->lineBuffer != fpl_null) {
+			fpl__ReleaseDynamicMemory(stream->lineBuffer);
+			stream->lineBuffer = fpl_null;
+		}
+		stream->lineBufferLen = 0;
+		stream->lineBufferCapacity = 0;
+	}
+}
+
+// Checks the context for options that contradict each other or are missing something they need.
+// Returns fplProcessResultType_Success when the context can be used as is.
+fpl_internal fplProcessResultType fpl__ValidateProcessContext(const fplProcessContext *context) {
+	if ((context->shellMode == fplProcessShellMode_Custom) && (context->shellPath == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The shell mode %d requires a shell path", (int)context->shellMode);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if ((context->inputMode == fplProcessInputMode_Text) && (context->inputText == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d requires an input text", (int)context->inputMode);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if ((context->inputMode == fplProcessInputMode_Callback) && (context->inputCallback == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The input mode %d requires an input callback", (int)context->inputMode);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	if (isDetached && killsOnParentExit) {
+		// One flag lets the child survive this process, the other one kills it exactly then
+		FPL__ERROR(FPL__MODULE_PROCESS, "The detached flag and the kill-on-parent-exit flag contradict each other");
+		return(fplProcessResultType_InvalidArguments);
+	}
+
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	if (captureFlags == fplProcessCaptureFlags_None) {
+		return(fplProcessResultType_Success);
+	}
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool usesBuffer = (captureFlags & fplProcessCaptureFlags_ToBuffer) == fplProcessCaptureFlags_ToBuffer;
+	bool usesCallback = (captureFlags & fplProcessCaptureFlags_ToCallback) == fplProcessCaptureFlags_ToCallback;
+	if (!capturesOutput && !capturesError) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no stream at all", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if (!usesBuffer && !usesCallback) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d select no target at all", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	if (usesCallback && (context->outputCallback == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The capture flags %d require an output callback", (int)captureFlags);
+		return(fplProcessResultType_InvalidArguments);
+	}
+	return(fplProcessResultType_Success);
+}
+
+fpl_internal void fpl__FillProcessResultFromHandle(fplProcessHandle *handle, const bool hasExited, fplProcessResult *outResult) {
+	fplClearStruct(outResult);
+	if (handle->streams != fpl_null) {
+		fpl__MoveProcessStreamBuffers(handle->streams, outResult);
+	}
+	outResult->exitCode = handle->exitCode;
+	outResult->terminationSignal = handle->terminationSignal;
+	outResult->hasExited = hasExited;
+	if (!hasExited) {
+		outResult->type = fplProcessResultType_Timeout;
+		return;
+	}
+	if (handle->terminationSignal != 0) {
+		outResult->type = fplProcessResultType_Terminated;
+		return;
+	}
+	// A non-zero exit code is not an error by default, because many programs use it to report a state
+	bool treatNonZeroExitAsError = (handle->flags & fplProcessFlags_TreatNonZeroExitAsError) == fplProcessFlags_TreatNonZeroExitAsError;
+	if (treatNonZeroExitAsError && (handle->exitCode != 0)) {
+		outResult->type = fplProcessResultType_FailedWithExitCode;
+		return;
+	}
+	outResult->type = fplProcessResultType_Success;
+}
+
+fpl_common_api void fplProcessFreeResult(fplProcessResult *result) {
+	FPL__CheckArgumentNullNoRet(result);
+	fplProcessBuffer *buffers[] = { &result->output, &result->error };
+	for (size_t bufferIndex = 0; bufferIndex < fplArrayCount(buffers); ++bufferIndex) {
+		fplProcessBuffer *buffer = buffers[bufferIndex];
+		if (buffer->text == fpl_null) {
+			continue;
+		}
+		uint8_t *headerBase = (uint8_t *)buffer->text - sizeof(fpl__ProcessBufferHeader);
+		fpl__ProcessBufferHeader *header = (fpl__ProcessBufferHeader *)headerBase;
+		if (header->magic != FPL__PROCESS_BUFFER_MAGIC) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "The process buffer '%p' was not allocated by FPL or was released already", buffer->text);
+			continue;
+		}
+		header->magic = 0;
+		fpl__ReleaseDynamicMemory(header);
+	}
+	fplClearStruct(result);
+}
+
 //
 // Color
 //
@@ -16415,6 +18855,17 @@ fpl_internal DWORD fpl__Win32MakeWindowStyle(const fplWindowSettings *settings) 
 		}
 	}
 	return(result);
+}
+
+// Minimized and maximized are passed to ShowWindow() directly, like the nCmdShow of WinMain, a following SC_MAXIMIZE can be undone while the window is still being shown
+fpl_internal int fpl__Win32GetShowCommand(const fplWindowState state, const fplWindowSettings *settings) {
+	if (state == fplWindowState_Maximize && settings->isResizable && !settings->isFullscreen) {
+		return(SW_SHOWMAXIMIZED);
+	}
+	if (state == fplWindowState_Iconify) {
+		return(SW_SHOWMINIMIZED);
+	}
+	return(SW_SHOW);
 }
 
 fpl_internal DWORD fpl__Win32MakeWindowExStyle(const fplWindowSettings *settings) {
@@ -16554,6 +19005,9 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	fpl__Win32AppState *win32AppState = &appState->win32;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
 	fplWindowSettings *windowSettings = &appState->currentSettings.window;
@@ -16620,36 +19074,26 @@ fpl_internal bool fpl__Win32IsCursorInWindow(const fpl__Win32Api *wapi, const fp
 }
 
 fpl_internal void fpl__Win32LoadCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
-	if (window->isCursorActive) {
+	// The relative mouse mode hides the cursor, regardless of fplSetWindowCursorEnabled()
+	if (window->isCursorActive && !window->isRelativeMouseActive) {
 		wapi->user.SetCursor(fpl__win32_LoadCursor(fpl_null, IDC_ARROW));
 	} else {
 		wapi->user.SetCursor(fpl_null);
 	}
 }
 
-fpl_internal void fpl__Win32SetCursorState(const fpl__Win32Api *wapi, fpl__Win32WindowState *window, const bool state) {
-	// @NOTE(final): We use RAWINPUT to remove the mouse device entirely when it needs to be hidden
-	if (!state) {
-		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, 0, window->windowHandle);
-		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
-			FPL__ERROR(FPL__MODULE_WINDOW, "Failed register raw input mouse device for window handle '%p'", window->windowHandle);
-		}
-	} else {
-		const RAWINPUTDEVICE rid = fplStructInit(RAWINPUTDEVICE, 0x01, 0x02, RIDEV_REMOVE, fpl_null);
-		if (!wapi->user.RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
-			FPL__ERROR(FPL__MODULE_WINDOW, "Failed to unregister raw input mouse device");
-		}
-	}
+// Applies the cursor of the window right away, when the cursor is over the client area. Raw input is not involved, it belongs to the relative mouse mode alone.
+fpl_internal void fpl__Win32RefreshCursor(const fpl__Win32Api *wapi, const fpl__Win32WindowState *window) {
 	if (fpl__Win32IsCursorInWindow(wapi, window)) {
 		fpl__Win32LoadCursor(wapi, window);
 	}
 }
 
 fpl_internal void fpl__Win32ShowCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
-	fpl__Win32SetCursorState(wapi, window, false);
+	fpl__Win32RefreshCursor(wapi, window);
 }
 fpl_internal void fpl__Win32HideCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *window) {
-	fpl__Win32SetCursorState(wapi, window, true);
+	fpl__Win32RefreshCursor(wapi, window);
 }
 #endif // FPL__ENABLE_WINDOW (briefly closed so input backend can use the modifier helper without a window)
 
@@ -16713,6 +19157,565 @@ fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__Platfo
 	wapi->user.DispatchMessageW(msg);
 }
 
+// Other programs can reset the clip rectangle, so it is applied again after this time while the events are pumped, like SDL does
+#define FPL__WIN32_CLIP_REFRESH_INTERVAL_MILLISECONDS 3000
+
+// The client area of the window in screen coordinates, the rectangle the mouse grab confines the cursor to
+fpl_internal bool fpl__Win32GetClientScreenRect(const fpl__Win32Api *wapi, const HWND windowHandle, RECT *outRect) {
+	RECT clientRect;
+	if (!wapi->user.GetClientRect(windowHandle, &clientRect)) {
+		return(false);
+	}
+	POINT topLeft = fplZeroInit;
+	topLeft.x = clientRect.left;
+	topLeft.y = clientRect.top;
+	POINT bottomRight = fplZeroInit;
+	bottomRight.x = clientRect.right;
+	bottomRight.y = clientRect.bottom;
+	if (!wapi->user.ClientToScreen(windowHandle, &topLeft) || !wapi->user.ClientToScreen(windowHandle, &bottomRight)) {
+		return(false);
+	}
+	outRect->left = topLeft.x;
+	outRect->top = topLeft.y;
+	outRect->right = bottomRight.x;
+	outRect->bottom = bottomRight.y;
+	return(true);
+}
+
+fpl_internal bool fpl__Win32IsRectEqual(const RECT *a, const RECT *b) {
+	bool result = a->left == b->left && a->top == b->top && a->right == b->right && a->bottom == b->bottom;
+	return(result);
+}
+
+// Frees the cursor, but only when the current clip rectangle is still the one FPL applied, another program may have set its own meanwhile
+fpl_internal void fpl__Win32ReleaseClipCursor(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+	if (!windowState->ownsClipRect) {
+		return;
+	}
+	windowState->ownsClipRect = false;
+	RECT currentClipRect;
+	if (!wapi->user.GetClipCursor(&currentClipRect)) {
+		return;
+	}
+	// The system cuts the applied rectangle to the screen, so the current one lies inside the applied one while it is still FPL's
+	POINT firstCorner = fplZeroInit;
+	firstCorner.x = currentClipRect.left;
+	firstCorner.y = currentClipRect.top;
+	POINT lastCorner = fplZeroInit;
+	lastCorner.x = currentClipRect.right - 1;
+	lastCorner.y = currentClipRect.bottom - 1;
+	bool isFirstCornerInside = wapi->user.PtInRect(&windowState->appliedClipRect, firstCorner) == TRUE;
+	bool isLastCornerInside = wapi->user.PtInRect(&windowState->appliedClipRect, lastCorner) == TRUE;
+	if (isFirstCornerInside && isLastCornerInside) {
+		wapi->user.ClipCursor(fpl_null);
+	}
+}
+
+// The rectangle a mouse lock confines the cursor to: the client area for the mouse grab, one pixel in its middle for the relative mode, so clicks land in the window and the hidden cursor goes nowhere
+fpl_internal void fpl__Win32GetMouseLockRect(const RECT *clientScreenRect, const fpl__MouseLockState lockState, RECT *outRect) {
+	if (lockState == fpl__MouseLockState_Relative) {
+		LONG centerX = (clientScreenRect->left + clientScreenRect->right) / 2;
+		LONG centerY = (clientScreenRect->top + clientScreenRect->bottom) / 2;
+		outRect->left = centerX;
+		outRect->top = centerY;
+		outRect->right = centerX + 1;
+		outRect->bottom = centerY + 1;
+	} else {
+		*outRect = *clientScreenRect;
+	}
+}
+
+// Confines the cursor for the mouse grab or the relative mode. The rectangle is applied again on every move of the window and every few seconds, so ClipCursor() is only called when it differs.
+fpl_internal bool fpl__Win32ApplyClipRect(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState, const fpl__MouseLockState lockState) {
+	RECT clientScreenRect;
+	if (!fpl__Win32GetClientScreenRect(wapi, windowState->windowHandle, &clientScreenRect)) {
+		return(false);
+	}
+	// An empty client area can not hold the cursor, the next WM_WINDOWPOSCHANGED applies the rectangle once the window has a size again
+	if (clientScreenRect.right <= clientScreenRect.left || clientScreenRect.bottom <= clientScreenRect.top) {
+		fpl__Win32ReleaseClipCursor(wapi, windowState);
+		return(true);
+	}
+	RECT lockRect;
+	fpl__Win32GetMouseLockRect(&clientScreenRect, lockState, &lockRect);
+	RECT currentClipRect;
+	bool hasCurrentClipRect = wapi->user.GetClipCursor(&currentClipRect) == TRUE;
+	bool isAlreadyApplied = hasCurrentClipRect && fpl__Win32IsRectEqual(&currentClipRect, &lockRect);
+	if (!isAlreadyApplied && !wapi->user.ClipCursor(&lockRect)) {
+		return(false);
+	}
+	windowState->appliedClipRect = lockRect;
+	windowState->ownsClipRect = true;
+	return(true);
+}
+
+// Moves the cursor to a position in window coordinates
+fpl_internal bool fpl__Win32WarpCursor(const fpl__Win32Api *wapi, const HWND windowHandle, const int32_t x, const int32_t y) {
+	POINT screenPosition = fplZeroInit;
+	screenPosition.x = x;
+	screenPosition.y = y;
+	if (!wapi->user.ClientToScreen(windowHandle, &screenPosition)) {
+		return(false);
+	}
+	bool result = wapi->user.SetCursorPos(screenPosition.x, screenPosition.y) == TRUE;
+	return(result);
+}
+
+// Raw input of the generic desktop page, mouse usage
+#define FPL__WIN32_HID_USAGE_PAGE_GENERIC 0x01
+#define FPL__WIN32_HID_USAGE_GENERIC_MOUSE 0x02
+
+// Registers the raw mouse input for the window and freezes the cursor position, the relative mode reports the device movement from WM_INPUT
+fpl_internal bool fpl__Win32StartRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	POINT cursorPosition;
+	if (!wapi->user.GetCursorPos(&cursorPosition) || !wapi->user.ScreenToClient(windowState->windowHandle, &cursorPosition)) {
+		return(false);
+	}
+	// Without RIDEV_NOLEGACY the button, wheel and key messages keep coming, without RIDEV_INPUTSINK only while the window is in the foreground
+	RAWINPUTDEVICE rawMouseDevice = fplZeroInit;
+	rawMouseDevice.usUsagePage = FPL__WIN32_HID_USAGE_PAGE_GENERIC;
+	rawMouseDevice.usUsage = FPL__WIN32_HID_USAGE_GENERIC_MOUSE;
+	rawMouseDevice.dwFlags = 0;
+	rawMouseDevice.hwndTarget = windowState->windowHandle;
+	if (!wapi->user.RegisterRawInputDevices(&rawMouseDevice, 1, sizeof(rawMouseDevice))) {
+		return(false);
+	}
+	fpl__FreezeMousePosition(&appState->window.inputGrab, cursorPosition.x, cursorPosition.y);
+	windowState->hasLastAbsoluteRaw = false;
+	windowState->isRelativeMouseActive = true;
+	return(true);
+}
+
+// Removes the raw mouse input, the cursor appears again where the relative mode started
+fpl_internal void fpl__Win32StopRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	RAWINPUTDEVICE rawMouseDevice = fplZeroInit;
+	rawMouseDevice.usUsagePage = FPL__WIN32_HID_USAGE_PAGE_GENERIC;
+	rawMouseDevice.usUsage = FPL__WIN32_HID_USAGE_GENERIC_MOUSE;
+	rawMouseDevice.dwFlags = RIDEV_REMOVE;
+	rawMouseDevice.hwndTarget = fpl_null;
+	if (!wapi->user.RegisterRawInputDevices(&rawMouseDevice, 1, sizeof(rawMouseDevice))) {
+		FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Failed to remove the raw mouse input");
+	}
+	windowState->isRelativeMouseActive = false;
+	bool isWindowVisible = !appState->window.isHidden && !appState->window.isMinimized;
+	if (windowState->windowHandle != fpl_null && isWindowVisible) {
+		if (fpl__Win32WarpCursor(wapi, windowState->windowHandle, inputGrab->frozenX, inputGrab->frozenY)) {
+			fpl__ThawMousePosition(inputGrab);
+		}
+	}
+	fpl__Win32RefreshCursor(wapi, windowState);
+}
+
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	bool wasRelative = appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Relative;
+	bool isRelative = lockState == fpl__MouseLockState_Relative;
+	bool startsRelative = isRelative && !wasRelative;
+	bool stopsRelative = wasRelative && !isRelative;
+	if (lockState != fpl__MouseLockState_Free && windowState->windowHandle == fpl_null) {
+		return(false);
+	}
+	if (startsRelative && !fpl__Win32StartRelativeMouse(appState)) {
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Registering the raw mouse input failed, trying again");
+		}
+		return(false);
+	}
+	if (lockState == fpl__MouseLockState_Free) {
+		fpl__Win32ReleaseClipCursor(wapi, windowState);
+	} else if (fpl__Win32ApplyClipRect(wapi, windowState, lockState)) {
+		windowState->lastClipRefreshTime = fplMillisecondsQuery();
+	} else {
+		if (startsRelative) {
+			fpl__Win32StopRelativeMouse(appState);
+		}
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "ClipCursor failed, trying again");
+		}
+		return(false);
+	}
+	if (startsRelative) {
+		// WM_SETCURSOR keeps the cursor hidden from now on, but the cursor does not move before the next one
+		fpl__Win32RefreshCursor(wapi, windowState);
+	}
+	if (stopsRelative) {
+		fpl__Win32StopRelativeMouse(appState);
+	}
+	return(true);
+}
+
+// Raw absolute positions go from 0 to this value over the whole (virtual) desktop
+#define FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM 65535.0
+// Mouse input that Windows makes from pen or touch input carries this signature in its extra information, the touch flag tells both apart
+#define FPL__WIN32_PEN_OR_TOUCH_SIGNATURE_MASK 0xFFFFFF00
+#define FPL__WIN32_PEN_OR_TOUCH_SIGNATURE 0xFF515700
+#define FPL__WIN32_TOUCH_SIGNATURE_FLAG 0x80
+
+// WM_INPUT in the relative mode: relative devices report counts directly, absolute ones (remote desktop, virtual machine tablets, pens) a position whose change is the movement
+fpl_internal void fpl__Win32HandleRawMouseInput(fpl__PlatformAppState *appState, const HRAWINPUT rawInputHandle) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	RAWINPUT rawInput;
+	UINT rawInputSize = sizeof(rawInput);
+	UINT readSize = wapi->user.GetRawInputData(rawInputHandle, RID_INPUT, &rawInput, &rawInputSize, sizeof(RAWINPUTHEADER));
+	if (readSize == (UINT)-1 || rawInput.header.dwType != RIM_TYPEMOUSE) {
+		return;
+	}
+	const RAWMOUSE *rawMouse = &rawInput.data.mouse;
+	// Touch is no mouse movement, SDL skips it the same way
+	ULONG extraInformation = rawMouse->ulExtraInformation;
+	bool isPenOrTouch = (extraInformation & FPL__WIN32_PEN_OR_TOUCH_SIGNATURE_MASK) == FPL__WIN32_PEN_OR_TOUCH_SIGNATURE;
+	bool isTouch = isPenOrTouch && (extraInformation & FPL__WIN32_TOUCH_SIGNATURE_FLAG) != 0;
+	if (isTouch) {
+		return;
+	}
+	bool isAbsolute = (rawMouse->usFlags & MOUSE_MOVE_ABSOLUTE) != 0;
+	if (!isAbsolute) {
+		fpl__HandleRelativeMouseMotion(appState, (double)rawMouse->lLastX, (double)rawMouse->lLastY);
+		return;
+	}
+	bool isVirtualDesktop = (rawMouse->usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+	int widthMetric = isVirtualDesktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN;
+	int heightMetric = isVirtualDesktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN;
+	int desktopWidth = wapi->user.GetSystemMetrics(widthMetric);
+	int desktopHeight = wapi->user.GetSystemMetrics(heightMetric);
+	double positionX = (double)rawMouse->lLastX / FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM * (double)desktopWidth;
+	double positionY = (double)rawMouse->lLastY / FPL__WIN32_RAW_ABSOLUTE_POSITION_MAXIMUM * (double)desktopHeight;
+	// The first position after the start only sets the base
+	if (windowState->hasLastAbsoluteRaw) {
+		double deltaX = positionX - windowState->lastAbsoluteRawX;
+		double deltaY = positionY - windowState->lastAbsoluteRawY;
+		fpl__HandleRelativeMouseMotion(appState, deltaX, deltaY);
+	}
+	windowState->lastAbsoluteRawX = positionX;
+	windowState->lastAbsoluteRawY = positionY;
+	windowState->hasLastAbsoluteRaw = true;
+}
+
+fpl_internal bool fpl__Win32IsMouseLockSuspended(const fpl__Win32WindowState *windowState) {
+	bool result = windowState->modalLoopDepth > 0 || windowState->isActivationClickPending;
+	return(result);
+}
+
+fpl_internal void fpl__Win32UpdateMouseLockSuspension(fpl__PlatformAppState *appState) {
+	bool isSuspended = fpl__Win32IsMouseLockSuspended(&appState->window.win32);
+	bool wasSuspended = appState->window.isMouseLockSuspended != 0;
+	if (isSuspended != wasSuspended) {
+		appState->window.isMouseLockSuspended = isSuspended;
+		fpl__UpdateInputGrab(appState);
+	}
+}
+
+fpl_internal bool fpl__Win32IsAnyClickButtonDown(const fpl__Win32Api *wapi) {
+	// GetAsyncKeyState() reads the physical buttons, so swapped buttons need no special case
+	bool isLeftButtonDown = fpl__Win32IsKeyDown(wapi, VK_LBUTTON);
+	bool isRightButtonDown = fpl__Win32IsKeyDown(wapi, VK_RBUTTON);
+	bool result = isLeftButtonDown || isRightButtonDown;
+	return(result);
+}
+
+// Runs while the events are pumped: ends a pending activation click once its buttons are released, applies the clip rectangle again and retries a refused grab
+fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (windowState->isActivationClickPending) {
+		bool isClickButtonDown = fpl__Win32IsAnyClickButtonDown(wapi);
+		if (!isClickButtonDown) {
+			windowState->isActivationClickPending = false;
+			fpl__Win32UpdateMouseLockSuspension(appState);
+		}
+	}
+	fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+	if (appliedMouseLock != fpl__MouseLockState_Free) {
+		fplMilliseconds now = fplMillisecondsQuery();
+		fplMilliseconds timeSinceClipRefresh = now - windowState->lastClipRefreshTime;
+		if (timeSinceClipRefresh >= FPL__WIN32_CLIP_REFRESH_INTERVAL_MILLISECONDS) {
+			fpl__Win32ApplyClipRect(wapi, windowState, appliedMouseLock);
+			windowState->lastClipRefreshTime = now;
+		}
+	}
+	fpl__RetryInputGrab(appState);
+}
+
+// AltGr sends a left Ctrl with this scan code before the right Alt, the right Alt alone stands for AltGr then
+#define FPL__WIN32_ALTGR_FAKE_CONTROL_SCANCODE 0x21D
+// A down key in the key state of a thread, see GetKeyboardState()
+#define FPL__WIN32_KEY_STATE_DOWN 0x80
+
+#if defined(FPL__ENABLE_INPUT)
+// Makes the PC set 1 scan code from the scan code and the extended flag of a key message or the low level hook
+fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uint32_t virtualKey, const uint32_t messageScanCode, const bool isExtendedKey) {
+	// Windows swaps the scan codes of Pause (0x45) and NumLock (0xE045), wine has others for them, the key codes tell them apart everywhere
+	if (virtualKey == VK_PAUSE) {
+		return(FPL__SCANCODE_PAUSE);
+	}
+	if (virtualKey == VK_NUMLOCK) {
+		return(FPL__SCANCODE_NUM_LOCK);
+	}
+	uint32_t scanCode;
+	if (messageScanCode != 0) {
+		scanCode = isExtendedKey ? (FPL__SCANCODE_EXTENDED_PREFIX | messageScanCode) : messageScanCode;
+	} else {
+		// Keys sent by programs may come without a scan code
+		scanCode = wapi->user.MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC_EX);
+	}
+	// A prefix without a code is no key (wine maps an extended virtual key it has no scan code for to 0xE000)
+	if (scanCode == FPL__SCANCODE_EXTENDED_PREFIX) {
+		scanCode = 0;
+	}
+	if (scanCode == FPL__SCANCODE_ALT_PRINT) {
+		scanCode = FPL__SCANCODE_PRINT;
+	} else if (scanCode == FPL__SCANCODE_CTRL_PAUSE) {
+		scanCode = FPL__SCANCODE_PAUSE;
+	}
+	return(scanCode);
+}
+
+// Key state slots of Win32: the plain scan codes keep their value, the extended ones (0xE0xx) come behind them, and keys without a scan code get a slot per virtual key after that.
+// Pause (0xE11D) would share its low byte with the right Ctrl (0xE01D), it takes the slot of the extended scan code zero, which fpl__Win32GetScanCode() never reports.
+#define FPL__WIN32_KEY_SLOT_SCANCODE_MASK 0xFF
+#define FPL__WIN32_KEY_SLOT_EXTENDED_BASE 0x100
+#define FPL__WIN32_KEY_SLOT_PAUSE FPL__WIN32_KEY_SLOT_EXTENDED_BASE
+#define FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_BASE 0x200
+#define FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_MASK 0xFF
+
+// The key state slot of a physical key. The virtual key would give the left and right Shift, Ctrl and Alt, Enter and the keypad Enter, and the navigation keys and the keypad without NumLock one slot each.
+fpl_internal uint32_t fpl__Win32GetKeyStateSlot(const uint32_t scanCode, const uint32_t virtualKey) {
+	if (scanCode == FPL__SCANCODE_PAUSE) {
+		return(FPL__WIN32_KEY_SLOT_PAUSE);
+	}
+	if (scanCode == 0) {
+		uint32_t virtualKeySlot = FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_BASE + (virtualKey & FPL__WIN32_KEY_SLOT_VIRTUAL_KEY_MASK);
+		return(virtualKeySlot);
+	}
+	uint32_t scanCodeByte = scanCode & FPL__WIN32_KEY_SLOT_SCANCODE_MASK;
+	bool isExtendedKey = (scanCode & FPL__SCANCODE_EXTENDED_PREFIX) == FPL__SCANCODE_EXTENDED_PREFIX;
+	uint32_t slot = isExtendedKey ? (FPL__WIN32_KEY_SLOT_EXTENDED_BASE + scanCodeByte) : scanCodeByte;
+	return(slot);
+}
+#endif // FPL__ENABLE_INPUT
+
+// The keys the keyboard grab takes away from the system, like SDL: Win, Alt and Ctrl, so they reach the window in the same order as the keys they are combined with,
+// Tab and Esc for Alt+Tab, Alt+Esc and Ctrl+Esc, and Print for the screen capture.
+fpl_internal bool fpl__Win32IsHookedKey(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LWIN:
+		case VK_RWIN:
+		case VK_LMENU:
+		case VK_RMENU:
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+		case VK_TAB:
+		case VK_ESCAPE:
+		case VK_SNAPSHOT:
+			return(true);
+		default:
+			return(false);
+	}
+}
+
+#if defined(FPL__ENABLE_INPUT)
+// WM_KEYDOWN reports Alt and Ctrl with their side independent key code, the hook reports them the same way
+fpl_internal DWORD fpl__Win32GetReportedHookedKey(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LMENU:
+		case VK_RMENU:
+			return(VK_MENU);
+		case VK_LCONTROL:
+		case VK_RCONTROL:
+			return(VK_CONTROL);
+		default:
+			return(virtualKey);
+	}
+}
+#endif // FPL__ENABLE_INPUT
+
+fpl_internal fplKeyboardModifierFlags fpl__Win32GetHookedModifierFlag(const DWORD virtualKey) {
+	switch (virtualKey) {
+		case VK_LWIN:
+			return(fplKeyboardModifierFlags_LSuper);
+		case VK_RWIN:
+			return(fplKeyboardModifierFlags_RSuper);
+		case VK_LMENU:
+			return(fplKeyboardModifierFlags_LAlt);
+		case VK_RMENU:
+			return(fplKeyboardModifierFlags_RAlt);
+		case VK_LCONTROL:
+			return(fplKeyboardModifierFlags_LCtrl);
+		case VK_RCONTROL:
+			return(fplKeyboardModifierFlags_RCtrl);
+		default:
+			return(fplKeyboardModifierFlags_None);
+	}
+}
+
+// The system does not know the swallowed Alt and Ctrl, so TranslateMessage() would make the text without them (AltGr+Q would give q instead of @).
+// The key state of the thread, which TranslateMessage() reads, gets them here.
+fpl_internal void fpl__Win32UpdateThreadModifierState(const fpl__Win32Api *wapi, const fpl__Win32WindowState *windowState) {
+	BYTE keyState[256];
+	if (!wapi->user.GetKeyboardState(keyState)) {
+		return;
+	}
+	fplKeyboardModifierFlags hookedModifiers = windowState->hookedModifiers;
+	bool isLeftAltDown = (hookedModifiers & fplKeyboardModifierFlags_LAlt) != 0;
+	bool isRightAltDown = (hookedModifiers & fplKeyboardModifierFlags_RAlt) != 0;
+	bool isLeftControlDown = (hookedModifiers & fplKeyboardModifierFlags_LCtrl) != 0 || windowState->isAltGrControlDown;
+	bool isRightControlDown = (hookedModifiers & fplKeyboardModifierFlags_RCtrl) != 0;
+	keyState[VK_LMENU] = isLeftAltDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_RMENU] = isRightAltDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_MENU] = (isLeftAltDown || isRightAltDown) ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_LCONTROL] = isLeftControlDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_RCONTROL] = isRightControlDown ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	keyState[VK_CONTROL] = (isLeftControlDown || isRightControlDown) ? FPL__WIN32_KEY_STATE_DOWN : 0;
+	wapi->user.SetKeyboardState(keyState);
+}
+
+// Reports a key the hook swallowed, the same way WM_KEYDOWN and WM_KEYUP would
+fpl_internal void fpl__Win32ReportHookedKey(fpl__PlatformAppState *appState, const KBDLLHOOKSTRUCT *hookData, const bool isUp) {
+#if defined(FPL__ENABLE_INPUT)
+	if (appState->currentSettings.input.disabledEvents) {
+		return;
+	}
+	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) {
+		return;
+	}
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	DWORD reportedKey = fpl__Win32GetReportedHookedKey(hookData->vkCode);
+	bool isExtendedKey = (hookData->flags & LLKHF_EXTENDED) != 0;
+	uint32_t scanCode = fpl__Win32GetScanCode(wapi, hookData->vkCode, hookData->scanCode, isExtendedKey);
+	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, hookData->vkCode);
+	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->hookedModifiers;
+	fplButtonState buttonState = isUp ? fplButtonState_Release : fplButtonState_Press;
+	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, keySlot, (uint64_t)reportedKey, scanCode, modifiers, buttonState, false);
+#else
+	(void)appState;
+	(void)hookData;
+	(void)isUp;
+#endif
+}
+
+// The low level keyboard hook of the keyboard grab. Windows calls it in the thread that installed it, while that thread pumps its messages.
+fpl_internal LRESULT CALLBACK fpl__Win32KeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState == fpl_null) {
+		return(0);
+	}
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (code != HC_ACTION) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	// The hook is removed when the window loses the focus, until then another window may already be in front
+	HWND foregroundWindow = wapi->user.GetForegroundWindow();
+	if (foregroundWindow != windowState->windowHandle) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	const KBDLLHOOKSTRUCT *hookData = (const KBDLLHOOKSTRUCT *)lParam;
+	bool isUp = (hookData->flags & LLKHF_UP) != 0;
+	if (hookData->scanCode == FPL__WIN32_ALTGR_FAKE_CONTROL_SCANCODE) {
+		windowState->isAltGrControlDown = !isUp;
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+		return(1);
+	}
+	DWORD virtualKey = hookData->vkCode;
+	if (!fpl__Win32IsHookedKey(virtualKey)) {
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	fplKeyboardModifierFlags modifierFlag = fpl__Win32GetHookedModifierFlag(virtualKey);
+	if (modifierFlag != fplKeyboardModifierFlags_None) {
+		if (isUp) {
+			windowState->hookedModifiers &= ~modifierFlag;
+		} else {
+			windowState->hookedModifiers |= modifierFlag;
+		}
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+	}
+	fpl__Win32ReportHookedKey(appState, hookData, isUp);
+	// A key that was down before the hook came gets its first release through, so the system does not keep it pressed
+	if (isUp && virtualKey < fplArrayCount(windowState->isDownBeforeHook) && windowState->isDownBeforeHook[virtualKey]) {
+		windowState->isDownBeforeHook[virtualKey] = 0;
+		LRESULT nextResult = wapi->user.CallNextHookEx(windowState->keyboardHook, code, wParam, lParam);
+		return(nextResult);
+	}
+	return(1);
+}
+
+// Installs the low level keyboard hook in the window thread, while the keyboard grab is active. Windows removes a hook that takes longer than LowLevelHooksTimeout without telling,
+// so the main loop has to pump the events often (at least every 100 ms).
+fpl_internal bool fpl__Win32InstallKeyboardHook(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	for (DWORD virtualKey = 0; virtualKey < fplArrayCount(windowState->isDownBeforeHook); ++virtualKey) {
+		bool isDown = fpl__Win32IsHookedKey(virtualKey) && fpl__Win32IsKeyDown(wapi, (int)virtualKey);
+		windowState->isDownBeforeHook[virtualKey] = isDown ? 1 : 0;
+	}
+	windowState->hookedModifiers = fplKeyboardModifierFlags_None;
+	windowState->isAltGrControlDown = false;
+	HINSTANCE moduleHandle = fpl__global__InitState.win32.appInstance;
+	windowState->keyboardHook = wapi->user.SetWindowsHookExW(WH_KEYBOARD_LL, fpl__Win32KeyboardHookProc, moduleHandle, 0);
+	bool result = windowState->keyboardHook != fpl_null;
+	return(result);
+}
+
+fpl_internal void fpl__Win32RemoveKeyboardHook(fpl__PlatformAppState *appState) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (windowState->keyboardHook != fpl_null) {
+		wapi->user.UnhookWindowsHookEx(windowState->keyboardHook);
+		windowState->keyboardHook = fpl_null;
+	}
+	// The releases of modifiers that are still down may go to another window, so the key state of the thread must not keep them
+	bool hadHookedModifiers = windowState->hookedModifiers != fplKeyboardModifierFlags_None || windowState->isAltGrControlDown;
+	windowState->hookedModifiers = fplKeyboardModifierFlags_None;
+	windowState->isAltGrControlDown = false;
+	if (hadHookedModifiers) {
+		fpl__Win32UpdateThreadModifierState(wapi, windowState);
+	}
+}
+
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (!enabled) {
+		fpl__Win32RemoveKeyboardHook(appState);
+		return(true);
+	}
+	if (windowState->windowHandle == fpl_null) {
+		return(false);
+	}
+	if (!fpl__Win32InstallKeyboardHook(appState)) {
+		if (!appState->window.inputGrab.isRetryPending) {
+			FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "Installing the low level keyboard hook failed, trying again");
+		}
+		return(false);
+	}
+	return(true);
+}
+
+// A key the hook takes away from the system arrived as a normal message, so Windows removed the hook (it took longer than LowLevelHooksTimeout), it is installed again
+fpl_internal void fpl__Win32CheckKeyboardHookLost(fpl__PlatformAppState *appState, const WPARAM virtualKey) {
+	if (!appState->window.inputGrab.appliedKeyboardGrab) {
+		return;
+	}
+	bool isHookedKey = virtualKey == VK_MENU || virtualKey == VK_CONTROL || fpl__Win32IsHookedKey((DWORD)virtualKey);
+	if (!isHookedKey) {
+		return;
+	}
+	FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "The low level keyboard hook was lost, installing it again");
+	fpl__Win32RemoveKeyboardHook(appState);
+	fpl__Win32InstallKeyboardHook(appState);
+}
+
 fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppState *appState) {
 	fpl__Win32AppState *win32State = &appState->win32;
 	fpl__Win32WindowState *windowState = &appState->window.win32;
@@ -16728,10 +19731,11 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 }
 
 fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = fplWindowEventType_GotFocus;
-	fpl__PushInternalEvent(&newEvent);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	// The click that activated the window may be on the title bar or on a frame button, the mouse is locked once its buttons are released
+	windowState->isActivationClickPending = fpl__Win32IsAnyClickButtonDown(wapi);
+	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(appState, true);
 	if (!windowState->isCursorActive) {
 		fpl__Win32HideCursor(wapi, windowState);
 	}
@@ -16745,10 +19749,10 @@ fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win3
 	if (!windowState->isCursorActive) {
 		fpl__Win32ShowCursor(wapi, windowState);
 	}
-	fplEvent newEvent = fplZeroInit;
-	newEvent.type = fplEventType_Window;
-	newEvent.window.type = fplWindowEventType_LostFocus;
-	fpl__PushInternalEvent(&newEvent);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	windowState->isActivationClickPending = false;
+	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(appState, false);
 	return true;
 }
 
@@ -16777,6 +19781,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_CLOSE:
 		{
 			appState->window.isRunning = false;
+			fpl__UpdateInputGrab(appState);
 		} break;
 
 		case WM_SIZE:
@@ -16789,6 +19794,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fpl__PushWindowSizeEvent(fplWindowEventType_Minimized, newWidth, newHeight);
 			} else if (wParam == SIZE_RESTORED) {
 				fpl__PushWindowSizeEvent(fplWindowEventType_Restored, newWidth, newHeight);
+			}
+			bool isMinimized = wParam == SIZE_MINIMIZED;
+			if (isMinimized != (appState->window.isMinimized != 0)) {
+				fpl__HandleWindowMinimizedChanged(appState, isMinimized);
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
@@ -16839,6 +19848,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_KEYDOWN:
 		case WM_KEYUP:
 		{
+			if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+				fpl__Win32CheckKeyboardHookLost(appState, wParam);
+			}
 #if defined(FPL__ENABLE_INPUT)
 			MSG forwarded = fplZeroInit;
 			forwarded.hwnd = hwnd;
@@ -16850,6 +19862,11 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			ev.payload = (void *)&forwarded;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
+			// With the keyboard grab F10 and Alt+Space do not open the menus, the keys belong to the application
+			bool isSystemKey = msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
+			if (isSystemKey && appState->window.inputGrab.appliedKeyboardGrab) {
+				return 0;
+			}
 		} break;
 
 		case WM_CHAR:
@@ -16919,6 +19936,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (!win32Window->isCursorActive) {
 				fpl__Win32ShowCursor(wapi, win32Window);
 			}
+			// Moving, sizing and the menus need the cursor outside of the client area
+			++win32Window->modalLoopDepth;
+			fpl__Win32UpdateMouseLockSuspension(appState);
 		} break;
 
 		case WM_EXITSIZEMOVE:
@@ -16926,6 +19946,28 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			if (!win32Window->isCursorActive) {
 				fpl__Win32HideCursor(wapi, win32Window);
+			}
+			if (win32Window->modalLoopDepth > 0) {
+				--win32Window->modalLoopDepth;
+			}
+			fpl__Win32UpdateMouseLockSuspension(appState);
+		} break;
+
+		case WM_WINDOWPOSCHANGED:
+		{
+			// The clip rectangle is in screen coordinates and does not follow the window by itself
+			fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+			if (appliedMouseLock != fpl__MouseLockState_Free) {
+				fpl__Win32ApplyClipRect(wapi, win32Window, appliedMouseLock);
+			}
+		} break;
+
+		case WM_INPUT:
+		{
+			// Raw input is only registered in the relative mode, DefWindowProc() has to see the message afterwards
+			if (win32Window->isRelativeMouseActive) {
+				HRAWINPUT rawInputHandle = (HRAWINPUT)lParam;
+				fpl__Win32HandleRawMouseInput(appState, rawInputHandle);
 			}
 		} break;
 
@@ -16940,7 +19982,20 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_MOUSEMOVE:
 		case WM_MOUSEWHEEL:
 		case WM_MOUSEHWHEEL:
+		case WM_MOUSELEAVE:
 		{
+			if (msg == WM_MOUSELEAVE) {
+				win32Window->isTrackingMouseLeave = false;
+				// The cursor comes back somewhere else, its first move must not count the way outside as movement
+				appState->window.inputGrab.hasLastMove = false;
+			}
+			if (msg == WM_MOUSEMOVE && !win32Window->isTrackingMouseLeave) {
+				TRACKMOUSEEVENT trackMouseEvent = fplZeroInit;
+				trackMouseEvent.cbSize = sizeof(trackMouseEvent);
+				trackMouseEvent.dwFlags = TME_LEAVE;
+				trackMouseEvent.hwndTrack = hwnd;
+				win32Window->isTrackingMouseLeave = wapi->user.TrackMouseEvent(&trackMouseEvent) == TRUE;
+			}
 #if defined(FPL__ENABLE_INPUT)
 			MSG forwarded = fplZeroInit;
 			forwarded.hwnd = hwnd;
@@ -16993,6 +20048,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_SYSCOMMAND:
 		{
 			WPARAM masked = wParam & 0xFFF0;
+			// The keyboard menu (Alt, F10, Alt+Space) stays closed while the keyboard is grabbed
+			if (masked == SC_KEYMENU && appState->window.inputGrab.appliedKeyboardGrab) {
+				return 0;
+			}
 			switch (masked) {
 				case SC_SCREENSAVE:
 				case SC_MONITORPOWER: {
@@ -17486,15 +20545,22 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
 	}
 
-	// Enter fullscreen if needed
-	if (initWindowSettings->isFullscreen) {
-		fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
-	}
+	fplWindowState initialState = fpl__GetInitialWindowState(initWindowSettings);
+	if (initWindowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
+		fpl__DeferInitialWindowState(platAppState, currentWindowSettings, initialState);
+	} else {
+		// Enter fullscreen if needed, the flag is cleared first, otherwise the window placement to return to is never saved
+		if (initialState == fplWindowState_Fullscreen) {
+			currentWindowSettings->isFullscreen = false;
+			fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
+		}
 
-	// Show window
-	wapi->user.ShowWindow(windowState->windowHandle, SW_SHOW);
-	wapi->user.SetForegroundWindow(windowState->windowHandle);
-	wapi->user.SetFocus(windowState->windowHandle);
+		// Show window
+		int showCommand = fpl__Win32GetShowCommand(initialState, currentWindowSettings);
+		wapi->user.ShowWindow(windowState->windowHandle, showCommand);
+		wapi->user.SetForegroundWindow(windowState->windowHandle);
+		wapi->user.SetFocus(windowState->windowHandle);
+	}
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
@@ -18456,6 +21522,47 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 }
 
 #if defined(FPL__ENABLE_WINDOW)
+// A down key in the result of GetKeyState() and GetAsyncKeyState()
+#define FPL__WIN32_KEY_DOWN_FLAG 0x8000
+
+// Reports the release of a key that is still down for FPL while the key state of the thread has it up already, as of the message that was retrieved last
+fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, const uint32_t scanCode, const int sideVirtualKey) {
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	fpl__PlatformWindowState *windowState = &appState->window;
+	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)sideVirtualKey);
+	if (windowState->keyStates[keySlot] == fplButtonState_Release) {
+		return;
+	}
+	SHORT threadKeyState = wapi->user.GetKeyState(sideVirtualKey);
+	bool isDown = (threadKeyState & FPL__WIN32_KEY_DOWN_FLAG) != 0;
+	if (isDown) {
+		return;
+	}
+	uint64_t keyCode = windowState->keyCodes[keySlot];
+	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
+	uint64_t time = GetTickCount();
+	fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
+}
+
+// Windows loses the release of the Shift key that is let go first while both are down, only the one let go last gets its WM_KEYUP.
+// The key state of the thread knows it is up as of the key message that was just handled, so a Shift that is still down for FPL gets its release right after that message, like SDL does it.
+fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState) {
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
+}
+
+// Windows sends no WM_KEYUP for the Win key when the system takes a shortcut like Win+Space or Win+G, only the key state of the thread knows it is up.
+// No other message has to follow, so it is checked before every key message (the release comes before the next key) and when the message queue is empty, like SDL does it.
+// While the keyboard grab is on, the hook reports Win itself and keeps it away from the system, so the thread never has it down.
+fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState) {
+	if (appState->window.win32.keyboardHook != fpl_null) {
+		return;
+	}
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
+}
+
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
 	fplAssertPtr(backend);
 	fplAssertPtr(ev);
@@ -18478,8 +21585,17 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			uint64_t keyCode = msg->wParam;
 			bool isDown = (msg->lParam & (1 << 31)) == 0;
 			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
-			fplKeyboardModifierFlags modifiers = fpl__Win32GetKeyboardModifiers(wapi);
-			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keyCode, modifiers, keyState, false);
+			WORD keyFlags = HIWORD(msg->lParam);
+			uint32_t messageScanCode = LOBYTE(keyFlags);
+			bool isExtendedKey = (keyFlags & KF_EXTENDED) != 0;
+			uint32_t scanCode = fpl__Win32GetScanCode(wapi, (uint32_t)keyCode, messageScanCode, isExtendedKey);
+			uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)keyCode);
+			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
+			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
+			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
+			fpl__Win32ReleaseLostWinKeys(appState);
+			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
+			fpl__Win32ReleaseLostShiftKeys(appState);
 			return true;
 		}
 
@@ -18541,25 +21657,47 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
 			int32_t mouseX = GET_X_LPARAM(msg->lParam);
 			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
+			// Windows has no message for the cursor coming in, it is the first move inside the client area after WM_MOUSELEAVE (a captured cursor moves outside too)
+			if (!appState->window.isMouseInside) {
+				RECT clientRect;
+				bool isInsideClientArea = false;
+				if (wapi->user.GetClientRect(msg->hwnd, &clientRect)) {
+					isInsideClientArea = mouseX >= clientRect.left && mouseX < clientRect.right && mouseY >= clientRect.top && mouseY < clientRect.bottom;
+				}
+				if (isInsideClientArea) {
+					fpl__HandleMouseCrossingEvent(&appState->window, mouseX, mouseY, true);
+				}
+			}
 			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
 			return true;
 		}
 
-		case WM_MOUSEWHEEL:
+		case WM_MOUSELEAVE:
 		{
+			if (eventsDisabled) return true;
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
-			int32_t mouseX = GET_X_LPARAM(msg->lParam);
-			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
-			short zDelta = GET_WHEEL_DELTA_WPARAM(msg->wParam);
-			float wheelDelta = zDelta / (float)WHEEL_DELTA;
-			fpl__HandleMouseWheelEvent(&appState->window, mouseX, mouseY, wheelDelta);
+			// The message has no position, the cursor is already outside
+			POINT cursorPosition = fplZeroInit;
+			if (wapi->user.GetCursorPos(&cursorPosition)) {
+				wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
+			}
+			fpl__HandleMouseCrossingEvent(&appState->window, cursorPosition.x, cursorPosition.y, false);
 			return true;
 		}
 
+		case WM_MOUSEWHEEL:
 		case WM_MOUSEHWHEEL:
 		{
-			// Horizontal wheel is forwarded but not yet surfaced through fpl__HandleMouseWheelEvent.
-			// Step 9 will extend the public mouse-event API with a horizontal axis.
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			// Unlike the other mouse messages the wheel messages carry the position in screen coordinates
+			POINT cursorPosition;
+			cursorPosition.x = GET_X_LPARAM(msg->lParam);
+			cursorPosition.y = GET_Y_LPARAM(msg->lParam);
+			wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
+			short wheelRotation = GET_WHEEL_DELTA_WPARAM(msg->wParam);
+			float wheelDelta = wheelRotation / (float)WHEEL_DELTA;
+			fplMouseEventType wheelType = (msg->message == WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
+			fpl__HandleMouseWheelEvent(&appState->window, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
 			return true;
 		}
 
@@ -18572,58 +21710,22 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 
 #endif // FPL__WIN32_INPUT_KBM_IMPLEMENTED
 
+// WaitForMultipleObjects does not work for us here, because each thread closes its handle when it ends,
+// so the wait runs on the thread states instead
 fpl_internal bool fpl__Win32ThreadWaitForMultiple(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
-	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_THREAD_COUNT, false);
-	fplStaticAssert(FPL_MAX_THREAD_COUNT >= MAXIMUM_WAIT_OBJECTS);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
-	for (size_t index = 0; index < count; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		if (thread == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
-			return false;
-		}
-		if (fplGetThreadState(thread) != fplThreadState_Stopped) {
-			if (thread->internalHandle.win32ThreadHandle == fpl_null) {
-				FPL__ERROR(FPL__MODULE_THREADING, "Thread handle for index '%d' are not allowed to be null", index);
-				return false;
-			}
-		}
-	}
-
-	// @NOTE(final): WaitForMultipleObjects does not work for us here, because each thread will close its handle automatically
-	// So we screw it and use a simple while loop and wait until either the timeout has been reached or all threads has been stopped.
-	fplMilliseconds startTime = fplMillisecondsQuery();
-	size_t minThreads = waitForAll ? count : 1;
-	size_t stoppedThreads = 0;
-	while (stoppedThreads < minThreads) {
-		stoppedThreads = 0;
-		for (size_t index = 0; index < count; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			if (fplGetThreadState(thread) == fplThreadState_Stopped) {
-				++stoppedThreads;
-			}
-		}
-		if (stoppedThreads >= minThreads) {
-			break;
-		}
-		if (timeout != FPL_TIMEOUT_INFINITE) {
-			if ((fplMillisecondsQuery() - startTime) >= timeout) {
-				break;
-			}
-		}
-		fplThreadYield();
-	}
-	bool result = stoppedThreads >= minThreads;
+	fplStaticAssert(FPL_MAX_THREAD_WAIT_COUNT >= MAXIMUM_WAIT_OBJECTS);
+	size_t minCount = waitForAll ? count : 1;
+	bool result = fpl__WaitForThreadsStopped(threads, minCount, count, stride, timeout);
 	return(result);
 }
 
 fpl_internal bool fpl__Win32SignalWaitForMultiple(fplSignalHandle **signals, const size_t count, const size_t stride, const fplTimeoutValue timeout, const bool waitForAll) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_COUNT, false);
+	// @NOTE(final): WaitForMultipleObjects caps at MAXIMUM_WAIT_OBJECTS (64), so the effective ceiling on Windows is lower than FPL_MAX_SIGNAL_WAIT_COUNT.
+	FPL__CheckArgumentMax(count, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 
 	// @MEMORY(final): This wastes a lot memory, use temporary memory allocation here.
-	HANDLE signalHandles[FPL_MAX_SIGNAL_COUNT];
+	HANDLE signalHandles[FPL_MAX_SIGNAL_WAIT_COUNT];
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < count; ++index) {
@@ -19172,6 +22274,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 		DWORD threadId = 0;
 		SIZE_T stackSize = parameters->stackSize;
 		thread->parameters = *parameters;
+		// The slot was already reserved as Starting by fpl__GetFreeThread, this keeps it consistent for reused slots.
 		thread->currentState = fplThreadState_Starting;
 		HANDLE handle = CreateThread(fpl_null, stackSize, fpl__Win32ThreadProc, thread, creationFlags, &threadId);
 		if (handle != fpl_null) {
@@ -19182,9 +22285,11 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			result = thread;
 		} else {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", GetLastError());
+			// Release the reserved slot back to Stopped so it can be reused.
+			fplClearStruct(thread);
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
 	}
 	return(result);
 }
@@ -19268,18 +22373,9 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(thread, false);
-	bool result;
-	if (fplGetThreadState(thread) != fplThreadState_Stopped) {
-		if (thread->internalHandle.win32ThreadHandle == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Win32 thread handle are not allowed to be null");
-			return false;
-		}
-		HANDLE handle = thread->internalHandle.win32ThreadHandle;
-		DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
-		result = (WaitForSingleObject(handle, t) == WAIT_OBJECT_0);
-	} else {
-		result = true;
-	}
+	// WaitForSingleObject cannot be used here, for the same reason it cannot be used for several threads:
+	// the thread closes its own handle when it ends, so a waiter can end up waiting on a closed handle
+	bool result = fpl__WaitForThreadStopped(thread, timeout);
 	return(result);
 }
 
@@ -19566,22 +22662,57 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore) {
 //
 // Win32 Console
 //
+
+// Number of characters converted to wide characters in one go, when the stream is a real console
+#define FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE 1024
+
+// WriteConsoleW only works on a real console screen buffer. As soon as the stream is redirected into a pipe
+// or a file it fails and writes nothing at all, so the raw UTF-8 bytes go out through WriteFile instead.
+fpl_internal void fpl__Win32ConsoleWrite(const DWORD stdHandleId, const char *text) {
+	if (text == fpl_null) {
+		return;
+	}
+	HANDLE handle = GetStdHandle(stdHandleId);
+	if ((handle == fpl_null) || (handle == INVALID_HANDLE_VALUE)) {
+		return;
+	}
+	size_t textLen = fplGetStringLength(text);
+	if (textLen == 0) {
+		return;
+	}
+	DWORD consoleMode = 0;
+	bool isConsole = GetConsoleMode(handle, &consoleMode) != 0;
+	if (!isConsole) {
+		DWORD writtenBytes = 0;
+		WriteFile(handle, text, (DWORD)textLen, &writtenBytes, fpl_null);
+		return;
+	}
+	// A console needs wide characters and the conversion buffer is fixed, so a long text goes out in parts
+	wchar_t wideBuffer[FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE + 1];
+	size_t textOffset = 0;
+	while (textOffset < textLen) {
+		size_t remainingLen = textLen - textOffset;
+		size_t chunkLen = (remainingLen < FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE) ? remainingLen : FPL__WIN32_CONSOLE_WIDE_CHUNK_SIZE;
+		// The split must never land inside a UTF-8 sequence, so it stops in front of a continuation byte
+		while ((chunkLen > 1) && ((text[textOffset + chunkLen] & 0xC0) == 0x80)) {
+			--chunkLen;
+		}
+		size_t wideLen = fplUTF8StringToWideString(text + textOffset, chunkLen, wideBuffer, fplArrayCount(wideBuffer));
+		if (wideLen == 0) {
+			break;
+		}
+		DWORD writtenChars = 0;
+		WriteConsoleW(handle, wideBuffer, (DWORD)wideLen, &writtenChars, fpl_null);
+		textOffset += chunkLen;
+	}
+}
+
 fpl_platform_api void fplConsoleOut(const char *text) {
-	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
-	DWORD writtenChars = 0;
-	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, charsToWrite, wideBuffer, fplArrayCount(wideBuffer));
-	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
+	fpl__Win32ConsoleWrite(STD_OUTPUT_HANDLE, text);
 }
 
 fpl_platform_api void fplConsoleError(const char *text) {
-	DWORD charsToWrite = (DWORD)fplGetStringLength(text);
-	DWORD writtenChars = 0;
-	HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
-	wchar_t wideBuffer[FPL_MAX_BUFFER_LENGTH];
-	fplUTF8StringToWideString(text, charsToWrite, wideBuffer, fplArrayCount(wideBuffer));
-	WriteConsoleW(handle, wideBuffer, charsToWrite, &writtenChars, fpl_null);
+	fpl__Win32ConsoleWrite(STD_ERROR_HANDLE, text);
 }
 
 fpl_platform_api char fplConsoleWaitForCharInput(void) {
@@ -20168,6 +23299,8 @@ fpl_internal void fpl__Win32FillFileEntry(const char *rootPath, const WIN32_FIND
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
+	// Cleared up front, so fplDirectoryListEnd() is safe even when nothing is found
+	fplClearStruct(entry);
 	if (fplGetStringLength(filter) == 0) {
 		filter = "*";
 	}
@@ -20181,7 +23314,6 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 	HANDLE searchHandle = FindFirstFileW(pathAndFilterWide, &findData);
 	bool result = false;
 	if (searchHandle != INVALID_HANDLE_VALUE) {
-		fplClearStruct(entry);
 		entry->internalHandle.win32FileHandle = searchHandle;
 		fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
 		fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
@@ -20739,7 +23871,9 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	fplWindowState result;
-	if (appState->currentSettings.window.isFullscreen) {
+	if (appState->window.isHidden && appState->window.pendingState != fplWindowState_Unknown) {
+		result = appState->window.pendingState;
+	} else if (appState->currentSettings.window.isFullscreen) {
 		result = fplWindowState_Fullscreen;
 	} else {
 		bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
@@ -20757,11 +23891,16 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
+	// SC_MINIMIZE/SC_MAXIMIZE would show a hidden window, so the state is applied when it gets shown
+	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
+		appState->window.pendingState = newState;
+		return(true);
+	}
 	bool result = false;
 	switch (newState) {
 		case fplWindowState_Iconify:
@@ -20799,10 +23938,84 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(result);
 }
 
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32AppState *win32AppState = &appState->win32;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	const fpl__Win32Api *wapi = &win32AppState->winApi;
+	HWND windowHandle = windowState->windowHandle;
+	bool isHidden = appState->window.isHidden != 0;
+	if (newVisibility == fplWindowVisibilityState_Hide) {
+		if (!isHidden) {
+			wapi->user.ShowWindow(windowHandle, SW_HIDE);
+			appState->window.isHidden = true;
+			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			fpl__UpdateInputGrab(appState);
+		}
+		return(true);
+	}
+	if (newVisibility == fplWindowVisibilityState_Show) {
+		if (isHidden) {
+			// Like at the start, fullscreen is entered or left before the window is shown and minimized and maximized go into ShowWindow() directly
+			fplWindowState pendingState = appState->window.pendingState;
+			int showCommand = fpl__Win32GetShowCommand(pendingState, &appState->currentSettings.window);
+			bool isFullscreen = appState->currentSettings.window.isFullscreen != 0;
+			bool leavesFullscreen = pendingState == fplWindowState_Normal && isFullscreen;
+			appState->window.isHidden = false;
+			if (pendingState == fplWindowState_Fullscreen || leavesFullscreen) {
+				fpl__ApplyPendingWindowState(appState);
+			} else if (showCommand != SW_SHOW) {
+				appState->window.pendingState = fplWindowState_Unknown;
+			}
+			wapi->user.ShowWindow(windowHandle, showCommand);
+			wapi->user.SetForegroundWindow(windowHandle);
+			wapi->user.SetFocus(windowHandle);
+			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(appState);
+			fpl__UpdateInputGrab(appState);
+		}
+		return(true);
+	}
+	return(false);
+}
+
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	windowState->isCursorActive = value;
+}
+
+fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32Api *wapi = &appState->win32.winApi;
+	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	if (windowState->windowHandle == fpl_null || appState->window.isHidden || appState->window.isMinimized) {
+		return(false);
+	}
+	if (fpl__WarpFrozenMousePosition(appState, x, y)) {
+		return(true);
+	}
+	int32_t targetX = x;
+	int32_t targetY = y;
+	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
+	if (!fpl__Win32WarpCursor(wapi, windowState->windowHandle, targetX, targetY)) {
+		return(false);
+	}
+	// The WM_MOUSEMOVE that follows the warp gets a delta of zero
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	inputGrab->lastMoveX = targetX;
+	inputGrab->lastMoveY = targetY;
+	inputGrab->hasLastMove = true;
+	return(true);
 }
 
 fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState) {
@@ -20832,8 +24045,13 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 
 	// Create new event from the OS message queue
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
+		// A lost release is returned right away, the next fplWindowUpdate() would clear it
+#	if defined(FPL__ENABLE_INPUT_WIN32)
+		fpl__Win32ReleaseLostWinKeys(appState);
+#	endif
 		// Queue is empty, we have no events left
 		if (!fpl__HasInternalEvents()) {
+			fpl__Win32RefreshInputGrab(appState);
 			return(false);
 		}
 	}
@@ -20844,6 +24062,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	}
 
 	// No events left
+	fpl__Win32RefreshInputGrab(appState);
 	return(false);
 }
 
@@ -20865,12 +24084,14 @@ fpl_platform_api void fplPollEvents(void) {
 		}
 	}
 	fpl__ClearInternalEvents();
+	fpl__Win32RefreshInputGrab(appState);
 }
 
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__ClearInternalEvents();
+	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
 		fpl__InputSystem_Update(&appState->input);
@@ -20892,25 +24113,32 @@ fpl_platform_api void fplWindowShutdown(void) {
 	const fpl__Win32AppState *win32AppState = &appState->win32;
 	if (appState->window.isRunning) {
 		appState->window.isRunning = false;
+		fpl__UpdateInputGrab(appState);
 		const fpl__Win32Api *wapi = &win32AppState->winApi;
 		wapi->user.PostQuitMessage(0);
 	}
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	FPL__CheckPlatform(false);
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen) {
+	FPL__CheckPlatform(0);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
-	bool result = false;
+	size_t result = 0;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if (wapi->user.IsClipboardFormatAvailable(CF_UNICODETEXT)) {
 			HGLOBAL dataHandle = wapi->user.GetClipboardData(CF_UNICODETEXT);
 			if (dataHandle != fpl_null) {
 				const wchar_t *stringValue = (const wchar_t *)GlobalLock(dataHandle);
-				fplWideStringToUTF8String(stringValue, lstrlenW(stringValue), dest, maxDestLen);
-				GlobalUnlock(dataHandle);
-				result = true;
+				if (stringValue != fpl_null) {
+					const size_t wideLen = (size_t)lstrlenW(stringValue);
+					if (wideLen > 0) {
+						// The conversion follows the very same contract, so it answers the required size
+						// in query mode and refuses to write a partial buffer all by itself.
+						result = fplWideStringToUTF8String(stringValue, wideLen, dest, maxDestLen);
+					}
+					GlobalUnlock(dataHandle);
+				}
 			}
 		}
 		wapi->user.CloseClipboard();
@@ -20918,23 +24146,32 @@ fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen)
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
-		const size_t textLen = fplGetStringLength(text);
-		const size_t bufferLen = textLen + 1;
-		HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)bufferLen * sizeof(wchar_t));
+		const size_t requiredWideLen = (textLen > 0) ? fplUTF8StringToWideString(text, textLen, fpl_null, 0) : 0;
+		const size_t wideBufferLen = requiredWideLen + 1;
+		HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wideBufferLen * sizeof(wchar_t));
 		if (handle != fpl_null) {
 			wchar_t *target = (wchar_t *)GlobalLock(handle);
-			fplUTF8StringToWideString(text, textLen, target, bufferLen);
-			GlobalUnlock(handle);
-			wapi->user.EmptyClipboard();
-			wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
-			result = true;
+			if (target != fpl_null) {
+				if (requiredWideLen > 0) {
+					fplUTF8StringToWideString(text, textLen, target, wideBufferLen);
+				} else {
+					target[0] = 0;
+				}
+				GlobalUnlock(handle);
+				wapi->user.EmptyClipboard();
+				wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
+				result = true;
+			} else {
+				GlobalFree(handle);
+			}
 		}
 		wapi->user.CloseClipboard();
 	}
@@ -21205,10 +24442,1169 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 
 // ############################################################################
 //
+// > WIN32_PROCESS
+//
+// Process implementation using CreateProcessW and anonymous pipes
+//
+// ############################################################################
+#if defined(FPL_PLATFORM_WINDOWS)
+
+// Exit code reported for a process that was stopped forcefully
+#define FPL__WIN32_PROCESS_STOP_EXIT_CODE 1
+// Maximum number of handles a child can inherit, one per standard stream
+#define FPL__WIN32_PROCESS_MAX_INHERITABLE_HANDLE_COUNT 3
+// Name of the environment variable holding the path of the command processor
+#define FPL__WIN32_PROCESS_SHELL_ENVIRONMENT_NAME L"ComSpec"
+// Command processor used when the environment does not name one
+#define FPL__WIN32_PROCESS_DEFAULT_SHELL_PATH "cmd.exe"
+// Arguments for the default command processor. The /s makes cmd.exe strip exactly the outer quotes
+// of the command line, without it the quote handling depends on what the command line contains.
+#define FPL__WIN32_PROCESS_DEFAULT_SHELL_ARGUMENT "/s /c"
+// Argument a custom shell gets when the caller does not specify one
+#define FPL__WIN32_PROCESS_CUSTOM_SHELL_ARGUMENT "/c"
+
+typedef struct fpl__Win32ProcessStartArgs {
+	//! Single memory block holding the wide command line, its unmodified copy and the wide work directory.
+	void *memory;
+	//! Mutable wide command line, CreateProcessW is allowed to write into it.
+	wchar_t *commandLine;
+	//! Untouched copy of the command line, used when the start has to be repeated.
+	wchar_t *commandLineBackup;
+	//! Wide work directory or fpl_null when the current directory is used.
+	wchar_t *workDir;
+	//! Number of bytes in the command line, including the null-terminator.
+	size_t commandLineSize;
+} fpl__Win32ProcessStartArgs;
+
+typedef struct fpl__Win32ProcessShell {
+	//! Buffer holding the path of the default shell, when it was taken from the environment.
+	char pathBuffer[FPL_MAX_PATH_LENGTH];
+	//! Path of the shell to start or fpl_null when no shell is used.
+	const char *path;
+	//! Argument that tells the shell to execute the command line.
+	const char *argument;
+} fpl__Win32ProcessShell;
+
+// Appends a single argument to the command line, using the quoting rules the Microsoft C runtime expects.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendCommandLineArgument(const char *argument, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	const char escapeChar = '\\';
+	size_t offset = targetOffset;
+	size_t argumentLen = fplGetStringLength(argument);
+
+	// An empty argument must be quoted, otherwise it would vanish completely
+	bool needsQuotes = (argumentLen == 0);
+	for (size_t charIndex = 0; (charIndex < argumentLen) && !needsQuotes; ++charIndex) {
+		char currentChar = argument[charIndex];
+		if ((currentChar == ' ') || (currentChar == '\t') || (currentChar == quoteChar)) {
+			needsQuotes = true;
+		}
+	}
+
+	if (!needsQuotes) {
+		for (size_t charIndex = 0; charIndex < argumentLen; ++charIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = argument[charIndex];
+			}
+			++offset;
+		}
+		return(offset);
+	}
+
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	size_t charIndex = 0;
+	while (charIndex < argumentLen) {
+		size_t backslashCount = 0;
+		while ((charIndex < argumentLen) && (argument[charIndex] == escapeChar)) {
+			++backslashCount;
+			++charIndex;
+		}
+		if (charIndex == argumentLen) {
+			// Backslashes in front of the closing quote must be doubled, so the quote stays a delimiter
+			backslashCount *= 2;
+		} else if (argument[charIndex] == quoteChar) {
+			// Backslashes in front of an inner quote must be doubled and the quote itself gets escaped
+			backslashCount = (backslashCount * 2) + 1;
+		}
+		for (size_t backslashIndex = 0; backslashIndex < backslashCount; ++backslashIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = escapeChar;
+			}
+			++offset;
+		}
+		if (charIndex < argumentLen) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = argument[charIndex];
+			}
+			++offset;
+			++charIndex;
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Appends the program name to the command line. It gets quoted as a whole when needed, but never escaped,
+// because CreateProcessW and the C runtime both read the very first entry with the simple
+// "everything up to the next quote" rule instead of the backslash rules used for the arguments.
+fpl_internal size_t fpl__Win32AppendCommandLineProgram(const char *programName, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	size_t offset = targetOffset;
+	size_t programNameLen = fplGetStringLength(programName);
+	bool needsQuotes = (programNameLen == 0);
+	for (size_t charIndex = 0; (charIndex < programNameLen) && !needsQuotes; ++charIndex) {
+		char currentChar = programName[charIndex];
+		if ((currentChar == ' ') || (currentChar == '\t')) {
+			needsQuotes = true;
+		}
+	}
+	if (needsQuotes) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = quoteChar;
+		}
+		++offset;
+	}
+	for (size_t charIndex = 0; charIndex < programNameLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = programName[charIndex];
+		}
+		++offset;
+	}
+	if (needsQuotes) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = quoteChar;
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Appends a text to the command line, without applying any quoting rule to it.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendCommandLineText(const char *text, char *targetBuffer, const size_t targetOffset) {
+	size_t offset = targetOffset;
+	size_t textLen = fplGetStringLength(text);
+	for (size_t charIndex = 0; charIndex < textLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = text[charIndex];
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Appends the program and its arguments, this is the command line a process is started with directly.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendCommandLineProgramAndArguments(const fplProcessContext *context, char *targetBuffer, const size_t targetOffset) {
+	// The program name is always the first entry, so CreateProcessW can search it in PATH
+	size_t offset = fpl__Win32AppendCommandLineProgram(context->name, targetBuffer, targetOffset);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__Win32AppendCommandLineArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		// The argument line is passed through unchanged, its quoting is up to the caller
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			offset = fpl__Win32AppendCommandLineText(context->argumentLine, targetBuffer, offset);
+		}
+	}
+	return(offset);
+}
+
+// Appends the command line for a shell start: the shell, the argument that tells it to execute a command
+// and the command itself as one quoted block. The name is taken over unchanged, so it can use shell syntax
+// or be the source code of an interpreter, only the entries of an argument array are quoted.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32AppendShellCommandLine(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '"';
+	size_t offset = fpl__Win32AppendCommandLineProgram(shell->path, targetBuffer, targetOffset);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = ' ';
+	}
+	++offset;
+	// The shell argument may be more than one token, so it is never quoted
+	offset = fpl__Win32AppendCommandLineText(shell->argument, targetBuffer, offset);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = ' ';
+		targetBuffer[offset + 1] = quoteChar;
+	}
+	offset += 2;
+	offset = fpl__Win32AppendCommandLineText(context->name, targetBuffer, offset);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__Win32AppendCommandLineArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			offset = fpl__Win32AppendCommandLineText(context->argumentLine, targetBuffer, offset);
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Builds the full command line as UTF-8, because the quoting rules are much easier to apply on single bytes.
+// Pass null as the target buffer to measure the required number of characters only.
+fpl_internal size_t fpl__Win32BuildCommandLine(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, char *targetBuffer) {
+	size_t offset;
+	if (shell->path != fpl_null) {
+		offset = fpl__Win32AppendShellCommandLine(context, shell, targetBuffer, 0);
+	} else {
+		offset = fpl__Win32AppendCommandLineProgramAndArguments(context, targetBuffer, 0);
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = 0;
+	}
+	return(offset);
+}
+
+// Determines the shell to start the command line with. The path of the default shell comes from the
+// environment, so a system with a different command processor is honored.
+fpl_internal void fpl__Win32GetProcessShell(const fplProcessContext *context, fpl__Win32ProcessShell *outShell) {
+	fplClearStruct(outShell);
+	if (context->shellMode == fplProcessShellMode_None) {
+		return;
+	}
+	if (context->shellMode == fplProcessShellMode_Custom) {
+		outShell->path = context->shellPath;
+		outShell->argument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__WIN32_PROCESS_CUSTOM_SHELL_ARGUMENT;
+		return;
+	}
+	outShell->path = FPL__WIN32_PROCESS_DEFAULT_SHELL_PATH;
+	wchar_t shellPathWide[FPL_MAX_PATH_LENGTH];
+	DWORD shellPathWideLen = GetEnvironmentVariableW(FPL__WIN32_PROCESS_SHELL_ENVIRONMENT_NAME, shellPathWide, (DWORD)fplArrayCount(shellPathWide));
+	if ((shellPathWideLen > 0) && (shellPathWideLen < (DWORD)fplArrayCount(shellPathWide))) {
+		size_t writtenLen = fplWideStringToUTF8String(shellPathWide, (size_t)shellPathWideLen, outShell->pathBuffer, fplArrayCount(outShell->pathBuffer));
+		if (writtenLen > 0) {
+			outShell->path = outShell->pathBuffer;
+		}
+	}
+	outShell->argument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__WIN32_PROCESS_DEFAULT_SHELL_ARGUMENT;
+}
+
+fpl_internal bool fpl__Win32CreateProcessStartArgs(const fplProcessContext *context, const fpl__Win32ProcessShell *shell, fpl__Win32ProcessStartArgs *outArgs) {
+	fplClearStruct(outArgs);
+
+	size_t commandLineUtf8Len = fpl__Win32BuildCommandLine(context, shell, fpl_null);
+	if (commandLineUtf8Len == 0) {
+		return(false);
+	}
+	size_t commandLineUtf8Size = (commandLineUtf8Len + 1) * sizeof(char);
+	char *commandLineUtf8 = (char *)fpl__AllocateTemporaryMemory(commandLineUtf8Size, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (commandLineUtf8 == fpl_null) {
+		return(false);
+	}
+	fpl__Win32BuildCommandLine(context, shell, commandLineUtf8);
+
+	size_t commandLineWideLen = fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, fpl_null, 0);
+	if (commandLineWideLen == 0) {
+		fpl__ReleaseTemporaryMemory(commandLineUtf8);
+		return(false);
+	}
+	size_t workDirUtf8Len = (context->workDir != fpl_null) ? fplGetStringLength(context->workDir) : 0;
+	size_t workDirWideLen = 0;
+	if (workDirUtf8Len > 0) {
+		workDirWideLen = fplUTF8StringToWideString(context->workDir, workDirUtf8Len, fpl_null, 0);
+	}
+
+	// The copy of the command line is there, because CreateProcessW is allowed to write into the original
+	// and a second attempt with the same command line needs it untouched
+	size_t commandLineWideSize = (commandLineWideLen + 1) * sizeof(wchar_t);
+	size_t workDirWideSize = (workDirWideLen > 0) ? ((workDirWideLen + 1) * sizeof(wchar_t)) : 0;
+	void *memory = fpl__AllocateDynamicMemory((commandLineWideSize * 2) + workDirWideSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		fpl__ReleaseTemporaryMemory(commandLineUtf8);
+		return(false);
+	}
+
+	wchar_t *commandLineWide = (wchar_t *)memory;
+	fplUTF8StringToWideString(commandLineUtf8, commandLineUtf8Len, commandLineWide, commandLineWideLen + 1);
+	fpl__ReleaseTemporaryMemory(commandLineUtf8);
+
+	wchar_t *commandLineBackupWide = (wchar_t *)((uint8_t *)memory + commandLineWideSize);
+	fplMemoryCopy(commandLineWide, commandLineWideSize, commandLineBackupWide);
+
+	wchar_t *workDirWide = fpl_null;
+	if (workDirWideSize > 0) {
+		workDirWide = (wchar_t *)((uint8_t *)memory + (commandLineWideSize * 2));
+		fplUTF8StringToWideString(context->workDir, workDirUtf8Len, workDirWide, workDirWideLen + 1);
+	}
+
+	outArgs->memory = memory;
+	outArgs->commandLine = commandLineWide;
+	outArgs->commandLineBackup = commandLineBackupWide;
+	outArgs->workDir = workDirWide;
+	outArgs->commandLineSize = commandLineWideSize;
+	return(true);
+}
+
+// Puts the command line back into the state it had before a CreateProcessW call
+fpl_internal void fpl__Win32RestoreProcessCommandLine(fpl__Win32ProcessStartArgs *args) {
+	if ((args->commandLine != fpl_null) && (args->commandLineBackup != fpl_null)) {
+		fplMemoryCopy(args->commandLineBackup, args->commandLineSize, args->commandLine);
+	}
+}
+
+fpl_internal void fpl__Win32ReleaseProcessStartArgs(fpl__Win32ProcessStartArgs *args) {
+	if (args->memory != fpl_null) {
+		fpl__ReleaseDynamicMemory(args->memory);
+	}
+	fplClearStruct(args);
+}
+
+fpl_internal fplProcessResultType fpl__Win32MapProcessStartError(const DWORD errorCode) {
+	switch (errorCode) {
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND:
+		case ERROR_INVALID_NAME:
+			return(fplProcessResultType_NotFound);
+		case ERROR_ACCESS_DENIED:
+		case ERROR_SHARING_VIOLATION:
+			return(fplProcessResultType_AccessDenied);
+		case ERROR_NOT_ENOUGH_MEMORY:
+		case ERROR_OUTOFMEMORY:
+			return(fplProcessResultType_OutOfMemory);
+		default:
+			return(fplProcessResultType_FailedToStart);
+	}
+}
+
+// Number of milliseconds a single wait slice takes while the streams are drained
+#define FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS 15
+// Number of bytes the standard-input pipe buffers, a bigger buffer means fewer short writes
+#define FPL__WIN32_PROCESS_INPUT_PIPE_SIZE 65536
+
+// Creates the state that holds the capture pipes. It only exists when something is captured at all.
+fpl_internal fpl__ProcessStreams *fpl__Win32CreateProcessStreams(const fplProcessContext *context) {
+	fpl__ProcessStreams *streams = (fpl__ProcessStreams *)fpl__AllocateDynamicMemory(sizeof(fpl__ProcessStreams), FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (streams == fpl_null) {
+		return(fpl_null);
+	}
+	fplClearStruct(streams);
+	streams->captureFlags = context->captureFlags;
+	streams->flags = context->flags;
+	streams->outputCallback = context->outputCallback;
+	streams->inputCallback = context->inputCallback;
+	streams->userData = context->userData;
+	streams->maxCaptureSize = context->maxCaptureSize;
+	streams->inputMode = context->inputMode;
+	streams->inputText = context->inputText;
+	if (context->inputText != fpl_null) {
+		streams->inputTextLen = (context->inputTextLen > 0) ? context->inputTextLen : fplGetStringLength(context->inputText);
+	}
+	streams->output.type = fplProcessStreamType_Output;
+	streams->error.type = fplProcessStreamType_Error;
+	return(streams);
+}
+
+fpl_internal void fpl__Win32CloseProcessInput(fpl__ProcessStreams *streams) {
+	if (streams->inputHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->inputHandle);
+		streams->inputHandle = fpl_null;
+	}
+}
+
+fpl_internal void fpl__Win32ReleaseProcessStreams(fpl__ProcessStreams *streams) {
+	if (streams == fpl_null) {
+		return;
+	}
+	if (streams->output.readHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->output.readHandle);
+	}
+	if (streams->error.readHandle != fpl_null) {
+		CloseHandle((HANDLE)streams->error.readHandle);
+	}
+	fpl__Win32CloseProcessInput(streams);
+	fpl__ReleaseProcessStreamBuffers(streams);
+	fpl__ReleaseDynamicMemory(streams);
+}
+
+// Reads everything that is available right now. Returns false when the stream has reached its end.
+// Anonymous pipes cannot do overlapped IO, so the amount of readable bytes is asked for first,
+// otherwise ReadFile would block until the child writes something.
+fpl_internal bool fpl__Win32PumpProcessStream(fplProcessHandle *handle, fpl__ProcessStream *stream) {
+	if (stream->isEOF || (stream->readHandle == fpl_null)) {
+		return(false);
+	}
+	HANDLE readHandle = (HANDLE)stream->readHandle;
+	// The extra byte is the null-terminator the output callback is documented to get
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE + 1];
+	for (;;) {
+		DWORD availableBytes = 0;
+		if (!PeekNamedPipe(readHandle, fpl_null, 0, fpl_null, &availableBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if (errorCode != ERROR_BROKEN_PIPE) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed peeking a process stream with code %lu", errorCode);
+			}
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
+			break;
+		}
+		if (availableBytes == 0) {
+			// Nothing available right now, the stream stays open
+			break;
+		}
+		DWORD bytesToRead = (availableBytes > (DWORD)FPL__PROCESS_READ_CHUNK_SIZE) ? (DWORD)FPL__PROCESS_READ_CHUNK_SIZE : availableBytes;
+		DWORD readBytes = 0;
+		if (!ReadFile(readHandle, chunk, bytesToRead, &readBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if (errorCode != ERROR_BROKEN_PIPE) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %lu", errorCode);
+			}
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
+			break;
+		}
+		if (readBytes == 0) {
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
+			break;
+		}
+		chunk[readBytes] = 0;
+		fpl__PushProcessStreamText(handle, stream, chunk, (size_t)readBytes);
+	}
+	return(!stream->isEOF);
+}
+
+// Returns the number of streams that are still open
+fpl_internal size_t fpl__Win32PumpProcessStreams(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
+	size_t openStreamCount = 0;
+	if (fpl__Win32PumpProcessStream(handle, &streams->output)) {
+		++openStreamCount;
+	}
+	if (fpl__Win32PumpProcessStream(handle, &streams->error)) {
+		++openStreamCount;
+	}
+	return(openStreamCount);
+}
+
+// Creates one capture pipe. The read end stays in the parent, so the child must never inherit it,
+// otherwise the parent would never see an end-of-file.
+fpl_internal bool fpl__Win32CreateProcessPipe(HANDLE *outReadHandle, HANDLE *outWriteHandle) {
+	SECURITY_ATTRIBUTES pipeSecurity = fplZeroInit;
+	pipeSecurity.nLength = sizeof(pipeSecurity);
+	pipeSecurity.bInheritHandle = TRUE;
+	if (!CreatePipe(outReadHandle, outWriteHandle, &pipeSecurity, 0)) {
+		return(false);
+	}
+	SetHandleInformation(*outReadHandle, HANDLE_FLAG_INHERIT, 0);
+	return(true);
+}
+
+// Creates the standard-input pipe. Here the child needs the read end, so the write end is the one
+// that must not be inherited, exactly the other way around than for a capture pipe.
+fpl_internal bool fpl__Win32CreateProcessInputPipe(HANDLE *outReadHandle, HANDLE *outWriteHandle) {
+	SECURITY_ATTRIBUTES pipeSecurity = fplZeroInit;
+	pipeSecurity.nLength = sizeof(pipeSecurity);
+	pipeSecurity.bInheritHandle = TRUE;
+	if (!CreatePipe(outReadHandle, outWriteHandle, &pipeSecurity, FPL__WIN32_PROCESS_INPUT_PIPE_SIZE)) {
+		return(false);
+	}
+	SetHandleInformation(*outWriteHandle, HANDLE_FLAG_INHERIT, 0);
+	// An anonymous pipe cannot do overlapped IO, so a WriteFile into a full pipe would block until the child
+	// reads - and that deadlocks as soon as the child itself blocks on its full output pipe. PIPE_NOWAIT makes
+	// WriteFile return a short write instead. It is an old mode, so a failure here is only a warning.
+	DWORD pipeMode = PIPE_NOWAIT;
+	if (!SetNamedPipeHandleState(*outWriteHandle, &pipeMode, fpl_null, fpl_null)) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "Failed switching the standard-input pipe to non-blocking with code %lu, writing into it may block", GetLastError());
+	}
+	return(true);
+}
+
+// Writes as much of the pending standard-input as the pipe takes right now.
+// Returns false when the standard-input is finished and was closed.
+fpl_internal bool fpl__Win32PumpProcessInput(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
+	if ((streams->inputHandle == fpl_null) || !fpl__IsProcessInputPumped(streams->inputMode)) {
+		return(false);
+	}
+	HANDLE inputHandle = (HANDLE)streams->inputHandle;
+	for (;;) {
+		size_t chunkLen = 0;
+		const char *chunk = fpl__GetProcessInputChunk(handle, &chunkLen);
+		if (chunk == fpl_null) {
+			// Everything is written, the child gets its end-of-file from the close
+			fpl__Win32CloseProcessInput(streams);
+			return(false);
+		}
+		DWORD bytesToWrite = (chunkLen > (size_t)FPL__PROCESS_WRITE_CHUNK_SIZE) ? (DWORD)FPL__PROCESS_WRITE_CHUNK_SIZE : (DWORD)chunkLen;
+		DWORD writtenBytes = 0;
+		if (!WriteFile(inputHandle, chunk, bytesToWrite, &writtenBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if ((errorCode != ERROR_BROKEN_PIPE) && (errorCode != ERROR_NO_DATA)) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed writing into the standard-input of process '%llu' with code %lu", (unsigned long long)handle->id, errorCode);
+			}
+			// A closed standard-input on the child side is a normal end, not an error
+			fpl__Win32CloseProcessInput(streams);
+			return(false);
+		}
+		if (writtenBytes == 0) {
+			// The pipe is full right now, the rest goes out on the next pump
+			return(true);
+		}
+		fpl__AdvanceProcessInput(streams, (size_t)writtenBytes);
+	}
+}
+
+fpl_internal void fpl__Win32CloseProcessPipe(HANDLE *readHandle, HANDLE *writeHandle) {
+	if (*readHandle != fpl_null) {
+		CloseHandle(*readHandle);
+		*readHandle = fpl_null;
+	}
+	if (*writeHandle != fpl_null) {
+		CloseHandle(*writeHandle);
+		*writeHandle = fpl_null;
+	}
+}
+
+// Returns a handle the child can use for a stream that is not redirected.
+// When the parent has no such standard handle, a handle to the null device is created instead,
+// because CreateProcessW needs all three handles to be valid as soon as STARTF_USESTDHANDLES is used.
+// Returns an inheritable handle to the null device. It is created once and shared by every stream that needs it.
+fpl_internal HANDLE fpl__Win32GetNullDeviceHandle(HANDLE *outCreatedNullHandle) {
+	if (*outCreatedNullHandle == fpl_null) {
+		SECURITY_ATTRIBUTES securityAttributes = fplZeroInit;
+		securityAttributes.nLength = sizeof(securityAttributes);
+		securityAttributes.bInheritHandle = TRUE;
+		*outCreatedNullHandle = CreateFileW(L"NUL", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &securityAttributes, OPEN_EXISTING, 0, fpl_null);
+		if (*outCreatedNullHandle == INVALID_HANDLE_VALUE) {
+			*outCreatedNullHandle = fpl_null;
+		}
+	}
+	return(*outCreatedNullHandle);
+}
+
+fpl_internal HANDLE fpl__Win32GetInheritableStdHandle(const DWORD stdHandleId, HANDLE *outCreatedNullHandle) {
+	HANDLE stdHandle = GetStdHandle(stdHandleId);
+	if ((stdHandle != fpl_null) && (stdHandle != INVALID_HANDLE_VALUE)) {
+		return(stdHandle);
+	}
+	return(fpl__Win32GetNullDeviceHandle(outCreatedNullHandle));
+}
+
+// One process wide job object for fplProcessFlags_KillOnParentExit. It is created on demand and never closed
+// by FPL, because the operating system closes it when this process exits - and exactly that kills every child
+// that is still in it. A second job would be needed for the process tree anyway, so it is kept separate.
+fpl_globalvar volatile void *fpl__global__Win32KillOnParentExitJobHandle = fpl_null;
+
+fpl_internal HANDLE fpl__Win32GetKillOnParentExitJob(void) {
+	HANDLE existingJobHandle = (HANDLE)fplAtomicLoadPtr(&fpl__global__Win32KillOnParentExitJobHandle);
+	if (existingJobHandle != fpl_null) {
+		return(existingJobHandle);
+	}
+	HANDLE jobHandle = CreateJobObjectW(fpl_null, fpl_null);
+	if (jobHandle == fpl_null) {
+		return(fpl_null);
+	}
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobLimits = fplZeroInit;
+	jobLimits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	if (!SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &jobLimits, sizeof(jobLimits))) {
+		CloseHandle(jobHandle);
+		return(fpl_null);
+	}
+	// Another thread may have been faster, in that case its job is the one everybody uses
+	HANDLE previousJobHandle = (HANDLE)fplAtomicCompareAndSwapPtr(&fpl__global__Win32KillOnParentExitJobHandle, fpl_null, jobHandle);
+	if (previousJobHandle != fpl_null) {
+		CloseHandle(jobHandle);
+		return(previousJobHandle);
+	}
+	return(jobHandle);
+}
+
+// Collects the handles the child is allowed to inherit, so nothing else of this process leaks into it.
+// A handle that is not inheritable is left out, it would make CreateProcessW fail with the list.
+fpl_internal size_t fpl__Win32CollectInheritableHandles(const STARTUPINFOW *startupInfo, HANDLE *targetHandles, const size_t maxTargetHandleCount) {
+	HANDLE candidateHandles[] = { startupInfo->hStdInput, startupInfo->hStdOutput, startupInfo->hStdError };
+	size_t handleCount = 0;
+	for (size_t candidateIndex = 0; candidateIndex < fplArrayCount(candidateHandles); ++candidateIndex) {
+		HANDLE candidateHandle = candidateHandles[candidateIndex];
+		if ((candidateHandle == fpl_null) || (candidateHandle == INVALID_HANDLE_VALUE)) {
+			continue;
+		}
+		DWORD handleFlags = 0;
+		if (!GetHandleInformation(candidateHandle, &handleFlags)) {
+			continue;
+		}
+		if ((handleFlags & HANDLE_FLAG_INHERIT) != HANDLE_FLAG_INHERIT) {
+			continue;
+		}
+		if (handleCount >= maxTargetHandleCount) {
+			continue;
+		}
+		// The same handle can be used for more than one stream, for example a merged capture
+		bool isCollectedAlready = false;
+		for (size_t handleIndex = 0; (handleIndex < handleCount) && !isCollectedAlready; ++handleIndex) {
+			isCollectedAlready = (targetHandles[handleIndex] == candidateHandle);
+		}
+		if (isCollectedAlready) {
+			continue;
+		}
+		targetHandles[handleCount] = candidateHandle;
+		++handleCount;
+	}
+	return(handleCount);
+}
+
+// Collects the exit code of the process and caches it in the handle.
+// The state is decided by the wait and never by comparing the exit code against STILL_ACTIVE,
+// because a process that really exits with that value would be indistinguishable from a running one.
+fpl_internal bool fpl__Win32UpdateProcessExitState(fplProcessHandle *handle, const DWORD timeout) {
+	if (handle->hasExited) {
+		return(true);
+	}
+	HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+	DWORD waitResult = WaitForSingleObject(processHandle, timeout);
+	if (waitResult != WAIT_OBJECT_0) {
+		if (waitResult == WAIT_FAILED) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed waiting for process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		}
+		return(false);
+	}
+	DWORD exitCode = 0;
+	if (!GetExitCodeProcess(processHandle, &exitCode)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed getting the exit code of process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		exitCode = 0;
+	}
+	handle->exitCode = (int32_t)exitCode;
+	handle->terminationSignal = 0;
+	handle->hasExited = true;
+	return(true);
+}
+
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(context, false);
+	FPL__CheckArgumentNull(outHandle, false);
+	FPL__CheckArgumentNull(context->name, false);
+
+	fplClearStruct(outHandle);
+	fplProcessResult startResult = fplZeroInit;
+	startResult.type = fplProcessResultType_Success;
+
+	fplProcessResultType contextValidation = fpl__ValidateProcessContext(context);
+	if (contextValidation != fplProcessResultType_Success) {
+		startResult.type = contextValidation;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	fpl__Win32ProcessShell shell = fplZeroInit;
+	fpl__Win32GetProcessShell(context, &shell);
+
+	fpl__Win32ProcessStartArgs startArgs = fplZeroInit;
+	if (!fpl__Win32CreateProcessStartArgs(context, &shell, &startArgs)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed building the command line for the process '%s'", context->name);
+		startResult.type = fplProcessResultType_OutOfMemory;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	// A job object lets us stop the whole tree later, the process starts suspended so it cannot
+	// spawn any child before it is assigned to the job
+	bool useProcessTree = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	HANDLE jobHandle = fpl_null;
+	if (useProcessTree) {
+		jobHandle = CreateJobObjectW(fpl_null, fpl_null);
+		if (jobHandle == fpl_null) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed creating a job object with code %lu, the process tree cannot be stopped", GetLastError());
+		}
+	}
+
+	// The shared job dies with this process and takes every child in it along, that is the whole trick here
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	HANDLE killOnParentExitJobHandle = fpl_null;
+	if (killsOnParentExit) {
+		killOnParentExitJobHandle = fpl__Win32GetKillOnParentExitJob();
+		if (killOnParentExitJobHandle == fpl_null) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed creating the kill-on-parent-exit job object with code %lu, the process '%s' will survive this process", GetLastError(), context->name);
+		}
+	}
+
+	DWORD creationFlags = 0;
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	if (isDetached) {
+		// A detached process has no console at all, so it does not react to a control event of this
+		// console anymore and a CREATE_NO_WINDOW would be ignored
+		creationFlags |= DETACHED_PROCESS;
+	} else if ((context->flags & fplProcessFlags_NoWindow) == fplProcessFlags_NoWindow) {
+		creationFlags |= CREATE_NO_WINDOW;
+	}
+	if (useProcessTree) {
+		// The new process group is what a graceful stop can send its control event to
+		creationFlags |= CREATE_NEW_PROCESS_GROUP;
+	}
+	bool startsSuspended = (jobHandle != fpl_null) || (killOnParentExitJobHandle != fpl_null);
+	if (startsSuspended) {
+		creationFlags |= CREATE_SUSPENDED;
+	}
+
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
+	bool hasCapture = capturesOutput || capturesError;
+	// A merged capture sends the error stream into the output pipe, which is what "2>&1" does,
+	// so a second pipe is only needed when the error stream is captured on its own
+	bool mergesErrorIntoOutput = capturesOutput && mergesStreams;
+	bool usesOutputPipe = capturesOutput;
+	bool usesErrorPipe = capturesError && !mergesErrorIntoOutput;
+	// Only the modes that actually feed text need a pipe, the none mode just points the child at the null device
+	bool usesInputPipe = (context->inputMode == fplProcessInputMode_Text) || (context->inputMode == fplProcessInputMode_Callback) || (context->inputMode == fplProcessInputMode_Stream);
+	bool usesNullInput = (context->inputMode == fplProcessInputMode_None);
+	bool usesStdHandles = hasCapture || usesInputPipe || usesNullInput;
+
+	fpl__ProcessStreams *streams = fpl_null;
+	HANDLE outputReadHandle = fpl_null;
+	HANDLE outputWriteHandle = fpl_null;
+	HANDLE errorReadHandle = fpl_null;
+	HANDLE errorWriteHandle = fpl_null;
+	HANDLE inputReadHandle = fpl_null;
+	HANDLE inputWriteHandle = fpl_null;
+	HANDLE nullDeviceHandle = fpl_null;
+
+	// The extended variant is used as soon as the handles the child inherits are listed explicitly,
+	// its first member is the plain STARTUPINFOW, so both cases share the same fields
+	STARTUPINFOEXW startupInfoEx = fplZeroInit;
+	STARTUPINFOW *startupInfo = &startupInfoEx.StartupInfo;
+	startupInfo->cb = sizeof(STARTUPINFOW);
+
+	if (usesStdHandles) {
+		streams = fpl__Win32CreateProcessStreams(context);
+		if (streams == fpl_null) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the stream state for the process '%s'", context->name);
+			startResult.type = fplProcessResultType_OutOfMemory;
+			if (jobHandle != fpl_null) {
+				CloseHandle(jobHandle);
+			}
+			fpl__Win32ReleaseProcessStartArgs(&startArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		bool pipesCreated = true;
+		if (usesOutputPipe) {
+			pipesCreated = fpl__Win32CreateProcessPipe(&outputReadHandle, &outputWriteHandle);
+		}
+		if (pipesCreated && usesErrorPipe) {
+			pipesCreated = fpl__Win32CreateProcessPipe(&errorReadHandle, &errorWriteHandle);
+		}
+		if (pipesCreated && usesInputPipe) {
+			pipesCreated = fpl__Win32CreateProcessInputPipe(&inputReadHandle, &inputWriteHandle);
+		}
+		if (!pipesCreated) {
+			DWORD errorCode = GetLastError();
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %lu", context->name, errorCode);
+			startResult.type = fplProcessResultType_FailedToStart;
+			startResult.nativeErrorCode = (uint32_t)errorCode;
+			fpl__Win32CloseProcessPipe(&outputReadHandle, &outputWriteHandle);
+			fpl__Win32CloseProcessPipe(&errorReadHandle, &errorWriteHandle);
+			fpl__Win32CloseProcessPipe(&inputReadHandle, &inputWriteHandle);
+			fpl__Win32ReleaseProcessStreams(streams);
+			if (jobHandle != fpl_null) {
+				CloseHandle(jobHandle);
+			}
+			fpl__Win32ReleaseProcessStartArgs(&startArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+
+		// As soon as STARTF_USESTDHANDLES is used, all three handles must be valid, otherwise a child
+		// that touches a stream we did not redirect fails with an obscure error
+		startupInfo->dwFlags |= STARTF_USESTDHANDLES;
+		if (usesInputPipe) {
+			startupInfo->hStdInput = inputReadHandle;
+		} else if (usesNullInput) {
+			// Reading from the null device gives an immediate end-of-file, so an interactive child cannot block
+			startupInfo->hStdInput = fpl__Win32GetNullDeviceHandle(&nullDeviceHandle);
+		} else {
+			startupInfo->hStdInput = fpl__Win32GetInheritableStdHandle(STD_INPUT_HANDLE, &nullDeviceHandle);
+		}
+		startupInfo->hStdOutput = usesOutputPipe ? outputWriteHandle : fpl__Win32GetInheritableStdHandle(STD_OUTPUT_HANDLE, &nullDeviceHandle);
+		if (mergesErrorIntoOutput) {
+			startupInfo->hStdError = outputWriteHandle;
+		} else if (usesErrorPipe) {
+			startupInfo->hStdError = errorWriteHandle;
+		} else {
+			startupInfo->hStdError = fpl__Win32GetInheritableStdHandle(STD_ERROR_HANDLE, &nullDeviceHandle);
+		}
+	}
+
+	// Handles are only inherited when a stream is redirected. Without the explicit list every inheritable
+	// handle of this process would end up in the child, a socket of another thread for example, and the
+	// child would keep it alive long after this process has closed it.
+	BOOL inheritHandles = usesStdHandles ? TRUE : FALSE;
+	HANDLE inheritableHandles[FPL__WIN32_PROCESS_MAX_INHERITABLE_HANDLE_COUNT];
+	size_t inheritableHandleCount = 0;
+	if (usesStdHandles) {
+		inheritableHandleCount = fpl__Win32CollectInheritableHandles(startupInfo, inheritableHandles, fplArrayCount(inheritableHandles));
+	}
+	LPPROC_THREAD_ATTRIBUTE_LIST attributeList = fpl_null;
+	bool isAttributeListInitialized = false;
+	if (inheritableHandleCount > 0) {
+		SIZE_T attributeListSize = 0;
+		InitializeProcThreadAttributeList(fpl_null, 1, 0, &attributeListSize);
+		if (attributeListSize > 0) {
+			attributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)fpl__AllocateTemporaryMemory((size_t)attributeListSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+		}
+		if (attributeList != fpl_null) {
+			isAttributeListInitialized = InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize) != 0;
+			BOOL attributeResult = FALSE;
+			if (isAttributeListInitialized) {
+				attributeResult = UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritableHandles, inheritableHandleCount * sizeof(HANDLE), fpl_null, fpl_null);
+			}
+			if (attributeResult) {
+				startupInfoEx.lpAttributeList = attributeList;
+				startupInfo->cb = sizeof(startupInfoEx);
+				creationFlags |= EXTENDED_STARTUPINFO_PRESENT;
+			} else {
+				FPL__WARNING(FPL__MODULE_PROCESS, "Failed building the handle list for the process '%s' with code %lu", context->name, GetLastError());
+				if (isAttributeListInitialized) {
+					DeleteProcThreadAttributeList(attributeList);
+					isAttributeListInitialized = false;
+				}
+				fpl__ReleaseTemporaryMemory(attributeList);
+				attributeList = fpl_null;
+			}
+		}
+	}
+
+	PROCESS_INFORMATION processInfo = fplZeroInit;
+	BOOL createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, startupInfo, &processInfo);
+	if (!createResult && (startupInfoEx.lpAttributeList != fpl_null)) {
+		// Not every handle is allowed in a handle list, a console handle for example. Falling back to the
+		// plain inheritance keeps the process startable, it just inherits more than we would like.
+		DWORD attributeErrorCode = GetLastError();
+		FPL__WARNING(FPL__MODULE_PROCESS, "Failed starting the process '%s' with an explicit handle list with code %lu, retrying with the default handle inheritance", context->name, attributeErrorCode);
+		startupInfoEx.lpAttributeList = fpl_null;
+		startupInfo->cb = sizeof(STARTUPINFOW);
+		creationFlags &= ~(DWORD)EXTENDED_STARTUPINFO_PRESENT;
+		// CreateProcessW is allowed to write into the command line, so the second attempt gets the copy
+		fpl__Win32RestoreProcessCommandLine(&startArgs);
+		createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, startupInfo, &processInfo);
+	}
+	if (attributeList != fpl_null) {
+		if (isAttributeListInitialized) {
+			DeleteProcThreadAttributeList(attributeList);
+		}
+		fpl__ReleaseTemporaryMemory(attributeList);
+		attributeList = fpl_null;
+	}
+
+	// The child owns its own duplicates from here on, so the parent must let go of the write ends.
+	// Without this the read ends would never reach their end-of-file.
+	if (outputWriteHandle != fpl_null) {
+		CloseHandle(outputWriteHandle);
+		outputWriteHandle = fpl_null;
+	}
+	if (errorWriteHandle != fpl_null) {
+		CloseHandle(errorWriteHandle);
+		errorWriteHandle = fpl_null;
+	}
+	// The read end of the standard-input belongs to the child alone, the parent keeps only the write end
+	if (inputReadHandle != fpl_null) {
+		CloseHandle(inputReadHandle);
+		inputReadHandle = fpl_null;
+	}
+	if (nullDeviceHandle != fpl_null) {
+		CloseHandle(nullDeviceHandle);
+		nullDeviceHandle = fpl_null;
+	}
+
+	if (!createResult) {
+		DWORD errorCode = GetLastError();
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %lu", context->name, errorCode);
+		startResult.type = fpl__Win32MapProcessStartError(errorCode);
+		startResult.nativeErrorCode = (uint32_t)errorCode;
+		fpl__Win32CloseProcessPipe(&outputReadHandle, &outputWriteHandle);
+		fpl__Win32CloseProcessPipe(&errorReadHandle, &errorWriteHandle);
+		fpl__Win32CloseProcessPipe(&inputReadHandle, &inputWriteHandle);
+		fpl__Win32ReleaseProcessStreams(streams);
+		if (jobHandle != fpl_null) {
+			CloseHandle(jobHandle);
+		}
+		fpl__Win32ReleaseProcessStartArgs(&startArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	if (jobHandle != fpl_null) {
+		if (!AssignProcessToJobObject(jobHandle, processInfo.hProcess)) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed assigning the process to the job object with code %lu", GetLastError());
+			CloseHandle(jobHandle);
+			jobHandle = fpl_null;
+		}
+	}
+	if (killOnParentExitJobHandle != fpl_null) {
+		// A process can be part of more than one job since Windows 8 only, on anything older this is the
+		// second job and the assignment fails
+		if (!AssignProcessToJobObject(killOnParentExitJobHandle, processInfo.hProcess)) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "Failed assigning the process '%s' to the kill-on-parent-exit job object with code %lu, it will survive this process", context->name, GetLastError());
+		}
+	}
+	if (startsSuspended) {
+		ResumeThread(processInfo.hThread);
+	}
+
+	fpl__Win32ReleaseProcessStartArgs(&startArgs);
+
+	if (streams != fpl_null) {
+		// A merged capture lands entirely in the output stream, the error stream only gets its own
+		// buffer when it was captured separately
+		streams->output.readHandle = (fpl__Win32Handle)outputReadHandle;
+		streams->error.readHandle = (fpl__Win32Handle)errorReadHandle;
+		streams->inputHandle = (fpl__Win32Handle)inputWriteHandle;
+		outputReadHandle = fpl_null;
+		errorReadHandle = fpl_null;
+		inputWriteHandle = fpl_null;
+	}
+
+	outHandle->streams = streams;
+	outHandle->internalHandle.win32.processHandle = (fpl__Win32Handle)processInfo.hProcess;
+	outHandle->internalHandle.win32.threadHandle = (fpl__Win32Handle)processInfo.hThread;
+	outHandle->internalHandle.win32.jobHandle = (fpl__Win32Handle)jobHandle;
+	outHandle->id = (uint64_t)processInfo.dwProcessId;
+	outHandle->flags = context->flags;
+	outHandle->isValid = true;
+
+	if ((context->flags & fplProcessFlags_AutoWait) == fplProcessFlags_AutoWait) {
+		fplProcessWait(outHandle, context->waitTimeout, outResult);
+		return(true);
+	}
+
+	if (outResult != fpl_null) {
+		*outResult = startResult;
+	}
+	return(true);
+}
+
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	if (handle->streams == fpl_null) {
+		return(false);
+	}
+	bool hasPendingInput = fpl__Win32PumpProcessInput(handle);
+	size_t openStreamCount = fpl__Win32PumpProcessStreams(handle);
+	return(hasPendingInput || (openStreamCount > 0));
+}
+
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	bool waitInfinitely = (timeout == 0) || (timeout == FPL_TIMEOUT_INFINITE);
+	bool hasExited = false;
+	if (handle->streams != fpl_null) {
+		// The streams have to be drained while waiting. Waiting first and reading afterwards would
+		// deadlock as soon as the child fills the pipe buffer.
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			hasExited = fpl__Win32UpdateProcessExitState(handle, FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS);
+			fpl__Win32PumpProcessInput(handle);
+			size_t openStreamCount = fpl__Win32PumpProcessStreams(handle);
+			if (hasExited && (openStreamCount == 0)) {
+				break;
+			}
+			if (!waitInfinitely) {
+				fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+				if (elapsedTime >= (fplMilliseconds)timeout) {
+					break;
+				}
+			}
+		}
+	} else {
+		DWORD waitTime = waitInfinitely ? INFINITE : (DWORD)timeout;
+		hasExited = fpl__Win32UpdateProcessExitState(handle, waitTime);
+	}
+	if (outResult != fpl_null) {
+		fpl__FillProcessResultFromHandle(handle, hasExited, outResult);
+	}
+	return(hasExited);
+}
+
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	if (!handle->isValid) {
+		return(false);
+	}
+	bool hasExited = fpl__Win32UpdateProcessExitState(handle, 0);
+	return(!hasExited);
+}
+
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentNull(outExitCode, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (!fpl__Win32UpdateProcessExitState(handle, 0)) {
+		return(false);
+	}
+	*outExitCode = handle->exitCode;
+	return(true);
+}
+
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(handle, 0);
+	FPL__CheckArgumentNull(text, 0);
+	fpl__ProcessStreams *streams = handle->streams;
+	if ((streams == fpl_null) || (streams->inputHandle == fpl_null)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The process '%llu' has no standard-input to write to, use fplProcessInputMode_Stream", (unsigned long long)handle->id);
+		return(0);
+	}
+	if (streams->inputMode != fplProcessInputMode_Stream) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The standard-input of process '%llu' is fed by FPL itself, only fplProcessInputMode_Stream can be written to", (unsigned long long)handle->id);
+		return(0);
+	}
+	HANDLE inputHandle = (HANDLE)streams->inputHandle;
+	size_t writeLen = (textLen > 0) ? textLen : fplGetStringLength(text);
+	size_t writtenLen = 0;
+	while (writtenLen < writeLen) {
+		size_t remainingLen = writeLen - writtenLen;
+		DWORD bytesToWrite = (remainingLen > (size_t)FPL__PROCESS_WRITE_CHUNK_SIZE) ? (DWORD)FPL__PROCESS_WRITE_CHUNK_SIZE : (DWORD)remainingLen;
+		DWORD writtenBytes = 0;
+		if (!WriteFile(inputHandle, text + writtenLen, bytesToWrite, &writtenBytes, fpl_null)) {
+			DWORD errorCode = GetLastError();
+			if ((errorCode != ERROR_BROKEN_PIPE) && (errorCode != ERROR_NO_DATA)) {
+				FPL__ERROR(FPL__MODULE_PROCESS, "Failed writing into the standard-input of process '%llu' with code %lu", (unsigned long long)handle->id, errorCode);
+			}
+			// A closed standard-input on the child side is a normal end, not an error
+			fpl__Win32CloseProcessInput(streams);
+			break;
+		}
+		if (writtenBytes == 0) {
+			// The pipe is full, so the captured streams are drained before trying again.
+			// Just waiting here would deadlock as soon as the child blocks on its own full output pipe.
+			fpl__Win32PumpProcessStreams(handle);
+			fplThreadSleep(FPL__WIN32_PROCESS_WAIT_SLICE_MILLISECONDS);
+			continue;
+		}
+		writtenLen += (size_t)writtenBytes;
+	}
+	return(writtenLen);
+}
+
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	if (handle->streams == fpl_null) {
+		return;
+	}
+	fpl__Win32CloseProcessInput(handle->streams);
+}
+
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	// Windows has no equivalent of SIGTERM. A control event is the closest thing, but it only reaches
+	// a process that was started in its own process group.
+	bool hasOwnProcessGroup = (handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	if (!hasOwnProcessGroup) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "The process '%llu' cannot be asked to stop, because it was not started with the kill-process-tree flag", (unsigned long long)handle->id);
+		return(false);
+	}
+	DWORD processGroupId = (DWORD)handle->id;
+	if (!GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, processGroupId)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed sending the control event to process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		return(false);
+	}
+	return(true);
+}
+
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	HANDLE jobHandle = (HANDLE)handle->internalHandle.win32.jobHandle;
+	bool useProcessTree = (handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	if (useProcessTree && (jobHandle != fpl_null)) {
+		if (!TerminateJobObject(jobHandle, FPL__WIN32_PROCESS_STOP_EXIT_CODE)) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed terminating the job object of process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+			return(false);
+		}
+		return(true);
+	}
+	HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+	if (!TerminateProcess(processHandle, FPL__WIN32_PROCESS_STOP_EXIT_CODE)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed terminating the process '%llu' with code %lu", (unsigned long long)handle->id, GetLastError());
+		return(false);
+	}
+	return(true);
+}
+
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	if (handle->isValid) {
+		fpl__Win32ReleaseProcessStreams(handle->streams);
+		HANDLE threadHandle = (HANDLE)handle->internalHandle.win32.threadHandle;
+		if (threadHandle != fpl_null) {
+			CloseHandle(threadHandle);
+		}
+		HANDLE jobHandle = (HANDLE)handle->internalHandle.win32.jobHandle;
+		if (jobHandle != fpl_null) {
+			CloseHandle(jobHandle);
+		}
+		HANDLE processHandle = (HANDLE)handle->internalHandle.win32.processHandle;
+		if (processHandle != fpl_null) {
+			CloseHandle(processHandle);
+		}
+	}
+	fplClearStruct(handle);
+}
+
+fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
+	DWORD currentProcessId = GetCurrentProcessId();
+	uint64_t result = (uint64_t)currentProcessId;
+	return(result);
+}
+#endif // FPL_PLATFORM_WINDOWS
+
+// ############################################################################
+//
 // > POSIX_SUBPLATFORM (Linux, Unix)
 //
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_POSIX)
+
+#	include <locale.h> // setlocale
 
 #	if defined(FPL_SUBPLATFORM_BSD)
 #		include <sys/sysctl.h> // sysctl, CTL_HW, HW_NCPU
@@ -21217,12 +25613,28 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 #		define FPL__MAP_ANONYMOUS MAP_ANONYMOUS
 #	endif
 
-fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixAppState *appState) {
+fpl_internal void fpl__PosixReleaseSubplatform(fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
+	// Restore preserved locales, if needed
+	fpl__PosixPreservedLocales *preservedLocales = &initState->preservedLocales;
+	if (preservedLocales->flags != fpl__PosixLocaleFlags_None) {
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_All) != 0) {
+			setlocale(LC_ALL, preservedLocales->allName);
+		}
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_Numeric) != 0) {
+			setlocale(LC_NUMERIC, preservedLocales->numericName);
+		}
+		if ((preservedLocales->flags & fpl__PosixLocaleFlags_Time) != 0) {
+			setlocale(LC_TIME, preservedLocales->timeName);
+		}
+		preservedLocales->flags = fpl__PosixLocaleFlags_None;
+	}
+
 	fpl__PThreadUnloadApi(&appState->pthreadApi);
 }
 
 fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PosixInitState *initState, fpl__PosixAppState *appState) {
 	fpl__PThreadApi *pthreadApi = &appState->pthreadApi;
+	fpl__PosixPreservedLocales *preservedLocales = &initState->preservedLocales;
 
 	if (!fpl__PThreadLoadApi(pthreadApi)) {
 		FPL__ERROR(FPL__MODULE_POSIX, "Failed initializing PThread API");
@@ -21238,6 +25650,32 @@ fpl_internal bool fpl__PosixInitSubplatform(const fplInitFlags initFlags, const 
 	mainThread->internalHandle.posixThread = currentThreadHandle;
 	mainThread->currentState = fplThreadState_Running;
 
+	fplClearStruct(preservedLocales);
+
+	// Preserve current locales, if needed
+	if (initSettings != fpl_null && initSettings->locale.isCultureInvariant) {
+		const char *currentLocaleAll = setlocale(LC_ALL, fpl_null);
+		if (currentLocaleAll != fpl_null) {
+			fplCopyString(currentLocaleAll, preservedLocales->allName, fplArrayCount(preservedLocales->allName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_All;
+		}
+		const char *currentLocaleNumeric = setlocale(LC_NUMERIC, fpl_null);
+		if (currentLocaleNumeric != fpl_null) {
+			fplCopyString(currentLocaleNumeric, preservedLocales->numericName, fplArrayCount(preservedLocales->numericName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_Numeric;
+		}
+		const char *currentLocaleTime = setlocale(LC_TIME, fpl_null);
+		if (currentLocaleTime != fpl_null) {
+			fplCopyString(currentLocaleTime, preservedLocales->timeName, fplArrayCount(preservedLocales->timeName));
+			preservedLocales->flags |= fpl__PosixLocaleFlags_Time;
+		}
+
+		// Overwrite locales to be culture-invariant
+		setlocale(LC_ALL, "C");
+		setlocale(LC_NUMERIC, "C");
+		setlocale(LC_TIME, "C");
+	}
+
 	return true;
 }
 
@@ -21252,6 +25690,12 @@ fpl_internal void fpl__InitWaitTimeSpec(const uint32_t milliseconds, struct time
 	clock_gettime(CLOCK_REALTIME, outSpec);
 	outSpec->tv_sec += secs;
 	outSpec->tv_nsec += nanoSecs;
+	// pthread waits reject a deadline with 1 second or more in tv_nsec (EINVAL)
+	const long nanosecondsPerSecond = 1000000000L;
+	if (outSpec->tv_nsec >= nanosecondsPerSecond) {
+		outSpec->tv_sec += 1;
+		outSpec->tv_nsec -= nanosecondsPerSecond;
+	}
 }
 
 void *fpl__PosixThreadProc(void *data) {
@@ -21268,9 +25712,8 @@ void *fpl__PosixThreadProc(void *data) {
 
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 	thread->isValid = false;
+	// This store frees the slot, so nothing in here may touch the handle afterwards - a new thread can own it already
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
-
-	pthreadApi->pthread_exit(data);
 	return 0;
 }
 
@@ -21310,50 +25753,7 @@ fpl_internal int fpl__PosixMutexCreate(const fpl__PThreadApi *pthreadApi, pthrea
 }
 
 fpl_internal bool fpl__PosixThreadWaitForMultiple(fplThreadHandle **threads, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
-	FPL__CheckArgumentNull(threads, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_COUNT, false);
-	const size_t actualStride = stride > 0 ? stride : sizeof(fplThreadHandle *);
-	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		if (thread == fpl_null) {
-			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%d' are not allowed to be null", index);
-			return false;
-		}
-	}
-
-	uint32_t completeCount = 0;
-	bool isRunning[FPL_MAX_THREAD_COUNT];
-	for (uint32_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		isRunning[index] = fplGetThreadState(thread) != fplThreadState_Stopped;
-		if (!isRunning[index]) {
-			++completeCount;
-		}
-	}
-
-	fplMilliseconds startTime = fplMillisecondsQuery();
-	bool result = false;
-	while (completeCount < minCount) {
-		for (uint32_t index = 0; index < maxCount; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			if (isRunning[index]) {
-				fplThreadState state = fplGetThreadState(thread);
-				if (state == fplThreadState_Stopped) {
-					isRunning[index] = false;
-					++completeCount;
-					if (completeCount >= minCount) {
-						result = true;
-						break;
-					}
-				}
-			}
-			fplThreadSleep(10);
-		}
-		if ((timeout != FPL_TIMEOUT_INFINITE) && (fplMillisecondsQuery() - startTime) >= timeout) {
-			result = false;
-			break;
-		}
-	}
+	bool result = fpl__WaitForThreadsStopped(threads, minCount, maxCount, stride, timeout);
 	return(result);
 }
 
@@ -21572,15 +25972,10 @@ fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
 fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 	FPL__CheckArgumentNull(thread, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	if (thread->isValid && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
-		pthread_t threadHandle = thread->internalHandle.posixThread;
-		if (pthreadApi->pthread_kill(threadHandle, 0) == 0) {
-			pthreadApi->pthread_join(threadHandle, fpl_null);
-		}
-		thread->isValid = false;
-		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
+		// POSIX has no safe way to kill a single thread, so this waits for it to end. Joining is not possible
+		// either, because the threads are detached - see fplThreadWaitForOne for the reason.
+		fpl__WaitForThreadStopped(thread, FPL_TIMEOUT_INFINITE);
 		return true;
 	} else {
 		return false;
@@ -21604,7 +25999,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 	fplThreadHandle *result = fpl_null;
 	fplThreadHandle *thread = fpl__GetFreeThread();
 	if (thread != fpl_null) {
-		thread->currentState = fplThreadState_Stopped;
+		// The slot is already reserved as Starting by fpl__GetFreeThread, do not reset it to Stopped here or a concurrent create could grab it.
 		thread->parameters = *parameters;
 		thread->isValid = false;
 		thread->isStopping = false;
@@ -21648,6 +26043,10 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			if (parameters->stackSize > 0) {
 				pthreadApi->pthread_attr_setstacksize(&attr, parameters->stackSize);
 			}
+
+			// The thread frees itself when it ends and is never joined, because its slot can be handed to a
+			// new thread the moment it stops - a join would then hit the wrong thread. See fplThreadWaitForOne.
+			pthreadApi->pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 			// Priority
 			if (scheduler != -1) {
@@ -21701,7 +26100,7 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			fplClearStruct(thread);
 		}
 	} else {
-		FPL__ERROR(FPL__MODULE_THREADING, "All %d threads are in use, you cannot create until you free one", FPL_MAX_THREAD_COUNT);
+		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
 	}
 	return(result);
 }
@@ -21835,25 +26234,11 @@ fpl_platform_api bool fplSetThreadPriority(fplThreadHandle *thread, const fplThr
 
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
-	bool result = false;
-	if ((thread != fpl_null) && (fplGetThreadState(thread) != fplThreadState_Stopped)) {
-		pthread_t threadHandle = thread->internalHandle.posixThread;
-
-		// @NOTE(final): We optionally use the GNU extension "pthread_timedjoin_np" to support joining with a timeout.
-		int joinRes;
-		if ((pthreadApi->pthread_timedjoin_np != fpl_null) && (timeout != FPL_TIMEOUT_INFINITE)) {
-			struct timespec t;
-			fpl__InitWaitTimeSpec(timeout, &t);
-			joinRes = pthreadApi->pthread_timedjoin_np(threadHandle, fpl_null, &t);
-		} else {
-			joinRes = pthreadApi->pthread_join(threadHandle, fpl_null);
-		}
-
-		result = (joinRes == 0);
-	}
-	return (result);
+	// The thread cannot be joined here. A thread frees its slot when it ends, the slot can be handed to a new
+	// thread immediately, and the join would then hit that new thread instead of the one that was waited for.
+	// Threads are created detached for exactly that reason, so the wait runs on the thread state.
+	bool result = fpl__WaitForThreadStopped(thread, timeout);
+	return(result);
 }
 
 fpl_platform_api bool fplThreadWaitForAll(fplThreadHandle **threads, const size_t count, const size_t stride, const fplTimeoutValue timeout) {
@@ -21880,19 +26265,21 @@ fpl_platform_api bool fplThreadYield(void) {
 }
 
 fpl_platform_api void fplThreadSleep(const uint32_t milliseconds) {
-	uint32_t ms;
-	uint32_t s;
-	if (milliseconds > 1000) {
-		s = milliseconds / 1000;
-		ms = milliseconds % 1000;
-	} else {
-		s = 0;
-		ms = milliseconds;
+	const uint32_t millisecondsPerSecond = 1000;
+	const long nanosecondsPerMillisecond = 1000000L;
+	// nanosleep rejects 1 second or more in tv_nsec (EINVAL), so full seconds always go into tv_sec
+	const uint32_t seconds = milliseconds / millisecondsPerSecond;
+	const uint32_t remainingMilliseconds = milliseconds % millisecondsPerSecond;
+	struct timespec requested;
+	requested.tv_sec = (time_t)seconds;
+	requested.tv_nsec = (long)remainingMilliseconds * nanosecondsPerMillisecond;
+	// A signal ends nanosleep early (EINTR), then the time that is left is slept again
+	struct timespec remaining;
+	int sleepResult = nanosleep(&requested, &remaining);
+	while ((sleepResult == -1) && (errno == EINTR)) {
+		requested = remaining;
+		sleepResult = nanosleep(&requested, &remaining);
 	}
-	struct timespec input, output;
-	input.tv_sec = s;
-	input.tv_nsec = ms * 1000000;
-	nanosleep(&input, &output);
 }
 
 fpl_platform_api bool fplMutexInit(fplMutexHandle *mutex) {
@@ -22793,14 +27180,19 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter, fplFileEntry *entry) {
 	FPL__CheckArgumentNull(path, false);
 	FPL__CheckArgumentNull(entry, false);
-	DIR *dir = opendir(path);
+	// Cleared up front, so fplDirectoryListEnd() is safe even when the directory cannot be opened
+	fplClearStruct(entry);
+	// An empty path is the working directory, like on Win32, where the search pattern is just the filter then
+	const char *workingDirectoryPath = ".";
+	size_t pathLen = fplGetStringLength(path);
+	const char *openPath = pathLen > 0 ? path : workingDirectoryPath;
+	DIR *dir = opendir(openPath);
 	if (dir == fpl_null) {
 		return false;
 	}
 	if (fplGetStringLength(filter) == 0) {
 		filter = "*";
 	}
-	fplClearStruct(entry);
 	entry->internalHandle.posixDirHandle = dir;
 	fplCopyString(path, entry->internalRoot.rootPath, fplArrayCount(entry->internalRoot.rootPath));
 	fplCopyString(filter, entry->internalRoot.filter, fplArrayCount(entry->internalRoot.filter));
@@ -22810,6 +27202,8 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 
 fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 	FPL__CheckArgumentNull(entry, false);
+	const char *currentDirectoryName = ".";
+	const char *parentDirectoryName = "..";
 	bool result = false;
 	if (entry->internalHandle.posixDirHandle != fpl_null) {
 		DIR *dirHandle = (DIR *)entry->internalHandle.posixDirHandle;
@@ -22819,6 +27213,12 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 				closedir(dirHandle);
 				fplClearStruct(entry);
 				break;
+			}
+			// Skipped like on Win32, a recursive traversal would otherwise never end
+			bool isCurrentDirectory = fplIsStringEqual(dp->d_name, currentDirectoryName);
+			bool isParentDirectory = fplIsStringEqual(dp->d_name, parentDirectoryName);
+			if (isCurrentDirectory || isParentDirectory) {
+				continue;
 			}
 			if (fplIsStringMatchWildcard(dp->d_name, entry->internalRoot.filter)) {
 				fpl__PosixFillFileEntry(dp, entry);
@@ -23388,6 +27788,1078 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 
 // ############################################################################
 //
+// > POSIX_PROCESS
+//
+// Process implementation using fork/exec and pipes
+//
+// ############################################################################
+#if defined(FPL_SUBPLATFORM_POSIX)
+
+// Exit code the child reports when the exec has failed, the same value a POSIX shell uses for "command not found"
+#define FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE 127
+// Exit code base for processes terminated by a signal, the same convention a POSIX shell uses
+#define FPL__POSIX_PROCESS_SIGNAL_EXIT_CODE_BASE 128
+// Number of milliseconds slept between two non-blocking waitpid calls, when a timeout is used
+#define FPL__POSIX_PROCESS_WAIT_SLICE_MILLISECONDS 1
+
+// Path of the shell used for fplProcessShellMode_Default, it is required to exist by POSIX
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_PATH "/bin/sh"
+// Name the default shell sees as its own argv[0]
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_NAME "sh"
+// Argument that tells a POSIX shell to execute the following command line
+#define FPL__POSIX_PROCESS_DEFAULT_SHELL_ARGUMENT "-c"
+
+typedef struct fpl__PosixProcessExecArgs {
+	//! Single memory block holding the argument array followed by all argument strings.
+	void *memory;
+	//! Null-terminated argument array, the first entry is the name the started program sees as its own argv[0].
+	char **argv;
+	//! Path of the program that is executed, this is the shell itself when a shell mode is used.
+	char *executablePath;
+	//! Number of arguments, without the terminating null-entry.
+	size_t argumentCount;
+} fpl__PosixProcessExecArgs;
+
+// Splits a command line into single arguments, honoring double quotes, single quotes and backslash escapes.
+// Pass null for the targets to just count the arguments and the number of string bytes required.
+fpl_internal size_t fpl__PosixSplitArgumentLine(const char *argumentLine, char **targetArgv, char *targetStringBuffer, size_t *outStringBytes) {
+	const char singleQuoteChar = '\'';
+	const char doubleQuoteChar = '"';
+	const char escapeChar = '\\';
+	bool hasTargets = (targetArgv != fpl_null) && (targetStringBuffer != fpl_null);
+	size_t argumentCount = 0;
+	size_t stringBytes = 0;
+	const char *cursor = argumentLine;
+	while (*cursor != 0) {
+		while ((*cursor == ' ') || (*cursor == '\t')) {
+			++cursor;
+		}
+		if (*cursor == 0) {
+			break;
+		}
+		if (hasTargets) {
+			targetArgv[argumentCount] = targetStringBuffer + stringBytes;
+		}
+		char activeQuoteChar = 0;
+		bool isInsideArgument = true;
+		while (isInsideArgument && (*cursor != 0)) {
+			char currentChar = *cursor;
+			if (activeQuoteChar != 0) {
+				if (currentChar == activeQuoteChar) {
+					activeQuoteChar = 0;
+					++cursor;
+					continue;
+				}
+			} else if ((currentChar == doubleQuoteChar) || (currentChar == singleQuoteChar)) {
+				activeQuoteChar = currentChar;
+				++cursor;
+				continue;
+			} else if ((currentChar == ' ') || (currentChar == '\t')) {
+				isInsideArgument = false;
+				continue;
+			}
+			// A backslash escapes the next character, except inside single quotes where everything is literal
+			if ((currentChar == escapeChar) && (activeQuoteChar != singleQuoteChar) && (*(cursor + 1) != 0)) {
+				++cursor;
+				currentChar = *cursor;
+			}
+			if (hasTargets) {
+				targetStringBuffer[stringBytes] = currentChar;
+			}
+			++stringBytes;
+			++cursor;
+		}
+		if (hasTargets) {
+			targetStringBuffer[stringBytes] = 0;
+		}
+		++stringBytes;
+		++argumentCount;
+	}
+	if (outStringBytes != fpl_null) {
+		*outStringBytes = stringBytes;
+	}
+	return(argumentCount);
+}
+
+// Appends one argument to a shell command line, wrapped in single quotes, because a POSIX shell takes every
+// character inside them literally. A contained single quote is the only special case: it has to leave the
+// quoted section, gets escaped on its own and enters the section again.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixAppendShellQuotedArgument(const char *argument, char *targetBuffer, const size_t targetOffset) {
+	const char quoteChar = '\'';
+	const char escapeChar = '\\';
+	size_t offset = targetOffset;
+	size_t argumentLen = fplGetStringLength(argument);
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	for (size_t charIndex = 0; charIndex < argumentLen; ++charIndex) {
+		char currentChar = argument[charIndex];
+		if (currentChar == quoteChar) {
+			const char quoteReplacement[] = { quoteChar, escapeChar, quoteChar, quoteChar };
+			for (size_t replacementIndex = 0; replacementIndex < fplArrayCount(quoteReplacement); ++replacementIndex) {
+				if (targetBuffer != fpl_null) {
+					targetBuffer[offset] = quoteReplacement[replacementIndex];
+				}
+				++offset;
+			}
+			continue;
+		}
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = currentChar;
+		}
+		++offset;
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = quoteChar;
+	}
+	++offset;
+	return(offset);
+}
+
+// Appends a text to the shell command line, without applying any quoting rule to it.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixAppendShellText(const char *text, char *targetBuffer, const size_t targetOffset) {
+	size_t offset = targetOffset;
+	size_t textLen = fplGetStringLength(text);
+	for (size_t charIndex = 0; charIndex < textLen; ++charIndex) {
+		if (targetBuffer != fpl_null) {
+			targetBuffer[offset] = text[charIndex];
+		}
+		++offset;
+	}
+	return(offset);
+}
+
+// Builds the one command line a shell expects, because "sh -c" takes exactly one command string.
+// The name is taken over unchanged, so it can use shell syntax or be the source code of an interpreter,
+// and so is an argument line. Only the entries of an argument array are quoted, because those are data.
+// Pass null as the target buffer to just count the required number of characters.
+fpl_internal size_t fpl__PosixBuildShellCommandLine(const fplProcessContext *context, char *targetBuffer) {
+	size_t offset = fpl__PosixAppendShellText(context->name, targetBuffer, 0);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	if (useArgumentArray) {
+		for (size_t argumentIndex = 0; argumentIndex < context->argumentCount; ++argumentIndex) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			const char *argument = context->arguments[argumentIndex];
+			offset = fpl__PosixAppendShellQuotedArgument(argument, targetBuffer, offset);
+		}
+	} else if (context->argumentLine != fpl_null) {
+		size_t argumentLineLen = fplGetStringLength(context->argumentLine);
+		if (argumentLineLen > 0) {
+			if (targetBuffer != fpl_null) {
+				targetBuffer[offset] = ' ';
+			}
+			++offset;
+			offset = fpl__PosixAppendShellText(context->argumentLine, targetBuffer, offset);
+		}
+	}
+	if (targetBuffer != fpl_null) {
+		targetBuffer[offset] = 0;
+	}
+	return(offset);
+}
+
+// Builds the argument array for a shell start: the shell itself, the argument that tells it to execute a
+// command and the whole command line as one single string.
+fpl_internal bool fpl__PosixCreateProcessShellExecArgs(const fplProcessContext *context, fpl__PosixProcessExecArgs *outArgs) {
+	bool useCustomShell = (context->shellMode == fplProcessShellMode_Custom);
+	const char *shellPath = useCustomShell ? context->shellPath : FPL__POSIX_PROCESS_DEFAULT_SHELL_PATH;
+	// A shell looks at its own argv[0] to decide how it behaves, so the default shell is started as "sh"
+	const char *shellName = useCustomShell ? context->shellPath : FPL__POSIX_PROCESS_DEFAULT_SHELL_NAME;
+	const char *shellArgument = (context->shellArgument != fpl_null) ? context->shellArgument : FPL__POSIX_PROCESS_DEFAULT_SHELL_ARGUMENT;
+	size_t shellPathLen = fplGetStringLength(shellPath);
+	size_t shellNameLen = fplGetStringLength(shellName);
+	size_t shellArgumentLen = fplGetStringLength(shellArgument);
+	size_t commandLineLen = fpl__PosixBuildShellCommandLine(context, fpl_null);
+
+	// The array is [shell name][shell argument][command line] and must end with a null-entry
+	const size_t shellArgumentCount = 3;
+	size_t argvSize = sizeof(char *) * (shellArgumentCount + 1);
+	size_t shellPathBytes = shellPathLen + 1;
+	size_t shellNameBytes = shellNameLen + 1;
+	size_t shellArgumentBytes = shellArgumentLen + 1;
+	size_t commandLineBytes = commandLineLen + 1;
+	size_t totalSize = argvSize + shellPathBytes + shellNameBytes + shellArgumentBytes + commandLineBytes;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		return(false);
+	}
+
+	char **argv = (char **)memory;
+	char *shellPathString = (char *)memory + argvSize;
+	char *shellNameString = shellPathString + shellPathBytes;
+	char *shellArgumentString = shellNameString + shellNameBytes;
+	char *commandLineString = shellArgumentString + shellArgumentBytes;
+	fplCopyStringLen(shellPath, shellPathLen, shellPathString, shellPathBytes);
+	fplCopyStringLen(shellName, shellNameLen, shellNameString, shellNameBytes);
+	fplCopyStringLen(shellArgument, shellArgumentLen, shellArgumentString, shellArgumentBytes);
+	fpl__PosixBuildShellCommandLine(context, commandLineString);
+	argv[0] = shellNameString;
+	argv[1] = shellArgumentString;
+	argv[2] = commandLineString;
+	argv[shellArgumentCount] = fpl_null;
+
+	outArgs->memory = memory;
+	outArgs->argv = argv;
+	outArgs->executablePath = shellPathString;
+	outArgs->argumentCount = shellArgumentCount;
+	return(true);
+}
+
+// Builds the argument array for the exec call. This must happen before the fork, because the child is only
+// allowed to call async-signal-safe functions and allocating memory is not one of them.
+fpl_internal bool fpl__PosixCreateProcessExecArgs(const fplProcessContext *context, fpl__PosixProcessExecArgs *outArgs) {
+	if (context->shellMode != fplProcessShellMode_None) {
+		return(fpl__PosixCreateProcessShellExecArgs(context, outArgs));
+	}
+	const char *name = context->name;
+	size_t nameLen = fplGetStringLength(name);
+	bool useArgumentArray = (context->arguments != fpl_null) && (context->argumentCount > 0);
+	size_t argumentCount = 0;
+	size_t argumentStringBytes = 0;
+	if (useArgumentArray) {
+		argumentCount = context->argumentCount;
+		for (size_t argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex) {
+			const char *argument = context->arguments[argumentIndex];
+			size_t argumentLen = fplGetStringLength(argument);
+			argumentStringBytes += argumentLen + 1;
+		}
+	} else if (context->argumentLine != fpl_null) {
+		argumentCount = fpl__PosixSplitArgumentLine(context->argumentLine, fpl_null, fpl_null, &argumentStringBytes);
+	}
+
+	// The first entry is always the executable itself and the array must end with a null-entry
+	size_t totalArgumentCount = argumentCount + 1;
+	size_t argvSize = sizeof(char *) * (totalArgumentCount + 1);
+	size_t nameStringBytes = nameLen + 1;
+	size_t totalSize = argvSize + nameStringBytes + argumentStringBytes;
+	void *memory = fpl__AllocateDynamicMemory(totalSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		return(false);
+	}
+
+	char **argv = (char **)memory;
+	char *nameString = (char *)memory + argvSize;
+	char *argumentStrings = nameString + nameStringBytes;
+	fplCopyStringLen(name, nameLen, nameString, nameStringBytes);
+	argv[0] = nameString;
+	if (useArgumentArray) {
+		size_t stringOffset = 0;
+		for (size_t argumentIndex = 0; argumentIndex < argumentCount; ++argumentIndex) {
+			const char *argument = context->arguments[argumentIndex];
+			size_t argumentLen = fplGetStringLength(argument);
+			char *targetString = argumentStrings + stringOffset;
+			fplCopyStringLen(argument, argumentLen, targetString, argumentLen + 1);
+			argv[argumentIndex + 1] = targetString;
+			stringOffset += argumentLen + 1;
+		}
+	} else if (context->argumentLine != fpl_null) {
+		fpl__PosixSplitArgumentLine(context->argumentLine, argv + 1, argumentStrings, fpl_null);
+	}
+	argv[totalArgumentCount] = fpl_null;
+
+	outArgs->memory = memory;
+	outArgs->argv = argv;
+	outArgs->executablePath = nameString;
+	outArgs->argumentCount = totalArgumentCount;
+	return(true);
+}
+
+fpl_internal void fpl__PosixReleaseProcessExecArgs(fpl__PosixProcessExecArgs *args) {
+	if (args->memory != fpl_null) {
+		fpl__ReleaseDynamicMemory(args->memory);
+	}
+	fplClearStruct(args);
+}
+
+// Creates a pipe where both ends are closed automatically by a successful exec.
+// pipe2() would do this race-free, but it is not portable across all POSIX platforms.
+fpl_internal bool fpl__PosixCreateCloseOnExecPipe(int *outPipeFileDescriptors) {
+	if (pipe(outPipeFileDescriptors) != 0) {
+		return(false);
+	}
+	fcntl(outPipeFileDescriptors[0], F_SETFD, FD_CLOEXEC);
+	fcntl(outPipeFileDescriptors[1], F_SETFD, FD_CLOEXEC);
+	return(true);
+}
+
+fpl_internal fplProcessResultType fpl__PosixMapProcessStartError(const int errorCode) {
+	switch (errorCode) {
+		case ENOENT:
+			return(fplProcessResultType_NotFound);
+		case EACCES:
+		case EPERM:
+			return(fplProcessResultType_AccessDenied);
+		case ENOMEM:
+			return(fplProcessResultType_OutOfMemory);
+		default:
+			return(fplProcessResultType_FailedToStart);
+	}
+}
+
+fpl_internal void fpl__PosixApplyProcessExitStatus(fplProcessHandle *handle, const int status) {
+	handle->hasExited = true;
+	if (WIFEXITED(status)) {
+		handle->exitCode = (int32_t)WEXITSTATUS(status);
+		handle->terminationSignal = 0;
+	} else if (WIFSIGNALED(status)) {
+		int signalNumber = WTERMSIG(status);
+		handle->terminationSignal = (int32_t)signalNumber;
+		handle->exitCode = (int32_t)(FPL__POSIX_PROCESS_SIGNAL_EXIT_CODE_BASE + signalNumber);
+	} else {
+		handle->exitCode = 0;
+		handle->terminationSignal = 0;
+	}
+}
+
+// Collects the exit status of the child and caches it in the handle, because waitpid() reports it exactly once.
+fpl_internal bool fpl__PosixUpdateProcessExitState(fplProcessHandle *handle, const bool blocking) {
+	if (handle->hasExited) {
+		return(true);
+	}
+	pid_t processId = (pid_t)handle->internalHandle.posix.pid;
+	int waitFlags = blocking ? 0 : WNOHANG;
+	int status = 0;
+	pid_t waitResult = waitpid(processId, &status, waitFlags);
+	while ((waitResult == -1) && (errno == EINTR)) {
+		waitResult = waitpid(processId, &status, waitFlags);
+	}
+	if (waitResult == processId) {
+		fpl__PosixApplyProcessExitStatus(handle, status);
+		return(true);
+	}
+	if (waitResult == -1) {
+		// When the application ignores SIGCHLD, the kernel reaps the child on its own and the exit status is gone
+		if (errno == ECHILD) {
+			FPL__WARNING(FPL__MODULE_PROCESS, "The exit status of process '%llu' is not available, SIGCHLD may be ignored by the application", (unsigned long long)handle->id);
+			handle->hasExited = true;
+			handle->exitCode = 0;
+			handle->terminationSignal = 0;
+			return(true);
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed waiting for process '%llu' with code %d", (unsigned long long)handle->id, errno);
+	}
+	return(false);
+}
+
+fpl_internal bool fpl__PosixSendProcessSignal(const fplProcessHandle *handle, const int signalNumber) {
+	pid_t processId = (pid_t)handle->internalHandle.posix.pid;
+	pid_t processGroupId = (pid_t)handle->internalHandle.posix.pgid;
+	bool useProcessGroup = (processGroupId != 0) && ((handle->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree);
+	int killResult;
+	if (useProcessGroup) {
+		killResult = kill(-processGroupId, signalNumber);
+	} else {
+		killResult = kill(processId, signalNumber);
+	}
+	if (killResult != 0) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed sending signal %d to process '%llu' with code %d", signalNumber, (unsigned long long)handle->id, errno);
+		return(false);
+	}
+	return(true);
+}
+
+// Number of milliseconds a single poll on the capture stream waits at most
+#define FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS 20
+
+// Creates the state that holds the capture pipes. It only exists when something is captured at all.
+fpl_internal fpl__ProcessStreams *fpl__PosixCreateProcessStreams(const fplProcessContext *context) {
+	fpl__ProcessStreams *streams = (fpl__ProcessStreams *)fpl__AllocateDynamicMemory(sizeof(fpl__ProcessStreams), FPL__PROCESS_MEMORY_ALIGNMENT);
+	if (streams == fpl_null) {
+		return(fpl_null);
+	}
+	fplClearStruct(streams);
+	streams->captureFlags = context->captureFlags;
+	streams->flags = context->flags;
+	streams->outputCallback = context->outputCallback;
+	streams->inputCallback = context->inputCallback;
+	streams->userData = context->userData;
+	streams->maxCaptureSize = context->maxCaptureSize;
+	streams->inputMode = context->inputMode;
+	streams->inputText = context->inputText;
+	if (context->inputText != fpl_null) {
+		streams->inputTextLen = (context->inputTextLen > 0) ? context->inputTextLen : fplGetStringLength(context->inputText);
+	}
+	streams->output.type = fplProcessStreamType_Output;
+	streams->error.type = fplProcessStreamType_Error;
+	streams->output.readFd = -1;
+	streams->error.readFd = -1;
+	streams->inputFd = -1;
+	return(streams);
+}
+
+// Writing into the standard-input of a child that has already exited raises SIGPIPE, and the default
+// disposition kills the parent. A disposition the caller has set on its own is never touched.
+fpl_internal void fpl__PosixIgnoreSignalPipe(void) {
+	struct sigaction currentAction = fplZeroInit;
+	if (sigaction(SIGPIPE, fpl_null, &currentAction) != 0) {
+		return;
+	}
+	if (currentAction.sa_handler != SIG_DFL) {
+		return;
+	}
+	struct sigaction ignoreAction = fplZeroInit;
+	ignoreAction.sa_handler = SIG_IGN;
+	sigemptyset(&ignoreAction.sa_mask);
+	if (sigaction(SIGPIPE, &ignoreAction, fpl_null) == 0) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "SIGPIPE is set to be ignored from now on, so writing into the standard-input of an exited process does not kill this process");
+	}
+}
+
+fpl_internal void fpl__PosixCloseProcessInput(fpl__ProcessStreams *streams) {
+	if (streams->inputFd >= 0) {
+		close(streams->inputFd);
+		streams->inputFd = -1;
+	}
+}
+
+fpl_internal void fpl__PosixReleaseProcessStreams(fpl__ProcessStreams *streams) {
+	if (streams == fpl_null) {
+		return;
+	}
+	if (streams->output.readFd >= 0) {
+		close(streams->output.readFd);
+	}
+	if (streams->error.readFd >= 0) {
+		close(streams->error.readFd);
+	}
+	if (streams->inputFd >= 0) {
+		close(streams->inputFd);
+	}
+	fpl__ReleaseProcessStreamBuffers(streams);
+	fpl__ReleaseDynamicMemory(streams);
+}
+
+// Reads everything that is available right now. Returns false when the stream has reached its end.
+fpl_internal bool fpl__PosixPumpProcessStream(fplProcessHandle *handle, fpl__ProcessStream *stream) {
+	if (stream->isEOF || (stream->readFd < 0)) {
+		return(false);
+	}
+	// The extra byte is the null-terminator the output callback is documented to get
+	char chunk[FPL__PROCESS_READ_CHUNK_SIZE + 1];
+	for (;;) {
+		ssize_t readBytes = read(stream->readFd, chunk, FPL__PROCESS_READ_CHUNK_SIZE);
+		if (readBytes > 0) {
+			chunk[readBytes] = 0;
+			fpl__PushProcessStreamText(handle, stream, chunk, (size_t)readBytes);
+			continue;
+		}
+		if (readBytes == 0) {
+			// Every write end is closed, so the child and everything it started are done with this stream
+			fpl__MarkProcessStreamEndOfFile(handle, stream);
+			break;
+		}
+		if (errno == EINTR) {
+			continue;
+		}
+		if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+			// Nothing available right now, the stream stays open
+			break;
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed reading from a process stream with code %d", errno);
+		fpl__MarkProcessStreamEndOfFile(handle, stream);
+		break;
+	}
+	return(!stream->isEOF);
+}
+
+// Returns the number of streams that are still open
+fpl_internal size_t fpl__PosixPumpProcessStreams(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
+	size_t openStreamCount = 0;
+	if (fpl__PosixPumpProcessStream(handle, &streams->output)) {
+		++openStreamCount;
+	}
+	if (fpl__PosixPumpProcessStream(handle, &streams->error)) {
+		++openStreamCount;
+	}
+	return(openStreamCount);
+}
+
+// Writes as much of the pending standard-input as the pipe takes right now.
+// Returns false when the standard-input is finished and was closed.
+fpl_internal bool fpl__PosixPumpProcessInput(fplProcessHandle *handle) {
+	fpl__ProcessStreams *streams = handle->streams;
+	if ((streams->inputFd < 0) || !fpl__IsProcessInputPumped(streams->inputMode)) {
+		return(false);
+	}
+	for (;;) {
+		size_t chunkLen = 0;
+		const char *chunk = fpl__GetProcessInputChunk(handle, &chunkLen);
+		if (chunk == fpl_null) {
+			// Everything is written, the child gets its end-of-file from the close
+			fpl__PosixCloseProcessInput(streams);
+			return(false);
+		}
+		ssize_t writtenBytes = write(streams->inputFd, chunk, chunkLen);
+		if (writtenBytes > 0) {
+			fpl__AdvanceProcessInput(streams, (size_t)writtenBytes);
+			continue;
+		}
+		if ((writtenBytes == -1) && (errno == EINTR)) {
+			continue;
+		}
+		if ((writtenBytes == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
+			// The pipe is full right now, the rest goes out on the next pump
+			return(true);
+		}
+		if ((writtenBytes == -1) && (errno != EPIPE)) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed writing into the standard-input of process '%llu' with code %d", (unsigned long long)handle->id, errno);
+		}
+		// A closed standard-input on the child side is a normal end, not an error
+		fpl__PosixCloseProcessInput(streams);
+		return(false);
+	}
+}
+
+// Closes both ends of a pipe and marks them as unused
+fpl_internal void fpl__PosixCloseProcessPipe(int *pipeFileDescriptors) {
+	if (pipeFileDescriptors[0] >= 0) {
+		close(pipeFileDescriptors[0]);
+		pipeFileDescriptors[0] = -1;
+	}
+	if (pipeFileDescriptors[1] >= 0) {
+		close(pipeFileDescriptors[1]);
+		pipeFileDescriptors[1] = -1;
+	}
+}
+
+// Waits until any capture stream has data or the timeout is over. This is what keeps the pipes drained
+// while the parent waits, without it the child would block as soon as a pipe buffer is full.
+fpl_internal void fpl__PosixWaitForProcessStreams(fpl__ProcessStreams *streams, const int timeoutInMilliseconds) {
+	struct pollfd pollDescriptors[3];
+	nfds_t pollDescriptorCount = 0;
+	if (!streams->output.isEOF && (streams->output.readFd >= 0)) {
+		pollDescriptors[pollDescriptorCount].fd = streams->output.readFd;
+		pollDescriptors[pollDescriptorCount].events = POLLIN;
+		pollDescriptors[pollDescriptorCount].revents = 0;
+		++pollDescriptorCount;
+	}
+	if (!streams->error.isEOF && (streams->error.readFd >= 0)) {
+		pollDescriptors[pollDescriptorCount].fd = streams->error.readFd;
+		pollDescriptors[pollDescriptorCount].events = POLLIN;
+		pollDescriptors[pollDescriptorCount].revents = 0;
+		++pollDescriptorCount;
+	}
+	if ((streams->inputFd >= 0) && fpl__IsProcessInputPumped(streams->inputMode)) {
+		pollDescriptors[pollDescriptorCount].fd = streams->inputFd;
+		pollDescriptors[pollDescriptorCount].events = POLLOUT;
+		pollDescriptors[pollDescriptorCount].revents = 0;
+		++pollDescriptorCount;
+	}
+	if (pollDescriptorCount == 0) {
+		fplThreadSleep((uint32_t)timeoutInMilliseconds);
+		return;
+	}
+	int pollResult = poll(pollDescriptors, pollDescriptorCount, timeoutInMilliseconds);
+	if ((pollResult < 0) && (errno != EINTR)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed polling the process streams with code %d", errno);
+	}
+}
+
+fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProcessHandle *outHandle, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(context, false);
+	FPL__CheckArgumentNull(outHandle, false);
+	FPL__CheckArgumentNull(context->name, false);
+
+	fplClearStruct(outHandle);
+	fplProcessResult startResult = fplZeroInit;
+	startResult.type = fplProcessResultType_Success;
+
+	fplProcessResultType contextValidation = fpl__ValidateProcessContext(context);
+	if (contextValidation != fplProcessResultType_Success) {
+		startResult.type = contextValidation;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	fpl__PosixProcessExecArgs execArgs = fplZeroInit;
+	if (!fpl__PosixCreateProcessExecArgs(context, &execArgs)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the arguments for the process '%s'", context->name);
+		startResult.type = fplProcessResultType_OutOfMemory;
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	int execErrorPipe[2] = { -1, -1 };
+	if (!fpl__PosixCreateCloseOnExecPipe(execErrorPipe)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the exec error pipe for the process '%s' with code %d", context->name, errno);
+		startResult.type = fplProcessResultType_FailedToStart;
+		startResult.nativeErrorCode = (uint32_t)errno;
+		fpl__PosixReleaseProcessExecArgs(&execArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	// The capture pipes are created before the fork, so the child only has to dup2 the descriptors
+	fplProcessCaptureFlags captureFlags = context->captureFlags;
+	bool capturesOutput = (captureFlags & fplProcessCaptureFlags_Output) == fplProcessCaptureFlags_Output;
+	bool capturesError = (captureFlags & fplProcessCaptureFlags_Error) == fplProcessCaptureFlags_Error;
+	bool mergesStreams = (captureFlags & fplProcessCaptureFlags_Merged) == fplProcessCaptureFlags_Merged;
+	bool hasCapture = capturesOutput || capturesError;
+	// A merged capture sends the error stream into the output pipe, which is what "2>&1" does,
+	// so a second pipe is only needed when the error stream is captured on its own
+	bool mergesErrorIntoOutput = capturesOutput && mergesStreams;
+	bool usesOutputPipe = capturesOutput;
+	bool usesErrorPipe = capturesError && !mergesErrorIntoOutput;
+	// Only the modes that actually feed text need a pipe, the none mode just points the child at the null device
+	bool usesInputPipe = (context->inputMode == fplProcessInputMode_Text) || (context->inputMode == fplProcessInputMode_Callback) || (context->inputMode == fplProcessInputMode_Stream);
+	bool usesNullInput = (context->inputMode == fplProcessInputMode_None);
+	int outputPipe[2] = { -1, -1 };
+	int errorPipe[2] = { -1, -1 };
+	int inputPipe[2] = { -1, -1 };
+	int nullInputFd = -1;
+	fpl__ProcessStreams *streams = fpl_null;
+	if (usesNullInput) {
+		nullInputFd = open("/dev/null", O_RDONLY | O_CLOEXEC);
+		if (nullInputFd < 0) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed opening the null device for the process '%s' with code %d", context->name, errno);
+			startResult.type = fplProcessResultType_FailedToStart;
+			startResult.nativeErrorCode = (uint32_t)errno;
+			close(execErrorPipe[0]);
+			close(execErrorPipe[1]);
+			fpl__PosixReleaseProcessExecArgs(&execArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+	}
+	if (hasCapture || usesInputPipe) {
+		streams = fpl__PosixCreateProcessStreams(context);
+		if (streams == fpl_null) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed allocating the stream state for the process '%s'", context->name);
+			startResult.type = fplProcessResultType_OutOfMemory;
+			if (nullInputFd >= 0) {
+				close(nullInputFd);
+			}
+			close(execErrorPipe[0]);
+			close(execErrorPipe[1]);
+			fpl__PosixReleaseProcessExecArgs(&execArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		bool pipesCreated = true;
+		if (usesOutputPipe) {
+			pipesCreated = fpl__PosixCreateCloseOnExecPipe(outputPipe);
+		}
+		if (pipesCreated && usesErrorPipe) {
+			pipesCreated = fpl__PosixCreateCloseOnExecPipe(errorPipe);
+		}
+		if (pipesCreated && usesInputPipe) {
+			pipesCreated = fpl__PosixCreateCloseOnExecPipe(inputPipe);
+		}
+		if (!pipesCreated) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed creating the capture pipe for the process '%s' with code %d", context->name, errno);
+			startResult.type = fplProcessResultType_FailedToStart;
+			startResult.nativeErrorCode = (uint32_t)errno;
+			fpl__PosixCloseProcessPipe(outputPipe);
+			fpl__PosixCloseProcessPipe(errorPipe);
+			fpl__PosixCloseProcessPipe(inputPipe);
+			if (nullInputFd >= 0) {
+				close(nullInputFd);
+			}
+			fpl__PosixReleaseProcessStreams(streams);
+			close(execErrorPipe[0]);
+			close(execErrorPipe[1]);
+			fpl__PosixReleaseProcessExecArgs(&execArgs);
+			if (outResult != fpl_null) {
+				*outResult = startResult;
+			}
+			return(false);
+		}
+		// The parent never blocks on a read or a write, it only moves what fits right now
+		int nonBlockingFileDescriptors[] = { outputPipe[0], errorPipe[0], inputPipe[1] };
+		for (size_t pipeIndex = 0; pipeIndex < fplArrayCount(nonBlockingFileDescriptors); ++pipeIndex) {
+			int pipeFileDescriptor = nonBlockingFileDescriptors[pipeIndex];
+			if (pipeFileDescriptor >= 0) {
+				int pipeFlags = fcntl(pipeFileDescriptor, F_GETFL, 0);
+				fcntl(pipeFileDescriptor, F_SETFL, pipeFlags | O_NONBLOCK);
+			}
+		}
+		if (usesInputPipe) {
+			fpl__PosixIgnoreSignalPipe();
+		}
+	}
+
+	// Everything the child needs is prepared here, because only async-signal-safe calls are allowed after the fork
+	const char *executablePath = execArgs.executablePath;
+	bool hasPathSeparator = false;
+	for (const char *pathCursor = executablePath; *pathCursor != 0; ++pathCursor) {
+		if (*pathCursor == '/') {
+			hasPathSeparator = true;
+			break;
+		}
+	}
+	const char *workDir = context->workDir;
+	bool useOwnProcessGroup = (context->flags & fplProcessFlags_KillProcessTree) == fplProcessFlags_KillProcessTree;
+	bool isDetached = (context->flags & fplProcessFlags_Detached) == fplProcessFlags_Detached;
+	bool killsOnParentExit = (context->flags & fplProcessFlags_KillOnParentExit) == fplProcessFlags_KillOnParentExit;
+	bool hasNoTerminal = (context->flags & fplProcessFlags_NoTerminal) == fplProcessFlags_NoTerminal;
+	// A new session is what takes the controlling terminal away, and it is the only way to do so
+	bool startsOwnSession = isDetached || hasNoTerminal;
+#if defined(FPL_PLATFORM_LINUX)
+	// The child compares this against its parent id, to detect a parent that has exited between the fork and the prctl
+	pid_t parentProcessId = getpid();
+#else
+	if (killsOnParentExit) {
+		FPL__WARNING(FPL__MODULE_PROCESS, "The kill-on-parent-exit flag is not supported on this platform and is ignored for the process '%s'", context->name);
+	}
+#endif
+
+	pid_t childProcessId = fork();
+	if (childProcessId == -1) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed forking the process '%s' with code %d", context->name, errno);
+		startResult.type = fplProcessResultType_FailedToStart;
+		startResult.nativeErrorCode = (uint32_t)errno;
+		close(execErrorPipe[0]);
+		close(execErrorPipe[1]);
+		fpl__PosixCloseProcessPipe(outputPipe);
+		fpl__PosixCloseProcessPipe(errorPipe);
+		fpl__PosixCloseProcessPipe(inputPipe);
+		if (nullInputFd >= 0) {
+			close(nullInputFd);
+		}
+		fpl__PosixReleaseProcessStreams(streams);
+		fpl__PosixReleaseProcessExecArgs(&execArgs);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	if (childProcessId == 0) {
+		// Child process, only async-signal-safe calls are allowed from here on
+		close(execErrorPipe[0]);
+		int childErrorCode = 0;
+		if (outputPipe[0] >= 0) {
+			close(outputPipe[0]);
+		}
+		if (errorPipe[0] >= 0) {
+			close(errorPipe[0]);
+		}
+		if (outputPipe[1] >= 0) {
+			dup2(outputPipe[1], STDOUT_FILENO);
+			if (mergesErrorIntoOutput) {
+				dup2(outputPipe[1], STDERR_FILENO);
+			}
+			// The original descriptor is not needed anymore, the duplicates carry the stream now
+			close(outputPipe[1]);
+		}
+		if (errorPipe[1] >= 0) {
+			dup2(errorPipe[1], STDERR_FILENO);
+			close(errorPipe[1]);
+		}
+		if (inputPipe[1] >= 0) {
+			close(inputPipe[1]);
+		}
+		if (inputPipe[0] >= 0) {
+			dup2(inputPipe[0], STDIN_FILENO);
+			close(inputPipe[0]);
+		}
+		if (nullInputFd >= 0) {
+			// Reading from the null device gives an immediate end-of-file, so an interactive child cannot block
+			dup2(nullInputFd, STDIN_FILENO);
+			close(nullInputFd);
+		}
+		if (startsOwnSession) {
+			// A new session detaches the child from the terminal of the parent, so a Ctrl+C there does not
+			// reach it anymore and an open of /dev/tty fails with ENXIO. It makes the child a process group leader as well.
+			setsid();
+		} else if (useOwnProcessGroup) {
+			setpgid(0, 0);
+		}
+#if defined(FPL_PLATFORM_LINUX)
+		if (killsOnParentExit) {
+			prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+			// The signal is gone when the parent has exited before the prctl, so the child ends itself instead
+			if (getppid() != parentProcessId) {
+				_exit(FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE);
+			}
+		}
+#endif
+		if (workDir != fpl_null) {
+			if (chdir(workDir) != 0) {
+				childErrorCode = errno;
+			}
+		}
+		if (childErrorCode == 0) {
+			// A name without any path separator is looked up in PATH, the same way a shell does it
+			if (hasPathSeparator) {
+				execv(executablePath, execArgs.argv);
+			} else {
+				execvp(executablePath, execArgs.argv);
+			}
+			childErrorCode = errno;
+		}
+		// The exec has failed, so the parent is told why through the pipe that a successful exec would have closed
+		ssize_t writtenBytes = write(execErrorPipe[1], &childErrorCode, sizeof(childErrorCode));
+		(void)writtenBytes;
+		_exit(FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE);
+	}
+
+	// Parent process
+	close(execErrorPipe[1]);
+	// The write ends must be closed here, otherwise the read ends would never see an end-of-file
+	if (outputPipe[1] >= 0) {
+		close(outputPipe[1]);
+		outputPipe[1] = -1;
+	}
+	if (errorPipe[1] >= 0) {
+		close(errorPipe[1]);
+		errorPipe[1] = -1;
+	}
+	// The read end of the standard-input belongs to the child alone, the parent keeps only the write end
+	if (inputPipe[0] >= 0) {
+		close(inputPipe[0]);
+		inputPipe[0] = -1;
+	}
+	if (nullInputFd >= 0) {
+		close(nullInputFd);
+		nullInputFd = -1;
+	}
+	if (useOwnProcessGroup && !startsOwnSession) {
+		// Called in both processes on purpose, so the group exists no matter which process is scheduled first.
+		// A child with a session of its own gets its group from setsid() and that one cannot be repeated from here.
+		// Calling it anyway would even break it: a child the parent made a group leader first is refused by setsid().
+		setpgid(childProcessId, childProcessId);
+	}
+
+	int childErrorCode = 0;
+	ssize_t readBytes = read(execErrorPipe[0], &childErrorCode, sizeof(childErrorCode));
+	while ((readBytes == -1) && (errno == EINTR)) {
+		readBytes = read(execErrorPipe[0], &childErrorCode, sizeof(childErrorCode));
+	}
+	close(execErrorPipe[0]);
+	fpl__PosixReleaseProcessExecArgs(&execArgs);
+
+	if (readBytes > 0) {
+		// The child could not be replaced by the executable, so it is reaped right away
+		int status = 0;
+		pid_t reapResult = waitpid(childProcessId, &status, 0);
+		while ((reapResult == -1) && (errno == EINTR)) {
+			reapResult = waitpid(childProcessId, &status, 0);
+		}
+		FPL__ERROR(FPL__MODULE_PROCESS, "Failed starting the process '%s' with code %d", context->name, childErrorCode);
+		startResult.type = fpl__PosixMapProcessStartError(childErrorCode);
+		startResult.nativeErrorCode = (uint32_t)childErrorCode;
+		fpl__PosixCloseProcessPipe(outputPipe);
+		fpl__PosixCloseProcessPipe(errorPipe);
+		fpl__PosixCloseProcessPipe(inputPipe);
+		fpl__PosixReleaseProcessStreams(streams);
+		if (outResult != fpl_null) {
+			*outResult = startResult;
+		}
+		return(false);
+	}
+
+	if (streams != fpl_null) {
+		// A merged capture lands entirely in the output stream, the error stream only gets its own
+		// buffer when it was captured separately
+		streams->output.readFd = outputPipe[0];
+		streams->error.readFd = errorPipe[0];
+		streams->inputFd = inputPipe[1];
+		outputPipe[0] = -1;
+		errorPipe[0] = -1;
+		inputPipe[1] = -1;
+	}
+
+	outHandle->streams = streams;
+	outHandle->internalHandle.posix.pid = (int32_t)childProcessId;
+	outHandle->internalHandle.posix.pgid = (useOwnProcessGroup || startsOwnSession) ? (int32_t)childProcessId : 0;
+	outHandle->id = (uint64_t)childProcessId;
+	outHandle->flags = context->flags;
+	outHandle->isValid = true;
+
+	if ((context->flags & fplProcessFlags_AutoWait) == fplProcessFlags_AutoWait) {
+		fplProcessWait(outHandle, context->waitTimeout, outResult);
+		return(true);
+	}
+
+	if (outResult != fpl_null) {
+		*outResult = startResult;
+	}
+	return(true);
+}
+
+fpl_platform_api bool fplProcessUpdate(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	if (handle->streams == fpl_null) {
+		return(false);
+	}
+	bool hasPendingInput = fpl__PosixPumpProcessInput(handle);
+	size_t openStreamCount = fpl__PosixPumpProcessStreams(handle);
+	return(hasPendingInput || (openStreamCount > 0));
+}
+
+fpl_platform_api bool fplProcessWait(fplProcessHandle *handle, const fplTimeoutValue timeout, fplProcessResult *outResult) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	bool waitInfinitely = (timeout == 0) || (timeout == FPL_TIMEOUT_INFINITE);
+	bool hasExited = false;
+	if (handle->streams != fpl_null) {
+		// The streams have to be drained while waiting. Waiting first and reading afterwards would
+		// deadlock as soon as the child fills the pipe buffer.
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			fpl__PosixWaitForProcessStreams(handle->streams, FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS);
+			fpl__PosixPumpProcessInput(handle);
+			size_t openStreamCount = fpl__PosixPumpProcessStreams(handle);
+			hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+			if (hasExited && (openStreamCount == 0)) {
+				break;
+			}
+			if (!waitInfinitely) {
+				fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+				if (elapsedTime >= (fplMilliseconds)timeout) {
+					break;
+				}
+			}
+		}
+	} else if (waitInfinitely) {
+		hasExited = fpl__PosixUpdateProcessExitState(handle, true);
+	} else {
+		fplMilliseconds waitStartTime = fplMillisecondsQuery();
+		for (;;) {
+			hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+			if (hasExited) {
+				break;
+			}
+			fplMilliseconds elapsedTime = fplMillisecondsQuery() - waitStartTime;
+			if (elapsedTime >= (fplMilliseconds)timeout) {
+				break;
+			}
+			fplThreadSleep(FPL__POSIX_PROCESS_WAIT_SLICE_MILLISECONDS);
+		}
+	}
+	if (outResult != fpl_null) {
+		fpl__FillProcessResultFromHandle(handle, hasExited, outResult);
+	}
+	return(hasExited);
+}
+
+fpl_platform_api bool fplProcessIsRunning(fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	if (!handle->isValid) {
+		return(false);
+	}
+	bool hasExited = fpl__PosixUpdateProcessExitState(handle, false);
+	return(!hasExited);
+}
+
+fpl_platform_api bool fplProcessTryGetExitCode(fplProcessHandle *handle, int32_t *outExitCode) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentNull(outExitCode, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (!fpl__PosixUpdateProcessExitState(handle, false)) {
+		return(false);
+	}
+	*outExitCode = handle->exitCode;
+	return(true);
+}
+
+fpl_platform_api size_t fplProcessWriteInput(fplProcessHandle *handle, const char *text, const size_t textLen) {
+	FPL__CheckArgumentNull(handle, 0);
+	FPL__CheckArgumentNull(text, 0);
+	fpl__ProcessStreams *streams = handle->streams;
+	if ((streams == fpl_null) || (streams->inputFd < 0)) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The process '%llu' has no standard-input to write to, use fplProcessInputMode_Stream", (unsigned long long)handle->id);
+		return(0);
+	}
+	if (streams->inputMode != fplProcessInputMode_Stream) {
+		FPL__ERROR(FPL__MODULE_PROCESS, "The standard-input of process '%llu' is fed by FPL itself, only fplProcessInputMode_Stream can be written to", (unsigned long long)handle->id);
+		return(0);
+	}
+	size_t writeLen = (textLen > 0) ? textLen : fplGetStringLength(text);
+	size_t writtenLen = 0;
+	while (writtenLen < writeLen) {
+		ssize_t writtenBytes = write(streams->inputFd, text + writtenLen, writeLen - writtenLen);
+		if (writtenBytes > 0) {
+			writtenLen += (size_t)writtenBytes;
+			continue;
+		}
+		if ((writtenBytes == -1) && (errno == EINTR)) {
+			continue;
+		}
+		if ((writtenBytes == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
+			// The pipe is full, so the captured streams are drained before trying again.
+			// Just waiting here would deadlock as soon as the child blocks on its own full output pipe.
+			fpl__PosixPumpProcessStreams(handle);
+			fplThreadSleep(FPL__POSIX_PROCESS_POLL_SLICE_MILLISECONDS);
+			continue;
+		}
+		if ((writtenBytes == -1) && (errno != EPIPE)) {
+			FPL__ERROR(FPL__MODULE_PROCESS, "Failed writing into the standard-input of process '%llu' with code %d", (unsigned long long)handle->id, errno);
+		}
+		// A closed standard-input on the child side is a normal end, not an error
+		fpl__PosixCloseProcessInput(streams);
+		break;
+	}
+	return(writtenLen);
+}
+
+fpl_platform_api void fplProcessCloseInput(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	if (handle->streams == fpl_null) {
+		return;
+	}
+	fpl__PosixCloseProcessInput(handle->streams);
+}
+
+fpl_platform_api bool fplProcessRequestStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	bool result = fpl__PosixSendProcessSignal(handle, SIGTERM);
+	return(result);
+}
+
+fpl_platform_api bool fplProcessStop(const fplProcessHandle *handle) {
+	FPL__CheckArgumentNull(handle, false);
+	FPL__CheckArgumentInvalid(handle, !handle->isValid, false);
+	if (handle->hasExited) {
+		return(false);
+	}
+	bool result = fpl__PosixSendProcessSignal(handle, SIGKILL);
+	return(result);
+}
+
+fpl_platform_api void fplProcessClose(fplProcessHandle *handle) {
+	FPL__CheckArgumentNullNoRet(handle);
+	if (handle->isValid) {
+		// Collect the exit status when the process has ended already, so it does not stay a zombie in the process table
+		if (!handle->hasExited) {
+			fpl__PosixUpdateProcessExitState(handle, false);
+		}
+		fpl__PosixReleaseProcessStreams(handle->streams);
+	}
+	fplClearStruct(handle);
+}
+
+fpl_platform_api uint64_t fplProcessGetCurrentId(void) {
+	pid_t currentProcessId = getpid();
+	uint64_t result = (uint64_t)currentProcessId;
+	return(result);
+}
+#endif // FPL_SUBPLATFORM_POSIX
+
+// ############################################################################
+//
 // > STD_STRINGS_SUBPLATFORM
 //
 // Strings Implementation using C Standard Library
@@ -23395,25 +28867,70 @@ fpl_internal size_t fpl__PosixLocaleToISO639(const char *source, char *target, c
 // ############################################################################
 #if defined(FPL_SUBPLATFORM_STD_STRINGS)
 // @NOTE(final): stdio.h is already included
+
+// Decodes one code point from a UTF-8 sequence; writes it to outCodePoint and returns the bytes consumed, or 0 on a malformed/truncated sequence.
+fpl_internal size_t fpl__DecodeUTF8CodePoint(const char *source, const size_t available, uint32_t *outCodePoint) {
+	if (available == 0) {
+		return 0;
+	}
+	const unsigned char *bytes = (const unsigned char *)source;
+	unsigned char b0 = bytes[0];
+	if (b0 < 0x80) {
+		*outCodePoint = (uint32_t)b0;
+		return 1;
+	} else if ((b0 & 0xE0) == 0xC0 && available >= 2) {
+		*outCodePoint = (uint32_t)(((b0 & 0x1F) << 6) | (bytes[1] & 0x3F));
+		return 2;
+	} else if ((b0 & 0xF0) == 0xE0 && available >= 3) {
+		*outCodePoint = (uint32_t)(((b0 & 0x0F) << 12) | ((bytes[1] & 0x3F) << 6) | (bytes[2] & 0x3F));
+		return 3;
+	} else if ((b0 & 0xF8) == 0xF0 && available >= 4) {
+		*outCodePoint = (uint32_t)(((b0 & 0x07) << 18) | ((bytes[1] & 0x3F) << 12) | ((bytes[2] & 0x3F) << 6) | (bytes[3] & 0x3F));
+		return 4;
+	}
+	return 0;
+}
+
+// Encodes a single Unicode code point as UTF-8 into dest (which must hold at least 4 bytes); returns the bytes written, or 0 for an invalid code point.
+fpl_internal size_t fpl__EncodeUTF8CodePoint(const uint32_t codePoint, char *dest) {
+	if (codePoint < 0x80) {
+		dest[0] = (char)codePoint;
+		return 1;
+	} else if (codePoint < 0x800) {
+		dest[0] = (char)(0xC0 | (codePoint >> 6));
+		dest[1] = (char)(0x80 | (codePoint & 0x3F));
+		return 2;
+	} else if (codePoint < 0x10000) {
+		dest[0] = (char)(0xE0 | (codePoint >> 12));
+		dest[1] = (char)(0x80 | ((codePoint >> 6) & 0x3F));
+		dest[2] = (char)(0x80 | (codePoint & 0x3F));
+		return 3;
+	} else if (codePoint <= 0x10FFFF) {
+		dest[0] = (char)(0xF0 | (codePoint >> 18));
+		dest[1] = (char)(0x80 | ((codePoint >> 12) & 0x3F));
+		dest[2] = (char)(0x80 | ((codePoint >> 6) & 0x3F));
+		dest[3] = (char)(0x80 | (codePoint & 0x3F));
+		return 4;
+	}
+	return 0;
+}
+
+// @NOTE(final): These conversions are locale independent; on POSIX each wchar_t holds a full Unicode code point (UTF-32).
 fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, const size_t wideSourceLen, char *utf8Dest, const size_t maxUtf8DestLen)
 {
 	FPL__CheckArgumentNull(wideSource, 0);
 	FPL__CheckArgumentZero(wideSourceLen, 0);
 
-	mbstate_t state;
-	fplClearStruct(&state);
-
-	size_t totalLen = 0;
-
 	// First pass: compute length
+	size_t totalLen = 0;
 	for (size_t i = 0; i < wideSourceLen; ++i) {
-		char tmp[MB_CUR_MAX];
-		const size_t res = wcrtomb(tmp, wideSource[i], &state);
-		if (res == (size_t)-1) {
+		char tmp[4];
+		const size_t written = fpl__EncodeUTF8CodePoint((uint32_t)wideSource[i], tmp);
+		if (written == 0) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
 			return 0;
 		}
-		totalLen += res;
+		totalLen += written;
 	}
 
 	if (utf8Dest != fpl_null) {
@@ -23421,19 +28938,10 @@ fpl_platform_api size_t fplWideStringToUTF8String(const wchar_t *wideSource, con
 		if (maxUtf8DestLen < requiredLen) {
 			return 0;
 		}
-
-		fplClearStruct(&state);
-
 		size_t pos = 0;
 		for (size_t i = 0; i < wideSourceLen; ++i) {
-			const size_t res = wcrtomb(utf8Dest + pos, wideSource[i], &state);
-			if (res == (size_t)-1) {
-				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert wide-string to UTF-8");
-				return 0;
-			}
-			pos += res;
+			pos += fpl__EncodeUTF8CodePoint((uint32_t)wideSource[i], utf8Dest + pos);
 		}
-
 		utf8Dest[pos] = '\0';
 	}
 
@@ -23445,24 +28953,17 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 	FPL__CheckArgumentNull(utf8Source, 0);
 	FPL__CheckArgumentZero(utf8SourceLen, 0);
 
-	mbstate_t state;
-	fplClearStruct(&state);
-
+	// First pass: count code points
 	size_t totalLen = 0;
 	size_t offset = 0;
-
-	// First pass: compute length
 	while (offset < utf8SourceLen) {
-		wchar_t wc;
-		size_t res = mbrtowc(&wc, utf8Source + offset, utf8SourceLen - offset, &state);
-		if (res == (size_t)-1 || res == (size_t)-2) {
+		uint32_t codePoint = 0;
+		const size_t consumed = fpl__DecodeUTF8CodePoint(utf8Source + offset, utf8SourceLen - offset, &codePoint);
+		if (consumed == 0) {
 			FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
 			return 0;
 		}
-		if (res == 0) {
-			break;
-		}
-		offset += res;
+		offset += consumed;
 		totalLen += 1;
 	}
 
@@ -23471,25 +28972,15 @@ fpl_platform_api size_t fplUTF8StringToWideString(const char *utf8Source, const 
 		if (maxWideDestLen < requiredLen) {
 			return 0;
 		}
-
-		fplClearStruct(&state);
-
 		offset = 0;
 		size_t pos = 0;
-
 		while (offset < utf8SourceLen) {
-			size_t res = mbrtowc(&wideDest[pos], utf8Source + offset, utf8SourceLen - offset, &state);
-			if (res == (size_t)-1 || res == (size_t)-2) {
-				FPL__ERROR(FPL__MODULE_STRINGS, "Failed to convert UTF-8 to wide-string");
-				return 0;
-			}
-			if (res == 0) {
-				break;
-			}
-			offset += res;
+			uint32_t codePoint = 0;
+			const size_t consumed = fpl__DecodeUTF8CodePoint(utf8Source + offset, utf8SourceLen - offset, &codePoint);
+			wideDest[pos] = (wchar_t)codePoint;
+			offset += consumed;
 			pos += 1;
 		}
-
 		wideDest[pos] = L'\0';
 	}
 
@@ -23536,6 +29027,9 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
+#if !defined(FPL_NO_X11_XINPUT2)
+	fpl__UnloadXInput2Api(&subplatform->xinput2);
+#endif
 	fpl__UnloadXineramaApi(&subplatform->xinerama);
 	fpl__UnloadXrandRApi(&subplatform->xrandr);
 	fpl__UnloadX11Api(&subplatform->api);
@@ -23554,35 +29048,99 @@ fpl_internal bool fpl__X11InitSubplatform(fpl__X11SubplatformState *subplatform)
 	if (!fpl__LoadXineramaApi(&subplatform->xinerama)) {
 		FPL__WARNING(FPL__MODULE_XINERAMA, "Xinerama not available, falling back");
 	}
+#if !defined(FPL_NO_X11_XINPUT2)
+	// Only the relative mouse mode needs it, without it the mode warps the cursor back to the window center
+	if (!fpl__LoadXInput2Api(&subplatform->xinput2)) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "XInput2 not available, the relative mouse mode reports accelerated movement");
+	}
+#endif
 	return true;
 }
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
-	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
-	if (windowState->invisibleCursor != 0) {
-		x11Api->XFreeCursor(windowState->display, windowState->invisibleCursor);
-		windowState->invisibleCursor = 0;
+// Tear down the input method first so it does not outlive the window/display (use-after-free inside Xlib).
+fpl_internal void fpl__X11ReleaseInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->im.xic != 0) {
+		if (x11Api->XUnsetICFocus != fpl_null) {
+			x11Api->XUnsetICFocus(windowState->im.xic);
+		}
+		if (x11Api->XDestroyIC != fpl_null) {
+			x11Api->XDestroyIC(windowState->im.xic);
+		}
+		windowState->im.xic = 0;
 	}
-	if (windowState->window) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->window, windowState->display);
-		x11Api->XUnmapWindow(windowState->display, windowState->window);
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Destroy window '%d' on display '%p'", (int)windowState->window, windowState->display);
-		x11Api->XDestroyWindow(windowState->display, windowState->window);
+	if (windowState->im.xim != 0) {
+		if (x11Api->XCloseIM != fpl_null) {
+			x11Api->XCloseIM(windowState->im.xim);
+		}
+		windowState->im.xim = 0;
+	}
+}
+
+fpl_internal void fpl__X11ReleaseCursor(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->cursor.invisibleCursor != 0) {
+		x11Api->XFreeCursor(windowState->display, windowState->cursor.invisibleCursor);
+		windowState->cursor.invisibleCursor = 0;
+	}
+}
+
+// Gives one chunked transfer its slot back, the snapshot it carried included
+fpl_internal void fpl__X11ReleaseClipboardSend(fpl__X11ClipboardSend *send) {
+	if (send->text != fpl_null) {
+		fpl__ReleaseDynamicMemory(send->text);
+	}
+	fplClearStruct(send);
+}
+
+fpl_internal void fpl__X11ReleaseClipboard(fpl__X11ClipboardState *clipboard) {
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ReleaseClipboardSend(&clipboard->sends[sendIndex]);
+	}
+	if (clipboard->outgoingText != fpl_null) {
+		fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+		clipboard->outgoingText = fpl_null;
+	}
+	clipboard->outgoingLength = 0;
+}
+
+fpl_internal void fpl__X11DestroyWindow(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->core.window) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Hide window '%d' from display '%p'", (int)windowState->core.window, windowState->display);
+		x11Api->XUnmapWindow(windowState->display, windowState->core.window);
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Destroy window '%d' on display '%p'", (int)windowState->core.window, windowState->display);
+		x11Api->XDestroyWindow(windowState->display, windowState->core.window);
 		x11Api->XFlush(windowState->display);
-		windowState->window = 0;
+		windowState->core.window = 0;
 	}
-	if (windowState->colorMap) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Release color map '%d' from display '%p'", (int)windowState->colorMap, windowState->display);
-		x11Api->XFreeColormap(windowState->display, windowState->colorMap);
-		windowState->colorMap = 0;
+}
+
+fpl_internal void fpl__X11ReleaseColormap(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	// Only free a colormap we created ourselves; the X default colormap is not ours to free.
+	if (windowState->colormap.colorMap && windowState->colormap.ownsColorMap) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Release color map '%d' from display '%p'", (int)windowState->colormap.colorMap, windowState->display);
+		x11Api->XFreeColormap(windowState->display, windowState->colormap.colorMap);
 	}
+	windowState->colormap.colorMap = 0;
+	windowState->colormap.ownsColorMap = false;
+}
+
+fpl_internal void fpl__X11CloseDisplay(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	if (windowState->display) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Close display '%p'", windowState->display);
 		x11Api->XCloseDisplay(windowState->display);
 		windowState->display = fpl_null;
 	}
+}
+
+fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
+	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11ReleaseClipboard(&windowState->clipboard);
+	fpl__X11ReleaseInputMethod(x11Api, windowState);
+	fpl__X11ReleaseCursor(x11Api, windowState);
+	fpl__X11DestroyWindow(x11Api, windowState);
+	fpl__X11ReleaseColormap(x11Api, windowState);
+	fpl__X11CloseDisplay(x11Api, windowState);
 	fplClearStruct(windowState);
 }
 #endif // FPL__ENABLE_WINDOW
@@ -23861,24 +29419,19 @@ fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11Wind
 			}
 		}
 
-		x11Api->XChangeProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)data, targetSize);
+		x11Api->XChangeProperty(x11WinState->display, x11WinState->core.window, x11WinState->netWM.netWMIcon, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)data, targetSize);
 
 		fpl__ReleaseTemporaryMemory(data);
 	} else {
-		x11Api->XDeleteProperty(x11WinState->display, x11WinState->window, x11WinState->netWMIcon);
+		x11Api->XDeleteProperty(x11WinState->display, x11WinState->core.window, x11WinState->netWM.netWMIcon);
 	}
 
 	x11Api->XFlush(x11WinState->display);
 }
 
-fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
-	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
-	const fpl__X11Api *x11Api = &subplatform->api;
-
+fpl_internal bool fpl__X11OpenDisplay(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Set init threads");
 	x11Api->XInitThreads();
-
-	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Open default fpl__X11_Display");
 	windowState->display = x11Api->XOpenDisplay(fpl_null);
@@ -23888,36 +29441,82 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully opened default fpl__X11_Display: %p", windowState->display);
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Get default screen from display '%p'", windowState->display);
 	windowState->screen = x11Api->XDefaultScreen(windowState->display);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got default screen from display '%p': %d", windowState->display, windowState->screen);
+	windowState->core.root = x11Api->XRootWindow(windowState->display, windowState->screen);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got screen '%d' and root window '%d' from display '%p'", windowState->screen, (int)windowState->core.root, windowState->display);
+	return true;
+}
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Get root window from display '%p' and screen '%d'", windowState->display, windowState->screen);
-	windowState->root = x11Api->XRootWindow(windowState->display, windowState->screen);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Got root window from display '%p' and screen '%d': %d", windowState->display, windowState->screen, (int)windowState->root);
-
-	bool usePreSetupWindow = false;
-	if (setupCallbacks->preSetup != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
-		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
-	}
-
-	fpl__X11_Visual *visual = windowState->visual;
+fpl_internal void fpl__X11SetupVisualAndColormap(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11_Visual *visual = windowState->core.visual;
 	int colorDepth = windowState->colorDepth;
-	fpl__X11_Colormap colormap;
 	if (visual != fpl_null && colorDepth > 0) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Got visual '%p' and color depth '%d' from pre-setup", visual, colorDepth);
-		windowState->colorMap = colormap = x11Api->XCreateColormap(windowState->display, windowState->root, visual, FPL__X11_AllocNone);
+		windowState->colormap.colorMap = x11Api->XCreateColormap(windowState->display, windowState->core.root, visual, FPL__X11_AllocNone);
+		windowState->colormap.ownsColorMap = true;
 	} else {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Using default visual, color depth, colormap");
-		windowState->visual = visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
-		windowState->colorDepth = colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
-		windowState->colorMap = colormap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->core.visual = x11Api->XDefaultVisual(windowState->display, windowState->screen);
+		windowState->colorDepth = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+		windowState->colormap.colorMap = x11Api->XDefaultColormap(windowState->display, windowState->screen);
+		windowState->colormap.ownsColorMap = false;
 	}
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual '%p', color depth '%d', color map '%d'", windowState->core.visual, windowState->colorDepth, (int)windowState->colormap.colorMap);
+}
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using visual: %p", visual);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color depth: %d", colorDepth);
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Using color map: %d", (int)colormap);
+fpl_internal void fpl__X11InternWMAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->wm.utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", FPL__X11_False);
+	windowState->wm.wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", FPL__X11_False);
+	windowState->wm.wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", FPL__X11_False);
+	windowState->wm.wmState = x11Api->XInternAtom(windowState->display, "WM_STATE", FPL__X11_False);
+	windowState->wm.motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->netWM.netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", FPL__X11_False);
+	windowState->netWM.netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", FPL__X11_False);
+	windowState->netWM.netWMStateFocused = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FOCUSED", FPL__X11_False);
+	windowState->netWM.netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", FPL__X11_False);
+	windowState->netWM.netWMStateHidden = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_HIDDEN", FPL__X11_False);
+	windowState->netWM.netWMStateMaximizedVert = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_VERT", FPL__X11_False);
+	windowState->netWM.netWMStateMaximizedHorz = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_HORZ", FPL__X11_False);
+	windowState->netWM.netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", FPL__X11_False);
+	windowState->netWM.netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", FPL__X11_False);
+	windowState->netWM.netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", FPL__X11_False);
+	windowState->netWM.netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", FPL__X11_False);
+	windowState->netWM.netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->xdnd.xdndAware = x11Api->XInternAtom(windowState->display, "XdndAware", FPL__X11_False);
+	windowState->xdnd.xdndEnter = x11Api->XInternAtom(windowState->display, "XdndEnter", FPL__X11_False);
+	windowState->xdnd.xdndPosition = x11Api->XInternAtom(windowState->display, "XdndPosition", FPL__X11_False);
+	windowState->xdnd.xdndStatus = x11Api->XInternAtom(windowState->display, "XdndStatus", FPL__X11_False);
+	windowState->xdnd.xdndActionCopy = x11Api->XInternAtom(windowState->display, "XdndActionCopy", FPL__X11_False);
+	windowState->xdnd.xdndDrop = x11Api->XInternAtom(windowState->display, "XdndDrop", FPL__X11_False);
+	windowState->xdnd.xdndFinished = x11Api->XInternAtom(windowState->display, "XdndFinished", FPL__X11_False);
+	windowState->xdnd.xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", FPL__X11_False);
+	windowState->xdnd.xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", FPL__X11_False);
+	windowState->xdnd.textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", FPL__X11_False);
+}
+
+fpl_internal void fpl__X11InternClipboardAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->clipboard.clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", FPL__X11_False);
+	windowState->clipboard.targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", FPL__X11_False);
+	windowState->clipboard.incrAtom = x11Api->XInternAtom(windowState->display, "INCR", FPL__X11_False);
+	windowState->clipboard.selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", FPL__X11_False);
+}
+
+// Interned atoms live for the connection's lifetime and are dropped when the display closes, so they need no explicit free.
+fpl_internal void fpl__X11InternAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11InternWMAtoms(x11Api, windowState);
+	fpl__X11InternNetWMAtoms(x11Api, windowState);
+	fpl__X11InternXdndAtoms(x11Api, windowState);
+	fpl__X11InternClipboardAtoms(x11Api, windowState);
+}
+
+fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSettings *initSettings, fpl__X11WindowState *windowState) {
+	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
 	int flags = FPL__X11_CWColormap | FPL__X11_CWBorderPixel | FPL__X11_CWEventMask | FPL__X11_CWBitGravity | FPL__X11_CWWinGravity;
 
@@ -23931,7 +29530,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	fpl__X11_XSetWindowAttributes swa = fplZeroInit;
-	swa.colormap = colormap;
+	swa.colormap = windowState->colormap.colorMap;
 	swa.event_mask =
 		FPL__X11_StructureNotifyMask |
 		FPL__X11_ExposureMask | FPL__X11_FocusChangeMask | FPL__X11_VisibilityChangeMask |
@@ -23957,13 +29556,15 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	}
 
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
-	windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+	windowState->lastWindowStateInfo.visibility = initSettings->window.initialVisibility == fplWindowVisibilityState_Hide ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
 	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
 	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowX, (uint32_t)windowY);
 
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
-	windowState->window = x11Api->XCreateWindow(windowState->display,
-		windowState->root,
+	fpl__X11_Visual *visual = windowState->core.visual;
+	int colorDepth = windowState->colorDepth;
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Create window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
+	windowState->core.window = x11Api->XCreateWindow(windowState->display,
+		windowState->core.root,
 		windowX,
 		windowY,
 		windowWidth,
@@ -23974,67 +29575,28 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		visual,
 		flags,
 		&swa);
-	if (!windowState->window) {
-		FPL__ERROR(FPL__MODULE_X11, "Failed creating window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
-		fpl__X11ReleaseWindow(subplatform, windowState);
+	if (!windowState->core.window) {
+		FPL__ERROR(FPL__MODULE_X11, "Failed creating window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d'!", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap);
 		return false;
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->window);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Successfully created window with (fpl__X11_Display='%p', Root='%d', Size=%dx%d, Colordepth='%d', visual='%p', colormap='%d': %d", windowState->display, (int)windowState->core.root, windowWidth, windowHeight, colorDepth, visual, (int)swa.colormap, (int)windowState->core.window);
+	return true;
+}
 
-	// Type atoms
-	windowState->utf8String = x11Api->XInternAtom(windowState->display, "UTF8_STRING", FPL__X11_False);
-
-	// Window manager atoms
-	windowState->wmDeleteWindow = x11Api->XInternAtom(windowState->display, "WM_DELETE_WINDOW", FPL__X11_False);
-	windowState->wmProtocols = x11Api->XInternAtom(windowState->display, "WM_PROTOCOLS", FPL__X11_False);
-	windowState->wmState = x11Api->XInternAtom(windowState->display, "WM_STATE", FPL__X11_False);
-	windowState->netWMPing = x11Api->XInternAtom(windowState->display, "_NET_WM_PING", FPL__X11_False);
-	windowState->netWMState = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE", FPL__X11_False);
-	windowState->netWMStateFocused = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FOCUSED", FPL__X11_False);
-	windowState->netWMStateFullscreen = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_FULLSCREEN", FPL__X11_False);
-	windowState->netWMStateHidden = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_HIDDEN", FPL__X11_False);
-	windowState->netWMStateMaximizedVert = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_VERT", FPL__X11_False);
-	windowState->netWMStateMaximizedHorz = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_MAXIMIZED_HORZ", FPL__X11_False);
-	windowState->netWMPid = x11Api->XInternAtom(windowState->display, "_NET_WM_PID", FPL__X11_False);
-	windowState->netWMIcon = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON", FPL__X11_False);
-	windowState->netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", FPL__X11_False);
-	windowState->netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", FPL__X11_False);
-	windowState->motifWMHints = x11Api->XInternAtom(windowState->display, "_MOTIF_WM_HINTS", FPL__X11_False);
-	// xdnd atoms
-	windowState->xdndAware = x11Api->XInternAtom(windowState->display, "XdndAware", FPL__X11_False);
-	windowState->xdndEnter = x11Api->XInternAtom(windowState->display, "XdndEnter", FPL__X11_False);
-	windowState->xdndPosition = x11Api->XInternAtom(windowState->display, "XdndPosition", FPL__X11_False);
-	windowState->xdndStatus = x11Api->XInternAtom(windowState->display, "XdndStatus", FPL__X11_False);
-	windowState->xdndActionCopy = x11Api->XInternAtom(windowState->display, "XdndActionCopy", FPL__X11_False);
-	windowState->xdndDrop = x11Api->XInternAtom(windowState->display, "XdndDrop", FPL__X11_False);
-	windowState->xdndFinished = x11Api->XInternAtom(windowState->display, "XdndFinished", FPL__X11_False);
-	windowState->xdndSelection = x11Api->XInternAtom(windowState->display, "XdndSelection", FPL__X11_False);
-	windowState->xdndTypeList = x11Api->XInternAtom(windowState->display, "XdndTypeList", FPL__X11_False);
-	windowState->textUriList = x11Api->XInternAtom(windowState->display, "text/uri-list", FPL__X11_False);
-	// Window style atoms
-	windowState->netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", FPL__X11_False);
-	// Clipboard atoms
-	windowState->clipboardAtom = x11Api->XInternAtom(windowState->display, "CLIPBOARD", FPL__X11_False);
-	windowState->targetsAtom = x11Api->XInternAtom(windowState->display, "TARGETS", FPL__X11_False);
-	windowState->incrAtom = x11Api->XInternAtom(windowState->display, "INCR", FPL__X11_False);
-	windowState->selectionPropAtom = x11Api->XInternAtom(windowState->display, "FPL_SELECTION", FPL__X11_False);
-	// Cursor defaults
-	windowState->invisibleCursor = 0;
-	windowState->cursorEnabled = true;
-
+fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
 		fpl__X11_Atom protocols[] = {
-				windowState->wmDeleteWindow,
-				windowState->netWMPing
+				windowState->wm.wmDeleteWindow,
+				windowState->netWM.netWMPing
 		};
-		x11Api->XSetWMProtocols(windowState->display, windowState->window, protocols, fplArrayCount(protocols));
+		x11Api->XSetWMProtocols(windowState->display, windowState->core.window, protocols, fplArrayCount(protocols));
 	}
 
 	// Declare our process id
 	{
 		const long pid = getpid();
-		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->netWMPid, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)&pid, 1);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMPid, FPL__X11_XA_CARDINAL, 32, FPL__X11_PropModeReplace, (unsigned char *)&pid, 1);
 	}
 
 	char nameBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
@@ -24043,7 +29605,7 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	} else {
 		fplCopyString("Unnamed FPL X11 fpl__X11_Window", nameBuffer, fplArrayCount(nameBuffer));
 	}
-	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->window, windowState->display, nameBuffer);
+	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->core.window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
 	fplSetWindowTitle(nameBuffer);
 
@@ -24053,34 +29615,211 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 		fpl__X11_XClassHint classHint = fplZeroInit;
 		classHint.res_name = nameBuffer;
 		classHint.res_class = nameBuffer;
-		x11Api->XSetClassHint(windowState->display, windowState->window, &classHint);
+		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
-	x11Api->XMapWindow(windowState->display, windowState->window);
+	// A window that starts hidden is never mapped, so the window manager does not see it until fplSetWindowVisibility() shows it
+	if (initSettings->window.initialVisibility != fplWindowVisibilityState_Hide) {
+		x11Api->XMapWindow(windowState->display, windowState->core.window);
+	}
 	x11Api->XFlush(windowState->display);
 
+	// Announce support for Xdnd (drag and drop)
+	{
+		const fpl__X11_Atom version = FPL__XDND_VERSION;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->xdnd.xdndAware, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)&version, 1);
+	}
+}
+
+// Enables UTF-8 capable text input via X Input Method; silently falls back to XLookupString when unavailable.
+// XSetLocaleModifiers must run before XOpenIM, otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
+fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	windowState->im.xim = 0;
+	windowState->im.xic = 0;
+	if (x11Api->XOpenIM != fpl_null && x11Api->XCreateIC != fpl_null && x11Api->Xutf8LookupString != fpl_null) {
+		if (x11Api->XSetLocaleModifiers != fpl_null) {
+			x11Api->XSetLocaleModifiers("");
+		}
+		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
+		if (xim != fpl_null) {
+			windowState->im.xim = xim;
+			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
+			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
+				FPL__X11_XNInputStyle, inputStyle,
+				FPL__X11_XNClientWindow, windowState->core.window,
+				FPL__X11_XNFocusWindow, windowState->core.window,
+				(void *)fpl_null);
+			if (xic != fpl_null) {
+				windowState->im.xic = xic;
+				if (x11Api->XSetICFocus != fpl_null) {
+					x11Api->XSetICFocus(xic);
+				}
+			} else {
+				FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
+			}
+		} else {
+			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
+		}
+	}
+}
+
+// X11 key codes are the Linux evdev key codes plus 8, the evdev and libinput drivers both use them
+#define FPL__X11_EVDEV_KEYCODE_OFFSET 8
+// The evdev key codes 1 (Esc) up to 83 (keypad period) are the PC set 1 scan codes already
+#define FPL__EVDEV_LAST_SET1_IDENTICAL_KEY 83
+
+typedef struct fpl__EvdevScanCode {
+	uint16_t evdevCode;
+	uint16_t scanCode;
+} fpl__EvdevScanCode;
+
+// PC set 1 scan codes of the evdev keys above 83, by the key names of linux/input-event-codes.h.
+// KEY_ZENKAKUHANKAKU (85) is left out, it has the same scan code as F24.
+fpl_globalvar const fpl__EvdevScanCode fpl__global_EvdevScanCodeTable[] = {
+	{ 86, 0x56 }, // KEY_102ND, the ISO key next to the left Shift
+	{ 87, 0x57 }, // KEY_F11
+	{ 88, 0x58 }, // KEY_F12
+	{ 89, 0x73 }, // KEY_RO
+	{ 90, 0x78 }, // KEY_KATAKANA
+	{ 91, 0x77 }, // KEY_HIRAGANA
+	{ 92, 0x79 }, // KEY_HENKAN
+	{ 93, 0x70 }, // KEY_KATAKANAHIRAGANA
+	{ 94, 0x7B }, // KEY_MUHENKAN
+	{ 95, 0x5C }, // KEY_KPJPCOMMA
+	{ 96, 0xE01C }, // KEY_KPENTER
+	{ 97, 0xE01D }, // KEY_RIGHTCTRL
+	{ 98, 0xE035 }, // KEY_KPSLASH
+	{ 99, 0xE037 }, // KEY_SYSRQ, the Print key
+	{ 100, 0xE038 }, // KEY_RIGHTALT
+	{ 102, 0xE047 }, // KEY_HOME
+	{ 103, 0xE048 }, // KEY_UP
+	{ 104, 0xE049 }, // KEY_PAGEUP
+	{ 105, 0xE04B }, // KEY_LEFT
+	{ 106, 0xE04D }, // KEY_RIGHT
+	{ 107, 0xE04F }, // KEY_END
+	{ 108, 0xE050 }, // KEY_DOWN
+	{ 109, 0xE051 }, // KEY_PAGEDOWN
+	{ 110, 0xE052 }, // KEY_INSERT
+	{ 111, 0xE053 }, // KEY_DELETE
+	{ 113, 0xE020 }, // KEY_MUTE
+	{ 114, 0xE02E }, // KEY_VOLUMEDOWN
+	{ 115, 0xE030 }, // KEY_VOLUMEUP
+	{ 116, 0xE05E }, // KEY_POWER
+	{ 117, 0x59 }, // KEY_KPEQUAL
+	{ 119, 0xE11D }, // KEY_PAUSE
+	{ 121, 0x7E }, // KEY_KPCOMMA
+	{ 122, 0xF2 }, // KEY_HANGEUL
+	{ 123, 0xF1 }, // KEY_HANJA
+	{ 124, 0x7D }, // KEY_YEN
+	{ 125, 0xE05B }, // KEY_LEFTMETA
+	{ 126, 0xE05C }, // KEY_RIGHTMETA
+	{ 127, 0xE05D }, // KEY_COMPOSE, the menu key
+	{ 128, 0xE068 }, // KEY_STOP
+	{ 140, 0xE021 }, // KEY_CALC
+	{ 142, 0xE05F }, // KEY_SLEEP
+	{ 143, 0xE063 }, // KEY_WAKEUP
+	{ 155, 0xE06C }, // KEY_MAIL
+	{ 156, 0xE066 }, // KEY_BOOKMARKS
+	{ 157, 0xE06B }, // KEY_COMPUTER
+	{ 158, 0xE06A }, // KEY_BACK
+	{ 159, 0xE069 }, // KEY_FORWARD
+	{ 163, 0xE019 }, // KEY_NEXTSONG
+	{ 164, 0xE022 }, // KEY_PLAYPAUSE
+	{ 165, 0xE010 }, // KEY_PREVIOUSSONG
+	{ 166, 0xE024 }, // KEY_STOPCD
+	{ 172, 0xE032 }, // KEY_HOMEPAGE
+	{ 173, 0xE067 }, // KEY_REFRESH
+	{ 183, 0x64 }, // KEY_F13
+	{ 184, 0x65 }, // KEY_F14
+	{ 185, 0x66 }, // KEY_F15
+	{ 186, 0x67 }, // KEY_F16
+	{ 187, 0x68 }, // KEY_F17
+	{ 188, 0x69 }, // KEY_F18
+	{ 189, 0x6A }, // KEY_F19
+	{ 190, 0x6B }, // KEY_F20
+	{ 191, 0x6C }, // KEY_F21
+	{ 192, 0x6D }, // KEY_F22
+	{ 193, 0x6E }, // KEY_F23
+	{ 194, 0x76 }, // KEY_F24
+	{ 217, 0xE065 }, // KEY_SEARCH
+	{ 226, 0xE06D }, // KEY_MEDIA
+};
+
+// The PC set 1 scan code of a X11 key code, zero for a key without one
+fpl_internal uint32_t fpl__X11GetScanCode(const uint64_t keyCode) {
+	if (keyCode < FPL__X11_EVDEV_KEYCODE_OFFSET) {
+		return(0);
+	}
+	uint64_t evdevCode = keyCode - FPL__X11_EVDEV_KEYCODE_OFFSET;
+	if (evdevCode <= FPL__EVDEV_LAST_SET1_IDENTICAL_KEY) {
+		return((uint32_t)evdevCode);
+	}
+	for (size_t entryIndex = 0; entryIndex < fplArrayCount(fpl__global_EvdevScanCodeTable); ++entryIndex) {
+		const fpl__EvdevScanCode *entry = &fpl__global_EvdevScanCodeTable[entryIndex];
+		if (entry->evdevCode == evdevCode) {
+			return(entry->scanCode);
+		}
+	}
+	return(0);
+}
+
+fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11WindowState *windowState) {
 	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
 
-	// @NOTE(final): Valid key range for XLib is 8 to 255
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Build X11 Keymap");
 	fplClearStruct(appState->window.keyMap);
-	for (int keyCode = 8; keyCode <= 255; ++keyCode) {
+
+	// @NOTE(final): Init key range to 8 to 255, but note that these may be overritten by XDisplayKeycodes()
+	int minKeycode=8, maxKeycode=255;
+	x11Api->XDisplayKeycodes(windowState->display, &minKeycode, &maxKeycode);
+
+	for (int keyCode = minKeycode; keyCode <= maxKeycode; ++keyCode) {
 		int dummy = 0;
-		fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, keyCode, 1, &dummy);
+		fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, (fpl__X11_KeyCode)keyCode, 1, &dummy);
 		fpl__X11_KeySym keySym = keySyms[0];
 		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
 		appState->window.keyMap[keyCode] = mappedKey;
 		x11Api->XFree(keySyms);
 	}
+}
 
-	if (initSettings->window.isFullscreen) {
-		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
+	const fpl__X11Api *x11Api = &subplatform->api;
+
+	if (!fpl__X11OpenDisplay(x11Api, windowState)) {
+		return false;
 	}
 
-	// Announce support for Xdnd (drag and drop)
-	{
-		const fpl__X11_Atom version = FPL__XDND_VERSION;
-		x11Api->XChangeProperty(windowState->display, windowState->window, windowState->xdndAware, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)&version, 1);
+	if (setupCallbacks->preSetup != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
+		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+	}
+
+	fpl__X11SetupVisualAndColormap(x11Api, windowState);
+
+	if (!fpl__X11CreateWindow(x11Api, initSettings, windowState)) {
+		fpl__X11ReleaseWindow(subplatform, windowState);
+		return false;
+	}
+
+	fpl__X11InternAtoms(x11Api, windowState);
+
+	// Cursor defaults
+	windowState->cursor.invisibleCursor = 0;
+	windowState->cursor.cursorEnabled = true;
+
+	fpl__X11SetupWindowManagerHints(x11Api, initSettings, currentWindowSettings, windowState);
+	fpl__X11InitInputMethod(x11Api, windowState);
+	fpl__X11BuildKeyMap(x11Api, appState, windowState);
+
+	fplWindowState initialState = fpl__GetInitialWindowState(&initSettings->window);
+	if (initSettings->window.initialVisibility == fplWindowVisibilityState_Hide) {
+		fpl__DeferInitialWindowState(appState, currentWindowSettings, initialState);
+	} else if (initialState == fplWindowState_Fullscreen) {
+		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+	} else if (initialState == fplWindowState_Iconify || initialState == fplWindowState_Maximize) {
+		fplSetWindowState(initialState);
 	}
 
 	appState->window.isRunning = true;
@@ -24119,7 +29858,7 @@ fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, 
 
 fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	struct { int state; fpl__X11_Window icon; } *value = NULL;
-	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->wmState, windowState->wmState, (unsigned char **)&value);
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->core.window, windowState->wm.wmState, windowState->wm.wmState, (unsigned char **)&value);
 	int state = FPL__X11_WithdrawnState;
 	if (value) {
 		state = value->state;
@@ -24134,18 +29873,18 @@ fpl_internal const int fpl__X11GetWMState(const fpl__X11Api *x11Api, fpl__X11Win
 
 fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	fpl__X11_Atom *atoms = NULL;
-	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->window, windowState->netWMState, FPL__X11_XA_ATOM, (unsigned char **)&atoms);
+	unsigned long numItems = fpl__X11GetWindowProperty(x11Api, windowState->display, windowState->core.window, windowState->netWM.netWMState, FPL__X11_XA_ATOM, (unsigned char **)&atoms);
 	unsigned int flags = 0;
 	if (atoms) {
 		int i, maximized = 0;
 		for (i = 0; i < numItems; ++i) {
-			if (atoms[i] == windowState->netWMStateHidden) {
+			if (atoms[i] == windowState->netWM.netWMStateHidden) {
 				flags |= fpl__X11NetWMStateHiddenFlag;
-			} else if (atoms[i] == windowState->netWMStateMaximizedVert) {
+			} else if (atoms[i] == windowState->netWM.netWMStateMaximizedVert) {
 				maximized |= 1;
-			} else if (atoms[i] == windowState->netWMStateMaximizedHorz) {
+			} else if (atoms[i] == windowState->netWM.netWMStateMaximizedHorz) {
 				maximized |= 2;
-			} else if (atoms[i] == windowState->netWMStateFullscreen) {
+			} else if (atoms[i] == windowState->netWM.netWMStateFullscreen) {
 				flags |= fpl__X11NetWMStateFullscreenFlag;
 			}
 		}
@@ -24156,7 +29895,7 @@ fpl_internal unsigned int fpl__X11GetNetWMState(const fpl__X11Api *x11Api, fpl__
 		{
 			fpl__X11_XWindowAttributes attr;
 			fplMemorySet(&attr, 0, sizeof(attr));
-			x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attr);
+			x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attr);
 			if (attr.map_state == FPL__X11_IsUnmapped) {
 				flags |= fpl__X11NetWMStateHiddenFlag;
 			}
@@ -24309,15 +30048,46 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 }
 
 fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__PlatformWindowState *winState, const uint64_t keyCode, fpl__X11_XEvent *ev) {
-	char buf[32];
+	char buf[32] = fplZeroInit;
+	const int maxTextLen = (int)sizeof(buf) - 1;   // reserve one byte for the NUL terminator
 	fpl__X11_KeySym keysym = 0;
-	if (x11Api->XLookupString(&ev->xkey, buf, 32, &keysym, NULL) != FPL__X11_NoSymbol) {
-		wchar_t wideBuffer[4] = fplZeroInit;
-		fplUTF8StringToWideString(buf, fplGetStringLength(buf), wideBuffer, fplArrayCount(wideBuffer));
-		uint32_t textCode = (uint32_t)wideBuffer[0];
-		if (textCode > 0) {
-			fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+	int textLen = 0;
+	bool isUtf8 = false;
+
+	fpl__X11WindowState *x11WinState = &winState->x11;
+	if (x11WinState->im.xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
+		fpl__X11_Status status = 0;
+		textLen = x11Api->Xutf8LookupString(x11WinState->im.xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
+		// status tells us what buf holds; only XLookupChars / XLookupBoth yield committed text
+		if (status == FPL__X11_XLookupChars || status == FPL__X11_XLookupBoth) {
+			isUtf8 = true;
+		} else {
+			textLen = 0;   // XLookupKeySym / XLookupNone / XBufferOverflow -> no committed text
 		}
+	} else {
+		// Fallback: no input method. XLookupString returns locale/Latin-1 bytes, not UTF-8.
+		int n = x11Api->XLookupString(&ev->xkey, buf, maxTextLen, &keysym, fpl_null);
+		if (n > 0) {
+			textLen = n;
+			isUtf8 = false;
+		}
+	}
+
+	if (textLen <= 0) {
+		return;
+	}
+	buf[textLen] = '\0';
+
+	// Xutf8LookupString always returns UTF-8 regardless of the C locale, so decode it directly.
+	uint32_t textCode = 0;
+	if (isUtf8) {
+		fpl__DecodeUTF8CodePoint(buf, (size_t)textLen, &textCode);
+	} else {
+		// Latin-1 fallback: each returned byte is a Unicode code point in 0..255 directly.
+		textCode = (uint32_t)(unsigned char)buf[0];
+	}
+	if (textCode > 0) {
+		fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
 	}
 }
 #endif // FPL__ENABLE_WINDOW
@@ -24328,6 +30098,14 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 //
 // ############################################################################
 #if defined(FPL__ENABLE_INPUT_X11)
+// The pointer buttons after the vertical wheel (4 and 5) have no names in Xlib: the horizontal wheel and the side buttons
+#define FPL__X11_BUTTON_WHEEL_LEFT 6
+#define FPL__X11_BUTTON_WHEEL_RIGHT 7
+#define FPL__X11_BUTTON_BACK 8
+#define FPL__X11_BUTTON_FORWARD 9
+// X11 times are milliseconds in 32 bits that wrap around, a difference below half of that range counts as forward in time
+#define FPL__X11_TIME_HALF_RANGE 0x80000000u
+
 // Resolve the Display + window pair used for polling. In windowed mode the user
 // window's display is preferred so polling and event delivery stay in sync; in
 // detached mode the backend's own private connection + root window are used.
@@ -24344,7 +30122,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_ResolveTarget(const fpl__InputBackendX
 		const fpl__X11WindowState *windowState = &appState->window.x11;
 		if (windowState->display == fpl_null) return false;
 		*outDisplay = windowState->display;
-		*outWindow = windowState->window;
+		*outWindow = windowState->core.window;
 		return true;
 	}
 #	endif
@@ -24480,7 +30258,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	fplAssertPtr(backend);
 	fplAssertPtr(nev);
 	if (!backend->isInitialized) return false;
-	if (nev->kind != fpl__NativeInputEventKind_X11Event) return false;
+	bool isFilteredKeyEvent = nev->kind == fpl__NativeInputEventKind_X11FilteredKeyEvent;
+	if (nev->kind != fpl__NativeInputEventKind_X11Event && !isFilteredKeyEvent) return false;
 	if (nev->payload == fpl_null) return false;
 	fpl__X11_XEvent *ev = (fpl__X11_XEvent *)nev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -24497,16 +30276,39 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			// Input-method committed text (dead-key / compose result) is delivered as a synthetic KeyPress with keycode 0.
+			// There is no physical key to debounce or emit a button event for, so just deliver the committed text.
+			if (keyCode == 0) {
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				return true;
+			}
+			// Every physical key has its own X11 key code, so the key code is the key state slot
+			uint32_t keySlot = (uint32_t)keyCode;
 			fpl__X11_Time keyTime = ev->xkey.time;
 			fpl__X11_Time lastPressTime = winState->keyPressTimes[keyCode];
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
 			FPL_LOG_TRACE(FPL__MODULE_X11, "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
+			fpl__X11IMState *inputMethod = &x11WinState->im;
 			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
 				if (keyCode) {
-					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Press, false);
-					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
+					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
+					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keySlot, keyCode, scanCode, modifiers, fplButtonState_Press, false);
+					if (isFilteredKeyEvent) {
+						inputMethod->filteredPressTimes[keyCode] = keyTime;
+					} else {
+						fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+					}
 				}
 				winState->keyPressTimes[keyCode] = keyTime;
+			} else if (!isFilteredKeyEvent) {
+				// The input method gives a key back with the time it took it, the same key may have been taken once more since then
+				fpl__X11_Time filteredPressTime = inputMethod->filteredPressTimes[keyCode];
+				uint32_t timeUntilFilteredPress = (uint32_t)(filteredPressTime - keyTime);
+				bool isGivenBackByInputMethod = filteredPressTime != 0 && timeUntilFilteredPress < FPL__X11_TIME_HALF_RANGE;
+				if (isGivenBackByInputMethod) {
+					fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
+				}
 			}
 			return true;
 		}
@@ -24527,11 +30329,14 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			}
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			uint32_t keySlot = (uint32_t)keyCode;
+			uint32_t scanCode = fpl__X11GetScanCode(keyCode);
+			fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
 			if (isRepeat) {
 				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Repeat, false);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
 			} else {
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, (uint64_t)keyCode, fpl__X11TranslateModifierFlags(keyState), fplButtonState_Release, true);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, true);
 			}
 			return true;
 		}
@@ -24548,13 +30353,21 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Press);
 				} else if (ev->xbutton.button == FPL__X11_Button3) {
 					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Press);
+				} else if (ev->xbutton.button == FPL__X11_BUTTON_BACK) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X1, fplButtonState_Press);
+				} else if (ev->xbutton.button == FPL__X11_BUTTON_FORWARD) {
+					fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X2, fplButtonState_Press);
 				}
 			}
 			// Wheel is unconditional (matches the previous Win32 + X11 behavior).
 			if (ev->xbutton.button == FPL__X11_Button4) {
-				fpl__HandleMouseWheelEvent(winState, x, y, 1.0f);
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_Wheel, x, y, 1.0f);
 			} else if (ev->xbutton.button == FPL__X11_Button5) {
-				fpl__HandleMouseWheelEvent(winState, x, y, -1.0f);
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_Wheel, x, y, -1.0f);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_WHEEL_LEFT) {
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_HorizontalWheel, x, y, -1.0f);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_WHEEL_RIGHT) {
+				fpl__HandleMouseWheelEvent(winState, fplMouseEventType_HorizontalWheel, x, y, 1.0f);
 			}
 			return true;
 		}
@@ -24571,6 +30384,10 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Middle, fplButtonState_Release);
 			} else if (ev->xbutton.button == FPL__X11_Button3) {
 				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_Right, fplButtonState_Release);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_BACK) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X1, fplButtonState_Release);
+			} else if (ev->xbutton.button == FPL__X11_BUTTON_FORWARD) {
+				fpl__HandleMouseButtonEvent(winState, x, y, fplMouseButtonType_X2, fplButtonState_Release);
 			}
 			return true;
 		}
@@ -24583,6 +30400,24 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			return true;
 		}
 
+		case FPL__X11_EnterNotify:
+		case FPL__X11_LeaveNotify:
+		{
+			if (eventsDisabled) return true;
+			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
+			// A grab moves the pointer focus without the pointer moving, and a child window is still inside.
+			// Only a grab that ends while the pointer is over the window says something true: the pointer is inside now.
+			const fpl__X11_XCrossingEvent *crossingEvent = &ev->xcrossing;
+			bool isInside = ev->type == FPL__X11_EnterNotify;
+			bool isPointerCrossing = crossingEvent->mode == FPL__X11_NotifyNormal || (isInside && crossingEvent->mode == FPL__X11_NotifyUngrab);
+			bool isChildCrossing = crossingEvent->detail == FPL__X11_NotifyInferior;
+			if (!isPointerCrossing || isChildCrossing) {
+				return true;
+			}
+			fpl__HandleMouseCrossingEvent(winState, crossingEvent->x, crossingEvent->y, isInside);
+			return true;
+		}
+
 		default:
 			break;
 	}
@@ -24592,6 +30427,126 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 #endif // FPL__ENABLE_INPUT_X11
 
 #if defined(FPL__ENABLE_WINDOW)
+
+/*
+	Serving the clipboard means writing into a window that belongs to SOMEBODY ELSE, and a receiver that
+	quits in the middle of a transfer is an ordinary thing rather than a mistake - the property write then
+	fails with a bad window. Xlib answers a protocol error by killing the whole process, so those few calls
+	get an error handler of their own that remembers the error and drops it.
+*/
+fpl_globalvar fpl__X11_XErrorHandler fpl__global__X11PreviousErrorHandler = fpl_null;
+fpl_globalvar bool fpl__global__X11ClipboardHadError = false;
+
+fpl_internal int fpl__X11ClipboardErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
+	(void)display;
+	(void)errorEvent;
+	fpl__global__X11ClipboardHadError = true;
+	return(0);
+}
+
+fpl_internal void fpl__X11BeginClipboardErrorGuard(const fpl__X11Api *x11Api) {
+	fpl__global__X11ClipboardHadError = false;
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		fpl__global__X11PreviousErrorHandler = x11Api->XSetErrorHandler(fpl__X11ClipboardErrorHandler);
+	}
+}
+
+//! Ends the guard and answers whether everything inside it went through. The sync is what makes that
+//! answer possible at all: a protocol error comes back on its own time, not with the call that caused it
+fpl_internal bool fpl__X11EndClipboardErrorGuard(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
+	x11Api->XSync(display, FPL__X11_False);
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		x11Api->XSetErrorHandler(fpl__global__X11PreviousErrorHandler);
+	}
+	bool result = !fpl__global__X11ClipboardHadError;
+	return(result);
+}
+
+// Number of bytes one XChangeProperty may carry, anything larger has to be split into chunks (INCR protocol)
+fpl_internal size_t fpl__X11GetClipboardMaxChunkSize(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
+	// XMaxRequestSize answers in units of four bytes and covers the whole request, so the protocol header
+	// and the property arguments have to come off the top before the rest may be filled with data.
+	const size_t requestSizeUnitInBytes = 4;
+	const size_t requestHeaderReserveInBytes = 1024;
+	const size_t smallestChunkSizeInBytes = 4096;
+	const size_t largestChunkSizeInBytes = 256 * 1024;
+	size_t result = smallestChunkSizeInBytes;
+	if (x11Api->XMaxRequestSize != fpl_null) {
+		long maxRequestSizeInUnits = x11Api->XMaxRequestSize(display);
+		if (maxRequestSizeInUnits > 0) {
+			size_t maxRequestSizeInBytes = (size_t)maxRequestSizeInUnits * requestSizeUnitInBytes;
+			if (maxRequestSizeInBytes > (requestHeaderReserveInBytes + smallestChunkSizeInBytes)) {
+				result = maxRequestSizeInBytes - requestHeaderReserveInBytes;
+			}
+		}
+	}
+	if (result > largestChunkSizeInBytes) {
+		result = largestChunkSizeInBytes;
+	}
+	return(result);
+}
+
+// Takes a slot for a chunked transfer, reusing one whose receiver stopped asking for more
+fpl_internal fpl__X11ClipboardSend *fpl__X11AcquireClipboardSendSlot(fpl__X11ClipboardState *clipboard) {
+	fplMilliseconds currentTime = fplMillisecondsQuery();
+	fpl__X11ClipboardSend *result = fpl_null;
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ClipboardSend *send = &clipboard->sends[sendIndex];
+		if (!send->isActive) {
+			result = send;
+			break;
+		}
+		// A receiver that died in the middle of a transfer never deletes the property again, so its slot
+		// would be lost forever without this.
+		bool hasExpired = (currentTime - send->lastActivityTime) > FPL__X11_CLIPBOARD_TRANSFER_TIMEOUT_MS;
+		if (hasExpired) {
+			fpl__X11ReleaseClipboardSend(send);
+			result = send;
+			break;
+		}
+	}
+	return(result);
+}
+
+fpl_internal fpl__X11ClipboardSend *fpl__X11FindClipboardSend(fpl__X11ClipboardState *clipboard, const fpl__X11_Window requestor, const fpl__X11_Atom property) {
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		fpl__X11ClipboardSend *send = &clipboard->sends[sendIndex];
+		if (send->isActive && send->requestor == requestor && send->property == property) {
+			return(send);
+		}
+	}
+	return(fpl_null);
+}
+
+// Writes the next chunk of a transfer, the final empty one included, and gives the slot back when it is done
+fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11ClipboardSend *send) {
+	const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, display);
+	size_t remaining = send->textLength - send->sentLength;
+	size_t chunkSize = (remaining > maxChunkSize) ? maxChunkSize : remaining;
+	const unsigned char *chunk = (const unsigned char *)(send->text + send->sentLength);
+
+	fpl__X11BeginClipboardErrorGuard(x11Api);
+	x11Api->XChangeProperty(display, send->requestor, send->property, send->target, 8, FPL__X11_PropModeReplace, chunk, (int)chunkSize);
+	bool didWrite = fpl__X11EndClipboardErrorGuard(x11Api, display);
+	if (!didWrite) {
+		// The window on the other end is gone, so there is nobody left to send the rest to.
+		fpl__X11ReleaseClipboardSend(send);
+		return;
+	}
+
+	send->sentLength += chunkSize;
+	send->lastActivityTime = fplMillisecondsQuery();
+
+	// An empty chunk is what ends the transfer, so the slot is only free after that one went out.
+	if (chunkSize == 0) {
+		fpl__X11ReleaseClipboardSend(send);
+	}
+}
+
+// The relative mouse mode, defined next to the grab functions further down
+fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev);
+fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = &appState->window;
@@ -24601,6 +30556,27 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
 		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
+	}
+
+	// Let the input method consume events it needs (dead keys, compose sequences).
+	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
+#if defined(FPL__ENABLE_INPUT)
+	// The local input method clears the key code of the key that ends a composition, so the key code is saved before.
+	unsigned int keyCodeBeforeFilter = (ev->type == FPL__X11_KeyPress) ? ev->xkey.keycode : 0;
+#endif
+	if (x11Api->XFilterEvent != fpl_null && x11Api->XFilterEvent(ev, FPL__X11_None)) {
+#if defined(FPL__ENABLE_INPUT)
+		// A dead key or the key that ends a composition still went down, only its text belongs to the input method
+		if (keyCodeBeforeFilter != 0) {
+			fpl__X11_XEvent filteredKeyEvent = *ev;
+			filteredKeyEvent.xkey.keycode = keyCodeBeforeFilter;
+			fpl__NativeInputEvent nev = fplZeroInit;
+			nev.kind = fpl__NativeInputEventKind_X11FilteredKeyEvent;
+			nev.payload = (void *)&filteredKeyEvent;
+			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
+		}
+#endif
+		return;
 	}
 
 	switch (ev->type) {
@@ -24615,6 +30591,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 #		endif
+			// The warp fallback of the relative mouse mode keeps the cursor in the middle of the client area
+			x11WinState->relativeMouse.clientWidth = (int32_t)ev->xconfigure.width;
+			x11WinState->relativeMouse.clientHeight = (int32_t)ev->xconfigure.height;
+
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
 				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
@@ -24632,22 +30612,23 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 		case FPL__X11_ClientMessage:
 		{
-			if (ev->xclient.message_type == x11WinState->wmProtocols) {
+			if (ev->xclient.message_type == x11WinState->wm.wmProtocols) {
 				const fpl__X11_Atom protocol = (fpl__X11_Atom)ev->xclient.data.l[0];
 				if (protocol != FPL__X11_None) {
-					if (protocol == x11WinState->wmDeleteWindow) {
+					if (protocol == x11WinState->wm.wmDeleteWindow) {
 						// Window asked for closing
 						winState->isRunning = false;
 						fpl__PushWindowStateEvent(fplWindowEventType_Closed);
-					} else if (protocol == x11WinState->netWMPing) {
+						fpl__UpdateInputGrab(appState);
+					} else if (protocol == x11WinState->netWM.netWMPing) {
 						// Window manager asks us if we are still alive
 						fpl__X11_XEvent reply = *ev;
-						reply.xclient.window = x11WinState->root;
-						x11Api->XSendEvent(x11WinState->display, x11WinState->root, FPL__X11_False, FPL__X11_SubstructureNotifyMask | FPL__X11_SubstructureRedirectMask, &reply);
+						reply.xclient.window = x11WinState->core.root;
+						x11Api->XSendEvent(x11WinState->display, x11WinState->core.root, FPL__X11_False, FPL__X11_SubstructureNotifyMask | FPL__X11_SubstructureRedirectMask, &reply);
 						x11Api->XFlush(x11WinState->display);
 					}
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndEnter) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndEnter) {
 				// A drag operation has entered the window
 				unsigned long i, count;
 				fpl__X11_Atom *formats = NULL;
@@ -24659,21 +30640,21 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					return;
 				}
 				if (list) {
-					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdndTypeList, FPL__X11_XA_ATOM, (unsigned char **)&formats);
+					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdnd.xdndTypeList, FPL__X11_XA_ATOM, (unsigned char **)&formats);
 				} else {
 					count = 3;
 					formats = (fpl__X11_Atom *)ev->xclient.data.l + 2;
 				}
 				for (i = 0; i < count; ++i) {
-					if (formats[i] == x11WinState->textUriList) {
-						x11WinState->xdnd.format = x11WinState->textUriList;
+					if (formats[i] == x11WinState->xdnd.textUriList) {
+						x11WinState->xdnd.format = x11WinState->xdnd.textUriList;
 						break;
 					}
 				}
 				if (list && formats) {
 					x11Api->XFree(formats);
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndDrop) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndDrop) {
 				// The drag operation has finished by dropping on the window
 				fpl__X11_Time time = FPL__X11_CurrentTime;
 				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
@@ -24684,23 +30665,23 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						time = ev->xclient.data.l[2];
 					}
 					// Request the chosen format from the source window
-					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdndSelection, x11WinState->xdnd.format, x11WinState->xdndSelection, x11WinState->window, time);
+					x11Api->XConvertSelection(x11WinState->display, x11WinState->xdnd.xdndSelection, x11WinState->xdnd.format, x11WinState->xdnd.xdndSelection, x11WinState->core.window, time);
 				} else if (x11WinState->xdnd.version >= 2) {
 					fpl__X11_XEvent reply;
 					fplMemorySet(&reply, 0, sizeof(reply));
 
 					reply.type = FPL__X11_ClientMessage;
 					reply.xclient.window = x11WinState->xdnd.source;
-					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.message_type = x11WinState->xdnd.xdndFinished;
 					reply.xclient.format = 32;
-					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[0] = x11WinState->core.window;
 					reply.xclient.data.l[1] = 0; // The drag was rejected
 					reply.xclient.data.l[2] = FPL__X11_None;
 
 					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 					x11Api->XFlush(x11WinState->display);
 				}
-			} else if (ev->xclient.message_type == x11WinState->xdndPosition) {
+			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndPosition) {
 				// The drag operation has moved over the window
 				fpl__X11_Window dummy;
 				int xpos, ypos;
@@ -24714,9 +30695,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 				reply.type = FPL__X11_ClientMessage;
 				reply.xclient.window = x11WinState->xdnd.source;
-				reply.xclient.message_type = x11WinState->xdndStatus;
+				reply.xclient.message_type = x11WinState->xdnd.xdndStatus;
 				reply.xclient.format = 32;
-				reply.xclient.data.l[0] = x11WinState->window;
+				reply.xclient.data.l[0] = x11WinState->core.window;
 				reply.xclient.data.l[2] = 0; // Specify an empty rectangle
 				reply.xclient.data.l[3] = 0;
 
@@ -24724,15 +30705,32 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					// Reply that we are ready to copy the dragged data
 					reply.xclient.data.l[1] = 1; // Accept with no rectangle
 					if (x11WinState->xdnd.version >= 2)
-						reply.xclient.data.l[4] = x11WinState->xdndActionCopy;
+						reply.xclient.data.l[4] = x11WinState->xdnd.xdndActionCopy;
 				}
 				x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 				x11Api->XFlush(x11WinState->display);
 			}
 		} break;
 
+		case FPL__X11_SelectionClear:
+		{
+			// Another application took the clipboard, so the text we served is nobody's business anymore -
+			// and it can be megabytes. Transfers that are still running keep their own snapshot and finish.
+			if (ev->xselectionclear.selection == x11WinState->clipboard.clipboardAtom) {
+				fpl__X11ClipboardState *clipboard = &x11WinState->clipboard;
+				if (clipboard->outgoingText != fpl_null) {
+					fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+					clipboard->outgoingText = fpl_null;
+				}
+				clipboard->outgoingLength = 0;
+			}
+		} break;
+
 		case FPL__X11_SelectionRequest:
 		{
+			// Everything in here writes into the window of the asking application, which may be gone by now.
+			fpl__X11BeginClipboardErrorGuard(x11Api);
+
 			fpl__X11_XSelectionRequestEvent *req = &ev->xselectionrequest;
 			fpl__X11_XEvent reply = fplZeroInit;
 			reply.xselection.type = FPL__X11_SelectionNotify;
@@ -24741,26 +30739,73 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			reply.xselection.target = req->target;
 			reply.xselection.time = req->time;
 			reply.xselection.property = FPL__X11_None;
-			if (req->selection == x11WinState->clipboardAtom) {
-				if (req->target == x11WinState->targetsAtom) {
+			if (req->selection == x11WinState->clipboard.clipboardAtom) {
+				if (req->target == x11WinState->clipboard.targetsAtom) {
 					fpl__X11_Atom supported[3];
-					supported[0] = x11WinState->targetsAtom;
-					supported[1] = x11WinState->utf8String;
+					supported[0] = x11WinState->clipboard.targetsAtom;
+					supported[1] = x11WinState->wm.utf8String;
 					supported[2] = FPL__X11_XA_STRING;
 					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, FPL__X11_XA_ATOM, 32, FPL__X11_PropModeReplace, (unsigned char *)supported, 3);
 					reply.xselection.property = req->property;
-				} else if (req->target == x11WinState->utf8String || req->target == FPL__X11_XA_STRING) {
-					x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (unsigned char *)x11WinState->clipboardOut, (int)x11WinState->clipboardOutLen);
-					reply.xselection.property = req->property;
+				} else if (req->target == x11WinState->wm.utf8String || req->target == FPL__X11_XA_STRING) {
+					fpl__X11ClipboardState *clipboard = &x11WinState->clipboard;
+					const char *outgoingText = (clipboard->outgoingText != fpl_null) ? clipboard->outgoingText : "";
+					const size_t outgoingLength = clipboard->outgoingLength;
+					const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, x11WinState->display);
+					if (outgoingLength <= maxChunkSize) {
+						x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (const unsigned char *)outgoingText, (int)outgoingLength);
+						reply.xselection.property = req->property;
+					} else {
+						// Too much for a single request, so it goes out in chunks: the receiver is told the
+						// total size first and then asks for one chunk after another by deleting the property.
+						fpl__X11ClipboardSend *send = fpl__X11AcquireClipboardSendSlot(clipboard);
+						char *textSnapshot = fpl_null;
+						if (send != fpl_null) {
+							// A snapshot of its own, because a fplClipboardSetText in the middle of the
+							// transfer would otherwise release the memory this is still reading from.
+							textSnapshot = (char *)fpl__AllocateDynamicMemory(outgoingLength + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+						}
+						if (textSnapshot != fpl_null) {
+							fplMemoryCopy(outgoingText, outgoingLength, textSnapshot);
+							textSnapshot[outgoingLength] = 0;
+							send->text = textSnapshot;
+							send->textLength = outgoingLength;
+							send->sentLength = 0;
+							send->requestor = req->requestor;
+							send->property = req->property;
+							send->target = req->target;
+							send->lastActivityTime = fplMillisecondsQuery();
+							send->isActive = true;
+
+							// The chunks are asked for through PropertyNotify on the window of the receiver,
+							// which we only get to see after selecting them there.
+							x11Api->XSelectInput(x11WinState->display, req->requestor, FPL__X11_PropertyChangeMask);
+							unsigned long totalSize = (unsigned long)outgoingLength;
+							x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, x11WinState->clipboard.incrAtom, 32, FPL__X11_PropModeReplace, (const unsigned char *)&totalSize, 1);
+							reply.xselection.property = req->property;
+						} else {
+							// No slot or no memory: answering with no property is a refusal the receiver
+							// understands, and it leaves whatever it had in its own clipboard alone.
+							FPL__WARNING(FPL__MODULE_X11, "Failed starting a chunked clipboard transfer of %zu bytes", outgoingLength);
+						}
+					}
 				}
 			}
 			x11Api->XSendEvent(x11WinState->display, req->requestor, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-			x11Api->XFlush(x11WinState->display);
+			bool didAnswer = fpl__X11EndClipboardErrorGuard(x11Api, x11WinState->display);
+			if (!didAnswer) {
+				// The asking window died somewhere in the middle of all this, so a transfer that was just
+				// started for it has nowhere to go anymore.
+				fpl__X11ClipboardSend *deadSend = fpl__X11FindClipboardSend(&x11WinState->clipboard, req->requestor, req->property);
+				if (deadSend != fpl_null) {
+					fpl__X11ReleaseClipboardSend(deadSend);
+				}
+			}
 		} break;
 
 		case FPL__X11_SelectionNotify:
 		{
-			if (ev->xselection.property == x11WinState->xdndSelection) {
+			if (ev->xselection.property == x11WinState->xdnd.xdndSelection) {
 				// The converted data from the drag operation has arrived
 				char *data;
 				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor, ev->xselection.property, ev->xselection.target, (unsigned char **)&data);
@@ -24782,11 +30827,11 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 					reply.type = FPL__X11_ClientMessage;
 					reply.xclient.window = x11WinState->xdnd.source;
-					reply.xclient.message_type = x11WinState->xdndFinished;
+					reply.xclient.message_type = x11WinState->xdnd.xdndFinished;
 					reply.xclient.format = 32;
-					reply.xclient.data.l[0] = x11WinState->window;
+					reply.xclient.data.l[0] = x11WinState->core.window;
 					reply.xclient.data.l[1] = result;
-					reply.xclient.data.l[2] = x11WinState->xdndActionCopy;
+					reply.xclient.data.l[2] = x11WinState->xdnd.xdndActionCopy;
 
 					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 					x11Api->XFlush(x11WinState->display);
@@ -24799,13 +30844,33 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ButtonPress:
 		case FPL__X11_ButtonRelease:
 		case FPL__X11_MotionNotify:
+		case FPL__X11_EnterNotify:
+		case FPL__X11_LeaveNotify:
 		{
+			if (ev->type == FPL__X11_EnterNotify) {
+				// The cursor comes back somewhere else, its first move must not count the way outside as movement
+				winState->inputGrab.hasLastMove = false;
+			}
+			// The relative mode without raw motion measures the motion against the window center instead
+			bool isWarpRelativeMotion = ev->type == FPL__X11_MotionNotify && x11WinState->relativeMouse.isActive;
+#if !defined(FPL_NO_X11_XINPUT2)
+			isWarpRelativeMotion = isWarpRelativeMotion && !x11WinState->relativeMouse.isRawMotionSelected;
+#endif
+			if (isWarpRelativeMotion) {
+				fpl__X11HandleWarpRelativeMotion(appState, &ev->xmotion);
+				break;
+			}
 #if defined(FPL__ENABLE_INPUT)
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11Event;
 			nev.payload = (void *)ev;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 #endif
+		} break;
+
+		case FPL__X11_GenericEvent:
+		{
+			fpl__X11HandleGenericEvent(appState, ev);
 		} break;
 
 		case FPL__X11_Expose:
@@ -24823,7 +30888,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__PushWindowStateEvent(fplWindowEventType_GotFocus);
+			fpl__HandleWindowFocusChanged(appState, true);
 		} break;
 
 		case FPL__X11_FocusOut:
@@ -24833,12 +30898,22 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__PushWindowStateEvent(fplWindowEventType_LostFocus);
+			fpl__HandleWindowFocusChanged(appState, false);
 		} break;
 
 		case FPL__X11_PropertyNotify:
 		{
-			if (ev->xproperty.atom == x11WinState->netWMState || ev->xproperty.atom == x11WinState->wmState) {
+			// A receiver of a chunked clipboard transfer asks for the next chunk by deleting the property
+			// it just read, so this is what drives such a transfer forward.
+			if (ev->xproperty.state == FPL__X11_PropertyDelete) {
+				fpl__X11ClipboardSend *send = fpl__X11FindClipboardSend(&x11WinState->clipboard, ev->xproperty.window, ev->xproperty.atom);
+				if (send != fpl_null) {
+					fpl__X11SendNextClipboardChunk(x11Api, x11WinState->display, send);
+					break;
+				}
+			}
+			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
+			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !appState->window.isHidden) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
@@ -24864,6 +30939,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					default:
 						break;
 				}
+				bool isMinimized = nextWindowStateInfo.state == fplWindowState_Iconify;
+				if (isMinimized != (winState->isMinimized != 0)) {
+					fpl__HandleWindowMinimizedChanged(appState, isMinimized);
+				}
 				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
 				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
 			}
@@ -24885,17 +30964,18 @@ fpl_platform_api void fplWindowShutdown(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState->window.isRunning) {
 		appState->window.isRunning = false;
+		fpl__UpdateInputGrab(appState);
 		const fpl__X11SubplatformState *subplatform = &appState->x11;
 		const fpl__X11Api *x11Api = &subplatform->api;
 		const fpl__X11WindowState *windowState = &appState->window.x11;
 		fpl__X11_XEvent ev = fplZeroInit;
 		ev.type = FPL__X11_ClientMessage;
-		ev.xclient.window = windowState->window;
-		ev.xclient.message_type = windowState->wmProtocols;
+		ev.xclient.window = windowState->core.window;
+		ev.xclient.message_type = windowState->wm.wmProtocols;
 		ev.xclient.format = 32;
-		ev.xclient.data.l[0] = windowState->wmDeleteWindow;
+		ev.xclient.data.l[0] = windowState->wm.wmDeleteWindow;
 		ev.xclient.data.l[1] = 0;
-		x11Api->XSendEvent(windowState->display, windowState->root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
+		x11Api->XSendEvent(windowState->display, windowState->core.root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
 	}
 }
 
@@ -24943,6 +31023,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	}
 
 	// Both queues are truly empty
+	fpl__RetryInputGrab(appState);
 	return(false);
 }
 
@@ -24958,6 +31039,7 @@ fpl_platform_api void fplPollEvents(void) {
 		fpl__X11HandleEvent(subplatform, appState, &ev);
 	}
 	fpl__ClearInternalEvents();
+	fpl__RetryInputGrab(appState);
 }
 
 fpl_platform_api bool fplWindowUpdate(void) {
@@ -24968,6 +31050,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 
 	fpl__ClearInternalEvents();
+	fpl__RetryInputGrab(appState);
 
 #if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
@@ -24979,6 +31062,23 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	return(result);
 }
 
+// A cursor without visible pixels, made once and used by fplSetWindowCursorEnabled() and the relative mouse mode
+fpl_internal fpl__X11_Cursor fpl__X11GetInvisibleCursor(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->cursor.invisibleCursor == 0) {
+		char zero[8] = fplZeroInit;
+		fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->core.window, zero, 1, 1);
+		if (blank != 0) {
+			fpl__X11_XColor dummy = fplZeroInit;
+			windowState->cursor.invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
+			// The source pixmap is no longer needed once the cursor exists.
+			if (x11Api->XFreePixmap != fpl_null) {
+				x11Api->XFreePixmap(windowState->display, blank);
+			}
+		}
+	}
+	return(windowState->cursor.invisibleCursor);
+}
+
 fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -24986,22 +31086,417 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11WindowState *windowState = &appState->window.x11;
 	if (value) {
-		x11Api->XUndefineCursor(windowState->display, windowState->window);
+		x11Api->XUndefineCursor(windowState->display, windowState->core.window);
 	} else {
-		if (windowState->invisibleCursor == 0) {
-			char zero[8] = fplZeroInit;
-			fpl__X11_Pixmap blank = x11Api->XCreateBitmapFromData(windowState->display, windowState->window, zero, 1, 1);
-			if (blank != 0) {
-				fpl__X11_XColor dummy = fplZeroInit;
-				windowState->invisibleCursor = x11Api->XCreatePixmapCursor(windowState->display, blank, blank, &dummy, &dummy, 0, 0);
-			}
-		}
-		if (windowState->invisibleCursor != 0) {
-			x11Api->XDefineCursor(windowState->display, windowState->window, windowState->invisibleCursor);
+		fpl__X11_Cursor invisibleCursor = fpl__X11GetInvisibleCursor(x11Api, windowState);
+		if (invisibleCursor != 0) {
+			x11Api->XDefineCursor(windowState->display, windowState->core.window, invisibleCursor);
 		}
 	}
 	x11Api->XFlush(windowState->display);
-	windowState->cursorEnabled = value;
+	windowState->cursor.cursorEnabled = value;
+}
+
+// Moves the pointer to a position in window coordinates. A source window of None warps from anywhere, the zero sized source rectangle is ignored then.
+fpl_internal void fpl__X11WarpPointer(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const int32_t x, const int32_t y) {
+	x11Api->XWarpPointer(windowState->display, FPL__X11_None, windowState->core.window, 0, 0, 0, 0, x, y);
+	x11Api->XFlush(windowState->display);
+}
+
+fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (windowState->core.window == 0 || appState->window.isHidden || appState->window.isMinimized) {
+		return(false);
+	}
+	if (fpl__WarpFrozenMousePosition(appState, x, y)) {
+		return(true);
+	}
+	int32_t targetX = x;
+	int32_t targetY = y;
+	fpl__LimitWarpToConfinedArea(appState, &targetX, &targetY);
+	fpl__X11WarpPointer(x11Api, windowState, targetX, targetY);
+	// The MotionNotify that follows the warp gets a delta of zero
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+	inputGrab->lastMoveX = targetX;
+	inputGrab->lastMoveY = targetY;
+	inputGrab->hasLastMove = true;
+	return(true);
+}
+
+// Pointer events of the grab, owner_events is set, so the events inside the window arrive through the event mask of the window as usual
+#define FPL__X11_POINTER_GRAB_EVENT_MASK ((unsigned int)(FPL__X11_ButtonPressMask | FPL__X11_ButtonReleaseMask | FPL__X11_PointerMotionMask))
+
+fpl_internal const char *fpl__X11GetGrabResultName(const int grabResult) {
+	switch (grabResult) {
+		case FPL__X11_GrabSuccess:
+			return "GrabSuccess";
+		case FPL__X11_AlreadyGrabbed:
+			return "AlreadyGrabbed";
+		case FPL__X11_GrabInvalidTime:
+			return "GrabInvalidTime";
+		case FPL__X11_GrabNotViewable:
+			return "GrabNotViewable";
+		case FPL__X11_GrabFrozen:
+			return "GrabFrozen";
+		default:
+			return "Unknown";
+	}
+}
+
+// Grabs the pointer inside the window, with the given cursor: None keeps the cursor of the window, the relative mode uses the invisible one
+fpl_internal bool fpl__X11GrabPointer(fpl__PlatformAppState *appState, const fpl__X11_Cursor cursor) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11_Window window = windowState->core.window;
+	// confine_to keeps the pointer inside the window, the X server follows moves and resizes of the window by itself
+	int grabResult = x11Api->XGrabPointer(windowState->display, window, FPL__X11_True, FPL__X11_POINTER_GRAB_EVENT_MASK, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, window, cursor, FPL__X11_CurrentTime);
+	if (grabResult == FPL__X11_GrabSuccess) {
+		return(true);
+	}
+	// AlreadyGrabbed and GrabFrozen: another client holds the pointer, like the window manager right after Alt+Tab. GrabNotViewable: the window is not mapped yet.
+	if (!appState->window.inputGrab.isRetryPending) {
+		const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
+		FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabPointer failed with %s, trying again", grabResultName);
+	}
+	return(false);
+}
+
+#if !defined(FPL_NO_X11_XINPUT2)
+// Asks once per window whether the server has XInput 2.0, which the raw motion needs
+fpl_internal bool fpl__X11IsXInput2Available(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	if (relativeMouse->isXInput2Checked) {
+		return(relativeMouse->isXInput2Available);
+	}
+	relativeMouse->isXInput2Checked = true;
+	if (!xinput2Api->isLoaded) {
+		return(false);
+	}
+	int opcode = 0;
+	int firstEvent = 0;
+	int firstError = 0;
+	if (!x11Api->XQueryExtension(windowState->display, "XInputExtension", &opcode, &firstEvent, &firstError)) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput extension, the relative mouse mode reports accelerated movement");
+		return(false);
+	}
+	// The raw events on the root window need version 2.0, the server answers with the version both sides support
+	const int requiredMajorVersion = 2;
+	const int requiredMinorVersion = 0;
+	int majorVersion = requiredMajorVersion;
+	int minorVersion = requiredMinorVersion;
+	fpl__X11_Status versionStatus = xinput2Api->XIQueryVersion(windowState->display, &majorVersion, &minorVersion);
+	if (versionStatus != FPL__X11_Success || majorVersion < requiredMajorVersion) {
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput 2.0, the relative mouse mode reports accelerated movement");
+		return(false);
+	}
+	relativeMouse->xinput2Opcode = opcode;
+	relativeMouse->isXInput2Available = true;
+	return(true);
+}
+
+// Raw motion is only selected while the relative mode is active, it comes for every mouse movement on the whole screen
+fpl_internal bool fpl__X11SelectRawMotion(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	unsigned char maskBits[FPL__X11_XI_MASK_LENGTH(FPL__X11_XI_RawMotion)] = fplZeroInit;
+	if (enabled) {
+		FPL__X11_XI_SET_MASK(maskBits, FPL__X11_XI_RawMotion);
+	}
+	fpl__X11_XIEventMask eventMask = fplZeroInit;
+	eventMask.deviceid = FPL__X11_XIAllMasterDevices;
+	eventMask.mask_len = (int)sizeof(maskBits);
+	eventMask.mask = maskBits;
+	int selectStatus = xinput2Api->XISelectEvents(windowState->display, windowState->core.root, &eventMask, 1);
+	bool result = selectStatus == FPL__X11_Success;
+	return(result);
+}
+
+// Finds a device in the cache, or asks the server whether its X and Y valuators are absolute and what range they have
+fpl_internal fpl__X11XInput2Device *fpl__X11GetXInput2Device(fpl__PlatformAppState *appState, const int deviceId) {
+	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	for (uint32_t deviceIndex = 0; deviceIndex < relativeMouse->deviceCount; ++deviceIndex) {
+		if (relativeMouse->devices[deviceIndex].deviceId == deviceId) {
+			return(&relativeMouse->devices[deviceIndex]);
+		}
+	}
+	// A full cache replaces its entries in turn, a relative mode rarely sees more than one or two devices
+	uint32_t slotIndex = relativeMouse->nextDeviceSlot;
+	relativeMouse->nextDeviceSlot = (slotIndex + 1) % FPL__X11_XINPUT2_MAX_DEVICES;
+	if (relativeMouse->deviceCount < FPL__X11_XINPUT2_MAX_DEVICES) {
+		++relativeMouse->deviceCount;
+	}
+	fpl__X11XInput2Device *device = &relativeMouse->devices[slotIndex];
+	fplClearStruct(device);
+	device->deviceId = deviceId;
+	int infoCount = 0;
+	fpl__X11_XIDeviceInfo *deviceInfo = xinput2Api->XIQueryDevice(windowState->display, deviceId, &infoCount);
+	if (deviceInfo == fpl_null) {
+		return(device);
+	}
+	for (int classIndex = 0; classIndex < deviceInfo->num_classes; ++classIndex) {
+		const fpl__X11_XIAnyClassInfo *classInfo = deviceInfo->classes[classIndex];
+		if (classInfo->type != FPL__X11_XIValuatorClass) {
+			continue;
+		}
+		const fpl__X11_XIValuatorClassInfo *valuatorInfo = (const fpl__X11_XIValuatorClassInfo *)classInfo;
+		if (valuatorInfo->number < 0 || valuatorInfo->number >= FPL__X11_XINPUT2_AXIS_COUNT) {
+			continue;
+		}
+		int axis = valuatorInfo->number;
+		device->isAbsolute[axis] = valuatorInfo->mode == FPL__X11_XIModeAbsolute && valuatorInfo->max > valuatorInfo->min;
+		device->minimum[axis] = valuatorInfo->min;
+		device->maximum[axis] = valuatorInfo->max;
+	}
+	xinput2Api->XIFreeDeviceInfo(deviceInfo);
+	return(device);
+}
+
+// XI_RawMotion: the raw values come in the order of the set mask bits, valuator 0 is X and 1 is Y. Relative devices report counts, absolute ones a position whose change is the movement.
+fpl_internal void fpl__X11HandleRawMotion(fpl__PlatformAppState *appState, const fpl__X11_XIRawEvent *rawEvent) {
+	const fpl__X11RelativeMouseState *relativeMouse = &appState->window.x11.relativeMouse;
+	double rawValues[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	bool hasRawValue[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	const double *nextRawValue = rawEvent->raw_values;
+	int valuatorCount = rawEvent->valuators.mask_len * 8;
+	int axisCount = fplMin(valuatorCount, FPL__X11_XINPUT2_AXIS_COUNT);
+	for (int axis = 0; axis < axisCount; ++axis) {
+		if (FPL__X11_XI_IS_MASK_SET(rawEvent->valuators.mask, axis)) {
+			rawValues[axis] = *nextRawValue;
+			hasRawValue[axis] = true;
+			++nextRawValue;
+		}
+	}
+	// Old libXi versions leave the source device at zero
+	int deviceId = rawEvent->sourceid != 0 ? rawEvent->sourceid : rawEvent->deviceid;
+	fpl__X11XInput2Device *device = fpl__X11GetXInput2Device(appState, deviceId);
+	int rootExtents[FPL__X11_XINPUT2_AXIS_COUNT] = { relativeMouse->rootWidth, relativeMouse->rootHeight };
+	double deltas[FPL__X11_XINPUT2_AXIS_COUNT] = fplZeroInit;
+	for (int axis = 0; axis < FPL__X11_XINPUT2_AXIS_COUNT; ++axis) {
+		if (!hasRawValue[axis]) {
+			continue;
+		}
+		if (!device->isAbsolute[axis]) {
+			deltas[axis] = rawValues[axis];
+			continue;
+		}
+		// An absolute device covers the whole screen, the change of its position is scaled to screen pixels
+		if (device->hasPrevious[axis]) {
+			double range = device->maximum[axis] - device->minimum[axis];
+			double change = rawValues[axis] - device->previous[axis];
+			deltas[axis] = change / range * (double)rootExtents[axis];
+		}
+		device->previous[axis] = rawValues[axis];
+		device->hasPrevious[axis] = true;
+	}
+	fpl__HandleRelativeMouseMotion(appState, deltas[0], deltas[1]);
+}
+#endif // !FPL_NO_X11_XINPUT2
+
+// GenericEvent: the raw motion of XInput2 while the relative mode is active
+fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
+#if !defined(FPL_NO_X11_XINPUT2)
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__X11_XGenericEventCookie *cookie = &ev->xcookie;
+	if (!relativeMouse->isRawMotionSelected || cookie->extension != relativeMouse->xinput2Opcode) {
+		return;
+	}
+	if (!x11Api->XGetEventData(windowState->display, cookie)) {
+		return;
+	}
+	if (cookie->evtype == FPL__X11_XI_RawMotion) {
+		const fpl__X11_XIRawEvent *rawEvent = (const fpl__X11_XIRawEvent *)cookie->data;
+		fpl__X11HandleRawMotion(appState, rawEvent);
+	}
+	x11Api->XFreeEventData(windowState->display, cookie);
+#else
+	(void)appState;
+	(void)ev;
+#endif
+}
+
+// Warps the pointer to the window center for the fallback of the relative mode, and remembers the serial of the warp request
+fpl_internal void fpl__X11WarpPointerToCenter(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	relativeMouse->warpCenterX = relativeMouse->clientWidth / 2;
+	relativeMouse->warpCenterY = relativeMouse->clientHeight / 2;
+	relativeMouse->pendingWarpSerial = x11Api->XNextRequest(windowState->display);
+	relativeMouse->isWarpPending = true;
+	fpl__X11WarpPointer(x11Api, windowState, relativeMouse->warpCenterX, relativeMouse->warpCenterY);
+}
+
+// The relative mode without XInput2: the pointer is warped back to the window center, so the movement never ends at an edge. Motion events carry the serial of
+// the last request the server processed, the ones from before the warp are measured from the previous motion, the first one after it from the center.
+// The warp itself causes a motion onto the center, which then has no movement, and so does a motion that comes from moving the window.
+// These deltas are accelerated like the cursor.
+fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	int32_t motionX = (int32_t)motionEvent->x;
+	int32_t motionY = (int32_t)motionEvent->y;
+	int32_t windowOriginX = (int32_t)motionEvent->x_root - motionX;
+	int32_t windowOriginY = (int32_t)motionEvent->y_root - motionY;
+	bool hasWindowMoved = windowOriginX != relativeMouse->windowOriginX || windowOriginY != relativeMouse->windowOriginY;
+	relativeMouse->windowOriginX = windowOriginX;
+	relativeMouse->windowOriginY = windowOriginY;
+	// The serials wrap around on 32 bit, the signed difference stays right across the wrap
+	long serialsSinceWarp = (long)(motionEvent->serial - relativeMouse->pendingWarpSerial);
+	if (relativeMouse->isWarpPending && serialsSinceWarp >= 0) {
+		relativeMouse->lastMotionX = relativeMouse->warpCenterX;
+		relativeMouse->lastMotionY = relativeMouse->warpCenterY;
+		relativeMouse->isWarpPending = false;
+	}
+	int32_t deltaX = motionX - relativeMouse->lastMotionX;
+	int32_t deltaY = motionY - relativeMouse->lastMotionY;
+	relativeMouse->lastMotionX = motionX;
+	relativeMouse->lastMotionY = motionY;
+	if (!hasWindowMoved) {
+		fpl__HandleRelativeMouseMotion(appState, (double)deltaX, (double)deltaY);
+	}
+	// One warp at a time, the motions until it arrives are still measured from each other
+	bool isAtWarpCenter = motionX == relativeMouse->warpCenterX && motionY == relativeMouse->warpCenterY;
+	if (!relativeMouse->isWarpPending && !isAtWarpCenter) {
+		fpl__X11WarpPointerToCenter(x11Api, windowState);
+	}
+}
+
+// Starts the relative mode: the pointer is grabbed with the invisible cursor, its position is frozen, the raw motion is selected when XInput2 is there and the pointer goes to the window center
+fpl_internal bool fpl__X11StartRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__X11_Cursor invisibleCursor = fpl__X11GetInvisibleCursor(x11Api, windowState);
+	if (!fpl__X11GrabPointer(appState, invisibleCursor)) {
+		return(false);
+	}
+	fpl__X11_Window rootWindow = 0;
+	fpl__X11_Window childWindow = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int windowX = 0;
+	int windowY = 0;
+	unsigned int buttonMask = 0;
+	x11Api->XQueryPointer(windowState->display, windowState->core.window, &rootWindow, &childWindow, &rootX, &rootY, &windowX, &windowY, &buttonMask);
+	fpl__FreezeMousePosition(&appState->window.inputGrab, windowX, windowY);
+	// Motion events from before the warp to the center are measured from here
+	relativeMouse->lastMotionX = (int32_t)windowX;
+	relativeMouse->lastMotionY = (int32_t)windowY;
+	relativeMouse->windowOriginX = (int32_t)(rootX - windowX);
+	relativeMouse->windowOriginY = (int32_t)(rootY - windowY);
+	fplWindowSize clientSize = fplZeroInit;
+	if (fplGetWindowSize(&clientSize)) {
+		relativeMouse->clientWidth = (int32_t)clientSize.width;
+		relativeMouse->clientHeight = (int32_t)clientSize.height;
+	}
+#if !defined(FPL_NO_X11_XINPUT2)
+	relativeMouse->isRawMotionSelected = false;
+	relativeMouse->deviceCount = 0;
+	relativeMouse->nextDeviceSlot = 0;
+	if (fpl__X11IsXInput2Available(appState)) {
+		fpl__X11_XWindowAttributes rootAttributes = fplZeroInit;
+		x11Api->XGetWindowAttributes(windowState->display, windowState->core.root, &rootAttributes);
+		relativeMouse->rootWidth = rootAttributes.width;
+		relativeMouse->rootHeight = rootAttributes.height;
+		relativeMouse->isRawMotionSelected = fpl__X11SelectRawMotion(appState, true);
+	}
+#endif
+	relativeMouse->isActive = true;
+	fpl__X11WarpPointerToCenter(x11Api, windowState);
+	return(true);
+}
+
+// Ends the relative mode, the pointer appears again where the mode started
+fpl_internal void fpl__X11StopRelativeMouse(fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
+#if !defined(FPL_NO_X11_XINPUT2)
+	if (relativeMouse->isRawMotionSelected) {
+		fpl__X11SelectRawMotion(appState, false);
+		relativeMouse->isRawMotionSelected = false;
+	}
+#endif
+	relativeMouse->isActive = false;
+	relativeMouse->isWarpPending = false;
+	bool isWindowVisible = !appState->window.isHidden && !appState->window.isMinimized;
+	if (isWindowVisible) {
+		fpl__X11WarpPointer(x11Api, windowState, inputGrab->frozenX, inputGrab->frozenY);
+		fpl__ThawMousePosition(inputGrab);
+	}
+}
+
+fpl_internal bool fpl__PlatformApplyMouseLock(fpl__PlatformAppState *appState, const fpl__MouseLockState lockState) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	bool wasRelative = appState->window.inputGrab.appliedMouseLock == fpl__MouseLockState_Relative;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(lockState == fpl__MouseLockState_Free);
+	}
+	switch (lockState) {
+		case fpl__MouseLockState_Free:
+		{
+			x11Api->XUngrabPointer(windowState->display, FPL__X11_CurrentTime);
+			x11Api->XFlush(windowState->display);
+		} break;
+
+		case fpl__MouseLockState_Confined:
+		{
+			// Coming from the relative mode, the new grab replaces the one with the invisible cursor
+			if (!fpl__X11GrabPointer(appState, FPL__X11_None)) {
+				return(false);
+			}
+		} break;
+
+		case fpl__MouseLockState_Relative:
+		{
+			bool result = fpl__X11StartRelativeMouse(appState);
+			return(result);
+		}
+
+		default:
+			return(false);
+	}
+	if (wasRelative) {
+		fpl__X11StopRelativeMouse(appState);
+	}
+	return(true);
+}
+
+// An active keyboard grab beats the passive grabs of the window manager, so Alt+Tab, Super and Alt+F4 reach the window. What the X server does itself before any client sees the keys
+// (virtual terminal switch with Ctrl+Alt+F1..F12, Ctrl+Alt+Backspace when enabled) and Magic SysRq can not be grabbed.
+fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState, const bool enabled) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(!enabled);
+	}
+	if (!enabled) {
+		x11Api->XUngrabKeyboard(windowState->display, FPL__X11_CurrentTime);
+		x11Api->XFlush(windowState->display);
+		return(true);
+	}
+	// The focus events of the own grab come with NotifyGrab and NotifyUngrab, the event loop ignores them already
+	int grabResult = x11Api->XGrabKeyboard(windowState->display, windowState->core.window, FPL__X11_True, FPL__X11_GrabModeAsync, FPL__X11_GrabModeAsync, FPL__X11_CurrentTime);
+	if (grabResult == FPL__X11_GrabSuccess) {
+		return(true);
+	}
+	// AlreadyGrabbed: the window manager still holds the keyboard, like right after Alt+Tab
+	if (!appState->window.inputGrab.isRetryPending) {
+		const char *grabResultName = fpl__X11GetGrabResultName(grabResult);
+		FPL_LOG_VERBOSE(FPL__MODULE_X11, "XGrabKeyboard failed with %s, trying again", grabResultName);
+	}
+	return(false);
 }
 
 fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
@@ -25012,7 +31507,7 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outSize->width = attribs.width;
 	outSize->height = attribs.height;
 	return(true);
@@ -25024,7 +31519,7 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	x11Api->XResizeWindow(windowState->display, windowState->window, width, height);
+	x11Api->XResizeWindow(windowState->display, windowState->core.window, width, height);
 	x11Api->XFlush(windowState->display);
 }
 
@@ -25052,14 +31547,14 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 		hints->flags = 0;
 	} else {
 		fpl__X11_XWindowAttributes attribs = fplZeroInit;
-		x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+		x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 		hints->flags = FPL__X11_PMinSize | FPL__X11_PMaxSize;
 		hints->min_width = attribs.width;
 		hints->min_height = attribs.height;
 		hints->max_width = attribs.width;
 		hints->max_height = attribs.height;
 	}
-	x11Api->XSetWMNormalHints(windowState->display, windowState->window, hints);
+	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
 	x11Api->XFree(hints);
 	x11Api->XFlush(windowState->display);
 	appState->currentSettings.window.isResizable = value;
@@ -25097,9 +31592,9 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 	hints.decorations = value ? 1 : 0;
 	hints.functions = value ? FPL__MWM_FUNC_ALL : 0;
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->motifWMHints,
-		windowState->motifWMHints, 32,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->wm.motifWMHints,
+		windowState->wm.motifWMHints, 32,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)&hints,
 		FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
@@ -25117,7 +31612,7 @@ fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl
 	unsigned long bytesAfter = 0;
 	unsigned char *data = fpl_null;
 	bool result = false;
-	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->netWMState, 0L, 1024L, FPL__X11_False, FPL__X11_XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->netWM.netWMState, 0L, 1024L, FPL__X11_False, FPL__X11_XA_ATOM, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
 	if (status == FPL__X11_Success && data != fpl_null) {
 		fpl__X11_Atom *atoms = (fpl__X11_Atom *)data;
 		for (unsigned long i = 0; i < itemCount; ++i) {
@@ -25136,14 +31631,14 @@ fpl_internal bool fpl__X11HasNetWMStateAtom(const fpl__X11Api *x11Api, const fpl
 fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, fpl__X11_Atom atom1, fpl__X11_Atom atom2, long action) {
 	fpl__X11_XEvent xev = fplZeroInit;
 	xev.type = FPL__X11_ClientMessage;
-	xev.xclient.window = windowState->window;
-	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.window = windowState->core.window;
+	xev.xclient.message_type = windowState->netWM.netWMState;
 	xev.xclient.format = 32;
 	xev.xclient.data.l[0] = action;
 	xev.xclient.data.l[1] = (long)atom1;
 	xev.xclient.data.l[2] = (long)atom2;
 	xev.xclient.data.l[3] = 1L;
-	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	x11Api->XFlush(windowState->display);
 	return(result);
 }
@@ -25154,7 +31649,7 @@ fpl_platform_api bool fplIsWindowFloating(void) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateAbove);
+	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateAbove);
 	return(result);
 }
 
@@ -25165,7 +31660,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
-	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateAbove, 0, action);
+	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
 }
 
 fpl_platform_api fplWindowState fplGetWindowState(void) {
@@ -25174,22 +31669,26 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	// A withdrawn window has no states, it gets the remembered one when it is shown
+	if (appState->window.isHidden) {
+		return(appState->window.pendingState != fplWindowState_Unknown ? appState->window.pendingState : fplWindowState_Normal);
+	}
 	if (appState->currentSettings.window.isFullscreen) {
 		return(fplWindowState_Fullscreen);
 	}
-	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateFullscreen)) {
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateFullscreen)) {
 		return(fplWindowState_Fullscreen);
 	}
-	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateHidden)) {
+	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateHidden)) {
 		return(fplWindowState_Iconify);
 	}
-	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedVert);
-	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWMStateMaximizedHorz);
+	bool maxVert = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert);
+	bool maxHorz = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateMaximizedHorz);
 	if (maxVert && maxHorz) {
 		return(fplWindowState_Maximize);
 	}
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	if (attribs.map_state == FPL__X11_IsViewable) {
 		return(fplWindowState_Normal);
 	}
@@ -25198,30 +31697,35 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 
 fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	// Window managers ignore state changes of a withdrawn window and fplWindowState_Normal would map it, so the state is applied when it gets shown
+	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
+		appState->window.pendingState = newState;
+		return(true);
+	}
 	bool result = false;
 	switch (newState) {
 		case fplWindowState_Iconify:
 		{
-			result = x11Api->XIconifyWindow(windowState->display, windowState->window, windowState->screen) != 0;
+			result = x11Api->XIconifyWindow(windowState->display, windowState->core.window, windowState->screen) != 0;
 			x11Api->XFlush(windowState->display);
 		} break;
 
 		case fplWindowState_Maximize:
 		{
 			if (!appState->currentSettings.window.isFullscreen) {
-				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
+				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
 			}
 		} break;
 
 		case fplWindowState_Normal:
 		{
-			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateMaximizedVert, windowState->netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
-			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
-			x11Api->XMapWindow(windowState->display, windowState->window);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_REMOVE);
+			fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateHidden, 0, FPL__NET_WM_STATE_REMOVE);
+			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
 			result = true;
 		} break;
@@ -25240,6 +31744,53 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 			break;
 	}
 	return(result);
+}
+
+fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	bool isHidden = appState->window.isHidden != 0;
+	if (newVisibility == fplWindowVisibilityState_Hide) {
+		if (!isHidden) {
+			// The window manager removes all states of a withdrawn window, so the current one is applied again when the window is shown
+			fplWindowState currentState = fplGetWindowState();
+			if (appState->window.pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
+				appState->window.pendingState = currentState;
+			}
+			appState->currentSettings.window.isFullscreen = false;
+			// Unlike XUnmapWindow, XWithdrawWindow also tells the window manager to forget the window (ICCCM 4.1.4)
+			x11Api->XWithdrawWindow(windowState->display, windowState->core.window, windowState->screen);
+			x11Api->XFlush(windowState->display);
+			appState->window.isHidden = true;
+			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
+			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			fpl__UpdateInputGrab(appState);
+		}
+		return(true);
+	}
+	if (newVisibility == fplWindowVisibilityState_Show) {
+		if (isHidden) {
+			x11Api->XMapWindow(windowState->display, windowState->core.window);
+			x11Api->XFlush(windowState->display);
+			appState->window.isHidden = false;
+			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
+			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(appState);
+			fpl__UpdateInputGrab(appState);
+		}
+		return(true);
+	}
+	return(false);
 }
 
 typedef enum fpl__X11DisplayBackend {
@@ -25323,7 +31874,7 @@ fpl_platform_api size_t fplGetDisplayCount(void) {
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
 			for (int i = 0; i < res->noutput; ++i) {
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
@@ -25361,9 +31912,9 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			for (int i = 0; i < res->noutput && result < maxDisplayCount; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
@@ -25394,7 +31945,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, displays);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, displays);
 		result = 1;
 	}
 	return(result);
@@ -25411,9 +31962,9 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			if (primary != 0) {
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, primary);
 				if (outInfo != fpl_null) {
@@ -25449,7 +32000,7 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 		}
 	}
 	if (!result) {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, display);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, display);
 		result = true;
 	}
 	return(result);
@@ -25461,9 +32012,9 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
 			for (int i = 0; i < res->noutput && !result; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
@@ -25498,7 +32049,7 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, outDisplay);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, outDisplay);
 		result = fpl__X11RectContains(0, 0, outDisplay->virtualSize.width, outDisplay->virtualSize.height, x, y);
 	}
 	return(result);
@@ -25512,11 +32063,11 @@ fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	int rootX = 0;
 	int rootY = 0;
 	fpl__X11_Window child = 0;
-	x11Api->XTranslateCoordinates(windowState->display, windowState->window, windowState->root, 0, 0, &rootX, &rootY, &child);
+	x11Api->XTranslateCoordinates(windowState->display, windowState->core.window, windowState->core.root, 0, 0, &rootX, &rootY, &child);
 	int centerX = rootX + attribs.width / 2;
 	int centerY = rootY + attribs.height / 2;
 	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, centerX, centerY, outDisplay);
@@ -25547,7 +32098,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
 		if (res != fpl_null) {
 			fpl__XRROutputInfo *match = fpl_null;
 			for (int i = 0; i < res->noutput; ++i) {
@@ -25615,7 +32166,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 			}
 		} else {
 			if (fplIsStringEqual("default", id)) {
-				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->root, &info);
+				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, &info);
 				found = true;
 			}
 		}
@@ -25636,6 +32187,9 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
@@ -25643,16 +32197,16 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 	// https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 	fpl__X11_XEvent xev = fplZeroInit;
 	xev.type = FPL__X11_ClientMessage;
-	xev.xclient.window = windowState->window;
-	xev.xclient.message_type = windowState->netWMState;
+	xev.xclient.window = windowState->core.window;
+	xev.xclient.message_type = windowState->netWM.netWMState;
 	xev.xclient.format = 32;
 	xev.xclient.data.l[0] = value ? 1 : 0; // 1 = Add, 0 = Remove
-	xev.xclient.data.l[1] = windowState->netWMStateFullscreen; // _NET_WM_STATE_FULLSCREEN
+	xev.xclient.data.l[1] = windowState->netWM.netWMStateFullscreen; // _NET_WM_STATE_FULLSCREEN
 	xev.xclient.data.l[3] = 1l; // Application source
 
 	// @TODO(final/X11): Support for changing the display resolution + refresh rate in X11
 
-	bool result = x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
+	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	if (result) {
 		appState->currentSettings.window.isFullscreen = value;
 	}
@@ -25662,6 +32216,9 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
 	FPL__CheckPlatform(false);
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+		return(false);
+	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
@@ -25707,7 +32264,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			fpl__X11_Atom monAtom = x11Api->XInternAtom(windowState->display, "_NET_WM_FULLSCREEN_MONITORS", FPL__X11_False);
 			fpl__X11_XEvent xev = fplZeroInit;
 			xev.type = FPL__X11_ClientMessage;
-			xev.xclient.window = windowState->window;
+			xev.xclient.window = windowState->core.window;
 			xev.xclient.message_type = monAtom;
 			xev.xclient.format = 32;
 			xev.xclient.data.l[0] = idxTL;
@@ -25715,7 +32272,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			xev.xclient.data.l[2] = idxTL;
 			xev.xclient.data.l[3] = idxBR;
 			xev.xclient.data.l[4] = 1L;
-			x11Api->XSendEvent(windowState->display, windowState->root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev);
+			x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev);
 			x11Api->XFlush(windowState->display);
 		}
 	}
@@ -25748,7 +32305,7 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->window, &attribs);
+	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outPos->left = attribs.x;
 	outPos->top = attribs.y;
 	return(true);
@@ -25760,11 +32317,32 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-	x11Api->XMoveWindow(windowState->display, windowState->window, left, top);
+	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
+}
+
+// Sets WM_NAME and WM_ICON_NAME as STRING or COMPOUND_TEXT (like GLFW), or as UTF8_STRING when Xlib cannot convert the title without loss (like SDL)
+fpl_internal void fpl__X11SetICCCMWindowTitle(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, const char *title) {
+	char *titleList[] = { (char *)title };
+	const int titleListCount = (int)fplArrayCount(titleList);
+	fpl__X11_XTextProperty titleProperty = fplZeroInit;
+	// Negative is an error, positive is the number of characters that had no match in the target encoding
+	const int conversionResult = x11Api->Xutf8TextListToTextProperty(windowState->display, titleList, titleListCount, FPL__X11_XStdICCTextStyle, &titleProperty);
+	if (conversionResult == FPL__X11_Success) {
+		x11Api->XSetWMName(windowState->display, windowState->core.window, &titleProperty);
+		x11Api->XSetWMIconName(windowState->display, windowState->core.window, &titleProperty);
+	} else {
+		const int utf8PropertyFormat = 8;
+		const int titleLength = (int)fplGetStringLength(title);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_NAME, windowState->wm.utf8String, utf8PropertyFormat, FPL__X11_PropModeReplace, (const unsigned char *)title, titleLength);
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_ICON_NAME, windowState->wm.utf8String, utf8PropertyFormat, FPL__X11_PropModeReplace, (const unsigned char *)title, titleLength);
+	}
+	if (titleProperty.value != fpl_null) {
+		x11Api->XFree(titleProperty.value);
+	}
 }
 
 fpl_platform_api void fplSetWindowTitle(const char *title) {
-	// @NOTE(final/X11): The title is published via _NET_WM_NAME / _NET_WM_ICON_NAME. EWMH window managers pick it up.
+	// @NOTE(final/X11): The title is set as _NET_WM_NAME / _NET_WM_ICON_NAME (EWMH) and as WM_NAME / WM_ICON_NAME (ICCCM, e.g. xprop, "xdotool search --name").
 	// GNOME requires WM_CLASS (set in fpl__X11InitWindow) to associate the window with an application name.
 
 	FPL__CheckArgumentNullNoRet(title);
@@ -25776,87 +32354,289 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 
 	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->netWMName, windowState->utf8String, 8,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->netWM.netWMName, windowState->wm.utf8String, 8,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)title, (int)fplGetStringLength(title));
 
-	x11Api->XChangeProperty(windowState->display, windowState->window,
-		windowState->netWMIconName, windowState->utf8String, 8,
+	x11Api->XChangeProperty(windowState->display, windowState->core.window,
+		windowState->netWM.netWMIconName, windowState->wm.utf8String, 8,
 		FPL__X11_PropModeReplace,
 		(unsigned char *)title, (int)fplGetStringLength(title));
+
+	fpl__X11SetICCCMWindowTitle(x11Api, windowState, title);
 
 	x11Api->XFlush(windowState->display);
 }
 
-fpl_platform_api bool fplGetClipboardText(char *dest, const uint32_t maxDestLen) {
-	FPL__CheckArgumentNull(dest, false);
-	FPL__CheckArgumentZero(maxDestLen, false);
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__X11SubplatformState *subplatform = &appState->x11;
+// Waits for one answer of the selection owner, while every event that is not part of this conversation
+// goes the normal way instead of being swallowed here - a window resize during a paste must not get lost
+fpl_internal bool fpl__X11WaitForClipboardEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, const int eventType, const int wantedPropertyState, fpl__X11_XEvent *outEvent) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
-
-	// Self-owned: just copy local buffer
-	if (x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window) {
-		fplCopyString(windowState->clipboardOut, dest, maxDestLen);
-		return(true);
-	}
-
-	x11Api->XConvertSelection(windowState->display, windowState->clipboardAtom, windowState->utf8String, windowState->selectionPropAtom, windowState->window, FPL__X11_CurrentTime);
-	x11Api->XFlush(windowState->display);
-
-	// Poll for SelectionNotify, timeout 500ms
-	fpl__X11_XEvent ev = fplZeroInit;
-	fplMilliseconds startMs = fplMillisecondsQuery();
-	bool received = false;
-	while ((fplMillisecondsQuery() - startMs) < 500) {
-		if (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->window, FPL__X11_SelectionNotify, &ev)) {
-			received = true;
-			break;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+	const fplMilliseconds startTime = fplMillisecondsQuery();
+	while ((fplMillisecondsQuery() - startTime) < FPL__X11_CLIPBOARD_RECEIVE_TIMEOUT_MS) {
+		fpl__X11_XEvent ev = fplZeroInit;
+		if (!x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, eventType, &ev)) {
+			fplThreadSleep(1);
+			continue;
 		}
-		fplThreadSleep(1);
+		bool isOurs = false;
+		if (eventType == FPL__X11_SelectionNotify) {
+			// A drag and drop answer arrives as the very same event type, but on another property.
+			isOurs = (ev.xselection.property == selectionProperty) || (ev.xselection.property == FPL__X11_None);
+		} else {
+			isOurs = (ev.xproperty.atom == selectionProperty) && (ev.xproperty.state == wantedPropertyState);
+		}
+		if (isOurs) {
+			*outEvent = ev;
+			return(true);
+		}
+		fpl__X11HandleEvent(subplatform, appState, &ev);
 	}
-	if (!received || ev.xselection.property == FPL__X11_None) {
-		return(false);
+	return(false);
+}
+
+// Throws away what an earlier - maybe timed out - clipboard conversation left behind, because those events
+// would be taken for the answer to the request that is about to go out
+fpl_internal void fpl__X11DiscardStaleClipboardEvents(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+
+	// Everything the server already owes us has to be in the queue first, otherwise the leftovers arrive
+	// one moment later and are indistinguishable from the answer.
+	x11Api->XSync(windowState->display, FPL__X11_False);
+
+	fpl__X11_XEvent ev = fplZeroInit;
+	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_PropertyNotify, &ev)) {
+		if (ev.xproperty.atom != selectionProperty) {
+			fpl__X11HandleEvent(subplatform, appState, &ev);
+		}
+	}
+	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
+		if (ev.xselection.property != selectionProperty && ev.xselection.property != FPL__X11_None) {
+			fpl__X11HandleEvent(subplatform, appState, &ev);
+		}
+	}
+}
+
+// Reads the whole selection, of any size, into freshly allocated memory the caller has to release
+fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, size_t *outLength) {
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11_Display *display = windowState->display;
+	const fpl__X11_Window window = windowState->core.window;
+	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
+
+	*outLength = 0;
+
+	fpl__X11DiscardStaleClipboardEvents(subplatform, appState);
+
+	x11Api->XConvertSelection(display, windowState->clipboard.clipboardAtom, windowState->wm.utf8String, selectionProperty, window, FPL__X11_CurrentTime);
+	x11Api->XFlush(display);
+
+	// The property state belongs to a PropertyNotify and says nothing about the answer of the owner.
+	const int propertyStateIsIgnored = 0;
+	fpl__X11_XEvent selectionEvent = fplZeroInit;
+	if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_SelectionNotify, propertyStateIsIgnored, &selectionEvent)) {
+		return(fpl_null);
+	}
+	if (selectionEvent.xselection.property == FPL__X11_None) {
+		return(fpl_null);
 	}
 
+	// Reading with delete takes the property away in the same step, which is what tells the owner of a
+	// chunked transfer that the next chunk may be written.
 	fpl__X11_Atom actualType = 0;
 	int actualFormat = 0;
 	unsigned long itemCount = 0;
 	unsigned long bytesAfter = 0;
 	unsigned char *data = fpl_null;
-	int status = x11Api->XGetWindowProperty(windowState->display, windowState->window, windowState->selectionPropAtom, 0L, LONG_MAX, FPL__X11_False, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
-	bool result = false;
-	if (status == FPL__X11_Success && data != fpl_null && actualType != windowState->incrAtom) {
-		size_t copyLen = (size_t)itemCount;
-		if (copyLen >= maxDestLen) {
-			copyLen = maxDestLen - 1;
+	int status = x11Api->XGetWindowProperty(display, window, selectionProperty, 0L, LONG_MAX, FPL__X11_True, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	if (status != FPL__X11_Success || data == fpl_null) {
+		if (data != fpl_null) {
+			x11Api->XFree(data);
 		}
-		fplMemoryCopy(data, copyLen, dest);
-		dest[copyLen] = 0;
-		result = true;
+		return(fpl_null);
 	}
-	if (data != fpl_null) {
+
+	// Everything that fits into one property arrives in one piece.
+	if (actualType != windowState->clipboard.incrAtom) {
+		size_t textLength = (actualFormat == 8) ? (size_t)itemCount : 0;
+		char *result = (char *)fpl__AllocateDynamicMemory(textLength + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+		if (result != fpl_null) {
+			if (textLength > 0) {
+				fplMemoryCopy(data, textLength, result);
+			}
+			result[textLength] = 0;
+			*outLength = textLength;
+		}
 		x11Api->XFree(data);
+		return(result);
 	}
-	x11Api->XDeleteProperty(windowState->display, windowState->window, windowState->selectionPropAtom);
+
+	// Anything larger comes in chunks: the first property only carries a lower bound of the total size, and
+	// deleting it is the signal to the owner that the next chunk may be written.
+	size_t capacity = 0;
+	if (itemCount > 0 && actualFormat == 32) {
+		const unsigned long *lowerBoundOfTotalSize = (const unsigned long *)data;
+		capacity = (size_t)(*lowerBoundOfTotalSize);
+	}
+	const size_t smallestReceiveCapacity = 4096;
+	if (capacity < smallestReceiveCapacity) {
+		capacity = smallestReceiveCapacity;
+	}
+	x11Api->XFree(data);
+	data = fpl_null;
+
+	char *result = (char *)fpl__AllocateDynamicMemory(capacity + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+	if (result == fpl_null) {
+		return(fpl_null);
+	}
+
+	// Everything the owner wrote before the property was taken away belongs to the announcement, not to the
+	// transfer - and its notification is still in the queue. Our own delete is the marker that separates the
+	// two, so waiting for it first is what keeps a stale notification from being mistaken for the first chunk.
+	x11Api->XFlush(display);
+	fpl__X11_XEvent startEvent = fplZeroInit;
+	if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_PropertyNotify, FPL__X11_PropertyDelete, &startEvent)) {
+		FPL__WARNING(FPL__MODULE_X11, "Timeout while starting a chunked clipboard transfer");
+		fpl__ReleaseDynamicMemory(result);
+		return(fpl_null);
+	}
+
+	size_t textLength = 0;
+	bool isComplete = false;
+	bool hasFailed = false;
+	while (!isComplete && !hasFailed) {
+		fpl__X11_XEvent chunkEvent = fplZeroInit;
+		if (!fpl__X11WaitForClipboardEvent(subplatform, appState, FPL__X11_PropertyNotify, FPL__X11_PropertyNewValue, &chunkEvent)) {
+			FPL__WARNING(FPL__MODULE_X11, "Timeout while reading a chunked clipboard transfer after %zu bytes", textLength);
+			hasFailed = true;
+			break;
+		}
+
+		// Reading with delete lets the owner know that this chunk arrived and the next one may follow.
+		actualType = 0;
+		actualFormat = 0;
+		itemCount = 0;
+		bytesAfter = 0;
+		data = fpl_null;
+		status = x11Api->XGetWindowProperty(display, window, selectionProperty, 0L, LONG_MAX, FPL__X11_True, FPL__X11_AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+		if (status != FPL__X11_Success || data == fpl_null) {
+			hasFailed = true;
+		} else {
+			size_t chunkLength = (actualFormat == 8) ? (size_t)itemCount : 0;
+			if (chunkLength == 0) {
+				// An empty chunk is the end of the transfer.
+				isComplete = true;
+			} else {
+				if ((textLength + chunkLength) > capacity) {
+					size_t newCapacity = (capacity > 0) ? capacity : smallestReceiveCapacity;
+					while (newCapacity < (textLength + chunkLength)) {
+						newCapacity *= 2;
+					}
+					char *grownResult = (char *)fpl__AllocateDynamicMemory(newCapacity + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+					if (grownResult == fpl_null) {
+						hasFailed = true;
+					} else {
+						if (textLength > 0) {
+							fplMemoryCopy(result, textLength, grownResult);
+						}
+						fpl__ReleaseDynamicMemory(result);
+						result = grownResult;
+						capacity = newCapacity;
+					}
+				}
+				if (!hasFailed) {
+					fplMemoryCopy(data, chunkLength, result + textLength);
+					textLength += chunkLength;
+				}
+			}
+		}
+		if (data != fpl_null) {
+			x11Api->XFree(data);
+		}
+		x11Api->XFlush(display);
+	}
+
+	if (hasFailed) {
+		fpl__ReleaseDynamicMemory(result);
+		return(fpl_null);
+	}
+
+	result[textLength] = 0;
+	*outLength = textLength;
 	return(result);
 }
 
-fpl_platform_api bool fplSetClipboardText(const char *text) {
+fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen) {
+	FPL__CheckPlatform(0);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+
+	// Self-owned: the text is already here, no conversation with anybody needed
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(0);
+	}
+
+	fpl__X11_Window selectionOwner = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboard.clipboardAtom);
+	if (selectionOwner == windowState->core.window) {
+		const fpl__X11ClipboardState *clipboard = &windowState->clipboard;
+		if (clipboard->outgoingText == fpl_null) {
+			return(0);
+		}
+		size_t result = fplCopyStringLen(clipboard->outgoingText, clipboard->outgoingLength, dest, maxDestLen);
+		return(result);
+	}
+
+	size_t textLength = 0;
+	char *text = fpl__X11ReceiveClipboardText(subplatform, appState, &textLength);
+	if (text == fpl_null) {
+		return(0);
+	}
+	size_t result = fplCopyStringLen(text, textLength, dest, maxDestLen);
+	fpl__ReleaseDynamicMemory(text);
+	return(result);
+}
+
+fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen) {
 	FPL__CheckArgumentNull(text, false);
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	fpl__X11WindowState *windowState = &appState->window.x11;
-	size_t copied = fplCopyString(text, windowState->clipboardOut, fplArrayCount(windowState->clipboardOut));
-	windowState->clipboardOutLen = copied;
-	x11Api->XSetSelectionOwner(windowState->display, windowState->clipboardAtom, windowState->window, FPL__X11_CurrentTime);
+	fpl__X11ClipboardState *clipboard = &windowState->clipboard;
+	if (windowState->display == fpl_null || windowState->core.window == 0) {
+		return(false);
+	}
+
+	// The new text is put in place before the ownership is taken, so a failed allocation leaves the
+	// clipboard of the system exactly as it was rather than emptying it.
+	char *newText = (char *)fpl__AllocateDynamicMemory(textLen + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+	if (newText == fpl_null) {
+		FPL__ERROR(FPL__MODULE_X11, "Failed allocating %zu bytes for the clipboard text", textLen + 1);
+		return(false);
+	}
+	if (textLen > 0) {
+		fplMemoryCopy(text, textLen, newText);
+	}
+	newText[textLen] = 0;
+
+	if (clipboard->outgoingText != fpl_null) {
+		fpl__ReleaseDynamicMemory(clipboard->outgoingText);
+	}
+	clipboard->outgoingText = newText;
+	clipboard->outgoingLength = textLen;
+
+	x11Api->XSetSelectionOwner(windowState->display, clipboard->clipboardAtom, windowState->core.window, FPL__X11_CurrentTime);
 	x11Api->XFlush(windowState->display);
-	bool result = x11Api->XGetSelectionOwner(windowState->display, windowState->clipboardAtom) == windowState->window;
+	bool result = x11Api->XGetSelectionOwner(windowState->display, clipboard->clipboardAtom) == windowState->core.window;
 	return(result);
 }
 
@@ -25875,7 +32655,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	int winX = 0;
 	int winY = 0;
 	unsigned int mask = 0;
-	if (x11Api->XQueryPointer(windowState->display, windowState->window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+	if (x11Api->XQueryPointer(windowState->display, windowState->core.window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
 		*outX = rootX;
 		*outY = rootY;
 		return(true);
@@ -25914,7 +32694,6 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_LINUX)
-#	include <locale.h> // setlocale
 #	include <sys/eventfd.h> // eventfd
 #	include <sys/epoll.h> // epoll_create, epoll_ctl, epoll_wait
 #	include <sys/select.h> // select
@@ -25922,21 +32701,9 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__LinuxInitState *plinux = &initState->plinux;
-	if (plinux->hasPrevLocale) {
-		setlocale(LC_ALL, plinux->prevLocale);
-		plinux->hasPrevLocale = false;
-	}
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	fpl__LinuxInitState *plinux = &initState->plinux;
-	const char *currentLocale = setlocale(LC_ALL, fpl_null);
-	if (currentLocale != fpl_null) {
-		fplCopyString(currentLocale, plinux->prevLocale, fplArrayCount(plinux->prevLocale));
-		plinux->hasPrevLocale = true;
-	}
-	setlocale(LC_ALL, "");
 	return true;
 }
 
@@ -26197,14 +32964,37 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 		if (alreadyFound) continue;
 		if (freeIndex < 0) break; // All controller slots full
 
+		// Cheap presence/identity gate before the expensive open(). Opening a js node costs tens of
+		// milliseconds on some devices (gaming mice and virtual pads do heavy work on open), and a node
+		// that fails the gamepad qualification below is never claimed -- so without this gate every
+		// detection scan would re-open the same unsuitable node forever and stall the caller's frame.
+		// stat() is ~1us; if we already probed-and-rejected this exact node (same inode) we skip the
+		// open() entirely. The inode changes when the node is recreated (hotplug), which re-arms the probe.
+		struct stat slotStat;
+		if (stat(deviceName, &slotStat) != 0) {
+			backend->triedSlot[slotIndex] = false; // node gone -- forget the rejection so a future device here is probed fresh
+			backend->triedInode[slotIndex] = 0;
+			continue;
+		}
+		if (backend->triedSlot[slotIndex]) {
+			if (backend->triedInode[slotIndex] == (uint64_t)slotStat.st_ino) {
+				continue; // same node we already rejected -- do not pay for open() again
+			}
+			backend->triedSlot[slotIndex] = false; // node was recreated since last probe -- probe it fresh
+		}
+
 		errno = 0;
-		int fd = open(deviceName, O_RDONLY);
+		// Open non-blocking from the start: the init-message probe read() below must never block the
+		// caller's thread on a quirky node. joydev queues all JS_EVENT_INIT events synchronously at open(),
+		// so a real joystick still returns its first event immediately even in non-blocking mode.
+		int fd = open(deviceName, O_RDONLY | O_NONBLOCK);
 		if (fd < 0) {
 			// Silent on missing nodes — udev will replace the polling fallback in step 11.
 			if (errno == ENOENT) continue;
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Failed opening joystick device '%s' (errno=%d)", deviceName, errno);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			continue;
 		}
@@ -26217,6 +33007,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' does not have enough buttons/axis to map to a XInput controller!", deviceName);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			close(fd);
 			continue;
@@ -26234,6 +33025,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 			if (!backend->triedSlot[slotIndex]) {
 				FPL_LOG_DEBUG(FPL__MODULE_LINUX, "Joystick device '%s' did not produce an init message", deviceName);
 				backend->triedSlot[slotIndex] = true;
+				backend->triedInode[slotIndex] = (uint64_t)slotStat.st_ino;
 			}
 			close(fd);
 			continue;
@@ -26247,7 +33039,7 @@ fpl_internal void fpl__InputLinuxJoystick_DetectControllers(const fplSettings *s
 		controller->buttonCount = numButtons;
 		fplCopyString(deviceName, controller->deviceName, fplArrayCount(controller->deviceName));
 		ioctl(fd, JSIOCGNAME(fplArrayCount(controller->displayName)), controller->displayName);
-		fcntl(fd, F_SETFL, O_NONBLOCK);
+		// fd was already opened O_NONBLOCK above, so the per-frame drain reads never block.
 
 		// Resolve which joydev axis indices correspond to ABS_HAT0X / ABS_HAT0Y. joydev never emits JS_EVENT_HAT, but the kernel folds DPad usages onto these ABS codes, so the joydev axis index varies per device — XInput F310 places them at 6/7 (after X,Y,Z,RX,RY,RZ), DInput F310 at 4/5 (only X,Y,Z,RZ are present so HAT shifts down). SDL's gamecontrollerdb almost always binds DPad as h0.* on Linux, so synthesizing raw.hats[0] from these axes lets the same mapping work across XInput/DInput modes. ABS_HAT0X = 0x10, ABS_HAT0Y = 0x11; we don't include <linux/input-event-codes.h> here to keep the header dependency footprint small.
 		controller->hat0XAxis = 0xFF;
@@ -26470,7 +33262,7 @@ fpl_platform_api bool fplSignalWaitForOne(fplSignalHandle *signal, const fplTime
 
 fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
 	for (uint32_t index = 0; index < maxCount; ++index) {
 		fplSignalHandle *signal = *(fplSignalHandle **)((uint8_t *)signals + index * actualStride);
@@ -26490,7 +33282,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	// @MEMORY(final): This wastes a lof memory, use temporary memory allocation here
 
 	// Register events and map each to the array index
-	struct epoll_event events[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event events[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (int index = 0; index < maxCount; index++) {
 		events[index].events = EPOLLIN;
 		events[index].data.u32 = index;
@@ -26504,7 +33296,7 @@ fpl_internal bool fpl__LinuxSignalWaitForMultiple(fplSignalHandle *signals[], co
 	int t = timeout == FPL_TIMEOUT_INFINITE ? -1 : timeout;
 	int eventsResult = -1;
 	int waiting = minCount;
-	struct epoll_event revent[FPL_MAX_SIGNAL_COUNT];
+	struct epoll_event revent[FPL_MAX_SIGNAL_WAIT_COUNT];
 	while (waiting > 0) {
 		int ret = epoll_wait(e, revent, waiting, t);
 		if (ret == 0) {
@@ -26675,18 +33467,11 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 //
 // ############################################################################
 #if defined(FPL_PLATFORM_UNIX)
-#	include <locale.h> // setlocale
 
 fpl_internal void fpl__UnixReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	const fpl__PThreadApi *pthreadApi = &appState->posix.pthreadApi;
 	fpl__UnixInitState *unixInit = &initState->punix;
 	fpl__UnixAppState *unixApp = &appState->punix;
-
-	// Restore user locale
-	if (unixInit->hasPrevLocale) {
-		setlocale(LC_ALL, unixInit->prevLocale);
-		unixInit->hasPrevLocale = false;
-	}
 
 	// Destroy signal multiple wait condition and mutex
 	pthreadApi->pthread_cond_destroy(&unixApp->signalMultipleWaitCondition);
@@ -26698,14 +33483,6 @@ fpl_internal bool fpl__UnixInitPlatform(const fplInitFlags initFlags, const fplS
 	const fpl__PThreadApi *pthreadApi = &posixApp->pthreadApi;
 	fpl__UnixInitState *unixInit = &initState->punix;
 	fpl__UnixAppState *unixApp = &appState->punix;
-
-	// Preserve current user locale
-	const char *currentLocale = setlocale(LC_ALL, fpl_null);
-	if (currentLocale != fpl_null) {
-		fplCopyString(currentLocale, unixInit->prevLocale, fplArrayCount(unixInit->prevLocale));
-		unixInit->hasPrevLocale = true;
-	}
-	setlocale(LC_ALL, "");
 
 	// Initialize mutex and condition for signal multiple wait
 	if (pthreadApi->pthread_mutex_init(&unixApp->signalMultipleWaitMutex, fpl_null) != 0) {
@@ -26864,7 +33641,7 @@ fpl_internal bool fpl__UnixSignalWaitOne(const fpl__PThreadApi *pthreadApi, fplS
 
 fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const uint32_t minCount, const uint32_t maxCount, const size_t stride, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(signals, false);
-	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_COUNT, false);
+	FPL__CheckArgumentMax(maxCount, FPL_MAX_SIGNAL_WAIT_COUNT, false);
 	FPL__CheckPlatform(false);
 
 	const size_t actualStride = stride > 0 ? stride : sizeof(fplSignalHandle *);
@@ -26887,7 +33664,7 @@ fpl_internal bool fpl__UnixSignalWaitMultiple(fplSignalHandle **signals, const u
 		}
 	}
 
-	bool consumed[FPL_MAX_SIGNAL_COUNT];
+	bool consumed[FPL_MAX_SIGNAL_WAIT_COUNT];
 	for (uint32_t i = 0; i < maxCount; ++i) {
 		consumed[i] = false;
 	}
@@ -27835,7 +34612,7 @@ fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char 
 			result = true;
 		} while (0);
 		if (result) {
-			FPL_LOG_DEBUG(FPL__MODULE_GLX, , "Successfully loaded GLX Api from Library '%s'", libName);
+			FPL_LOG_DEBUG(FPL__MODULE_GLX, "Successfully loaded GLX Api from Library '%s'", libName);
 			break;
 		}
 		fpl__UnloadX11OpenGLApi(api);
@@ -27867,7 +34644,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 
 	fpl__X11_Display *display = nativeWindowState->display;
-	fpl__X11_Window window = nativeWindowState->window;
+	fpl__X11_Window window = nativeWindowState->core.window;
 	int screen = nativeWindowState->screen;
 
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Query GLX version for display '%p'", display);
@@ -27976,7 +34753,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", visualInfo->depth);
 
-		nativeWindowState->visual = visualInfo->visual;
+		nativeWindowState->core.visual = visualInfo->visual;
 		nativeWindowState->colorDepth = visualInfo->depth;
 
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Release visual info '%p'", visualInfo);
@@ -27985,7 +34762,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using existing visual info: %p", nativeBackend->visualInfo);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using visual: %p", nativeBackend->visualInfo->visual);
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Using color depth: %d", nativeBackend->visualInfo->depth);
-		nativeWindowState->visual = nativeBackend->visualInfo->visual;
+		nativeWindowState->core.visual = nativeBackend->visualInfo->visual;
 		nativeWindowState->colorDepth = nativeBackend->visualInfo->depth;
 	} else {
 		FPL__ERROR(FPL__MODULE_GLX, "No visual info or frame buffer config defined!");
@@ -28031,7 +34808,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 
 	fpl__X11_Display *display = nativeWindowState->display;
-	fpl__X11_Window window = nativeWindowState->window;
+	fpl__X11_Window window = nativeWindowState->core.window;
 
 	//
 	// Create legacy context
@@ -28156,7 +34933,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)display;
 	backend->surface.window.x11.window = (fpl__X11_Window)window;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->visual;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->core.visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 	backend->surface.opengl.renderingContext = (void *)activeRenderingContext;
 
@@ -28206,7 +34983,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present
 	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
 	const fpl__X11WindowState *x11WinState = &appState->window.x11;
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
-	glApi->glXSwapBuffers(x11WinState->display, x11WinState->window);
+	glApi->glXSwapBuffers(x11WinState->display, x11WinState->core.window);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
@@ -28261,24 +35038,24 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11Software_In
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
 
 	// Based on: https://bbs.archlinux.org/viewtopic.php?id=225741
-	nativeBackend->graphicsContext = x11Api->XCreateGC(nativeWindowState->display, nativeWindowState->window, 0, 0);
+	nativeBackend->graphicsContext = x11Api->XCreateGC(nativeWindowState->display, nativeWindowState->core.window, 0, 0);
 	if (nativeBackend->graphicsContext == fpl_null) {
 		return false;
 	}
 
-	nativeBackend->buffer = x11Api->XCreateImage(nativeWindowState->display, nativeWindowState->visual, 24, FPL__X11_ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
+	nativeBackend->buffer = x11Api->XCreateImage(nativeWindowState->display, nativeWindowState->core.visual, 24, FPL__X11_ZPixmap, 0, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, 32, (int)backbuffer->lineWidth);
 	if (nativeBackend->buffer == fpl_null) {
 		fpl__VideoBackend_X11Software_Shutdown(appState, windowState, backend);
 		return false;
 	}
 
 	// Initial draw pixels to the window
-	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XPutImage(nativeWindowState->display, nativeWindowState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(nativeWindowState->display, FPL__X11_False);
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)nativeWindowState->display;
-	backend->surface.window.x11.window = (fpl__X11_Window)nativeWindowState->window;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->visual;
+	backend->surface.window.x11.window = (fpl__X11_Window)nativeWindowState->core.window;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)nativeWindowState->core.visual;
 	backend->surface.window.x11.screen = nativeWindowState->screen;
 
 	return (true);
@@ -28301,7 +35078,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Prese
 	const fpl__X11WindowState *x11WinState = &appState->window.x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	x11Api->XPutImage(x11WinState->display, x11WinState->window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(x11WinState->display, FPL__X11_False);
 }
 
@@ -29193,7 +35970,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	fpl__VkXlibSurfaceCreateInfoKHR creationInfo = fplZeroInit;
 	creationInfo.sType = FPL__VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
 	creationInfo.dpy = (fpl__X11_Display *)windowState->x11.display;
-	creationInfo.window = windowState->x11.window;
+	creationInfo.window = windowState->x11.core.window;
 
 	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Create Vulkan X11 Surface for display '%p', window '%d' and Vulkan instance '%p'", creationInfo.dpy, creationInfo.window, nativeBackend->instanceHandle);
 	fpl__VkResult creationResult = (fpl__VkResult)createProc(nativeBackend->instanceHandle, &creationInfo, nativeBackend->allocator, &surfaceHandle);
@@ -29217,9 +35994,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
 #elif defined(FPL_SUBPLATFORM_X11)
 	backend->surface.window.x11.display = (fpl__X11_Display *)windowState->x11.display;
-	backend->surface.window.x11.window = windowState->x11.window;
+	backend->surface.window.x11.window = windowState->x11.core.window;
 	backend->surface.window.x11.screen = windowState->x11.screen;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.visual;
+	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
 #endif
 
 	return(true);
@@ -30023,7 +36800,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendDirectSoundIniti
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
-	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
+	FPL_LOG_INFO(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
 	fpl__AudioBackendDirectSoundRelease(context, backend); \
 	return ret; \
 } while (0)
@@ -30044,7 +36821,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendDirectSou
 	fplAssert(impl != fpl_null);
 
 #define FPL__DSOUND_INIT_ERROR(ret, format, ...) do { \
-	FPL__ERROR(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
+	FPL_LOG_INFO(FPL__MODULE_AUDIO_DIRECTSOUND, format, ## __VA_ARGS__); \
 	fpl__AudioBackendDirectSoundReleaseDevice(context, backend); \
 	return ret; \
 } while (0)
@@ -30724,7 +37501,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize
 	fplClearStruct(impl);
 
 	if (!fpl__LoadWasapiApi(&impl->api)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Failed to load WASAPI runtime API!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "Unable to load WASAPI runtime API!");
 		return(fplAudioResultType_ApiFailed);
 	}
 
@@ -30740,14 +37517,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize
 		impl->api.CoUninitialize();
 		impl->comInitialized = false;
 	} else if (hr != FPL__WASAPI_RPC_E_CHANGED_MODE) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "CoInitializeEx failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
 
 	hr = impl->api.CoCreateInstance(&FPL__WASAPI_CLSID_MMDeviceEnumerator, fpl_null, CLSCTX_ALL, &FPL__WASAPI_IID_IMMDeviceEnumerator, (LPVOID *)&impl->enumerator);
 	if (FAILED(hr) || impl->enumerator == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, "CoCreateInstance(MMDeviceEnumerator) failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		fpl__AudioBackendWasapiRelease(context, backend);
 		return(fplAudioResultType_ApiFailed);
 	}
@@ -31079,7 +37856,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	(void)context;
 
 #define FPL__WASAPI_INIT_ERROR(ret, fmt, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
 		fpl__AudioBackendWasapiReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -31092,7 +37869,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	{
 		fplAudioResultType openRes = fpl__WasapiOpenClientForDevice(impl, targetDevice->id.wasapi, &impl->device, &impl->audioClient);
 		if (openRes != fplAudioResultType_Success) {
-			FPL__WASAPI_INIT_ERROR(openRes, "Failed to open WASAPI render endpoint!");
+			FPL__WASAPI_INIT_ERROR(openRes, "Unable to open WASAPI render endpoint!");
 		}
 	}
 
@@ -31267,7 +38044,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Event handle for the WASAPI buffer-available signal.
 	impl->bufferEvent = CreateEventW(fpl_null, FALSE, FALSE, fpl_null);
 	if (impl->bufferEvent == fpl_null) {
-		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI buffer event");
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to create WASAPI buffer event");
 	}
 	HRESULT hrEvt = impl->audioClient->lpVtbl->SetEventHandle(impl->audioClient, impl->bufferEvent);
 	if (FAILED(hrEvt)) {
@@ -31286,7 +38063,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	// Stop event: manual-reset, used to break the main loop.
 	impl->stopEvent = CreateEventW(fpl_null, TRUE, FALSE, fpl_null);
 	if (impl->stopEvent == fpl_null) {
-		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed creating WASAPI stop event");
+		FPL__WASAPI_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to create WASAPI stop event");
 	}
 
 	// Translate the negotiated WAVEFORMATEX back into our format types.
@@ -32223,7 +39000,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 	fplAssert(impl != fpl_null);
 
 #	define FPL__ALSA_INIT_ERROR(ret, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioBackendAlsaRelease(context, backend); \
 		return ret; \
 	} while (0)
@@ -32231,7 +39008,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendAlsaInitialize) 
 	// Load ALSA library
 	fpl__AlsaAudioApi *alsaApi = &impl->api;
 	if (!fpl__LoadAlsaApi(alsaApi)) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed loading ALSA api!");
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to load ALSA api!");
 	}
 
 	return fplAudioResultType_Success;
@@ -32309,7 +39086,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (pcmInfo != fpl_null) fpl__ReleaseTemporaryMemory(pcmInfo); \
 		if (softwareParams != fpl_null) fpl__ReleaseTemporaryMemory(softwareParams); \
 		if (hardwareParams != fpl_null) fpl__ReleaseTemporaryMemory(hardwareParams); \
-		FPL__ERROR(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, format, ## __VA_ARGS__); \
 		fpl__AudioBackendAlsaReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -32350,7 +39127,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 				fplCopyString("default", internalDevice.name, fplArrayCount(internalDevice.name));
 				break;
 			} else {
-				FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed opening default PCM audio device '%s'!", defaultDeviceName);
+				FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, "Unable to open default PCM audio device '%s'!", defaultDeviceName);
 			}
 		}
 		if (!isDeviceOpen) {
@@ -32445,7 +39222,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	hardwareParams = (snd_pcm_hw_params_t *)fpl__AllocateTemporaryMemory(hardwareParamsSize, 8);
 	fplMemoryClear(hardwareParams, hardwareParamsSize);
 	if (alsaApi->snd_pcm_hw_params_any(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed getting hardware parameters from device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to get hardware parameters from device '%s'!", internalDeviceId);
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_ALSA, "Successfully got hardware parameters from device '%s'", internalDeviceId);
 
@@ -32457,12 +39234,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 		if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_MMAP_INTERLEAVED) == 0) {
 			impl->isUsingMMap = true;
 		} else {
-			FPL_LOG_WARN(FPL__MODULE_AUDIO_ALSA, "Failed setting MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
+			FPL_LOG_INFO(FPL__MODULE_AUDIO_ALSA, "Unable to set MMap access mode for device '%s', trying fallback to standard mode!", internalDeviceId);
 		}
 	}
 	if (!impl->isUsingMMap) {
 		if (alsaApi->snd_pcm_hw_params_set_access(impl->pcmDevice, hardwareParams, SND_PCM_ACCESS_RW_INTERLEAVED) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting default access mode for device '%s'!", internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set default access mode for device '%s'!", internalDeviceId);
 		}
 	}
 
@@ -32509,7 +39286,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	}
 
 	if (alsaApi->snd_pcm_hw_params_set_format(impl->pcmDevice, hardwareParams, foundFormat) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM format '%s' for device '%s'!", fplGetAudioFormatName(fpl__MapAlsaFormatToAudioFormat(foundFormat)), internalDeviceId);
 	}
 	internalFormat.type = fpl__MapAlsaFormatToAudioFormat(foundFormat);
 
@@ -32518,7 +39295,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	//
 	unsigned int internalChannels = targetFormat->channels;
 	if (alsaApi->snd_pcm_hw_params_set_channels_near(impl->pcmDevice, hardwareParams, &internalChannels) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM channels '%lu' for device '%s'!", internalChannels, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM channels '%lu' for device '%s'!", internalChannels, internalDeviceId);
 	}
 	internalFormat.channels = internalChannels;
 	internalFormat.channelLayout = fplGetDefaultAudioChannelLayoutFromChannels(internalChannels);
@@ -32535,7 +39312,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	unsigned int actualSampleRate = targetFormat->sampleRate;
 	fplAssert(actualSampleRate > 0);
 	if (alsaApi->snd_pcm_hw_params_set_rate_near(impl->pcmDevice, hardwareParams, &actualSampleRate, 0) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed setting PCM sample rate '%lu' for device '%s'!", actualSampleRate, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set PCM sample rate '%lu' for device '%s'!", actualSampleRate, internalDeviceId);
 	}
 	internalFormat.sampleRate = actualSampleRate;
 
@@ -32550,7 +39327,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	}
 	fplAssert(actualBufferSize > 0);
 	if (alsaApi->snd_pcm_hw_params_set_buffer_size_near(impl->pcmDevice, hardwareParams, &actualBufferSize) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed setting PCM buffer size '%lu' for device '%s'!", actualBufferSize, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set PCM buffer size '%lu' for device '%s'!", actualBufferSize, internalDeviceId);
 	}
 	internalFormat.bufferSizeInFrames = actualBufferSize;
 	internalFormat.bufferSizeInMilliseconds = fplGetAudioBufferSizeInMilliseconds(internalFormat.sampleRate, internalFormat.bufferSizeInFrames);
@@ -32564,7 +39341,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	uint32_t internalPeriods = targetFormat->periods;
 	int periodsDir = 0;
 	if (alsaApi->snd_pcm_hw_params_set_periods_near(impl->pcmDevice, hardwareParams, &internalPeriods, &periodsDir) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed setting PCM periods '%lu' for device '%s'!", internalPeriods, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set PCM periods '%lu' for device '%s'!", internalPeriods, internalDeviceId);
 	}
 	internalFormat.periods = internalPeriods;
 
@@ -32572,7 +39349,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	// Hardware parameters
 	//
 	if (alsaApi->snd_pcm_hw_params(impl->pcmDevice, hardwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM hardware parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to install PCM hardware parameters for device '%s'!", internalDeviceId);
 	}
 
 	//
@@ -32582,27 +39359,27 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendAlsaIniti
 	softwareParams = (snd_pcm_sw_params_t *)fpl__AllocateTemporaryMemory(softwareParamsSize, 8);
 	fplMemoryClear(softwareParams, softwareParamsSize);
 	if (alsaApi->snd_pcm_sw_params_current(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to get software parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to get software parameters for device '%s'!", internalDeviceId);
 	}
 	snd_pcm_uframes_t minAvailableFrames = fpl__PrevPowerOfTwo(internalFormat.bufferSizeInFrames / internalFormat.periods);
 	if (alsaApi->snd_pcm_sw_params_set_avail_min(impl->pcmDevice, softwareParams, minAvailableFrames) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set software available min frames of '%lu' for device '%s'!", minAvailableFrames, internalDeviceId);
 	}
 	if (!impl->isUsingMMap) {
 		snd_pcm_uframes_t threshold = internalFormat.bufferSizeInFrames / internalFormat.periods;
 		if (alsaApi->snd_pcm_sw_params_set_start_threshold(impl->pcmDevice, softwareParams, threshold) < 0) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to set start threshold of '%lu' for device '%s'!", threshold, internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to set start threshold of '%lu' for device '%s'!", threshold, internalDeviceId);
 		}
 	}
 	if (alsaApi->snd_pcm_sw_params(impl->pcmDevice, softwareParams) < 0) {
-		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed to install PCM software parameters for device '%s'!", internalDeviceId);
+		FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to install PCM software parameters for device '%s'!", internalDeviceId);
 	}
 
 	if (!impl->isUsingMMap) {
 		fplAssert(bufferSizeInBytes > 0);
 		impl->intermediaryBuffer = fpl__AllocateDynamicMemory(bufferSizeInBytes, 16);
 		if (impl->intermediaryBuffer == fpl_null) {
-			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Failed allocating intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, internalDeviceId);
+			FPL__ALSA_INIT_ERROR(fplAudioResultType_Failed, "Unable to allocate intermediary buffer of size '%lu' for device '%s'!", bufferSizeInBytes, internalDeviceId);
 		}
 	}
 
@@ -33005,7 +39782,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	fplAssert(impl != fpl_null);
 
 #	define FPL__OSS_INIT_ERROR(ret, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_OSS, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_OSS, format, ## __VA_ARGS__); \
 		fpl__AudioBackendOssReleaseDevice(context, backend); \
 		return ret; \
 	} while (0)
@@ -33025,7 +39802,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	FPL_LOG_DEBUG(FPL__MODULE_AUDIO_OSS, "Opening OSS audio device '%s'", devicePath);
 	int fd = open(devicePath, openFlags);
 	if (fd < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed to open OSS audio device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to open OSS audio device '%s' (errno %d)", devicePath, errno);
 	}
 	impl->fd = fd;
 
@@ -33039,7 +39816,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	// Query supported formats
 	int formatMask = 0;
 	if (ioctl(fd, SNDCTL_DSP_GETFMTS, &formatMask) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS format mask for device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to query OSS format mask for device '%s' (errno %d)", devicePath, errno);
 	}
 
 	// Pick a supported format. Prefer the caller-requested format, then walk a fallback list.
@@ -33111,12 +39888,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	}
 	int fragArg = (int)((periods << 16) | (fragExp & 0xFFFF));
 	if (ioctl(fd, SNDCTL_DSP_SETFRAGMENT, &fragArg) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to set OSS fragment (periods %lu, exp %lu) for device '%s' (errno %d)", periods, fragExp, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to set OSS fragment (periods %lu, exp %lu) for device '%s' (errno %d)", periods, fragExp, devicePath, errno);
 	}
 
 	int setFormat = chosenFormat;
 	if (ioctl(fd, SNDCTL_DSP_SETFMT, &setFormat) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS format '%d' for device '%s' (errno %d)", chosenFormat, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS format '%d' for device '%s' (errno %d)", chosenFormat, devicePath, errno);
 	}
 	if (setFormat != chosenFormat) {
 		// Driver replaced our choice — accept whatever it picked if we can map it.
@@ -33131,7 +39908,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	int setChannels = (int)channels;
 	if (ioctl(fd, SNDCTL_DSP_CHANNELS, &setChannels) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS channels '%lu' for device '%s' (errno %d)", channels, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS channels '%lu' for device '%s' (errno %d)", channels, devicePath, errno);
 	}
 	channels = (uint32_t)setChannels;
 	frameBytes = sampleBytes * channels;
@@ -33140,14 +39917,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 
 	int setRate = (int)sampleRate;
 	if (ioctl(fd, SNDCTL_DSP_SPEED, &setRate) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed to set OSS sample rate '%lu' for device '%s' (errno %d)", sampleRate, devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to set OSS sample rate '%lu' for device '%s' (errno %d)", sampleRate, devicePath, errno);
 	}
 	internalFormat.sampleRate = (uint32_t)setRate;
 
 	// Query actual buffer layout. GETOSPACE reports current fragment count and size.
 	audio_buf_info bufInfo = fplZeroInit;
 	if (ioctl(fd, SNDCTL_DSP_GETOSPACE, &bufInfo) < 0) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed to query OSS output buffer info for device '%s' (errno %d)", devicePath, errno);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to query OSS output buffer info for device '%s' (errno %d)", devicePath, errno);
 	}
 	if (bufInfo.fragsize <= 0 || bufInfo.fragstotal <= 0 || frameBytes == 0) {
 		FPL__OSS_INIT_ERROR(fplAudioResultType_DeviceFailure, "OSS reported invalid buffer geometry for device '%s' (fragsize=%d, fragstotal=%d)", devicePath, bufInfo.fragsize, bufInfo.fragstotal);
@@ -33163,7 +39940,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendOssInitia
 	uint32_t intermediarySize = (uint32_t)bufInfo.fragsize;
 	impl->intermediaryBuffer = fpl__AllocateDynamicMemory(intermediarySize, 16);
 	if (impl->intermediaryBuffer == fpl_null) {
-		FPL__OSS_INIT_ERROR(fplAudioResultType_OutOfMemory, "Failed allocating OSS intermediary buffer of '%lu' bytes for device '%s'", intermediarySize, devicePath);
+		FPL__OSS_INIT_ERROR(fplAudioResultType_OutOfMemory, "Unable to allocate OSS intermediary buffer of '%lu' bytes for device '%s'", intermediarySize, devicePath);
 	}
 	impl->intermediaryBufferSize = intermediarySize;
 
@@ -34225,7 +41002,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPulseAudioInitia
 	fplAssert(pulseAudioBackend != fpl_null);
 	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	if (!fpl__LoadPulseAudioApi(pulseAudioApi)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "Failed loading PulseAudio api!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, "Unable to load PulseAudio api!");
 		return fplAudioResultType_ApiFailed;
 	}
 	return fplAudioResultType_Success;
@@ -34363,12 +41140,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	fplAssert(pulseAudioBackend != fpl_null);
 	fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
 	if (pulseAudioApi->libHandle == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, "PulseAudio api is not loaded!");
 		return fplAudioResultType_ApiFailed;
 	}
 
 #	define FPL__PULSEAUDIO_INIT_ERROR(resultValue, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PULSEAUDIO, format, ## __VA_ARGS__); \
 		fpl__AudioBackendPulseAudioReleaseDevice(context, backend); \
 		return resultValue; \
 	} while (0)
@@ -34395,14 +41172,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	// Create the threaded mainloop and start it. From this point callbacks can fire.
 	pulseAudioBackend->mainloop = pulseAudioApi->pa_threaded_mainloop_new();
 	if (pulseAudioBackend->mainloop == fpl_null) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio threaded mainloop!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create pulseaudio threaded mainloop!");
 	}
 	pulseAudioBackend->mainloopApi = pulseAudioApi->pa_threaded_mainloop_get_api(pulseAudioBackend->mainloop);
 	if (pulseAudioBackend->mainloopApi == fpl_null) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed getting pulseaudio mainloop api!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to get pulseaudio mainloop api!");
 	}
 	if (pulseAudioApi->pa_threaded_mainloop_start(pulseAudioBackend->mainloop) < 0) {
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting pulseaudio threaded mainloop!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to start pulseaudio threaded mainloop!");
 	}
 
 	pulseAudioApi->pa_threaded_mainloop_lock(pulseAudioBackend->mainloop);
@@ -34411,14 +41188,14 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	pulseAudioBackend->context = pulseAudioApi->pa_context_new(pulseAudioBackend->mainloopApi, pulseAudioBackend->applicationName);
 	if (pulseAudioBackend->context == fpl_null) {
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating pulseaudio context!");
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create pulseaudio context!");
 	}
 	pulseAudioApi->pa_context_set_state_callback(pulseAudioBackend->context, fpl__PulseAudioContextStateCallback, backend);
 	const char *pulseServerName = (fplGetStringLength(pulseAudioBackend->serverName) > 0) ? pulseAudioBackend->serverName : fpl_null;
 	if (pulseAudioApi->pa_context_connect(pulseAudioBackend->context, pulseServerName, PA_CONTEXT_NOFLAGS, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to connect pulseaudio context: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	while (!pulseAudioBackend->isContextReady && !pulseAudioBackend->isContextFailed) {
 		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
@@ -34466,7 +41243,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	if (pulseAudioBackend->stream == fpl_null) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed creating pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to create pulseaudio stream: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	pulseAudioApi->pa_stream_set_state_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamStateCallback, backend);
 	pulseAudioApi->pa_stream_set_write_callback(pulseAudioBackend->stream, fpl__PulseAudioStreamWriteCallback, backend);
@@ -34490,7 +41267,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 	if (pulseAudioApi->pa_stream_connect_playback(pulseAudioBackend->stream, requestedDeviceName, &bufferAttributes, streamFlags, fpl_null, fpl_null) < 0) {
 		int errorCode = pulseAudioApi->pa_context_errno(pulseAudioBackend->context);
 		pulseAudioApi->pa_threaded_mainloop_unlock(pulseAudioBackend->mainloop);
-		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
+		FPL__PULSEAUDIO_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to connect pulseaudio playback stream: %s!", pulseAudioApi->pa_strerror(errorCode));
 	}
 	while (!pulseAudioBackend->isStreamReady && !pulseAudioBackend->isStreamFailed) {
 		pulseAudioApi->pa_threaded_mainloop_wait(pulseAudioBackend->mainloop);
@@ -34911,6 +41688,10 @@ typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_unlock(fpl__pw_func_pw_thread_loop_unl
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_wait(fpl__pw_func_pw_thread_loop_wait);
 #define FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(name) void name(pw_thread_loop *threadLoop, bool waitForAccept)
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_signal(fpl__pw_func_pw_thread_loop_signal);
+#define FPL__PIPEWIRE_FUNC_pw_thread_loop_timed_wait(name) int name(pw_thread_loop *threadLoop, int waitMaxSeconds)
+typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_timed_wait(fpl__pw_func_pw_thread_loop_timed_wait);
+#define FPL__PIPEWIRE_FUNC_pw_check_library_version(name) bool name(int major, int minor, int micro)
+typedef FPL__PIPEWIRE_FUNC_pw_check_library_version(fpl__pw_func_pw_check_library_version);
 #define FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(name) pw_loop *name(pw_thread_loop *threadLoop)
 typedef FPL__PIPEWIRE_FUNC_pw_thread_loop_get_loop(fpl__pw_func_pw_thread_loop_get_loop);
 
@@ -34976,6 +41757,10 @@ typedef struct {
 	fpl__pw_func_pw_thread_loop_unlock *pw_thread_loop_unlock;
 	fpl__pw_func_pw_thread_loop_wait *pw_thread_loop_wait;
 	fpl__pw_func_pw_thread_loop_signal *pw_thread_loop_signal;
+	// Optional, null when the library does not export it
+	fpl__pw_func_pw_thread_loop_timed_wait *pw_thread_loop_timed_wait;
+	// Optional, null for libraries older than ~0.3.80
+	fpl__pw_func_pw_check_library_version *pw_check_library_version;
 	fpl__pw_func_pw_thread_loop_get_loop *pw_thread_loop_get_loop;
 	fpl__pw_func_pw_context_new *pw_context_new;
 	fpl__pw_func_pw_context_destroy *pw_context_destroy;
@@ -35068,6 +41853,8 @@ fpl_internal bool fpl__LoadPipeWireApi(fpl__PipeWireApi *pipeWireApi) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_unlock, pw_thread_loop_unlock);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_wait, pw_thread_loop_wait);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_signal, pw_thread_loop_signal);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_timed_wait, pw_thread_loop_timed_wait);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_check_library_version, pw_check_library_version);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_thread_loop_get_loop, pw_thread_loop_get_loop);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_new, pw_context_new);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_AUDIO_PIPEWIRE, libHandle, libName, pipeWireApi, fpl__pw_func_pw_context_destroy, pw_context_destroy);
@@ -35672,7 +42459,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitiali
 	fplAssert(pw != fpl_null);
 	fpl__PipeWireApi *api = &pw->api;
 	if (!fpl__LoadPipeWireApi(api)) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed loading PipeWire api!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, "Unable to load PipeWire api!");
 		return fplAudioResultType_ApiFailed;
 	}
 	api->pw_init(fpl_null, fpl_null);
@@ -35691,6 +42478,56 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPipeWireRelease) {
 	return true;
 }
 
+// The thread-loop.start-signal property exists since PipeWire 0.3.80, older libraries ignore it and would never signal
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MAJOR 0
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MINOR 3
+#define FPL__PIPEWIRE_START_SIGNAL_MIN_MICRO 80
+// Longest time to wait for a started thread loop to enter its loop
+#define FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS 5
+
+fpl_internal bool fpl__PipeWireHasThreadLoopStartSignal(const fpl__PipeWireApi *api) {
+	if (api->pw_check_library_version == fpl_null) {
+		return false;
+	}
+	bool result = api->pw_check_library_version(FPL__PIPEWIRE_START_SIGNAL_MIN_MAJOR, FPL__PIPEWIRE_START_SIGNAL_MIN_MINOR, FPL__PIPEWIRE_START_SIGNAL_MIN_MICRO);
+	return result;
+}
+
+// Creates a thread loop that signals once its thread has entered the loop, when the library supports it (see fpl__PipeWireStartThreadLoop)
+fpl_internal pw_thread_loop *fpl__PipeWireNewThreadLoop(const fpl__PipeWireApi *api, const char *name) {
+	struct spa_dict_item startSignalItem;
+	startSignalItem.key = "thread-loop.start-signal";
+	startSignalItem.value = "true";
+	struct spa_dict startSignalProps;
+	startSignalProps.flags = 0;
+	startSignalProps.n_items = 1;
+	startSignalProps.items = &startSignalItem;
+	bool hasStartSignal = fpl__PipeWireHasThreadLoopStartSignal(api);
+	const struct spa_dict *props = hasStartSignal ? &startSignalProps : fpl_null;
+	pw_thread_loop *result = api->pw_thread_loop_new(name, props);
+	return result;
+}
+
+// Starts a thread loop created by fpl__PipeWireNewThreadLoop, the caller must hold the loop lock.
+// NOTE(final): pw_thread_loop_stop() deadlocks when it runs before the loop thread has entered its loop: pw_loop_invoke() then calls do_stop in the calling thread without waking the loop thread, which goes into its poll right after and never returns (seen with PipeWire 1.6.8 when a connect fails and the loop is stopped right away). So this waits for the start signal - the loop thread can only send it once the caller waits, because entering the loop takes the same lock.
+fpl_internal bool fpl__PipeWireStartThreadLoop(const fpl__PipeWireApi *api, pw_thread_loop *loop) {
+	if (api->pw_thread_loop_start(loop) < 0) {
+		return false;
+	}
+	bool hasStartSignal = fpl__PipeWireHasThreadLoopStartSignal(api);
+	if (hasStartSignal) {
+		if (api->pw_thread_loop_timed_wait != fpl_null) {
+			int waitResult = api->pw_thread_loop_timed_wait(loop, FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS);
+			if (waitResult != 0) {
+				FPL_LOG_WARN(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire thread loop did not signal its start within %d seconds", FPL__PIPEWIRE_THREAD_LOOP_START_TIMEOUT_SECONDS);
+			}
+		} else {
+			api->pw_thread_loop_wait(loop);
+		}
+	}
+	return true;
+}
+
 // Runs a one-shot registry enumeration using the caller-prepared enumState (deviceInfos buffer, maxDeviceCount, optional targetId filter).
 // All thread-loop/context/registry state is local so the persistent playback state inside the backend is never touched.
 fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl__PipeWireEnumState *enumState) {
@@ -35701,7 +42538,7 @@ fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl_
 	struct spa_hook coreListener = fplZeroInit;
 	struct spa_hook registryListener = fplZeroInit;
 
-	pw_thread_loop *loop = api->pw_thread_loop_new("fpl-pw-enum", fpl_null);
+	pw_thread_loop *loop = fpl__PipeWireNewThreadLoop(api, "fpl-pw-enum");
 	if (loop == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed creating PipeWire thread loop for device enumeration!");
 		return false;
@@ -35713,14 +42550,15 @@ fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl_
 	pw_registry *registry = fpl_null;
 	bool started = false;
 
-	if (api->pw_thread_loop_start(loop) < 0) {
+	api->pw_thread_loop_lock(loop);
+
+	if (!fpl__PipeWireStartThreadLoop(api, loop)) {
+		api->pw_thread_loop_unlock(loop);
 		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "Failed starting PipeWire thread loop for device enumeration!");
 		api->pw_thread_loop_destroy(loop);
 		return false;
 	}
 	started = true;
-
-	api->pw_thread_loop_lock(loop);
 
 	do {
 		ctx = api->pw_context_new(api->pw_thread_loop_get_loop(loop), fpl_null, 0);
@@ -35863,12 +42701,12 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	fplAssert(pw != fpl_null);
 	fpl__PipeWireApi *api = &pw->api;
 	if (api->libHandle == fpl_null) {
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire api is not loaded!");
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, "PipeWire api is not loaded!");
 		return fplAudioResultType_ApiFailed;
 	}
 
 #	define FPL__PIPEWIRE_INIT_ERROR(resultValue, format, ...) do { \
-		FPL__ERROR(FPL__MODULE_AUDIO_PIPEWIRE, format, ## __VA_ARGS__); \
+		FPL_LOG_INFO(FPL__MODULE_AUDIO_PIPEWIRE, format, ## __VA_ARGS__); \
 		fpl__AudioBackendPipeWireReleaseDevice(context, backend); \
 		return resultValue; \
 	} while (0)
@@ -35897,28 +42735,28 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	pw->frameSize = 0;
 
 	// Create the threaded loop + context + core.
-	pw->threadLoop = api->pw_thread_loop_new("fpl-pw-playback", fpl_null);
+	pw->threadLoop = fpl__PipeWireNewThreadLoop(api, "fpl-pw-playback");
 	if (pw->threadLoop == fpl_null) {
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire thread loop!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire thread loop!");
 	}
 
 	api->pw_thread_loop_lock(pw->threadLoop);
 
-	if (api->pw_thread_loop_start(pw->threadLoop) < 0) {
+	if (!fpl__PipeWireStartThreadLoop(api, pw->threadLoop)) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed starting PipeWire thread loop!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to start PipeWire thread loop!");
 	}
 
 	pw->context = api->pw_context_new(api->pw_thread_loop_get_loop(pw->threadLoop), fpl_null, 0);
 	if (pw->context == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire context!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire context!");
 	}
 
 	pw->core = api->pw_context_connect(pw->context, fpl_null, 0);
 	if (pw->core == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Failed connecting PipeWire context!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_NoDeviceFound, "Unable to connect PipeWire context!");
 	}
 
 	// Build the target sample format.
@@ -35940,7 +42778,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	pw_properties *props = api->pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", fpl_null);
 	if (props == fpl_null) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream properties!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire stream properties!");
 	}
 	api->pw_properties_set(props, PW_KEY_MEDIA_CATEGORY, "Playback");
 	api->pw_properties_set(props, PW_KEY_MEDIA_ROLE, mediaRole);
@@ -35958,7 +42796,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	if (pw->stream == fpl_null) {
 		api->pw_properties_free(props);
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Failed creating PipeWire stream!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_ApiFailed, "Unable to create PipeWire stream!");
 	}
 
 	fplClearStruct(&pw->streamListener);
@@ -35973,7 +42811,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	uint32_t podSize = fpl__PipeWireBuildAudioFormatPod(podBuffer, sizeof(podBuffer), spaAudioFormat, sampleRate, (uint32_t)channelCount, nativeChannelMap);
 	if (podSize == 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Failed building PipeWire format POD!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_UnsuportedDeviceFormat, "Unable to build PipeWire format POD!");
 	}
 	const struct spa_pod *params[1];
 	params[0] = (const struct spa_pod *)podBuffer;
@@ -35981,7 +42819,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	uint32_t streamFlags = PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_INACTIVE;
 	if (api->pw_stream_connect(pw->stream, PW_DIRECTION_OUTPUT, PW_ID_ANY, streamFlags, params, 1) < 0) {
 		api->pw_thread_loop_unlock(pw->threadLoop);
-		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "Failed connecting PipeWire playback stream!");
+		FPL__PIPEWIRE_INIT_ERROR(fplAudioResultType_DeviceFailure, "Unable to connect PipeWire playback stream!");
 	}
 
 	// Wait until the stream reaches PAUSED (because we passed INACTIVE) or errors out.
@@ -36461,8 +43299,11 @@ fpl_internal bool fpl__ReleaseAudioDevice(fpl__AudioState *audioState) {
 	// Wake up the worker thread and wait for it to properly terminate.
 	fpl__SetAudioEvent(&audioState->wakeupEvent);
 
-	fplThreadWaitForOne(audioState->workerThread, FPL_TIMEOUT_INFINITE);
-	fplThreadTerminate(audioState->workerThread);
+	// Async backends (e.g. PipeWire) run without a worker thread
+	if (audioState->workerThread != fpl_null) {
+		fplThreadWaitForOne(audioState->workerThread, FPL_TIMEOUT_INFINITE);
+		fplThreadTerminate(audioState->workerThread);
+	}
 
 	// Release signals and thread
 	fpl__ReleaseAudioEvent(&audioState->stopEvent);
@@ -36805,6 +43646,11 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	// Because all backends share the same `backend` memory chunk, we fully init+release
 	// per attempt rather than holding multiple backends initialized simultaneously.
 	fplAudioResultType resultType = fplAudioResultType_NoBackendsFound;
+	// Every attempt only logs its reason as info, the last result of each backend goes into the error when no backend could be used at all
+	fplAudioResultType lastBackendResults[fplArrayCount(descriptors)];
+	for (size_t backendIndex = 0; backendIndex < fplArrayCount(lastBackendResults); ++backendIndex) {
+		lastBackendResults[backendIndex] = fplAudioResultType_NoBackendsFound;
+	}
 	bool probeSucceeded = false;
 	for (uint32_t tierIndex = 0; tierIndex < (uint32_t)fpl__AudioProbeTier_Count && !probeSucceeded; ++tierIndex) {
 		const fpl__AudioProbeTier tier = (fpl__AudioProbeTier)tierIndex;
@@ -36865,6 +43711,7 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				if (backendInitResult != fplAudioResultType_Success) {
 					descriptor->table.release(context, backend);
 					resultType = backendInitResult;
+					lastBackendResults[backendIndex] = backendInitResult;
 					continue;
 				}
 
@@ -36890,10 +43737,11 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 				fplAudioResultType deviceResult = descriptor->table.initializeDevice(context, backend, &audioSettings->specific, &backend->desiredFormat, &audioSettings->targetDevice, &backend->internalFormat, &backend->internalDevice, &channelsMapping);
 				if (deviceResult != fplAudioResultType_Success) {
 					const char *resultErrorStr = fplGetAudioResultName(deviceResult);
-					FPL_LOG_WARN(FPL__MODULE_AUDIO, "Backend '%s' rejected settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backendName, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
+					FPL_LOG_INFO(FPL__MODULE_AUDIO, "Backend '%s' rejected settings (SampleRate=%u, Channels=%u, Type='%s') -> %s", backendName, backend->desiredFormat.sampleRate, backend->desiredFormat.channels, formatTypeName, resultErrorStr);
 					descriptor->table.releaseDevice(context, backend);
 					descriptor->table.release(context, backend);
 					resultType = deviceResult;
+					lastBackendResults[backendIndex] = deviceResult;
 					continue;
 				}
 
@@ -36909,8 +43757,20 @@ fpl_internal fplAudioResultType fpl__InitAudio(const fplAudioSettings *audioSett
 	}
 
 	if (resultType != fplAudioResultType_Success) {
-		const char *resultErrorStr = fplGetAudioResultName(resultType);
-		FPL_LOG_ERROR(FPL__MODULE_AUDIO, "Either no backend was found or the specified audio format is not supported -> %s", resultErrorStr);
+		// e.g. "PipeWire -> ApiFailed, PulseAudio -> DeviceFailure, ALSA -> NoDeviceFound"
+		char backendSummary[512];
+		backendSummary[0] = 0;
+		const size_t maxSummaryLength = fplArrayCount(backendSummary) - 1;
+		size_t summaryLength = 0;
+		for (size_t backendIndex = 0; backendIndex < audioBackendCount; ++backendIndex) {
+			const char *backendName = descriptors[backendIndex].header.idName.name;
+			const char *backendResultName = fplGetAudioResultName(lastBackendResults[backendIndex]);
+			const char *separator = (backendIndex > 0) ? ", " : "";
+			const size_t remainingSize = fplArrayCount(backendSummary) - summaryLength;
+			size_t entryLength = fplStringFormat(backendSummary + summaryLength, remainingSize, "%s%s -> %s", separator, backendName, backendResultName);
+			summaryLength = fplMin(summaryLength + entryLength, maxSummaryLength);
+		}
+		FPL_LOG_ERROR(FPL__MODULE_AUDIO, "No audio backend could be used, the specified audio format may not be supported: %s", backendSummary);
 		fpl__ReleaseAudio(audioState);
 		return resultType;
 	}
@@ -37184,6 +44044,9 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 
 fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	if (appState != fpl_null) {
+		// The app may release the platform without fplWindowShutdown(), and the Win32 clip rectangle would outlive the window
+		appState->window.isRunning = false;
+		fpl__UpdateInputGrab(appState);
 #	if defined(FPL_PLATFORM_WINDOWS)
 		fpl__Win32ReleaseWindow(&initState->win32, &appState->win32, &appState->window.win32);
 #	elif defined(FPL_SUBPLATFORM_X11)
@@ -38216,7 +45079,7 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 #		endif
 #		if defined(FPL_SUBPLATFORM_POSIX)
 			FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release POSIX Subplatform");
-			fpl__PosixReleaseSubplatform(&appState->posix);
+			fpl__PosixReleaseSubplatform(&initState->posix, &appState->posix);
 #		endif
 		}
 
@@ -38225,6 +45088,10 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 		fplMemoryAlignedFree(appState);
 		fpl__global__AppState = fpl_null;
 	}
+
+	// Free the dynamic thread buckets while the dynamic memory settings in initState are still valid.
+	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Thread State Buckets");
+	fpl__FreeThreadStateBuckets(&fpl__global__ThreadState);
 
 	fplClearStruct(initState);
 }

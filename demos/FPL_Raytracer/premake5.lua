@@ -1,5 +1,5 @@
 project "FPL_Raytracer"
-	kind "WindowedApp"
+	kind "ConsoleApp"
 	
 	language "C++"
 	cppdialect "C++11"

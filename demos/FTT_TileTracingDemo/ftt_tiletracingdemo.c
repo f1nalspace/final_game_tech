@@ -1,0 +1,894 @@
+/*
+-------------------------------------------------------------------------------
+Name:
+	FTT | TileTracingDemo
+
+Description:
+	This demo shows how to use the "Final Tile Tracing" library.
+	FTT is a library for converting a Solid-Tilemap
+	into connected line segments - using a image contour tracing algorythmn.
+	This is useful to get create proper collision shapes in physics engines
+	such as Box2D.
+
+Requirements:
+	- C17 Compiler
+	- Final Platform Layer
+	- Final Dynamic OpenGL
+
+Author:
+	Torsten Spaete
+
+Changelog:
+	## 2026-07-07
+	- Added slope tile support: slope-aware tile rendering and five slope scenarios
+	  (simple slopes, the medium map with beveled corners, random beveled blocks,
+	  and explicit convex and concave slope shapes)
+	- Added a line-stroke font, a minimal immediate-mode UI panel and mouse input
+	- Added pause/resume/step control over the tile tracer
+	- Added scenario switching between a small map, the original map and a randomly generated dungeon
+
+	## 2026-06-04
+	- Switched to the pure C17 final_tiletrace.h library and C api
+
+	## 2026-05-10
+	- Use final_dynamic_opengl instead of gl.h
+	- No more size and position overwrite of window
+
+	## 2018-10-22
+	- Reflect api changes in FPL 0.9.3
+
+	## 2018-09-24
+	- Reflect api changes in FPL 0.9.2
+
+	## 2018-06-29
+	- Changed to use new keyboard/mouse button state
+
+	## 2018-04-23:
+	- Initial creation of this description block
+
+License:
+	Copyright (c) 2017-2026 Torsten Spaete
+	MIT License (See LICENSE file)
+-------------------------------------------------------------------------------
+*/
+
+#define FPL_IMPLEMENTATION
+#define FPL_NO_AUDIO
+#include <final_platform_layer.h>
+
+#define FGL_IMPLEMENTATION
+#include <final_dynamic_opengl.h>
+
+#define FTT_IMPLEMENTATION
+#include "final_tiletrace.h"
+
+#include "linefont.h"
+#include "ui.h"
+
+#include <stdlib.h>
+#include <time.h>
+
+#define TileSize 1.0f
+
+enum {
+	Scenario0Width = 12,
+	Scenario0Height = 10,
+
+	SimpleSlopesWidth = 24,
+	SimpleSlopesHeight = 14,
+
+	ConvexWidth = 30,
+	ConvexHeight = 15,
+
+	ConcaveWidth = 30,
+	ConcaveHeight = 16,
+
+	MaxTileMapCountW = 36,
+	MaxTileMapCountH = 62,
+
+	DungeonMaxTileMapCountW = 360,
+	DungeonMaxTileMapCountH = 620,
+
+	UiPanelWidthPixels = 240,
+
+	DungeonRoomCount = 50,
+	DungeonRoomMinSize = 7,
+	DungeonRoomMaxSize = 30,
+	DungeonBorderMargin = 1,
+
+	RandomSlopesRoomCount = 26,
+	RandomSlopesRoomMinSize = 3,
+	RandomSlopesRoomMaxSize = 9,
+};
+
+static const uint8_t Scenario0_TileMap[Scenario0Width * Scenario0Height] = {
+	1,1,1,1,1,1,1,1,1,1,1,1,
+	1,0,0,0,0,0,0,0,0,0,0,1,
+	1,0,1,1,0,0,0,0,1,1,0,1,
+	1,0,1,0,0,0,0,0,0,1,0,1,
+	1,0,0,0,0,1,1,0,0,0,0,1,
+	1,0,0,0,0,1,1,0,0,0,0,1,
+	1,0,1,0,0,0,0,0,0,1,0,1,
+	1,0,1,1,0,0,0,0,1,1,0,1,
+	1,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,1,1,1,1,1,1,1,1,1,1,
+};
+
+static const uint8_t Scenario1_TileMap[MaxTileMapCountW * MaxTileMapCountH] = {
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1,0,0,0,0,1,
+	1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,
+	1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,1,1,
+	1,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,0,0,0,0,0,1,
+	1,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,0,0,1,
+	1,0,0,1,1,1,1,0,0,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,0,0,0,0,1,
+	1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,1,1,0,0,1,1,1,1,1,1,1,1,0,0,0,0,1,
+	1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,
+	1,1,1,1,0,0,1,0,0,1,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,
+	1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,0,1,
+	1,0,0,0,0,0,1,0,0,1,0,0,1,1,1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,0,1,
+	1,0,0,0,0,0,1,0,0,1,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,0,0,1,
+	1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0,0,1,1,1,0,0,1,
+	1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0,0,1,1,1,0,0,1,
+	1,0,1,1,1,0,1,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,1,1,1,0,0,1,
+	1,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,1,1,1,
+	1,1,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,1,
+	1,1,1,1,1,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,1,
+	1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,1,1,1,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,0,1,0,0,0,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,1,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,
+	1,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,1,1,1,1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,1,1,1,1,1,1,
+	1,1,0,0,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,1,1,1,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+	1,1,0,0,0,0,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,0,0,0,0,1,0,0,0,0,0,0,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+	1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,1,1,0,0,0,0,1,1,1,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,1,1,1,1,1,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,1,1,1,
+	1,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,1,1,1,1,1,0,0,1,1,0,0,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1,
+	1,1,0,0,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,1,
+	1,1,0,0,1,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,0,1,
+	1,1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,1,0,0,1,
+	1,1,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,0,0,1,0,0,1,0,0,0,0,0,0,1,1,1,0,1,1,0,1,1,1,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+	1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,
+	1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,1,1,1,1,
+	1,1,0,0,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+};
+
+static uint8_t Scenario2_TileMap[MaxTileMapCountW * MaxTileMapCountH];
+
+static uint8_t Scenario3_TileMap[DungeonMaxTileMapCountW * DungeonMaxTileMapCountH];
+
+// Slope tile values map to fttTileType: 2 = bottom-right, 3 = bottom-left, 4 = top-left, 5 = top-right.
+// Like the other scenarios this is authored with row 0 at the bottom of the screen (the tile view is y-up).
+static const uint8_t Scenario4_TileMap[SimpleSlopesWidth * SimpleSlopesHeight] = {
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,   // Floor with a sloped chasm
+	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,0,0,5,1,1,1,
+	0,5,1,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // Hill with sloped shoulders
+	0,0,5,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,5,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,5,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,3,0,0,   // Block with all four corners beveled
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,1,1,4,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,2,3,0,0,0,0,0,0,0,0,0,0,0,   // Floating diamond
+	0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+// The medium map with every convex corner beveled into a slope, and a random map of beveled blocks.
+// Both are filled at startup by MakeSlopedCorners (see below).
+static uint8_t Scenario5_TileMap[MaxTileMapCountW * MaxTileMapCountH];
+
+static uint8_t Scenario6_TileMap[MaxTileMapCountW * MaxTileMapCountH];
+
+// Explicit convex slope shapes (no concave/reflex corners): a triangle, a diamond, a house
+// pentagon and a beveled octagon. Authored with row 0 at the bottom of the screen (tile view is y-up).
+static const uint8_t Scenario7_TileMap[ConvexWidth * ConvexHeight] = {
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,   // House pentagon
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,
+	5,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,2,1,1,3,0,0,1,1,1,1,1,1,0,   // Triangle (left), octagon (mid)
+	0,5,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,5,1,1,1,1,4,0,
+	0,0,5,1,1,4,0,0,0,0,0,0,2,3,0,0,0,5,1,1,4,0,0,0,5,1,1,4,0,0,   // Diamond (mid)
+	0,0,0,5,4,0,0,0,0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,5,4,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+// Explicit concave slope shapes (with reflex corners): a V-notch crater, a sawtooth range and
+// an arrow with a notched base. Authored with row 0 at the bottom of the screen (tile view is y-up).
+static const uint8_t Scenario8_TileMap[ConcaveWidth * ConcaveHeight] = {
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	1,1,1,1,2,3,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // V-notch crater
+	5,1,1,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,5,1,1,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,5,1,1,1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,5,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,   // Sawtooth range
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,4,5,4,5,4,5,4,5,4,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // Arrow with a notched base
+	0,1,1,1,1,1,4,5,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,1,4,0,0,5,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,1,1,1,4,0,0,0,0,5,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+typedef struct fttScenario {
+	const char *name;
+	uint32_t width;
+	uint32_t height;
+	const uint8_t *tiles;
+} fttScenario;
+
+enum {
+	Scenario_Simple = 0,
+	Scenario_Current,
+	Scenario_Random,
+	Scenario_Dungeon,
+	Scenario_SimpleSlopes,
+	Scenario_SlopedCorners,
+	Scenario_RandomSlopes,
+	Scenario_Convex,
+	Scenario_Concave,
+	ScenarioCount,
+};
+
+static fttScenario Scenarios[ScenarioCount] = {
+	{ "0 Simple", Scenario0Width, Scenario0Height, Scenario0_TileMap },
+	{ "1 Current", MaxTileMapCountW, MaxTileMapCountH, Scenario1_TileMap },
+	{ "2 Random", MaxTileMapCountW, MaxTileMapCountH, Scenario2_TileMap },
+	{ "3 Dungeon", DungeonMaxTileMapCountW, DungeonMaxTileMapCountH, Scenario3_TileMap },
+	{ "4 Simple Slopes", SimpleSlopesWidth, SimpleSlopesHeight, Scenario4_TileMap },
+	{ "5 Sloped Corners", MaxTileMapCountW, MaxTileMapCountH, Scenario5_TileMap },
+	{ "6 Random Slopes", MaxTileMapCountW, MaxTileMapCountH, Scenario6_TileMap },
+	{ "7 Convex", ConvexWidth, ConvexHeight, Scenario7_TileMap },
+	{ "8 Concave", ConcaveWidth, ConcaveHeight, Scenario8_TileMap },
+};
+
+static float RandomFloat() {
+	float result = (float)rand() / (float)RAND_MAX;
+	return result;
+}
+
+static uint32_t RandomRange(uint32_t minInclusive, uint32_t maxInclusive) {
+	uint32_t span = maxInclusive - minInclusive + 1;
+	return minInclusive + ((uint32_t)rand() % span);
+}
+
+static void PlaceSolidRoom(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight, uint32_t roomX, uint32_t roomY, uint32_t roomWidth, uint32_t roomHeight) {
+	uint32_t maxY = mapHeight - DungeonBorderMargin;
+	uint32_t maxX = mapWidth - DungeonBorderMargin;
+	for (uint32_t y = roomY; y < roomY + roomHeight && y < maxY; ++y) {
+		for (uint32_t x = roomX; x < roomX + roomWidth && x < maxX; ++x) {
+			tiles[y * mapWidth + x] = 1;
+		}
+	}
+}
+
+static void PlaceSolidCorridor(uint8_t *tiles, uint32_t mapWidth, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+	int32_t x = x0;
+	int32_t y = y0;
+	while (x != x1) {
+		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
+		x += (x1 > x) ? 1 : -1;
+	}
+	while (y != y1) {
+		tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
+		y += (y1 > y) ? 1 : -1;
+	}
+	tiles[(uint32_t)y * mapWidth + (uint32_t)x] = 1;
+}
+
+static void GenerateRandom(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
+	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
+		if (RandomFloat() > 0.5f) {
+			tiles[index] = 1;
+		} else {
+			tiles[index] = 0;
+		}
+	}
+}
+
+static void GenerateDungeon(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
+	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
+		tiles[index] = 0;
+	}
+
+	int32_t previousCenterX = 0;
+	int32_t previousCenterY = 0;
+	bool hasPreviousCenter = false;
+
+	for (uint32_t roomIndex = 0; roomIndex < DungeonRoomCount; ++roomIndex) {
+		uint32_t roomWidth = RandomRange(DungeonRoomMinSize, DungeonRoomMaxSize);
+		uint32_t roomHeight = RandomRange(DungeonRoomMinSize, DungeonRoomMaxSize);
+		uint32_t roomX = RandomRange(DungeonBorderMargin, mapWidth - roomWidth - DungeonBorderMargin - 1);
+		uint32_t roomY = RandomRange(DungeonBorderMargin, mapHeight - roomHeight - DungeonBorderMargin - 1);
+
+		PlaceSolidRoom(tiles, mapWidth, mapHeight, roomX, roomY, roomWidth, roomHeight);
+
+		int32_t centerX = (int32_t)(roomX + roomWidth / 2);
+		int32_t centerY = (int32_t)(roomY + roomHeight / 2);
+		if (hasPreviousCenter) {
+			PlaceSolidCorridor(tiles, mapWidth, previousCenterX, previousCenterY, centerX, centerY);
+		}
+		previousCenterX = centerX;
+		previousCenterY = centerY;
+		hasPreviousCenter = true;
+	}
+}
+
+// Copies src into dst and bevels every convex corner of a solid region into the matching slope tile.
+// A solid tile is a convex corner when exactly one perpendicular pair of neighbours is empty while the
+// opposite pair is solid - the corner between the two empty neighbours is then cut off. Out-of-bounds
+// neighbours count as empty so the outer edges of a shape get beveled too. Neighbours are read from src
+// so conversions never cascade into one another.
+static void MakeSlopedCorners(uint8_t *dst, const uint8_t *src, uint32_t mapWidth, uint32_t mapHeight) {
+	for (uint32_t y = 0; y < mapHeight; ++y) {
+		for (uint32_t x = 0; x < mapWidth; ++x) {
+			uint32_t index = y * mapWidth + x;
+			if (src[index] == 0) {
+				dst[index] = 0;
+				continue;
+			}
+
+			bool upSolid = (y > 0) && (src[(y - 1) * mapWidth + x] != 0);
+			bool downSolid = (y + 1 < mapHeight) && (src[(y + 1) * mapWidth + x] != 0);
+			bool leftSolid = (x > 0) && (src[y * mapWidth + (x - 1)] != 0);
+			bool rightSolid = (x + 1 < mapWidth) && (src[y * mapWidth + (x + 1)] != 0);
+
+			uint8_t result = 1;
+			if (!upSolid && !leftSolid && downSolid && rightSolid) {
+				result = FTT_TILE_SLOPE_BOTTOM_RIGHT;   // Cut the top-left corner
+			} else if (!upSolid && !rightSolid && downSolid && leftSolid) {
+				result = FTT_TILE_SLOPE_BOTTOM_LEFT;    // Cut the top-right corner
+			} else if (!downSolid && !leftSolid && upSolid && rightSolid) {
+				result = FTT_TILE_SLOPE_TOP_RIGHT;      // Cut the bottom-left corner
+			} else if (!downSolid && !rightSolid && upSolid && leftSolid) {
+				result = FTT_TILE_SLOPE_TOP_LEFT;       // Cut the bottom-right corner
+			}
+			dst[index] = result;
+		}
+	}
+}
+
+// Generates a random scatter of solid rectangles, then bevels their convex corners into slopes.
+static void GenerateRandomSlopes(uint8_t *tiles, uint32_t mapWidth, uint32_t mapHeight) {
+	static uint8_t solidBlocks[MaxTileMapCountW * MaxTileMapCountH];
+	for (uint32_t index = 0; index < mapWidth * mapHeight; ++index) {
+		solidBlocks[index] = 0;
+	}
+
+	for (uint32_t roomIndex = 0; roomIndex < RandomSlopesRoomCount; ++roomIndex) {
+		uint32_t roomWidth = RandomRange(RandomSlopesRoomMinSize, RandomSlopesRoomMaxSize);
+		uint32_t roomHeight = RandomRange(RandomSlopesRoomMinSize, RandomSlopesRoomMaxSize);
+		uint32_t roomX = RandomRange(1, mapWidth - roomWidth - 2);
+		uint32_t roomY = RandomRange(1, mapHeight - roomHeight - 2);
+		PlaceSolidRoom(solidBlocks, mapWidth, mapHeight, roomX, roomY, roomWidth, roomHeight);
+	}
+
+	MakeSlopedCorners(tiles, solidBlocks, mapWidth, mapHeight);
+}
+
+static void DrawTile(const int32_t x, const int32_t y, bool filled, float areaWidth, float areaHeight) {
+	float tileExt = TileSize * 0.5f;
+	float tx = -areaWidth * 0.5f + x * TileSize + TileSize * 0.5f;
+	float ty = -areaHeight * 0.5f + y * TileSize + TileSize * 0.5f;
+	glPushMatrix();
+	glTranslatef(tx, ty, 0.0f);
+	glBegin(filled ? GL_QUADS : GL_LINE_LOOP);
+	glVertex2f(tileExt, tileExt);
+	glVertex2f(-tileExt, tileExt);
+	glVertex2f(-tileExt, -tileExt);
+	glVertex2f(tileExt, -tileExt);
+	glEnd();
+	glPopMatrix();
+}
+
+// Draws the actual polygon of a tile - a full quad for a solid tile, a triangle for a slope.
+// The corners come straight from the library so the fill matches the traced contour exactly.
+static void DrawTileShape(const int32_t x, const int32_t y, fttTileType tileType, bool filled, float areaWidth, float areaHeight) {
+	fttVec2i corners[4];
+	uint32_t cornerCount = fttGetTileShapeCorners(tileType, x, y, corners);
+	if (cornerCount == 0) {
+		return;
+	}
+	float halfWidth = areaWidth * 0.5f;
+	float halfHeight = areaHeight * 0.5f;
+	glBegin(filled ? GL_POLYGON : GL_LINE_LOOP);
+	for (uint32_t cornerIndex = 0; cornerIndex < cornerCount; ++cornerIndex) {
+		float px = -halfWidth + (float)corners[cornerIndex].x * TileSize;
+		float py = -halfHeight + (float)corners[cornerIndex].y * TileSize;
+		glVertex2f(px, py);
+	}
+	glEnd();
+}
+
+// Draws a small arrow centered on a tile, pointing at the neighbour tile in the given tile-space direction.
+// The tile-space delta (dirX, dirY) maps 1:1 to the world space used for the tilemap.
+static void DrawDirectionArrow(const int32_t tileX, const int32_t tileY, const int32_t dirX, const int32_t dirY, float areaWidth, float areaHeight) {
+	const float arrowHalfLength = TileSize * 0.42f;
+	const float arrowHeadLength = TileSize * 0.22f;
+	const float arrowHeadHalfWidth = TileSize * 0.16f;
+
+	float centerX = -areaWidth * 0.5f + tileX * TileSize + TileSize * 0.5f;
+	float centerY = -areaHeight * 0.5f + tileY * TileSize + TileSize * 0.5f;
+
+	// Direction is an axis-aligned unit vector, its perpendicular is (-dy, dx)
+	float dx = (float)dirX;
+	float dy = (float)dirY;
+	float perpX = -dy;
+	float perpY = dx;
+
+	float tipX = centerX + dx * arrowHalfLength;
+	float tipY = centerY + dy * arrowHalfLength;
+	float tailX = centerX - dx * arrowHalfLength;
+	float tailY = centerY - dy * arrowHalfLength;
+
+	float headBaseX = tipX - dx * arrowHeadLength;
+	float headBaseY = tipY - dy * arrowHeadLength;
+	float headLeftX = headBaseX + perpX * arrowHeadHalfWidth;
+	float headLeftY = headBaseY + perpY * arrowHeadHalfWidth;
+	float headRightX = headBaseX - perpX * arrowHeadHalfWidth;
+	float headRightY = headBaseY - perpY * arrowHeadHalfWidth;
+
+	glBegin(GL_LINES);
+	glVertex2f(tailX, tailY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(headLeftX, headLeftY);
+	glVertex2f(tipX, tipY);
+	glVertex2f(headRightX, headRightY);
+	glEnd();
+}
+
+static void InitScenarioTracer(fttTileTracer *tracer, int scenarioIndex, bool freeExisting) {
+	if (freeExisting) {
+		fttFreeTileTracer(tracer);
+	}
+	fttVec2u tileCount;
+	tileCount.w = Scenarios[scenarioIndex].width;
+	tileCount.h = Scenarios[scenarioIndex].height;
+	fttInitTileTracer(tracer, tileCount, Scenarios[scenarioIndex].tiles, ftt_null);
+}
+
+static const char *StepName(fttStep step) {
+	switch (step) {
+		case FTT_STEP_NONE: return "NONE";
+		case FTT_STEP_FIND_START: return "FIND START";
+		case FTT_STEP_GET_NEXT_OPEN_TILE: return "NEXT OPEN TILE";
+		case FTT_STEP_FIND_NEXT_TILE: return "FIND NEXT TILE";
+		case FTT_STEP_ROTATE_FORWARD: return "ROTATE FORWARD";
+		case FTT_STEP_TRAVERSE_FIND_STARTING_EDGE: return "FIND START EDGE";
+		case FTT_STEP_TRAVERSE_NEXT_EDGE: return "NEXT EDGE";
+		case FTT_STEP_DONE: return "DONE";
+		default: return "UNKNOWN";
+	}
+}
+
+// Human readable name and tile-space delta for each scan direction, indexed by fttDirection.
+typedef struct fttDirectionInfo {
+	const char *name;
+	int32_t dx;
+	int32_t dy;
+} fttDirectionInfo;
+
+static const fttDirectionInfo DirectionInfos[FTT_DIRECTION_COUNT] = {
+	{ "UP",     0, -1 },
+	{ "RIGHT",  1,  0 },
+	{ "DOWN",   0,  1 },
+	{ "LEFT",  -1,  0 },
+};
+
+static const fttDirectionInfo *GetDirectionInfo(uint32_t direction) {
+	if (direction < FTT_DIRECTION_COUNT) {
+		return &DirectionInfos[direction];
+	}
+	return ftt_null;
+}
+
+int main(int argc, char **args) {
+	(void)argc;
+	(void)args;
+
+	srand((unsigned int)time(NULL));
+
+	GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+
+	GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
+
+	// The medium map with every convex corner beveled into a slope
+	MakeSlopedCorners(Scenario5_TileMap, Scenario1_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+
+	GenerateRandomSlopes(Scenario6_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+
+	fplSettings settings = fplMakeDefaultSettings();
+	fplCopyString("Tile-Tracing Example", settings.window.title, fplArrayCount(settings.window.title));
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+	if (!fplPlatformInit(fplInitFlags_Video, &settings)) {
+		return -1;
+	}
+	if (!fglLoadOpenGL(true)) {
+		fplPlatformRelease();
+		return -1;
+	}
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+
+	int activeScenarioIndex = Scenario_Current;
+	bool isPaused = false;
+	bool isRunning = false;
+	bool stepRequested = false;
+	bool showGrid = true;
+
+	float mouseX = 0.0f;
+	float mouseY = 0.0f;
+	bool mouseDown = false;
+	fttUiState ui = { 0 };
+
+	fttTileTracer tracer;
+	InitScenarioTracer(&tracer, activeScenarioIndex, false);
+
+	while (fplWindowUpdate()) {
+		fplEvent ev;
+		while (fplPollEvent(&ev)) {
+			switch (ev.type) {
+				case fplEventType_Keyboard:
+				{
+					if (ev.keyboard.type == fplKeyboardEventType_Button) {
+						bool isDown = (ev.keyboard.buttonState >= fplButtonState_Press);
+						if (ev.keyboard.mappedKey == fplKey_Space && isDown) {
+							// Step advances one step and pauses the simulation if it was running
+							isPaused = true;
+							stepRequested = true;
+						}
+					}
+				} break;
+				case fplEventType_Mouse:
+				{
+					if (ev.mouse.type == fplMouseEventType_Move) {
+						mouseX = (float)ev.mouse.mouseX;
+						mouseY = (float)ev.mouse.mouseY;
+					} else if (ev.mouse.type == fplMouseEventType_Button) {
+						if (ev.mouse.mouseButton == fplMouseButtonType_Left) {
+							mouseDown = (ev.mouse.buttonState >= fplButtonState_Press);
+						}
+					}
+				} break;
+				default:
+					break;
+			}
+		}
+
+		if (isRunning) {
+			fttRunTileTracer(&tracer);
+			isRunning = false;
+		} else {
+			if (!isPaused || stepRequested) {
+				fttNextTileTraceStep(&tracer);
+				stepRequested = false;
+			}
+		}
+
+		fplWindowSize windowArea;
+		fplGetWindowSize(&windowArea);
+
+		const fttScenario *activeScenario = &Scenarios[activeScenarioIndex];
+		float areaSizeW = (float)activeScenario->width * TileSize;
+		float areaSizeH = (float)activeScenario->height * TileSize;
+		float aspectRatio = areaSizeW / areaSizeH;
+		const float halfAreaWidth = areaSizeW * 0.5f;
+		const float halfAreaHeight = areaSizeH * 0.5f;
+
+		uint32_t tileViewAreaWidth = (windowArea.width > (uint32_t)UiPanelWidthPixels) ? (windowArea.width - (uint32_t)UiPanelWidthPixels) : 1;
+		uint32_t tileViewAreaHeight = windowArea.height;
+
+		// Calculate a letterboxed viewport offset and size within the area left of the UI panel
+		uint32_t viewportWidth = tileViewAreaWidth;
+		uint32_t viewportHeight = (uint32_t)((float)tileViewAreaWidth / aspectRatio);
+		if (viewportHeight > tileViewAreaHeight) {
+			viewportHeight = tileViewAreaHeight;
+			viewportWidth = (uint32_t)((float)viewportHeight * aspectRatio);
+		}
+		int32_t viewportX = (int32_t)UiPanelWidthPixels + (int32_t)(tileViewAreaWidth - viewportWidth) / 2;
+		int32_t viewportY = (int32_t)(tileViewAreaHeight - viewportHeight) / 2;
+
+		glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
+
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(-halfAreaWidth, halfAreaWidth, -halfAreaHeight, halfAreaHeight, 0.0f, 1.0f);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Draw tilemap
+		for (uint32_t y = 0; y < activeScenario->height; ++y) {
+			for (uint32_t x = 0; x < activeScenario->width; ++x) {
+				uint8_t tileValue = activeScenario->tiles[y * activeScenario->width + x];
+				if (tileValue) {
+					const fttTile *tile = fttGetTile(&tracer, (int32_t)x, (int32_t)y);
+					if (tile->isSolid == -1) {
+						glColor3f(0.75f, 0.775f, 0.75f);
+					} else {
+						glColor3f(0.5f, 0.5f, 0.5f);
+					}
+					DrawTileShape((int32_t)x, (int32_t)y, (fttTileType)tileValue, true, areaSizeW, areaSizeH);
+				}
+			}
+		}
+
+		// Draw grid
+		if (showGrid) {
+			glLineWidth(1.0f);
+			glColor3f(0.0f, 0.0f, 0.0f);
+			for (uint32_t i = 0; i <= activeScenario->width; ++i) {
+				glBegin(GL_LINES);
+				glVertex2f(-halfAreaWidth + i * TileSize, -halfAreaHeight);
+				glVertex2f(-halfAreaWidth + i * TileSize, -halfAreaHeight + activeScenario->height * TileSize);
+				glEnd();
+			}
+			for (uint32_t i = 0; i <= activeScenario->height; ++i) {
+				glBegin(GL_LINES);
+				glVertex2f(-halfAreaWidth, -halfAreaHeight + i * TileSize);
+				glVertex2f(-halfAreaWidth + activeScenario->width * TileSize, -halfAreaHeight + i * TileSize);
+				glEnd();
+			}
+		}
+
+		// Draw start
+		fttTile *startTile = fttGetStartTile(&tracer);
+		if (startTile) {
+			glColor3f(1.0f, 0.5f, 1.0f);
+			DrawTile(startTile->x, startTile->y, true, areaSizeW, areaSizeH);
+		}
+
+		// Draw open list
+		glColor3f(0.0f, 0.0f, 0.0f);
+		glLineWidth(2.0f);
+		for (uint32_t index = 0, count = (uint32_t)fttGetOpenTileCount(&tracer); index < count; ++index) {
+			fttTile *openTile = fttGetOpenTile(&tracer, index);
+			DrawTile(openTile->x, openTile->y, false, areaSizeW, areaSizeH);
+		}
+		glLineWidth(1.0f);
+
+		// Draw edges
+		glColor3f(1.0f, 0.0f, 0.0f);
+		glLineWidth(3.0f);
+		for (uint32_t index = 0, count = (uint32_t)fttGetEdgeCount(&tracer); index < count; ++index) {
+			const fttEdge *edge = fttGetEdge(&tracer, index);
+			if (!edge->isInvalid) {
+				fttVec2i v0 = fttGetVertex(&tracer, edge->vertIndex0);
+				fttVec2i v1 = fttGetVertex(&tracer, edge->vertIndex1);
+				glBegin(GL_LINES);
+				glVertex2f(-halfAreaWidth + v0.x * TileSize, -halfAreaHeight + v0.y * TileSize);
+				glVertex2f(-halfAreaWidth + v1.x * TileSize, -halfAreaHeight + v1.y * TileSize);
+				glEnd();
+			}
+		}
+		glLineWidth(1.0f);
+
+		// Draw chain segments
+		glColor3f(0.0f, 1.0f, 0.0f);
+		glLineWidth(3.0f);
+		for (uint32_t segmentIndex = 0, count = (uint32_t)fttGetChainSegmentCount(&tracer); segmentIndex < count; ++segmentIndex) {
+			const fttChainSegment *segment = fttGetChainSegment(&tracer, segmentIndex);
+			glBegin(GL_LINE_LOOP);
+			for (uint32_t vertexIndex = 0, vertexCount = (uint32_t)fttGetChainSegmentVertexCount(segment); vertexIndex < vertexCount; ++vertexIndex) {
+				fttVec2i v = fttGetChainSegmentVertex(segment, vertexIndex);
+				glVertex2f(-halfAreaWidth + v.x * TileSize, -halfAreaHeight + v.y * TileSize);
+			}
+			glEnd();
+		}
+		glLineWidth(1.0f);
+
+		// Draw current tile
+		fttTile *curTile = fttGetCurrentTile(&tracer);
+		if (curTile) {
+			glColor3f(1.0f, 1.0f, 0.0f);
+			glLineWidth(2.0f);
+			DrawTile(curTile->x, curTile->y, false, areaSizeW, areaSizeH);
+			glLineWidth(1.0f);
+
+			// Arrow at the current tile pointing at the neighbour tile currently being probed
+			const fttDirectionInfo *curDirInfo = GetDirectionInfo(curTile->traceDirection);
+			if (curDirInfo) {
+				glColor3f(0.1f, 0.35f, 1.0f);
+				glLineWidth(3.0f);
+				DrawDirectionArrow(curTile->x, curTile->y, curDirInfo->dx, curDirInfo->dy, areaSizeW, areaSizeH);
+				glLineWidth(1.0f);
+			}
+		}
+
+		// Draw the UI panel in a full-window, y-down pixel-space projection
+		glViewport(0, 0, (int32_t)windowArea.width, (int32_t)windowArea.height);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0.0f, (float)windowArea.width, (float)windowArea.height, 0.0f, -1.0f, 1.0f);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+
+		UiBeginFrame(&ui, mouseX, mouseY, mouseDown);
+		UiBeginPanel(&ui, 0.0f, 0.0f, (float)UiPanelWidthPixels, (float)windowArea.height);
+
+		UiLabel(&ui, "FTT Tile Tracer");
+		UiSpacer(&ui);
+
+		UiLabel(&ui, "Scenario");
+		int newScenarioIndex = activeScenarioIndex;
+		for (int scenarioIndex = 0; scenarioIndex < ScenarioCount; ++scenarioIndex) {
+			UiRadioButton(&ui, Scenarios[scenarioIndex].name, &newScenarioIndex, scenarioIndex);
+		}
+		if (newScenarioIndex != activeScenarioIndex) {
+			activeScenarioIndex = newScenarioIndex;
+			InitScenarioTracer(&tracer, activeScenarioIndex, true);
+		}
+		UiSpacer(&ui);
+
+		UiLabel(&ui, "Playback");
+		if (UiButton(&ui, isPaused ? "Resume" : "Pause")) {
+			isPaused = !isPaused;
+		}
+		if (UiButton(&ui, "Step")) {
+			// Step advances one step and pauses the simulation if it was running
+			isPaused = true;
+			stepRequested = true;
+		}
+		if (UiButton(&ui, "Reset")) {
+			InitScenarioTracer(&tracer, activeScenarioIndex, true);
+		}
+		if (UiButton(&ui, "Run")) {
+			isRunning = true;
+		}
+		UiSpacer(&ui);
+
+		UiLabel(&ui, "Progress");
+		float progressPercentage = fttGetProgressPercentage(&tracer);
+		UiProgressBar(&ui, progressPercentage);
+		UiSpacer(&ui);
+
+		UiCheckbox(&ui, "Show Grid", &showGrid);
+
+		if (activeScenarioIndex == Scenario_Random || activeScenarioIndex == Scenario_Dungeon || activeScenarioIndex == Scenario_RandomSlopes) {
+			UiSpacer(&ui);
+			if (UiButton(&ui, "Regenerate")) {
+				if (activeScenarioIndex == Scenario_Random) {
+					GenerateRandom(Scenario2_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+				} else if (activeScenarioIndex == Scenario_Dungeon) {
+					GenerateDungeon(Scenario3_TileMap, DungeonMaxTileMapCountW, DungeonMaxTileMapCountH);
+				} else {
+					GenerateRandomSlopes(Scenario6_TileMap, MaxTileMapCountW, MaxTileMapCountH);
+				}
+				InitScenarioTracer(&tracer, activeScenarioIndex, true);
+			}
+		}
+
+		// Live tracer-state overlay, drawn over the top-left of the tile-trace output right next to the panel
+		{
+			const float overlayMarginPixels = 10.0f;
+			const float overlayPaddingPixels = 8.0f;
+			const float overlayTextScale = 1.5f;
+			const float overlayTextThickness = 1.25f;
+			const float overlayLineGapPixels = 6.0f;
+			const float overlayLineHeightPixels = (float)FontGridRows * overlayTextScale + overlayLineGapPixels;
+			const size_t overlayMaxLineLength = 48;
+
+			char overlayLines[10][48];
+			int overlayLineCount = 0;
+
+			uint32_t mapWidth = tracer.tileCount.w;
+			uint32_t mapHeight = tracer.tileCount.h;
+			fttStep currentStep = tracer.curStep;
+			const char *stepName = StepName(currentStep);
+			const char *statusText;
+			if (currentStep == FTT_STEP_DONE) {
+				statusText = "DONE";
+			} else if (isPaused) {
+				statusText = "PAUSED";
+			} else {
+				statusText = "RUNNING";
+			}
+			uint32_t openCount = (uint32_t)fttGetOpenTileCount(&tracer);
+			uint32_t edgeCount = (uint32_t)fttGetEdgeCount(&tracer);
+			uint32_t vertexCount = (uint32_t)fttGetVertexCount(&tracer);
+			uint32_t chainCount = (uint32_t)fttGetChainSegmentCount(&tracer);
+			uint32_t processedTiles = fttGetProcessedTileCount(&tracer);
+			uint32_t totalSolidTiles = fttGetTotalSolidTileCount(&tracer);
+			fttTile *overlayCurTile = fttGetCurrentTile(&tracer);
+
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Scenario: %s", activeScenario->name);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Map: %u x %u", mapWidth, mapHeight);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Status: %s", statusText);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Step: %s", stepName);
+			if (overlayCurTile) {
+				int32_t curTileX = overlayCurTile->x;
+				int32_t curTileY = overlayCurTile->y;
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: %d %d", curTileX, curTileY);
+				const fttDirectionInfo *overlayDirInfo = GetDirectionInfo(overlayCurTile->traceDirection);
+				const char *dirName = overlayDirInfo ? overlayDirInfo->name : "?";
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Dir: %s", dirName);
+			} else {
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Cur: none");
+				fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Dir: -");
+			}
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Open: %u  Edges: %u", openCount, edgeCount);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Verts: %u  Chains: %u", vertexCount, chainCount);
+			fplStringFormat(overlayLines[overlayLineCount++], overlayMaxLineLength, "Progress: %.1f%%  Tiles: %u/%u", progressPercentage, processedTiles, totalSolidTiles);
+
+			float overlayMaxTextWidth = 0.0f;
+			for (int lineIndex = 0; lineIndex < overlayLineCount; ++lineIndex) {
+				float lineWidth = MeasureLineTextWidthZ(overlayLines[lineIndex], overlayTextScale);
+				if (lineWidth > overlayMaxTextWidth) {
+					overlayMaxTextWidth = lineWidth;
+				}
+			}
+
+			float overlayBoxX = (float)UiPanelWidthPixels + overlayMarginPixels;
+			float overlayBoxY = overlayMarginPixels;
+			float overlayBoxWidth = overlayMaxTextWidth + overlayPaddingPixels * 2.0f;
+			float overlayBoxHeight = (float)overlayLineCount * overlayLineHeightPixels + overlayPaddingPixels * 2.0f;
+
+			glColor3f(0.13f, 0.13f, 0.16f);
+			UiDrawRectFilled(overlayBoxX, overlayBoxY, overlayBoxWidth, overlayBoxHeight);
+			glColor3f(0.4f, 0.4f, 0.46f);
+			UiDrawRectOutline(overlayBoxX, overlayBoxY, overlayBoxWidth, overlayBoxHeight, UiWidgetOutlineThickness);
+
+			float overlayTextX = overlayBoxX + overlayPaddingPixels;
+			float overlayTextY = overlayBoxY + overlayPaddingPixels;
+			glColor3f(0.85f, 0.9f, 0.7f);
+			for (int lineIndex = 0; lineIndex < overlayLineCount; ++lineIndex) {
+				DrawLineTextZ(overlayLines[lineIndex], overlayTextX, overlayTextY, overlayTextScale, overlayTextThickness);
+				overlayTextY += overlayLineHeightPixels;
+			}
+		}
+
+		fplVideoFlip();
+	}
+
+	fttFreeTileTracer(&tracer);
+
+	fglUnloadOpenGL();
+
+	fplPlatformRelease();
+
+	return 0;
+}

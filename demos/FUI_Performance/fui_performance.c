@@ -1,0 +1,2747 @@
+/*
+Name:
+	FUI_Performance
+
+Description:
+	A performance workbench for final_ui.h, on FPL and legacy OpenGL.
+
+	Where FUI_Test asks "what does the library look like", this one asks "what does the library COST".
+	It fills the widgets that a database-like application leans on - a list view, a list box, a multi
+	line text box and a menu tree - with far more data than any hand written demo would ever carry, and
+	then measures what that does to a frame.
+
+	Everything here is deliberately hostile to the library:
+
+	  - A list view of up to a million rows across eight columns, sortable by every one of them
+	  - A list box of up to half a million rows whose labels are far wider than the box
+	  - A multi line text box holding up to two hundred thousand lines
+	  - A tree view of up to a million nodes, six folders deep, folded and unfolded
+	  - A menu tree of tens of thousands of items, four levels of submenu deep
+
+	The data is random but DETERMINISTIC: one seed, one xorshift, so two runs at the same scale produce
+	byte for byte the same strings and two measurements are of the same thing. Nothing is read from disk.
+
+	The measurement is split where the cost actually splits:
+
+	  - Build   the time inside fuiBeginFrame .. fuiEndFrame, which is the library doing layout and text
+	  - Submit  the time inside fuiGL1Render, which is the backend handing the driver its draw calls
+	  - Frame   the whole thing, which is what the user feels
+
+	What is left of the frame after build and submit is the graphics card and the display. Neither is
+	waited on here on purpose: a finish would report a frame idling until the next refresh as a slow one.
+
+	plus the counters that explain them: draw commands, vertices, indices, text bytes and how much the
+	context arena has taken. A frame time history is drawn as a graph, so a spike from a sort or a scroll
+	is visible rather than averaged away.
+
+	The graph and the metrics panel cost draw commands of their own, which would show up in the numbers
+	they report. Both can be switched off, and the counter for them is reported separately, so a reading
+	can be taken of the data widgets ALONE.
+
+Requirements:
+	- C99 compiler
+	- OpenGL 1.1 (fixed function, which is all the backend here uses)
+
+Build (from the repository root):
+	gcc -std=c99 -O2 demos/FUI_Performance/fui_performance.c -I . -I demos/additions -I demos/dependencies -o fui_performance -lm -ldl
+	./fui_performance
+
+	Or with cmake:  cmake -S demos/FUI_Performance -B build/fui_performance && cmake --build build/fui_performance
+
+License:
+	MIT License, Copyright (c) 2017-2026 Torsten Spaete
+*/
+
+#define FPL_IMPLEMENTATION
+#define FPL_NO_VIDEO_VULKAN
+#define FPL_NO_AUDIO
+#include <final_platform_layer.h>
+
+#define FGL_IMPLEMENTATION
+#include <final_dynamic_opengl.h>
+
+// stb_truetype's implementation, and the embedded TrueType faces it bakes from.
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb/stb_truetype.h>
+#include <final_fonts.h>
+
+#define FUI_IMPLEMENTATION
+#include <final_ui.h>
+
+#define FUI_TEXTEDITOR_IMPLEMENTATION
+#include <final_ui_texteditor.h>
+
+#define FUI_STBTT_IMPLEMENTATION
+#include <fui_font_stbtt.h>
+
+#define FUI_GL1_IMPLEMENTATION
+#include <fui_backend_gl1.h>
+
+#define FUI_INPUT_FPL_IMPLEMENTATION
+#include <fui_input_fpl.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define PERF_WINDOW_TITLE "final_ui.h performance workbench (FPL + OpenGL)"
+#define PERF_WINDOW_WIDTH 1760
+#define PERF_WINDOW_HEIGHT 1060
+
+// Baked once, above the largest text on screen, so every size drawn is a reduction of the atlas.
+#define PERF_FONT_PIXEL_HEIGHT 34.0f
+#define PERF_FONT_ATLAS_SIDE 512u
+
+// The type the whole workbench is set in. Smaller than the theme's default, because eight columns of a
+// table have to fit in one window - but only a little, because a workbench that cannot be READ while it
+// is being measured is no use, and a column of hashes at thirteen pixels could not be.
+#define PERF_FONT_HEIGHT 16.0f
+#define PERF_MENU_ROW_HEIGHT 25.0f
+
+#define PERF_ROW_HEIGHT 30.0f
+#define PERF_METRICS_PANEL_WIDTH 420.0f
+#define PERF_TAB_STRIP_HEIGHT 34.0f
+#define PERF_CONTENT_INSET 8.0f
+#define PERF_STATUS_TEXT_MAX 192
+
+// ----------------------------------------------------------------------------
+// Scale steps
+//
+// Every dataset is sized off ONE of these, so a reading is taken at a scale rather than at a pile of
+// unrelated numbers. The steps are decades because that is what makes a cost curve readable: a stage
+// that goes up by ten when the data goes up by ten is linear, and one that goes up by a hundred is not.
+// ----------------------------------------------------------------------------
+
+#define PERF_SCALE_STEP_COUNT 5
+static const int32_t g_perfScaleRowCounts[PERF_SCALE_STEP_COUNT] = { 1000, 10000, 100000, 500000, 1000000 };
+static const char *const g_perfScaleLabels[PERF_SCALE_STEP_COUNT] = { "1 K", "10 K", "100 K", "500 K", "1 M" };
+#define PERF_SCALE_DEFAULT_INDEX 1
+
+// The list box carries half the rows of the table, because its labels are five times as long and the
+// point of it is the WIDTH of a row rather than how many there are.
+#define PERF_LIST_ROWS_PER_TABLE_ROW 2
+
+#define PERF_TEXT_STEP_COUNT 4
+static const int32_t g_perfTextLineCounts[PERF_TEXT_STEP_COUNT] = { 500, 5000, 50000, 200000 };
+static const char *const g_perfTextLabels[PERF_TEXT_STEP_COUNT] = { "500", "5 K", "50 K", "200 K" };
+#define PERF_TEXT_DEFAULT_INDEX 1
+
+#define PERF_MENU_STEP_COUNT 4
+static const int32_t g_perfMenuItemCounts[PERF_MENU_STEP_COUNT] = { 10, 40, 120, 400 };
+static const char *const g_perfMenuLabels[PERF_MENU_STEP_COUNT] = { "10", "40", "120", "400" };
+#define PERF_MENU_DEFAULT_INDEX 1
+
+// How wide and how deep the generated menu tree is. Only the OPEN path costs anything per frame, but the
+// whole tree costs memory and generation time, which is a number worth seeing too.
+#define PERF_MENU_TOP_LEVEL_COUNT 12
+#define PERF_MENU_SUBMENUS_PER_MENU 3
+#define PERF_MENU_MAX_DEPTH 4
+
+#define PERF_TABLE_COLUMN_COUNT 8
+
+// ----------------------------------------------------------------------------
+// The generated file tree
+//
+// Shaped like a directory: twelve roots, folders down to a fixed depth, files at the bottom. The node budget
+// is split evenly between the roots, so stepping the scale up makes every root DEEPER rather than making the
+// first root swallow the whole budget - which is what keeps the folded case a dozen rows at every scale.
+//
+// The tree carries as many nodes as the table carries rows, so one scale step sizes both and the two can be
+// read against each other.
+// ----------------------------------------------------------------------------
+
+#define PERF_TREE_ROOT_COUNT 12
+#define PERF_TREE_MAX_DEPTH 6
+#define PERF_TREE_MIN_CHILDREN 2
+#define PERF_TREE_MAX_CHILDREN 8
+
+// The labels come out of a POOL rather than one per node. A million distinct names would be forty megabytes of
+// strings to measure something that does not depend on them being distinct: what a row costs to lay out is the
+// LENGTH of its text, and every name here is the same handful of syllables long whichever pool slot it is.
+#define PERF_TREE_NAME_POOL 2048
+#define PERF_TREE_NAME_CAPACITY 40
+
+/*
+	A ladder as deep as the library indents: at every level one node carries on downwards and one leaf sits
+	beside it.
+
+	The leaf is what makes this worth measuring. A bare chain has no siblings anywhere, and a guide line is only
+	drawn where a node has one - so a chain draws two lines a row however deep it goes, and would measure
+	nothing. With a sibling at every level, the deepest row carries a line for each of its ancestors, which is
+	the per-LEVEL cost this case is here to find.
+*/
+#define PERF_TREE_DEEP_DEPTH FUI_MAX_TREE_DEPTH
+#define PERF_TREE_DEEP_NODE_MAX (PERF_TREE_DEEP_DEPTH * 2)
+
+// The abstract sheet has four cells of different sizes rather than folder artwork, so a "folder" here is simply
+// a different cell from a "file". What the icon cases measure is the second draw command, not the picture.
+#define PERF_TREE_ICON_FOLDER_SHUT 0
+#define PERF_TREE_ICON_FOLDER_OPEN 1
+#define PERF_TREE_ICON_FILE 2
+
+// ----------------------------------------------------------------------------
+// Deterministic randomness
+//
+// xorshift32, seeded once. Every string in this program comes out of it, so the same scale always makes
+// the same data and two measurements can be compared at all.
+// ----------------------------------------------------------------------------
+
+#define PERF_RANDOM_SEED 0x9E3779B9u
+
+typedef struct PerfRandom {
+	uint32_t state;
+} PerfRandom;
+
+static void PerfRandomSeed(PerfRandom *random, const uint32_t seed) {
+	// Zero is the one state xorshift cannot leave, so it is replaced rather than trusted.
+	random->state = (seed != 0u) ? seed : PERF_RANDOM_SEED;
+}
+
+static uint32_t PerfRandomNext(PerfRandom *random) {
+	uint32_t state = random->state;
+	state ^= state << 13;
+	state ^= state >> 17;
+	state ^= state << 5;
+	random->state = state;
+	return(state);
+}
+
+static uint32_t PerfRandomBelow(PerfRandom *random, const uint32_t exclusiveUpperBound) {
+	if(exclusiveUpperBound == 0u) {
+		return(0u);
+	}
+	uint32_t drawn = PerfRandomNext(random);
+	return(drawn % exclusiveUpperBound);
+}
+
+// ----------------------------------------------------------------------------
+// A bump allocator for the generated strings
+//
+// Millions of little strings out of malloc would spend more time in the allocator than in the generator,
+// and every one of them would carry a header bigger than the string. One block, one cursor, and the
+// pointers handed out stay valid until the whole dataset is thrown away.
+// ----------------------------------------------------------------------------
+
+typedef struct PerfStringArena {
+	char *bytes;
+	size_t capacity;
+	size_t used;
+	bool ranOutOfRoom;
+} PerfStringArena;
+
+static bool PerfStringArenaInit(PerfStringArena *arena, const size_t capacity) {
+	memset(arena, 0, sizeof(*arena));
+	char *block = (char *)malloc(capacity);
+	if(block == fpl_null) {
+		return(false);
+	}
+	arena->bytes = block;
+	arena->capacity = capacity;
+	arena->used = 0;
+	return(true);
+}
+
+static void PerfStringArenaRelease(PerfStringArena *arena) {
+	if(arena->bytes != fpl_null) {
+		free(arena->bytes);
+	}
+	memset(arena, 0, sizeof(*arena));
+}
+
+//! Hands out a writable run of bytes, or null when the block is spent
+static char *PerfStringArenaTake(PerfStringArena *arena, const size_t byteCount) {
+	size_t wouldBeUsed = arena->used + byteCount;
+	if(wouldBeUsed > arena->capacity) {
+		arena->ranOutOfRoom = true;
+		return(fpl_null);
+	}
+	char *result = &arena->bytes[arena->used];
+	arena->used = wouldBeUsed;
+	return(result);
+}
+
+// ----------------------------------------------------------------------------
+// Hand rolled formatting
+//
+// snprintf is roughly a microsecond a call once its format string is parsed, and the generator makes six
+// strings per row. At a million rows that alone is six seconds of a stall the user watches. These write
+// straight into the destination and cost a few nanoseconds each.
+// ----------------------------------------------------------------------------
+
+static const char g_perfHexDigits[] = "0123456789abcdef";
+
+//! Appends a decimal number, padded with leading zeroes to at least minimumDigits
+static size_t PerfWriteUInt(char *destination, size_t offset, const uint32_t value, const int32_t minimumDigits) {
+	char reversedDigits[16];
+	int32_t digitCount = 0;
+	uint32_t remaining = value;
+	do {
+		reversedDigits[digitCount++] = (char)('0' + (remaining % 10u));
+		remaining /= 10u;
+	} while(remaining > 0u && digitCount < (int32_t)sizeof(reversedDigits));
+
+	for(int32_t padIndex = digitCount; padIndex < minimumDigits; ++padIndex) {
+		destination[offset++] = '0';
+	}
+	for(int32_t digitIndex = digitCount - 1; digitIndex >= 0; --digitIndex) {
+		destination[offset++] = reversedDigits[digitIndex];
+	}
+	return(offset);
+}
+
+//! Appends a fixed width lowercase hexadecimal number, most significant nibble first
+static size_t PerfWriteHex(char *destination, size_t offset, const uint32_t value, const int32_t digitCount) {
+	for(int32_t digitIndex = digitCount - 1; digitIndex >= 0; --digitIndex) {
+		uint32_t nibble = (value >> (digitIndex * 4)) & 0xFu;
+		destination[offset++] = g_perfHexDigits[nibble];
+	}
+	return(offset);
+}
+
+//! Appends a zero terminated string, without its terminator
+static size_t PerfWriteText(char *destination, size_t offset, const char *text) {
+	size_t textIndex = 0;
+	while(text[textIndex] != '\0') {
+		destination[offset++] = text[textIndex++];
+	}
+	return(offset);
+}
+
+static size_t PerfWriteChar(char *destination, size_t offset, const char character) {
+	destination[offset++] = character;
+	return(offset);
+}
+
+// ----------------------------------------------------------------------------
+// The word pools every generated string is assembled from
+//
+// Real looking names matter more than they sound: a column of "row 12345" is all the same width and all
+// the same prefix, which is the one case a text layout is fastest at. Words of differing lengths that
+// share prefixes are what a real table looks like, and what a sort has to work at.
+// ----------------------------------------------------------------------------
+
+static const char *const g_perfFirstWords[] = {
+	"azure", "crimson", "gilded", "hollow", "iron", "jade", "lunar", "marble",
+	"nether", "obsidian", "pale", "quartz", "russet", "sable", "tidal", "umber",
+	"verdant", "wisp", "xenon", "yarrow", "zephyr", "amber", "bronze", "cobalt",
+};
+
+static const char *const g_perfSecondWords[] = {
+	"bastion", "cavern", "delta", "ember", "forge", "grove", "harbor", "isle",
+	"junction", "keep", "lantern", "marsh", "node", "outpost", "pillar", "quarry",
+	"ridge", "spire", "tower", "vault", "warren", "yard", "zone", "anchor",
+};
+
+static const char *const g_perfCategories[] = {
+	"Texture", "Mesh", "Sound", "Script", "Shader", "Material", "Animation", "Prefab", "Level", "Font",
+};
+
+static const char *const g_perfStatuses[] = {
+	"OK", "Modified", "Missing", "Locked", "Conflict", "Stale", "Queued", "Building",
+};
+
+static const char *const g_perfFolders[] = {
+	"assets", "content", "source", "cache", "shared", "vendor",
+};
+
+static const fuiColumn g_perfTableColumns[PERF_TABLE_COLUMN_COUNT] = {
+	{ "Id", 110.0f },
+	{ "Name", 230.0f },
+	{ "Category", 130.0f },
+	{ "Status", 120.0f },
+	{ "Modified", 195.0f },
+	{ "Size", 120.0f },
+	{ "Path", 440.0f },
+	{ "Hash", 195.0f },
+};
+
+// ----------------------------------------------------------------------------
+// The icon sheet
+//
+// Four cells of coverage the workbench paints itself, so the icon cases need no asset. What is IN them
+// hardly matters here - a filled square that grows with the cell index is enough to tell one row's icon
+// from the next - because what these cases measure is the second draw command every icon row costs, not
+// the artwork. 64 by 16 is a power of two in both axes, which the OpenGL 1.x backend wants.
+// ----------------------------------------------------------------------------
+
+#define PERF_ICON_CELL_SIDE 16u
+#define PERF_ICON_CELL_COUNT 4u
+#define PERF_ICON_SHEET_WIDTH (PERF_ICON_CELL_SIDE * PERF_ICON_CELL_COUNT)
+#define PERF_ICON_SHEET_HEIGHT PERF_ICON_CELL_SIDE
+// ONE, where a file browser would want two. A taller row is a different experiment - fewer rows on screen and
+// so fewer of everything - and what these cases are after is the cost of the icon alone, with exactly as many
+// rows visible as the case without one. The 16 pixel cells scale up to the 21 the plain row leaves them.
+#define PERF_ICON_ROW_SCALE 1.0f
+
+static void PerfDrawIconSheet(unsigned char *coveragePixels) {
+	const int32_t cellSide = (int32_t)PERF_ICON_CELL_SIDE;
+	const int32_t sheetWidth = (int32_t)PERF_ICON_SHEET_WIDTH;
+	const int32_t smallestInset = 1;
+
+	memset(coveragePixels, 0, (size_t)sheetWidth * (size_t)cellSide);
+	for(int32_t cellIndex = 0; cellIndex < (int32_t)PERF_ICON_CELL_COUNT; ++cellIndex) {
+		int32_t cellsFromTheLast = (int32_t)PERF_ICON_CELL_COUNT - 1 - cellIndex;
+		int32_t inset = smallestInset + cellsFromTheLast;
+		for(int32_t y = inset; y < cellSide - inset; ++y) {
+			for(int32_t x = inset; x < cellSide - inset; ++x) {
+				int32_t sheetX = cellIndex * cellSide + x;
+				coveragePixels[(size_t)y * (size_t)sheetWidth + (size_t)sheetX] = 255;
+			}
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// The dataset
+// ----------------------------------------------------------------------------
+
+//! One node of the generated menu tree. A node with children is a submenu, one without is a plain row
+typedef struct PerfMenuNode {
+	const char *label;
+	struct PerfMenuNode *children;
+	int32_t childCount;
+} PerfMenuNode;
+
+typedef struct PerfDataSet {
+	PerfStringArena strings;
+
+	//! Row major, PERF_TABLE_COLUMN_COUNT entries per row, which is the layout fuiListView takes
+	const char **tableCells;
+	int32_t tableRowCount;
+
+	//! One icon cell per row, as long as the table. Kept for BOTH list widgets, the list box indexing it with
+	//! its own shorter row count, so the icon cases cost no second table
+	int32_t *iconForRow;
+
+	const char **listItems;
+	int32_t listItemCount;
+
+	//! One flat buffer of newline separated lines, which is what a multiline text field takes
+	char *textBuffer;
+	size_t textCapacity;
+	int32_t textLineCount;
+
+	//! Every node of the menu tree, sub-allocated from one block so a subtree is a contiguous run
+	PerfMenuNode *menuNodes;
+	int32_t menuNodeCapacity;
+	int32_t menuNodeCount;
+	PerfMenuNode *menuTopLevel;
+	int32_t menuTopLevelCount;
+	int32_t menuItemsPerMenu;
+
+	//! The generated file tree, in preorder, plus the two arrays that belong beside it
+	fuiTreeNode *treeNodes;
+	bool *treeIsExpanded;
+	int32_t *treeIconForNode;
+	int32_t treeNodeCount;
+	int32_t treeNodeCapacity;
+	//! The pools every node's label points into, so a million nodes cost a few kilobytes of names
+	const char **treeFolderNames;
+	const char **treeFileNames;
+
+	//! The deep ladder, sized once and never scaled with anything
+	fuiTreeNode deepNodes[PERF_TREE_DEEP_NODE_MAX];
+	bool deepIsExpanded[PERF_TREE_DEEP_NODE_MAX];
+	int32_t deepIconForNode[PERF_TREE_DEEP_NODE_MAX];
+	int32_t deepNodeCount;
+
+	//! What it took to build all of the above, which is a cost of its own worth seeing
+	double generationMilliseconds;
+	size_t generatedByteCount;
+	bool isComplete;
+} PerfDataSet;
+
+static void PerfDataSetRelease(PerfDataSet *data) {
+	PerfStringArenaRelease(&data->strings);
+	if(data->tableCells != fpl_null) {
+		free(data->tableCells);
+	}
+	if(data->iconForRow != fpl_null) {
+		free(data->iconForRow);
+	}
+	if(data->listItems != fpl_null) {
+		free(data->listItems);
+	}
+	if(data->textBuffer != fpl_null) {
+		free(data->textBuffer);
+	}
+	if(data->menuNodes != fpl_null) {
+		free(data->menuNodes);
+	}
+	if(data->treeNodes != fpl_null) {
+		free(data->treeNodes);
+	}
+	if(data->treeIsExpanded != fpl_null) {
+		free(data->treeIsExpanded);
+	}
+	if(data->treeIconForNode != fpl_null) {
+		free(data->treeIconForNode);
+	}
+	if(data->treeFolderNames != fpl_null) {
+		free(data->treeFolderNames);
+	}
+	if(data->treeFileNames != fpl_null) {
+		free(data->treeFileNames);
+	}
+	memset(data, 0, sizeof(*data));
+}
+
+//! How many menus the tree holds, which is what tells the generator how many nodes to reserve
+static int32_t PerfCountMenusInTree(void) {
+	int32_t menusAtThisDepth = PERF_MENU_TOP_LEVEL_COUNT;
+	int32_t totalMenus = 0;
+	for(int32_t depth = 1; depth <= PERF_MENU_MAX_DEPTH; ++depth) {
+		totalMenus += menusAtThisDepth;
+		menusAtThisDepth *= PERF_MENU_SUBMENUS_PER_MENU;
+	}
+	return(totalMenus);
+}
+
+//! Reserves a contiguous run of nodes, which is what makes a menu's children one array rather than a list
+static PerfMenuNode *PerfTakeMenuNodes(PerfDataSet *data, const int32_t nodeCount) {
+	int32_t wouldBeCount = data->menuNodeCount + nodeCount;
+	if(wouldBeCount > data->menuNodeCapacity) {
+		return(fpl_null);
+	}
+	PerfMenuNode *result = &data->menuNodes[data->menuNodeCount];
+	data->menuNodeCount = wouldBeCount;
+	return(result);
+}
+
+//! Fills one menu's children, recursing into the first few of them while there is depth left to spend
+static void PerfGenerateMenuChildren(PerfDataSet *data, PerfRandom *random, PerfMenuNode *menu, const int32_t depth) {
+	int32_t itemCount = data->menuItemsPerMenu;
+	PerfMenuNode *children = PerfTakeMenuNodes(data, itemCount);
+	if(children == fpl_null) {
+		menu->children = fpl_null;
+		menu->childCount = 0;
+		return;
+	}
+	menu->children = children;
+	menu->childCount = itemCount;
+
+	// Only the first few children become submenus, so the tree widens at a rate the node budget survives.
+	int32_t submenuCount = (depth < PERF_MENU_MAX_DEPTH) ? PERF_MENU_SUBMENUS_PER_MENU : 0;
+
+	const size_t menuLabelCapacity = 48;
+	for(int32_t itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+		PerfMenuNode *child = &children[itemIndex];
+		child->children = fpl_null;
+		child->childCount = 0;
+
+		char *label = PerfStringArenaTake(&data->strings, menuLabelCapacity);
+		if(label == fpl_null) {
+			child->label = "<out of memory>";
+			continue;
+		}
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		size_t offset = 0;
+		if(itemIndex < submenuCount) {
+			offset = PerfWriteText(label, offset, "More ");
+		}
+		offset = PerfWriteText(label, offset, g_perfFirstWords[firstWordIndex]);
+		offset = PerfWriteChar(label, offset, ' ');
+		offset = PerfWriteText(label, offset, g_perfSecondWords[secondWordIndex]);
+		offset = PerfWriteChar(label, offset, ' ');
+		offset = PerfWriteUInt(label, offset, (uint32_t)itemIndex, 3);
+		label[offset] = '\0';
+		child->label = label;
+
+		if(itemIndex < submenuCount) {
+			PerfGenerateMenuChildren(data, random, child, depth + 1);
+		}
+	}
+}
+
+static void PerfGenerateMenuTree(PerfDataSet *data, PerfRandom *random) {
+	PerfMenuNode *topLevel = PerfTakeMenuNodes(data, PERF_MENU_TOP_LEVEL_COUNT);
+	if(topLevel == fpl_null) {
+		return;
+	}
+	data->menuTopLevel = topLevel;
+	data->menuTopLevelCount = PERF_MENU_TOP_LEVEL_COUNT;
+
+	const size_t topLabelCapacity = 32;
+	for(int32_t menuIndex = 0; menuIndex < PERF_MENU_TOP_LEVEL_COUNT; ++menuIndex) {
+		PerfMenuNode *menu = &topLevel[menuIndex];
+		char *label = PerfStringArenaTake(&data->strings, topLabelCapacity);
+		if(label == fpl_null) {
+			menu->label = "<out of memory>";
+			menu->children = fpl_null;
+			menu->childCount = 0;
+			continue;
+		}
+		uint32_t wordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		size_t offset = 0;
+		offset = PerfWriteText(label, offset, g_perfSecondWords[wordIndex]);
+		offset = PerfWriteChar(label, offset, ' ');
+		offset = PerfWriteUInt(label, offset, (uint32_t)menuIndex, 2);
+		label[offset] = '\0';
+		menu->label = label;
+
+		const int32_t topLevelDepth = 1;
+		PerfGenerateMenuChildren(data, random, menu, topLevelDepth);
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Row generation
+//
+// The byte budgets below are what the arena is sized from, so every one of them has to be an upper bound
+// on what the writer below it can produce. They are generous rather than exact: a few wasted bytes a row
+// is nothing next to being wrong by one and writing into the next string.
+// ----------------------------------------------------------------------------
+
+#define PERF_CELL_ID_CAPACITY 12
+#define PERF_CELL_NAME_CAPACITY 32
+#define PERF_CELL_MODIFIED_CAPACITY 20
+#define PERF_CELL_SIZE_CAPACITY 16
+#define PERF_CELL_PATH_CAPACITY 88
+#define PERF_CELL_HASH_CAPACITY 20
+#define PERF_CELL_BYTES_PER_ROW (PERF_CELL_ID_CAPACITY + PERF_CELL_NAME_CAPACITY + PERF_CELL_MODIFIED_CAPACITY + PERF_CELL_SIZE_CAPACITY + PERF_CELL_PATH_CAPACITY + PERF_CELL_HASH_CAPACITY)
+
+#define PERF_LIST_ITEM_CAPACITY 128
+#define PERF_MENU_LABEL_CAPACITY 48
+#define PERF_MENU_TOP_LABEL_CAPACITY 32
+#define PERF_TEXT_BYTES_PER_LINE 128
+
+// Which columns of the table hold what, so the writers below and the sort default agree on one answer
+#define PERF_COLUMN_ID 0
+#define PERF_COLUMN_NAME 1
+#define PERF_COLUMN_CATEGORY 2
+#define PERF_COLUMN_STATUS 3
+#define PERF_COLUMN_MODIFIED 4
+#define PERF_COLUMN_SIZE 5
+#define PERF_COLUMN_PATH 6
+#define PERF_COLUMN_HASH 7
+
+#define PERF_YEAR_FIRST 2019u
+#define PERF_YEAR_SPAN 7u
+#define PERF_MONTHS_PER_YEAR 12u
+#define PERF_DAYS_PER_MONTH 28u
+#define PERF_HOURS_PER_DAY 24u
+#define PERF_MINUTES_PER_HOUR 60u
+
+//! Writes a size that reads like one, so the column has short and long values in it rather than one shape
+static size_t PerfWriteSize(char *destination, size_t offset, PerfRandom *random) {
+	static const char *const unitNames[] = { "B", "KB", "MB", "GB" };
+	uint32_t unitIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(unitNames));
+	uint32_t wholePart = PerfRandomBelow(random, 1024u);
+	uint32_t fractionPart = PerfRandomBelow(random, 10u);
+	offset = PerfWriteUInt(destination, offset, wholePart, 1);
+	offset = PerfWriteChar(destination, offset, '.');
+	offset = PerfWriteUInt(destination, offset, fractionPart, 1);
+	offset = PerfWriteChar(destination, offset, ' ');
+	offset = PerfWriteText(destination, offset, unitNames[unitIndex]);
+	return(offset);
+}
+
+static size_t PerfWriteTimestamp(char *destination, size_t offset, PerfRandom *random) {
+	uint32_t year = PERF_YEAR_FIRST + PerfRandomBelow(random, PERF_YEAR_SPAN);
+	uint32_t month = 1u + PerfRandomBelow(random, PERF_MONTHS_PER_YEAR);
+	uint32_t day = 1u + PerfRandomBelow(random, PERF_DAYS_PER_MONTH);
+	uint32_t hour = PerfRandomBelow(random, PERF_HOURS_PER_DAY);
+	uint32_t minute = PerfRandomBelow(random, PERF_MINUTES_PER_HOUR);
+	offset = PerfWriteUInt(destination, offset, year, 4);
+	offset = PerfWriteChar(destination, offset, '-');
+	offset = PerfWriteUInt(destination, offset, month, 2);
+	offset = PerfWriteChar(destination, offset, '-');
+	offset = PerfWriteUInt(destination, offset, day, 2);
+	offset = PerfWriteChar(destination, offset, ' ');
+	offset = PerfWriteUInt(destination, offset, hour, 2);
+	offset = PerfWriteChar(destination, offset, ':');
+	offset = PerfWriteUInt(destination, offset, minute, 2);
+	return(offset);
+}
+
+static bool PerfGenerateTable(PerfDataSet *data, PerfRandom *random, const int32_t rowCount) {
+	size_t cellCount = (size_t)rowCount * (size_t)PERF_TABLE_COLUMN_COUNT;
+	const char **cells = (const char **)malloc(cellCount * sizeof(const char *));
+	if(cells == fpl_null) {
+		return(false);
+	}
+	data->tableCells = cells;
+	data->tableRowCount = rowCount;
+
+	int32_t *iconForRow = (int32_t *)malloc((size_t)rowCount * sizeof(int32_t));
+	if(iconForRow == fpl_null) {
+		return(false);
+	}
+	data->iconForRow = iconForRow;
+
+	for(int32_t rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		uint32_t categoryIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfCategories));
+		uint32_t statusIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfStatuses));
+		uint32_t folderIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFolders));
+		const char *firstWord = g_perfFirstWords[firstWordIndex];
+		const char *secondWord = g_perfSecondWords[secondWordIndex];
+		uint32_t nameNumber = PerfRandomBelow(random, 10000u);
+
+		char *idCell = PerfStringArenaTake(&data->strings, PERF_CELL_ID_CAPACITY);
+		char *nameCell = PerfStringArenaTake(&data->strings, PERF_CELL_NAME_CAPACITY);
+		char *modifiedCell = PerfStringArenaTake(&data->strings, PERF_CELL_MODIFIED_CAPACITY);
+		char *sizeCell = PerfStringArenaTake(&data->strings, PERF_CELL_SIZE_CAPACITY);
+		char *pathCell = PerfStringArenaTake(&data->strings, PERF_CELL_PATH_CAPACITY);
+		char *hashCell = PerfStringArenaTake(&data->strings, PERF_CELL_HASH_CAPACITY);
+		bool everyCellArrived = (idCell != fpl_null) && (nameCell != fpl_null) && (modifiedCell != fpl_null) && (sizeCell != fpl_null) && (pathCell != fpl_null) && (hashCell != fpl_null);
+		if(!everyCellArrived) {
+			return(false);
+		}
+
+		size_t offset = 0;
+		offset = PerfWriteChar(idCell, offset, '#');
+		offset = PerfWriteUInt(idCell, offset, (uint32_t)rowIndex, 7);
+		idCell[offset] = '\0';
+
+		offset = 0;
+		offset = PerfWriteText(nameCell, offset, firstWord);
+		offset = PerfWriteChar(nameCell, offset, '-');
+		offset = PerfWriteText(nameCell, offset, secondWord);
+		offset = PerfWriteChar(nameCell, offset, '-');
+		offset = PerfWriteUInt(nameCell, offset, nameNumber, 4);
+		nameCell[offset] = '\0';
+
+		offset = 0;
+		offset = PerfWriteTimestamp(modifiedCell, offset, random);
+		modifiedCell[offset] = '\0';
+
+		offset = 0;
+		offset = PerfWriteSize(sizeCell, offset, random);
+		sizeCell[offset] = '\0';
+
+		// Deliberately long, and the one column that is wider than any sane default width. A cell whose
+		// text runs off the end of its column is the case a text layout has the most work to throw away.
+		offset = 0;
+		offset = PerfWriteChar(pathCell, offset, '/');
+		offset = PerfWriteText(pathCell, offset, g_perfFolders[folderIndex]);
+		offset = PerfWriteChar(pathCell, offset, '/');
+		offset = PerfWriteText(pathCell, offset, firstWord);
+		offset = PerfWriteChar(pathCell, offset, '/');
+		offset = PerfWriteText(pathCell, offset, secondWord);
+		offset = PerfWriteChar(pathCell, offset, '/');
+		offset = PerfWriteText(pathCell, offset, nameCell);
+		offset = PerfWriteText(pathCell, offset, ".dat");
+		pathCell[offset] = '\0';
+
+		uint32_t hashHigh = PerfRandomNext(random);
+		uint32_t hashLow = PerfRandomNext(random);
+		offset = 0;
+		offset = PerfWriteHex(hashCell, offset, hashHigh, 8);
+		offset = PerfWriteHex(hashCell, offset, hashLow, 8);
+		hashCell[offset] = '\0';
+
+		size_t cellBase = (size_t)rowIndex * (size_t)PERF_TABLE_COLUMN_COUNT;
+		cells[cellBase + PERF_COLUMN_ID] = idCell;
+		cells[cellBase + PERF_COLUMN_NAME] = nameCell;
+		// Category and status come out of a small pool, so those two columns cost no arena at all - which
+		// is what a real database column of an enumeration looks like.
+		cells[cellBase + PERF_COLUMN_CATEGORY] = g_perfCategories[categoryIndex];
+		cells[cellBase + PERF_COLUMN_STATUS] = g_perfStatuses[statusIndex];
+		cells[cellBase + PERF_COLUMN_MODIFIED] = modifiedCell;
+		cells[cellBase + PERF_COLUMN_SIZE] = sizeCell;
+		cells[cellBase + PERF_COLUMN_PATH] = pathCell;
+		cells[cellBase + PERF_COLUMN_HASH] = hashCell;
+
+		// The row's category picks its icon, which is what a real one does - the cell index MEANS something to
+		// the caller and nothing at all to the library.
+		iconForRow[rowIndex] = (int32_t)(categoryIndex % PERF_ICON_CELL_COUNT);
+	}
+	return(true);
+}
+
+static bool PerfGenerateListBox(PerfDataSet *data, PerfRandom *random, const int32_t itemCount) {
+	const char **items = (const char **)malloc((size_t)itemCount * sizeof(const char *));
+	if(items == fpl_null) {
+		return(false);
+	}
+	data->listItems = items;
+	data->listItemCount = itemCount;
+
+	for(int32_t itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+		char *item = PerfStringArenaTake(&data->strings, PERF_LIST_ITEM_CAPACITY);
+		if(item == fpl_null) {
+			return(false);
+		}
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		uint32_t tailWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		uint32_t categoryIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfCategories));
+		uint32_t statusIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfStatuses));
+		uint32_t tag = PerfRandomNext(random);
+
+		size_t offset = 0;
+		offset = PerfWriteChar(item, offset, '[');
+		offset = PerfWriteUInt(item, offset, (uint32_t)itemIndex, 7);
+		offset = PerfWriteText(item, offset, "] ");
+		offset = PerfWriteText(item, offset, g_perfFirstWords[firstWordIndex]);
+		offset = PerfWriteChar(item, offset, '-');
+		offset = PerfWriteText(item, offset, g_perfSecondWords[secondWordIndex]);
+		offset = PerfWriteText(item, offset, " | ");
+		offset = PerfWriteText(item, offset, g_perfCategories[categoryIndex]);
+		offset = PerfWriteText(item, offset, " | ");
+		offset = PerfWriteText(item, offset, g_perfStatuses[statusIndex]);
+		offset = PerfWriteText(item, offset, " | ");
+		offset = PerfWriteText(item, offset, g_perfSecondWords[tailWordIndex]);
+		offset = PerfWriteText(item, offset, " #");
+		offset = PerfWriteHex(item, offset, tag, 6);
+		item[offset] = '\0';
+		items[itemIndex] = item;
+	}
+	return(true);
+}
+
+//! Fills the two name pools every tree label points into
+static bool PerfGenerateTreeNames(PerfDataSet *data, PerfRandom *random) {
+	for(int32_t nameIndex = 0; nameIndex < PERF_TREE_NAME_POOL; ++nameIndex) {
+		char *folderName = PerfStringArenaTake(&data->strings, PERF_TREE_NAME_CAPACITY);
+		char *fileName = PerfStringArenaTake(&data->strings, PERF_TREE_NAME_CAPACITY);
+		if(folderName == fpl_null || fileName == fpl_null) {
+			return(false);
+		}
+
+		uint32_t folderWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		size_t offset = 0;
+		offset = PerfWriteText(folderName, offset, g_perfSecondWords[folderWordIndex]);
+		offset = PerfWriteChar(folderName, offset, '-');
+		offset = PerfWriteUInt(folderName, offset, (uint32_t)nameIndex, 4);
+		folderName[offset] = '\0';
+		data->treeFolderNames[nameIndex] = folderName;
+
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		offset = 0;
+		offset = PerfWriteText(fileName, offset, g_perfFirstWords[firstWordIndex]);
+		offset = PerfWriteChar(fileName, offset, '-');
+		offset = PerfWriteText(fileName, offset, g_perfSecondWords[secondWordIndex]);
+		offset = PerfWriteChar(fileName, offset, '-');
+		offset = PerfWriteUInt(fileName, offset, (uint32_t)nameIndex, 4);
+		offset = PerfWriteText(fileName, offset, ".dat");
+		fileName[offset] = '\0';
+		data->treeFileNames[nameIndex] = fileName;
+	}
+	return(true);
+}
+
+/*
+	Writes one node and, when it is a folder, everything under it - in PREORDER, which is the order fuiTreeNode
+	wants and the order a directory read recursively falls out in anyway.
+
+	It stops at stopAtNodeCount rather than at a child count, which is what lets the caller hand each root an
+	equal slice of the budget. A subtree cut off part way through is still a valid preorder, because a PREFIX of
+	one always is.
+*/
+static void PerfWriteTreeSubtree(PerfDataSet *data, PerfRandom *random, const int32_t depth, const int32_t stopAtNodeCount) {
+	bool thereIsRoom = (data->treeNodeCount < stopAtNodeCount) && (data->treeNodeCount < data->treeNodeCapacity);
+	if(!thereIsRoom) {
+		return;
+	}
+	int32_t nodeIndex = data->treeNodeCount;
+	data->treeNodeCount += 1;
+
+	bool isFolder = (depth < PERF_TREE_MAX_DEPTH);
+	uint32_t poolSlot = PerfRandomBelow(random, (uint32_t)PERF_TREE_NAME_POOL);
+	const char *label = isFolder ? data->treeFolderNames[poolSlot] : data->treeFileNames[poolSlot];
+	data->treeNodes[nodeIndex].label = label;
+	data->treeNodes[nodeIndex].depth = depth;
+	data->treeNodes[nodeIndex].descendantCount = 0;
+	data->treeIsExpanded[nodeIndex] = false;
+	data->treeIconForNode[nodeIndex] = isFolder ? PERF_TREE_ICON_FOLDER_SHUT : PERF_TREE_ICON_FILE;
+
+	if(!isFolder) {
+		return;
+	}
+	uint32_t childSpread = (uint32_t)(PERF_TREE_MAX_CHILDREN - PERF_TREE_MIN_CHILDREN + 1);
+	uint32_t extraChildren = PerfRandomBelow(random, childSpread);
+	int32_t childCount = PERF_TREE_MIN_CHILDREN + (int32_t)extraChildren;
+	for(int32_t childIndex = 0; childIndex < childCount; ++childIndex) {
+		PerfWriteTreeSubtree(data, random, depth + 1, stopAtNodeCount);
+	}
+}
+
+//! Writes one node of the deep ladder and answers where the next one goes
+static int32_t PerfWriteDeepNode(PerfDataSet *data, const int32_t writeIndex, const int32_t depth, const bool isFolder) {
+	if(writeIndex >= PERF_TREE_DEEP_NODE_MAX) {
+		return(writeIndex);
+	}
+	int32_t poolSlot = writeIndex % PERF_TREE_NAME_POOL;
+	const char *label = isFolder ? data->treeFolderNames[poolSlot] : data->treeFileNames[poolSlot];
+	data->deepNodes[writeIndex].label = label;
+	data->deepNodes[writeIndex].depth = depth;
+	data->deepNodes[writeIndex].descendantCount = 0;
+	data->deepIsExpanded[writeIndex] = true;
+	data->deepIconForNode[writeIndex] = isFolder ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FILE;
+	return(writeIndex + 1);
+}
+
+//! The deep ladder, which is its own tiny dataset and does not scale with anything
+static void PerfBuildDeepChain(PerfDataSet *data) {
+	// Written top down, and the leaf of a level goes in AFTER the whole subtree below it - which is what
+	// preorder means and what makes the node above it a sibling with something after it.
+	int32_t writeIndex = 0;
+	for(int32_t depth = 0; depth < PERF_TREE_DEEP_DEPTH; ++depth) {
+		const bool carriesOnDownwards = true;
+		writeIndex = PerfWriteDeepNode(data, writeIndex, depth, carriesOnDownwards);
+	}
+	// The siblings, deepest first, so each one lands behind the subtree it belongs beside.
+	for(int32_t depth = PERF_TREE_DEEP_DEPTH - 1; depth >= 1; --depth) {
+		const bool isALeaf = false;
+		writeIndex = PerfWriteDeepNode(data, writeIndex, depth, isALeaf);
+	}
+	data->deepNodeCount = writeIndex;
+	fuiTreeComputeDescendants(data->deepNodes, data->deepNodeCount);
+}
+
+static bool PerfGenerateTree(PerfDataSet *data, PerfRandom *random, const int32_t nodeCount) {
+	data->treeNodes = (fuiTreeNode *)malloc((size_t)nodeCount * sizeof(fuiTreeNode));
+	data->treeIsExpanded = (bool *)malloc((size_t)nodeCount * sizeof(bool));
+	data->treeIconForNode = (int32_t *)malloc((size_t)nodeCount * sizeof(int32_t));
+	data->treeFolderNames = (const char **)malloc((size_t)PERF_TREE_NAME_POOL * sizeof(const char *));
+	data->treeFileNames = (const char **)malloc((size_t)PERF_TREE_NAME_POOL * sizeof(const char *));
+	bool everythingArrived = (data->treeNodes != fpl_null) && (data->treeIsExpanded != fpl_null) && (data->treeIconForNode != fpl_null) && (data->treeFolderNames != fpl_null) && (data->treeFileNames != fpl_null);
+	if(!everythingArrived) {
+		return(false);
+	}
+	data->treeNodeCapacity = nodeCount;
+	data->treeNodeCount = 0;
+
+	bool namesArrived = PerfGenerateTreeNames(data, random);
+	if(!namesArrived) {
+		return(false);
+	}
+
+	// An equal slice of the budget per root, and then whatever the division left over into one more, so the
+	// node count comes out EXACTLY at the scale step rather than near it.
+	for(int32_t rootIndex = 0; rootIndex < PERF_TREE_ROOT_COUNT; ++rootIndex) {
+		int32_t budgetForThisRoot = (int32_t)(((int64_t)(rootIndex + 1) * (int64_t)nodeCount) / (int64_t)PERF_TREE_ROOT_COUNT);
+		PerfWriteTreeSubtree(data, random, 0, budgetForThisRoot);
+	}
+	while(data->treeNodeCount < data->treeNodeCapacity) {
+		PerfWriteTreeSubtree(data, random, 0, data->treeNodeCapacity);
+	}
+
+	// Once, here. This is what lets a folded node be stepped over in a single addition rather than child by child.
+	fuiTreeComputeDescendants(data->treeNodes, data->treeNodeCount);
+
+	// The roots start open, so the tab opens on something rather than on twelve shut folders.
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		bool isRoot = (data->treeNodes[nodeIndex].depth == 0);
+		if(isRoot) {
+			data->treeIsExpanded[nodeIndex] = true;
+			data->treeIconForNode[nodeIndex] = PERF_TREE_ICON_FOLDER_OPEN;
+		}
+	}
+
+	PerfBuildDeepChain(data);
+	return(true);
+}
+
+static bool PerfGenerateText(PerfDataSet *data, PerfRandom *random, const int32_t lineCount) {
+	size_t capacity = (size_t)lineCount * (size_t)PERF_TEXT_BYTES_PER_LINE + 1u;
+	char *buffer = (char *)malloc(capacity);
+	if(buffer == fpl_null) {
+		return(false);
+	}
+	data->textBuffer = buffer;
+	data->textCapacity = capacity;
+	data->textLineCount = lineCount;
+
+	size_t offset = 0;
+	for(int32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		uint32_t firstWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfFirstWords));
+		uint32_t secondWordIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfSecondWords));
+		uint32_t categoryIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfCategories));
+		uint32_t statusIndex = PerfRandomBelow(random, (uint32_t)fplArrayCount(g_perfStatuses));
+
+		offset = PerfWriteUInt(buffer, offset, (uint32_t)lineIndex, 6);
+		offset = PerfWriteText(buffer, offset, "  ");
+		offset = PerfWriteTimestamp(buffer, offset, random);
+		offset = PerfWriteText(buffer, offset, "  ");
+		offset = PerfWriteText(buffer, offset, g_perfStatuses[statusIndex]);
+		offset = PerfWriteText(buffer, offset, "  ");
+		offset = PerfWriteText(buffer, offset, g_perfCategories[categoryIndex]);
+		offset = PerfWriteText(buffer, offset, "  ");
+		offset = PerfWriteText(buffer, offset, g_perfFirstWords[firstWordIndex]);
+		offset = PerfWriteChar(buffer, offset, '-');
+		offset = PerfWriteText(buffer, offset, g_perfSecondWords[secondWordIndex]);
+		if(lineIndex + 1 < lineCount) {
+			offset = PerfWriteChar(buffer, offset, '\n');
+		}
+	}
+	buffer[offset] = '\0';
+	return(true);
+}
+
+//! Throws the old dataset away and builds a fresh one at the given scale. Returns false when the machine
+//! could not find the memory, which leaves an EMPTY dataset rather than a half filled one
+static bool PerfDataSetBuild(PerfDataSet *data, const int32_t tableRowCount, const int32_t textLineCount, const int32_t menuItemsPerMenu) {
+	PerfDataSetRelease(data);
+
+	fplTimestamp generationStart = fplTimestampQuery();
+
+	int32_t listItemCount = tableRowCount / PERF_LIST_ROWS_PER_TABLE_ROW;
+	int32_t menuCount = PerfCountMenusInTree();
+	int32_t menuNodeCapacity = PERF_MENU_TOP_LEVEL_COUNT + menuCount * menuItemsPerMenu;
+
+	size_t tableStringBytes = (size_t)tableRowCount * (size_t)PERF_CELL_BYTES_PER_ROW;
+	size_t listStringBytes = (size_t)listItemCount * (size_t)PERF_LIST_ITEM_CAPACITY;
+	size_t menuStringBytes = (size_t)menuNodeCapacity * (size_t)PERF_MENU_LABEL_CAPACITY + (size_t)PERF_MENU_TOP_LABEL_CAPACITY * (size_t)PERF_MENU_TOP_LEVEL_COUNT;
+	// Two pools and not one string per node, which is why this does not scale with the tree at all.
+	size_t treeStringBytes = (size_t)PERF_TREE_NAME_POOL * (size_t)PERF_TREE_NAME_CAPACITY * 2u;
+	size_t arenaCapacity = tableStringBytes + listStringBytes + menuStringBytes + treeStringBytes;
+
+	if(!PerfStringArenaInit(&data->strings, arenaCapacity)) {
+		PerfDataSetRelease(data);
+		return(false);
+	}
+
+	data->menuNodes = (PerfMenuNode *)malloc((size_t)menuNodeCapacity * sizeof(PerfMenuNode));
+	if(data->menuNodes == fpl_null) {
+		PerfDataSetRelease(data);
+		return(false);
+	}
+	data->menuNodeCapacity = menuNodeCapacity;
+	data->menuNodeCount = 0;
+	data->menuItemsPerMenu = menuItemsPerMenu;
+
+	PerfRandom random;
+	PerfRandomSeed(&random, PERF_RANDOM_SEED);
+
+	bool tableArrived = PerfGenerateTable(data, &random, tableRowCount);
+	bool listArrived = tableArrived && PerfGenerateListBox(data, &random, listItemCount);
+	// The tree carries as many nodes as the table carries rows, so one scale step sizes both.
+	bool treeArrived = listArrived && PerfGenerateTree(data, &random, tableRowCount);
+	bool textArrived = treeArrived && PerfGenerateText(data, &random, textLineCount);
+	if(!textArrived) {
+		PerfDataSetRelease(data);
+		return(false);
+	}
+	PerfGenerateMenuTree(data, &random);
+
+	fplTimestamp generationEnd = fplTimestampQuery();
+	double elapsedSeconds = fplTimestampElapsed(generationStart, generationEnd);
+	const double millisecondsPerSecond = 1000.0;
+	data->generationMilliseconds = elapsedSeconds * millisecondsPerSecond;
+
+	size_t cellPointerBytes = (size_t)tableRowCount * (size_t)PERF_TABLE_COLUMN_COUNT * sizeof(const char *);
+	size_t itemPointerBytes = (size_t)listItemCount * sizeof(const char *);
+	size_t iconTableBytes = (size_t)tableRowCount * sizeof(int32_t);
+	size_t menuNodeBytes = (size_t)menuNodeCapacity * sizeof(PerfMenuNode);
+	size_t treeNodeBytes = (size_t)data->treeNodeCapacity * (sizeof(fuiTreeNode) + sizeof(bool) + sizeof(int32_t));
+	data->generatedByteCount = data->strings.used + cellPointerBytes + itemPointerBytes + iconTableBytes + menuNodeBytes + treeNodeBytes + data->textCapacity;
+	data->isComplete = true;
+	return(true);
+}
+
+// ----------------------------------------------------------------------------
+// Measurement
+// ----------------------------------------------------------------------------
+
+#define PERF_HISTORY_COUNT 120
+#define PERF_SMOOTHING_WEIGHT 0.92
+#define PERF_MILLISECONDS_PER_SECOND 1000.0
+
+typedef struct PerfMetrics {
+	//! What this frame cost, unsmoothed, which is what the graph and the worst case read
+	double buildMilliseconds;
+	double renderMilliseconds;
+	double frameMilliseconds;
+	//! The same three run through an exponential average, because a per frame number flickers too fast to read
+	double smoothedBuildMilliseconds;
+	double smoothedRenderMilliseconds;
+	double smoothedFrameMilliseconds;
+	//! The worst frame since the last reset, which is where a sort or a regeneration shows up
+	double worstFrameMilliseconds;
+	//! A ring of recent frame times, oldest at historyWriteIndex
+	float frameHistory[PERF_HISTORY_COUNT];
+	int32_t historyWriteIndex;
+
+	//! Straight out of fuiDrawData, which is what explains the two times above
+	uint32_t commandCount;
+	uint32_t vertexCount;
+	uint32_t indexCount;
+	uint32_t textByteCount;
+	//! What the context arena has taken since it was created, which only ever grows
+	size_t arenaByteCount;
+	//! How many menu rows the open popups really emitted this frame
+	uint32_t menuRowCount;
+} PerfMetrics;
+
+static void PerfMetricsReset(PerfMetrics *metrics) {
+	memset(metrics, 0, sizeof(*metrics));
+}
+
+static void PerfMetricsPush(PerfMetrics *metrics, const double buildMilliseconds, const double renderMilliseconds, const double frameMilliseconds) {
+	metrics->buildMilliseconds = buildMilliseconds;
+	metrics->renderMilliseconds = renderMilliseconds;
+	metrics->frameMilliseconds = frameMilliseconds;
+
+	const double keepWeight = PERF_SMOOTHING_WEIGHT;
+	const double newWeight = 1.0 - PERF_SMOOTHING_WEIGHT;
+	metrics->smoothedBuildMilliseconds = metrics->smoothedBuildMilliseconds * keepWeight + buildMilliseconds * newWeight;
+	metrics->smoothedRenderMilliseconds = metrics->smoothedRenderMilliseconds * keepWeight + renderMilliseconds * newWeight;
+	metrics->smoothedFrameMilliseconds = metrics->smoothedFrameMilliseconds * keepWeight + frameMilliseconds * newWeight;
+
+	if(frameMilliseconds > metrics->worstFrameMilliseconds) {
+		metrics->worstFrameMilliseconds = frameMilliseconds;
+	}
+
+	metrics->frameHistory[metrics->historyWriteIndex] = (float)frameMilliseconds;
+	metrics->historyWriteIndex = (metrics->historyWriteIndex + 1) % PERF_HISTORY_COUNT;
+}
+
+// ----------------------------------------------------------------------------
+// Application state
+// ----------------------------------------------------------------------------
+
+#define PERF_TAB_LIST_VIEW 0
+#define PERF_TAB_LIST_BOX 1
+#define PERF_TAB_TEXT_BOX 2
+#define PERF_TAB_TREE 3
+#define PERF_TAB_EVERYTHING 4
+
+static const char *const g_perfTabNames[] = { "List view", "List box", "Text box", "Tree view", "All at once" };
+
+typedef struct PerfState {
+	PerfDataSet data;
+	PerfMetrics metrics;
+
+	//! What the data was last built at
+	int32_t scaleStepIndex;
+	int32_t textStepIndex;
+	int32_t menuStepIndex;
+	//! What the user asked for. Applied BETWEEN frames, never during a build: the list view holds the cell
+	//! array for the length of the call, and freeing it out from under one would be a use after free
+	int32_t requestedScaleStepIndex;
+	int32_t requestedTextStepIndex;
+	int32_t requestedMenuStepIndex;
+
+	int32_t activeTab;
+	int32_t tableSelection;
+	int32_t listSelection;
+	int32_t treeSelection;
+	int32_t deepTreeSelection;
+	//! What the tree's last build came to, which is the number the whole tree experiment turns on
+	int32_t treeVisibleCount;
+	//! Whether the tree draws the lines that tie a node to its children, which is up to one line per level per row
+	bool treeGuidesAreOn;
+
+	bool showMetricsPanel;
+	bool showGraph;
+	bool drawBatchingIsOn;
+	bool sortIsEnabled;
+	bool wordWrapIsOn;
+	//! The editor widget the benchmark measures, filled from the same lines the text box holds
+	fuiEditor editor;
+	//! Whether that editor has been initialised at all yet
+	bool editorIsReady;
+	//! Which text step its document was filled from, so a step that did not move costs no refill
+	int32_t editorTextStepIndex;
+	//! Whether a lexer is hung on it right now
+	bool editorLexerIsOn;
+	//! Whether it is breaking lines to the width of the view right now
+	bool editorWordWrapIsOn;
+	//! Whether both list widgets draw a row icon, which is the second draw command per visible row
+	bool iconsAreOn;
+	//! The sheet those icons come out of, zero until it is uploaded
+	fuiTextureId iconSheet;
+	fuiVec2 iconSheetSize;
+	bool uiOwnedTheMouseLastFrame;
+	bool isRunning;
+	bool ranOutOfMemory;
+
+	char statusMessage[PERF_STATUS_TEXT_MAX];
+	//! Counted while the menu tree is built, which is the only way to know what an open popup really emitted
+	uint32_t menuRowsThisFrame;
+} PerfState;
+
+//! The look both the window and the benchmark run under. Shared, so a reading taken from the terminal is
+//! of the same interface the window shows and not of a differently sized one
+static void PerfApplyTheme(fuiContext *ui) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	theme->fontHeight = PERF_FONT_HEIGHT;
+	theme->menuItemFontHeight = PERF_FONT_HEIGHT;
+	theme->menuItemHeight = PERF_MENU_ROW_HEIGHT;
+}
+
+static void PerfSay(PerfState *state, const char *message) {
+	fplCopyString(message, state->statusMessage, fplArrayCount(state->statusMessage));
+}
+
+//! Rebuilds the dataset at whatever the user last asked for, and says what it cost
+static void PerfApplyRequestedScale(PerfState *state) {
+	bool scaleChanged = (state->requestedScaleStepIndex != state->scaleStepIndex);
+	bool textChanged = (state->requestedTextStepIndex != state->textStepIndex);
+	bool menuChanged = (state->requestedMenuStepIndex != state->menuStepIndex);
+	if(!scaleChanged && !textChanged && !menuChanged && state->data.isComplete) {
+		return;
+	}
+
+	int32_t tableRowCount = g_perfScaleRowCounts[state->requestedScaleStepIndex];
+	int32_t textLineCount = g_perfTextLineCounts[state->requestedTextStepIndex];
+	int32_t menuItemsPerMenu = g_perfMenuItemCounts[state->requestedMenuStepIndex];
+
+	bool wasBuilt = PerfDataSetBuild(&state->data, tableRowCount, textLineCount, menuItemsPerMenu);
+	if(!wasBuilt) {
+		state->ranOutOfMemory = true;
+		// The request is rolled back rather than retried, so the next frame does not try the same
+		// allocation again and stall for as long a second time.
+		state->requestedScaleStepIndex = state->scaleStepIndex;
+		state->requestedTextStepIndex = state->textStepIndex;
+		state->requestedMenuStepIndex = state->menuStepIndex;
+		PerfSay(state, "Out of memory at that scale. Nothing was changed - step back down.");
+		return;
+	}
+
+	state->scaleStepIndex = state->requestedScaleStepIndex;
+	state->textStepIndex = state->requestedTextStepIndex;
+	state->menuStepIndex = state->requestedMenuStepIndex;
+	state->tableSelection = -1;
+	state->listSelection = -1;
+	state->treeSelection = -1;
+	state->deepTreeSelection = -1;
+	state->ranOutOfMemory = false;
+	PerfMetricsReset(&state->metrics);
+
+	const double bytesPerMegabyte = 1024.0 * 1024.0;
+	double megabytes = (double)state->data.generatedByteCount / bytesPerMegabyte;
+	char message[PERF_STATUS_TEXT_MAX];
+	fplStringFormat(message, fplArrayCount(message), "Generated %d rows, %d tree nodes, %d lines and %d menu nodes in %.0f ms (%.1f MB)", state->data.tableRowCount, state->data.treeNodeCount, state->data.textLineCount, state->data.menuNodeCount, state->data.generationMilliseconds, megabytes);
+	PerfSay(state, message);
+}
+
+static void PerfInit(PerfState *state) {
+	memset(state, 0, sizeof(*state));
+	state->scaleStepIndex = -1;
+	state->textStepIndex = -1;
+	state->menuStepIndex = -1;
+	state->requestedScaleStepIndex = PERF_SCALE_DEFAULT_INDEX;
+	state->requestedTextStepIndex = PERF_TEXT_DEFAULT_INDEX;
+	state->requestedMenuStepIndex = PERF_MENU_DEFAULT_INDEX;
+	state->activeTab = PERF_TAB_LIST_VIEW;
+	state->tableSelection = -1;
+	state->listSelection = -1;
+	state->treeSelection = -1;
+	state->deepTreeSelection = -1;
+	state->treeGuidesAreOn = false;
+	state->showMetricsPanel = true;
+	state->showGraph = true;
+	state->drawBatchingIsOn = true;
+	state->sortIsEnabled = true;
+	state->wordWrapIsOn = false;
+	state->editorTextStepIndex = -1;
+	state->iconsAreOn = false;
+	state->isRunning = true;
+	PerfSay(state, "Step the scale up with the tool strip and watch what build time does.");
+}
+
+// ----------------------------------------------------------------------------
+// The menu tree
+//
+// A closed submenu costs one fuiBeginMenu that answers false, so the tree below a shut menu is never
+// walked at all. What DOES cost is an open popup, which emits every one of its rows whether it fits on
+// the screen or not - which is exactly what the row counter in the status bar is there to show.
+// ----------------------------------------------------------------------------
+
+static void PerfBuildMenuNode(fuiContext *ui, PerfState *state, const PerfMenuNode *node, const int32_t depth) {
+	bool isSubmenu = (node->childCount > 0);
+	if(isSubmenu) {
+		// A submenu row inside an open popup is a row like any other. A top level title is not, so it is
+		// not counted: it lives on the bar and is there whether anything is open or not.
+		if(depth > 0) {
+			state->menuRowsThisFrame += 1u;
+		}
+		bool isOpen = fuiBeginMenu(ui, node->label);
+		if(isOpen) {
+			for(int32_t childIndex = 0; childIndex < node->childCount; ++childIndex) {
+				PerfBuildMenuNode(ui, state, &node->children[childIndex], depth + 1);
+			}
+		}
+		fuiEndMenu(ui);
+		return;
+	}
+
+	state->menuRowsThisFrame += 1u;
+	bool wasClicked = fuiMenuItem(ui, node->label, fpl_null, true);
+	if(wasClicked) {
+		char message[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(message, fplArrayCount(message), "Chose the menu row \"%s\"", node->label);
+		PerfSay(state, message);
+	}
+}
+
+static void PerfBuildMenuBar(fuiContext *ui, PerfState *state, const fuiRect barRect) {
+	fuiBeginMenuBar(ui, "menubar", barRect);
+
+	// A small hand written menu first, so the workbench stays controllable without going through the
+	// generated tree to find a switch.
+	bool viewIsOpen = fuiBeginMenu(ui, "Workbench");
+	if(viewIsOpen) {
+		if(fuiMenuItemCheck(ui, "Metrics panel", state->showMetricsPanel, true)) {
+			state->showMetricsPanel = !state->showMetricsPanel;
+		}
+		if(fuiMenuItemCheck(ui, "Frame time graph", state->showGraph, true)) {
+			state->showGraph = !state->showGraph;
+		}
+		if(fuiMenuItemCheck(ui, "Sortable columns", state->sortIsEnabled, true)) {
+			state->sortIsEnabled = !state->sortIsEnabled;
+		}
+		if(fuiMenuItemCheck(ui, "Row icons", state->iconsAreOn, true)) {
+			state->iconsAreOn = !state->iconsAreOn;
+		}
+		if(fuiMenuItemCheck(ui, "Merge draw commands", state->drawBatchingIsOn, true)) {
+			state->drawBatchingIsOn = !state->drawBatchingIsOn;
+		}
+		if(fuiMenuItemCheck(ui, "Word wrap in the text box", state->wordWrapIsOn, true)) {
+			state->wordWrapIsOn = !state->wordWrapIsOn;
+		}
+		fuiMenuSeparator(ui);
+		if(fuiMenuItem(ui, "Reset the worst frame", fpl_null, true)) {
+			state->metrics.worstFrameMilliseconds = 0.0;
+			PerfSay(state, "Worst frame reset.");
+		}
+		fuiMenuSeparator(ui);
+		if(fuiMenuItem(ui, "Quit", "Esc", true)) {
+			state->isRunning = false;
+		}
+	}
+	fuiEndMenu(ui);
+
+	const int32_t topLevelDepth = 0;
+	for(int32_t menuIndex = 0; menuIndex < state->data.menuTopLevelCount; ++menuIndex) {
+		const PerfMenuNode *menu = &state->data.menuTopLevel[menuIndex];
+		PerfBuildMenuNode(ui, state, menu, topLevelDepth);
+	}
+
+	fuiEndMenuBar(ui);
+}
+
+// ----------------------------------------------------------------------------
+// The tool strip
+// ----------------------------------------------------------------------------
+
+static void PerfBuildToolStrip(fuiContext *ui, PerfState *state, const fuiRect stripRect) {
+	fuiBeginToolStrip(ui, "toolstrip", stripRect, fuiAxis_Horizontal);
+
+	for(int32_t stepIndex = 0; stepIndex < PERF_SCALE_STEP_COUNT; ++stepIndex) {
+		bool isTheCurrentStep = (state->scaleStepIndex == stepIndex);
+		bool wasClicked = fuiToolStripToggle(ui, g_perfScaleLabels[stepIndex], isTheCurrentStep, true);
+		if(wasClicked) {
+			state->requestedScaleStepIndex = stepIndex;
+		}
+	}
+
+	fuiToolStripSeparator(ui);
+
+	bool metricsWasClicked = fuiToolStripToggle(ui, "Metrics", state->showMetricsPanel, true);
+	if(metricsWasClicked) {
+		state->showMetricsPanel = !state->showMetricsPanel;
+	}
+	bool graphWasClicked = fuiToolStripToggle(ui, "Graph", state->showGraph, true);
+	if(graphWasClicked) {
+		state->showGraph = !state->showGraph;
+	}
+	bool sortWasClicked = fuiToolStripToggle(ui, "Sortable", state->sortIsEnabled, true);
+	if(sortWasClicked) {
+		state->sortIsEnabled = !state->sortIsEnabled;
+	}
+	bool batchingWasClicked = fuiToolStripToggle(ui, "Batching", state->drawBatchingIsOn, true);
+	if(batchingWasClicked) {
+		state->drawBatchingIsOn = !state->drawBatchingIsOn;
+	}
+	bool wrapWasClicked = fuiToolStripToggle(ui, "Word wrap", state->wordWrapIsOn, true);
+	if(wrapWasClicked) {
+		state->wordWrapIsOn = !state->wordWrapIsOn;
+	}
+	bool iconsWasClicked = fuiToolStripToggle(ui, "Icons", state->iconsAreOn, true);
+	if(iconsWasClicked) {
+		state->iconsAreOn = !state->iconsAreOn;
+	}
+	bool guidesWasClicked = fuiToolStripToggle(ui, "Guides", state->treeGuidesAreOn, true);
+	if(guidesWasClicked) {
+		state->treeGuidesAreOn = !state->treeGuidesAreOn;
+	}
+
+	fuiToolStripSeparator(ui);
+
+	bool regenerateWasClicked = fuiToolStripButton(ui, "Regenerate");
+	if(regenerateWasClicked) {
+		// Forced through by pretending nothing is built, which is what makes the same scale rebuild and
+		// puts the generation cost back on the clock.
+		state->data.isComplete = false;
+	}
+	bool resetWasClicked = fuiToolStripButton(ui, "Reset peak");
+	if(resetWasClicked) {
+		state->metrics.worstFrameMilliseconds = 0.0;
+	}
+
+	fuiEndToolStrip(ui);
+}
+
+// ----------------------------------------------------------------------------
+// The metrics panel
+// ----------------------------------------------------------------------------
+
+#define PERF_GRAPH_HEIGHT 100.0f
+#define PERF_GRAPH_FLOOR_MILLISECONDS 20.0f
+#define PERF_SIXTY_HERTZ_MILLISECONDS 16.667f
+#define PERF_METRIC_ROW_HEIGHT 26.0f
+#define PERF_STEP_BUTTON_WIDTH 78.0f
+
+static void PerfDrawFrameGraph(fuiContext *ui, const PerfMetrics *metrics, const fuiRect rect) {
+	fuiTheme *theme = fuiGetTheme(ui);
+	fuiDrawRect(ui, rect, theme->widgetTrackColor);
+	fuiDrawRectOutline(ui, rect, theme->panelBorderColor, theme->widgetBorderThickness);
+
+	// Scaled to the tallest sample but never below a floor, so a quiet graph is a flat line near the
+	// bottom rather than noise blown up to the full height.
+	float tallestSample = PERF_GRAPH_FLOOR_MILLISECONDS;
+	for(int32_t sampleIndex = 0; sampleIndex < PERF_HISTORY_COUNT; ++sampleIndex) {
+		float sample = metrics->frameHistory[sampleIndex];
+		if(sample > tallestSample) {
+			tallestSample = sample;
+		}
+	}
+
+	fuiColor withinBudgetColor = fuiColorRGBA(0.35f, 0.75f, 0.45f, 1.0f);
+	fuiColor overBudgetColor = fuiColorRGBA(0.85f, 0.42f, 0.30f, 1.0f);
+	float barWidth = rect.w / (float)PERF_HISTORY_COUNT;
+	for(int32_t sampleIndex = 0; sampleIndex < PERF_HISTORY_COUNT; ++sampleIndex) {
+		// Read oldest first, so the newest sample is at the right hand edge and the graph reads forward.
+		int32_t ringIndex = (metrics->historyWriteIndex + sampleIndex) % PERF_HISTORY_COUNT;
+		float sample = metrics->frameHistory[ringIndex];
+		if(sample <= 0.0f) {
+			continue;
+		}
+		float normalizedHeight = sample / tallestSample;
+		float barHeight = normalizedHeight * rect.h;
+		float barLeft = rect.x + (float)sampleIndex * barWidth;
+		float barTop = rect.y + rect.h - barHeight;
+		fuiRect bar = fuiRectMake(barLeft, barTop, barWidth, barHeight);
+		bool isOverBudget = (sample > PERF_SIXTY_HERTZ_MILLISECONDS);
+		fuiDrawRect(ui, bar, isOverBudget ? overBudgetColor : withinBudgetColor);
+	}
+
+	// The sixty hertz budget, so a bar crossing it is visible without reading the number next to it.
+	float budgetFraction = PERF_SIXTY_HERTZ_MILLISECONDS / tallestSample;
+	if(budgetFraction < 1.0f) {
+		float lineY = rect.y + rect.h - budgetFraction * rect.h;
+		fuiVec2 lineStart = fuiV2(rect.x, lineY);
+		fuiVec2 lineEnd = fuiV2(rect.x + rect.w, lineY);
+		fuiColor budgetLineColor = fuiColorRGBA(0.95f, 0.85f, 0.35f, 0.7f);
+		fuiDrawLine(ui, lineStart, lineEnd, budgetLineColor, 1.0f);
+	}
+}
+
+//! One "name  value" line of the readout. Two columns would need a stack per row for no gain at this width
+static void PerfMetricLine(fuiContext *ui, const char *name, const char *value) {
+	char line[96];
+	fplStringFormat(line, fplArrayCount(line), "%-13s %s", name, value);
+	fuiRect lineRect = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+	fuiLabel(ui, lineRect, line);
+}
+
+//! A row of step buttons that all set the same request, which is the shape both scale rows below take
+static void PerfStepButtonRow(fuiContext *ui, const char *stackId, const char *const *labels, const int32_t labelCount, const int32_t currentIndex, int32_t *requestedIndex) {
+	fuiRect rowRect = fuiLayoutSlot(ui, PERF_ROW_HEIGHT);
+	fuiBeginStackAt(ui, stackId, fuiAxis_Horizontal, rowRect, FUI_SPACING_FROM_THEME);
+	for(int32_t labelIndex = 0; labelIndex < labelCount; ++labelIndex) {
+		fuiRect buttonRect = fuiLayoutSlot(ui, PERF_STEP_BUTTON_WIDTH);
+		bool isTheCurrentStep = (currentIndex == labelIndex);
+		// The step already showing is drawn as disabled, which is the cheapest way to say "you are here"
+		// without a second widget kind in the row.
+		bool wasClicked = fuiButtonEx(ui, buttonRect, labels[labelIndex], !isTheCurrentStep);
+		if(wasClicked) {
+			*requestedIndex = labelIndex;
+		}
+	}
+	fuiEndStack(ui);
+}
+
+static void PerfBuildMetricsPanel(fuiContext *ui, PerfState *state) {
+	if(!state->showMetricsPanel) {
+		return;
+	}
+
+	// Scrolling, because the readout is a fixed list of lines and the window is not: at a readable type
+	// size the last few rows and the graph fall off the bottom of a short window, and a workbench that
+	// hides its own numbers when the window is resized is worse than useless.
+	const float panelTakesTheWholeHeight = 0.0f;
+	bool panelIsOpen = fuiBeginScrollPanel(ui, "Metrics", fuiDock_Left, 0.0f, 0.0f, PERF_METRICS_PANEL_WIDTH, panelTakesTheWholeHeight);
+	if(panelIsOpen) {
+		const PerfMetrics *metrics = &state->metrics;
+		const PerfDataSet *data = &state->data;
+		char value[64];
+
+		fuiRect timingsCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiLabel(ui, timingsCaption, "-- per frame --");
+
+		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedBuildMilliseconds);
+		PerfMetricLine(ui, "Build", value);
+		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedRenderMilliseconds);
+		PerfMetricLine(ui, "Submit", value);
+		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->smoothedFrameMilliseconds);
+		PerfMetricLine(ui, "Frame", value);
+		fplStringFormat(value, fplArrayCount(value), "%7.3f ms", metrics->worstFrameMilliseconds);
+		PerfMetricLine(ui, "Worst frame", value);
+
+		double framesPerSecond = 0.0;
+		if(metrics->smoothedFrameMilliseconds > 0.0) {
+			framesPerSecond = PERF_MILLISECONDS_PER_SECOND / metrics->smoothedFrameMilliseconds;
+		}
+		fplStringFormat(value, fplArrayCount(value), "%7.1f", framesPerSecond);
+		PerfMetricLine(ui, "Frames/sec", value);
+
+		fuiRect firstSeparator = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiSeparator(ui, firstSeparator);
+
+		fuiRect drawCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiLabel(ui, drawCaption, "-- draw data --");
+
+		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->commandCount);
+		PerfMetricLine(ui, "Commands", value);
+		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->vertexCount);
+		PerfMetricLine(ui, "Vertices", value);
+		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->indexCount);
+		PerfMetricLine(ui, "Indices", value);
+		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->textByteCount);
+		PerfMetricLine(ui, "Text bytes", value);
+		fplStringFormat(value, fplArrayCount(value), "%7u", metrics->menuRowCount);
+		PerfMetricLine(ui, "Menu rows", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", state->treeVisibleCount);
+		PerfMetricLine(ui, "Tree rows", value);
+		// A rebuild is what a fold costs. It should climb by one per click and stay put while nothing changes -
+		// a counter that runs up on its own is the cache failing to recognise a tree it already knows.
+		fplStringFormat(value, fplArrayCount(value), "%7u", ui->treeRebuildCount);
+		PerfMetricLine(ui, "Tree rebuilds", value);
+
+		const double bytesPerKilobyte = 1024.0;
+		double arenaKilobytes = (double)metrics->arenaByteCount / bytesPerKilobyte;
+		fplStringFormat(value, fplArrayCount(value), "%7.0f KB", arenaKilobytes);
+		PerfMetricLine(ui, "UI arena", value);
+
+		fuiRect secondSeparator = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiSeparator(ui, secondSeparator);
+
+		fuiRect dataCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiLabel(ui, dataCaption, "-- dataset --");
+
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->tableRowCount);
+		PerfMetricLine(ui, "Table rows", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->listItemCount);
+		PerfMetricLine(ui, "List rows", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->textLineCount);
+		PerfMetricLine(ui, "Text lines", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->treeNodeCount);
+		PerfMetricLine(ui, "Tree nodes", value);
+		fplStringFormat(value, fplArrayCount(value), "%7d", data->menuNodeCount);
+		PerfMetricLine(ui, "Menu nodes", value);
+
+		const double bytesPerMegabyte = 1024.0 * 1024.0;
+		double dataMegabytes = (double)data->generatedByteCount / bytesPerMegabyte;
+		fplStringFormat(value, fplArrayCount(value), "%7.1f MB", dataMegabytes);
+		PerfMetricLine(ui, "Data size", value);
+		fplStringFormat(value, fplArrayCount(value), "%7.0f ms", data->generationMilliseconds);
+		PerfMetricLine(ui, "Generated in", value);
+
+		fuiRect textStepCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiLabel(ui, textStepCaption, "Text lines");
+		PerfStepButtonRow(ui, "textsteps", g_perfTextLabels, PERF_TEXT_STEP_COUNT, state->textStepIndex, &state->requestedTextStepIndex);
+
+		fuiRect menuStepCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+		fuiLabel(ui, menuStepCaption, "Items per menu");
+		PerfStepButtonRow(ui, "menusteps", g_perfMenuLabels, PERF_MENU_STEP_COUNT, state->menuStepIndex, &state->requestedMenuStepIndex);
+
+		if(state->showGraph) {
+			fuiRect graphCaption = fuiLayoutSlot(ui, PERF_METRIC_ROW_HEIGHT);
+			fuiLabel(ui, graphCaption, "-- frame time --");
+			fuiRect graphRect = fuiLayoutSlot(ui, PERF_GRAPH_HEIGHT);
+			PerfDrawFrameGraph(ui, metrics, graphRect);
+		}
+	}
+	fuiEndPanel(ui);
+}
+
+// ----------------------------------------------------------------------------
+// The data widgets
+//
+// One per tab, so a reading can be taken of ONE widget kind. The last tab builds all three at once,
+// which is what an actual application window looks like and what the totals have to survive.
+// ----------------------------------------------------------------------------
+
+#define PERF_TABLE_ID "perftable"
+#define PERF_LIST_ID "perflist"
+#define PERF_TEXT_ID "perftext"
+#define PERF_EDITOR_ID "perfeditor"
+#define PERF_TREE_ID "perftree"
+#define PERF_DEEP_TREE_ID "perfdeeptree"
+#define PERF_NOTE_HEIGHT 28.0f
+#define PERF_TREE_BUTTON_WIDTH 120.0f
+
+/*
+	The row icons both list widgets take, or a zeroed struct when they are off.
+
+	Icons are the one option here that changes what the DRAW DATA looks like rather than what the build costs:
+	every visible row emits a second command, because the texture flips between the sheet and the font atlas
+	between the icon and the label, and fuiSetDrawBatching only ever merges commands that share a texture and a
+	clip. Turning the toggle on and reading the command counter is the whole measurement.
+*/
+static void PerfFillListIcons(const PerfState *state, const int32_t rowCount, fuiListIcons *outIcons) {
+	memset(outIcons, 0, sizeof(*outIcons));
+	if(!state->iconsAreOn || state->iconSheet == 0) {
+		return;
+	}
+	outIcons->sheet = state->iconSheet;
+	outIcons->sheetSize = state->iconSheetSize;
+	outIcons->columns = (int32_t)PERF_ICON_CELL_COUNT;
+	outIcons->rows = 1;
+	outIcons->cellForRow = state->data.iconForRow;
+	outIcons->cellForRowCount = rowCount;
+	// Well below the 2.0 a file browser wants: at a hundred thousand rows the point is how many fit on screen
+	// at once, and doubling the row height halves that.
+	outIcons->rowScale = PERF_ICON_ROW_SCALE;
+}
+
+static void PerfBuildListViewTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	// A list longer than FUI_MAX_SORTABLE_ROWS is not sorted at all, and the library says nothing about
+	// it: the header still takes the click and still draws its arrow, and the rows simply stay in the
+	// caller's own order. Saying so here is the difference between a limit and a mystery.
+	bool isBeyondTheSortCap = (state->data.tableRowCount > (int32_t)FUI_MAX_SORTABLE_ROWS);
+	float noteHeight = isBeyondTheSortCap ? PERF_NOTE_HEIGHT : 0.0f;
+	fuiRect listRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - noteHeight);
+
+	fuiListViewSetSortable(ui, PERF_TABLE_ID, state->sortIsEnabled);
+
+	fuiListIcons icons;
+	PerfFillListIcons(state, state->data.tableRowCount, &icons);
+
+	bool wasActivated = false;
+	bool selectionChanged = fuiListViewEx(ui, listRect, PERF_TABLE_ID, g_perfTableColumns, PERF_TABLE_COLUMN_COUNT, state->data.tableCells, state->data.tableRowCount, &state->tableSelection, &icons, &wasActivated);
+	if(selectionChanged) {
+		size_t nameCellIndex = (size_t)state->tableSelection * (size_t)PERF_TABLE_COLUMN_COUNT + (size_t)PERF_COLUMN_NAME;
+		const char *pickedName = state->data.tableCells[nameCellIndex];
+		char message[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(message, fplArrayCount(message), "Row %d of %d picked: %s", state->tableSelection + 1, state->data.tableRowCount, pickedName);
+		PerfSay(state, message);
+	}
+
+	if(isBeyondTheSortCap) {
+		char note[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(note, fplArrayCount(note), "%d rows is past FUI_MAX_SORTABLE_ROWS (%d) - a header click sorts nothing here", state->data.tableRowCount, (int32_t)FUI_MAX_SORTABLE_ROWS);
+		fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - noteHeight, rect.w, noteHeight);
+		fuiLabel(ui, noteRect, note);
+	}
+}
+
+static void PerfBuildListBoxTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	// The list box is a tenth of the table's length and reads the FRONT of the same icon table, which is what
+	// keeps the two widgets on one allocation.
+	fuiListIcons icons;
+	PerfFillListIcons(state, state->data.listItemCount, &icons);
+
+	bool *noActivation = fpl_null;
+	bool selectionChanged = fuiListBoxEx(ui, rect, PERF_LIST_ID, state->data.listItems, state->data.listItemCount, &state->listSelection, &icons, noActivation);
+	if(selectionChanged) {
+		char message[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(message, fplArrayCount(message), "List row %d of %d picked", state->listSelection + 1, state->data.listItemCount);
+		PerfSay(state, message);
+	}
+}
+
+/*
+	The editor widget, which is what final_ui_texteditor.h costs against the same text the text box holds.
+
+	Both widgets are handed the SAME generated lines, so the pair of readings differ in the widget and in
+	nothing else. What the editor adds on top is a gutter, a caret, a status line, a colouring pass and -
+	when it is asked for - a second index that breaks every line to the width of the view.
+
+	Measured only, with no tab of its own in the window: demos/FUI_Editor is that demo already, and a
+	second copy of it here would be a thing to keep in step rather than a thing to learn from.
+*/
+
+//! What the workbench lexer hands out. Not a language, on purpose - see the note on the lexer below
+typedef enum PerfEditorStyle {
+	PerfEditorStyle_Default = 0,
+	PerfEditorStyle_Number,
+	PerfEditorStyle_Word,
+	PerfEditorStyle_Separator,
+	PerfEditorStyle_Count,
+} PerfEditorStyle;
+
+/*
+	A lexer that colours by CHARACTER CLASS rather than by language.
+
+	What is being measured is not whether a keyword came out purple - it is what a colouring pass costs
+	and, more to the point, what the STYLE RUNS it produces cost, because a line is cut into a piece of
+	geometry wherever what it is drawn with changes. Digits, letters and punctuation each getting their own
+	colour puts a boundary at every token of a log line, which is about what a code lexer does to a line of
+	C and is the case the "many runs per line" risk is really about.
+*/
+static int32_t PerfLexEditorLine(fuiEditorLexRequest *request) {
+	const char *text = request->text;
+	int32_t length = request->textLength;
+	uint8_t *styles = request->styles;
+
+	for(int32_t offset = 0; offset < length; ++offset) {
+		unsigned char currentByte = (unsigned char)text[offset];
+		bool isADigit = (currentByte >= '0') && (currentByte <= '9');
+		bool isALowerLetter = (currentByte >= 'a') && (currentByte <= 'z');
+		bool isAnUpperLetter = (currentByte >= 'A') && (currentByte <= 'Z');
+		bool isABlank = (currentByte == ' ') || (currentByte == '\t');
+
+		PerfEditorStyle style = PerfEditorStyle_Separator;
+		if(isADigit) {
+			style = PerfEditorStyle_Number;
+		} else if(isALowerLetter || isAnUpperLetter || currentByte == '_') {
+			style = PerfEditorStyle_Word;
+		} else if(isABlank) {
+			style = PerfEditorStyle_Default;
+		}
+		styles[offset] = (uint8_t)style;
+	}
+
+	// Nothing here survives a line ending, so every line starts in the same state and the incremental
+	// machinery converges on the very first one.
+	const int32_t oneStateOnly = 0;
+	return(oneStateOnly);
+}
+
+static fuiEditorStyleDef g_perfEditorStyleTable[PerfEditorStyle_Count];
+
+static void PerfBuildEditorStyleTable(void) {
+	g_perfEditorStyleTable[PerfEditorStyle_Default].color = fuiColorRGBA(0.0f, 0.0f, 0.0f, 0.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Number].color = fuiColorRGBA(0.70f, 0.78f, 0.56f, 1.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Word].color = fuiColorRGBA(0.42f, 0.72f, 0.80f, 1.0f);
+	g_perfEditorStyleTable[PerfEditorStyle_Separator].color = fuiColorRGBA(0.62f, 0.68f, 0.76f, 1.0f);
+}
+
+//! Puts the generated lines into the editor's document, and only when they are not the ones already in it
+static void PerfSyncEditorDocument(PerfState *state) {
+	bool documentIsUpToDate = state->editorIsReady && (state->editorTextStepIndex == state->textStepIndex);
+	if(documentIsUpToDate) {
+		return;
+	}
+	if(!state->editorIsReady) {
+		if(!fuiEditorInit(&state->editor, fpl_null)) {
+			return;
+		}
+		state->editorIsReady = true;
+	}
+	if(state->data.textBuffer == fpl_null) {
+		return;
+	}
+
+	// Filling it is an EDIT of tens of megabytes and has no business inside a measured frame, which is why
+	// this is called from the runner rather than from the build below.
+	const int32_t untilTheTerminator = 0;
+	fuiEditorSetText(&state->editor, state->data.textBuffer, untilTheTerminator);
+	fuiEditorSetScrollOffset(&state->editor, 0.0f, 0.0f);
+	state->editorTextStepIndex = state->textStepIndex;
+}
+
+//! Hangs the lexer on or takes it off, and turns the breaking on or off - and does neither when nothing changed
+static void PerfConfigureEditor(PerfState *state, const bool wantsTheLexer, const bool wantsWordWrap) {
+	if(!state->editorIsReady) {
+		return;
+	}
+
+	bool lexerIsAlreadyRight = (state->editorLexerIsOn == wantsTheLexer);
+	bool wrapIsAlreadyRight = (state->editorWordWrapIsOn == wantsWordWrap);
+	if(lexerIsAlreadyRight && wrapIsAlreadyRight) {
+		return;
+	}
+
+	if(!lexerIsAlreadyRight) {
+		if(wantsTheLexer) {
+			PerfBuildEditorStyleTable();
+			fuiEditorLexer lexer = fplZeroInit;
+			lexer.lexLine = PerfLexEditorLine;
+			lexer.styles = g_perfEditorStyleTable;
+			lexer.styleCount = (int32_t)PerfEditorStyle_Count;
+			fuiEditorSetLexer(&state->editor, &lexer);
+		} else {
+			fuiEditorSetLexer(&state->editor, fpl_null);
+		}
+		state->editorLexerIsOn = wantsTheLexer;
+	}
+
+	if(!wrapIsAlreadyRight) {
+		// Set only when it really changed: every fuiEditorSetConfig throws the resolved configuration away,
+		// and doing that per frame would put a resolve into every reading taken here.
+		fuiEditorConfig config = fuiEditorDefaultConfig();
+		config.toggles.wordWrap = wantsWordWrap;
+		fuiEditorSetConfig(&state->editor, &config);
+		state->editorWordWrapIsOn = wantsWordWrap;
+	}
+}
+
+//! A view far too narrow for the generated lines, centred so the wheel still lands inside it
+static fuiRect PerfNarrowRect(const fuiRect rect) {
+	const float narrowFraction = 0.2f;
+	float narrowWidth = rect.w * narrowFraction;
+	float narrowX = rect.x + (rect.w - narrowWidth) * 0.5f;
+	return(fuiRectMake(narrowX, rect.y, narrowWidth, rect.h));
+}
+
+static void PerfBuildEditorTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	if(!state->editorIsReady) {
+		return;
+	}
+	(void)fuiTextEditor(ui, rect, PERF_EDITOR_ID, &state->editor);
+}
+
+static void PerfBuildTextBoxTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	// The field lays out a WINDOW of its document rather than the front of it, so every one of these lines
+	// is reachable with the wheel or the bar. FUI_MAX_TEXT_LINES is the size of that window now and not a
+	// ceiling on the document, which is what it used to be.
+	fuiRect fieldRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - PERF_NOTE_HEIGHT);
+
+	const bool isMultiline = true;
+	int32_t capacity = (int32_t)state->data.textCapacity;
+	(void)fuiTextInputEx(ui, fieldRect, PERF_TEXT_ID, state->data.textBuffer, capacity, isMultiline, state->wordWrapIsOn);
+
+	const double bytesPerMegabyte = 1024.0 * 1024.0;
+	double megabytes = (double)state->data.textCapacity / bytesPerMegabyte;
+	char note[PERF_STATUS_TEXT_MAX];
+	fplStringFormat(note, fplArrayCount(note), "%d lines, %.1f MB - scroll it with the wheel or the bar. Word wrap makes every scroll lay the document out again", state->data.textLineCount, megabytes);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
+}
+
+/*
+	The row icons the tree takes. Same sheet as the lists, and the same point: what changes is the DRAW DATA
+	rather than the build, because every row with an icon emits a second command.
+
+	The tree indexes this table by NODE and the lists index theirs by row, so the two cannot share one array -
+	a tree node and a table row of the same number are unrelated things.
+*/
+static void PerfFillTreeIcons(const PerfState *state, const int32_t nodeCount, const int32_t *cellForNode, fuiListIcons *outIcons) {
+	memset(outIcons, 0, sizeof(*outIcons));
+	if(!state->iconsAreOn || state->iconSheet == 0) {
+		return;
+	}
+	outIcons->sheet = state->iconSheet;
+	outIcons->sheetSize = state->iconSheetSize;
+	outIcons->columns = (int32_t)PERF_ICON_CELL_COUNT;
+	outIcons->rows = 1;
+	outIcons->cellForRow = cellForNode;
+	outIcons->cellForRowCount = nodeCount;
+	outIcons->rowScale = PERF_ICON_ROW_SCALE;
+}
+
+/*
+	Folds the whole tree one way or the other.
+
+	Two things have to happen besides the flags. The icons follow, which is a pass of its own because a folder
+	shut and a folder open are two different cells - and the tree is told its rows are stale, because past
+	FUI_TREE_VERIFY_NODES it no longer hashes the flags every frame and cannot see a change made behind its back.
+	That second call is the whole contract of fuiTreeInvalidate, and this is what it looks like.
+*/
+static void PerfSetTreeExpandedAll(fuiContext *ui, PerfState *state, const bool expandedValue) {
+	PerfDataSet *data = &state->data;
+	fuiTreeSetExpandedAll(data->treeNodes, data->treeNodeCount, data->treeIsExpanded, expandedValue);
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		int32_t descendantCount = data->treeNodes[nodeIndex].descendantCount;
+		bool isFolder = (descendantCount > 0);
+		if(isFolder) {
+			data->treeIconForNode[nodeIndex] = expandedValue ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FOLDER_SHUT;
+		}
+	}
+	fuiTreeInvalidate(ui, PERF_TREE_ID);
+}
+
+//! Everything shut except the twelve roots, which is what the tab opens on and what the folded case measures
+static void PerfFoldTreeToRoots(fuiContext *ui, PerfState *state) {
+	PerfDataSet *data = &state->data;
+	PerfSetTreeExpandedAll(ui, state, false);
+	for(int32_t nodeIndex = 0; nodeIndex < data->treeNodeCount; ++nodeIndex) {
+		bool isRoot = (data->treeNodes[nodeIndex].depth == 0);
+		if(isRoot) {
+			data->treeIsExpanded[nodeIndex] = true;
+			data->treeIconForNode[nodeIndex] = PERF_TREE_ICON_FOLDER_OPEN;
+		}
+	}
+	fuiTreeInvalidate(ui, PERF_TREE_ID);
+}
+
+//! What a button in the tree tab's control row asked for
+#define PERF_TREE_FOLD_NONE 0
+#define PERF_TREE_FOLD_OPEN 1
+#define PERF_TREE_FOLD_SHUT 2
+#define PERF_TREE_FOLD_ROOTS 3
+
+static void PerfBuildTreeTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	/*
+		The buttons only RECORD what they want, and it is acted on once the stack has closed again.
+
+		A stack pushes an identifier scope, and fuiTreeInvalidate resolves the tree's identifier in whatever
+		scope it is called from - so invalidating from inside the row would name a widget that does not exist
+		and silently do nothing at all. The same is true of fuiTreeReveal.
+	*/
+	int32_t requestedFold = PERF_TREE_FOLD_NONE;
+
+	fuiRect controlsRect = fuiRectMake(rect.x, rect.y, rect.w, PERF_ROW_HEIGHT);
+	fuiBeginStackAt(ui, "treecontrols", fuiAxis_Horizontal, controlsRect, FUI_SPACING_FROM_THEME);
+	fuiRect expandButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, expandButtonRect, "Expand all")) {
+		requestedFold = PERF_TREE_FOLD_OPEN;
+	}
+	fuiRect collapseButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, collapseButtonRect, "Collapse all")) {
+		requestedFold = PERF_TREE_FOLD_SHUT;
+	}
+	fuiRect rootsButtonRect = fuiLayoutSlot(ui, PERF_TREE_BUTTON_WIDTH);
+	if(fuiButton(ui, rootsButtonRect, "Only roots")) {
+		requestedFold = PERF_TREE_FOLD_ROOTS;
+	}
+	fuiEndStack(ui);
+
+	if(requestedFold == PERF_TREE_FOLD_OPEN) {
+		PerfSetTreeExpandedAll(ui, state, true);
+		PerfSay(state, "Every node open. That ONE frame pays for the whole index - watch the worst frame, not the median.");
+	} else if(requestedFold == PERF_TREE_FOLD_SHUT) {
+		PerfSetTreeExpandedAll(ui, state, false);
+		PerfSay(state, "Every node shut. A tree of this size now costs what its twelve roots cost.");
+	} else if(requestedFold == PERF_TREE_FOLD_ROOTS) {
+		PerfFoldTreeToRoots(ui, state);
+		PerfSay(state, "Back to the twelve roots.");
+	}
+
+	float treeTop = controlsRect.y + controlsRect.h + PERF_CONTENT_INSET;
+	float treeHeight = rect.y + rect.h - treeTop - PERF_NOTE_HEIGHT;
+	fuiRect treeRect = fuiRectMake(rect.x, treeTop, rect.w, treeHeight);
+
+	fuiListIcons icons;
+	PerfFillTreeIcons(state, state->data.treeNodeCount, state->data.treeIconForNode, &icons);
+
+	fuiTreeDesc desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.nodes = state->data.treeNodes;
+	desc.nodeCount = state->data.treeNodeCount;
+	desc.isExpanded = state->data.treeIsExpanded;
+	desc.icons = &icons;
+	desc.showGuides = state->treeGuidesAreOn;
+	desc.keyboardIsEnabled = true;
+
+	fuiTreeAction action;
+	memset(&action, 0, sizeof(action));
+	bool selectionChanged = fuiTreeViewEx(ui, treeRect, PERF_TREE_ID, &desc, &state->treeSelection, &action);
+	if(action.toggledNode >= 0) {
+		// ONE entry rather than a pass over the table: a fold changes the picture of exactly one row.
+		bool isOpen = state->data.treeIsExpanded[action.toggledNode];
+		state->data.treeIconForNode[action.toggledNode] = isOpen ? PERF_TREE_ICON_FOLDER_OPEN : PERF_TREE_ICON_FOLDER_SHUT;
+	}
+	if(selectionChanged) {
+		const char *pickedLabel = state->data.treeNodes[state->treeSelection].label;
+		char message[PERF_STATUS_TEXT_MAX];
+		fplStringFormat(message, fplArrayCount(message), "Node %d of %d picked: %s", state->treeSelection + 1, state->data.treeNodeCount, pickedLabel);
+		PerfSay(state, message);
+	}
+
+	// Read straight after the build, because it is what THAT build came to.
+	state->treeVisibleCount = fuiTreeGetVisibleCount(ui, PERF_TREE_ID);
+
+	char note[PERF_STATUS_TEXT_MAX];
+	fplStringFormat(note, fplArrayCount(note), "%d nodes, %d rows showing - a folded subtree is stepped over in one addition, so a frame costs its ROWS and never its nodes", state->data.treeNodeCount, state->treeVisibleCount);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
+}
+
+//! The chain, as deep as the library indents. Guides are forced on, because per-LEVEL cost is what it is for
+static void PerfBuildDeepTreeTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	fuiRect treeRect = fuiRectMake(rect.x, rect.y, rect.w, rect.h - PERF_NOTE_HEIGHT);
+
+	fuiListIcons icons;
+	PerfFillTreeIcons(state, state->data.deepNodeCount, state->data.deepIconForNode, &icons);
+
+	fuiTreeDesc desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.nodes = state->data.deepNodes;
+	desc.nodeCount = state->data.deepNodeCount;
+	desc.isExpanded = state->data.deepIsExpanded;
+	desc.icons = &icons;
+	desc.showGuides = true;
+
+	fuiTreeAction *noAction = fpl_null;
+	(void)fuiTreeViewEx(ui, treeRect, PERF_DEEP_TREE_ID, &desc, &state->deepTreeSelection, noAction);
+
+	char note[PERF_STATUS_TEXT_MAX];
+	int32_t linesOnTheDeepestRow = PERF_TREE_DEEP_DEPTH - 1;
+	fplStringFormat(note, fplArrayCount(note), "%d levels with a leaf beside each - the deepest row draws %d guide lines on its own", (int32_t)PERF_TREE_DEEP_DEPTH, linesOnTheDeepestRow);
+	fuiRect noteRect = fuiRectMake(rect.x, rect.y + rect.h - PERF_NOTE_HEIGHT, rect.w, PERF_NOTE_HEIGHT);
+	fuiLabel(ui, noteRect, note);
+}
+
+#define PERF_SPLIT_FRACTION 0.55f
+
+static void PerfBuildEverythingTab(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	float leftWidth = rect.w * PERF_SPLIT_FRACTION;
+	float rightWidth = rect.w - leftWidth - PERF_CONTENT_INSET;
+	float rightLeft = rect.x + leftWidth + PERF_CONTENT_INSET;
+	float halfHeight = (rect.h - PERF_CONTENT_INSET) * 0.5f;
+	// The left column is split too now, so the tree stands beside the table rather than squeezing the other
+	// three. Four widgets at once is what an actual application window looks like.
+	float tableHeight = rect.h * PERF_SPLIT_FRACTION;
+	float treeTop = rect.y + tableHeight + PERF_CONTENT_INSET;
+	float treeHeight = rect.y + rect.h - treeTop;
+
+	fuiRect tableRect = fuiRectMake(rect.x, rect.y, leftWidth, tableHeight);
+	fuiRect treeRect = fuiRectMake(rect.x, treeTop, leftWidth, treeHeight);
+	fuiRect listRect = fuiRectMake(rightLeft, rect.y, rightWidth, halfHeight);
+	fuiRect textRect = fuiRectMake(rightLeft, rect.y + halfHeight + PERF_CONTENT_INSET, rightWidth, halfHeight);
+
+	PerfBuildListViewTab(ui, state, tableRect);
+	PerfBuildTreeTab(ui, state, treeRect);
+	PerfBuildListBoxTab(ui, state, listRect);
+	PerfBuildTextBoxTab(ui, state, textRect);
+}
+
+static void PerfBuildContent(fuiContext *ui, PerfState *state, const fuiRect rect) {
+	fuiRect tabStripRect = fuiRectMake(rect.x, rect.y, rect.w, PERF_TAB_STRIP_HEIGHT);
+	int32_t tabCount = (int32_t)fplArrayCount(g_perfTabNames);
+	state->activeTab = fuiTabControl(ui, tabStripRect, "contenttabs", g_perfTabNames, tabCount);
+
+	float contentTop = rect.y + PERF_TAB_STRIP_HEIGHT + PERF_CONTENT_INSET;
+	float contentHeight = rect.y + rect.h - contentTop;
+	fuiRect contentRect = fuiRectMake(rect.x, contentTop, rect.w, contentHeight);
+
+	switch(state->activeTab) {
+		case PERF_TAB_LIST_BOX:
+			PerfBuildListBoxTab(ui, state, contentRect);
+			break;
+		case PERF_TAB_TEXT_BOX:
+			PerfBuildTextBoxTab(ui, state, contentRect);
+			break;
+		case PERF_TAB_TREE:
+			PerfBuildTreeTab(ui, state, contentRect);
+			break;
+		case PERF_TAB_EVERYTHING:
+			PerfBuildEverythingTab(ui, state, contentRect);
+			break;
+		case PERF_TAB_LIST_VIEW:
+		default:
+			PerfBuildListViewTab(ui, state, contentRect);
+			break;
+	}
+}
+
+#define PERF_CONTEXT_MENU_ID "perfcontextmenu"
+
+//! The first generated menu's children, straight into a context menu. One popup, every row of it emitted,
+//! which is the worst case a menu can put on a frame and the easiest one to open on purpose
+static void PerfBuildContextMenu(fuiContext *ui, PerfState *state) {
+	bool isOpen = fuiBeginContextMenu(ui, PERF_CONTEXT_MENU_ID);
+	if(isOpen && state->data.menuTopLevelCount > 0) {
+		const PerfMenuNode *menu = &state->data.menuTopLevel[0];
+		const int32_t popupDepth = 1;
+		for(int32_t childIndex = 0; childIndex < menu->childCount; ++childIndex) {
+			PerfBuildMenuNode(ui, state, &menu->children[childIndex], popupDepth);
+		}
+	}
+	fuiEndContextMenu(ui);
+}
+
+static void PerfBuildStatusBar(fuiContext *ui, PerfState *state, const fuiRect statusRect) {
+	fuiBeginStatusBar(ui, "statusbar", statusRect);
+	fuiStatusText(ui, state->statusMessage);
+
+	const PerfMetrics *metrics = &state->metrics;
+	char rightText[80];
+
+	double framesPerSecond = 0.0;
+	if(metrics->smoothedFrameMilliseconds > 0.0) {
+		framesPerSecond = PERF_MILLISECONDS_PER_SECOND / metrics->smoothedFrameMilliseconds;
+	}
+	fplStringFormat(rightText, fplArrayCount(rightText), "%.0f fps", framesPerSecond);
+	fuiStatusTextRight(ui, rightText);
+
+	fplStringFormat(rightText, fplArrayCount(rightText), "build %.2f ms", metrics->smoothedBuildMilliseconds);
+	fuiStatusTextRight(ui, rightText);
+
+	fplStringFormat(rightText, fplArrayCount(rightText), "submit %.2f ms", metrics->smoothedRenderMilliseconds);
+	fuiStatusTextRight(ui, rightText);
+
+	fplStringFormat(rightText, fplArrayCount(rightText), "%u cmds", metrics->commandCount);
+	fuiStatusTextRight(ui, rightText);
+
+	fplStringFormat(rightText, fplArrayCount(rightText), "%u menu rows", metrics->menuRowCount);
+	fuiStatusTextRight(ui, rightText);
+
+	fuiEndStatusBar(ui);
+}
+
+static void PerfBuildUserInterface(fuiContext *ui, PerfState *state, const bool rightWasPressed) {
+	state->menuRowsThisFrame = 0u;
+
+	// A right press the interface did not want opens the big popup wherever the cursor is. Asked of the
+	// PREVIOUS frame, because nothing has been built yet and fuiWantsMouse would answer for a stale layout.
+	if(rightWasPressed && !state->uiOwnedTheMouseLastFrame) {
+		fuiOpenContextMenu(ui, PERF_CONTEXT_MENU_ID);
+	}
+
+	// The three bars come off the root container before anything else, so their thickness is the theme's
+	// and their width is whatever the window is.
+	float menuBarHeight = fuiMenuBarHeight(ui);
+	float toolStripThickness = fuiToolStripThickness(ui);
+	float statusBarHeight = fuiStatusBarHeight(ui);
+	fuiRect menuBarRect = fuiLayoutDock(ui, fuiDock_Top, menuBarHeight);
+	fuiRect toolStripRect = fuiLayoutDock(ui, fuiDock_Top, toolStripThickness);
+	fuiRect statusBarRect = fuiLayoutDock(ui, fuiDock_Bottom, statusBarHeight);
+
+	PerfBuildToolStrip(ui, state, toolStripRect);
+	PerfBuildMetricsPanel(ui, state);
+
+	fuiRect contentRect = fuiLayoutRemaining(ui);
+	fuiRect insetContentRect = fuiRectMake(contentRect.x + PERF_CONTENT_INSET, contentRect.y + PERF_CONTENT_INSET, contentRect.w - PERF_CONTENT_INSET * 2.0f, contentRect.h - PERF_CONTENT_INSET * 2.0f);
+	PerfBuildContent(ui, state, insetContentRect);
+
+	PerfBuildStatusBar(ui, state, statusBarRect);
+
+	// Built LAST, because a popup floats above the docked layout and a later call takes the cursor from an
+	// earlier one with no z ordering anywhere.
+	PerfBuildMenuBar(ui, state, menuBarRect);
+	PerfBuildContextMenu(ui, state);
+}
+
+// ----------------------------------------------------------------------------
+// Headless benchmark
+//
+// The whole point of the window is to SEE the cost. The point of this is to be able to compare two
+// versions of final_ui.h without one, from a terminal, with numbers that do not move between runs.
+//
+// No window and no OpenGL: the font is baked on the processor, the atlas is never uploaded, and the
+// texture identifier the draw commands carry is simply zero. Everything the library does to build a
+// frame - layout, hit testing, sorting, text measuring, tessellation - happens exactly as it does with
+// a window in front of it. Only the driver is missing, and the command count stands in for it.
+// ----------------------------------------------------------------------------
+
+#define PERF_BENCHMARK_WARMUP_FRAMES 8
+#define PERF_BENCHMARK_SAMPLE_FRAMES 41
+#define PERF_BENCHMARK_WIDTH 1600
+#define PERF_BENCHMARK_HEIGHT 940
+#define PERF_BENCHMARK_MARGIN 20.0f
+#define PERF_BENCHMARK_MENU_ANCHOR 40.0f
+
+typedef enum PerfSubject {
+	PerfSubject_ListView = 0,
+	PerfSubject_ListViewSorted,
+	PerfSubject_ListViewResorted,
+	PerfSubject_ListBox,
+	PerfSubject_ListViewIcons,
+	PerfSubject_ListBoxIcons,
+	PerfSubject_TextBox,
+	PerfSubject_TextBoxWrapped,
+	PerfSubject_Editor,
+	PerfSubject_EditorLexed,
+	PerfSubject_EditorWrapped,
+	PerfSubject_EditorNarrow,
+	PerfSubject_EditorNarrowWrapped,
+	PerfSubject_TreeFolded,
+	PerfSubject_TreeOpen,
+	PerfSubject_TreeToggling,
+	PerfSubject_TreeIcons,
+	PerfSubject_TreeGuides,
+	PerfSubject_TreeDeep,
+	PerfSubject_MenuPopup,
+	PerfSubject_Everything,
+} PerfSubject;
+
+typedef struct PerfCase {
+	const char *name;
+	PerfSubject subject;
+	int32_t scaleStepIndex;
+	int32_t textStepIndex;
+	int32_t menuStepIndex;
+	//! Whether this case merges consecutive draw commands, which is what the "batched" twins turn on
+	bool drawBatchingIsOn;
+	//! How far to spin the wheel with the cursor INSIDE the widget, for a case that measures a scrolled one
+	float wheelSpin;
+} PerfCase;
+
+// Every case names the ONE thing it varies. Reading down a column of these is the whole experiment: the
+// scale goes up by ten and the build time either follows it or it does not.
+static const PerfCase g_perfCases[] = {
+	{ "listview 1K",          PerfSubject_ListView,       0, 0, 0, false, 0.0f },
+	{ "listview 10K",         PerfSubject_ListView,       1, 0, 0, false, 0.0f },
+	{ "listview 100K",        PerfSubject_ListView,       2, 0, 0, false, 0.0f },
+	{ "listview 1M",          PerfSubject_ListView,       4, 0, 0, false, 0.0f },
+	{ "listview sorted 1K",   PerfSubject_ListViewSorted, 0, 0, 0, false, 0.0f },
+	{ "listview sorted 10K",  PerfSubject_ListViewSorted, 1, 0, 0, false, 0.0f },
+	{ "listview sorted 100K", PerfSubject_ListViewSorted, 2, 0, 0, false, 0.0f },
+	{ "listview sorted 1M",   PerfSubject_ListViewSorted, 4, 0, 0, false, 0.0f },
+	{ "listview resort 1K",   PerfSubject_ListViewResorted, 0, 0, 0, false, 0.0f },
+	{ "listview resort 10K",  PerfSubject_ListViewResorted, 1, 0, 0, false, 0.0f },
+	{ "listview resort 100K", PerfSubject_ListViewResorted, 2, 0, 0, false, 0.0f },
+	{ "listbox 500",          PerfSubject_ListBox,        0, 0, 0, false, 0.0f },
+	{ "listbox 5K",           PerfSubject_ListBox,        1, 0, 0, false, 0.0f },
+	{ "listbox 50K",          PerfSubject_ListBox,        2, 0, 0, false, 0.0f },
+	{ "listbox 500K",         PerfSubject_ListBox,        4, 0, 0, false, 0.0f },
+	{ "listview 100K icons",  PerfSubject_ListViewIcons,  2, 0, 0, false, 0.0f },
+	{ "listview 100K icn bat", PerfSubject_ListViewIcons, 2, 0, 0, true, 0.0f },
+	{ "listbox 50K icons",    PerfSubject_ListBoxIcons,   2, 0, 0, false, 0.0f },
+	{ "listbox 50K icn bat",  PerfSubject_ListBoxIcons,   2, 0, 0, true, 0.0f },
+	{ "textbox 500",          PerfSubject_TextBox,        0, 0, 0, false, 0.0f },
+	{ "textbox 5K",           PerfSubject_TextBox,        0, 1, 0, false, 0.0f },
+	{ "textbox 50K",          PerfSubject_TextBox,        0, 2, 0, false, 0.0f },
+	{ "textbox 200K",         PerfSubject_TextBox,        0, 3, 0, false, 0.0f },
+	{ "textbox 200K wrapped", PerfSubject_TextBoxWrapped, 0, 3, 0, false, 0.0f },
+	{ "textbox 200K at end",  PerfSubject_TextBox,        0, 3, 0, false, -1000000.0f },
+	{ "textbox 200K wrap end", PerfSubject_TextBoxWrapped, 0, 3, 0, false, -1000000.0f },
+	{ "editor 5K",            PerfSubject_Editor,         0, 1, 0, false, 0.0f },
+	{ "editor 50K",           PerfSubject_Editor,         0, 2, 0, false, 0.0f },
+	{ "editor 200K",          PerfSubject_Editor,         0, 3, 0, false, 0.0f },
+	{ "editor 200K at end",   PerfSubject_Editor,         0, 3, 0, false, -1000000.0f },
+	{ "editor 200K lexed",    PerfSubject_EditorLexed,    0, 3, 0, false, 0.0f },
+	{ "editor 200K lexed bat", PerfSubject_EditorLexed,   0, 3, 0, true,  0.0f },
+	{ "editor 200K wrapped",  PerfSubject_EditorWrapped,  0, 3, 0, false, 0.0f },
+	{ "editor 200K wrap end", PerfSubject_EditorWrapped,  0, 3, 0, false, -1000000.0f },
+	{ "editor 200K narrow",   PerfSubject_EditorNarrow,   0, 3, 0, false, 0.0f },
+	{ "editor 200K nrw wrap", PerfSubject_EditorNarrowWrapped, 0, 3, 0, false, 0.0f },
+	{ "tree 1K folded",       PerfSubject_TreeFolded,     0, 0, 0, false, 0.0f },
+	{ "tree 10K folded",      PerfSubject_TreeFolded,     1, 0, 0, false, 0.0f },
+	{ "tree 100K folded",     PerfSubject_TreeFolded,     2, 0, 0, false, 0.0f },
+	{ "tree 1M folded",       PerfSubject_TreeFolded,     4, 0, 0, false, 0.0f },
+	{ "tree 1K open",         PerfSubject_TreeOpen,       0, 0, 0, false, 0.0f },
+	{ "tree 10K open",        PerfSubject_TreeOpen,       1, 0, 0, false, 0.0f },
+	{ "tree 100K open",       PerfSubject_TreeOpen,       2, 0, 0, false, 0.0f },
+	{ "tree 1M open",         PerfSubject_TreeOpen,       4, 0, 0, false, 0.0f },
+	{ "tree 1M open at end",  PerfSubject_TreeOpen,       4, 0, 0, false, -1000000.0f },
+	{ "tree 10K toggling",    PerfSubject_TreeToggling,   1, 0, 0, false, 0.0f },
+	{ "tree 100K toggling",   PerfSubject_TreeToggling,   2, 0, 0, false, 0.0f },
+	{ "tree 1M toggling",     PerfSubject_TreeToggling,   4, 0, 0, false, 0.0f },
+	{ "tree 100K icons",      PerfSubject_TreeIcons,      2, 0, 0, false, 0.0f },
+	{ "tree 100K icn bat",    PerfSubject_TreeIcons,      2, 0, 0, true, 0.0f },
+	{ "tree 100K guides",     PerfSubject_TreeGuides,     2, 0, 0, false, 0.0f },
+	{ "tree deep 64",         PerfSubject_TreeDeep,       0, 0, 0, false, 0.0f },
+	{ "menu 10 rows",         PerfSubject_MenuPopup,      0, 0, 0, false, 0.0f },
+	{ "menu 40 rows",         PerfSubject_MenuPopup,      0, 0, 1, false, 0.0f },
+	{ "menu 120 rows",        PerfSubject_MenuPopup,      0, 0, 2, false, 0.0f },
+	{ "menu 400 rows",        PerfSubject_MenuPopup,      0, 0, 3, false, 0.0f },
+	{ "everything 10K",       PerfSubject_Everything,     1, 1, 1, false, 0.0f },
+	{ "everything 100K",      PerfSubject_Everything,     2, 2, 2, false, 0.0f },
+	{ "listview 100K batched", PerfSubject_ListView,      2, 0, 0, true, 0.0f },
+	{ "everything 100K batchd", PerfSubject_Everything,   2, 2, 2, true, 0.0f },
+};
+
+static void PerfBuildBenchmarkFrame(fuiContext *ui, PerfState *state, const PerfSubject subject, const fuiRect rect, const bool isTheFirstFrame) {
+	state->menuRowsThisFrame = 0u;
+	switch(subject) {
+		case PerfSubject_ListViewSorted:
+		{
+			// Seeded rather than clicked, because there is no cursor to click a header with. It takes only
+			// the first time it is asked, so calling it every frame is what the library expects.
+			fuiListViewSetSortDefault(ui, PERF_TABLE_ID, PERF_COLUMN_NAME, true);
+			PerfBuildListViewTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_ListViewResorted:
+		{
+			// The same list, with the cached order thrown away every single frame. Nothing real does this -
+			// it is what the sorted case would cost if the order were not kept, which is the number the
+			// cache has to be judged against.
+			fuiListViewSetSortDefault(ui, PERF_TABLE_ID, PERF_COLUMN_NAME, true);
+			fuiListViewInvalidateSort(ui, PERF_TABLE_ID);
+			PerfBuildListViewTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_ListBox:
+			PerfBuildListBoxTab(ui, state, rect);
+			break;
+
+		case PerfSubject_ListViewIcons:
+		{
+			// The same list again with an icon in front of every row, at the SAME row height, so the pair of
+			// readings differ in one thing only: the second draw command each visible row now costs.
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			PerfBuildListViewTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
+
+		case PerfSubject_ListBoxIcons:
+		{
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			PerfBuildListBoxTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
+
+		case PerfSubject_TextBox:
+			PerfBuildTextBoxTab(ui, state, rect);
+			break;
+
+		case PerfSubject_TextBoxWrapped:
+		{
+			// Wrapping is the case a scroll cannot shortcut: where a line begins depends on the layout of
+			// everything before it, so moving the window means laying the document out again.
+			bool wrapWasOn = state->wordWrapIsOn;
+			state->wordWrapIsOn = true;
+			PerfBuildTextBoxTab(ui, state, rect);
+			state->wordWrapIsOn = wrapWasOn;
+		} break;
+
+		case PerfSubject_Editor:
+		{
+			// The same lines the text box above holds, in the editor widget instead. Plain: no colouring,
+			// no breaking, which is the reading the two below are to be judged against.
+			const bool withoutALexer = false;
+			const bool withoutWordWrap = false;
+			PerfConfigureEditor(state, withoutALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorLexed:
+		{
+			// A style boundary at every token of every visible line, which is what cuts a line into
+			// separate pieces of geometry - and so the case the batched twin of this one is measured
+			// against.
+			const bool withALexer = true;
+			const bool withoutWordWrap = false;
+			PerfConfigureEditor(state, withALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorWrapped:
+		{
+			// The second index carried along rather than rebuilt: the warmup frames pay for building it
+			// once, and what is measured after them is what a frame costs with it standing. At this width
+			// nothing actually BREAKS - the generated lines all fit - so this is the cost of carrying the
+			// index and nothing else. The narrow pair below is the one where lines really come apart.
+			const bool withoutALexer = false;
+			const bool withWordWrap = true;
+			PerfConfigureEditor(state, withoutALexer, withWordWrap);
+			PerfBuildEditorTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_EditorNarrow:
+		{
+			// A view too narrow for the lines, WITHOUT breaking - the reading its twin below is judged
+			// against, so the pair differ in the wrapping and not in the width.
+			const bool withoutALexer = false;
+			const bool withoutWordWrap = false;
+			fuiRect narrowRect = PerfNarrowRect(rect);
+			PerfConfigureEditor(state, withoutALexer, withoutWordWrap);
+			PerfBuildEditorTab(ui, state, narrowRect);
+		} break;
+
+		case PerfSubject_EditorNarrowWrapped:
+		{
+			// And the same view with the breaking on, where every line really does come apart into several
+			// rows. This is what says whether the index costs anything once it has work to do.
+			const bool withoutALexer = false;
+			const bool withWordWrap = true;
+			fuiRect narrowRect = PerfNarrowRect(rect);
+			PerfConfigureEditor(state, withoutALexer, withWordWrap);
+			PerfBuildEditorTab(ui, state, narrowRect);
+		} break;
+
+		case PerfSubject_TreeFolded:
+		{
+			// Twelve roots showing and everything else stepped over. The whole claim of the widget is that
+			// this row of the table is FLAT while the scale beside it goes up by a thousand.
+			if(isTheFirstFrame) {
+				PerfFoldTreeToRoots(ui, state);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeOpen:
+		{
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeToggling:
+		{
+			// One root folded the other way on EVERY frame, so the visible rows are worked out again on every
+			// one of them. Nothing real does this - it is what the tree would cost with no index at all, and
+			// so the number the index has to be judged against.
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			bool firstRootWasOpen = state->data.treeIsExpanded[0];
+			state->data.treeIsExpanded[0] = !firstRootWasOpen;
+			fuiTreeInvalidate(ui, PERF_TREE_ID);
+			PerfBuildTreeTab(ui, state, rect);
+		} break;
+
+		case PerfSubject_TreeIcons:
+		{
+			// The same open tree with an icon on every row, at the SAME row height, so the pair of readings
+			// differ in one thing only: the second draw command each visible row now costs.
+			bool iconsWereOn = state->iconsAreOn;
+			state->iconsAreOn = true;
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+			state->iconsAreOn = iconsWereOn;
+		} break;
+
+		case PerfSubject_TreeGuides:
+		{
+			bool guidesWereOn = state->treeGuidesAreOn;
+			state->treeGuidesAreOn = true;
+			if(isTheFirstFrame) {
+				PerfSetTreeExpandedAll(ui, state, true);
+			}
+			PerfBuildTreeTab(ui, state, rect);
+			state->treeGuidesAreOn = guidesWereOn;
+		} break;
+
+		case PerfSubject_TreeDeep:
+			PerfBuildDeepTreeTab(ui, state, rect);
+			break;
+
+		case PerfSubject_MenuPopup:
+		{
+			if(isTheFirstFrame) {
+				fuiOpenContextMenu(ui, PERF_CONTEXT_MENU_ID);
+			}
+			PerfBuildContextMenu(ui, state);
+		} break;
+
+		case PerfSubject_Everything:
+			PerfBuildEverythingTab(ui, state, rect);
+			break;
+
+		case PerfSubject_ListView:
+		default:
+			PerfBuildListViewTab(ui, state, rect);
+			break;
+	}
+}
+
+//! Sorts the samples in place so the middle one can be taken. Insertion sort, because the array is tiny
+static void PerfSortSamples(double *samples, const int32_t sampleCount) {
+	for(int32_t sampleIndex = 1; sampleIndex < sampleCount; ++sampleIndex) {
+		double sample = samples[sampleIndex];
+		int32_t insertIndex = sampleIndex - 1;
+		while(insertIndex >= 0 && samples[insertIndex] > sample) {
+			samples[insertIndex + 1] = samples[insertIndex];
+			insertIndex -= 1;
+		}
+		samples[insertIndex + 1] = sample;
+	}
+}
+
+static void PerfRunBenchmarkCase(fuiContext *ui, PerfState *state, const PerfCase *benchmarkCase) {
+	state->requestedScaleStepIndex = benchmarkCase->scaleStepIndex;
+	state->requestedTextStepIndex = benchmarkCase->textStepIndex;
+	state->requestedMenuStepIndex = benchmarkCase->menuStepIndex;
+	fuiSetDrawBatching(ui, benchmarkCase->drawBatchingIsOn);
+	PerfApplyRequestedScale(state);
+	if(!state->data.isComplete) {
+		printf("%-22s  out of memory\n", benchmarkCase->name);
+		return;
+	}
+
+	// Tens of megabytes into a gap buffer, once per text step and never inside a frame that is timed.
+	bool wantsTheEditor = (benchmarkCase->subject == PerfSubject_Editor) || (benchmarkCase->subject == PerfSubject_EditorLexed) || (benchmarkCase->subject == PerfSubject_EditorWrapped) || (benchmarkCase->subject == PerfSubject_EditorNarrow) || (benchmarkCase->subject == PerfSubject_EditorNarrowWrapped);
+	if(wantsTheEditor) {
+		PerfSyncEditorDocument(state);
+
+		// Back to the top for every case, because the widget is the SAME one from case to case and a
+		// reading taken at the end of the document is a different reading. The cases that want it there
+		// spin the wheel during the warmup and get there on their own.
+		fuiEditorSetScrollOffset(&state->editor, 0.0f, 0.0f);
+	}
+
+	fuiRect contentRect = fuiRectMake(PERF_BENCHMARK_MARGIN, PERF_BENCHMARK_MARGIN, (float)PERF_BENCHMARK_WIDTH - PERF_BENCHMARK_MARGIN * 2.0f, (float)PERF_BENCHMARK_HEIGHT - PERF_BENCHMARK_MARGIN * 2.0f);
+
+	double samples[PERF_BENCHMARK_SAMPLE_FRAMES];
+	uint32_t lastCommandCount = 0;
+	uint32_t lastVertexCount = 0;
+	uint32_t lastMenuRowCount = 0;
+	int32_t totalFrames = PERF_BENCHMARK_WARMUP_FRAMES + PERF_BENCHMARK_SAMPLE_FRAMES;
+	const float sixtyHertzDelta = 1.0f / 60.0f;
+
+	for(int32_t frameIndex = 0; frameIndex < totalFrames; ++frameIndex) {
+		bool isTheFirstFrame = (frameIndex == 0);
+
+		fuiInput input = fuiZeroInput();
+		input.windowSize = fuiV2i(PERF_BENCHMARK_WIDTH, PERF_BENCHMARK_HEIGHT);
+		input.deltaTime = sixtyHertzDelta;
+		input.isActive = true;
+		// The popup is anchored where the cursor was when it opened, so the first frame puts the cursor
+		// somewhere sane and every frame after moves it out of the popup - a cursor resting on a submenu
+		// row would open that submenu too and the case would stop measuring one popup.
+		if(isTheFirstFrame) {
+			input.mousePosition = fuiV2(PERF_BENCHMARK_MENU_ANCHOR, PERF_BENCHMARK_MENU_ANCHOR);
+		} else {
+			input.mousePosition = fuiV2((float)PERF_BENCHMARK_WIDTH - PERF_BENCHMARK_MARGIN, (float)PERF_BENCHMARK_HEIGHT - PERF_BENCHMARK_MARGIN);
+		}
+
+		// A case that measures a SCROLLED widget puts the cursor in the middle of it and spins the wheel
+		// once, during the warmup, so every measured frame is taken with it parked at the far end.
+		bool wantsTheWheel = (benchmarkCase->wheelSpin != 0.0f);
+		if(wantsTheWheel) {
+			input.mousePosition = fuiV2(contentRect.x + contentRect.w * 0.5f, contentRect.y + contentRect.h * 0.5f);
+			if(frameIndex < PERF_BENCHMARK_WARMUP_FRAMES) {
+				input.mouseWheelDelta = benchmarkCase->wheelSpin;
+			}
+		}
+
+		fplTimestamp buildStart = fplTimestampQuery();
+		fuiBeginFrame(ui, &input, fuiPass_Both);
+		PerfBuildBenchmarkFrame(ui, state, benchmarkCase->subject, contentRect, isTheFirstFrame);
+		fuiEndFrame(ui);
+		fplTimestamp buildEnd = fplTimestampQuery();
+
+		const fuiDrawData *drawData = fuiGetDrawData(ui);
+		lastCommandCount = drawData->commandCount;
+		lastVertexCount = drawData->vertexCount;
+		lastMenuRowCount = state->menuRowsThisFrame;
+
+		if(frameIndex >= PERF_BENCHMARK_WARMUP_FRAMES) {
+			double elapsedSeconds = fplTimestampElapsed(buildStart, buildEnd);
+			samples[frameIndex - PERF_BENCHMARK_WARMUP_FRAMES] = elapsedSeconds * PERF_MILLISECONDS_PER_SECOND;
+		}
+	}
+
+	PerfSortSamples(samples, PERF_BENCHMARK_SAMPLE_FRAMES);
+	double fastest = samples[0];
+	double median = samples[PERF_BENCHMARK_SAMPLE_FRAMES / 2];
+	double slowest = samples[PERF_BENCHMARK_SAMPLE_FRAMES - 1];
+
+	printf("%-22s %9.3f %9.3f %9.3f %9u %9u %9u\n", benchmarkCase->name, median, fastest, slowest, lastCommandCount, lastVertexCount, lastMenuRowCount);
+	fflush(stdout);
+}
+
+static int PerfRunBenchmark(void) {
+	if(!fplPlatformInit(fplInitFlags_None, fpl_null)) {
+		fprintf(stderr, "failed to initialize the platform\n");
+		return 1;
+	}
+
+	fuiStbttFont bakedFont;
+	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
+	bakeSettings.pixelHeight = PERF_FONT_PIXEL_HEIGHT;
+	bakeSettings.atlasWidth = PERF_FONT_ATLAS_SIDE;
+	bakeSettings.atlasHeight = PERF_FONT_ATLAS_SIDE;
+	if(!fuiStbttFontBake(&bakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
+		fprintf(stderr, "failed to bake the font\n");
+		fplPlatformRelease();
+		return 1;
+	}
+
+	// No atlas is uploaded, so the commands carry a texture nobody will ever bind. Nothing in the library
+	// dereferences it, and the geometry it builds is the same either way.
+	const fuiTextureId noAtlasTexture = 0;
+	fuiFont font = fuiStbttFontToFuiFont(&bakedFont, noAtlasTexture);
+
+	fuiContext ui;
+	if(!fuiInit(&ui, &font, fpl_null)) {
+		fprintf(stderr, "failed to initialize the user interface\n");
+		fuiStbttFontRelease(&bakedFont);
+		fplPlatformRelease();
+		return 1;
+	}
+
+	PerfApplyTheme(&ui);
+
+	PerfState state;
+	PerfInit(&state);
+
+	// The icon cases want a sheet handle, and for the same reason the font atlas above is zero there is no
+	// texture to hand them: a headless run never binds anything. Any NON-zero handle does, since all the
+	// library asks of it is that it is not the zero that means "this list has no icons" - and it has to differ
+	// from the atlas handle, or a batching case would merge the icon and the label into one command and the
+	// count would come out of this run wrong.
+	const fuiTextureId placeholderIconSheet = (fuiTextureId)1;
+	state.iconSheet = placeholderIconSheet;
+	state.iconSheetSize = fuiV2((float)PERF_ICON_SHEET_WIDTH, (float)PERF_ICON_SHEET_HEIGHT);
+
+	printf("final_ui.h build cost, %d warmup frames then %d measured, one widget per case\n\n", (int)PERF_BENCHMARK_WARMUP_FRAMES, (int)PERF_BENCHMARK_SAMPLE_FRAMES);
+	printf("%-22s %9s %9s %9s %9s %9s %9s\n", "case", "median", "fastest", "slowest", "commands", "vertices", "menurows");
+	printf("%-22s %9s %9s %9s %9s %9s %9s\n", "----------------------", "---------", "---------", "---------", "---------", "---------", "---------");
+
+	int32_t caseCount = (int32_t)fplArrayCount(g_perfCases);
+	for(int32_t caseIndex = 0; caseIndex < caseCount; ++caseIndex) {
+		const PerfCase *benchmarkCase = &g_perfCases[caseIndex];
+		PerfRunBenchmarkCase(&ui, &state, benchmarkCase);
+	}
+
+	printf("\nmilliseconds per frame, arena %zu bytes\n", fuiGetAllocatedSize(&ui));
+
+	if(state.editorIsReady) {
+		fuiEditorRelease(&state.editor);
+	}
+	PerfDataSetRelease(&state.data);
+	fuiRelease(&ui);
+	fuiStbttFontRelease(&bakedFont);
+	fplPlatformRelease();
+	return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Main
+// ----------------------------------------------------------------------------
+
+int main(int argc, char **argv) {
+	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+		bool isTheBenchmarkFlag = (strcmp(argv[argumentIndex], "--benchmark") == 0);
+		if(isTheBenchmarkFlag) {
+			int benchmarkResult = PerfRunBenchmark();
+			return benchmarkResult;
+		}
+	}
+
+	fplSettings settings = fplZeroInit;
+	fplSetDefaultSettings(&settings);
+	fplCopyString(PERF_WINDOW_TITLE, settings.window.title, fplArrayCount(settings.window.title));
+	settings.window.windowSize.width = PERF_WINDOW_WIDTH;
+	settings.window.windowSize.height = PERF_WINDOW_HEIGHT;
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+	// OFF on purpose: with vsync on, every frame under the budget reads as exactly one refresh and the
+	// build time is the only number left that means anything. A workbench wants the whole curve.
+	settings.video.isVSync = false;
+
+	if(!fplPlatformInit(fplInitFlags_Window | fplInitFlags_Video, &settings)) {
+		fprintf(stderr, "failed to initialize the platform\n");
+		return 1;
+	}
+	if(!fglLoadOpenGL(true)) {
+		fprintf(stderr, "failed to load OpenGL\n");
+		fplPlatformRelease();
+		return 1;
+	}
+
+	fuiStbttFont bakedFont;
+	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
+	bakeSettings.pixelHeight = PERF_FONT_PIXEL_HEIGHT;
+	bakeSettings.atlasWidth = PERF_FONT_ATLAS_SIDE;
+	bakeSettings.atlasHeight = PERF_FONT_ATLAS_SIDE;
+	if(!fuiStbttFontBake(&bakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
+		fprintf(stderr, "failed to bake the font\n");
+		fglUnloadOpenGL();
+		fplPlatformRelease();
+		return 1;
+	}
+
+	uint32_t atlasTexture = 0;
+	if(!fuiGL1UploadFontAtlas(bakedFont.atlasPixels, bakedFont.atlasWidth, bakedFont.atlasHeight, &atlasTexture)) {
+		fprintf(stderr, "failed to upload the font atlas\n");
+		fuiStbttFontRelease(&bakedFont);
+		fglUnloadOpenGL();
+		fplPlatformRelease();
+		return 1;
+	}
+
+	fuiFont font = fuiStbttFontToFuiFont(&bakedFont, (fuiTextureId)atlasTexture);
+	fuiContext ui;
+	if(!fuiInit(&ui, &font, fpl_null)) {
+		fprintf(stderr, "failed to initialize the user interface\n");
+		fuiGL1DeleteTexture(atlasTexture);
+		fuiStbttFontRelease(&bakedFont);
+		fglUnloadOpenGL();
+		fplPlatformRelease();
+		return 1;
+	}
+
+	fuiPlatform platform = fplZeroInit;
+	platform.getClipboardText = fuiFplGetClipboardText;
+	platform.setClipboardText = fuiFplSetClipboardText;
+	fuiSetPlatform(&ui, &platform);
+
+	PerfApplyTheme(&ui);
+
+	PerfState state;
+	PerfInit(&state);
+
+	// The icon sheet, painted here rather than shipped. A failed upload leaves it at zero, which is the Icons
+	// toggle quietly drawing nothing rather than a reason not to start the workbench.
+	unsigned char iconPixels[PERF_ICON_SHEET_WIDTH * PERF_ICON_SHEET_HEIGHT];
+	PerfDrawIconSheet(iconPixels);
+	uint32_t iconTexture = 0;
+	if(fuiGL1UploadFontAtlas(iconPixels, PERF_ICON_SHEET_WIDTH, PERF_ICON_SHEET_HEIGHT, &iconTexture)) {
+		state.iconSheet = (fuiTextureId)iconTexture;
+		state.iconSheetSize = fuiV2((float)PERF_ICON_SHEET_WIDTH, (float)PERF_ICON_SHEET_HEIGHT);
+	}
+
+	PerfApplyRequestedScale(&state);
+
+	fuiFplInput bridge;
+	fuiFplInputInit(&bridge);
+
+	while(state.isRunning && fplWindowUpdate()) {
+		fplTimestamp frameStart = fplTimestampQuery();
+
+		fuiFplInputPumpEvents(&bridge);
+		fuiFplInputBuild(&bridge);
+
+		// Escape quits, but only when no dialog and no text field wants it first.
+		bool keyboardIsTaken = fuiWantsKeyboard(&ui);
+		bool escapeWentDown = fuiKeyWentDown(&ui, fuiKey_Escape);
+		if(escapeWentDown && !keyboardIsTaken) {
+			state.isRunning = false;
+		}
+
+		// The GL1 backend drains the geometry rather than the payloads, so it is free to have this on.
+		fuiSetDrawBatching(&ui, state.drawBatchingIsOn);
+
+		fplTimestamp buildStart = fplTimestampQuery();
+		fuiBeginFrame(&ui, &bridge.input, fuiPass_Both);
+		PerfBuildUserInterface(&ui, &state, bridge.rightPressedThisFrame);
+		fuiEndFrame(&ui);
+		fplTimestamp buildEnd = fplTimestampQuery();
+
+		state.uiOwnedTheMouseLastFrame = fuiWantsMouse(&ui);
+
+		const fuiDrawData *drawData = fuiGetDrawData(&ui);
+
+		glViewport(0, 0, bridge.input.windowSize.x, bridge.input.windowSize.y);
+		glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		// What is timed here is SUBMISSION - the backend walking the commands and handing the driver a
+		// scissor, a texture bind and a draw call for each of them. That is the part a user interface
+		// library is answerable for, and the part fewer commands make cheaper.
+		//
+		// Deliberately no glFinish. Waiting for the pixels would fold the display's own pacing into this
+		// number and report a frame that is simply waiting for the next refresh as an expensive one. What
+		// the graphics card then does with twenty thousand vertices is not measured here at all: it is
+		// whatever is left of the frame time after build and submit.
+		fplTimestamp renderStart = fplTimestampQuery();
+		fuiGL1Render(drawData);
+		fplTimestamp renderEnd = fplTimestampQuery();
+
+		fplVideoFlip();
+
+		fplTimestamp frameEnd = fplTimestampQuery();
+
+		double buildSeconds = fplTimestampElapsed(buildStart, buildEnd);
+		double renderSeconds = fplTimestampElapsed(renderStart, renderEnd);
+		double frameSeconds = fplTimestampElapsed(frameStart, frameEnd);
+		PerfMetricsPush(&state.metrics, buildSeconds * PERF_MILLISECONDS_PER_SECOND, renderSeconds * PERF_MILLISECONDS_PER_SECOND, frameSeconds * PERF_MILLISECONDS_PER_SECOND);
+
+		state.metrics.commandCount = drawData->commandCount;
+		state.metrics.vertexCount = drawData->vertexCount;
+		state.metrics.indexCount = drawData->indexCount;
+		state.metrics.textByteCount = drawData->textBufferSize;
+		state.metrics.arenaByteCount = fuiGetAllocatedSize(&ui);
+		state.metrics.menuRowCount = state.menuRowsThisFrame;
+
+		// BETWEEN frames, never during one: the list view holds the cell array for the whole of its call.
+		PerfApplyRequestedScale(&state);
+	}
+
+	if(state.editorIsReady) {
+		fuiEditorRelease(&state.editor);
+	}
+	PerfDataSetRelease(&state.data);
+	fuiRelease(&ui);
+	if(iconTexture != 0) {
+		fuiGL1DeleteTexture(iconTexture);
+	}
+	fuiGL1DeleteTexture(atlasTexture);
+	fuiStbttFontRelease(&bakedFont);
+	fglUnloadOpenGL();
+	fplPlatformRelease();
+	return 0;
+}

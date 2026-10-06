@@ -4,7 +4,7 @@
 #define FPL_NO_PLATFORM_INCLUDES
 #include <final_platform_layer.h>
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "utils.h"
 
 static uint32_t RANDOM_TABLE[] = {

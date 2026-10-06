@@ -26,6 +26,8 @@ set(MY_INCLUDE_DIRS
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
 	"final_test.h"
+	"security_tests.c"
+	"process_tests.c"
 	)
 
 set(MY_TRANSLATION_UNITS

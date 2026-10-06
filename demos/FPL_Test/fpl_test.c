@@ -14,6 +14,13 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-23
+	- Added the process tests from process_tests.c, wired in through TestProcess()
+	- Added the child mode detection in main(), so the test executable can start itself as the child program for the process tests
+
+	## 2026-06-17
+	- Adjusted tests to match feature that unlimited threads can be created
+
 	## 2026-05-06
 	- Converted from C++ to C99
 	- Removed AssertEquals<T> templates in favor of type-specific functions
@@ -100,6 +107,7 @@ License:
 #include <math.h> // sqrt
 
 #include "security_tests.c"
+#include "process_tests.c"
 
 static void TestColdInit(void) {
 	ftMsg("Test Cold-Initialize of InitPlatform\n");
@@ -206,6 +214,16 @@ static void TestSizes(void) {
 	ftAssertSizeEquals(4, sizeof(intptr_t));
 	ftAssertSizeEquals(4, sizeof(uintptr_t));
 	ftAssertSizeEquals(4, sizeof(size_t));
+#endif
+
+	// Keyboard and mouse events must never make the event union grow, the gamepad event is its largest member
+	ftAssertSizeEquals(32, sizeof(fplMouseEvent));
+	ftAssert(sizeof(fplKeyboardEvent) <= sizeof(fplGamepadEvent));
+	ftAssert(sizeof(fplMouseEvent) <= sizeof(fplGamepadEvent));
+#if defined(FT_ARCH_X64)
+	ftAssertSizeEquals(32, sizeof(fplKeyboardEvent));
+	ftAssertSizeEquals(112, sizeof(fplGamepadEvent));
+	ftAssertSizeEquals(120, sizeof(fplEvent));
 #endif
 }
 
@@ -525,6 +543,9 @@ static void TestHardware(void) {
 		ftMsg("\tAVX: %s\n", (cpuCaps.x86.hasAVX ? "yes" : "no"));
 		ftMsg("\tAVX2: %s\n", (cpuCaps.x86.hasAVX2 ? "yes" : "no"));
 		ftMsg("\tAVX512: %s\n", (cpuCaps.x86.hasAVX512 ? "yes" : "no"));
+		ftMsg("\tAVX512BW: %s\n", (cpuCaps.x86.hasAVX512BW ? "yes" : "no"));
+		ftMsg("\tAVX512VL: %s\n", (cpuCaps.x86.hasAVX512VL ? "yes" : "no"));
+		ftMsg("\tAVX512VBMI: %s\n", (cpuCaps.x86.hasAVX512VBMI ? "yes" : "no"));
 		ftMsg("\tFMA3: %s\n", (cpuCaps.x86.hasFMA3 ? "yes" : "no"));
 		ftMsg("\tEM64T: %s\n", (cpuCaps.x86.hasEM64T ? "yes" : "no"));
 		ftMsg("\tAES-NI: %s\n", (cpuCaps.x86.hasAES_NI ? "yes" : "no"));
@@ -869,74 +890,157 @@ static void ThreadLimitThreeSecProc(const fplThreadHandle *context, void *opaque
 	fplThreadSleep(3000);
 }
 
-static void ThreadLimits(const size_t overshoot) {
+// Thread storage is no longer bounded by a fixed FPL_MAX_THREAD_COUNT array, instead threads
+// are stored in a growable bucket list. The 'extra' parameter creates threads beyond a single
+// bucket so multiple buckets get exercised. All creations must succeed.
+static void ThreadStorageTest(const size_t extra) {
 	ftLine();
-	ftMsg("Thread limits test with overshoot of '%zu'\n", overshoot);
+	ftMsg("Thread storage test with '%zu' threads beyond one bucket\n", extra);
 
 	{
 		size_t usedThreadCount = fplGetUsedThreadCount();
-		size_t availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads initial %zu/%zu\n", usedThreadCount, availableThreadCount);
+		ftMsg("Used threads initial %zu\n", usedThreadCount);
 		ftAssertSizeEquals(0, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
 
 		fplThreadHandle *oneThread = fplThreadCreate(ThreadLimitThreeSecProc, fpl_null);
-		usedThreadCount = fplGetUsedThreadCount();
-		availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads with one active thread %zu/%zu\n", usedThreadCount, availableThreadCount);
-		ftAssertSizeEquals(1, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT - 1, availableThreadCount);
+		ftIsNotNull(oneThread);
+		size_t usedWithOne = fplGetUsedThreadCount();
+		size_t availableWithOne = fplGetAvailableThreadCount();
+		size_t totalWithOne = fplGetTotalThreadCount();
+		ftMsg("Used/Available/Total threads with one active thread %zu/%zu/%zu\n", usedWithOne, availableWithOne, totalWithOne);
+		ftAssertSizeEquals(1, usedWithOne);
+		// At least one bucket exists now and used + available must account for every managed slot
+		ftIsTrue(totalWithOne >= 1);
+		ftAssertSizeEquals(totalWithOne, usedWithOne + availableWithOne);
 		fplThreadWaitForOne(oneThread, 4000);
 
-		usedThreadCount = fplGetUsedThreadCount();
-		availableThreadCount = fplGetAvailableThreadCount();
-		ftMsg("Used/Available threads after single thread is done %zu/%zu\n", usedThreadCount, availableThreadCount);
-		ftAssertSizeEquals(0, usedThreadCount);
-		ftAssertSizeEquals(FPL_MAX_THREAD_COUNT, availableThreadCount);
+		size_t usedAfterDone = fplGetUsedThreadCount();
+		ftMsg("Used threads after single thread is done %zu\n", usedAfterDone);
+		ftAssertSizeEquals(0, usedAfterDone);
 	}
 
-	size_t threadCount = FPL_MAX_THREAD_COUNT + overshoot;
+	// Create more threads than a single bucket holds, every single one must be created (no fixed cap anymore)
+	size_t threadCount = FPL_MAX_THREAD_COUNT + extra;
 	ThreadLimitData *datas = (ThreadLimitData *)fplMemoryAllocate(sizeof(ThreadLimitData) * threadCount);
 	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		ThreadLimitData *data = &datas[threadIndex];
 		bool signalInitialized = fplSignalInit(&data->signal, fplSignalValue_Unset);
 		ftIsTrue(signalInitialized);
 		data->handle = fplThreadCreate(ThreadLimitThreadProc, data);
-	}
-	for (size_t threadIndex = 0; threadIndex < threadCount - overshoot; ++threadIndex) {
-		ThreadLimitData *data = &datas[threadIndex];
 		ftIsNotNull(data->handle);
 	}
-	for (size_t threadIndex = threadCount - overshoot; threadIndex < threadCount; ++threadIndex) {
-		ThreadLimitData *data = &datas[threadIndex];
-		ftIsNull(data->handle);
-	}
+	size_t usedAll = fplGetUsedThreadCount();
+	size_t totalAll = fplGetTotalThreadCount();
+	ftMsg("Used/Total threads with %zu active threads %zu/%zu\n", threadCount, usedAll, totalAll);
+	ftAssertSizeEquals(threadCount, usedAll);
+	ftIsTrue(totalAll >= threadCount);
+
 	for (size_t signalIndex = 0; signalIndex < threadCount; ++signalIndex) {
 		ThreadLimitData *data = &datas[signalIndex];
 		fplSignalSet(&data->signal);
 	}
-	fplThreadWaitForAll(&datas[0].handle, threadCount - overshoot, sizeof(ThreadLimitData), FPL_TIMEOUT_INFINITE);
-	for (size_t threadIndex = 0; threadIndex < (threadCount - overshoot); ++threadIndex) {
+	// Wait per-thread, threadCount can exceed FPL_MAX_THREAD_COUNT which is the limit for a single multi-wait call.
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
 		ThreadLimitData *data = &datas[threadIndex];
-		//fplThreadTerminate(data->handle);
+		fplThreadWaitForOne(data->handle, FPL_TIMEOUT_INFINITE);
+	}
+	size_t usedAfterAll = fplGetUsedThreadCount();
+	ftAssertSizeEquals(0, usedAfterAll);
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		ThreadLimitData *data = &datas[threadIndex];
 		fplSignalDestroy(&data->signal);
 	}
 	fplMemoryFree(datas);
+
+	// Slot reuse, all threads have stopped so creating again must reuse slots and not grow the total
+	{
+		size_t totalBeforeReuse = fplGetTotalThreadCount();
+		fplThreadHandle *reuseThread = fplThreadCreate(EmptyThreadproc, fpl_null);
+		ftIsNotNull(reuseThread);
+		fplThreadWaitForOne(reuseThread, FPL_TIMEOUT_INFINITE);
+		size_t totalAfterReuse = fplGetTotalThreadCount();
+		ftMsg("Total threads before/after reuse %zu/%zu\n", totalBeforeReuse, totalAfterReuse);
+		ftAssertSizeEquals(totalBeforeReuse, totalAfterReuse);
+	}
+}
+
+// Hammers thread creation and teardown from multiple threads at once, regression for the
+// find-and-reserve race where two concurrent creates could be handed the same thread slot.
+typedef struct ConcurrentCreatorData {
+	volatile uint32_t *createFailures;
+	volatile uint32_t *workersRun;
+	size_t threadsPerCreator;
+} ConcurrentCreatorData;
+
+static void ConcurrentTinyWorkerProc(const fplThreadHandle *context, void *opaque) {
+	(void)context;
+	ConcurrentCreatorData *data = (ConcurrentCreatorData *)opaque;
+	fplAtomicFetchAndAddU32(data->workersRun, 1);
+}
+
+static void ConcurrentCreatorProc(const fplThreadHandle *context, void *opaque) {
+	(void)context;
+	ConcurrentCreatorData *data = (ConcurrentCreatorData *)opaque;
+	for (size_t workerIndex = 0; workerIndex < data->threadsPerCreator; ++workerIndex) {
+		fplThreadHandle *worker = fplThreadCreate(ConcurrentTinyWorkerProc, data);
+		if (worker == fpl_null) {
+			fplAtomicFetchAndAddU32(data->createFailures, 1);
+			continue;
+		}
+		fplThreadWaitForOne(worker, FPL_TIMEOUT_INFINITE);
+	}
+}
+
+static void ThreadConcurrentCreateTest(const size_t creatorCount, const size_t threadsPerCreator) {
+	ftLine();
+	ftMsg("Concurrent thread create/teardown test, %zu creators x %zu threads\n", creatorCount, threadsPerCreator);
+
+	volatile uint32_t createFailures = 0;
+	volatile uint32_t workersRun = 0;
+	ConcurrentCreatorData sharedData = fplZeroInit;
+	sharedData.createFailures = &createFailures;
+	sharedData.workersRun = &workersRun;
+	sharedData.threadsPerCreator = threadsPerCreator;
+
+	fplThreadHandle **creators = (fplThreadHandle **)fplMemoryAllocate(sizeof(fplThreadHandle *) * creatorCount);
+	for (size_t creatorIndex = 0; creatorIndex < creatorCount; ++creatorIndex) {
+		creators[creatorIndex] = fplThreadCreate(ConcurrentCreatorProc, &sharedData);
+		ftIsNotNull(creators[creatorIndex]);
+	}
+	fplThreadWaitForAll(&creators[0], creatorCount, sizeof(fplThreadHandle *), FPL_TIMEOUT_INFINITE);
+
+	uint32_t totalWorkers = fplAtomicLoadU32(&workersRun);
+	uint32_t totalFailures = fplAtomicLoadU32(&createFailures);
+	size_t usedAtEnd = fplGetUsedThreadCount();
+	ftMsg("Workers run %u, create failures %u, used at end %zu\n", totalWorkers, totalFailures, usedAtEnd);
+	ftAssertU32Equals(0, totalFailures);
+	ftAssertU32Equals((uint32_t)(creatorCount * threadsPerCreator), totalWorkers);
+	ftAssertSizeEquals(0, usedAtEnd);
+
+	fplMemoryFree(creators);
 }
 
 static void TestThreading(void) {
 	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		//
-		// Threading limits
+		// Thread storage (unbounded, bucketed) and counts
 		//
 		{
-			ThreadLimits(0);
-			ThreadLimits(1);
-			ThreadLimits(2);
-			ThreadLimits(4);
-			ThreadLimits(8);
-			ThreadLimits(16);
-			ThreadLimits(32);
+			ThreadStorageTest(0);
+			ThreadStorageTest(1);
+			ThreadStorageTest(2);
+			ThreadStorageTest(4);
+			ThreadStorageTest(8);
+			ThreadStorageTest(16);
+			ThreadStorageTest(32);
+		}
+
+		//
+		// Concurrent thread create/teardown (find-and-reserve race regression)
+		//
+		{
+			ThreadConcurrentCreateTest(4, 50);
+			ThreadConcurrentCreateTest(8, 100);
 		}
 
 		//
@@ -1776,6 +1880,136 @@ static void TestStrings(void) {
 	}
 }
 
+// Converts utf8 -> wide -> utf8 and verifies the result matches the original bytes.
+// This is platform independent even for astral code points, since the intermediate wide form
+// (UTF-32 on POSIX, UTF-16 on Windows) never needs to be inspected directly.
+static void CheckUtf8RoundTrip(const char *utf8, const size_t utf8Len) {
+	wchar_t wide[64];
+	size_t wideCount = fplUTF8StringToWideString(utf8, utf8Len, wide, fplArrayCount(wide));
+	ftAssertTrue(wideCount > 0);
+	char back[256];
+	size_t backLen = fplWideStringToUTF8String(wide, wideCount, back, fplArrayCount(back));
+	ftAssertSizeEquals(utf8Len, backLen);
+	ftAssertStringEquals(utf8, back);
+}
+
+static void TestUnicodeConversion(void) {
+	ftMsg("Test UTF-8 <-> WideString conversion (wchar_t is %zu bytes)\n", sizeof(wchar_t));
+
+	// Explicit UTF-8 byte sequences so the tests never depend on the source-file encoding.
+	// 'H'/'A'=1 byte, 'ö'=U+00F6 (2 bytes), '€'=U+20AC (3 bytes), '😀'=U+1F600 (4 bytes).
+	static const char asciiUtf8[] = { 'H', 'e', 'l', 'l', 'o', 0 };
+	static const char umlautUtf8[] = { (char)0xC3, (char)0xB6, 0 };
+	static const char euroUtf8[] = { (char)0xE2, (char)0x82, (char)0xAC, 0 };
+	static const char emojiUtf8[] = { (char)0xF0, (char)0x9F, (char)0x98, (char)0x80, 0 };
+	static const char mixedUtf8[] = { 'A', (char)0xC3, (char)0xB6, (char)0xE2, (char)0x82, (char)0xAC, (char)0xF0, (char)0x9F, (char)0x98, (char)0x80, 0 };
+
+	const uint32_t codePointA = 0x0041;
+	const uint32_t codePointUmlaut = 0x00F6;
+	const uint32_t codePointEuro = 0x20AC;
+
+	ftMsg("Test invalid arguments\n");
+	{
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(fpl_null, 1, fpl_null, 0));
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 0, fpl_null, 0));
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(fpl_null, 1, fpl_null, 0));
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(L"A", 0, fpl_null, 0));
+	}
+
+	ftMsg("Test UTF-8 to WideString size query (dest == null)\n");
+	{
+		// A single BMP code point is exactly one wide unit on every platform.
+		ftAssertSizeEquals(5, fplUTF8StringToWideString(asciiUtf8, 5, fpl_null, 0));
+		ftAssertSizeEquals(1, fplUTF8StringToWideString(umlautUtf8, 2, fpl_null, 0));
+		ftAssertSizeEquals(1, fplUTF8StringToWideString(euroUtf8, 3, fpl_null, 0));
+	}
+
+	ftMsg("Test UTF-8 to WideString decoding (BMP code points)\n");
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(asciiUtf8, 5, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(5, n);
+		ftAssertU32Equals((uint32_t)'H', (uint32_t)wide[0]);
+		ftAssertU32Equals((uint32_t)'o', (uint32_t)wide[4]);
+		ftAssertU32Equals(0, (uint32_t)wide[5]);
+	}
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(umlautUtf8, 2, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(1, n);
+		ftAssertU32Equals(codePointUmlaut, (uint32_t)wide[0]);
+		ftAssertU32Equals(0, (uint32_t)wide[1]);
+	}
+	{
+		wchar_t wide[16];
+		size_t n = fplUTF8StringToWideString(euroUtf8, 3, wide, fplArrayCount(wide));
+		ftAssertSizeEquals(1, n);
+		ftAssertU32Equals(codePointEuro, (uint32_t)wide[0]);
+	}
+
+	ftMsg("Test WideString to UTF-8 encoding (BMP code points)\n");
+	{
+		wchar_t wide[] = { (wchar_t)codePointA, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(1, n);
+		ftAssertStringEquals("A", utf8);
+	}
+	{
+		wchar_t wide[] = { (wchar_t)codePointUmlaut, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(2, n);
+		ftAssertStringEquals(umlautUtf8, utf8);
+	}
+	{
+		wchar_t wide[] = { (wchar_t)codePointEuro, 0 };
+		char utf8[16];
+		size_t n = fplWideStringToUTF8String(wide, 1, utf8, fplArrayCount(utf8));
+		ftAssertSizeEquals(3, n);
+		ftAssertStringEquals(euroUtf8, utf8);
+	}
+
+	ftMsg("Test UTF-8 -> WideString -> UTF-8 round-trip (1 to 4 byte sequences)\n");
+	{
+		CheckUtf8RoundTrip(asciiUtf8, 5);
+		CheckUtf8RoundTrip(umlautUtf8, 2);
+		CheckUtf8RoundTrip(euroUtf8, 3);
+		CheckUtf8RoundTrip(emojiUtf8, 4);
+		CheckUtf8RoundTrip(mixedUtf8, 10);
+	}
+
+	ftMsg("Test insufficient destination buffer returns zero\n");
+	{
+		// 5 code points need room for 5 + NUL.
+		wchar_t tooSmall[1];
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 5, tooSmall, fplArrayCount(tooSmall)));
+		wchar_t exactNoNul[5];
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(asciiUtf8, 5, exactNoNul, fplArrayCount(exactNoNul)));
+		wchar_t justEnough[6];
+		ftAssertSizeEquals(5, fplUTF8StringToWideString(asciiUtf8, 5, justEnough, fplArrayCount(justEnough)));
+	}
+	{
+		// '€' encodes to 3 bytes and still needs room for the NUL.
+		wchar_t wide[] = { (wchar_t)codePointEuro, 0 };
+		char tooSmall[3];
+		ftAssertSizeEquals(0, fplWideStringToUTF8String(wide, 1, tooSmall, fplArrayCount(tooSmall)));
+		char justEnough[4];
+		ftAssertSizeEquals(3, fplWideStringToUTF8String(wide, 1, justEnough, fplArrayCount(justEnough)));
+	}
+
+#if defined(FPL_SUBPLATFORM_STD_STRINGS)
+	// The POSIX implementation rejects malformed UTF-8; the Win32 codepage path substitutes U+FFFD instead.
+	ftMsg("Test malformed UTF-8 returns zero (POSIX)\n");
+	{
+		static const char loneContinuation[] = { (char)0x80, 0 };
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(loneContinuation, 1, fpl_null, 0));
+		static const char truncatedLead[] = { (char)0xC3, 0 };
+		ftAssertSizeEquals(0, fplUTF8StringToWideString(truncatedLead, 1, fpl_null, 0));
+	}
+#endif
+}
+
 static void TestLocalization(void) {
 	fplPlatformInit(fplInitFlags_None, fpl_null);
 	char buffer[16];
@@ -1862,6 +2096,16 @@ static void TestGamepadPollMerge() {
 	fplPlatformRelease();
 }
 
+static void TestProcess(void) {
+	ftMsg("Process tests\n");
+	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
+		ftFail("Failed to initialize platform");
+		return;
+	}
+	FPLProcessTests_All();
+	fplPlatformRelease();
+}
+
 static void TestSecurity(void) {
 	ftMsg("Security & stability tests\n");
 	if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
@@ -1878,8 +2122,12 @@ static void TestSecurity(void) {
 }
 
 int main(int argc, char *args[]) {
-	(void)argc;
-	(void)args;
+	// The process tests start this executable again in one of the child modes, that mode replaces the whole test run
+	ProcessTestChildMode childMode = ProcessTestsGetChildMode(argc, args);
+	if (childMode != ProcessTestChildMode_None) {
+		int childExitCode = ProcessTestsRunAsChild(childMode, argc, args);
+		return childExitCode;
+	}
 	TestColdInit();
 	TestInit();
 	TestSizes();
@@ -1887,6 +2135,7 @@ int main(int argc, char *args[]) {
 	TestInlining();
 	TestSecurity();
 	TestStrings();
+	TestUnicodeConversion();
 	TestLocalization();
 	TestMemory();
 	TestOSInfos();
@@ -1896,6 +2145,7 @@ int main(int argc, char *args[]) {
 	TestFiles();
 	TestAtomics();
 	TestThreading();
+	TestProcess();
 	TestGamepadPollMerge();
 	return 0;
 }

@@ -1,7 +1,7 @@
 #ifndef BASE_H
 #define BASE_H
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "sph.h"
 #include "render.h"
 

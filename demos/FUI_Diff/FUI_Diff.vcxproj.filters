@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="..\..\final_platform_layer.h" />
+    <ClInclude Include="..\..\final_dynamic_opengl.h" />
+    <ClInclude Include="..\..\final_ui.h" />
+    <ClInclude Include="..\..\final_ui_texteditor.h" />
+    <ClInclude Include="..\additions\fui_font_stbtt.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
+    <ClInclude Include="..\additions\fui_backend_gl1.h" />
+    <ClInclude Include="..\additions\fui_input_fpl.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="fui_diff_demo.c" />
+  </ItemGroup>
+</Project>

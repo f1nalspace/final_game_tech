@@ -2588,7 +2588,9 @@ PREDEFINED             = FPL_LOGGING \
 # definition found in the source code.
 # This tag requires that the tag ENABLE_PREPROCESSING is set to YES.
 
-EXPAND_AS_DEFINED      = FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK
+EXPAND_AS_DEFINED      = FPL_GAMEPAD_MAPPING_RESOLVE_CALLBACK \
+                         FPL_FUNC_PROCESS_OUTPUT \
+                         FPL_FUNC_PROCESS_INPUT
 
 # If the SKIP_FUNCTION_MACROS tag is set to YES then Doxygen's preprocessor will
 # remove all references to function-like macros that are alone on a line, have

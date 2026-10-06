@@ -1,7 +1,7 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
 
-#include "vecmath.h"
+#include <final_math.h>
 
 #define force_inline __forceinline
 
@@ -50,7 +50,7 @@ force_inline Vec2i SPHComputeCellIndex(const Vec2f & p) {
 
 force_inline void SPHComputeDensity(const Vec2f &position, const Vec2f &neighborPosition, float outDensity[2]) {
 	Vec2f Rij = position - neighborPosition;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 
 	// TODO: Make it branch-free
 	if (rijSquared < kSPHSmoothingLength * kSPHSmoothingLength) {
@@ -71,13 +71,13 @@ force_inline bool SPHComputeDelta(const Vec2f &position, const Vec2f &neighborPo
 	// TODO: Make it branch-free
 
 	Vec2f Rij = position - neighborPosition;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 	if (rijSquared < kSPHSmoothingLength * kSPHSmoothingLength) {
 		float rij = sqrtf(rijSquared);
 		float q = rij / kSPHSmoothingLength;
-		Vec2f n = Vec2Normalize(Rij);
+		Vec2f n = V2fNormalize(Rij);
 		float oneminusq = 1 - q;
-		*outDelta = Vec2Hadamard(0.5f * deltaTime * deltaTime * (pressure[0] * oneminusq + pressure[1] * (oneminusq * oneminusq)), n);
+		*outDelta = V2fHadamard(0.5f * deltaTime * deltaTime * (pressure[0] * oneminusq + pressure[1] * (oneminusq * oneminusq)), n);
 		return true;
 	}
 	return false;
@@ -87,14 +87,14 @@ force_inline bool SPHComputeViscosityVelocity(const Vec2f &position, const Vec2f
 	// TODO: Make it branch-free
 
 	Vec2f Rij = position - neighborPosition;
-	float rijSquared = Vec2Dot(Rij, Rij);
+	float rijSquared = V2fDot(Rij, Rij);
 	if (rijSquared < kSPHSmoothingLength * kSPHSmoothingLength) {
 		float rij = sqrtf(rijSquared);
 		float q = rij / kSPHSmoothingLength;
-		Vec2f n = Vec2Normalize(Rij);
-		float u = Vec2Dot(velocity - neighborVelocity, n);
+		Vec2f n = V2fNormalize(Rij);
+		float u = V2fDot(velocity - neighborVelocity, n);
 		if (u > 0) {
-			*outVel = Vec2Hadamard(0.5f * deltaTime * (1 - q) * (kSPHLinearViscosity * u + kSPHQuadraticViscosity * u * u), n);
+			*outVel = V2fHadamard(0.5f * deltaTime * (1 - q) * (kSPHLinearViscosity * u + kSPHQuadraticViscosity * u * u), n);
 			return true;
 		}
 	}

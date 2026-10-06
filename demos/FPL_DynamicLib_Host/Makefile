@@ -108,7 +108,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -fPIC -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -fPIC -g
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -shared -Wl,-soname=libFPL_DynamicLib_Host.so
 
 else ifeq ($(config),debug_linuxx64)
@@ -128,7 +128,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -fPIC -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -fPIC -g
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -shared -Wl,-soname=libFPL_DynamicLib_Host.so
 
 else ifeq ($(config),debug_linuxarm64)
@@ -148,7 +148,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -fPIC -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -fPIC -g
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -shared
 
 else ifeq ($(config),debug_unixx64)
@@ -168,7 +168,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -fPIC -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -fPIC -g
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -shared
 
 else ifeq ($(config),debug_unixarm64)
@@ -208,7 +208,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fPIC -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fPIC
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -shared -Wl,-soname=libFPL_DynamicLib_Host.so -s
 
 else ifeq ($(config),release_linuxx64)
@@ -228,7 +228,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -fPIC -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -fPIC
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -shared -Wl,-soname=libFPL_DynamicLib_Host.so -s
 
 else ifeq ($(config),release_linuxarm64)
@@ -248,7 +248,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fPIC -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -fPIC
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -shared -s
 
 else ifeq ($(config),release_unixx64)
@@ -268,7 +268,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Host/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -fPIC -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -fPIC
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -shared -s
 
 else ifeq ($(config),release_unixarm64)

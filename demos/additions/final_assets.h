@@ -1,10 +1,23 @@
 /*
 Name:
 	Final Assets
+
 Description:
 	Simple asset system.
 
 	This file is part of the final_framework.
+
+Changelog:
+	## 2026-07-23
+	- Added function TextureDataLoadFromMemory() that allows to load a TextureData from any memory image buffer
+
+	## 2026-07-19
+	- Fixed 32-bit overflow in TextureDataAllocate size math (w*h) that could under-allocate and heap-overflow
+	- Fixed components being set to the file's original channel count after a forced 4-channel decode
+
+	## 2026-07-16
+	- Fixed heap corruption for releasing TextureData with the normal memory allocator instead of stbi_image_free()
+
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
@@ -30,6 +43,13 @@ typedef struct TextureData {
 	uint32_t width;
 	uint32_t height;
 	uint32_t components;
+	// True when data came out of the image decoder (stb_image) and must be given back to it
+	// (stbi_image_free), never to a MemoryAllocator. The default allocator free is fplMemoryFree
+	// (VirtualFree), and VirtualFree page-aligns the address DOWN before validating: a LARGE decode
+	// (a multi-MB scan owns its own VirtualAlloc region, with the malloc block in the first page)
+	// rounds to exactly the region base, so the release SUCCEEDS and rips the heap's own region away
+	// while the heap still lists the block as busy -- delayed heap corruption on the next allocation.
+	bool isDecoderOwned;
 } TextureData;
 
 typedef struct TextureAsset {
@@ -54,6 +74,11 @@ fpl_extern bool TextureDataAllocate(MemoryAllocator *allocator, TextureData *tar
 fpl_extern void TextureDataFree(MemoryAllocator *allocator, TextureData *texture);
 
 fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData *target, const char *filePath);
+
+// Decode an ENCODED image (PNG/JPG/...) that already sits in memory -- a built-in texture compiled into the
+// binary, an entry read out of a pak. No allocator: the pixels come from the decoder and are given back to
+// it by TextureDataFree (isDecoderOwned), exactly as with the file path above.
+fpl_extern bool TextureDataLoadFromMemory(TextureData *target, const void *encodedData, const size_t encodedSize);
 fpl_extern bool TextureDataLoadFromSourceRect(MemoryAllocator *allocator, const TextureData *source, TextureData *target, const uint32_t x, const uint32_t y, const uint32_t w, const uint32_t h);
 
 fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font);
@@ -66,8 +91,17 @@ fpl_extern void FontAssetFree(MemoryAllocator *allocator, FontAsset *font);
 #define FINAL_ASSETS_IMPLEMENTED
 #endif
 
+// GCC at -O3 raises a false-positive -Wstringop-overflow inside stb_image's PNG tRNS
+// parser (tc[3]): s->img_n is bounded to 1 or 3 there, but the optimizer can't prove it.
+#if defined(__GNUC__) && !defined(__clang__)
+#	pragma GCC diagnostic push
+#	pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#if defined(__GNUC__) && !defined(__clang__)
+#	pragma GCC diagnostic pop
+#endif
 
 #define FINAL_FONTLOADER_IMPLEMENTATION
 #include <final_fontloader.h>
@@ -81,7 +115,12 @@ fpl_extern void TextureDataFree(MemoryAllocator *allocator, TextureData *texture
 		return;
 	}
 	if (TextureDataIsValid(texture)) {
-		MemoryAllocatorFree(allocator, texture->data);
+		if (texture->isDecoderOwned) {
+			// Decoder memory goes back to the decoder; see the field comment in TextureData.
+			stbi_image_free(texture->data);
+		} else {
+			MemoryAllocatorFree(allocator, texture->data);
+		}
 	}
 	fplClearStruct(texture);
 }
@@ -91,7 +130,7 @@ fpl_extern bool TextureDataAllocate(MemoryAllocator *allocator, TextureData *tar
 		// TODO(final): Logging (Invalid Arguments)
 		return false;
 	}
-	size_t size = w * h * sizeof(uint8_t) * components;
+	size_t size = (size_t)w * (size_t)h * (size_t)components * sizeof(uint8_t);
 	uint8_t *data = (uint8_t *)MemoryAllocatorAlloc(allocator, size);
 	if (data == fpl_null) {
 		// TODO(final): Logging (Insufficient memory)
@@ -192,7 +231,7 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 		return false;
 	}
 
-	if (!fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) == fileLen) {
+	if (fplFileReadBlock32(&file, fileLen, fileBuffer, fileLen) != fileLen) {
 		// TODO(final): Logging (Failed to load the file into memory)
 		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
 		return false;
@@ -201,8 +240,9 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	int imageWidth = 0;
 	int imageHeight = 0;
 	int imageComponents = 0;
+	const int forcedComponentCount = 4;
 	stbi_set_flip_vertically_on_load(0);
-	stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, 4);
+	stbi_uc *imageData = stbi_load_from_memory(fileBuffer, fileLen, &imageWidth, &imageHeight, &imageComponents, forcedComponentCount);
 	if (imageData == fpl_null) {
 		// TODO(final): Logging (Failed to load/decode the image from memory)
 		InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
@@ -212,10 +252,37 @@ fpl_extern bool TextureDataLoadFromFile(MemoryAllocator *allocator, TextureData 
 	fplClearStruct(target);
 	target->width = imageWidth;
 	target->height = imageHeight;
-	target->components = imageComponents;
+	// stbi always decoded to forcedComponentCount channels, imageComponents only reports the file's original layout
+	target->components = forcedComponentCount;
 	target->data = imageData;
+	target->isDecoderOwned = true;
 
 	InternalTextureDataLoadFromFileShutdown(allocator, &file, fileBuffer);
+
+	return true;
+}
+
+fpl_extern bool TextureDataLoadFromMemory(TextureData *target, const void *encodedData, const size_t encodedSize) {
+	if (target == fpl_null || encodedData == fpl_null || encodedSize == 0) {
+		return false;
+	}
+
+	int imageWidth = 0;
+	int imageHeight = 0;
+	int imageComponents = 0;
+	const int forcedComponentCount = 4;
+	stbi_set_flip_vertically_on_load(0);
+	stbi_uc *imageData = stbi_load_from_memory((const stbi_uc *)encodedData, (int)encodedSize, &imageWidth, &imageHeight, &imageComponents, forcedComponentCount);
+	if (imageData == fpl_null) {
+		return false;
+	}
+
+	fplClearStruct(target);
+	target->width = imageWidth;
+	target->height = imageHeight;
+	target->components = forcedComponentCount;
+	target->data = imageData;
+	target->isDecoderOwned = true;
 
 	return true;
 }

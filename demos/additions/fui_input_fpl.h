@@ -1,0 +1,345 @@
+/***
+fui_input_fpl.h
+
+--- About ---
+
+The input bridge between final_platform_layer.h and final_ui.h: one fuiInput, filled once per frame.
+
+final_ui.h deliberately knows nothing about a platform. It takes a fuiInput and asks the host to fill it,
+which is about sixty lines of real work plus a key table. This header is that work, done once, so a demo
+does not carry its own copy of it.
+
+The held state comes from POLLING rather than from the event queue, which is the lesson a game learns the
+hard way: a key pressed and released inside one frame latches as stuck-down when its state is accumulated
+from events. The cost is that such a tap is not seen at all - two half transitions in one frame is
+something only an event stream can express - and for an interface that is the right trade. What polling
+cannot give at all is drained from the queue instead: typed characters, the wheel, the focus and whether the window is minimized.
+
+--- Getting started ---
+
+- Include this AFTER final_platform_layer.h and final_ui.h
+- Define FUI_INPUT_FPL_IMPLEMENTATION in ONE translation unit before including it
+- Call fuiFplInputInit once, then Pump and Build once per frame before fuiBeginFrame
+- A host that polls the event queue itself calls BeginEvents instead of Pump, hands every polled event to HandleEvent and then calls Build
+
+--- Usage ---
+
+	fuiFplInput bridge;
+	fuiFplInputInit(&bridge);
+	while(fplWindowUpdate()) {
+		fuiFplInputPumpEvents(&bridge);
+		fuiFplInputBuild(&bridge);
+		fuiBeginFrame(&context, &bridge.input, fuiPass_Both);
+		...
+		fuiEndFrame(&context);
+	}
+
+The same with a host that needs the events itself, e.g. for dropped files:
+
+	while(fplWindowUpdate()) {
+		fuiFplInputBeginEvents(&bridge);
+		fplEvent event;
+		while(fplPollEvent(&event)) {
+			fuiFplInputHandleEvent(&bridge, &event);
+			HandleMyEvent(&event);
+		}
+		fuiFplInputBuild(&bridge);
+		...
+	}
+
+--- License ---
+
+MIT License, Copyright (c) 2017-2026 Torsten Spaete
+***/
+
+#ifndef FUI_INPUT_FPL_INCLUDE_H
+#define FUI_INPUT_FPL_INCLUDE_H
+
+#include <final_platform_layer.h>
+#include <final_ui.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+* @struct fuiFplInput
+* @brief One frame of input, plus the previous frame's held state that the edges are worked out against.
+* @note Only `input`, `rightPressedThisFrame`, `windowHasFocus` and `windowIsMinimized` are meant to be read, everything else is bookkeeping.
+*/
+typedef struct fuiFplInput {
+	//! The finished input, ready to hand to @ref fuiBeginFrame
+	fuiInput input;
+	//! Whether each key was down on the PREVIOUS frame, which is what a half transition is measured against
+	bool keyWasDown[fuiKey_Count];
+	//! Whether each mouse button was down on the previous frame
+	bool mouseWasDown[FUI_MOUSE_BUTTON_COUNT];
+	//! Whether the window had the focus, which only the event queue can answer
+	bool windowHasFocus;
+	//! Whether the window is minimized, from the same queue. A window that lost the focus may still be in plain sight on another monitor, and this is what tells the two apart
+	bool windowIsMinimized;
+	//! How far the wheel turned this frame, accumulated from the queue
+	float wheelThisFrame;
+	//! Codepoints typed this frame, accumulated from the queue
+	uint32_t typedCodePoints[FUI_MAX_TEXT_INPUT];
+	//! How many entries of typedCodePoints are filled
+	int32_t typedCount;
+	//! Whether the right button went down this frame, which is what a context menu opens on
+	bool rightPressedThisFrame;
+	//! When the previous frame was built, which is what the delta time is measured from
+	fplTimestamp lastTimestamp;
+} fuiFplInput;
+
+/**
+* @brief Maps one FPL key to the key final_ui.h knows it as.
+* @param[in] key The FPL key.
+* @return Returns the matching @ref fuiKey, or fuiKey_None for a key the interface has no use for.
+*/
+fui_api fuiKey fuiFplMapKey(const fplKey key);
+
+/**
+* @brief Prepares a bridge for its first frame.
+* @param[out] bridge Reference to the bridge @ref fuiFplInput to initialize.
+*/
+fui_api void fuiFplInputInit(fuiFplInput *bridge);
+
+/**
+* @brief Drains the event queue for the things polling cannot give: typed characters, the wheel, the focus and whether the window is minimized.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @note Call this once per frame, BEFORE @ref fuiFplInputBuild.
+* @note The events are gone afterwards. A host that needs them itself polls the queue on its own, see @ref fuiFplInputBeginEvents.
+*/
+fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge);
+
+/**
+* @brief Starts a frame of events for a host that polls the queue itself: forgets the wheel, the typed characters and the right press of the previous frame.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @note Call this once per frame before the first @ref fuiFplInputHandleEvent, and @ref fuiFplInputBuild after the last one.
+*/
+fui_api void fuiFplInputBeginEvents(fuiFplInput *bridge);
+
+/**
+* @brief Takes one event the host polled itself, for the things polling cannot give: typed characters, the wheel, the focus and whether the window is minimized.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @param[in] event The polled event, the bridge only reads it.
+* @note Every event can be handed over, the ones the bridge has no use for are ignored. The host still gets to handle the same event afterwards.
+*/
+fui_api void fuiFplInputHandleEvent(fuiFplInput *bridge, const fplEvent *event);
+
+/**
+* @brief Fills this frame's fuiInput from the polled device state and the drained events.
+* @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+*/
+fui_api void fuiFplInputBuild(fuiFplInput *bridge);
+
+/**
+* @brief Reads the system clipboard, shaped as the @ref fuiPlatform callback final_ui.h asks for.
+* @param[in] userData Ignored, FPL's clipboard is global.
+* @param[out] destination Receives the text, pass null to ask for the size only.
+* @param[in] maxDestinationLength Capacity of destination in bytes, including the terminator.
+* @return Returns the number of bytes the text needs without its terminator, or zero when there is nothing to read or it does not fit.
+*/
+fui_api size_t fuiFplGetClipboardText(void *userData, char *destination, size_t maxDestinationLength);
+
+/**
+* @brief Writes the system clipboard, shaped as the @ref fuiPlatform callback final_ui.h asks for.
+* @param[in] userData Ignored, FPL's clipboard is global.
+* @param[in] text The text to put on the clipboard, it does not have to be null terminated.
+* @param[in] textLength Number of bytes to take from the text.
+* @return Returns true when the clipboard took it.
+*/
+fui_api bool fuiFplSetClipboardText(void *userData, const char *text, size_t textLength);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // FUI_INPUT_FPL_INCLUDE_H
+
+// ****************************************************************************
+//
+// > IMPLEMENTATION
+//
+// ****************************************************************************
+#if defined(FUI_INPUT_FPL_IMPLEMENTATION) && !defined(FUI_INPUT_FPL_IMPLEMENTED)
+#define FUI_INPUT_FPL_IMPLEMENTED
+
+fui_api fuiKey fuiFplMapKey(const fplKey key) {
+	if(key >= fplKey_A && key <= fplKey_Z) {
+		return (fuiKey)((int)fuiKey_A + ((int)key - (int)fplKey_A));
+	}
+	if(key >= fplKey_0 && key <= fplKey_9) {
+		return (fuiKey)((int)fuiKey_0 + ((int)key - (int)fplKey_0));
+	}
+	if(key >= fplKey_F1 && key <= fplKey_F12) {
+		return (fuiKey)((int)fuiKey_F1 + ((int)key - (int)fplKey_F1));
+	}
+	switch(key) {
+		case fplKey_Backspace: return fuiKey_Backspace;
+		case fplKey_Tab: return fuiKey_Tab;
+		case fplKey_Return: return fuiKey_Return;
+		case fplKey_Escape: return fuiKey_Escape;
+		case fplKey_Space: return fuiKey_Space;
+		case fplKey_PageUp: return fuiKey_PageUp;
+		case fplKey_PageDown: return fuiKey_PageDown;
+		case fplKey_End: return fuiKey_End;
+		case fplKey_Home: return fuiKey_Home;
+		case fplKey_Left: return fuiKey_Left;
+		case fplKey_Up: return fuiKey_Up;
+		case fplKey_Right: return fuiKey_Right;
+		case fplKey_Down: return fuiKey_Down;
+		case fplKey_Insert: return fuiKey_Insert;
+		case fplKey_Delete: return fuiKey_Delete;
+		case fplKey_LeftShift: return fuiKey_LeftShift;
+		case fplKey_RightShift: return fuiKey_RightShift;
+		case fplKey_LeftControl: return fuiKey_LeftControl;
+		case fplKey_RightControl: return fuiKey_RightControl;
+		case fplKey_LeftAlt: return fuiKey_LeftAlt;
+		case fplKey_RightAlt: return fuiKey_RightAlt;
+		// X11 reports the side, Win32 can report the generic one. Both have to arrive, or a shortcut works
+		// on one platform and silently does not on the other.
+		case fplKey_Shift: return fuiKey_LeftShift;
+		case fplKey_Control: return fuiKey_LeftControl;
+		case fplKey_Alt: return fuiKey_LeftAlt;
+		default: return fuiKey_None;
+	}
+}
+
+fui_api void fuiFplInputInit(fuiFplInput *bridge) {
+	fplClearStruct(bridge);
+	bridge->input = fuiZeroInput();
+	bridge->windowHasFocus = true;
+	bridge->lastTimestamp = fplTimestampQuery();
+}
+
+fui_api void fuiFplInputBeginEvents(fuiFplInput *bridge) {
+	bridge->wheelThisFrame = 0.0f;
+	bridge->typedCount = 0;
+	bridge->rightPressedThisFrame = false;
+}
+
+fui_api void fuiFplInputHandleEvent(fuiFplInput *bridge, const fplEvent *event) {
+	switch(event->type) {
+		case fplEventType_Window:
+		{
+			if(event->window.type == fplWindowEventType_GotFocus) {
+				bridge->windowHasFocus = true;
+			} else if(event->window.type == fplWindowEventType_LostFocus) {
+				bridge->windowHasFocus = false;
+			} else if(event->window.type == fplWindowEventType_Minimized) {
+				bridge->windowIsMinimized = true;
+			} else if(event->window.type == fplWindowEventType_Restored || event->window.type == fplWindowEventType_Maximized || event->window.type == fplWindowEventType_Shown) {
+				// A minimized window can come back maximized rather than restored. And X11 reports no state at all for one that comes back fullscreen, only that it is shown again.
+				bridge->windowIsMinimized = false;
+			}
+		} break;
+
+		case fplEventType_Keyboard:
+		{
+			if(event->keyboard.type == fplKeyboardEventType_Input) {
+				// The FULL codepoint, not a byte. final_ui.h takes codepoints precisely so that a
+				// platform layer narrowing this to a char cannot corrupt anything above U+00FF.
+				uint32_t codePoint = (uint32_t)event->keyboard.keyCode;
+				bool isPrintable = (codePoint >= 32u) && (codePoint != 127u);
+				if(isPrintable && bridge->typedCount < (int32_t)FUI_MAX_TEXT_INPUT) {
+					bridge->typedCodePoints[bridge->typedCount++] = codePoint;
+				}
+			}
+		} break;
+
+		case fplEventType_Mouse:
+		{
+			if(event->mouse.type == fplMouseEventType_Wheel) {
+				bridge->wheelThisFrame += event->mouse.wheelDelta;
+			} else if(event->mouse.type == fplMouseEventType_Button) {
+				bool isRightPress = (event->mouse.mouseButton == fplMouseButtonType_Right) && (event->mouse.buttonState != fplButtonState_Release);
+				if(isRightPress) {
+					bridge->rightPressedThisFrame = true;
+				}
+			}
+		} break;
+
+		default:
+			break;
+	}
+}
+
+fui_api void fuiFplInputPumpEvents(fuiFplInput *bridge) {
+	fuiFplInputBeginEvents(bridge);
+	fplEvent event;
+	while(fplPollEvent(&event)) {
+		fuiFplInputHandleEvent(bridge, &event);
+	}
+}
+
+fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
+	fplWindowSize windowSize = fplZeroInit;
+	fplGetWindowSize(&windowSize);
+
+	fplTimestamp now = fplTimestampQuery();
+	double elapsedSeconds = fplTimestampElapsed(bridge->lastTimestamp, now);
+	bridge->lastTimestamp = now;
+
+	fuiInput *input = &bridge->input;
+	input->windowSize = fuiV2i((int32_t)windowSize.width, (int32_t)windowSize.height);
+	input->deltaTime = (float)elapsedSeconds;
+	input->isActive = bridge->windowHasFocus;
+	input->mouseWheelDelta = bridge->wheelThisFrame;
+
+	fplMouseState mouseState = fplZeroInit;
+	fplPollMouseState(&mouseState);
+	input->mousePosition = fuiV2((float)mouseState.x, (float)mouseState.y);
+
+	// FPL orders its buttons left, right, middle; final_ui.h orders them left, middle, right.
+	const fplMouseButtonType fplButtonForFuiButton[FUI_MOUSE_BUTTON_COUNT] = {
+		fplMouseButtonType_Left, fplMouseButtonType_Middle, fplMouseButtonType_Right,
+	};
+	for(int32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
+		bool isDown = mouseState.buttonStates[fplButtonForFuiButton[buttonIndex]] != fplButtonState_Release;
+		bool wasDown = bridge->mouseWasDown[buttonIndex];
+		input->mouseButtons[buttonIndex].endedDown = isDown;
+		input->mouseButtons[buttonIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;
+		bridge->mouseWasDown[buttonIndex] = isDown;
+	}
+
+	fplKeyboardState keyboardState = fplZeroInit;
+	fplPollKeyboardState(&keyboardState);
+	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
+		input->keys[keyIndex].endedDown = false;
+		input->keys[keyIndex].halfTransitionCount = 0;
+	}
+	for(uint32_t rawKey = 0; rawKey < fplArrayCount(keyboardState.buttonStatesMapped); ++rawKey) {
+		fuiKey mappedKey = fuiFplMapKey((fplKey)rawKey);
+		if(mappedKey == fuiKey_None) {
+			continue;
+		}
+		bool isDown = keyboardState.buttonStatesMapped[rawKey] != fplButtonState_Release;
+		// Several raw keys can land on one fui key, so a key already reported down stays down.
+		if(isDown) {
+			input->keys[mappedKey].endedDown = true;
+		}
+	}
+	for(int32_t keyIndex = 0; keyIndex < (int32_t)fuiKey_Count; ++keyIndex) {
+		bool isDown = input->keys[keyIndex].endedDown;
+		bool wasDown = bridge->keyWasDown[keyIndex];
+		input->keys[keyIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;
+		bridge->keyWasDown[keyIndex] = isDown;
+	}
+
+	for(int32_t typedIndex = 0; typedIndex < bridge->typedCount; ++typedIndex) {
+		input->textInput[typedIndex] = bridge->typedCodePoints[typedIndex];
+	}
+	input->textInputLength = bridge->typedCount;
+}
+
+fui_api size_t fuiFplGetClipboardText(void *userData, char *destination, size_t maxDestinationLength) {
+	(void)userData;
+	return fplClipboardGetText(destination, maxDestinationLength);
+}
+
+fui_api bool fuiFplSetClipboardText(void *userData, const char *text, size_t textLength) {
+	(void)userData;
+	return fplClipboardSetTextLen(text, textLength);
+}
+
+#endif // FUI_INPUT_FPL_IMPLEMENTATION

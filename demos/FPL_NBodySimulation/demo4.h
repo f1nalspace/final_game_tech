@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <random>
 
-#include "vecmath.h"
+#include <final_math.h>
 #include "sph.h"
 #include "threading.h"
 #include "base.h"

@@ -148,7 +148,7 @@ SOFTWARE.
 
 /*!
 	\file final_memory.h
-	\version v1.0.1
+	\version v1.0.2
 	\author Torsten Spaete
 	\brief Final Memory (FMEM) - An open source C99 single file header memory library.
 */
@@ -156,6 +156,11 @@ SOFTWARE.
 /*!
 	\page page_changelog Changelog
 	\tableofcontents
+
+	## v1.0.2:
+	- Fixed: fmemFree never freed an owned block (its guard required source != null, but owned blocks have source == null) so growable/fixed arenas leaked entirely; guard corrected to source == null
+	- Fixed: fmemBeginTemporary on a multi-block growable arena granted the cross-chain remaining while base was only contiguous in one block (heap overflow); now clamped to this block's remaining
+	- Fixed: fmemPushAligned now aligns the returned address (it previously only padded the size, so the pointer was not actually aligned)
 
 	## v1.0.1:
 	- Changed: Moved FMEM_MEMSET, FMEM_MALLOC, FMEM_ASSERT into the implementation block
@@ -217,6 +222,25 @@ SOFTWARE.
 #else
 #	define fmem_api extern
 #endif
+
+//
+// Version
+//
+
+//! Version of this library, so an application can report which build it was compiled against
+#define FMEM_VERSION_MAJOR 1
+#define FMEM_VERSION_MINOR 0
+#define FMEM_VERSION_PATCH 2
+
+// Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
+#define FMEM__STRINGIFY_EXPANDED(value) #value
+#define FMEM__STRINGIFY(value) FMEM__STRINGIFY_EXPANDED(value)
+
+//! Full version as a string literal, in the form of "major.minor.patch"
+#define FMEM_VERSION_STRING FMEM__STRINGIFY(FMEM_VERSION_MAJOR) "." FMEM__STRINGIFY(FMEM_VERSION_MINOR) "." FMEM__STRINGIFY(FMEM_VERSION_PATCH)
+
+//! Returns the null-terminated version string of this library, in the form of "major.minor.patch"
+fmem_api const char *fmemGetVersion(void);
 
 #if defined(FMEM_IS_C99)
 	//! Initialize a struct to zero (C99)
@@ -343,6 +367,10 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 #if defined(FMEM_IMPLEMENTATION) && !defined(FMEM_IMPLEMENTED)
 #define FMEM_IMPLEMENTED
+
+fmem_api const char *fmemGetVersion(void) {
+	return FMEM_VERSION_STRING;
+}
 
 // Functions override
 #ifndef FMEM_MEMSET
@@ -520,9 +548,11 @@ fmem_api bool fmemInitFromSource(fmemMemoryBlock *block, void *sourceMemory, con
 }
 
 fmem_api void fmemFree(fmemMemoryBlock *block) {
+	// Only owned blocks (allocated by fmemInit/fmemPush, source == null) may be freed here; borrowed blocks
+	// (fmemInitFromSource / fmemPushBlock, source != null) are owned by their source and must not be freed.
 	if ((block != fmem_null) &&
 		(block->temporary == fmem_null) &&
-		(block->source != fmem_null)) {
+		(block->source == fmem_null)) {
 		fmemMemoryBlock *freeBlock = block;
 		while (freeBlock != fmem_null) {
 			if (freeBlock->base == fmem_null || freeBlock->size == 0 || freeBlock->source != fmem_null) {
@@ -563,6 +593,10 @@ fmem_api uint8_t *fmemPush(fmemMemoryBlock *block, const size_t size, const fmem
 	if (block->temporary != fmem_null) {
 		return fmem_null;
 	}
+
+	// NOTE: fmemPush packs allocations exactly (used advances by size, no alignment padding). This is a
+	// documented contract (see FMEM_Test) that command-stream consumers rely on for tight, walkable packing.
+	// Callers that need an aligned allocation must use fmemPushAligned.
 
 	fmemMemoryBlock *bestBlock = fmem_null;
 
@@ -681,14 +715,22 @@ fmem_api uint8_t *fmemPushAligned(fmemMemoryBlock *block, const size_t size, con
 	if (block == fmem_null || size == 0) {
 		return fmem_null;
 	}
-	if (alignment < 1) {
+	if (alignment <= 1) {
 		return fmemPush(block, size, flags);
 	}
-	size_t offset = ((((alignment) > 1) && (((size) & ((alignment)-1)) != 0)) ? ((alignment)-((size) & (alignment - 1))) : 0);
-	size_t alignedSize = size + offset;
-
-	uint8_t *result = fmemPush(block, alignedSize, flags);
-
+	// Over-allocate by (alignment - 1) so the returned pointer can be bumped up to the requested alignment.
+	// The old code aligned the size instead of the address, so the returned pointer was not actually aligned.
+	const fmemPushFlags rawFlags = (fmemPushFlags)(flags & ~fmemPushFlags_Clear);
+	uint8_t *raw = fmemPush(block, size + (alignment - 1), rawFlags);
+	if (raw == fmem_null) {
+		return fmem_null;
+	}
+	uintptr_t rawAddress = (uintptr_t)raw;
+	uintptr_t alignedAddress = (rawAddress + (alignment - 1)) & ~((uintptr_t)alignment - 1);
+	uint8_t *result = (uint8_t *)alignedAddress;
+	if (flags & fmemPushFlags_Clear) {
+		FMEM_MEMSET(result, 0, size);
+	}
 	return(result);
 }
 
@@ -721,7 +763,13 @@ fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *tempo
 	if (source->base == fmem_null || source->size == 0) {
 		return(false);
 	}
-	size_t remainingSize = fmemGetRemainingSize(source);
+	// Temporary memory must be a single contiguous region, so it can only take the remaining space of THIS block.
+	// Using fmemGetRemainingSize here would sum the remaining across every block in a growable chain while
+	// temporary->base only points into this block -> the temporary would overflow this block's payload.
+	if (source->used > source->size) {
+		return(false);
+	}
+	size_t remainingSize = source->size - source->used;
 	if (remainingSize == 0) {
 		return(false);
 	}

@@ -79,7 +79,7 @@ static void LoadAssets(RenderState *renderState, Assets *assets) {
 
 	// Fonts
 	FontAsset *hudFont = &assets->consoleFont;
-	if (FontLoadFromMemory(allocator, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, false, &hudFont->desc)) {
+	if (FontLoadFromMemory(allocator, ptr_fontVeraFontRegular, sizeOf_fontVeraFontRegular, 0, 24.0f, 32, 128, 512, 512, true, &hudFont->desc)) {
 		RenderPushTexture(renderState, &hudFont->texture, hudFont->desc.atlasAlphaBitmap, hudFont->desc.atlasWidth, hudFont->desc.atlasHeight, 1, TextureFilterType_Linear, TextureWrapMode_ClampToEdge, false, false);
 	}
 }
