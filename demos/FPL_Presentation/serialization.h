@@ -333,7 +333,7 @@ namespace ColorHelpers {
         Vec4f *o = (Vec4f *)outValue;
         const uint32_t hex = (argCount >= 1) ? ArgumentHelpers::ArgToU32(&args[0]) : 0;
         const uint8_t a  = (argCount >= 2) ? ArgumentHelpers::ArgToU8(&args[1]) : 255;
-        *o = RGBAToLinearHex24(hex, a);
+        *o = RGBAToLinearHex24WithAlpha(hex, a);
         return true;
     }
 
