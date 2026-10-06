@@ -109,7 +109,7 @@ typedef float f32;
 typedef double f64;
 typedef int32_t b32;
 
-static const u32 NoIndex = UINT32_MAX;
+static constexpr u32 NoIndex = UINT32_MAX;
 static const f32 UnboundedDistance = F32MaxValue;
 
 static const Vec3f UnitUp = V3fInit(0.0f, 0.0f, 1.0f);
@@ -117,12 +117,12 @@ static const Vec3f UnitUp = V3fInit(0.0f, 0.0f, 1.0f);
 //
 // Numeric helpers
 //
-static const f32 LuminanceWeightRed = 0.2126f;
-static const f32 LuminanceWeightGreen = 0.7152f;
-static const f32 LuminanceWeightBlue = 0.0722f;
+static constexpr f32 LuminanceWeightRed = 0.2126f;
+static constexpr f32 LuminanceWeightGreen = 0.7152f;
+static constexpr f32 LuminanceWeightBlue = 0.0722f;
 
-static const u32 FloatExponentShift = 23;
-static const u32 FloatExponentMask = 0xFFu;
+static constexpr u32 FloatExponentShift = 23;
+static constexpr u32 FloatExponentMask = 0xFFu;
 
 static inline f32 Luminance(const Vec3f &color) {
 	f32 result = LuminanceWeightRed * color.r + LuminanceWeightGreen * color.g + LuminanceWeightBlue * color.b;
@@ -189,22 +189,22 @@ struct PathSampler {
 	u64 state;
 };
 
-static const u64 PcgMultiplier = 6364136223846793005ull;
-static const u64 PcgIncrement = 1442695040888963407ull;
-static const u32 PcgXorShift = 18;
-static const u32 PcgOutputShift = 27;
-static const u32 PcgRotationShift = 59;
-static const u32 PcgRotationMask = 31;
-static const u32 RandomMantissaShift = 8;
-static const f32 OneOver2Pow24 = 5.9604644775390625e-08f; // 2^-24, hex float literals are C++17
+static constexpr u64 PcgMultiplier = 6364136223846793005ull;
+static constexpr u64 PcgIncrement = 1442695040888963407ull;
+static constexpr u32 PcgXorShift = 18;
+static constexpr u32 PcgOutputShift = 27;
+static constexpr u32 PcgRotationShift = 59;
+static constexpr u32 PcgRotationMask = 31;
+static constexpr u32 RandomMantissaShift = 8;
+static constexpr f32 OneOver2Pow24 = 5.9604644775390625e-08f; // 2^-24, hex float literals are C++17
 
-static const u64 SplitMixIncrement = 0x9E3779B97F4A7C15ull;
-static const u64 SplitMixMultiplier1 = 0xBF58476D1CE4E5B9ull;
-static const u64 SplitMixMultiplier2 = 0x94D049BB133111EBull;
-static const u32 SplitMixShift1 = 30;
-static const u32 SplitMixShift2 = 27;
-static const u32 SplitMixShift3 = 31;
-static const u32 SampleKeyPixelShift = 32;
+static constexpr u64 SplitMixIncrement = 0x9E3779B97F4A7C15ull;
+static constexpr u64 SplitMixMultiplier1 = 0xBF58476D1CE4E5B9ull;
+static constexpr u64 SplitMixMultiplier2 = 0x94D049BB133111EBull;
+static constexpr u32 SplitMixShift1 = 30;
+static constexpr u32 SplitMixShift2 = 27;
+static constexpr u32 SplitMixShift3 = 31;
+static constexpr u32 SampleKeyPixelShift = 32;
 
 static inline u32 PathSamplerNextU32(PathSampler &sampler) {
 	u64 oldState = sampler.state;
@@ -286,9 +286,9 @@ static inline Vec3f ToWorld(const ShadingFrame &frame, const Vec3f &value) {
 //
 // Self-intersection: origin offset instead of a t-epsilon (Waechter and Binder, Ray Tracing Gems ch. 6)
 //
-static const f32 OffsetOriginThreshold = 1.0f / 32.0f; // below this |coordinate| use the float offset
-static const f32 OffsetFloatScale = 1.0f / 65536.0f;
-static const f32 OffsetIntScale = 256.0f;
+static constexpr f32 OffsetOriginThreshold = 1.0f / 32.0f; // below this |coordinate| use the float offset
+static constexpr f32 OffsetFloatScale = 1.0f / 65536.0f;
+static constexpr f32 OffsetIntScale = 256.0f;
 
 static inline f32 OffsetComponent(const f32 position, const f32 normalComponent) {
 	s32 integerOffset = (s32)(OffsetIntScale * normalComponent);
@@ -323,10 +323,10 @@ static inline Ray3f SpawnRay(const Vec3f &position, const Vec3f &geometricNormal
 //
 // Geometry
 //
-static const f32 RayMinDistance = 0.0f;                 // no t-epsilon, self-intersection is solved by OffsetRayOrigin
-static const f32 ParallelDirectionEpsilon = 1e-20f;     // direction components smaller than this are clamped before 1/d
-static const f32 RobustSlabScale = 1.0000004f;          // 1 + 2*gamma(3) (Ize 2013), makes the slab test conservative
-static const f32 NoHitDistance = F32MaxValue;           // sentinel distance returned by the bounds test on a miss
+static constexpr f32 RayMinDistance = 0.0f;                 // no t-epsilon, self-intersection is solved by OffsetRayOrigin
+static constexpr f32 ParallelDirectionEpsilon = 1e-20f;     // direction components smaller than this are clamped before 1/d
+static constexpr f32 RobustSlabScale = 1.0000004f;          // 1 + 2*gamma(3) (Ize 2013), makes the slab test conservative
+static const f32 NoHitDistance = F32MaxValue;               // sentinel distance returned by the bounds test on a miss
 
 enum class PrimitiveKind : u32 {
 	Sphere = 0,
@@ -680,7 +680,7 @@ static inline f32 AabbHalfSurfaceArea(const Aabb &box) {
 	return(result);
 }
 
-static const f32 BoundsPaddingRelative = 1e-5f; // pads flat bounds (axis aligned quads) so the slab test is never degenerate
+static constexpr f32 BoundsPaddingRelative = 1e-5f; // pads flat bounds (axis aligned quads) so the slab test is never degenerate
 
 static Aabb ComputePrimitiveBounds(const Primitive &primitive) {
 	Aabb result = AabbEmpty();
@@ -742,13 +742,13 @@ struct BvhNode {
 };
 fplStaticAssert(sizeof(BvhNode) == 32);
 
-static const u32 BvhBinCount = 16;
-static const u32 BvhMaxLeafPrimitives = 4;
-static const u32 BvhMaxDepth = 48;
-static const u32 BvhStackCapacity = 64;
-static const u32 BvhFirstChildNodeIndex = 2; // node 1 stays unused so sibling pairs start on even indices (one cache line per pair)
-static const f32 BvhTraversalCost = 2.0f;
-static const f32 BvhIntersectionCost = 1.0f;
+static constexpr u32 BvhBinCount = 16;
+static constexpr u32 BvhMaxLeafPrimitives = 4;
+static constexpr u32 BvhMaxDepth = 48;
+static constexpr u32 BvhStackCapacity = 64;
+static constexpr u32 BvhFirstChildNodeIndex = 2; // node 1 stays unused so sibling pairs start on even indices (one cache line per pair)
+static constexpr f32 BvhTraversalCost = 2.0f;
+static constexpr f32 BvhIntersectionCost = 1.0f;
 
 struct BvhBuilder {
 	const Aabb *primitiveBounds;
@@ -796,7 +796,7 @@ static void BvhSubdivide(BvhBuilder &builder, const u32 nodeIndex, const u32 dep
 		AabbGrowPoint(centroidBounds, builder.primitiveCentroids[primitiveIndex]);
 	}
 
-	const u32 splitPlaneCount = BvhBinCount - 1;
+	constexpr u32 splitPlaneCount = BvhBinCount - 1;
 	f32 bestCost = F32MaxValue;
 	s32 bestAxis = -1;
 	u32 bestSplitPlane = 0;
@@ -1167,15 +1167,15 @@ static bool TraceSurface(const SceneView &scene, const Ray3f &ray, const f32 tMa
 // A BSDF value never includes the cosine, a sample weight is f * |cos(wi)| / pdf.
 //
 static const f32 InversePi = 1.0f / F32Pi;
-static const f32 DeltaAlphaThreshold = 1e-3f;          // conductors with a smaller GGX alpha are perfect mirrors
-static const f32 MinPlasticCoatAlpha = 2e-3f;          // plastic coats are always glossy, never delta
-static const f32 MinCosine = 1e-6f;
-static const f32 SchlickAverageFactor = 1.0f / 21.0f;  // hemispherical average of (1 - cos)^5 weighted by cos
-static const f32 PlasticSpecularProbabilityMin = 0.1f;
-static const f32 PlasticSpecularProbabilityMax = 0.9f;
-static const f32 MinEnergyCompensationDenominator = 1e-4f;
-static const b32 UseMultipleScatteringCompensation = true; // Kulla-Conty energy compensation for rough conductors
-static const f32 RoughLobeAlphaThreshold = 0.3f;          // lobes below this roughness are sharp: photon merging is offered there as an extra caustic strategy
+static constexpr f32 DeltaAlphaThreshold = 1e-3f;          // conductors with a smaller GGX alpha are perfect mirrors
+static constexpr f32 MinPlasticCoatAlpha = 2e-3f;          // plastic coats are always glossy, never delta
+static constexpr f32 MinCosine = 1e-6f;
+static constexpr f32 SchlickAverageFactor = 1.0f / 21.0f;  // hemispherical average of (1 - cos)^5 weighted by cos
+static constexpr f32 PlasticSpecularProbabilityMin = 0.1f;
+static constexpr f32 PlasticSpecularProbabilityMax = 0.9f;
+static constexpr f32 MinEnergyCompensationDenominator = 1e-4f;
+static constexpr b32 UseMultipleScatteringCompensation = true; // Kulla-Conty energy compensation for rough conductors
+static constexpr f32 RoughLobeAlphaThreshold = 0.3f;          // lobes below this roughness are sharp: photon merging is offered there as an extra caustic strategy
 
 enum class MaterialKind : u32 {
 	Diffuse = 0,
@@ -1347,11 +1347,11 @@ static inline Vec3f SampleCosineHemisphere(const f32 u0, const f32 u1) {
 // With Schlick, E(mu; F0) = F0 * fullFresnel(mu) + (1 - F0) * schlickWeight(mu), so two tables cover every F0 and alpha.
 // Rows are indexed by sqrt(alpha), columns by mu = cos(theta_o), both vertex-centered so the end points 0 and 1 are covered.
 //
-static const u32 GgxAlbedoTableSize = 32;
-static const u32 GgxAlbedoStrataPerAxis = 32;
-static const u64 GgxAlbedoTableSeed = 0x5EEDA1BEDull;
-static const f32 GgxAlbedoTableMinAlpha = 1e-4f;
-static const f32 GgxAlbedoTableMinCosine = 1e-3f;
+static constexpr u32 GgxAlbedoTableSize = 32;
+static constexpr u32 GgxAlbedoStrataPerAxis = 32;
+static constexpr u64 GgxAlbedoTableSeed = 0x5EEDA1BEDull;
+static constexpr f32 GgxAlbedoTableMinAlpha = 1e-4f;
+static constexpr f32 GgxAlbedoTableMinCosine = 1e-3f;
 
 struct GgxAlbedoTables {
 	f32 fullFresnel[GgxAlbedoTableSize][GgxAlbedoTableSize];   // directional albedo with F = 1
@@ -1418,9 +1418,9 @@ static inline f32 GgxAverageAlbedo(const TableCoordinate &roughness, const f32 f
 static void BuildGgxAlbedoTables(GgxAlbedoTables &tables) {
 	PathSampler sampler;
 	sampler.state = GgxAlbedoTableSeed;
-	const u32 sampleCount = GgxAlbedoStrataPerAxis * GgxAlbedoStrataPerAxis;
-	const f32 inverseStrata = 1.0f / (f32)GgxAlbedoStrataPerAxis;
-	const f32 inverseSampleCount = 1.0f / (f32)sampleCount;
+	constexpr u32 sampleCount = GgxAlbedoStrataPerAxis * GgxAlbedoStrataPerAxis;
+	constexpr f32 inverseStrata = 1.0f / (f32)GgxAlbedoStrataPerAxis;
+	constexpr f32 inverseSampleCount = 1.0f / (f32)sampleCount;
 	for (u32 roughnessIndex = 0; roughnessIndex < GgxAlbedoTableSize; ++roughnessIndex) {
 		f32 roughness = (f32)roughnessIndex / (f32)(GgxAlbedoTableSize - 1);
 		f32 alpha = F32Max(roughness * roughness, GgxAlbedoTableMinAlpha);
@@ -1791,11 +1791,11 @@ static bool SampleBsdf(const Material &material, const Vec3f &baseColor, const V
 //
 // Lights and environment
 //
-static const f32 SmallAngleSin2Threshold = 0.00068523f; // sin^2(1.5 degrees): below this use the Taylor form of 1 - cos(thetaMax)
-static const f32 MinLightCosine = 1e-6f;
+static constexpr f32 SmallAngleSin2Threshold = 0.00068523f; // sin^2(1.5 degrees): below this use the Taylor form of 1 - cos(thetaMax)
+static constexpr f32 MinLightCosine = 1e-6f;
 static const f32 UniformSpherePdf = 1.0f / (4.0f * F32Pi);
-static const f32 LightSelectionPowerShare = 0.5f;       // defensive mixture: half by power, half uniform
-static const f32 MinRegionRadius = 1.0f;
+static constexpr f32 LightSelectionPowerShare = 0.5f;       // defensive mixture: half by power, half uniform
+static constexpr f32 MinRegionRadius = 1.0f;
 
 enum class LightKind : u32 {
 	Sphere = 0,
@@ -2072,7 +2072,7 @@ struct SceneCameraDesc {
 	f32 defaultApertureRadius; // aperture restored when depth of field is toggled on
 };
 
-static const f32 DefaultPhotonRadius = 0.025f;
+static constexpr f32 DefaultPhotonRadius = 0.025f;
 
 struct Scene {
 	const char *name;
@@ -2455,11 +2455,11 @@ struct SceneEntry {
 	TonemapOperator tonemapOperator;
 };
 
-static const f32 WideReferenceAspect = 5.0f / 3.0f;
-static const f32 SquareReferenceAspect = 1.0f;
-static const u32 DefaultMaxBounces = 12;
-static const f32 GlassIor = 1.5f;
-static const f32 CoatIor = 1.5f;
+static constexpr f32 WideReferenceAspect = 5.0f / 3.0f;
+static constexpr f32 SquareReferenceAspect = 1.0f;
+static constexpr u32 DefaultMaxBounces = 12;
+static constexpr f32 GlassIor = 1.5f;
+static constexpr f32 CoatIor = 1.5f;
 
 static const Vec3f GoldF0 = V3fInit(1.000f, 0.766f, 0.336f);
 static const Vec3f SilverF0 = V3fInit(0.972f, 0.960f, 0.915f);
@@ -2472,11 +2472,11 @@ static const Vec3f GroundPoint = V3fInit(0.0f, 0.0f, 0.0f);
 
 // Energy conservation test: in a uniform environment of radiance 1 every lossless BSDF is invisible
 static void BuildWhiteFurnaceScene(Scene &scene) {
-	const f32 sphereRadius = 1.0f;
-	const f32 sphereSpacing = 2.4f;
-	const s32 sphereHalfCount = 2;
-	const f32 roughConductorAlpha = 0.5f;
-	const f32 plasticCoatAlpha = 0.2f;
+	constexpr f32 sphereRadius = 1.0f;
+	constexpr f32 sphereSpacing = 2.4f;
+	constexpr s32 sphereHalfCount = 2;
+	constexpr f32 roughConductorAlpha = 0.5f;
+	constexpr f32 plasticCoatAlpha = 0.2f;
 	const Vec3f white = V3fInit(1.0f, 1.0f, 1.0f);
 
 	scene.name = "White Furnace";
@@ -2495,14 +2495,14 @@ static void BuildWhiteFurnaceScene(Scene &scene) {
 	}
 
 	const Vec3f environmentRadiance = V3fInit(1.0f, 1.0f, 1.0f);
-	const bool isEnvironmentSampled = true;
+	constexpr bool isEnvironmentSampled = true;
 	scene.SetEnvironmentUniform(environmentRadiance, isEnvironmentSampled);
 
 	const Vec3f eye = V3fInit(0.0f, -15.0f, 0.0f);
 	const Vec3f target = V3fInit(0.0f, 0.0f, 0.0f);
-	const f32 fovYDegrees = 30.0f;
-	const f32 furnaceExposureEV = -1.0f;
-	const u32 furnaceMaxBounces = 64;
+	constexpr f32 fovYDegrees = 30.0f;
+	constexpr f32 furnaceExposureEV = -1.0f;
+	constexpr u32 furnaceMaxBounces = 64;
 	scene.SetCamera(eye, target, fovYDegrees, WideReferenceAspect, 0.0f, 0.0f);
 	scene.exposureEV = furnaceExposureEV;
 	scene.maxBounces = furnaceMaxBounces;
@@ -2510,15 +2510,15 @@ static void BuildWhiteFurnaceScene(Scene &scene) {
 
 // Measured Cornell box converted to Z up (1 unit = 100 mm): X = (278 - x) / 100, Y = z / 100, Z = y / 100
 static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
-	const f32 halfWidth = 2.78f;
-	const f32 width = halfWidth * 2.0f;
-	const f32 depth = 5.592f;
-	const f32 height = 5.488f;
-	const f32 lightSizeX = 1.30f;
-	const f32 lightSizeY = 1.05f;
-	const f32 lightMinY = 2.27f;
-	const f32 lightGapBelowCeiling = 0.003f;
-	const f32 lightZ = height - lightGapBelowCeiling;
+	constexpr f32 halfWidth = 2.78f;
+	constexpr f32 width = halfWidth * 2.0f;
+	constexpr f32 depth = 5.592f;
+	constexpr f32 height = 5.488f;
+	constexpr f32 lightSizeX = 1.30f;
+	constexpr f32 lightSizeY = 1.05f;
+	constexpr f32 lightMinY = 2.27f;
+	constexpr f32 lightGapBelowCeiling = 0.003f;
+	constexpr f32 lightZ = height - lightGapBelowCeiling;
 
 	const Vec3f whiteAlbedo = V3fInit(0.725f, 0.71f, 0.68f);
 	const Vec3f redAlbedo = V3fInit(0.63f, 0.065f, 0.05f);
@@ -2542,7 +2542,7 @@ static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
 	scene.AddQuad(leftFrontBottom, alongY, alongZ, redMaterial);     // left wall, normal +X
 	scene.AddQuad(rightFrontBottom, alongZ, alongY, greenMaterial);  // right wall, normal -X
 
-	const f32 lightMinX = -0.5f * lightSizeX;
+	constexpr f32 lightMinX = -0.5f * lightSizeX;
 	const Vec3f lightCorner = V3fInit(lightMinX, lightMinY, lightZ);
 	const Vec3f lightEdgeU = V3fInit(0.0f, lightSizeY, 0.0f);
 	const Vec3f lightEdgeV = V3fInit(lightSizeX, 0.0f, 0.0f);
@@ -2550,11 +2550,11 @@ static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
 
 	if (useClassicBoxes) {
 		// Measured short and tall blocks (sides about 166 mm, rotated by about -17 and +17.2 degrees)
-		const f32 blockHalfSide = 0.83f;
-		const f32 shortHalfHeight = 0.825f;
-		const f32 tallHalfHeight = 1.65f;
-		const f32 shortRotationDegrees = -17.0f;
-		const f32 tallRotationDegrees = 17.2f;
+		constexpr f32 blockHalfSide = 0.83f;
+		constexpr f32 shortHalfHeight = 0.825f;
+		constexpr f32 tallHalfHeight = 1.65f;
+		constexpr f32 shortRotationDegrees = -17.0f;
+		constexpr f32 tallRotationDegrees = 17.2f;
 		const Vec3f shortCenter = V3fInit(0.925f, 1.69f, shortHalfHeight);
 		const Vec3f tallCenter = V3fInit(-0.905f, 3.5125f, tallHalfHeight);
 		const Vec3f shortHalfExtents = V3fInit(blockHalfSide, blockHalfSide, shortHalfHeight);
@@ -2565,7 +2565,7 @@ static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
 		scene.fileName = "cornell_box_classic";
 	} else {
 		// Glass ball with a caustic next to a silver mirror ball
-		const f32 sphereRadius = 1.0f;
+		constexpr f32 sphereRadius = 1.0f;
 		u32 glassMaterial = scene.AddDielectric(GlassIor, ClearAbsorption);
 		u32 mirrorMaterial = scene.AddMirror(SilverF0);
 		const Vec3f mirrorCenter = V3fInit(-1.30f, 3.80f, sphereRadius);
@@ -2580,9 +2580,9 @@ static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
 	// The measured camera (278, 273, -800) mm with a 35 mm lens on 25 mm film, the target sits on the view axis at the box center depth
 	const Vec3f eye = V3fInit(0.0f, -8.0f, 2.73f);
 	const Vec3f target = V3fInit(0.0f, 2.796f, 2.73f);
-	const f32 fovYDegrees = 39.3077f;
-	const f32 cornellExposureEV = 0.7f;
-	const u32 cornellMaxBounces = 16;
+	constexpr f32 fovYDegrees = 39.3077f;
+	constexpr f32 cornellExposureEV = 0.7f;
+	constexpr u32 cornellMaxBounces = 16;
 	scene.SetCamera(eye, target, fovYDegrees, SquareReferenceAspect, 0.0f, 0.0f);
 	scene.exposureEV = cornellExposureEV;
 	scene.maxBounces = cornellMaxBounces;
@@ -2590,20 +2590,20 @@ static void BuildCornellBoxScene(Scene &scene, const bool useClassicBoxes) {
 
 // Seven spheres in a row on a sunny plaza, backlit by a low golden sun that throws long shadows towards the camera
 static void BuildGoldenHourScene(Scene &scene) {
-	const f32 sphereRadius = 1.0f;
-	const f32 rowAngleDegrees = 30.0f;
-	const f32 rowSpacing = 2.5f;
-	const s32 rowHalfCount = 3;
+	constexpr f32 sphereRadius = 1.0f;
+	constexpr f32 rowAngleDegrees = 30.0f;
+	constexpr f32 rowSpacing = 2.5f;
+	constexpr s32 rowHalfCount = 3;
 	const Vec3f rowOrigin = V3fInit(1.8f, 3.0f, sphereRadius);
 
 	const Vec3f clayAlbedo = V3fInit(0.80f, 0.77f, 0.72f);
 	const Vec3f redBase = V3fInit(0.75f, 0.06f, 0.04f);
 	const Vec3f blueBase = V3fInit(0.04f, 0.16f, 0.55f);
-	const f32 redCoatAlpha = 0.04f;
-	const f32 blueCoatAlpha = 0.18f;
-	const f32 aluminiumAlpha = 0.08f; // not a delta mirror: lets NEE reach the sun at the metal, otherwise the reflected sun never converges
-	const f32 goldAlpha = 0.25f;
-	const f32 copperAlpha = 0.12f;
+	constexpr f32 redCoatAlpha = 0.04f;
+	constexpr f32 blueCoatAlpha = 0.18f;
+	constexpr f32 aluminiumAlpha = 0.08f; // not a delta mirror: lets NEE reach the sun at the metal, otherwise the reflected sun never converges
+	constexpr f32 goldAlpha = 0.25f;
+	constexpr f32 copperAlpha = 0.12f;
 
 	scene.name = "Golden Hour";
 	scene.fileName = "golden_hour";
@@ -2630,9 +2630,9 @@ static void BuildGoldenHourScene(Scene &scene) {
 
 	const Vec3f tileLight = V3fInit(0.58f, 0.56f, 0.52f);
 	const Vec3f tileDark = V3fInit(0.40f, 0.39f, 0.37f);
-	const f32 tileSize = 1.0f;
-	const f32 tileFadeStart = 30.0f;
-	const f32 tileFadeEnd = 80.0f;
+	constexpr f32 tileSize = 1.0f;
+	constexpr f32 tileFadeStart = 30.0f;
+	constexpr f32 tileFadeEnd = 80.0f;
 	u32 groundMaterial = scene.AddCheckerDiffuse(tileLight, tileDark, tileSize, tileFadeStart, tileFadeEnd);
 	scene.AddPlane(GroundNormal, GroundPoint, groundMaterial);
 
@@ -2654,11 +2654,11 @@ static void BuildGoldenHourScene(Scene &scene) {
 
 	const Vec3f eye = V3fInit(-0.8f, -14.0f, 2.4f);
 	const Vec3f target = V3fInit(0.0f, 3.0f, 0.9f);
-	const f32 fovYDegrees = 32.0f;
-	const f32 apertureRadius = 0.07f;
-	const f32 focusDistance = 17.16f; // depth of the rough gold sphere along the view axis
-	const f32 goldenHourExposureEV = 0.4f;
-	const f32 goldenHourPhotonRadius = 0.05f;
+	constexpr f32 fovYDegrees = 32.0f;
+	constexpr f32 apertureRadius = 0.07f;
+	constexpr f32 focusDistance = 17.16f; // depth of the rough gold sphere along the view axis
+	constexpr f32 goldenHourExposureEV = 0.4f;
+	constexpr f32 goldenHourPhotonRadius = 0.05f;
 	scene.SetCamera(eye, target, fovYDegrees, WideReferenceAspect, apertureRadius, focusDistance);
 	scene.exposureEV = goldenHourExposureEV;
 	scene.photonRadius = goldenHourPhotonRadius;
@@ -2671,11 +2671,11 @@ static void BuildNightStudioScene(Scene &scene) {
 	const Vec3f pedestalBase = V3fInit(0.62f, 0.60f, 0.57f);
 	const Vec3f redBase = V3fInit(0.65f, 0.05f, 0.04f);
 	const Vec3f heroGlassAbsorption = V3fInit(0.0834f, 0.0305f, 0.0408f); // transmittance (0.92, 0.97, 0.96) per unit, a faint aqua
-	const f32 floorCoatAlpha = 0.06f;
-	const f32 pedestalCoatAlpha = 0.35f;
-	const f32 redCoatAlpha = 0.03f;
-	const f32 goldAlpha = 0.10f;
-	const f32 copperAlpha = 0.20f;
+	constexpr f32 floorCoatAlpha = 0.06f;
+	constexpr f32 pedestalCoatAlpha = 0.35f;
+	constexpr f32 redCoatAlpha = 0.03f;
+	constexpr f32 goldAlpha = 0.10f;
+	constexpr f32 copperAlpha = 0.20f;
 
 	scene.name = "Night Studio";
 	scene.fileName = "night_studio";
@@ -2689,11 +2689,11 @@ static void BuildNightStudioScene(Scene &scene) {
 
 	scene.AddPlane(GroundNormal, GroundPoint, floorMaterial);
 
-	const f32 heroRadius = 1.0f;
-	const f32 goldRadius = 0.8f;
-	const f32 copperRadius = 0.4f;
-	const f32 redRadius = 0.3f;
-	const f32 chromeRadius = 0.5f;
+	constexpr f32 heroRadius = 1.0f;
+	constexpr f32 goldRadius = 0.8f;
+	constexpr f32 copperRadius = 0.4f;
+	constexpr f32 redRadius = 0.3f;
+	constexpr f32 chromeRadius = 0.5f;
 	const Vec3f heroCenter = V3fInit(0.0f, 1.2f, heroRadius);
 	const Vec3f goldCenter = V3fInit(-2.2f, 0.5f, goldRadius);
 	const Vec3f copperCenter = V3fInit(1.2f, -0.9f, copperRadius);
@@ -2703,11 +2703,11 @@ static void BuildNightStudioScene(Scene &scene) {
 	scene.AddSphere(copperCenter, copperRadius, copperMaterial);
 	scene.AddSphere(redCenter, redRadius, redMaterial);
 
-	const f32 pedestalHalfSide = 0.6f;
-	const f32 pedestalHalfHeight = 0.675f;
-	const f32 pedestalRotationDegrees = 30.0f;
-	const f32 pedestalTop = pedestalHalfHeight * 2.0f;
-	const f32 chromeCenterZ = pedestalTop + chromeRadius;
+	constexpr f32 pedestalHalfSide = 0.6f;
+	constexpr f32 pedestalHalfHeight = 0.675f;
+	constexpr f32 pedestalRotationDegrees = 30.0f;
+	constexpr f32 pedestalTop = pedestalHalfHeight * 2.0f;
+	constexpr f32 chromeCenterZ = pedestalTop + chromeRadius;
 	const Vec3f pedestalCenter = V3fInit(2.2f, 1.9f, pedestalHalfHeight);
 	const Vec3f pedestalHalfExtents = V3fInit(pedestalHalfSide, pedestalHalfSide, pedestalHalfHeight);
 	const Vec3f chromeCenter = V3fInit(2.2f, 1.9f, chromeCenterZ);
@@ -2723,8 +2723,8 @@ static void BuildNightStudioScene(Scene &scene) {
 	u32 cyanMaterial = scene.AddEmissive(cyanRadiance);
 	u32 magentaMaterial = scene.AddEmissive(magentaRadiance);
 
-	const f32 keyWidth = 2.6f;
-	const f32 keyHeight = 1.6f;
+	constexpr f32 keyWidth = 2.6f;
+	constexpr f32 keyHeight = 1.6f;
 	const Vec3f keyCenter = V3fInit(-3.6f, -2.4f, 4.2f);
 	const Vec3f keyTarget = V3fInit(0.0f, 0.9f, 0.8f);
 	scene.AddQuadFacing(keyCenter, keyTarget, keyWidth, keyHeight, keyMaterial);
@@ -2734,7 +2734,7 @@ static void BuildNightStudioScene(Scene &scene) {
 	const Vec3f stripEdgeV = V3fInit(4.4f, 0.0f, 0.0f);
 	scene.AddQuad(stripCorner, stripEdgeU, stripEdgeV, stripMaterial); // normal -Z
 
-	const f32 orbRadius = 0.35f;
+	constexpr f32 orbRadius = 0.35f;
 	const Vec3f cyanCenter = V3fInit(-4.4f, 4.4f, 2.2f);
 	const Vec3f magentaCenter = V3fInit(4.3f, 4.8f, 2.4f);
 	scene.AddSphere(cyanCenter, orbRadius, cyanMaterial);
@@ -2744,11 +2744,11 @@ static void BuildNightStudioScene(Scene &scene) {
 
 	const Vec3f eye = V3fInit(0.4f, -7.2f, 1.7f);
 	const Vec3f target = V3fInit(0.0f, 1.0f, 0.85f);
-	const f32 fovYDegrees = 32.0f;
-	const f32 apertureRadius = 0.08f;
-	const f32 focusDistance = 7.64f; // front surface of the glass sphere
-	const f32 nightStudioExposureEV = 0.4f;
-	const f32 nightStudioPhotonRadius = 0.05f; // a wider merge radius helps the glossy floor and metals (it still shrinks every pass)
+	constexpr f32 fovYDegrees = 32.0f;
+	constexpr f32 apertureRadius = 0.08f;
+	constexpr f32 focusDistance = 7.64f; // front surface of the glass sphere
+	constexpr f32 nightStudioExposureEV = 0.4f;
+	constexpr f32 nightStudioPhotonRadius = 0.05f; // a wider merge radius helps the glossy floor and metals (it still shrinks every pass)
 	scene.SetCamera(eye, target, fovYDegrees, WideReferenceAspect, apertureRadius, focusDistance);
 	scene.exposureEV = nightStudioExposureEV;
 	scene.photonRadius = nightStudioPhotonRadius;
@@ -2757,19 +2757,19 @@ static void BuildNightStudioScene(Scene &scene) {
 
 // Tribute to the "Ray Tracing in One Weekend" cover with real sky light, about 470 spheres (needs the BVH)
 static void BuildSphereFieldScene(Scene &scene) {
-	const f32 bigRadius = 1.0f;
-	const f32 smallRadius = 0.2f;
-	const s32 gridMin = -11;
-	const s32 gridMax = 10;
-	const f32 cellInset = 0.225f;
-	const f32 cellJitter = 0.55f; // with 0.9 (as in the book) neighbors could intersect
-	const f32 bigSphereClearance = 1.35f;
-	const f32 diffuseThreshold = 0.75f;
-	const f32 conductorThreshold = 0.92f;
-	const f32 conductorMinF0 = 0.5f;
-	const f32 conductorMinAlpha = 0.08f; // smaller alphas leave speckle halos in sunlight
-	const f32 conductorAlphaRange = 0.3f;
-	const u64 sphereFieldSeed = 1337;
+	constexpr f32 bigRadius = 1.0f;
+	constexpr f32 smallRadius = 0.2f;
+	constexpr s32 gridMin = -11;
+	constexpr s32 gridMax = 10;
+	constexpr f32 cellInset = 0.225f;
+	constexpr f32 cellJitter = 0.55f; // with 0.9 (as in the book) neighbors could intersect
+	constexpr f32 bigSphereClearance = 1.35f;
+	constexpr f32 diffuseThreshold = 0.75f;
+	constexpr f32 conductorThreshold = 0.92f;
+	constexpr f32 conductorMinF0 = 0.5f;
+	constexpr f32 conductorMinAlpha = 0.08f; // smaller alphas leave speckle halos in sunlight
+	constexpr f32 conductorAlphaRange = 0.3f;
+	constexpr u64 sphereFieldSeed = 1337;
 
 	scene.name = "Sphere Field";
 	scene.fileName = "sphere_field";
@@ -2780,7 +2780,7 @@ static void BuildSphereFieldScene(Scene &scene) {
 
 	const Vec3f brownAlbedo = V3fInit(0.4f, 0.2f, 0.1f);
 	const Vec3f bronzeF0 = V3fInit(0.7f, 0.6f, 0.5f);
-	const f32 bronzeAlpha = 0.02f;
+	constexpr f32 bronzeAlpha = 0.02f;
 	u32 glassMaterial = scene.AddDielectric(GlassIor, ClearAbsorption);
 	u32 brownMaterial = scene.AddDiffuse(brownAlbedo);
 	u32 bronzeMaterial = scene.AddConductor(bronzeF0, bronzeAlpha);
@@ -2858,20 +2858,20 @@ static void BuildSphereFieldScene(Scene &scene) {
 
 	const Vec3f eye = V3fInit(13.0f, -3.0f, 2.0f);
 	const Vec3f target = V3fInit(0.0f, 0.0f, 0.0f);
-	const f32 fovYDegrees = 20.0f;
-	const f32 apertureRadius = 0.1f;
-	const f32 focusDistance = 10.0f;
-	const f32 sphereFieldExposureEV = 0.4f;
-	const u32 sphereFieldMaxBounces = 10;
-	const f32 sphereFieldPhotonRadius = 0.03f;
+	constexpr f32 fovYDegrees = 20.0f;
+	constexpr f32 apertureRadius = 0.1f;
+	constexpr f32 focusDistance = 10.0f;
+	constexpr f32 sphereFieldExposureEV = 0.4f;
+	constexpr u32 sphereFieldMaxBounces = 10;
+	constexpr f32 sphereFieldPhotonRadius = 0.03f;
 	scene.SetCamera(eye, target, fovYDegrees, WideReferenceAspect, apertureRadius, focusDistance);
 	scene.photonRadius = sphereFieldPhotonRadius;
 	scene.exposureEV = sphereFieldExposureEV;
 	scene.maxBounces = sphereFieldMaxBounces;
 }
 
-static const u32 SceneCount = 6;
-static const u32 DefaultSceneIndex = 1;
+static constexpr u32 SceneCount = 6;
+static constexpr u32 DefaultSceneIndex = 1;
 
 // Index 0 is the furnace test, 1..5 are the showcase scenes (keys 0..5)
 static void BuildScenes(SceneEntry *entries) {
@@ -2903,7 +2903,7 @@ static void BuildScenes(SceneEntry *entries) {
 // Specular vertices make their neighbor's density 1 on that side (the delta factors cancel, as in PBRT's BDPT). Merging accepts a photon within the radius, which adds the disc area pi r^2 (Georgiev et al. 2012).
 // The sample counts are one camera path per pixel and the photons per pass for both light tracing and merging.
 //
-static const f64 MaxWeightedRatio = 1.0e150; // keeps the squared ratios finite
+static constexpr f64 MaxWeightedRatio = 1.0e150; // keeps the squared ratios finite
 
 struct BidirectionalContext {
 	f64 lightPathCount;     // photons per pass, 0 = light tracing off
@@ -3026,17 +3026,17 @@ static f64 LightVertexDensity(const SceneView &scene, const Light &light) {
 // Photons stored at every non-specular vertex behind the light's specular chain give a density estimate of that light at the first non-specular vertex of such camera paths.
 // The radius shrinks every pass (Knaus and Zwicker 2011, probabilistic progressive photon mapping), so the estimate is consistent: its bias vanishes as passes accumulate.
 //
-static const f64 PhotonRadiusShrinkAlpha = 2.0 / 3.0;
-static const f32 PhotonPlaneToleranceFactor = 0.25f;  // photons farther from the tangent plane than this fraction of the radius belong to another surface
-static const u32 PhotonGridMinTableSize = 1024;
-static const f32 PhotonCellsPerRadius = 0.5f;          // cell size = 2 * radius, so 2x2x2 cells cover the search sphere
-static const u32 PhotonCellsPerAxis = 2;
-static const u32 PhotonVisitedCellCount = 8;
-static const f32 PhotonCellCoordinateLimit = 1.0e9f;   // keeps far away hit points inside the integer range of the cell coordinates
-static const u32 PhotonHashPrimeX = 73856093u;
-static const u32 PhotonHashPrimeY = 19349663u;
-static const u32 PhotonHashPrimeZ = 83492791u;
-static const u32 PhotonBufferCount = 2;                // light jobs of pass e write buffer e % 2, while pass e builds its map from buffer (e - 1) % 2
+static constexpr f64 PhotonRadiusShrinkAlpha = 2.0 / 3.0;
+static constexpr f32 PhotonPlaneToleranceFactor = 0.25f;  // photons farther from the tangent plane than this fraction of the radius belong to another surface
+static constexpr u32 PhotonGridMinTableSize = 1024;
+static constexpr f32 PhotonCellsPerRadius = 0.5f;          // cell size = 2 * radius, so 2x2x2 cells cover the search sphere
+static constexpr u32 PhotonCellsPerAxis = 2;
+static constexpr u32 PhotonVisitedCellCount = 8;
+static constexpr f32 PhotonCellCoordinateLimit = 1.0e9f;   // keeps far away hit points inside the integer range of the cell coordinates
+static constexpr u32 PhotonHashPrimeX = 73856093u;
+static constexpr u32 PhotonHashPrimeY = 19349663u;
+static constexpr u32 PhotonHashPrimeZ = 83492791u;
+static constexpr u32 PhotonBufferCount = 2;                // light jobs of pass e write buffer e % 2, while pass e builds its map from buffer (e - 1) % 2
 
 struct PhotonRecord {
 	Vec3f position;
@@ -3253,11 +3253,11 @@ struct PathStats {
 	u32 rayCount;
 };
 
-static const u32 RussianRouletteStartBounce = 3;
-static const f32 RussianRouletteMinSurvival = 0.05f; // caps the boost at 20x
-static const f32 RussianRouletteMaxSurvival = 0.95f; // guarantees termination of throughput-1 loops (glass, furnace)
-static const f32 ShadowDistanceScale = 0.999f;       // shadow rays stop just before the sampled light point
-static const f32 FireflyClampLuminance = 20.0f;
+static constexpr u32 RussianRouletteStartBounce = 3;
+static constexpr f32 RussianRouletteMinSurvival = 0.05f; // caps the boost at 20x
+static constexpr f32 RussianRouletteMaxSurvival = 0.95f; // guarantees termination of throughput-1 loops (glass, furnace)
+static constexpr f32 ShadowDistanceScale = 0.999f;       // shadow rays stop just before the sampled light point
+static constexpr f32 FireflyClampLuminance = 20.0f;
 
 // Robust ratio form of the power heuristic (beta = 2): avoids pdf^2 overflow, 0 for pdfA == 0, 1 for pdfB == 0
 static inline f32 PowerHeuristic(const f32 pdfA, const f32 pdfB) {
@@ -3529,8 +3529,8 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 //
 // Camera: orbit controller, vertical field of view with an aspect fit rule, thin lens with a planar focus, tent pixel filter
 //
-static const f32 MaxPitchRadians = 1.5533430f; // 89 degrees, so cross(forward, up) never degenerates
-static const f32 TentFilterRadiusPixels = 1.0f;
+static constexpr f32 MaxPitchRadians = 1.5533430f; // 89 degrees, so cross(forward, up) never degenerates
+static constexpr f32 TentFilterRadiusPixels = 1.0f;
 
 struct OrbitCamera {
 	Vec3f target;
@@ -3695,15 +3695,15 @@ static Ray3f GenerateCameraRay(const CameraFrame &frame, const u32 pixelX, const
 // Light tracing starts at the lights, aims at the specular objects and connects every non-specular vertex behind them to the camera, so caustics (also their diffuse bounce light) converge quickly.
 // The path tracer skips exactly these paths (camera -> non-specular -> ... -> non-specular -> specular+ -> light), so the two strategies partition the paths and the result stays unbiased.
 //
-static const f32 LightPathsPerPixel = 0.25f;
-static const u32 PhotonsPerLightJob = 2048;
-static const u64 LightTracingSeedSalt = 0x9A3C1F7D25E8B461ull;
-static const f64 CausticFixedPointScale = 4294967296.0;  // 2^32: integer sums are order independent, so the image stays deterministic
-static const f64 InverseCausticFixedPointScale = 1.0 / 4294967296.0;
-static const f64 CausticFixedPointMax = 1.0e19;          // below 2^64
-static const f32 SunPhotonStartDistanceFactor = 2.0f;    // sun photons start this many region radii away from the photon line's caster point
-static const u32 CausticChannelCount = 3;
-static const u32 TentFootprint = 2;                      // a tent of radius 1 touches 2 pixel centers per axis
+static constexpr f32 LightPathsPerPixel = 0.25f;
+static constexpr u32 PhotonsPerLightJob = 2048;
+static constexpr u64 LightTracingSeedSalt = 0x9A3C1F7D25E8B461ull;
+static constexpr f64 CausticFixedPointScale = 4294967296.0;  // 2^32: integer sums are order independent, so the image stays deterministic
+static constexpr f64 InverseCausticFixedPointScale = 1.0 / 4294967296.0;
+static constexpr f64 CausticFixedPointMax = 1.0e19;          // below 2^64
+static constexpr f32 SunPhotonStartDistanceFactor = 2.0f;    // sun photons start this many region radii away from the photon line's caster point
+static constexpr u32 CausticChannelCount = 3;
+static constexpr u32 TentFootprint = 2;                      // a tent of radius 1 touches 2 pixel centers per axis
 
 struct CausticTarget {
 	volatile u64 *sums;  // fixed point RGB per render pixel
@@ -3714,9 +3714,9 @@ struct CausticTarget {
 };
 
 // Per-worker direct mapped cache of fixed point splats: photons concentrate on a few caustic pixels, so summing locally avoids contended atomics
-static const u32 SplatCacheSize = 4096; // power of two
-static const u32 SplatCacheMask = SplatCacheSize - 1;
-static const u32 SplatCacheEmptyKey = 0;
+static constexpr u32 SplatCacheSize = 4096; // power of two
+static constexpr u32 SplatCacheMask = SplatCacheSize - 1;
+static constexpr u32 SplatCacheEmptyKey = 0;
 
 struct SplatCacheEntry {
 	u32 key;  // pixel index + 1, 0 = empty
@@ -4209,45 +4209,45 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 // Resolve: exposure -> tone mapping -> sRGB -> dither -> 0xAARRGGBB
 //
 // ACES fitted by Stephen Hill (RRT + ODT with sRGB to AP1 handling), row-major: out[i] = sum_j M[i][j] * in[j]
-static const f32 AcesInputMatrix[3][3] = {
+static constexpr f32 AcesInputMatrix[3][3] = {
 	{ 0.59719f, 0.35458f, 0.04823f },
 	{ 0.07600f, 0.90834f, 0.01566f },
 	{ 0.02840f, 0.13383f, 0.83777f },
 };
-static const f32 AcesOutputMatrix[3][3] = {
+static constexpr f32 AcesOutputMatrix[3][3] = {
 	{ 1.60475f, -0.53108f, -0.07367f },
 	{ -0.10208f, 1.10813f, -0.00605f },
 	{ -0.00327f, -0.07276f, 1.07602f },
 };
-static const f32 AcesFitA = 0.0245786f;
-static const f32 AcesFitB = 0.000090537f;
-static const f32 AcesFitC = 0.983729f;
-static const f32 AcesFitD = 0.4329510f;
-static const f32 AcesFitE = 0.238081f;
-static const f32 AcesMaxInput = 1.0e4f; // the fit saturates long before, larger inputs would overflow to inf/inf = NaN
+static constexpr f32 AcesFitA = 0.0245786f;
+static constexpr f32 AcesFitB = 0.000090537f;
+static constexpr f32 AcesFitC = 0.983729f;
+static constexpr f32 AcesFitD = 0.4329510f;
+static constexpr f32 AcesFitE = 0.238081f;
+static constexpr f32 AcesMaxInput = 1.0e4f; // the fit saturates long before, larger inputs would overflow to inf/inf = NaN
 
 // Khronos PBR Neutral: identity below about 0.76, keeps base colors accurate
-static const f32 NeutralStartCompression = 0.8f - 0.04f;
-static const f32 NeutralDesaturation = 0.15f;
-static const f32 NeutralToeThreshold = 0.08f;
-static const f32 NeutralToeScale = 6.25f;
-static const f32 NeutralToeOffset = 0.04f;
+static constexpr f32 NeutralStartCompression = 0.8f - 0.04f;
+static constexpr f32 NeutralDesaturation = 0.15f;
+static constexpr f32 NeutralToeThreshold = 0.08f;
+static constexpr f32 NeutralToeScale = 6.25f;
+static constexpr f32 NeutralToeOffset = 0.04f;
 
-static const f32 ColorByteMax = 255.0f;
-static const u32 PixelRedShift = 16;
-static const u32 PixelGreenShift = 8;
-static const u32 OpaqueBlackPixel = 0xFF000000u;
+static constexpr f32 ColorByteMax = 255.0f;
+static constexpr u32 PixelRedShift = 16;
+static constexpr u32 PixelGreenShift = 8;
+static constexpr u32 OpaqueBlackPixel = 0xFF000000u;
 
 // Jarzynski and Olano 2020 PCG hash, for the static per pixel dither
-static const u32 HashMultiplier = 747796405u;
-static const u32 HashIncrement = 2891336453u;
-static const u32 HashShiftBase = 28u;
-static const u32 HashShiftOffset = 4u;
-static const u32 HashOutputMultiplier = 277803737u;
-static const u32 HashOutputShift = 22u;
-static const u32 DitherHalfBits = 16u;
-static const u32 DitherHalfMask = 0xFFFFu;
-static const f32 DitherHalfScale = 1.0f / 65536.0f;
+static constexpr u32 HashMultiplier = 747796405u;
+static constexpr u32 HashIncrement = 2891336453u;
+static constexpr u32 HashShiftBase = 28u;
+static constexpr u32 HashShiftOffset = 4u;
+static constexpr u32 HashOutputMultiplier = 277803737u;
+static constexpr u32 HashOutputShift = 22u;
+static constexpr u32 DitherHalfBits = 16u;
+static constexpr u32 DitherHalfMask = 0xFFFFu;
+static constexpr f32 DitherHalfScale = 1.0f / 65536.0f;
 
 static inline Vec3f MultiplyMatrix3(const f32 matrix[3][3], const Vec3f &value) {
 	f32 x = matrix[0][0] * value.x + matrix[0][1] * value.y + matrix[0][2] * value.z;
@@ -4349,15 +4349,15 @@ static u32 ResolvePixel(const Vec3f &mean, const f32 exposureScale, const Tonema
 //
 // Render target and tiles
 //
-static const u32 FullResolutionTileSize = 32;
-static const u32 PreviewTileSize = 16;
-static const u32 MaxTileSize = 32;                // size of the per-worker tile scratch buffer
-static const u32 MaxWorkerCount = 256;            // must not exceed FPL_MAX_THREAD_WAIT_COUNT
-static const size_t CacheLinePairSize = 128;      // two 64-byte lines: adjacent-line prefetchers pair lines
-static const size_t RenderBufferAlignment = 64;
-static const u32 TileLockSpinCount = 64;          // yields before sleeping
-static const u32 TileLockSleepMilliseconds = 1;
-static const u32 DisplayBufferCount = 2;
+static constexpr u32 FullResolutionTileSize = 32;
+static constexpr u32 PreviewTileSize = 16;
+static constexpr u32 MaxTileSize = 32;                // size of the per-worker tile scratch buffer
+static constexpr u32 MaxWorkerCount = 256;            // must not exceed FPL_MAX_THREAD_WAIT_COUNT
+static constexpr size_t CacheLinePairSize = 128;      // two 64-byte lines: adjacent-line prefetchers pair lines
+static constexpr size_t RenderBufferAlignment = 64;
+static constexpr u32 TileLockSpinCount = 64;          // yields before sleeping
+static constexpr u32 TileLockSleepMilliseconds = 1;
+static constexpr u32 DisplayBufferCount = 2;
 
 fplStaticAssert(MaxWorkerCount <= FPL_MAX_THREAD_WAIT_COUNT);
 fplStaticAssert(PreviewTileSize <= MaxTileSize && FullResolutionTileSize <= MaxTileSize);
@@ -4661,11 +4661,11 @@ static void TileUnlock(TileState *tileState) {
 //
 // Display settings: changeable at any time without a restart, packed into one 64-bit atomic so a worker reads a consistent snapshot
 //
-static const u32 DisplayTonemapShift = 32;
-static const u32 DisplayVersionShift = 40;
-static const u64 DisplayTonemapMask = 0xFFull;
-static const u64 DisplayVersionMask = 0xFFFFFFull;
-static const u64 DisplayExposureMask = 0xFFFFFFFFull;
+static constexpr u32 DisplayTonemapShift = 32;
+static constexpr u32 DisplayVersionShift = 40;
+static constexpr u64 DisplayTonemapMask = 0xFFull;
+static constexpr u64 DisplayVersionMask = 0xFFFFFFull;
+static constexpr u64 DisplayExposureMask = 0xFFFFFFFFull;
 
 struct DisplaySettings {
 	f32 exposureEV;
@@ -4698,8 +4698,8 @@ static DisplaySettings UnpackDisplaySettings(const u64 packed) {
 // Epoch = pass = sample index: pass e renders exactly sample e of every pixel, and the next epoch is published only after all tiles of the current one are committed.
 // So every pixel sum is built in a fixed order and the image is identical for any thread count and timing.
 //
-static const u64 JobCursorIndexMask = 0xFFFFFFFFull;
-static const u32 JobCursorEpochShift = 32;
+static constexpr u64 JobCursorIndexMask = 0xFFFFFFFFull;
+static constexpr u32 JobCursorEpochShift = 32;
 
 // Each hot shared atomic gets its own 128-byte block, so claims, completions and abort polling never share a cache line
 struct alignas(128) PaddedU32 {
@@ -5222,50 +5222,50 @@ static WorkerTotals JobSystemGetTotals(JobSystem *jobs) {
 //
 // Application
 //
-static const u32 DefaultWindowWidth = 1280;
-static const u32 DefaultWindowHeight = 768;
-static const u32 MaxImageDimension = 16384;
+static constexpr u32 DefaultWindowWidth = 1280;
+static constexpr u32 DefaultWindowHeight = 768;
+static constexpr u32 MaxImageDimension = 16384;
 
-static const f64 PreviewSettleSeconds = 0.15;            // full resolution resumes after this much time without a change
-static const f64 PreviewFrameBudgetSeconds = 0.012;      // one preview pass must fit in this
-static const u32 PreviewDivisors[] = { 1, 2, 3, 4, 6, 8 };
-static const u32 PreviewMaxBounces = 4;
-static const f64 InitialSamplesPerSecondPerWorker = 250000.0;
-static const f64 ThroughputSmoothing = 0.25;             // exponential moving average factor per statistics update
+static constexpr f64 PreviewSettleSeconds = 0.15;            // full resolution resumes after this much time without a change
+static constexpr f64 PreviewFrameBudgetSeconds = 0.012;      // one preview pass must fit in this
+static constexpr u32 PreviewDivisors[] = { 1, 2, 3, 4, 6, 8 };
+static constexpr u32 PreviewMaxBounces = 4;
+static constexpr f64 InitialSamplesPerSecondPerWorker = 250000.0;
+static constexpr f64 ThroughputSmoothing = 0.25;             // exponential moving average factor per statistics update
 
-static const f64 TitleUpdateIntervalSeconds = 0.25;
-static const f64 MinPresentIntervalSeconds = 1.0 / 60.0;
-static const f64 MaxPresentIntervalSeconds = 0.2;        // re-present regularly: X11 silently recreates (and clears) the backbuffer
-static const f64 RetonemapBudgetSeconds = 0.004;
-static const u32 IdleSleepMilliseconds = 8;
-static const u32 InteractiveSleepMilliseconds = 1;
-static const f64 MaxFrameDeltaSeconds = 0.1;
-static const f64 HeadlessWaitMilliseconds = 250.0;
-static const f64 HeadlessProgressIntervalSeconds = 1.0;
+static constexpr f64 TitleUpdateIntervalSeconds = 0.25;
+static constexpr f64 MinPresentIntervalSeconds = 1.0 / 60.0;
+static constexpr f64 MaxPresentIntervalSeconds = 0.2;        // re-present regularly: X11 silently recreates (and clears) the backbuffer
+static constexpr f64 RetonemapBudgetSeconds = 0.004;
+static constexpr u32 IdleSleepMilliseconds = 8;
+static constexpr u32 InteractiveSleepMilliseconds = 1;
+static constexpr f64 MaxFrameDeltaSeconds = 0.1;
+static constexpr f64 HeadlessWaitMilliseconds = 250.0;
+static constexpr f64 HeadlessProgressIntervalSeconds = 1.0;
 
-static const f32 ExposureStepEV = 0.5f;
-static const f32 MinExposureEV = -10.0f;
-static const f32 MaxExposureEV = 10.0f;
-static const u32 BounceDepthChoices[] = { 1, 2, 4, 8, 12, 16, 32, 64 };
+static constexpr f32 ExposureStepEV = 0.5f;
+static constexpr f32 MinExposureEV = -10.0f;
+static constexpr f32 MaxExposureEV = 10.0f;
+static constexpr u32 BounceDepthChoices[] = { 1, 2, 4, 8, 12, 16, 32, 64 };
 
-static const f32 OrbitRadiansPerPixel = 0.005f;
-static const f32 ZoomFactorPerWheelNotch = 0.88f;
-static const f32 MinOrbitDistance = 0.05f;
-static const f32 MaxOrbitDistance = 1000.0f;
-static const f32 FlySpeedDistanceFactorPerSecond = 0.75f;
-static const f32 FlyFastMultiplier = 4.0f;
-static const f32 FallbackApertureDistanceFactor = 0.01f; // aperture for scenes without depth of field when it is toggled on
+static constexpr f32 OrbitRadiansPerPixel = 0.005f;
+static constexpr f32 ZoomFactorPerWheelNotch = 0.88f;
+static constexpr f32 MinOrbitDistance = 0.05f;
+static constexpr f32 MaxOrbitDistance = 1000.0f;
+static constexpr f32 FlySpeedDistanceFactorPerSecond = 0.75f;
+static constexpr f32 FlyFastMultiplier = 4.0f;
+static constexpr f32 FallbackApertureDistanceFactor = 0.01f; // aperture for scenes without depth of field when it is toggled on
 
-static const u32 DefaultHeadlessSamplesPerPixel = 256;
-static const u64 RenderBytesPerPixel = sizeof(AccumulationPixel) + DisplayBufferCount * sizeof(u32) + CausticChannelCount * sizeof(u64);
-static const u64 MaxRenderBufferBytes32 = 1ull << 30;
-static const u64 MaxRenderBufferBytes64 = 1ull << 36;
-static const u32 MaxOutputFileCount = 4;
-static const u32 TitleBufferSize = 512;
-static const u32 PathBufferSize = 512;
-static const u32 KeyStateCount = 256;
-static const u32 MouseButtonCount = 3;
-static const f64 MillionFactor = 1.0 / 1000000.0;
+static constexpr u32 DefaultHeadlessSamplesPerPixel = 256;
+static constexpr u64 RenderBytesPerPixel = sizeof(AccumulationPixel) + DisplayBufferCount * sizeof(u32) + CausticChannelCount * sizeof(u64);
+static constexpr u64 MaxRenderBufferBytes32 = 1ull << 30;
+static constexpr u64 MaxRenderBufferBytes64 = 1ull << 36;
+static constexpr u32 MaxOutputFileCount = 4;
+static constexpr u32 TitleBufferSize = 512;
+static constexpr u32 PathBufferSize = 512;
+static constexpr u32 KeyStateCount = 256;
+static constexpr u32 MouseButtonCount = 3;
+static constexpr f64 MillionFactor = 1.0 / 1000000.0;
 
 struct UserRenderSettings {
 	u32 maxBounces;
@@ -5873,16 +5873,16 @@ static void BlitDisplayToBackbuffer(App *app, fplVideoBackBuffer *backbuffer) {
 //
 // Image writers
 //
-static const u32 BmpFileHeaderSize = 14;
-static const u32 BmpInfoHeaderSize = 40;
-static const u32 BmpPixelDataOffset = BmpFileHeaderSize + BmpInfoHeaderSize;
-static const u16 BmpPlaneCount = 1;
-static const u16 BmpBitsPerPixel = 24;
-static const u32 BmpPixelsPerMeter = 2835; // 72 dpi
-static const u32 BmpBytesPerPixel = 3;
-static const u32 BmpRowAlignmentMask = 3;
-static const u32 ByteMask = 0xFFu;
-static const u32 BitsPerByte = 8;
+static constexpr u32 BmpFileHeaderSize = 14;
+static constexpr u32 BmpInfoHeaderSize = 40;
+static constexpr u32 BmpPixelDataOffset = BmpFileHeaderSize + BmpInfoHeaderSize;
+static constexpr u16 BmpPlaneCount = 1;
+static constexpr u16 BmpBitsPerPixel = 24;
+static constexpr u32 BmpPixelsPerMeter = 2835; // 72 dpi
+static constexpr u32 BmpBytesPerPixel = 3;
+static constexpr u32 BmpRowAlignmentMask = 3;
+static constexpr u32 ByteMask = 0xFFu;
+static constexpr u32 BitsPerByte = 8;
 
 static void PutU16(std::vector<u8> &buffer, const size_t offset, const u16 value) {
 	buffer[offset + 0] = (u8)(value & ByteMask);
