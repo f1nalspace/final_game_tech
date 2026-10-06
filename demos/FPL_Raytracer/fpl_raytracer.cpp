@@ -48,7 +48,7 @@ Changelog:
 	- Light tracing and photon merging for caustics, combined by VCM weights
 	- New materials: GGX conductor, mirror, glass, coated plastic, emitters
 	- New lights: Sphere and quad area lights, sky with sun, uniform environment
-	- New scenes: Cornell box, golden hour, night studio, classic Cornell box, sphere field, white furnace
+	- New scenes: Cornell box, golden hour, night studio, classic Cornell box, sphere field
 	- New shapes: Quad, oriented box
 	- BVH, robust ray offsets, stable sphere intersection, per-sample random numbers
 	- New job system without races, lost wake-ups or busy waiting
