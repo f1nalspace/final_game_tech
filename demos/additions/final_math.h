@@ -3,7 +3,7 @@ Name:
 	Final Math
 
 Description:
-	Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 3x3, 4x4 Matrices, etc.
+	C99 Math Library for defining/computing 2D/3D/4D Vectors, 2x2, 3x3, 4x4 Matrices, Colors and many more.
 
 	This file is part of the final_framework.
 
@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2026-10-06
+	- Added function RGBAToLinearHex24WithAlpha()
+
 	## 2026-07-23
 	- Restored the include of float.h, so consumers still get FLT_MAX/FLT_MIN from this header
 	- Added M4fOrthoLH()
@@ -998,6 +1001,35 @@ typedef struct Viewport4f {
 fpl_extern_inline Viewport4f VP4fInit(const float x, const float y, const float w, const float h) {
 	return fplStructInit(Viewport4f, x, y, w, h);
 }
+
+typedef struct Angle {
+	float radians;
+	float degree;
+
+#if defined(__cplusplus)
+	static Angle FromDegrees(const float degrees) {
+		return {  degrees * F32Deg2Rad, degrees };
+	}
+
+	static Angle FromRadians(const float radians) {
+		return { radians, radians * F32Rad2Deg };
+	}
+#endif
+} Angle;
+
+fpl_force_inline Angle AngleFromDegrees(const float degrees) {
+	return fplStructInit(Angle, degrees, degrees * F32Deg2Rad);
+}
+
+fpl_force_inline Angle AngleFromRadians(const float radians) {
+	return fplStructInit(Angle, radians* F32Rad2Deg, radians);
+}
+
+//
+// Time
+//
+
+typedef float Seconds;
 
 //
 // Scalar
@@ -2931,8 +2963,22 @@ fpl_extern_inline Vec4f RGBAToLinearHex24(const uint32_t hexValue24) {
 	uint8_t r = (hexValue24 >> 16) & 0xFF;
 	uint8_t g = (hexValue24 >> 8) & 0xFF;
 	uint8_t b = (hexValue24 >> 0) & 0xFF;
-	uint8_t a = 255;
-	Pixel pixel = MakePixelFromRGBA(r, g, b, a);
+	Pixel pixel = MakePixelFromRGBA(r, g, b, 255);
+	Vec4f result = PixelToLinearRaw(pixel);
+	return(result);
+}
+
+/**
+* @brief Builds a normalized opaque color from a 24-bit hex RGB value (0xRRGGBB) and an 8-bit alpha value.
+* @param[in] hexValue24 The packed 24-bit RGB value.
+* @param[in] alpha The 8-bit alpha component.
+* @return The color with components in the range [0, 1] and alpha set to 1.
+*/
+fpl_extern_inline Vec4f RGBAToLinearHex24WithAlpha(const uint32_t hexValue24, const uint8_t alpha) {
+	uint8_t r = (hexValue24 >> 16) & 0xFF;
+	uint8_t g = (hexValue24 >> 8) & 0xFF;
+	uint8_t b = (hexValue24 >> 0) & 0xFF;
+	Pixel pixel = MakePixelFromRGBA(r, g, b, alpha);
 	Vec4f result = PixelToLinearRaw(pixel);
 	return(result);
 }
