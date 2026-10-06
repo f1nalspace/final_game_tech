@@ -54,6 +54,7 @@ ifeq ($(config),debug_winx86)
   FPL_Vulkan_config = debug_winx86
   FPL_Software_config = debug_winx86
   FPL_Input_config = debug_winx86
+  FPL_InputGrab_config = debug_winx86
   FPL_ConsoleInput_config = debug_winx86
   FPL_Window_config = debug_winx86
   FPL_Test_config = debug_winx86
@@ -84,6 +85,7 @@ else ifeq ($(config),debug_winx64)
   FPL_Vulkan_config = debug_winx64
   FPL_Software_config = debug_winx64
   FPL_Input_config = debug_winx64
+  FPL_InputGrab_config = debug_winx64
   FPL_ConsoleInput_config = debug_winx64
   FPL_Window_config = debug_winx64
   FPL_Test_config = debug_winx64
@@ -114,6 +116,7 @@ else ifeq ($(config),debug_linuxx86)
   FPL_Vulkan_config = debug_linuxx86
   FPL_Software_config = debug_linuxx86
   FPL_Input_config = debug_linuxx86
+  FPL_InputGrab_config = debug_linuxx86
   FPL_ConsoleInput_config = debug_linuxx86
   FPL_Window_config = debug_linuxx86
   FPL_Test_config = debug_linuxx86
@@ -144,6 +147,7 @@ else ifeq ($(config),debug_linuxx64)
   FPL_Vulkan_config = debug_linuxx64
   FPL_Software_config = debug_linuxx64
   FPL_Input_config = debug_linuxx64
+  FPL_InputGrab_config = debug_linuxx64
   FPL_ConsoleInput_config = debug_linuxx64
   FPL_Window_config = debug_linuxx64
   FPL_Test_config = debug_linuxx64
@@ -174,6 +178,7 @@ else ifeq ($(config),debug_linuxarm32)
   FPL_Vulkan_config = debug_linuxarm32
   FPL_Software_config = debug_linuxarm32
   FPL_Input_config = debug_linuxarm32
+  FPL_InputGrab_config = debug_linuxarm32
   FPL_ConsoleInput_config = debug_linuxarm32
   FPL_Window_config = debug_linuxarm32
   FPL_Test_config = debug_linuxarm32
@@ -204,6 +209,7 @@ else ifeq ($(config),debug_linuxarm64)
   FPL_Vulkan_config = debug_linuxarm64
   FPL_Software_config = debug_linuxarm64
   FPL_Input_config = debug_linuxarm64
+  FPL_InputGrab_config = debug_linuxarm64
   FPL_ConsoleInput_config = debug_linuxarm64
   FPL_Window_config = debug_linuxarm64
   FPL_Test_config = debug_linuxarm64
@@ -234,6 +240,7 @@ else ifeq ($(config),debug_unixx86)
   FPL_Vulkan_config = debug_unixx86
   FPL_Software_config = debug_unixx86
   FPL_Input_config = debug_unixx86
+  FPL_InputGrab_config = debug_unixx86
   FPL_ConsoleInput_config = debug_unixx86
   FPL_Window_config = debug_unixx86
   FPL_Test_config = debug_unixx86
@@ -264,6 +271,7 @@ else ifeq ($(config),debug_unixx64)
   FPL_Vulkan_config = debug_unixx64
   FPL_Software_config = debug_unixx64
   FPL_Input_config = debug_unixx64
+  FPL_InputGrab_config = debug_unixx64
   FPL_ConsoleInput_config = debug_unixx64
   FPL_Window_config = debug_unixx64
   FPL_Test_config = debug_unixx64
@@ -294,6 +302,7 @@ else ifeq ($(config),debug_unixarm32)
   FPL_Vulkan_config = debug_unixarm32
   FPL_Software_config = debug_unixarm32
   FPL_Input_config = debug_unixarm32
+  FPL_InputGrab_config = debug_unixarm32
   FPL_ConsoleInput_config = debug_unixarm32
   FPL_Window_config = debug_unixarm32
   FPL_Test_config = debug_unixarm32
@@ -324,6 +333,7 @@ else ifeq ($(config),debug_unixarm64)
   FPL_Vulkan_config = debug_unixarm64
   FPL_Software_config = debug_unixarm64
   FPL_Input_config = debug_unixarm64
+  FPL_InputGrab_config = debug_unixarm64
   FPL_ConsoleInput_config = debug_unixarm64
   FPL_Window_config = debug_unixarm64
   FPL_Test_config = debug_unixarm64
@@ -354,6 +364,7 @@ else ifeq ($(config),release_winx86)
   FPL_Vulkan_config = release_winx86
   FPL_Software_config = release_winx86
   FPL_Input_config = release_winx86
+  FPL_InputGrab_config = release_winx86
   FPL_ConsoleInput_config = release_winx86
   FPL_Window_config = release_winx86
   FPL_Test_config = release_winx86
@@ -384,6 +395,7 @@ else ifeq ($(config),release_winx64)
   FPL_Vulkan_config = release_winx64
   FPL_Software_config = release_winx64
   FPL_Input_config = release_winx64
+  FPL_InputGrab_config = release_winx64
   FPL_ConsoleInput_config = release_winx64
   FPL_Window_config = release_winx64
   FPL_Test_config = release_winx64
@@ -414,6 +426,7 @@ else ifeq ($(config),release_linuxx86)
   FPL_Vulkan_config = release_linuxx86
   FPL_Software_config = release_linuxx86
   FPL_Input_config = release_linuxx86
+  FPL_InputGrab_config = release_linuxx86
   FPL_ConsoleInput_config = release_linuxx86
   FPL_Window_config = release_linuxx86
   FPL_Test_config = release_linuxx86
@@ -444,6 +457,7 @@ else ifeq ($(config),release_linuxx64)
   FPL_Vulkan_config = release_linuxx64
   FPL_Software_config = release_linuxx64
   FPL_Input_config = release_linuxx64
+  FPL_InputGrab_config = release_linuxx64
   FPL_ConsoleInput_config = release_linuxx64
   FPL_Window_config = release_linuxx64
   FPL_Test_config = release_linuxx64
@@ -474,6 +488,7 @@ else ifeq ($(config),release_linuxarm32)
   FPL_Vulkan_config = release_linuxarm32
   FPL_Software_config = release_linuxarm32
   FPL_Input_config = release_linuxarm32
+  FPL_InputGrab_config = release_linuxarm32
   FPL_ConsoleInput_config = release_linuxarm32
   FPL_Window_config = release_linuxarm32
   FPL_Test_config = release_linuxarm32
@@ -504,6 +519,7 @@ else ifeq ($(config),release_linuxarm64)
   FPL_Vulkan_config = release_linuxarm64
   FPL_Software_config = release_linuxarm64
   FPL_Input_config = release_linuxarm64
+  FPL_InputGrab_config = release_linuxarm64
   FPL_ConsoleInput_config = release_linuxarm64
   FPL_Window_config = release_linuxarm64
   FPL_Test_config = release_linuxarm64
@@ -534,6 +550,7 @@ else ifeq ($(config),release_unixx86)
   FPL_Vulkan_config = release_unixx86
   FPL_Software_config = release_unixx86
   FPL_Input_config = release_unixx86
+  FPL_InputGrab_config = release_unixx86
   FPL_ConsoleInput_config = release_unixx86
   FPL_Window_config = release_unixx86
   FPL_Test_config = release_unixx86
@@ -564,6 +581,7 @@ else ifeq ($(config),release_unixx64)
   FPL_Vulkan_config = release_unixx64
   FPL_Software_config = release_unixx64
   FPL_Input_config = release_unixx64
+  FPL_InputGrab_config = release_unixx64
   FPL_ConsoleInput_config = release_unixx64
   FPL_Window_config = release_unixx64
   FPL_Test_config = release_unixx64
@@ -594,6 +612,7 @@ else ifeq ($(config),release_unixarm32)
   FPL_Vulkan_config = release_unixarm32
   FPL_Software_config = release_unixarm32
   FPL_Input_config = release_unixarm32
+  FPL_InputGrab_config = release_unixarm32
   FPL_ConsoleInput_config = release_unixarm32
   FPL_Window_config = release_unixarm32
   FPL_Test_config = release_unixarm32
@@ -624,6 +643,7 @@ else ifeq ($(config),release_unixarm64)
   FPL_Vulkan_config = release_unixarm64
   FPL_Software_config = release_unixarm64
   FPL_Input_config = release_unixarm64
+  FPL_InputGrab_config = release_unixarm64
   FPL_ConsoleInput_config = release_unixarm64
   FPL_Window_config = release_unixarm64
   FPL_Test_config = release_unixarm64
@@ -639,7 +659,7 @@ else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := FPL_ImGui FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_ConsoleInput FPL_Window FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
+PROJECTS := FPL_ImGui FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_InputGrab FPL_ConsoleInput FPL_Window FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
 
 .PHONY: all clean help $(PROJECTS) Apps Audio Compatibility Console Games Graphics Input Test ThirdParty Window
 
@@ -657,7 +677,7 @@ Games: FPL_Crackout FPL_GameTemplate FPL_Towadev
 
 Graphics: FPL_OpenGL FPL_Software FPL_Vulkan
 
-Input: FPL_ConsoleInput FPL_Input
+Input: FPL_ConsoleInput FPL_Input FPL_InputGrab
 
 Test: FPL_Test
 
@@ -773,6 +793,12 @@ ifneq (,$(FPL_Input_config))
 	@${MAKE} --no-print-directory -C FPL_Input -f Makefile config=$(FPL_Input_config)
 endif
 
+FPL_InputGrab:
+ifneq (,$(FPL_InputGrab_config))
+	@echo "==== Building FPL_InputGrab ($(FPL_InputGrab_config)) ===="
+	@${MAKE} --no-print-directory -C FPL_InputGrab -f Makefile config=$(FPL_InputGrab_config)
+endif
+
 FPL_ConsoleInput:
 ifneq (,$(FPL_ConsoleInput_config))
 	@echo "==== Building FPL_ConsoleInput ($(FPL_ConsoleInput_config)) ===="
@@ -852,6 +878,7 @@ clean:
 	@${MAKE} --no-print-directory -C FPL_Vulkan -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Software -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Input -f Makefile clean
+	@${MAKE} --no-print-directory -C FPL_InputGrab -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_ConsoleInput -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Window -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Test -f Makefile clean
@@ -909,6 +936,7 @@ help:
 	@echo "   FPL_Vulkan"
 	@echo "   FPL_Software"
 	@echo "   FPL_Input"
+	@echo "   FPL_InputGrab"
 	@echo "   FPL_ConsoleInput"
 	@echo "   FPL_Window"
 	@echo "   FPL_Test"

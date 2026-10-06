@@ -36,120 +36,140 @@ ifndef verbose
 endif
 
 ifeq ($(config),debug_winx86)
+  mathtest_config = debug_winx86
   gamepaddbgen_config = debug_winx86
   staticdatamaker_config = debug_winx86
   OpenGLExtParser_config = debug_winx86
   FontRendering_config = debug_winx86
 
 else ifeq ($(config),debug_winx64)
+  mathtest_config = debug_winx64
   gamepaddbgen_config = debug_winx64
   staticdatamaker_config = debug_winx64
   OpenGLExtParser_config = debug_winx64
   FontRendering_config = debug_winx64
 
 else ifeq ($(config),debug_linuxx86)
+  mathtest_config = debug_linuxx86
   gamepaddbgen_config = debug_linuxx86
   staticdatamaker_config = debug_linuxx86
   OpenGLExtParser_config = debug_linuxx86
   FontRendering_config = debug_linuxx86
 
 else ifeq ($(config),debug_linuxx64)
+  mathtest_config = debug_linuxx64
   gamepaddbgen_config = debug_linuxx64
   staticdatamaker_config = debug_linuxx64
   OpenGLExtParser_config = debug_linuxx64
   FontRendering_config = debug_linuxx64
 
 else ifeq ($(config),debug_linuxarm32)
+  mathtest_config = debug_linuxarm32
   gamepaddbgen_config = debug_linuxarm32
   staticdatamaker_config = debug_linuxarm32
   OpenGLExtParser_config = debug_linuxarm32
   FontRendering_config = debug_linuxarm32
 
 else ifeq ($(config),debug_linuxarm64)
+  mathtest_config = debug_linuxarm64
   gamepaddbgen_config = debug_linuxarm64
   staticdatamaker_config = debug_linuxarm64
   OpenGLExtParser_config = debug_linuxarm64
   FontRendering_config = debug_linuxarm64
 
 else ifeq ($(config),debug_unixx86)
+  mathtest_config = debug_unixx86
   gamepaddbgen_config = debug_unixx86
   staticdatamaker_config = debug_unixx86
   OpenGLExtParser_config = debug_unixx86
   FontRendering_config = debug_unixx86
 
 else ifeq ($(config),debug_unixx64)
+  mathtest_config = debug_unixx64
   gamepaddbgen_config = debug_unixx64
   staticdatamaker_config = debug_unixx64
   OpenGLExtParser_config = debug_unixx64
   FontRendering_config = debug_unixx64
 
 else ifeq ($(config),debug_unixarm32)
+  mathtest_config = debug_unixarm32
   gamepaddbgen_config = debug_unixarm32
   staticdatamaker_config = debug_unixarm32
   OpenGLExtParser_config = debug_unixarm32
   FontRendering_config = debug_unixarm32
 
 else ifeq ($(config),debug_unixarm64)
+  mathtest_config = debug_unixarm64
   gamepaddbgen_config = debug_unixarm64
   staticdatamaker_config = debug_unixarm64
   OpenGLExtParser_config = debug_unixarm64
   FontRendering_config = debug_unixarm64
 
 else ifeq ($(config),release_winx86)
+  mathtest_config = release_winx86
   gamepaddbgen_config = release_winx86
   staticdatamaker_config = release_winx86
   OpenGLExtParser_config = release_winx86
   FontRendering_config = release_winx86
 
 else ifeq ($(config),release_winx64)
+  mathtest_config = release_winx64
   gamepaddbgen_config = release_winx64
   staticdatamaker_config = release_winx64
   OpenGLExtParser_config = release_winx64
   FontRendering_config = release_winx64
 
 else ifeq ($(config),release_linuxx86)
+  mathtest_config = release_linuxx86
   gamepaddbgen_config = release_linuxx86
   staticdatamaker_config = release_linuxx86
   OpenGLExtParser_config = release_linuxx86
   FontRendering_config = release_linuxx86
 
 else ifeq ($(config),release_linuxx64)
+  mathtest_config = release_linuxx64
   gamepaddbgen_config = release_linuxx64
   staticdatamaker_config = release_linuxx64
   OpenGLExtParser_config = release_linuxx64
   FontRendering_config = release_linuxx64
 
 else ifeq ($(config),release_linuxarm32)
+  mathtest_config = release_linuxarm32
   gamepaddbgen_config = release_linuxarm32
   staticdatamaker_config = release_linuxarm32
   OpenGLExtParser_config = release_linuxarm32
   FontRendering_config = release_linuxarm32
 
 else ifeq ($(config),release_linuxarm64)
+  mathtest_config = release_linuxarm64
   gamepaddbgen_config = release_linuxarm64
   staticdatamaker_config = release_linuxarm64
   OpenGLExtParser_config = release_linuxarm64
   FontRendering_config = release_linuxarm64
 
 else ifeq ($(config),release_unixx86)
+  mathtest_config = release_unixx86
   gamepaddbgen_config = release_unixx86
   staticdatamaker_config = release_unixx86
   OpenGLExtParser_config = release_unixx86
   FontRendering_config = release_unixx86
 
 else ifeq ($(config),release_unixx64)
+  mathtest_config = release_unixx64
   gamepaddbgen_config = release_unixx64
   staticdatamaker_config = release_unixx64
   OpenGLExtParser_config = release_unixx64
   FontRendering_config = release_unixx64
 
 else ifeq ($(config),release_unixarm32)
+  mathtest_config = release_unixarm32
   gamepaddbgen_config = release_unixarm32
   staticdatamaker_config = release_unixarm32
   OpenGLExtParser_config = release_unixarm32
   FontRendering_config = release_unixarm32
 
 else ifeq ($(config),release_unixarm64)
+  mathtest_config = release_unixarm64
   gamepaddbgen_config = release_unixarm64
   staticdatamaker_config = release_unixarm64
   OpenGLExtParser_config = release_unixarm64
@@ -159,13 +179,19 @@ else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := gamepaddbgen staticdatamaker OpenGLExtParser FontRendering
+PROJECTS := mathtest gamepaddbgen staticdatamaker OpenGLExtParser FontRendering
 
 .PHONY: all clean help $(PROJECTS) Apps
 
 all: $(PROJECTS)
 
-Apps: FontRendering OpenGLExtParser gamepaddbgen staticdatamaker
+Apps: FontRendering OpenGLExtParser gamepaddbgen mathtest staticdatamaker
+
+mathtest:
+ifneq (,$(mathtest_config))
+	@echo "==== Building mathtest ($(mathtest_config)) ===="
+	@${MAKE} --no-print-directory -C mathtest -f Makefile config=$(mathtest_config)
+endif
 
 gamepaddbgen:
 ifneq (,$(gamepaddbgen_config))
@@ -192,6 +218,7 @@ ifneq (,$(FontRendering_config))
 endif
 
 clean:
+	@${MAKE} --no-print-directory -C mathtest -f Makefile clean
 	@${MAKE} --no-print-directory -C gamepaddbgen -f Makefile clean
 	@${MAKE} --no-print-directory -C staticdatamaker -f Makefile clean
 	@${MAKE} --no-print-directory -C OpenGLExtParser -f Makefile clean
@@ -225,6 +252,7 @@ help:
 	@echo "TARGETS:"
 	@echo "   all (default)"
 	@echo "   clean"
+	@echo "   mathtest"
 	@echo "   gamepaddbgen"
 	@echo "   staticdatamaker"
 	@echo "   OpenGLExtParser"

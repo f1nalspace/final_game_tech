@@ -109,7 +109,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += ../build/FPL_DynamicLib/LinuxX86_Debug/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/LinuxX86_Debug/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/LinuxX86_Debug/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/LinuxX86_Debug -L/usr/lib32 -Wl,-rpath,'$$ORIGIN' -m32
 
@@ -131,7 +131,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += ../build/FPL_DynamicLib/LinuxARM32_Debug/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/LinuxARM32_Debug/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/LinuxARM32_Debug/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/LinuxARM32_Debug -Wl,-rpath,'$$ORIGIN'
 
@@ -153,7 +153,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
-LIBS += ../build/FPL_DynamicLib/UnixX86_Debug/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/UnixX86_Debug/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/UnixX86_Debug/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/UnixX86_Debug -L/usr/lib32 -m32
 
@@ -175,7 +175,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g
-LIBS += ../build/FPL_DynamicLib/UnixARM32_Debug/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/UnixARM32_Debug/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/UnixARM32_Debug/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/UnixARM32_Debug
 
@@ -219,7 +219,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += ../build/FPL_DynamicLib/LinuxX86_Release/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/LinuxX86_Release/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/LinuxX86_Release/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/LinuxX86_Release -L/usr/lib32 -Wl,-rpath,'$$ORIGIN' -m32 -s
 
@@ -241,7 +241,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += ../build/FPL_DynamicLib/LinuxARM32_Release/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/LinuxARM32_Release/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/LinuxARM32_Release/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/LinuxARM32_Release -Wl,-rpath,'$$ORIGIN' -s
 
@@ -263,7 +263,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2
-LIBS += ../build/FPL_DynamicLib/UnixX86_Release/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/UnixX86_Release/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/UnixX86_Release/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/UnixX86_Release -L/usr/lib32 -m32 -s
 
@@ -285,7 +285,7 @@ OBJDIR = ../immediates/FPL_DynamicLib_Client/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2 -std=c99
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2
-LIBS += ../build/FPL_DynamicLib/UnixARM32_Release/libFPL_DynamicLib_Host.so -lm
+LIBS += ../build/FPL_DynamicLib/UnixARM32_Release/libFPL_DynamicLib_Host.so -lm -latomic
 LDDEPS += ../build/FPL_DynamicLib/UnixARM32_Release/libFPL_DynamicLib_Host.so
 ALL_LDFLAGS += $(LDFLAGS) -L../build/FPL_DynamicLib/UnixARM32_Release -s
 

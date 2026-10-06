@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-08-07
+	- Changed: Reflect for API change final_audiosystem.h (AudioSystemPlaySource takes a pitch, passing AudioSystemDefaultPitch)
+
 	## 2025-11-21
 	- Changed: Reflect for API changes final_game.h (GameRender has an additional Input argument)
 	- Changed: Reflect for API changes final_game.h (WasPressed / IsDown was renamed to ButtonWasPressed / ButtonIsDown)
@@ -157,6 +160,8 @@ const float SpaceForBricksY = ((AreaHalfHeight - AreaPadding) * 2.0f) - (MaxBric
 const Vec2f BrickRadius = V2fInit(SpaceForBricksX / (float)MaxBrickCols, SpaceForBricksY / (float)MaxBrickRows) * 0.5f;
 
 const Vec2f Gravity = V2fInit(0, -10);
+
+constexpr TextureWrapMode DefaultTextureWrapMode = TextureWrapMode_ClampToBorder;
 
 fplStaticAssert(MaxBrickCols % 2 != 0);
 
@@ -669,24 +674,24 @@ static void LoadLevel(GameState &state, int levelSeed) {
 	// Play music (Stop previous ones first)
 	AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
 	AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
-	state.assets.gameMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.gameMusic, true, 0.5f);
+	state.assets.gameMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.gameMusic, true, 0.5f, AudioSystemDefaultPitch);
 }
 
 
-static bool LoadTexture(const TextureData &source, const bool repeatable, TextureAsset &outTexture) {
-	GLuint texId = AllocateTexture(source.width, source.height, source.data, repeatable, GL_NEAREST, false);
+static bool LoadTexture(const TextureData &source, const TextureWrapMode wrapMode, TextureAsset &outTexture) {
+	GLuint texId = AllocateTexture(source.width, source.height, source.data, wrapMode, GL_NEAREST, false);
 	outTexture.texture = GetTextureHandleFromID(texId);
 	bool result = texId > 0;
 	return(result);
 }
 
-static bool LoadTexture(MemoryAllocator *allocator, const char *filePath, const bool repeatable, TextureAsset &outTexture) {
+static bool LoadTexture(MemoryAllocator *allocator, const char *filePath, const TextureWrapMode wrapMode, TextureAsset &outTexture) {
 	TextureData image = fplZeroInit;
 	if(!TextureDataLoadFromFile(allocator, &image, filePath)) {
 		return false;
 	}
 
-	bool result = LoadTexture(image, repeatable, outTexture);
+	bool result = LoadTexture(image, wrapMode, outTexture);
 
 	TextureDataFree(allocator, &image);
 
@@ -713,34 +718,34 @@ static bool LoadAssets(GameState &state) {
 	char tmpPath[1024];
 		
 	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "ball.bmp");
-	LoadTexture(allocator, tmpPath, false, state.assets.ballTexture);
+	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.ballTexture);
 
 	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bricks.bmp");
-	LoadTexture(allocator, tmpPath, false, state.assets.bricksTexture);
+	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.bricksTexture);
 
 	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "paddle.bmp");
-	LoadTexture(allocator, tmpPath, false, state.assets.paddleTexture);
+	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.paddleTexture);
 
 	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "frame.bmp");
-	LoadTexture(allocator, tmpPath, false, state.assets.frameTexture);
+	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.frameTexture);
 
 	TextureData bgImage = fplZeroInit;
 	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bg.bmp");
 	if(TextureDataLoadFromFile(allocator, &bgImage, tmpPath)) {
 		TextureData bgTileImage0 = fplZeroInit;
 		if(TextureDataLoadFromSourceRect(allocator, &bgImage, &bgTileImage0, 2, 2, 16, 16)) {
-			LoadTexture(bgTileImage0, true, state.assets.bgTextures[BackgroundType::Default]);
+			LoadTexture(bgTileImage0, TextureWrapMode_Repeat, state.assets.bgTextures[BackgroundType::Default]);
 		}
 		TextureDataFree(allocator, &bgTileImage0);
 	}
 	TextureDataFree(allocator, &bgImage);
 
 	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 36.0f, 32, 127, 512, 512, true, &state.assets.fontMenu.desc)) {
-		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		GLuint texId = AllocateTexture(state.assets.fontMenu.desc.atlasWidth, state.assets.fontMenu.desc.atlasHeight, state.assets.fontMenu.desc.atlasAlphaBitmap, DefaultTextureWrapMode, GL_NEAREST, true);
 		state.assets.fontMenu.texture = GetTextureHandleFromID(texId);
 	}
 	if(FontLoadFromMemory(allocator, ptr_fontHemiHeadBoldItalic, sizeOf_fontHemiHeadBoldItalic, 0, 18.0f, 32, 127, 512, 512, true, &state.assets.fontHud.desc)) {
-		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, false, GL_NEAREST, true);
+		GLuint texId = AllocateTexture(state.assets.fontHud.desc.atlasWidth, state.assets.fontHud.desc.atlasHeight, state.assets.fontHud.desc.atlasAlphaBitmap, DefaultTextureWrapMode, GL_NEAREST, true);
 		state.assets.fontHud.texture = GetTextureHandleFromID(texId);
 	}
 
@@ -804,7 +809,7 @@ static bool InitGame(GameState &state) {
 	state.menu = {};
 
 	// Play menu music
-	state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
+	state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f, AudioSystemDefaultPitch);
 #else
 	StartGame(state);
 #endif
@@ -933,7 +938,7 @@ static void HandleBallCollision(GameState &state, Ball &ball, Entity &other, b2C
 	}
 
 	// Play sound
-	AudioSystemPlaySource(state.audioSys, state.assets.ballHitSound, false, 0.5f);
+	AudioSystemPlaySource(state.audioSys, state.assets.ballHitSound, false, 0.5f, AudioSystemDefaultPitch);
 }
 
 struct CollisionPair {
@@ -1124,7 +1129,7 @@ static void UpdatePlayMode(GameState &state, const Input &input) {
 	if(state.lifes == 0) {
 		AudioSystemStopOne(state.audioSys, state.assets.gameMusicPlayId);
 		AudioSystemStopOne(state.audioSys, state.assets.menuMusicPlayId);
-		state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f);
+		state.assets.menuMusicPlayId = AudioSystemPlaySource(state.audioSys, state.assets.menuMusic, true, 0.5f, AudioSystemDefaultPitch);
 		state.mode = GameMode::GameOver;
 		return;
 	}
@@ -1565,6 +1570,8 @@ int main(int argc, char **argv) {
 	GameConfiguration config = fplZeroInit;
 	config.title = "FPL Demo | Crackout";
 	config.hideMouseCursor = true;
+	config.userFolderName = ".crackout";
+	config.enableLog = true;
 	int result = GameMain(&config, argc, argv);
 	return(result);
 }

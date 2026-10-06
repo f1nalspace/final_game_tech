@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-09-25
+	- Fixed: The side mouse buttons (X1, X2) wrote past the end of the mouse button states, ImGui only knows three buttons
+
     ## 2019-08-13
     - Fixed compiler warnings for GCC
 
@@ -64,6 +67,7 @@ License:
 #include <imgui/imgui.h>
 
 #include <math.h> // fabsf
+#include <stdlib.h> // realloc, free
 
 static int currentMousePosition[2] = { -1, -1 };
 static bool currentMouseStates[3] = { 0 };
@@ -144,15 +148,39 @@ static void ImGUIRenderDrawLists(ImDrawData* draw_data) {
 	glScissor(last_scissor_box[0], last_scissor_box[1], (GLsizei)last_scissor_box[2], (GLsizei)last_scissor_box[3]);
 }
 
-static char clipboardBuffer[1024];
+// ImGui expects the text it gets here to stay put until the next call, so the buffer is kept around and
+// only grows - there is no size limit on either side of it anymore.
+static char *clipboardBuffer = nullptr;
+static size_t clipboardBufferSize = 0;
+
 static const char *ClipboardGetFunc(void *user) {
-	if(fplGetClipboardText(clipboardBuffer, fplArrayCount(clipboardBuffer))) {
-		return clipboardBuffer;
+	size_t requiredLength = fplClipboardGetText(nullptr, 0);
+	if(requiredLength == 0) {
+		return nullptr;
 	}
-	return nullptr;
+	size_t requiredSize = requiredLength + 1;
+	if(requiredSize > clipboardBufferSize) {
+		char *grownBuffer = (char *)realloc(clipboardBuffer, requiredSize);
+		if(grownBuffer == nullptr) {
+			return nullptr;
+		}
+		clipboardBuffer = grownBuffer;
+		clipboardBufferSize = requiredSize;
+	}
+	if(fplClipboardGetText(clipboardBuffer, clipboardBufferSize) == 0) {
+		return nullptr;
+	}
+	return clipboardBuffer;
 }
+
 static void ClipboardSetFunc(void *user, const char *text) {
-	fplSetClipboardText(text);
+	fplClipboardSetText(text);
+}
+
+static void ReleaseClipboardBuffer() {
+	free(clipboardBuffer);
+	clipboardBuffer = nullptr;
+	clipboardBufferSize = 0;
 }
 
 static void InitImGUI() {
@@ -205,6 +233,7 @@ static void InitImGUI() {
 }
 
 static void ReleaseImGUI() {
+	ReleaseClipboardBuffer();
 	if(fontTextureId) {
 		glDeleteTextures(1, &fontTextureId);
 		ImGui::GetIO().Fonts->TexID = 0;
@@ -386,7 +415,11 @@ int main(int argc, char **args) {
 							} break;
 							case fplMouseEventType_Button:
 							{
-								currentMouseStates[(int32_t)event.mouse.mouseButton] = event.mouse.buttonState >= fplButtonState_Press;
+								// ImGui knows left, right and middle only, the side buttons X1 and X2 come after them
+								int32_t mouseButtonIndex = (int32_t)event.mouse.mouseButton;
+								if(mouseButtonIndex >= 0 && mouseButtonIndex < (int32_t)fplArrayCount(currentMouseStates)) {
+									currentMouseStates[mouseButtonIndex] = event.mouse.buttonState >= fplButtonState_Press;
+								}
 								currentMousePosition[0] = event.mouse.mouseX;
 								currentMousePosition[1] = event.mouse.mouseY;
 							} break;

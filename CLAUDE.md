@@ -10,6 +10,8 @@ C99/C17 and C++11 game/multimedia codebase built around single-header libraries 
 - `final_xml.h` — XML parser.
 - `final_memory.h` — custom allocator.
 - `final_tiletrace.hpp` — C++11 tilemap contour tracing.
+- `final_ui.h` — renderer agnostic immediate mode user interface.
+- `final_ui_texteditor.h` — code and text editor widget for `final_ui.h`.
 
 ## Layout
 

@@ -9,6 +9,33 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-09-25
+	- Fixed: With several mouse wheel events in one frame only the last one counted, the wheel deltas of a frame are added up now
+
+	## 2026-07-26
+	- Fixed: A key pressed AND released between two once-per-frame keyboard polls lost its edge entirely (a shortcut or a jump tapped inside one long frame simply did not happen); halfTransitionCount is now raised to the real press/release count seen in the event stream, while endedDown stays the polled truth
+	- Note: The event queue is drained BEFORE the OS keyboard state is read, and the two are independent sources (GetAsyncKeyState / XQueryKeymap), so a key released between those two reads leaves an odd edge count against an unchanged poll. Only a count whose parity matches the polled start->end transition is consumed; the odd half carries into the next frame and pairs up there. Carried halves are dropped when the window activation toggles
+
+	## 2026-07-19
+	- Fixed: Early-failure shutdown freed uninitialized memory blocks; gameMemoryBlock/renderMemoryBlock now zero-init'd so fmemFree is a safe no-op before fmemInit
+	- Fixed: Custom keyboard mappings now rebuild keyboardButtonStates->mapped[] so they actually drive controller buttons
+	- Fixed: GamePlatformState allocation null-check tested audioSys instead of gamePlatformState
+	- Fixed: Out-of-range gamepad device index now ignored instead of writing past the controllers array in release
+
+	## 2026-07-15
+	- Added GameUpdateLoopMode enum that controls how the update loop logic tick works
+	- Added fields updateLoopMode, maxUpdateTicksPerFrame, maxDynamicFrameTime to the GameConfiguration struct
+
+	## 2026-07-01
+	- Fixed: Keyboard controller button could latch stuck-down after a same-frame press+release tap; now derived from the polled key state
+	- Added: Capture typed characters (fplKeyboardEventType_Input) into Input.textInput
+
+	## 2026-06-30
+	- Mapped ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
+	- Changed fullscreen toggle key-binding from F to Left-Alt + F
+	- Mapped all non-trigger controller buttons to keyboard
+	- Update new render statistic fields from RenderState
+
 	## 2025-12-30
 	- Fixed compile warnings
 	- Fixed lost/focus was not detected properly
@@ -53,9 +80,23 @@ License:
 
 #include "final_game.h"
 
+// How the fixed-timestep update loop behaves when a single GameUpdate overruns the fixed step.
+typedef enum GameUpdateLoopMode {
+	// Bound the number of fixed updates per rendered frame (see maxUpdateTicksPerFrame). Time beyond
+	// that bound is DISCARDED: the simulation falls behind wall-clock (runs in slow motion) rather
+	// than queueing updates it can never work off. This is the default.
+	GameUpdateLoopMode_ClampTicks = 0,
+	// Run as many fixed updates as the accumulated time allows, with no upper bound. The original
+	// behaviour, kept for compatibility. WARNING: this is a spiral of death. An update that overruns
+	// the fixed step leaves time in the accumulator, so the next frame runs more updates, overruns
+	// further, and the game settles pinned at maxDynamicFrameTime worth of updates per frame. A
+	// simulation only ~1.4x over budget then presents as ~3 fps.
+	GameUpdateLoopMode_Unbounded,
+} GameUpdateLoopMode;
+
 typedef struct GameConfiguration {
 	// Keyboard mappings
-	KeyboardButtonMappings *keyboardMappings;
+	const KeyboardButtonMappings *keyboardMappings;
 	// Title of the game
 	const char *title;
 	// Name of the user folder name (if empty, the title is used instead)
@@ -70,8 +111,21 @@ typedef struct GameConfiguration {
 	uint32_t targetHz;
 	// Maximum render updates in Hz. If this is zero, the rendering happens on every frame - melting the GPU/CPU core.
 	uint32_t maxRenderHz;
+	// How the update loop reacts when one GameUpdate overruns the fixed step. Defaults to ClampTicks.
+	GameUpdateLoopMode updateLoopMode;
+	// Maximum fixed updates per rendered frame, for GameUpdateLoopMode_ClampTicks. Zero uses the default (4).
+	// Raise it to keep the simulation at real-time on a RENDER-bound machine: a value of N holds real time
+	// down to (targetHz / N) rendered frames per second. Lower it to render more often on an UPDATE-bound
+	// machine, at the cost of the simulation dilating further. Ignored when updateLoopMode is Unbounded.
+	uint32_t maxUpdateTicksPerFrame;
+	// Upper bound in seconds on the frame time handed to the game as Input.dynamicFrameTime. Zero uses the
+	// default (0.25). Clamped separately from the update accumulator so a load hitch (level load, alt-tab, a
+	// debugger break) cannot make render-side interpolation take one enormous step.
+	double maxDynamicFrameTime;
 	// Preferred audio format
 	fplAudioFormatType audioFormat;
+	// Maximum log level severity
+	LogLevel logSeverity;
 	// Indicates whether to hide the mouse cursor or not
 	bool hideMouseCursor;
 	// Indicates that the detection of a inactive vs active window
@@ -163,6 +217,46 @@ fpl_internal_inline void InternalGamePlatformUpdateKeyboardButtonState(ButtonSta
 	++newState->halfTransitionCount;
 }
 
+// Tally one real press/release edge for `index`, saturating rather than wrapping -- 255 edges pending on a
+// single key is already far past anything a hand can produce, and a wrap to zero would drop the edge.
+fpl_internal_inline void InternalGamePlatformCountKeyTransition(uint8_t *transitions, const size_t count, const uint32_t index) {
+	if (index >= count) {
+		return;
+	}
+	if (transitions[index] < 255) {
+		++transitions[index];
+	}
+}
+
+// Give a polled button the edge count the EVENT stream saw. A poll only notices that endedDown differs from
+// last frame, so a key pressed AND released between two polls looks untouched and its edge would be lost
+// entirely; the events saw both halves. endedDown is left exactly as polled -- that is what keeps a key from
+// latching stuck.
+//
+// `pending` is a RUNNING count, not a per-frame one, because the event queue and the poll are INDEPENDENT
+// sources: the queue is drained first, then the state is read straight from the OS (GetAsyncKeyState on
+// Win32, XQueryKeymap on X11). A key released in the instant between those two reads has its press queued
+// and its release not yet, so the events say "one edge" while the poll says "nothing changed". Crediting
+// that odd edge would fire the press once now and once more when the release arrives next frame.
+//
+// So only a count whose PARITY agrees with the polled start->end transition is consumed; an odd one out is
+// left pending and pairs up with its other half on the next frame. The tap still fires -- exactly once, one
+// frame later -- instead of twice or not at all.
+fpl_internal_inline void InternalGamePlatformResolveEventTransitions(ButtonState *button, const fpl_b32 wasDown, const fpl_b32 isDown, uint8_t *pending) {
+	int desiredParity = (wasDown != isDown) ? 1 : 0;
+	int consumed = (int)*pending;
+	if ((consumed & 1) != desiredParity) {
+		--consumed; // hold one half-transition back for the frame its partner shows up in
+	}
+	if (consumed < 0) {
+		consumed = 0;
+	}
+	*pending = (uint8_t)((int)*pending - consumed);
+	if (consumed > button->halfTransitionCount) {
+		button->halfTransitionCount = consumed;
+	}
+}
+
 fpl_internal_inline bool InternalGamePlatformUpdateDigitalButtonState(const ButtonState *oldState, ButtonState *newState, const fpl_b32 isDown) {
 	newState->endedDown = isDown;
 	newState->halfTransitionCount = ((newState->endedDown == oldState->endedDown) ? 0 : 1);
@@ -226,6 +320,10 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 				// @TODO(final): For now we just use the device index, but later it should be "added" to the controllers array and remembered somehow
 				uint32_t controllerIndex = 1 + event.gamepad.deviceIndex;
 				fplAssert(controllerIndex < fplArrayCount(currentInput->controllers));
+				if (controllerIndex >= fplArrayCount(currentInput->controllers)) {
+					// Ignore gamepads beyond the controller slots instead of writing out of bounds in release
+					break;
+				}
 				Controller *newController = &currentInput->controllers[controllerIndex];
 				Controller *oldController = &prevInput->controllers[controllerIndex];
 				switch(event.gamepad.type) {
@@ -264,6 +362,10 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionUp, &newController->actionUp, padstate->actionY.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionBack, &newController->actionBack, padstate->back.isDown);
 						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->actionStart, &newController->actionStart, padstate->start.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->leftShoulder, &newController->leftShoulder, padstate->leftShoulder.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->rightShoulder, &newController->rightShoulder, padstate->rightShoulder.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->leftThumb, &newController->leftThumb, padstate->leftThumb.isDown);
+						changed |= InternalGamePlatformUpdateDigitalButtonState(&oldController->rightThumb, &newController->rightThumb, padstate->rightThumb.isDown);
 						if (changed) {
 							InternalGamePlatformUpdateDefaultController(currentInput, controllerIndex);
 						}
@@ -296,7 +398,8 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 
 					case fplMouseEventType_Wheel:
 					{
-						currentInput->mouse.wheelDelta = event.mouse.wheelDelta;
+						// Several wheel events can come in one frame, the mouse input starts at zero every frame
+						currentInput->mouse.wheelDelta += event.mouse.wheelDelta;
 					} break;
 
 				    default:
@@ -312,6 +415,10 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 						bool isDown = event.keyboard.buttonState >= fplButtonState_Press;
 						bool wasDown = event.keyboard.buttonState == fplButtonState_Release || event.keyboard.buttonState == fplButtonState_Repeat;
 						if(isDown != wasDown) {
+							// A REAL edge (a press or a release -- isDown != wasDown excludes auto-repeat, which
+							// reports both as down). Count it per key and per mapped controller button, so the
+							// poll below can restore an edge that fell entirely between two polls.
+							InternalGamePlatformCountKeyTransition(&keyboardButtonStates->keyTransitions[0], fplArrayCount(keyboardButtonStates->keyTransitions), (uint32_t)event.keyboard.mappedKey);
 							if(!newKeyboardController->isConnected) {
 								newKeyboardController->isConnected = true;
 							}
@@ -324,6 +431,7 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 								if (mapping->key == event.keyboard.mappedKey) {
 									uint32_t buttonIndex = mapping->type - ControllerButtonType_First;
 									keyboardButtonStates->changed[buttonIndex] |= true;
+									InternalGamePlatformCountKeyTransition(&keyboardButtonStates->buttonTransitions[0], fplArrayCount(keyboardButtonStates->buttonTransitions), buttonIndex);
 									if (event.keyboard.buttonState > keyboardButtonStates->states[buttonIndex]) {
 										keyboardButtonStates->states[buttonIndex] = event.keyboard.buttonState;
 									}
@@ -331,10 +439,24 @@ fpl_internal void InternalGamePlatformProcessEvents(const KeyboardButtonMappings
 							}
 						}
 						if(wasDown) {
-							if(event.keyboard.mappedKey == fplKey_F) {
+							if(event.keyboard.mappedKey == fplKey_F && (event.keyboard.modifiers & fplKeyboardModifierFlags_LAlt) != 0) {
 								bool wasFullscreen = fplIsWindowFullscreen();
 								fplSetWindowFullscreenSize(!wasFullscreen, 0, 0, 0);
 							}
+						}
+					} break;
+
+					case fplKeyboardEventType_Input:
+					{
+						// Typed character. The code point is carried in keyCode; control keys
+						// (Backspace/Tab/Return) also arrive here, so filter them out -- the game
+						// reads those from the keyboard button states, not from textInput.
+						uint64_t codePoint = event.keyboard.keyCode;
+						fplKey physicalKey = event.keyboard.mappedKey;
+						bool isPrintable = codePoint > 0 && codePoint < INT16_MAX &&
+							physicalKey != fplKey_Backspace && physicalKey != fplKey_Tab && physicalKey != fplKey_Return;
+						if(isPrintable && currentInput->textInputLength < (int)fplArrayCount(currentInput->textInput)) {
+							currentInput->textInput[currentInput->textInputLength++] = (char)codePoint;
 						}
 					} break;
 
@@ -362,6 +484,9 @@ fpl_internal void InternalGamePlatformSetupInputForFrame(KeyboardButtonStates *k
 	newInput->defaultControllerIndex = oldInput->defaultControllerIndex;
 	newInput->isFirstUpdateOfFrame = true;
 
+	// Typed text is per-frame: reset before this frame's events refill it.
+	newInput->textInputLength = 0;
+
 	const uint32_t controllerButtonCount = MAX_CONTROLLER_BUTTON_COUNT;
 
 	// Preserve keyboard controller buttons
@@ -382,6 +507,9 @@ fpl_internal void InternalGamePlatformSetupInputForFrame(KeyboardButtonStates *k
 		keyboardButtonStates->changed[buttonIndex] = false;
 		keyboardButtonStates->states[buttonIndex] = fplButtonState_Release;
 	}
+
+	// keyTransitions / buttonTransitions are deliberately NOT cleared here: they are running counts that
+	// carry an unpaired half-transition into the next frame. See InternalGamePlatformResolveEventTransitions.
 
 	// Preserve mouse buttons
 	Mouse *newMouse = &newInput->mouse;
@@ -447,14 +575,14 @@ fpl_internal void InternalGamePlatformLoggingInitialize(const GameConfiguration 
 				fplPathCombine(g__GamePlatform__FilePathBuffer, fplArrayCount(g__GamePlatform__FilePathBuffer), 3, g__GamePlatform__HomePathBuffer, userFolderName, logFileName);
 			}
 
-			LogInit(g__GamePlatform__FilePathBuffer);
+			LogInit(g__GamePlatform__FilePathBuffer, config->logSeverity);
 
 			fplPlatformRelease();
 		}
 	}
 }
 
-#define GAMEPLATFORM_LOGPREFIX "[ PLATFORM ] "
+#define GAMEPLATFORM_LOG_CATEGORY "Game-Platform"
 
 typedef struct {
 	Input inputs[2];
@@ -462,7 +590,6 @@ typedef struct {
 	KeyboardButtonMappings keyboardMappings;
 	KeyboardButtonStates keyboardButtonStates;
 	GameMemory gameMemory;
-	
 } GamePlatformState;
 
 #define CONTROLLER_BUTTON_TYPE_COUNT FPL__ENUM_COUNT(ControllerButtonType_First, ControllerButtonType_Last)
@@ -478,10 +605,12 @@ fpl_globalvar const char *g__GamePlatform__ControllerButtonTypeNameTable[] = {
 	FPL__ENUM_NAME("ActionRight", ControllerButtonType_ActionRight),
 	FPL__ENUM_NAME("ActionBack", ControllerButtonType_ActionBack),
 	FPL__ENUM_NAME("ActionStart", ControllerButtonType_ActionStart),
+	FPL__ENUM_NAME("ShoulderLeft", ControllerButtonType_ShoulderLeft),
+	FPL__ENUM_NAME("ShoulderRight", ControllerButtonType_ShoulderRight),
 };
 
 fplStaticAssert(ControllerButtonType_MoveUp == ControllerButtonType_First);
-fplStaticAssert(ControllerButtonType_ActionStart == ControllerButtonType_Last);
+fplStaticAssert(ControllerButtonType_ShoulderRight == ControllerButtonType_Last);
 
 fplStaticAssert(CONTROLLER_BUTTON_TYPE_COUNT == fplArrayCount(g__GamePlatform__ControllerButtonTypeNameTable));
 
@@ -491,32 +620,63 @@ fpl_internal const char *InternalGamePlatformGetControllerButtonTypeName(const C
 	return(result);
 }
 
+fpl_internal void InternalGamePlatformAddDefaultKeyboardMappings(KeyboardButtonMappings *keyboardMappings, KeyboardButtonStates *keyboardButtonStates) {
+	// Movement
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_A, ControllerButtonType_MoveLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Left, ControllerButtonType_MoveLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_D, ControllerButtonType_MoveRight);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Right, ControllerButtonType_MoveRight);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_W, ControllerButtonType_MoveUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Up, ControllerButtonType_MoveUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_S, ControllerButtonType_MoveDown);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Down, ControllerButtonType_MoveDown);
+
+	// Actions
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Space, ControllerButtonType_ActionDown);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_F, ControllerButtonType_ActionUp);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Q, ControllerButtonType_ActionLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_E, ControllerButtonType_ActionRight);
+
+	// Shoulder Buttons
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_R, ControllerButtonType_ShoulderLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_T, ControllerButtonType_ShoulderRight);
+
+	// Trigger Buttons
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_V, ControllerButtonType_ThumbLeft);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_B, ControllerButtonType_ThumbRight);
+
+	// Start/Back
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
+	InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Escape, ControllerButtonType_ActionBack);
+}
+
 fpl_internal void GameMainShutdown(const GameConfiguration *config, GameMemory *gameMem, AudioSystem *audioSys, fmemMemoryBlock *gameMemoryBlock, fmemMemoryBlock *renderMemoryBlock) {
 	LogWriteRaw("======================================================================");
-	LogWrite(LogLevel_Info, "Shutdown Game '%s'", config->title);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Shutdown Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Stop Audio Playback");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Stop Audio Playback");
 	fplStopAudio();
 
 	if (gameMem != fpl_null) {
-		LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Game");
+		LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Release Game");
 		GameRelease(gameMem);
 	}
 
 	if (audioSys != fpl_null) {
-		LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Shutdown Audio System");
+		LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Shutdown Audio System");
 		AudioSystemShutdown(audioSys);
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Free Memory Blocks");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Free Memory Blocks");
 	fmemFree(gameMemoryBlock);
 	fmemFree(renderMemoryBlock);
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Unload OpenGL");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Unload OpenGL");
 	fglUnloadOpenGL();
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Release Platform Layer");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Release Platform Layer");
 	fplPlatformRelease();
 
 	LogShutdown();
@@ -530,14 +690,18 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	InternalGamePlatformLoggingInitialize(config);
 
 	LogWriteLineBreak();
+	LogWriteLineBreak();
+	LogWriteLineBreak();
+
 	LogWriteRaw("======================================================================");
-	LogWrite(LogLevel_Info, "Startup Game '%s'", config->title);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Startup Game '%s'", config->title);
 	LogWriteRaw("======================================================================");
 
-	LogWrite(LogLevel_Debug, GAMEPLATFORM_LOGPREFIX "Detect Platform Configuration");
+	LogWrite(LogLevel_Debug, GAMEPLATFORM_LOG_CATEGORY, "Detect Platform Configuration");
 
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
+	settings.locale.isCultureInvariant = true;
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
 	settings.video.isVSync = !config->disableVerticalSync;
@@ -560,39 +724,40 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	fplMemoryInfos memInfos = fplZeroInit;
 	fplMemoryGetUsage(&memInfos);
 
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Platform: %s", platformName);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Architecture: %s", archName);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Total Physical Memory: %zu bytes", memInfos.totalPhysicalSize);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Free Physical Memory: %zu bytes", memInfos.freePhysicalSize);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Title: %s", config->title);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Platform: %s", platformName);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Architecture: %s", archName);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Total Physical Memory: %zu bytes", memInfos.totalPhysicalSize);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Free Physical Memory: %zu bytes", memInfos.freePhysicalSize);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Title: %s", config->title);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Video Backend: %s", fplGetVideoBackendName(settings.video.backend));
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Video VSync: %s", settings.video.isVSync ? "On" : "Off");
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Audio format: [SampleRate: %u, Channels: %u, Type: %s]", settings.audio.targetFormat.sampleRate, settings.audio.targetFormat.channels, fplGetAudioFormatName(settings.audio.targetFormat.type));
 
 	if (config->keyboardMappings == fpl_null || !config->keyboardMappings->isCustom) {
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Default Keyboard Mapping");
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Keyboard Button Mappings: Default Keyboard Mapping");
 	} else if (config->keyboardMappings->count == 0) {
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- Keyboard Button Mappings: Disabled");
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- Keyboard Button Mappings: Disabled");
 	} else {
 		const uint32_t mappingCount = fplMin(config->keyboardMappings->count, MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT);
-		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- %u Keyboard Button Mappings:", mappingCount);
+		LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "- %u Keyboard Button Mappings:", mappingCount);
 		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
 			const char *keyName = fplKeyGetName(config->keyboardMappings->values[mappingIndex].key);
 			const char *typeName = InternalGamePlatformGetControllerButtonTypeName(config->keyboardMappings->values[mappingIndex].type);
-			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "[%u] Key '%s' to '%s'", mappingIndex, keyName, typeName);
+			LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, "[%u] Key '%s' to '%s'", mappingIndex, keyName, typeName);
 		}
 	}
 
-	fmemMemoryBlock gameMemoryBlock;
-	fmemMemoryBlock renderMemoryBlock;
+	// Zero-init so early-failure shutdown paths that call fmemFree before fmemInit are a safe no-op (fmemFree skips a zeroed block)
+	fmemMemoryBlock gameMemoryBlock = fplZeroInit;
+	fmemMemoryBlock renderMemoryBlock = fplZeroInit;
 	fplAudioFormat targetAudioFormat;
 
 	GamePlatformState *gamePlatformState = fpl_null;
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Platform Layer");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Initialize Platform Layer");
 	if(!fplPlatformInit(initFlags, &settings)) {
 		const char *lastError = fplGetLastError();
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to initialize Platform Layer -> %s", lastError);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, "Failed to initialize Platform Layer -> %s", lastError);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -611,9 +776,9 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		}
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Load OpenGL Library");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, "Load OpenGL Library");
 	if(!fglLoadOpenGL(true)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to load OpenGL library!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, "Failed to load OpenGL library!");
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -623,77 +788,80 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	const GLubyte *glrenderer = glGetString(GL_RENDERER);
 	const GLubyte *glextensions = glGetString(GL_EXTENSIONS);
 
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Version: %s", glversion);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Vendor: %s", glvendor);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Renderer: %s", glrenderer);
-	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOGPREFIX "- OpenGL Extensions: %s", glextensions);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Version: %s", glversion);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Vendor: %s", glvendor);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Renderer: %s", glrenderer);
+	LogWrite(LogLevel_Verbose, GAMEPLATFORM_LOG_CATEGORY, " - OpenGL Extensions: %s", glextensions);
 
 	const size_t gameMemoryBlockSize = FMEM_MEGABYTES(128);
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate game memory block with size %zu bytes", gameMemoryBlockSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Allocate game memory block with size %zu bytes", gameMemoryBlockSize);
 	if(!fmemInit(&gameMemoryBlock, fmemType_Growable, gameMemoryBlockSize, 0)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to allocate game memory block with size %zu!", gameMemoryBlockSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to allocate game memory block with size %zu!", gameMemoryBlockSize);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t renderMemoryBlockSize = FMEM_MEGABYTES(32);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Allocate render memory block with size %zu bytes ]", renderMemoryBlockSize);
 	if(!fmemInit(&renderMemoryBlock, fmemType_Growable, renderMemoryBlockSize, 0)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to allocate render memory block with size %zu!", renderMemoryBlockSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to allocate render memory block with size %zu!", renderMemoryBlockSize);
 		GameMainShutdown(config, fpl_null, fpl_null, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t audioSystemSize = sizeof(AudioSystem);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for audio system with size %zu bytes", audioSystemSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for audio system with size %zu bytes", audioSystemSize);
 	AudioSystem *audioSys = fmemPushStruct(&gameMemoryBlock, AudioSystem, fmemPushFlags_Clear);
 	if (audioSys == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for audio system, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, audioSystemSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for audio system, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, audioSystemSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	const size_t gamePlatformStateSize = sizeof(GamePlatformState);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for game platform state with size %zu bytes", gamePlatformStateSize);
 	gamePlatformState = fmemPushStruct(&gameMemoryBlock, GamePlatformState, fmemPushFlags_Clear);
-	if (audioSys == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
+	if (gamePlatformState == fpl_null) {
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for game platform state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, gamePlatformStateSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Query Audio Hardware Format");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Query Audio Hardware Format");
 	if (!fplGetAudioHardwareFormat(&targetAudioFormat)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to query Audio Hardware Format!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to query Audio Hardware Format!");
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Initialize Audio System with target format: SampleRate: %u, Channels: %u, Type: %s", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 	if(!AudioSystemInit(audioSys, &targetAudioFormat)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to initialize Audio System with target format 'SampleRate: %u, Channels: %u, Type: %s'!", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to initialize Audio System with target format 'SampleRate: %u, Channels: %u, Type: %s'!", targetAudioFormat.sampleRate, targetAudioFormat.channels, fplGetAudioFormatName(targetAudioFormat.type));
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	size_t renderStateSize = sizeof(RenderState);
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Aquire memory for render state with size %zu bytes", renderStateSize);
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Aquire memory for render state with size %zu bytes", renderStateSize);
 	RenderState *renderState = fmemPushStruct(&gameMemoryBlock, RenderState, fmemPushFlags_Clear);
 	if (renderState == fpl_null) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Insufficient memory for render state, capacity is '%zu bytes', used is '%zu bytes', required is '%zu bytes'!", gameMemoryBlock.size, gameMemoryBlock.used, renderStateSize);
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
 
 	RenderInit(renderState, renderMemoryBlock);
-	InitOpenGLRenderer();
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Start Audio Playback");
+	// InitOpenGLRenderer detects the GPU capabilities into renderState->caps so renderer-agnostic game
+	// code can read them (e.g. to gate shader features). The hard "exit if unsupported" gate is deferred.
+	InitOpenGLRenderer(&renderState->caps);
+
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Start Audio Playback");
 	fplSetAudioClientReadCallback(InternalGamePlatformAudioPlayback, audioSys);
 	fplAudioResultType playAudioResult = fplPlayAudio();
 	if(playAudioResult != fplAudioResultType_Success) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Failed to start Audio Playback -> %s!", fplGetAudioResultName(playAudioResult));
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Failed to start Audio Playback -> %s!", fplGetAudioResultName(playAudioResult));
 		GameMainShutdown(config, fpl_null, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -703,9 +871,9 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 	gameMem->memory = &gameMemoryBlock;
 	gameMem->audio = audioSys;
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Initialize Game");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Initialize Game");
 	if(!GameInit(gameMem, argumentCount, arguments)) {
-		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOGPREFIX "Game failed to initialize!");
+		LogWrite(LogLevel_Fatal, GAMEPLATFORM_LOG_CATEGORY, " Game failed to initialize!");
 		GameMainShutdown(config, gameMem, audioSys, &gameMemoryBlock, &renderMemoryBlock);
 		return -1;
 	}
@@ -715,6 +883,26 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	const double targetDeltaTime = 1.0 / (double)targetFramesHz;
 	const double maxRenderTime = maxRenderFramesHz > 0 ? 1.0 / (double)maxRenderFramesHz : 0.0;
+
+	const uint32_t defaultMaxUpdateTicksPerFrame = 4;
+	const double defaultMaxDynamicFrameTime = 0.25;
+
+	// The frame time handed to the game as dynamicFrameTime, clamped separately from the accumulator.
+	const double maxDynamicFrameTime = config->maxDynamicFrameTime > 0.0 ? config->maxDynamicFrameTime : defaultMaxDynamicFrameTime;
+
+	// Upper bound on fixed-timestep updates run per rendered frame. Without it the accumulator loop
+	// below is a spiral of death: one update that overruns the fixed step leaves time in the
+	// accumulator, so the next frame runs two updates, overruns further, and so on until the frame
+	// time hits its own clamp and the game sits pinned at a constant low framerate. Clamping the
+	// time we FEED the accumulator bounds the tick count by construction, so a simulation that
+	// cannot keep up runs in slow motion (time dilates) instead of collapsing.
+	const uint32_t maxUpdateTicksPerFrame = config->maxUpdateTicksPerFrame > 0 ? config->maxUpdateTicksPerFrame : defaultMaxUpdateTicksPerFrame;
+
+	// Unbounded mode feeds the accumulator the (dynamic-clamped) frame time, reproducing the original
+	// spiral-prone behaviour exactly. ClampTicks feeds it at most maxUpdateTicksPerFrame worth of time.
+	const bool isUpdateLoopUnbounded = config->updateLoopMode == GameUpdateLoopMode_Unbounded;
+	const double boundedAccumulatedFrameTime = targetDeltaTime * (double)maxUpdateTicksPerFrame;
+	const double maxAccumulatedFrameTime = isUpdateLoopUnbounded ? maxDynamicFrameTime : boundedAccumulatedFrameTime;
 
 	if(config->hideMouseCursor) {
 		fplSetWindowCursorEnabled(false);
@@ -743,21 +931,19 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 	if (config->keyboardMappings != fpl_null && config->keyboardMappings->isCustom) {
 		fplMemoryCopy(config->keyboardMappings, sizeof(KeyboardButtonMappings), keyboardMappings);
+		// The raw struct copy does not touch mapped[], which the poll loop gates on, so rebuild it from the copied entries
+		const uint32_t mappingCount = fplMin(keyboardMappings->count, (uint32_t)fplArrayCount(keyboardMappings->values));
+		for (uint32_t mappingIndex = 0; mappingIndex < mappingCount; ++mappingIndex) {
+			const ControllerButtonType buttonType = keyboardMappings->values[mappingIndex].type;
+			if (buttonType >= ControllerButtonType_First && buttonType <= ControllerButtonType_Last) {
+				keyboardButtonStates->mapped[buttonType] = true;
+			}
+		}
 	} else {
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_A, ControllerButtonType_MoveLeft);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Left, ControllerButtonType_MoveLeft);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_D, ControllerButtonType_MoveRight);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Right, ControllerButtonType_MoveRight);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_W, ControllerButtonType_MoveUp);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Up, ControllerButtonType_MoveUp);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_S, ControllerButtonType_MoveDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Down, ControllerButtonType_MoveDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Space, ControllerButtonType_ActionDown);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Return, ControllerButtonType_ActionStart);
-		InternalGamePlatformAddKeyboardControllerButtonMapping(keyboardButtonStates, keyboardMappings, fplKey_Escape, ControllerButtonType_ActionBack);
+		InternalGamePlatformAddDefaultKeyboardMappings(keyboardMappings, keyboardButtonStates);
 	}
 
-	LogWrite(LogLevel_Info, GAMEPLATFORM_LOGPREFIX "Main Loop");
+	LogWrite(LogLevel_Info, GAMEPLATFORM_LOG_CATEGORY, " Main Loop");
 	while(!IsGameExiting(gameMem) && fplWindowUpdate()) {
 		// Get window size
 		fplWindowSize winArea;
@@ -785,18 +971,42 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		for (uint32_t keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
 			fplButtonState buttonState = keyboardState->buttonStatesMapped[keyIndex];
 			fpl_b32 isDown = buttonState != fplButtonState_Release ? 1 : 0;
-			if (newKeyboard->keys[keyIndex].endedDown != isDown) {
-				InternalGamePlatformUpdateKeyboardButtonState(&newKeyboard->keys[keyIndex], isDown);
+			ButtonState *key = &newKeyboard->keys[keyIndex];
+			fpl_b32 wasDown = key->endedDown; // still LAST frame's state -- preserved before the events ran
+			if (wasDown != isDown) {
+				InternalGamePlatformUpdateKeyboardButtonState(key, isDown);
 			}
+			InternalGamePlatformResolveEventTransitions(key, wasDown, isDown, &keyboardButtonStates->keyTransitions[keyIndex]);
 		}
 		
-		// Keyboard controller buttons from all mappings
+		// Keyboard controller buttons: derive each from the polled key state (OR of every key mapped
+		// to that button type). Event accumulation latched a same-frame press+release tap as a stuck
+		// "down"; polling reflects the real key state so a released key can never get stuck.
 		for (uint32_t buttonTypeIndex = 0; buttonTypeIndex < MAX_CONTROLLER_BUTTON_TYPE_COUNT; ++buttonTypeIndex) {
-			if (keyboardButtonStates->mapped[buttonTypeIndex] && keyboardButtonStates->changed[buttonTypeIndex]) {
-				ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
-				bool isDown = keyboardButtonStates->states[buttonTypeIndex] > fplButtonState_Release;
+			if (!keyboardButtonStates->mapped[buttonTypeIndex]) {
+				continue;
+			}
+			ControllerButtonType buttonType = (ControllerButtonType)(ControllerButtonType_First + buttonTypeIndex);
+			fpl_b32 isDown = 0;
+			for (uint32_t mappingIndex = 0; mappingIndex < keyboardMappings->count; ++mappingIndex) {
+				const KeyboardControllerButtonMapping *mapping = keyboardMappings->values + mappingIndex;
+				if (mapping->type != buttonType) {
+					continue;
+				}
+				fplButtonState mappedKeyState = keyboardState->buttonStatesMapped[mapping->key];
+				if (mappedKeyState != fplButtonState_Release) {
+					isDown = 1;
+					break;
+				}
+			}
+			ButtonState *button = &newInput->keyboard.buttons[buttonTypeIndex];
+			fpl_b32 buttonWasDown = button->endedDown;
+			if (buttonWasDown != isDown) {
 				InternalGamePlatformUpdateKeyboardButtonState(button, isDown);
 			}
+			// Same edge rescue as the raw keys above: a jump tapped and released inside one long frame
+			// polls identical on both ends, and without this its press edge never happens.
+			InternalGamePlatformResolveEventTransitions(button, buttonWasDown, isDown, &keyboardButtonStates->buttonTransitions[buttonTypeIndex]);
 		}
 
 #if 0
@@ -828,6 +1038,11 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 			lastFPSTime = fplMillisecondsQuery();
 			updateCount = frameCount = 0;
 			InternalGamePlatformResetInput(newInput);
+			// Drop any half-transition still waiting for its partner. Focus changed, so the missing half is
+			// never coming -- keeping it would fire a phantom edge on the frame the window comes back
+			// (an Alt+Tab whose Tab release the app never saw is exactly this case).
+			fplMemoryClear(keyboardButtonStates->keyTransitions, sizeof(keyboardButtonStates->keyTransitions));
+			fplMemoryClear(keyboardButtonStates->buttonTransitions, sizeof(keyboardButtonStates->buttonTransitions));
 		}
 
 		//
@@ -839,12 +1054,20 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		// Compute frame time once and advance accumulator
 		//
 		fplTimestamp currTime = fplTimestampQuery();
-		double frameTime = fplTimestampElapsed(lastTime, currTime);
+		double rawFrameTime = fplTimestampElapsed(lastTime, currTime);
 		lastTime = currTime;
-		if (frameTime > 0.25) frameTime = 0.25;
-		frameAccumulator += frameTime;
-		framesPerSecond = frameTime > 0 ? 1.0 / frameTime : 0;
-		lastFrameTime = frameTime;
+
+		// Report the REAL framerate, measured before any clamp -- otherwise the readout floors at
+		// whatever the clamp is and hides how far behind the frame actually ran.
+		framesPerSecond = rawFrameTime > 0 ? 1.0 / rawFrameTime : 0;
+		lastFrameTime = rawFrameTime < maxDynamicFrameTime ? rawFrameTime : maxDynamicFrameTime;
+
+		// Feeding the accumulator a clamped frame time is what bounds the update loop: the
+		// accumulator can hold at most one leftover step plus maxAccumulatedFrameTime, so the loop
+		// runs at most maxUpdateTicksPerFrame times. Time beyond that is DISCARDED on purpose -- the
+		// simulation falls behind wall-clock rather than trying to catch up and falling further.
+		double accumulatedFrameTime = rawFrameTime < maxAccumulatedFrameTime ? rawFrameTime : maxAccumulatedFrameTime;
+		frameAccumulator += accumulatedFrameTime;
 
 		//
 		// Game update accumulator loop (Allow button edge events only on the first tick of this render frame)
@@ -865,9 +1088,17 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 		const float alphaRaw = (float)(frameAccumulator / targetDeltaTime);
 		const float alpha = F32Clamp(alphaRaw, 0.0f, 1.0f);
 		RenderReset(renderState);
+		fplTimestamp renderBuildStart = fplTimestampQuery();
 		GameRender(gameMem, newInput, alpha);
+		fplTimestamp renderBuildEnd = fplTimestampQuery();
 		RenderWithOpenGL(renderState);
+		fplTimestamp renderSubmitEnd = fplTimestampQuery();
+		renderState->lastRenderBuildSeconds = fplTimestampElapsed(renderBuildStart, renderBuildEnd);
+		renderState->lastRenderSubmitSeconds = fplTimestampElapsed(renderBuildEnd, renderSubmitEnd);
+		fplTimestamp renderSwapStart = fplTimestampQuery();
 		fplVideoFlip();
+		fplTimestamp renderSwapEnd = fplTimestampQuery();
+		renderState->lastRenderSwapSeconds = fplTimestampElapsed(renderSwapStart, renderSwapEnd);
 		++frameCount;
 
 		//
@@ -891,8 +1122,8 @@ fpl_extern int GameMain(const GameConfiguration *config, const int argumentCount
 
 		// Throttle if vsync is disabled and there is a limit of max frames
 		if (config->disableVerticalSync && maxRenderTime > 0.0) {
-			if (frameTime < maxRenderTime) {
-				double sleepSec = maxRenderTime - frameTime;
+			if (rawFrameTime < maxRenderTime) {
+				double sleepSec = maxRenderTime - rawFrameTime;
 				uint32_t sleepMS = (uint32_t)(sleepSec * 1000.0);
 				if (sleepMS > 0) {
 					// TODO(final): Use a better approach!

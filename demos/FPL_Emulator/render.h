@@ -17,13 +17,14 @@ Description:
 
 #include <final_memory.h>
 
-#include "final_fontloader.h"
-
 #include "final_math.h"
 
-typedef struct Color4f {
-	float r, g, b, a;
-} Color4f;
+#include <final_ui.h>
+
+// The renderer's color is the math library's four component vector under a name that says what it carries here.
+// One type rather than two layout compatible ones, so the palette constants final_math.h ships can be handed to
+// a draw call without a conversion sitting in between
+typedef Vec4f Color4f;
 
 typedef enum TextureFormat {
 	TextureFormat_Automatic = -1,
@@ -68,14 +69,11 @@ extern const APITextureFormat InvalidAPITextureFormat;
 
 extern const Texture InvalidTexture;
 
-extern const Color4f ColorWhite;
+// Only the colors final_math.h does NOT already carry. White, red, green, blue and dark gray come from there,
+// and a second definition of them here would be one palette in two places disagreeing about what red is
 extern const Color4f ColorBlack;
-extern const Color4f ColorRed;
-extern const Color4f ColorGreen;
-extern const Color4f ColorBlue;
 extern const Color4f ColorYellow;
 extern const Color4f ColorGray;
-extern const Color4f ColorDarkGray;
 
 typedef void RendererContext;
 
@@ -87,6 +85,9 @@ typedef struct {
 
 extern RendererContext *RendererCreate(fmemMemoryBlock *memory, RendererSupport *outSupport);
 extern void RendererDestroy(RendererContext *context);
+
+// The OpenGL loader is compiled privately into the renderer (FGL_AS_PRIVATE), so its version is reported from here rather than by including the loader a second time somewhere else
+extern const char *RendererGetOpenGLLoaderVersion(void);
 
 extern Texture RendererTextureUpload(const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter, const void *data);
 extern Texture RendererTextureAllocate(fmemMemoryBlock *mem, const uint32_t width, const uint32_t height, const TextureFormat format, const TextureFilter textureFilter);
@@ -149,15 +150,10 @@ extern void RendererShaderUniformMat4f(const ShaderProgram *program, const int32
 
 extern void RendererSetViewport(const int x, const int y, const int w, const int h);
 
-extern void RendererEnableClipping();
-extern void RendererSetViewClipRect(const Mat4f *projMat, const Mat4f *viewMat, const Viewport4i *viewport, const float x, const float y, const float w, const float h);
-extern void RendererDisableClipping();
 
 extern void RendererClear(const float r, const float g, const float b, const float a);
 
 extern void RendererSetModelViewProjectionMatrix(const float *mvp);
-
-extern void RendererDrawString(const LoadedFont *font, const TextureID textureId, const char *text, const size_t textLen, const float x, const float y, const float scale, const Color4f color);
 
 extern void RendererDrawTexturedQuad(
 	const TextureID textureId,
@@ -186,19 +182,5 @@ extern void RendererDrawTexturedQuadShader(
 
 extern void RendererDrawFilledQuad(const float x, const float y, const float w, const float h, const Color4f color);
 
-extern void RendererDrawStrokedQuad(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f color);
-
-extern void RendererDrawLine(const float x0, const float y0, const float x1, const float y1, const float lineWidth, const Color4f color);
-
-typedef enum {
-	ControlBorderFlags_None = 0,
-	ControlBorderFlags_Left = 1 << 0,
-	ControlBorderFlags_Right = 1 << 1,
-	ControlBorderFlags_Top = 1 << 2,
-	ControlBorderFlags_Bottom = 1 << 3,
-	ControlBorderFlags_All = ControlBorderFlags_Left | ControlBorderFlags_Right | ControlBorderFlags_Top | ControlBorderFlags_Bottom,
-} ControlBorderFlags;
-
-extern void RendererDrawControlBorders(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const ControlBorderFlags flags, const bool isDown);
-
-extern void RendererDrawControlBorder(const float x, const float y, const float w, const float h, const float lineWidth, const Color4f *color0, const Color4f *color1, const Color4f *color2, const bool isDown);
+// Draws one finished frame of final_ui.h geometry. Expects the model view projection to already map pixels one to one with a top-left origin, which is what PrepareFrame sets up
+extern void RendererDrawUIDrawData(const fuiDrawData *drawData);

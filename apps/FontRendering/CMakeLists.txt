@@ -12,12 +12,16 @@ set(MY_COMPILER "cpp11")
 
 set(MY_EXTERNAL_LIBS "")
 
+find_package(OpenGL REQUIRED)
+list(APPEND MY_EXTERNAL_LIBS OpenGL::GL)
+
 set(MY_INCLUDE_DIRS
 	"../../"
+	"../../demos/additions"
+	"../../demos/dependencies"
 	)
 
 set(MY_HEADER_FILES
-	"stb_truetype.h"
 	)
 
 set(MY_TRANSLATION_UNITS

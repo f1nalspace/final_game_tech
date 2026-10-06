@@ -1,7 +1,7 @@
 struct IUnknown; // Stupid MSVC
-#include <Windows.h>
+#include <windows.h>
 
-#include "GL/GL.h"
+#include <GL/gl.h>
 
 struct fpl__Win32 {
 	LPCWSTR className;

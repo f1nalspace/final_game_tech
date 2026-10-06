@@ -157,11 +157,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ftt_tiletracingdemo.cpp" />
+    <ClCompile Include="ftt_tiletracingdemo.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\final_platform_layer.h" />
-    <ClInclude Include="..\..\final_tiletrace.hpp" />
+    <ClInclude Include="..\..\final_tiletrace.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

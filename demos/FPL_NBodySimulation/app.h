@@ -9,7 +9,7 @@
 
 #include "base.h"
 #include "render.h"
-#include "font.h"
+#include <final_fontloader.h>
 
 #include "demo1.h"
 #include "demo2.h"
@@ -108,7 +108,7 @@ struct OSDState {
 	float x;
 	float y;
 	float fontHeight;
-	FontAtlas *font;
+	LoadedFont *font;
 	Render::TextureHandle texture;
 };
 
@@ -132,9 +132,9 @@ struct DemoApplication : public Application {
 
 	bool multiThreadingActive;
 
-	FontAtlas osdFont;
+	LoadedFont osdFont;
 	Render::TextureHandle osdFontTexture;
-	FontAtlas chartFont;
+	LoadedFont chartFont;
 	Render::TextureHandle chartFontTexture;
 
 	void LoadDemo(const size_t demoIndex);

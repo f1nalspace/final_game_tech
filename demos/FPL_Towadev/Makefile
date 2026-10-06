@@ -114,7 +114,7 @@ OBJDIR = ../immediates/FPL_Towadev/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -142,7 +142,7 @@ OBJDIR = ../immediates/FPL_Towadev/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS)
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -170,7 +170,7 @@ OBJDIR = ../immediates/FPL_Towadev/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -198,7 +198,7 @@ OBJDIR = ../immediates/FPL_Towadev/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS)
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -254,7 +254,7 @@ OBJDIR = ../immediates/FPL_Towadev/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -282,7 +282,7 @@ OBJDIR = ../immediates/FPL_Towadev/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -s
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -310,7 +310,7 @@ OBJDIR = ../immediates/FPL_Towadev/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -m32 -s
 define POSTBUILDCMDS
 	@echo Running postbuild commands
@@ -338,7 +338,7 @@ OBJDIR = ../immediates/FPL_Towadev/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm
+LIBS += -lm -latomic
 ALL_LDFLAGS += $(LDFLAGS) -s
 define POSTBUILDCMDS
 	@echo Running postbuild commands

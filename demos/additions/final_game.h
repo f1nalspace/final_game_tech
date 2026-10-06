@@ -9,6 +9,20 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-07-26
+	- Added fields keyTransitions and buttonTransitions to KeyboardButtonStates: the real press/release edges seen in the event stream, so a tap that falls between two keyboard polls keeps its edge
+
+	## 2026-07-01
+	- Added field textInput and textInputLength to Input struct
+
+	## 2026-06-30
+	- Added ControllerButtonType_ShoulderLeft and ControllerButtonType_ShoulderRight
+	- Added ControllerButtonType_ThumbLeft and ControllerButtonType_ThumbRight
+	- Increased MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT from 32 to 128
+
+	## 2026-06-08
+	- New: Added function ButtonWentDown() that returns whether a button went down this frame (the press/down edge)
+
 	## 2025-11-21
 	- Changed: GameRender to allow an Input argument as well
 	- Changed: Renamed ButtonWasPressed to ButtonButtonWasPressed
@@ -48,6 +62,14 @@ fpl_extern_inline bool ButtonWasPressed(const ButtonState state) {
 	return(result);
 }
 
+// True on the DOWN edge (key went down this frame). Use this for press reactions
+// like a jump; ButtonWasPressed() above actually fires on the release edge.
+fpl_extern_inline bool ButtonWentDown(const ButtonState state) {
+	bool result = ((state.endedDown && state.halfTransitionCount >= 1) ||
+				  (!state.endedDown && state.halfTransitionCount >= 2));
+	return(result);
+}
+
 typedef enum ControllerButtonType {
 	ControllerButtonType_MoveUp = 0,
 	ControllerButtonType_MoveDown,
@@ -59,20 +81,28 @@ typedef enum ControllerButtonType {
 	ControllerButtonType_ActionRight,
 	ControllerButtonType_ActionBack,
 	ControllerButtonType_ActionStart,
+	ControllerButtonType_ShoulderLeft,
+	ControllerButtonType_ShoulderRight,
+	ControllerButtonType_ThumbLeft,
+	ControllerButtonType_ThumbRight,
 
 	ControllerButtonType_Count,
 
 	ControllerButtonType_First = ControllerButtonType_MoveUp,
-	ControllerButtonType_Last = ControllerButtonType_ActionStart,
+	ControllerButtonType_Last = ControllerButtonType_ShoulderRight,
 } ControllerButtonType;
 
 // Total number of controller button types
 #define MAX_CONTROLLER_BUTTON_TYPE_COUNT (ControllerButtonType_Count)
 
 // Total number of controller buttons
-#define MAX_CONTROLLER_BUTTON_COUNT 10
+#define MAX_CONTROLLER_BUTTON_COUNT 14
 
 fplStaticAssert(MAX_CONTROLLER_BUTTON_TYPE_COUNT == MAX_CONTROLLER_BUTTON_COUNT);
+
+// Max number of typed characters captured per frame (Input.textInput). One frame rarely
+// produces more than a handful of characters, so a small fixed buffer is plenty.
+#define MAX_TEXT_INPUT_LENGTH 32
 
 typedef struct Controller {
 	Vec2f analogMovement;
@@ -88,6 +118,10 @@ typedef struct Controller {
 			ButtonState actionRight;
 			ButtonState actionBack;
 			ButtonState actionStart;
+			ButtonState leftShoulder;
+			ButtonState rightShoulder;
+			ButtonState leftThumb;
+			ButtonState rightThumb;
 		};
 		ButtonState buttons[MAX_CONTROLLER_BUTTON_COUNT];
 	};
@@ -114,7 +148,7 @@ typedef struct KeyboardControllerButtonMapping {
 } KeyboardControllerButtonMapping;
 
 // Total number of keyboard controller button mappings
-#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 32
+#define MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT 128
 
 typedef struct KeyboardButtonMappings {
 	KeyboardControllerButtonMapping values[MAX_KEYBOARD_CONTROLLER_BUTTON_MAPPING_COUNT];
@@ -126,6 +160,14 @@ typedef struct KeyboardButtonStates {
 	fplButtonState states[MAX_CONTROLLER_BUTTON_COUNT];
 	bool changed[MAX_CONTROLLER_BUTTON_COUNT];
 	bool mapped[MAX_CONTROLLER_BUTTON_COUNT];
+	// Real press/release edges seen in the EVENT stream this frame -- one counter per fplKey and one per
+	// controller button type, auto-repeat excluded. Both ButtonState arrays are otherwise built from a
+	// once-per-frame POLL of the keyboard, and a poll cannot see a key that went down AND back up between
+	// two of them: on a long frame a quick tap (a shortcut letter, a jump) leaves the polled state
+	// identical, so its edge vanishes completely. These counts keep the edge; endedDown stays the polled
+	// truth, which is what keeps a key from latching stuck.
+	uint8_t keyTransitions[256];
+	uint8_t buttonTransitions[MAX_CONTROLLER_BUTTON_COUNT];
 } KeyboardButtonStates;
 
 typedef struct Keyboard {
@@ -143,6 +185,10 @@ typedef struct Input {
 		Controller controllers[5];
 	};
 	Mouse mouse;
+
+	// Characters typed this frame (printable text-input events, filled from fplKeyboardEventType_Input and cleared every frame). Control keys (Backspace, Tab, Return) are NOT stored here! Not null terminated!
+	char textInput[MAX_TEXT_INPUT_LENGTH];
+	int textInputLength;
 
 	// Size of window in pixels
 	Vec2i windowSize;

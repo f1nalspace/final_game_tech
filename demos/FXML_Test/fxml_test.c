@@ -45,7 +45,7 @@ static void MyFree(void *ptr);
 #define ENABLE_MEMORY_PROTECTION 1
 
 #if _WIN32 && !FORCE_MEMORY_MALLOC
-#include <Windows.h>
+#include <windows.h>
 #else
 #include <malloc.h>
 #endif

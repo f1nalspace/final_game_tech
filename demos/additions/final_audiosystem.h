@@ -141,6 +141,27 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-08-07
+	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
+	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass AudioSystemDefaultPitch for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
+	- New: AudioSystemSetPlayItemRepeat() turns looping on or off on a play item that is already playing. Clearing it lets the current pass FINISH and the item free itself normally, which is what a "stop looping" control has to mean - AudioSystemStopOne would cut the sound off mid-note instead
+	- New: AudioSystemSetPlayItemPitch() changes the pitch of a play item that is already playing (find-and-write under playItems.lock, by id, exactly like the volume setter) - so a pitch control can be dragged and HEARD while it moves, which is the only way to judge one on a sound effect that is over before the slider settles
+	- New: AudioPlayItem.pitch - a varispeed playback rate (2 = an octave up and half as long, 0.5 = an octave down and twice as long). It needs no stage of its own: a rate conversion is decided by the RATIO alone, so ProcessSinglePlayItem simply tells the resampler the source has a different sample rate than it has, and the output still lands exactly on the device rate. A pitch within AudioPitchNeutralTolerance (0.1%) of 1 passes the source rate through UNCHANGED, so an unpitched clip keeps the memcpy passthrough and the even-ratio fast paths instead of falling onto the SinC branch over a slider's rounding error
+
+	## 2026-08-06
+	- Fixed: LoadMP3FormatFromBuffer (final_mp3loader.h) walked no headers at all -- it ran a FULL mp3dec_load_buf decode and read fileInfo.samples off the result, then freed it. It now hops frame header to frame header, which is what the format is actually made of. Measured over every mp3 in data/: identical frameCount to LoadMP3FromBuffer in all four, 174x-201x faster, no allocation (1.63 MB / 107 s track: 64.4 ms + 18 MB of PCM -> 0.37 ms + 0 bytes). AudioSystemLoadFileFormat is now cheap enough to ask per UI row, which is what a playlist needs to show a track's length
+	- New: AudioSystemSetPlayItemVolume() changes the volume of a play item that is already playing (find-and-write under playItems.lock, by id so it cannot dangle)
+	- New: AudioSystemRemoveSource() removes and frees ONE source, the counterpart to AudioSystemAddSource; play items referencing it are stopped first
+	- Fixed: AudioSystemClearSources now resets sources.count to zero (it kept counting the sources it had just freed)
+	- Fixed: AudioSystemClearSources now stops all play items first (clearing while something played left a play item pointing at freed samples)
+	- New: AudioSystemGetTargetFormat() / AudioSystemGetSourceStats() report the device format and the resident sources + the PCM bytes they hold, so a diagnostic readout no longer has to reach into AudioSystem.targetFormat and walk sources itself
+	- New: AudioSystemSetPlayItemPaused() pauses/resumes a play item that is already playing. The mixer skips a paused item without touching its framesPlayed, so resuming continues from the exact frame it stopped on - AudioSystemStopOne frees the item and forgets where it was, which is not the same thing
+	- New: AudioSystemSetSuspended() / AudioSystemIsSuspended() pause the WHOLE mixer - AudioSystemWriteFrames returns silence and advances nothing, so everything resumes on the frame it stopped on (a pause, not a mute)
+
+	## 2026-07-19
+	- Fixed: AudioSystemStopOne now finds and removes the play-item entirely under playItems.lock (was traversing unlocked -> use-after-free race with the audio thread)
+	- Fixed: Null-check probe/file-load allocations (PropeAudioFileFormat, AudioSystemLoadFileSource) so an out-of-memory condition bails cleanly instead of dereferencing null
+
 	- Changed: ResampleChunk warning text updated — now references fplGetTargetAudioFrameCount as the authoritative formula; clamp kept defensively for arbitrary non-even ratios. 44100 <-> 48000 round-trip is exact.
 */
 
@@ -177,14 +198,22 @@ typedef struct AudioPlayItemID {
 } AudioPlayItemID;
 
 typedef struct AudioPlayItem {
-	AudioFrameIndex framesPlayed[2];	// 0 = Current, 1 = Saved
-	fpl_b32 isFinished[2];				// 0 = Current, 1 = Saved
+	AudioFrameIndex framesPlayed[2];	//!< 0 = Current, 1 = Saved
+	fpl_b32 isFinished[2];				//!< 0 = Current, 1 = Saved
 	const AudioSource *source;
 	struct AudioPlayItem *next;
 	struct AudioPlayItem *prev;
 	AudioPlayItemID id;
 	float volume;
+	//! Playback rate multiplier: 2 = an octave up and half as long, 0.5 = an octave down and twice as long.
+	//! VARISPEED, like changing a tape's speed -- pitch and duration move together, there is no time-stretch anywhere in this mixer.
+	//! Applied by telling the resampler the source has a different sample rate than it really has, which is all a rate conversion ever needed: it is decided by the RATIO alone.
+	//! 1 (or anything within @ref AudioPitchNeutralTolerance of it) is the file as recorded and costs nothing.
+	float pitch;
 	bool isRepeat;
+	//! Skipped by the mixer while set, WITHOUT touching framesPlayed - so resuming carries on from the exact frame it stopped on.
+	//! That is the whole difference between this and @ref AudioSystemStopOne, which frees the item and forgets where it was.
+	bool isPaused;
 } AudioPlayItem;
 
 typedef struct AudioSources {
@@ -228,37 +257,298 @@ typedef struct AudioSystem {
 	fplMutexHandle writeFramesLock;
 	float masterVolume;
 	bool isShutdown;
+	//! While set, @ref AudioSystemWriteFrames hands the device SILENCE and advances nothing.
+	//! Written from the game thread, read on the audio thread, and deliberately a plain bool: the worst a torn read can do is mix one more buffer, which is a few milliseconds of sound nobody was listening to anyway.
+	bool isSuspended;
 } AudioSystem;
 
+/**
+* @brief Initializes the audio system for the given device format.
+* @param[out] audioSys Reference to the audio system @ref AudioSystem to initialize.
+* @param[in] targetFormat Reference to the device format @ref fplAudioFormat everything is mixed and converted to.
+* @return Returns true when the audio system is ready to use, false when an argument is null or a lock could not be created.
+* @note The audio system must be released with @ref AudioSystemShutdown.
+* @see @ref AudioSystemShutdown
+*/
 fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat);
+
+/**
+* @brief Stops all play items, frees all sources and releases every resource the audio system owns.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @note The audio system is marked as shut down and has to be initialized again with @ref AudioSystemInit before it can be used.
+* @see @ref AudioSystemInit
+*/
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys);
 
+/**
+* @brief Changes the master volume that is applied on top of the volume of every play item.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] newMasterVolume The new master volume, where 1.0 is unchanged (the default) and 0.0 is silent.
+*/
 fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
 
+/**
+* @brief Allocates a source with a silent sample buffer for the given format.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] channels Number of interleaved channels.
+* @param[in] sampleRate Sample rate in Hz.
+* @param[in] type Sample format @ref fplAudioFormatType.
+* @param[in] frameCount Number of frames the sample buffer holds.
+* @return Returns the new source, or null when the memory could not be allocated.
+* @note The source and its samples live in one memory block. The source gets a unique id but is not added, call @ref AudioSystemAddSource for that.
+*/
 fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
 
+/**
+* @brief Loads and fully decodes an audio file into a new source.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] filePath Path to a wave, vorbis or mp3 file.
+* @return Returns the new source, or null when the file could not be opened, detected or decoded.
+* @note The source is not added, call @ref AudioSystemAddSource for that.
+* @see @ref AudioSystemLoadFileFormat
+*/
 fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const char *filePath);
+
+/**
+* @brief Reads the format of an audio file without decoding it.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] filePath Path to a wave, vorbis or mp3 file.
+* @param[out] outFormat Reference to the format @ref PCMWaveFormat to fill.
+* @return Returns true when the format was read, false when the file could not be opened or detected or its headers are invalid.
+* @note Headers only, in every supported format (wav: the header; vorbis: the seek table; mp3: a walk over the per-frame headers).
+* @note A track's duration is outFormat->frameCount / outFormat->samplesPerSecond.
+* @see @ref AudioSystemLoadFileSource
+*/
 fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat);
 
+/**
+* @brief Decodes an audio file that is already in memory into a new source.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] dataSize Size of the data in bytes.
+* @param[in] data The complete contents of a wave, vorbis or mp3 file.
+* @return Returns the new source, or null when the data could not be detected or decoded.
+* @note The samples are copied, so the data can be released after this call. The source is not added, call @ref AudioSystemAddSource for that.
+* @see @ref AudioSystemLoadDataFormat
+*/
 fpl_extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
+
+/**
+* @brief Reads the format of an audio file that is already in memory without decoding it.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] dataSize Size of the data in bytes.
+* @param[in] data The complete contents of a wave, vorbis or mp3 file.
+* @param[out] outFormat Reference to the format @ref PCMWaveFormat to fill.
+* @return Returns true when the format was read, false when the data could not be detected or its headers are invalid.
+* @see @ref AudioSystemLoadFileFormat
+*/
 fpl_extern bool AudioSystemLoadDataFormat(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, PCMWaveFormat *outFormat);
 
+/**
+* @brief Adds a source to the audio system, which takes ownership of it.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in,out] source Reference to the source @ref AudioSource, from @ref AudioSystemAllocateSource or one of the load functions.
+* @return Returns true when the source was added, false when an argument is null, the source has no id or a source with the same id already exists.
+* @note An added source is freed by @ref AudioSystemRemoveSource, @ref AudioSystemClearSources or @ref AudioSystemShutdown.
+*/
 fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source);
 
+/**
+* @brief Removes ONE source and frees it, the counterpart to @ref AudioSystemAddSource.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] source Reference to the source @ref AudioSource to remove, invalid after a successful call.
+* @return Returns true when the source was removed, false when it is not in the list (it is then not freed).
+* @note Any play item still referencing the source is stopped first, so the caller never has to.
+*/
+fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source);
+
+/**
+* @brief Mixes all playing sources and writes the given number of frames in the device format.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[out] outSamples Destination buffer for frameCount interleaved frames in the device format.
+* @param[in] outFormat Reference to the output format @ref fplAudioFormat, must match the format passed to @ref AudioSystemInit.
+* @param[in] frameCount Number of frames to write.
+* @param[in] advance Pass true to advance the play items and remove the finished ones, false to render a preview that leaves every play item unchanged.
+* @return Returns the number of frames written, which is always frameCount.
+* @note This is the heart of the audio system, usually called from the audio device callback. Frames not covered by any play item are filled with silence.
+* @note While the mixer is suspended this only writes silence, see @ref AudioSystemSetSuspended.
+*/
 fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
 
-fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume);
+/**
+* @brief Suspends or resumes the WHOLE mixer.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @param[in] suspended Pass true to suspend, false to resume.
+* @note While suspended the device is fed silence and no play item advances, so this is a PAUSE and not a mute: every position, every fade and the playlist all stand still, and what comes back is the exact frame that was playing when it stopped.
+* @note What a game uses when its window loses focus -- music playing on to an empty desktop is the thing this prevents.
+* @see @ref AudioSystemIsSuspended
+*/
+fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended);
+
+/**
+* @brief Returns whether the whole mixer is suspended.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @return Returns true when the mixer is suspended, false when it is not or the audio system is null.
+* @see @ref AudioSystemSetSuspended
+*/
+fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
+
+/**
+* @brief The pitch that plays a source as recorded, which is what a caller that does not care about pitch passes.
+* @note A macro and not a `const float` so it works unchanged in C99, C++ and MSVC, and can be used where a constant expression is required.
+*/
+#define AudioSystemDefaultPitch 1.0f
+
+/**
+* @brief How close to 1 a pitch has to be to count as UNPITCHED.
+* @note Below this the source's own sample rate is passed to the resampler untouched, so a clip that matches the device still takes the memcpy passthrough and an even ratio still takes the cheap up/down path.
+* @note A slider quantizing to 0.9999999 must not silently push every sound in the game onto the SinC branch forever. 0.1% is about 0.017 semitones: inaudible by a wide margin.
+*/
+#define AudioPitchNeutralTolerance 0.001f
+
+/**
+* @brief Plays a source by adding a new play item.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] source Reference to the source @ref AudioSource to play, it must stay alive while the play item exists.
+* @param[in] repeat Pass true to loop the source until the play item is stopped.
+* @param[in] volume The volume of the play item, where 1.0 is unchanged.
+* @param[in] pitch The playback rate multiplier (see @ref AudioPlayItem::pitch), pass @ref AudioSystemDefaultPitch for the file as recorded, which costs nothing.
+* @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null or the memory could not be allocated.
+* @note A pitch of zero or below is treated as 1 rather than refused: silence would be the one outcome nobody could debug.
+*/
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
+
+/**
+* @brief Stops one play item immediately and frees it.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @return Returns true when the play item was stopped, false when it no longer exists.
+* @note The play position is lost. Use @ref AudioSystemSetPlayItemPaused to pause, or @ref AudioSystemSetPlayItemRepeat to let a looping item finish its current pass.
+*/
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
+
+/**
+* @brief Changes the volume of a play item that is ALREADY playing (fades, a volume slider).
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] volume The new volume of the play item, where 1.0 is unchanged.
+* @return Returns true when the volume was changed, false when the item no longer exists, which is not an error - it just finished.
+* @note Takes an id and not a pointer on purpose: the audio thread frees a finished play item, so an id is the only handle that cannot dangle.
+*/
+fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
+
+/**
+* @brief Changes the PITCH of a play item that is already playing.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] pitch The new playback rate multiplier (see @ref AudioPlayItem::pitch), values <= 0 are ignored rather than obeyed.
+* @return Returns true when the pitch was changed, false when the pitch is <= 0 or the item no longer exists, which is not an error - it just finished.
+* @note Lets a pitch control be dragged and heard while it moves - which on a sound effect is the only way to judge one, most being over before a slider settles.
+* @note The rate changes from the next mixed chunk; frames already written to the device keep the old one.
+*/
+fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPlayItemID playId, const float pitch);
+
+/**
+* @brief Changes whether a play item that is already playing REPEATS.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] repeat Pass true to keep looping, false to let the current pass finish.
+* @return Returns true when the repeat state was changed, false when the item no longer exists, which is not an error - it just ended.
+* @note Clearing it lets the current pass finish and the item free itself normally, which is what "stop looping" should mean - @ref AudioSystemStopOne would cut it off mid-sound instead.
+* @note Setting it makes an item that has not ended yet carry on.
+*/
+fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioPlayItemID playId, const bool repeat);
+
+/**
+* @brief Pauses or resumes a play item that is already playing.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] paused Pass true to pause, false to resume.
+* @return Returns true when the pause state was changed, false when the item no longer exists.
+* @note The mixer skips it while paused and leaves its position alone, so resuming continues from the exact frame it stopped on.
+* @note That is what separates this from @ref AudioSystemStopOne, which frees the item and forgets where it was.
+*/
+fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused);
+
+/**
+* @brief Stops and frees all play items and clears the internal mixing buffers.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @note The sources stay loaded, use @ref AudioSystemClearSources to free them as well.
+*/
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
+
+/**
+* @brief Stops all play items, then removes and frees all sources.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @note Nothing is left playing, because a play item outliving the source it points at would read freed samples on the next mix.
+*/
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
+
+/**
+* @brief Copies all current play items into an array.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[out] dest Destination array of @ref AudioPlayItem, pass null to query the count only.
+* @param[in] maxDestCount Number of elements the destination array can hold.
+* @return Returns the number of play items, or zero when the destination array is too small to hold all of them.
+* @note The copies are snapshots, their next and prev pointers must not be followed.
+*/
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
 
+/**
+* @brief Finds an added source by its id.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] id The id @ref AudioSourceID of the source.
+* @return Returns the source, or null when no added source has this id.
+*/
 fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id);
+
+/**
+* @brief Copies all added sources into an array.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[out] dest Destination array of @ref AudioSource, pass null to query the count only.
+* @param[in] maxDestCount Number of elements the destination array can hold.
+* @return Returns the number of sources, or zero when the destination array is too small to hold all of them.
+* @note The copies are snapshots that share the sample memory of the originals, their next pointers must not be followed.
+*/
 fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount);
 
+/**
+* @brief Returns the DEVICE format everything is mixed and converted to.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[out] outFormat Reference to the format @ref AudioFormat to fill.
+* @return Returns true when the format was written, false when an argument is null.
+* @note Written once by @ref AudioSystemInit and never again, so this needs no lock.
+* @note For a diagnostic readout ("48000 Hz, 2 ch, S16"), which would otherwise have to reach into AudioSystem.targetFormat itself.
+*/
+fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFormat *outFormat);
+
+/**
+* @brief Returns how many sources are resident, and how many bytes of decoded PCM they hold between them.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @param[out] outByteCount Receives the size of all sample buffers in bytes, may be null.
+* @return Returns the number of added sources, or zero when the audio system is null or shut down.
+* @note Walks the list under sources.lock.
+* @note The count on its own says nothing about the memory that actually matters - a fully decoded track is roughly 11x its size on disk.
+*/
+fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount);
+
 // @TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
+/**
+* @brief Generates a sine wave tone into a sample buffer.
+* @param[in,out] waveData Reference to the sine wave state @ref AudioSineWaveData, its frame index is advanced by frameCount.
+* @param[out] outSamples Destination buffer for frameCount interleaved frames.
+* @param[in] outFormat Sample format @ref fplAudioFormatType of the destination, only S16, S32 and F32 are written.
+* @param[in] outSampleRate Sample rate of the destination in Hz.
+* @param[in] channels Number of interleaved channels, all of them get the same sample.
+* @param[in] frameCount Number of frames to generate.
+*/
 fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamples, const fplAudioFormatType outFormat, const AudioHertz outSampleRate, const AudioChannelIndex channels, const AudioFrameIndex frameCount);
 
+/**
+* @brief Returns whether a source with the given sample rate can be played.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] sampleRate The sample rate of the source in Hz.
+* @return Returns true for every sample rate above zero, because the resampler handles arbitrary ratios, false when the audio system is null or not initialized.
+*/
 fpl_extern bool IsAudioSampleRateSupported(AudioSystem *audioSys, const AudioSampleIndex sampleRate);
 #endif // FINAL_AUDIOSYSTEM_H
 
@@ -374,6 +664,20 @@ fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float ne
 	audioSys->masterVolume = newMasterVolume;
 }
 
+fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended) {
+	if (audioSys == fpl_null) {
+		return; // no device: there is nothing to suspend, and no caller should have to check
+	}
+	audioSys->isSuspended = suspended;
+}
+
+fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys) {
+	if (audioSys == fpl_null) {
+		return false;
+	}
+	return audioSys->isSuspended;
+}
+
 fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
 	if (audioSys == fpl_null || source == fpl_null) {
 		return false;
@@ -446,6 +750,9 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 
 	size_t initialBufferSize = fplMin(FINAL_AUDIO_MAX_PROBE_BYTES_COUNT, streamSize);
 	uint8_t *probeBuffer = (uint8_t *)fplMemoryAllocate(initialBufferSize);
+	if (probeBuffer == fpl_null) {
+		return AudioFileFormat_None;
+	}
 
 	size_t currentBufferSize = initialBufferSize;
 	bool requiresMoreData[2] = { 0 };
@@ -485,6 +792,9 @@ static AudioFileFormat PropeAudioFileFormat(AudioSystemStream *stream) {
 					fplMemoryFree(probeBuffer);
 					currentBufferSize = fplMax(currentBufferSize, mp3NewSize);
 					probeBuffer = (uint8_t *)fplMemoryAllocate(currentBufferSize);
+					if (probeBuffer == fpl_null) {
+						return AudioFileFormat_None;
+					}
 					if (mp3Status == MP3HeaderTestStatus_RequireMoreDataBegin) {
 						requiresMoreData[0] = true;
 					} else {
@@ -684,6 +994,10 @@ fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const c
 	}
 
 	uint8_t *buffer = (uint8_t *)fplMemoryAllocate(fileSize);
+	if (buffer == fpl_null) {
+		fplFileClose(&file);
+		return fpl_null;
+	}
 
 	AudioSystemStreamSeek(&stream, 0);
 
@@ -825,25 +1139,106 @@ fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *
 }
 
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
+	// The audio device callback can RemovePlayItem concurrently, so the whole find-and-remove must run under the lock
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
 	AudioPlayItem *playItem = audioSys->playItems.first;
-	AudioPlayItem *foundPlayItem = fpl_null;
 	while(playItem != fpl_null) {
 		if(playItem->id.value == playId.value) {
-			foundPlayItem = playItem;
+			RemovePlayItem(&audioSys->memory, &audioSys->playItems, playItem);
+			result = true;
 			break;
 		}
 		playItem = playItem->next;
 	}
-	if(foundPlayItem != fpl_null) {
-		fplMutexLock(&audioSys->playItems.lock);
-		RemovePlayItem(&audioSys->memory, &audioSys->playItems, foundPlayItem);
-		fplMutexUnlock(&audioSys->playItems.lock);
-		return(true);
-	}
-	return(false);
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
 }
 
-fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume) {
+fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// The audio device callback reads item->volume under this same lock (ProcessSinglePlayItem) and can RemovePlayItem
+	// concurrently, so the whole find-and-write must run under it
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->volume = volume;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPlayItemID playId, const float pitch) {
+	if(audioSys == fpl_null || pitch <= 0.0f) {
+		return false;
+	}
+	// Same find-and-write under the same lock as the volume setter, and for the same reason: the audio device
+	// callback reads item->pitch (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->pitch = pitch;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioPlayItemID playId, const bool repeat) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// Same find-and-write under the same lock as the volume and pitch setters, and for the same reason: the
+	// audio device callback reads item->isRepeat (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->isRepeat = repeat;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// Same reasoning as the volume setter: the device callback reads this flag under this lock and can free the item concurrently
+	bool result = false;
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		if(playItem->id.value == playId.value) {
+			playItem->isPaused = paused;
+			result = true;
+			break;
+		}
+		playItem = playItem->next;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
+}
+
+fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		AudioPlayItemID empty = fplZeroInit;
 		return(empty);
@@ -862,6 +1257,10 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	playItem->source = source;
 	playItem->isRepeat = repeat;
 	playItem->volume = volume;
+	// A pitch of zero or below would consume no input and sound like nothing at all -- the one failure nobody
+	// could debug from the outside. Treat it as the file as recorded.
+	playItem->pitch = (pitch > 0.0f) ? pitch : 1.0f;
+	playItem->isPaused = false;
 
 	fplMutexLock(&audioSys->playItems.lock);
 	if(audioSys->playItems.last == fpl_null) {
@@ -1057,10 +1456,10 @@ static void RestorePlayStates(AudioSystem *audioSys) {
 * @param[in] inChannels  Channel count of inSamples (samples per frame).
 * @param[in] outChannels Channel count of outSamples (samples per frame).
 * @param[in] inSamples   Source interleaved F32 samples (frameCount * inChannels elements).
-* @param[in] outSamples  Destination interleaved F32 samples (frameCount * outChannels elements).
+* @param[in,out] outSamples  Destination interleaved F32 samples (frameCount * outChannels elements).
 *                        Existing values are preserved and added to (+=).
 *
-* @returns Total number of output samples touched (frameCount * outChannels).
+* @return Returns the total number of output samples touched (frameCount * outChannels).
 *
 * @note Buffer safety: Caller must ensure both buffers are large enough.
 *       No internal allocation.
@@ -1139,13 +1538,13 @@ static AudioSampleIndex MixSamplesIntoBuffer(const AudioFrameIndex frameCount, c
 *          Supports the format types: U8, S16, S24, S32, F32.
 *          Clamps the number of frames to the buffer capacity.
 *
-* @param convFuncs          Format conversion dispatch table.
-* @param sourceData         Pointer to the first byte of source samples to convert.
-* @param sourceFrameCount   Number of source frames available starting at sourceData.
-* @param sourceChannels     Channel count of the source audio.
-* @param sourceFormat       Sample format of the source audio (U8, S16, S24, S32, F32).
-* @param dspInBuffer        Destination buffer for interleaved F32 output.
-* @param dspInMaxFrameCount Maximum frames the destination buffer can hold.
+* @param[in] convFuncs          Format conversion dispatch table.
+* @param[in] sourceData         Pointer to the first byte of source samples to convert.
+* @param[in] sourceFrameCount   Number of source frames available starting at sourceData.
+* @param[in] sourceChannels     Channel count of the source audio.
+* @param[in] sourceFormat       Sample format of the source audio (U8, S16, S24, S32, F32).
+* @param[out] dspInBuffer       Destination buffer for interleaved F32 output.
+* @param[in] dspInMaxFrameCount Maximum frames the destination buffer can hold.
 *
 * @return Returns the number of frames actually converted (always <= min(sourceFrameCount, dspInMaxFrameCount)).
 *
@@ -1174,14 +1573,14 @@ static AudioFrameIndex ConvertSourceChunkToF32(AudioSampleConversionFunctions *c
 *   3. Non-even ratio: SinC interpolation via AudioResampleInterleaved.
 *                      Handles arbitrary ratios (e.g. 44100 <-> 48000).
 *
-* @param channels        Number of interleaved channels.
-* @param inRate          Input sample rate in Hz.
-* @param outRate         Output sample rate in Hz.
-* @param maxOutputFrames Maximum number of output frames the dspOut buffer can hold.
-*                        Also limits how many frames we request from the resampler.
-* @param inputFrameCount Number of input frames available in dspIn.
-* @param dspIn           Source interleaved F32 samples.
-* @param dspOut          Destination interleaved F32 samples.
+* @param[in] channels        Number of interleaved channels.
+* @param[in] inRate          Input sample rate in Hz.
+* @param[in] outRate         Output sample rate in Hz.
+* @param[in] maxOutputFrames Maximum number of output frames the dspOut buffer can hold.
+*                            Also limits how many frames we request from the resampler.
+* @param[in] inputFrameCount Number of input frames available in dspIn.
+* @param[in] dspIn           Source interleaved F32 samples.
+* @param[out] dspOut         Destination interleaved F32 samples.
 *
 * @return Returns an AudioResampleResult with .inputCount (frames consumed) and .outputCount (frames produced).
 *         Both are zero if rates are invalid or no frames could be produced.
@@ -1231,6 +1630,32 @@ static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const
 }
 
 /**
+* @brief Returns the sample rate the resampler is TOLD the source has, which is the only thing pitch changes.
+* @param[in] sourceSampleRate The real sample rate of the source in Hz.
+* @param[in] pitch The playback rate multiplier of the play item, see @ref AudioPlayItem::pitch.
+* @return Returns the pitched sample rate, or the source rate UNCHANGED when the pitch is neutral, <= 0 or would round the rate to zero.
+* @note A rate conversion is decided by the RATIO alone -- claiming a 44100 Hz source is 47187 Hz while the device stays at 48000 consumes the clip 7% faster and still lands exactly on the device rate, so pitch needs no stage of its own and the output rate never moves.
+* @note A neutral pitch returns the source rate UNCHANGED (not merely something close to it), which is what keeps an unpitched clip on the memcpy passthrough or the even-ratio path instead of the SinC branch.
+*/
+static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, const float pitch) {
+	if (pitch <= 0.0f) {
+		return sourceSampleRate;
+	}
+	float distanceFromNeutral = pitch - 1.0f;
+	if (distanceFromNeutral < 0.0f) {
+		distanceFromNeutral = -distanceFromNeutral;
+	}
+	if (distanceFromNeutral <= AudioPitchNeutralTolerance) {
+		return sourceSampleRate;
+	}
+	float pitchedRate = (float)sourceSampleRate * pitch + 0.5f;
+	if (pitchedRate < 1.0f) {
+		return sourceSampleRate; // an absurd pitch would round the rate to zero, which the resampler refuses
+	}
+	return (AudioHertz)pitchedRate;
+}
+
+/**
 * @brief Processes a single AudioPlayItem through the full mixing pipeline.
 *
 * @details For one play item, this function loops in chunks (bounded by DSP buffer sizes) until
@@ -1249,13 +1674,13 @@ static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const
 * reaches the end of its source and isRepeat is true, framesPlayed resets to zero so
 * the loop continues.
 *
-* @param audioSys         Audio system (provides target format, DSP buffers, conversion table).
-* @param item             Play item to process. Modified in place (framesPlayed, isFinished).
-* @param targetFrameCount Number of output frames to fill in the mixing buffer.
-* @param mixingBuffer     Pointer to the start of the F32 mixing buffer for this item.
-*                         Must have at least targetFrameCount * outChannels floats.
+* @param[in,out] audioSys     Audio system (provides target format, DSP buffers, conversion table).
+* @param[in,out] item         Play item to process. Modified in place (framesPlayed, isFinished).
+* @param[in] targetFrameCount Number of output frames to fill in the mixing buffer.
+* @param[in,out] mixingBuffer Pointer to the start of the F32 mixing buffer for this item.
+*                             Must have at least targetFrameCount * outChannels floats.
 *
-* @return Number of output frames actually produced and mixed into the buffer.
+* @return Returns the number of output frames actually produced and mixed into the buffer.
 *
 * @warning Buffer safety:
 *   - dspInBuffer:  ConvertSourceChunkToF32 clamps to dspInBuffer.maxFrameCount.
@@ -1271,7 +1696,8 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 	const AudioFormat *srcFormat = &source->format;
 	const AudioBuffer *srcBuffer = &source->buffer;
 
-	const AudioHertz inSampleRate = srcFormat->sampleRate;
+	// The PITCHED rate, which is the source's own whenever the item is not pitched -- see ResolvePitchedSampleRate.
+	const AudioHertz inSampleRate = ResolvePitchedSampleRate(srcFormat->sampleRate, item->pitch);
 	const AudioFrameIndex inTotalFrameCount = srcBuffer->frameCount;
 	const AudioChannelIndex inChannelCount = srcFormat->channels;
 	const fplAudioFormatType inFormat = srcFormat->format;
@@ -1393,11 +1819,11 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 * └──────────────────────────────────────────────────────────────────┘
 * Multiple items accumulate into the same mixing buffer via +=.
 *
-* @param audioSys         Audio system state (buffers, format, play items list).
-* @param targetFrameCount Number of output frames to produce. Must be <= mixingBuffer.maxFrameCount.
-* @param advance          If true, finished (non-repeating) play items are removed from the list.
-*                         If false, play items are left in place (preview mode).
-* @return                 The maximum number of output frames produced by any single play item.
+* @param[in,out] audioSys     Audio system state (buffers, format, play items list).
+* @param[in] targetFrameCount Number of output frames to produce. Must be <= mixingBuffer.maxFrameCount.
+* @param[in] advance          If true, finished (non-repeating) play items are removed from the list.
+*                             If false, play items are left in place (preview mode).
+* @return Returns the maximum number of output frames produced by any single play item.
 *                         This represents the valid range of the mixing buffer — frames beyond this
 *                         are zero (the buffer is cleared at the start).
 * @note                   Thread safety: Acquires playItems.lock for the duration of the call. Must not be called concurrently (guarded externally by writeFramesLock).
@@ -1427,6 +1853,12 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	while (item != fpl_null) {
 		// Skip items that were already finished (can happen in advance=false mode)
 		if (item->isFinished[0]) {
+			item = item->next;
+			continue;
+		}
+
+		// A PAUSED item is skipped the same way, but it is never removed and its framesPlayed is left alone, so unpausing continues from where it stopped
+		if (item->isPaused) {
 			item = item->next;
 			continue;
 		}
@@ -1462,14 +1894,14 @@ static void ClearConversionBuffer(AudioSystem *audioSys) {
 }
 
 /**
- * @brief Fills the conversion buffer with mixed/converted samples from the audio sources of the play items.
- *
- * @param audioSys Audio system state (buffers, format, play items list).
- * @param maxFrameCount Maximim number of output frames that can be produced.
- * @param advance If true, finished (non-repeating) play items are removed from the list.
- *                If false, play items are left in place (preview mode).
- * @return Returns the the maximum number of audio frames always, because remaining frames are filled with zero.
- */
+* @brief Fills the conversion buffer with mixed/converted samples from the audio sources of the play items.
+*
+* @param[in,out] audioSys Audio system state (buffers, format, play items list).
+* @param[in] maxFrameCount Maximum number of output frames that can be produced.
+* @param[in] advance If true, finished (non-repeating) play items are removed from the list.
+*                    If false, play items are left in place (preview mode).
+* @return Returns always maxFrameCount, because the remaining frames are filled with zero.
+*/
 static AudioFrameIndex FillConversionBuffer(AudioSystem *audioSys, const AudioFrameIndex maxFrameCount, const bool advance) {
 	audioSys->conversionBuffer.framesRemaining = 0;
 	audioSys->conversionBuffer.readFrameIndex = 0;
@@ -1509,6 +1941,14 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 	fplAssert(audioSys->targetFormat.format == outFormat->type);
 	fplAssert(audioSys->targetFormat.channels == outFormat->channels);
 	fplAssert(audioSys->targetFormat.channels <= MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT);
+
+	if(audioSys->isSuspended) {
+		// Silence, and NOTHING else touched -- no play item advanced, no source consumed, no lock taken.
+		// That is what makes this a pause: the mixer picks up exactly where it left off.
+		size_t suspendedFrameStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
+		fplMemoryClear(outSamples, suspendedFrameStride * frameCount);
+		return(frameCount);
+	}
 
 	fplMutexLock(&audioSys->writeFramesLock);
 
@@ -1599,9 +2039,68 @@ fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	fplMutexUnlock(&audioSys->writeFramesLock);
 }
 
+fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source) {
+	if(audioSys == fpl_null || source == fpl_null || audioSys->isShutdown) {
+		return false;
+	}
+
+	AudioMemory *memory = &audioSys->memory;
+	AudioSources *sources = &audioSys->sources;
+
+	// Play items first: one still pointing at this source would read freed samples on the very next mix.
+	// Its own lock section - the audio thread only ever takes playItems.lock, so there is no lock order to invert here
+	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItem *playItem = audioSys->playItems.first;
+	while(playItem != fpl_null) {
+		AudioPlayItem *nextPlayItem = playItem->next;
+		if(playItem->source == source) {
+			RemovePlayItem(memory, &audioSys->playItems, playItem);
+		}
+		playItem = nextPlayItem;
+	}
+	fplMutexUnlock(&audioSys->playItems.lock);
+
+	// Singly linked, so the predecessor is found by walking (AudioSource has no prev pointer)
+	bool result = false;
+	fplMutexLock(&sources->lock);
+	AudioSource *previous = fpl_null;
+	AudioSource *current = sources->first;
+	while(current != fpl_null) {
+		if(current == source) {
+			if(previous == fpl_null) {
+				sources->first = current->next;
+			} else {
+				previous->next = current->next;
+			}
+			if(sources->last == current) {
+				sources->last = previous;
+			}
+			--sources->count;
+			result = true;
+			break;
+		}
+		previous = current;
+		current = current->next;
+	}
+	fplMutexUnlock(&sources->lock);
+
+	// Freed outside the lock: it is unreachable now, and nothing else in here allocates
+	if(result) {
+		source->next = fpl_null;
+		FreeAudioBuffer(memory, &source->buffer);
+		FreeAudioMemory(memory, source);
+	}
+
+	return(result);
+}
+
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return;
+
+	// A play item outliving the source it points at would read freed samples on the next mix, so nothing is left playing.
+	// AudioSystemShutdown already did this before calling here; a second pass over an empty list costs nothing
+	AudioSystemStopAll(audioSys);
 
 	AudioMemory *memory = &audioSys->memory;
 	AudioSources *sources = &audioSys->sources;
@@ -1615,7 +2114,39 @@ fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 		source = next;
 	}
 	sources->first = sources->last = fpl_null;
+	// The count was left standing here, so every source query after a clear reported the sources that were just freed
+	sources->count = 0;
 	fplMutexUnlock(&sources->lock);
+}
+
+fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFormat *outFormat) {
+	if(audioSys == fpl_null || outFormat == fpl_null)
+		return(false);
+	*outFormat = audioSys->targetFormat;
+	return(true);
+}
+
+fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount) {
+	if(outByteCount != fpl_null)
+		*outByteCount = 0;
+	if(audioSys == fpl_null || audioSys->isShutdown)
+		return(0);
+
+	AudioSources *sources = &audioSys->sources;
+	fplMutexLock(&sources->lock);
+	size_t sourceCount = 0;
+	size_t byteCount = 0;
+	AudioSource *source = sources->first;
+	while(source != fpl_null) {
+		++sourceCount;
+		byteCount += source->buffer.bufferSize;
+		source = source->next;
+	}
+	fplMutexUnlock(&sources->lock);
+
+	if(outByteCount != fpl_null)
+		*outByteCount = byteCount;
+	return(sourceCount);
 }
 
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {

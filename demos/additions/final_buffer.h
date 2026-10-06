@@ -16,6 +16,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-07-19
+	- Fixed unconditional FINAL_BUFFER_IMPLEMENTATION define causing duplicate-symbol link errors across multiple TUs (callers must now define it in one TU)
+	- Fixed false-sharing padding computed as 64 - UINTPTR_MAX (wraps to 65); now 64 - sizeof(void*)
+	- Fixed Win32 mirror init mapping against a NULL reservation after VirtualAlloc2 failure (missing early-out)
+
 	## 2026-04-20
 	- MemoryMirror/LockFreeRingBuffer Linux implementation using mmap and memfd
 
@@ -59,14 +64,14 @@ extern void ReleaseMemoryMirror(MirroredMemory *mem);
 
 typedef struct LockFreeRingBuffer {
 #if defined(FPL_PLATFORM_WINDOWS)
-	uint8_t filePadding[64 - UINTPTR_MAX];
+	uint8_t filePadding[64 - sizeof(void *)];
 	HANDLE *fileHandle; // Memory mapped file
 #elif defined(FPL_PLATFORM_LINUX)
 	uint8_t filePadding[64 - sizeof(int)];
 	int fd; // memfd file descriptor
 #endif
 
-	uint8_t bufferPadding[64 - UINTPTR_MAX];
+	uint8_t bufferPadding[64 - sizeof(void *)];
 	void *buffer;
 
 	uint8_t lengthPadding[64 - 8];
@@ -100,8 +105,6 @@ extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer);
 extern void LockFreeRingBufferUnitTest();
 
 #endif // FINAL_BUFFER_H
-
-#define FINAL_BUFFER_IMPLEMENTATION
 
 #if defined(FINAL_BUFFER_IMPLEMENTATION) && !defined(FINAL_BUFFER_IMPLEMENTED)
 #define FINAL_BUFFER_IMPLEMENTED
@@ -217,6 +220,8 @@ static bool f_InitMemoryMirrorWin32(MirroredMemory *mem, const size_t length, co
 			if (blockAddress == NULL) {
 				CloseHandle(fileHandle);
 				fileHandle = NULL;
+				// Bail to the fallback path instead of mapping against a NULL reservation
+				break;
 			}
 
 			bool mapped = true;

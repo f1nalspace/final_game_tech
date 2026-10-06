@@ -14,6 +14,8 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ├── final_xml.h                     # Single-header-file simple XML parser library (C99)
 ├── final_memory.h                  # Single-header-file custom memory allocator (C99)
 ├── final_tiletrace.hpp             # Single-header-file contour tile tracing library (C++/11)
+├── final_ui.h                      # Single-header-file immediate mode user interface library (C99)
+├── final_ui_texteditor.h           # Single-header-file code and text editor widget for final_ui.h (C99)
 ├── apps/
 │   ├── EnumToSwitchConverter/      # C# GUI tool to convert enums to switch statements
 │   ├── FontRendering/              # C++ font rendering tool using stb_truetype
@@ -27,6 +29,11 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FMEM_Test/                  # Tests for final_memory.h
 │   ├── FOGL_Test/                  # Tests for final_dynamic_opengl.h
 │   ├── FTT_TileTracingDemo/        # Demo for final_tiletrace.hpp
+│   ├── FUI_Diff/                   # Diff viewer built on final_ui_texteditor.h, unified and side by side
+│   ├── FUI_Editor/                 # Demo for final_ui_texteditor.h, the code and text editor widget
+│   ├── FUI_Framework/              # Demo for final_ui.h on the Final Framework, through final_ui_adapter.h
+│   ├── FUI_Performance/            # Performance workbench for final_ui.h and final_ui_texteditor.h
+│   ├── FUI_Test/                   # Demo for final_ui.h on FPL and legacy OpenGL
 │   ├── FXML_Test/                  # Tests for final_xml.h
 │   ├── Final_AudioTest/            # Audio format conversion testing
 │   ├── FPL_AudioPlayer/            # Full-featured audio playback demo
@@ -46,7 +53,8 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FPL_NoPlatformIncludes/     # FPL without platform headers
 │   ├── FPL_NoRuntimeLinking/       # FPL with static linking
 │   ├── FPL_OpenGL/                 # OpenGL rendering demo
-│   ├── FPL_Raytracer/              # Multi-threaded software raytracer
+│   ├── FPL_Process/                # Starting and controlling child processes
+│   ├── FPL_Raytracer/              # Multi-threaded progressive path tracer
 │   ├── FPL_SimpleAudio/            # Basic sine wave audio demo
 │   ├── FPL_Software/               # Software rendering demo
 │   ├── FPL_StaticLib_Client/       # Client linking against FPL static library
@@ -93,6 +101,7 @@ The main platform abstraction layer that provides:
 - File I/O and path operations
 - Memory management utilities
 - Threading and synchronization primitives
+- Starting and controlling child processes and scripts
 - Hardware info retrieval
 - Logging and debugging utilities
 - Error handling and assertions
@@ -202,10 +211,13 @@ C++ 2D fluid simulation with different scenarios and an integrated benchmarking 
 - Has built-in benchmarking mode
 
 #### FPL_Raytracer
-Multi-threaded 3D software raytracer:
-- Inspired by "handmade ray" (Casey Muratori)
-- Tests multi-threading software video output
-- Uses FPL software rendering backend
+Multi-threaded progressive CPU path tracer with physically based light transport:
+- Path tracing with next event estimation, multiple importance sampling and russian roulette
+- Light tracing and photon merging for caustics, combined with the path tracer by VCM weights
+- GGX conductors, mirrors, glass, coated plastic, area lights, sky with sun
+- BVH, interactive orbit camera with depth of field and low resolution preview
+- Deterministic tile job system on all CPU cores, uses the FPL software rendering backend
+- Headless rendering to BMP/PFM via command line
 
 ### Demos that use Third-Party Libraries
 
@@ -260,6 +272,12 @@ Hello-World console application demonstrating basic FPL console I/O
 #### FPL_Window
 Minimal demo showing window initialization and event handling
 
+#### FPL_Process
+Console demo that starts and controls child processes:
+- Waiting, exit codes, work directory, argument arrays and timeouts
+- Capturing and redirecting the standard-output/error
+- Feeding the standard-input, running command lines through a shell
+
 #### FPL_NoCRT
 Demonstrates compiling FPL without the C Runtime Library (Windows/MSVC only):
 - Bare-metal console application
@@ -295,6 +313,7 @@ Unit tests for FPL functionality:
 - File/Path IO
 - Atomics
 - Threading, synchronization primitives (mutexes, semaphores, condition variables)
+- Processes (start, wait, stop, capture/redirect, standard-input, shell execution)
 - Gamepad Poll Merge
 
 #### Final_Testbed
@@ -322,6 +341,37 @@ Tests for final_dynamic_opengl.h:
 Demonstrates final_tiletrace.hpp:
 - Converts solid tilemaps into line segments for physics engines (e.g. Box2D)
 
+#### FUI_Test
+Demonstrates final_ui.h on FPL and legacy OpenGL:
+- Menus, tool strips, panels, dialogs, every widget, a colour picker, tooltips and a status bar
+- A sortable entity table with row icons and a project tree used as a folder explorer
+- Hand-rolled bridges: an input bridge, a font baked with stb_truetype (fui_font_stbtt.h) and a fixed function backend (fui_backend_gl1.h)
+
+#### FUI_Performance
+A workbench measuring what final_ui.h COSTS, on FPL and legacy OpenGL:
+- Fills the list view, the list box, the text box, the tree view and the menus with far more data than any hand written demo would carry
+- Splits a frame into build, submit and total, with draw command and vertex counters and a frame time graph
+- `--benchmark` runs every case headless and prints a table of medians, which is what a change is judged against
+- The editor widget is measured there too, over the same generated lines the text box holds: plain, scrolled to the end, with a lexer, and with word wrap
+
+#### FUI_Editor
+Demonstrates final_ui_texteditor.h, the code and text editor widget, on FPL and legacy OpenGL:
+- Shows final_ui.h itself - over 14000 lines and 654 KB - with line numbers, a status bar, tab stops, visible whitespace and line endings
+- A small C lexer for the colouring, plus find, replace, go to line, undo/redo, block operations, word wrap and seven text encodings
+- `--selftest` runs the whole suite headless, including a keyboard and mouse harness with no window at all
+
+#### FUI_Diff
+A diff viewer built on the same widget, showing one difference two ways:
+- Unified in ONE editor, red for what went and green for what came, and side by side in TWO with exactly as many lines each
+- Myers over whole lines in its linear space form, checked in `--selftest` against a brute force table over 3000 random pairs
+- Nothing in the add-on had to change for it: it is line and range decorations, a gutter callback and two editors sharing a scroll offset
+
+#### FUI_Framework
+The same interface as FUI_Test - including the project tree - built on the Final Framework:
+- Everything goes through final_ui_adapter.h - input, font, clipboard, allocator and the render backend
+- Uses final_gameplatform.h, final_render.h, final_assets.h and the game memory block
+- Wears a teal accent and names its host in the status bar, so a screenshot says which of the two demos it came from
+
 ## Additional Libraries
 
 ### Top-level Single-Header Libraries
@@ -332,6 +382,8 @@ Demonstrates final_tiletrace.hpp:
 - **final_xml.h**: Simple XML parser library
 - **final_memory.h**: Custom memory allocator with debugging features
 - **final_tiletrace.hpp**: C++/11 contour tile tracing for solid tilemaps
+- **final_ui.h**: Immediate mode user interface library, renderer agnostic
+- **final_ui_texteditor.h**: Code and text editor widget for final_ui.h - gap buffer, line index, lexer, undo, find and replace, encodings and word wrap
 
 ### demos/additions/
 
@@ -351,6 +403,10 @@ Rendering:
 - **final_graphics.h**: Graphics utilities
 - **final_fonts.h**: Embedded font data
 - **final_fontloader.h**: Font file loader
+
+User Interface:
+- **final_ui_adapter.h**: Bridges final_ui.h into the Final Framework (input, font, clipboard, allocator, render backend)
+- **fui_font_stbtt.h**: Bakes a TrueType face with stb_truetype into a fuiFont, for a caller without the framework
 
 Game Framework:
 - **final_game.h**: Game framework API
