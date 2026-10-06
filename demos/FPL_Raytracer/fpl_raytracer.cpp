@@ -185,10 +185,6 @@ static inline bool IsFiniteV3(const Vec3f &value) {
 //
 // Random numbers: PCG32 (O'Neill, XSH-RR), seeded per pixel sample so the image does not depend on which thread rendered which tile
 //
-struct PathSampler {
-	u64 state;
-};
-
 static constexpr u64 PcgMultiplier = 6364136223846793005ull;
 static constexpr u64 PcgIncrement = 1442695040888963407ull;
 static constexpr u32 PcgXorShift = 18;
@@ -206,23 +202,6 @@ static constexpr u32 SplitMixShift2 = 27;
 static constexpr u32 SplitMixShift3 = 31;
 static constexpr u32 SampleKeyPixelShift = 32;
 
-static inline u32 PathSamplerNextU32(PathSampler &sampler) {
-	u64 oldState = sampler.state;
-	sampler.state = oldState * PcgMultiplier + PcgIncrement;
-	u32 xorShifted = (u32)(((oldState >> PcgXorShift) ^ oldState) >> PcgOutputShift);
-	u32 rotation = (u32)(oldState >> PcgRotationShift);
-	u32 result = (xorShifted >> rotation) | (xorShifted << ((0u - rotation) & PcgRotationMask));
-	return(result);
-}
-
-// Uniform in [0, 1 - 2^-24], never returns 1.0, so 1-u > 0 and sqrt(1-u) > 0
-static inline f32 PathSamplerNext01(PathSampler &sampler) {
-	u32 bits = PathSamplerNextU32(sampler);
-	u32 mantissa = bits >> RandomMantissaShift;
-	f32 result = (f32)mantissa * OneOver2Pow24;
-	return(result);
-}
-
 static inline u64 SplitMix64(u64 value) {
 	value += SplitMixIncrement;
 	value = (value ^ (value >> SplitMixShift1)) * SplitMixMultiplier1;
@@ -231,20 +210,41 @@ static inline u64 SplitMix64(u64 value) {
 	return(result);
 }
 
-// Seed per (pixel, sample index); the first output is discarded so similar seeds decorrelate
-static inline PathSampler MakePathSampler(const u32 pixelIndex, const u32 sampleIndex, const u64 seedSalt) {
-	u64 sampleKey = ((u64)pixelIndex << SampleKeyPixelShift) | (u64)sampleIndex;
-	u64 mixedKey = SplitMix64(sampleKey);
-	PathSampler result;
-	result.state = mixedKey ^ seedSalt;
-	PathSamplerNextU32(result);
-	return(result);
-}
+struct PathSampler {
+	u64 state;
 
-static inline u64 MakeSeedSalt(const u32 seed) {
-	u64 result = (seed == 0) ? 0 : SplitMix64(seed);
-	return(result);
-}
+	u32 NextU32() {
+		u64 oldState = state;
+		state = oldState * PcgMultiplier + PcgIncrement;
+		u32 xorShifted = (u32)(((oldState >> PcgXorShift) ^ oldState) >> PcgOutputShift);
+		u32 rotation = (u32)(oldState >> PcgRotationShift);
+		u32 result = (xorShifted >> rotation) | (xorShifted << ((0u - rotation) & PcgRotationMask));
+		return(result);
+	}
+
+	// Uniform in [0, 1 - 2^-24], never returns 1.0, so 1-u > 0 and sqrt(1-u) > 0
+	f32 Next01() {
+		u32 bits = NextU32();
+		u32 mantissa = bits >> RandomMantissaShift;
+		f32 result = (f32)mantissa * OneOver2Pow24;
+		return(result);
+	}
+
+	// Seed per (pixel, sample index); the first output is discarded so similar seeds decorrelate
+	static PathSampler Make(const u32 pixelIndex, const u32 sampleIndex, const u64 seedSalt) {
+		u64 sampleKey = ((u64)pixelIndex << SampleKeyPixelShift) | (u64)sampleIndex;
+		u64 mixedKey = SplitMix64(sampleKey);
+		PathSampler result;
+		result.state = mixedKey ^ seedSalt;
+		result.NextU32();
+		return(result);
+	}
+
+	static u64 MakeSeedSalt(const u32 seed) {
+		u64 result = (seed == 0) ? 0 : SplitMix64(seed);
+		return(result);
+	}
+};
 
 //
 // Local shading frame (Duff et al. 2017, branchless orthonormal basis)
@@ -261,27 +261,27 @@ struct ShadingFrame {
 	Vec3f tangent;
 	Vec3f bitangent;
 	Vec3f normal;
+
+	static ShadingFrame Make(const Vec3f &normal) {
+		ShadingFrame result;
+		result.normal = normal;
+		BuildOrthonormalBasis(normal, result.tangent, result.bitangent);
+		return(result);
+	}
+
+	Vec3f ToLocal(const Vec3f &value) const {
+		f32 x = V3fDot(value, tangent);
+		f32 y = V3fDot(value, bitangent);
+		f32 z = V3fDot(value, normal);
+		Vec3f result = V3fInit(x, y, z);
+		return(result);
+	}
+
+	Vec3f ToWorld(const Vec3f &value) const {
+		Vec3f result = value.x * tangent + value.y * bitangent + value.z * normal;
+		return(result);
+	}
 };
-
-static inline ShadingFrame MakeShadingFrame(const Vec3f &normal) {
-	ShadingFrame result;
-	result.normal = normal;
-	BuildOrthonormalBasis(normal, result.tangent, result.bitangent);
-	return(result);
-}
-
-static inline Vec3f ToLocal(const ShadingFrame &frame, const Vec3f &value) {
-	f32 x = V3fDot(value, frame.tangent);
-	f32 y = V3fDot(value, frame.bitangent);
-	f32 z = V3fDot(value, frame.normal);
-	Vec3f result = V3fInit(x, y, z);
-	return(result);
-}
-
-static inline Vec3f ToWorld(const ShadingFrame &frame, const Vec3f &value) {
-	Vec3f result = value.x * frame.tangent + value.y * frame.bitangent + value.z * frame.normal;
-	return(result);
-}
 
 //
 // Self-intersection: origin offset instead of a t-epsilon (Waechter and Binder, Ray Tracing Gems ch. 6)
@@ -321,61 +321,15 @@ static inline Ray3f SpawnRay(const Vec3f &position, const Vec3f &geometricNormal
 }
 
 //
-// Geometry
+// Geometry: shapes, ray tests and bounds come from final_geometry.h
 //
-static constexpr f32 RayMinDistance = 0.0f;                 // no t-epsilon, self-intersection is solved by OffsetRayOrigin
-static constexpr f32 ParallelDirectionEpsilon = 1e-20f;     // direction components smaller than this are clamped before 1/d
-static constexpr f32 RobustSlabScale = 1.0000004f;          // 1 + 2*gamma(3) (Ize 2013), makes the slab test conservative
-static const f32 NoHitDistance = F32MaxValue;               // sentinel distance returned by the bounds test on a miss
+static constexpr f32 RayMinDistance = 0.0f;   // no t-epsilon, self-intersection is solved by OffsetRayOrigin
+static const f32 NoHitDistance = F32MaxValue; // sentinel distance returned by AABB3fIntersectRayInverse on a miss
 
 enum class PrimitiveKind : u32 {
 	Sphere = 0,
 	Quad,
 	Box,
-};
-
-struct SphereShape {
-	Vec3f center;
-	f32 radius;
-};
-
-// Parallelogram corner + s * edgeU + t * edgeV with s,t in [0,1], normal = normalize(cross(edgeU, edgeV))
-struct QuadShape {
-	Vec3f corner;
-	Vec3f edgeU;
-	Vec3f edgeV;
-	Vec3f normal;
-	Vec3f dualU;       // alpha = dot(hit - corner, dualU)
-	Vec3f dualV;       // beta = dot(hit - corner, dualV)
-	f32 planeOffset;   // dot(normal, corner)
-	f32 area;
-};
-
-// Oriented box: the axes are orthonormal (rotation only), the size lives in halfExtents
-struct BoxShape {
-	Vec3f center;
-	Vec3f halfExtents;
-	Vec3f axisX;
-	Vec3f axisY;
-	Vec3f axisZ;
-};
-
-struct Primitive {
-	union {
-		SphereShape sphere;
-		QuadShape quad;
-		BoxShape box;
-	};
-	PrimitiveKind kind;
-	u32 materialIndex;
-	u32 lightIndex; // index into the light list or NoIndex
-};
-
-// Infinite plane: dot(normal, p) == planeOffset, kept outside the BVH because it is unbounded
-struct PlanePrimitive {
-	Vec3f normal;
-	f32 planeOffset;
-	u32 materialIndex;
 };
 
 struct SurfaceHit {
@@ -387,357 +341,180 @@ struct SurfaceHit {
 	b32 isFrontFace;       // dot(ray.direction, geometricNormal) < 0
 };
 
-// 1/value without infinities: avoids 0*inf = NaN in slab tests when the origin lies exactly on a slab plane
-static inline f32 SafeReciprocal(const f32 value) {
-	f32 absoluteValue = F32Abs(value);
-	f32 safeValue = (absoluteValue > ParallelDirectionEpsilon) ? value : copysignf(ParallelDirectionEpsilon, value);
-	f32 result = 1.0f / safeValue;
-	return(result);
-}
+static constexpr f32 BoundsPaddingRelative = 1e-5f; // pads flat bounds (axis aligned quads) so the slab test is never degenerate
 
-static Primitive MakeSpherePrimitive(const Vec3f &center, const f32 radius, const u32 materialIndex) {
-	fplAssert(radius > 0.0f);
-	Primitive result = {};
-	result.kind = PrimitiveKind::Sphere;
-	result.materialIndex = materialIndex;
-	result.lightIndex = NoIndex;
-	result.sphere.center = center;
-	result.sphere.radius = radius;
-	return(result);
-}
+struct Primitive {
+	union {
+		Sphere3f sphere;
+		Quad3f quad;
+		OrientedBox3f box;
+	};
+	PrimitiveKind kind;
+	u32 materialIndex;
+	u32 lightIndex; // index into the light list or NoIndex
 
-// One-sided emitters emit along normalize(cross(edgeU, edgeV)), so choose the edge order to face the scene
-static Primitive MakeQuadPrimitive(const Vec3f &corner, const Vec3f &edgeU, const Vec3f &edgeV, const u32 materialIndex) {
-	Vec3f crossUV = V3fCross(edgeU, edgeV);
-	f32 crossLengthSquared = V3fDot(crossUV, crossUV);
-	fplAssert(crossLengthSquared > 0.0f);
-	f32 crossLength = F32SquareRoot(crossLengthSquared);
-	f32 inverseCrossLengthSquared = 1.0f / crossLengthSquared;
-	f32 inverseCrossLength = 1.0f / crossLength;
-	Vec3f planeW = inverseCrossLengthSquared * crossUV;
-	Primitive result = {};
-	result.kind = PrimitiveKind::Quad;
-	result.materialIndex = materialIndex;
-	result.lightIndex = NoIndex;
-	QuadShape &quad = result.quad;
-	quad.corner = corner;
-	quad.edgeU = edgeU;
-	quad.edgeV = edgeV;
-	quad.normal = inverseCrossLength * crossUV;
-	quad.dualU = V3fCross(edgeV, planeW);
-	quad.dualV = V3fCross(planeW, edgeU);
-	quad.planeOffset = V3fDot(quad.normal, corner);
-	quad.area = crossLength;
-	return(result);
-}
+	static Primitive MakeSphere(const Vec3f &center, const f32 radius, const u32 materialIndex) {
+		fplAssert(radius > 0.0f);
+		Primitive result = {};
+		result.kind = PrimitiveKind::Sphere;
+		result.materialIndex = materialIndex;
+		result.lightIndex = NoIndex;
+		result.sphere = Sphere3fInit(center, radius);
+		return(result);
+	}
 
-// Box rotated around the world up axis (z)
-static Primitive MakeBoxPrimitive(const Vec3f &center, const Vec3f &halfExtents, const f32 yawRadians, const u32 materialIndex) {
-	fplAssert(halfExtents.x > 0.0f && halfExtents.y > 0.0f && halfExtents.z > 0.0f);
-	f32 cosine = F32Cos(yawRadians);
-	f32 sine = F32Sin(yawRadians);
-	Primitive result = {};
-	result.kind = PrimitiveKind::Box;
-	result.materialIndex = materialIndex;
-	result.lightIndex = NoIndex;
-	result.box.center = center;
-	result.box.halfExtents = halfExtents;
-	result.box.axisX = V3fInit(cosine, sine, 0.0f);
-	result.box.axisY = V3fInit(-sine, cosine, 0.0f);
-	result.box.axisZ = V3fInit(0.0f, 0.0f, 1.0f);
-	return(result);
-}
+	// One-sided emitters emit along normalize(cross(edgeU, edgeV)), so choose the edge order to face the scene
+	static Primitive MakeQuad(const Vec3f &corner, const Vec3f &edgeU, const Vec3f &edgeV, const u32 materialIndex) {
+		Primitive result = {};
+		result.kind = PrimitiveKind::Quad;
+		result.materialIndex = materialIndex;
+		result.lightIndex = NoIndex;
+		result.quad = Quad3fInit(corner, edgeU, edgeV);
+		return(result);
+	}
 
-//
-// Intersection routines: return true only for the nearest root with tMin < t < tMax (the !(t > tMin && t < tMax) form also rejects NaN)
-//
-// Sphere with the numerically stable form of Ray Tracing Gems ch. 7, the direction must be unit length
-static inline bool IntersectSphere(const SphereShape &sphere, const Vec3f &origin, const Vec3f &direction, const f32 tMin, const f32 tMax, f32 &outT) {
-	Vec3f centerToOrigin = origin - sphere.center;
-	f32 halfB = V3fDot(centerToOrigin, direction);
-	Vec3f perpendicular = centerToOrigin - halfB * direction;
-	f32 radiusSquared = sphere.radius * sphere.radius;
-	f32 perpendicularSquared = V3fDot(perpendicular, perpendicular);
-	f32 discriminant = radiusSquared - perpendicularSquared;
-	if (discriminant < 0.0f) {
-		return(false);
+	// Box rotated around the world up axis (z)
+	static Primitive MakeBox(const Vec3f &center, const Vec3f &halfExtents, const f32 yawRadians, const u32 materialIndex) {
+		fplAssert(halfExtents.x > 0.0f && halfExtents.y > 0.0f && halfExtents.z > 0.0f);
+		f32 cosine = F32Cos(yawRadians);
+		f32 sine = F32Sin(yawRadians);
+		Vec3f axisX = V3fInit(cosine, sine, 0.0f);
+		Vec3f axisY = V3fInit(-sine, cosine, 0.0f);
+		Primitive result = {};
+		result.kind = PrimitiveKind::Box;
+		result.materialIndex = materialIndex;
+		result.lightIndex = NoIndex;
+		result.box = OrientedBox3fInit(center, halfExtents, axisX, axisY, UnitUp);
+		return(result);
 	}
-	f32 originDistanceSquared = V3fDot(centerToOrigin, centerToOrigin);
-	f32 c = originDistanceSquared - radiusSquared;
-	f32 discriminantRoot = F32SquareRoot(discriminant);
-	f32 signedRoot = copysignf(discriminantRoot, halfB);
-	f32 q = -(halfB + signedRoot);
-	f32 rootFromC = c / q; // q == 0 only for a tangent ray starting on the surface: NaN, rejected below
-	f32 rootFromQ = q;
-	f32 tNear = F32Min(rootFromC, rootFromQ);
-	f32 tFar = F32Max(rootFromC, rootFromQ);
-	if (tNear > tMin && tNear < tMax) {
-		outT = tNear;
-		return(true);
-	}
-	if (tFar > tMin && tFar < tMax) {
-		outT = tFar;
-		return(true);
-	}
-	return(false);
-}
 
-static inline bool IntersectPlane(const PlanePrimitive &plane, const Vec3f &origin, const Vec3f &direction, const f32 tMin, const f32 tMax, f32 &outT) {
-	f32 denominator = V3fDot(plane.normal, direction);
-	if (denominator == 0.0f) {
-		return(false);
-	}
-	f32 originDot = V3fDot(plane.normal, origin);
-	f32 originDistance = plane.planeOffset - originDot;
-	f32 t = originDistance / denominator;
-	if (!(t > tMin && t < tMax)) {
-		return(false);
-	}
-	outT = t;
-	return(true);
-}
-
-// Plane test, then the coordinates inside the parallelogram via precomputed dual vectors; inclusive so adjacent quads overlap on shared edges
-static inline bool IntersectQuad(const QuadShape &quad, const Vec3f &origin, const Vec3f &direction, const f32 tMin, const f32 tMax, f32 &outT) {
-	f32 denominator = V3fDot(quad.normal, direction);
-	if (denominator == 0.0f) {
-		return(false);
-	}
-	f32 originDot = V3fDot(quad.normal, origin);
-	f32 originDistance = quad.planeOffset - originDot;
-	f32 t = originDistance / denominator;
-	if (!(t > tMin && t < tMax)) {
-		return(false);
-	}
-	Vec3f hitPoint = origin + t * direction;
-	Vec3f planarHit = hitPoint - quad.corner;
-	f32 alpha = V3fDot(planarHit, quad.dualU);
-	f32 beta = V3fDot(planarHit, quad.dualV);
-	if (alpha < 0.0f || alpha > 1.0f || beta < 0.0f || beta > 1.0f) {
-		return(false);
-	}
-	outT = t;
-	return(true);
-}
-
-// Slab test in box space; a pure rotation keeps the local direction unit length, so t is the same in both spaces
-static inline bool IntersectBox(const BoxShape &box, const Vec3f &origin, const Vec3f &direction, const f32 tMin, const f32 tMax, f32 &outT) {
-	Vec3f relativeOrigin = origin - box.center;
-	f32 localOriginX = V3fDot(relativeOrigin, box.axisX);
-	f32 localOriginY = V3fDot(relativeOrigin, box.axisY);
-	f32 localOriginZ = V3fDot(relativeOrigin, box.axisZ);
-	f32 localDirectionX = V3fDot(direction, box.axisX);
-	f32 localDirectionY = V3fDot(direction, box.axisY);
-	f32 localDirectionZ = V3fDot(direction, box.axisZ);
-	Vec3f localOrigin = V3fInit(localOriginX, localOriginY, localOriginZ);
-	Vec3f localDirection = V3fInit(localDirectionX, localDirectionY, localDirectionZ);
-	f32 tEnter = -F32MaxValue;
-	f32 tExit = F32MaxValue;
-	for (u32 axis = 0; axis < 3; ++axis) {
-		f32 inverseDirection = SafeReciprocal(localDirection.m[axis]);
-		f32 halfExtent = box.halfExtents.m[axis];
-		f32 slabNear = (-halfExtent - localOrigin.m[axis]) * inverseDirection;
-		f32 slabFar = (halfExtent - localOrigin.m[axis]) * inverseDirection;
-		if (slabNear > slabFar) {
-			f32 swapTemp = slabNear;
-			slabNear = slabFar;
-			slabFar = swapTemp;
+	bool Intersect(const Ray3f &ray, const f32 tMin, const f32 tMax, f32 &outT) const {
+		switch (kind) {
+			case PrimitiveKind::Sphere:
+				return Sphere3fIntersectRay(&sphere, &ray, tMin, tMax, &outT);
+			case PrimitiveKind::Quad:
+				return Quad3fIntersectRay(&quad, &ray, tMin, tMax, &outT);
+			case PrimitiveKind::Box:
+				return OrientedBox3fIntersectRay(&box, &ray, tMin, tMax, &outT);
+			default:
+				return(false);
 		}
-		tEnter = F32Max(slabNear, tEnter);
-		tExit = F32Min(slabFar, tExit);
 	}
-	if (tEnter > tExit) {
-		return(false);
-	}
-	if (tEnter > tMin && tEnter < tMax) {
-		outT = tEnter;
-		return(true);
-	}
-	if (tExit > tMin && tExit < tMax) {
-		outT = tExit;
-		return(true);
-	}
-	return(false);
-}
 
-static inline bool IntersectPrimitive(const Primitive &primitive, const Vec3f &origin, const Vec3f &direction, const f32 tMin, const f32 tMax, f32 &outT) {
-	switch (primitive.kind) {
-		case PrimitiveKind::Sphere:
-			return IntersectSphere(primitive.sphere, origin, direction, tMin, tMax, outT);
-		case PrimitiveKind::Quad:
-			return IntersectQuad(primitive.quad, origin, direction, tMin, tMax, outT);
-		case PrimitiveKind::Box:
-			return IntersectBox(primitive.box, origin, direction, tMin, tMax, outT);
-		default:
-			return(false);
-	}
-}
+	// Surface reconstruction, only for the final hit; the position is reprojected onto the surface so the origin offset stays valid
+	void ComputeSurface(const Ray3f &ray, const f32 t, SurfaceHit &outHit) const {
+		Vec3f position = ray.origin + t * ray.direction;
+		Vec3f normal = V3fZero();
+		switch (kind) {
+			case PrimitiveKind::Sphere:
+			{
+				Vec3f centerToHit = position - sphere.origin;
+				normal = V3fNormalize(centerToHit);
+				position = sphere.origin + sphere.radius * normal;
+			} break;
 
-//
-// Surface reconstruction, only for the final hit; positions are reprojected onto the surface so the origin offset stays valid
-//
-static void ComputePrimitiveSurface(const Primitive &primitive, const Ray3f &ray, const f32 t, SurfaceHit &outHit) {
-	Vec3f position = ray.origin + t * ray.direction;
-	Vec3f normal = V3fZero();
-	switch (primitive.kind) {
-		case PrimitiveKind::Sphere:
-		{
-			const SphereShape &sphere = primitive.sphere;
-			Vec3f centerToHit = position - sphere.center;
-			normal = V3fNormalize(centerToHit);
-			position = sphere.center + sphere.radius * normal;
-		} break;
+			case PrimitiveKind::Quad:
+			{
+				f32 positionDot = V3fDot(quad.normal, position);
+				f32 planeError = positionDot - quad.distance;
+				normal = quad.normal;
+				position = position - planeError * normal;
+			} break;
 
-		case PrimitiveKind::Quad:
-		{
-			const QuadShape &quad = primitive.quad;
-			f32 positionDot = V3fDot(quad.normal, position);
-			f32 planeError = positionDot - quad.planeOffset;
-			normal = quad.normal;
-			position = position - planeError * normal;
-		} break;
-
-		case PrimitiveKind::Box:
-		{
-			const BoxShape &box = primitive.box;
-			Vec3f relative = position - box.center;
-			f32 localX = V3fDot(relative, box.axisX);
-			f32 localY = V3fDot(relative, box.axisY);
-			f32 localZ = V3fDot(relative, box.axisZ);
-			Vec3f local = V3fInit(localX, localY, localZ);
-			// The face is the axis where |local| / halfExtent is largest (edges are measure zero)
-			u32 faceAxis = 0;
-			f32 bestRatio = -1.0f;
-			for (u32 axis = 0; axis < 3; ++axis) {
-				f32 absoluteLocal = F32Abs(local.m[axis]);
-				f32 ratio = absoluteLocal / box.halfExtents.m[axis];
-				if (ratio > bestRatio) {
-					bestRatio = ratio;
-					faceAxis = axis;
+			case PrimitiveKind::Box:
+			{
+				Vec3f relative = position - box.center;
+				f32 localX = V3fDot(relative, box.axisX);
+				f32 localY = V3fDot(relative, box.axisY);
+				f32 localZ = V3fDot(relative, box.axisZ);
+				Vec3f local = V3fInit(localX, localY, localZ);
+				// The face is the axis where |local| / halfExtent is largest (edges are measure zero)
+				u32 faceAxis = 0;
+				f32 bestRatio = -1.0f;
+				for (u32 axis = 0; axis < 3; ++axis) {
+					f32 absoluteLocal = F32Abs(local.m[axis]);
+					f32 ratio = absoluteLocal / box.halfExtents.m[axis];
+					if (ratio > bestRatio) {
+						bestRatio = ratio;
+						faceAxis = axis;
+					}
 				}
-			}
-			const Vec3f *axes[3] = { &box.axisX, &box.axisY, &box.axisZ };
-			f32 faceSign = (local.m[faceAxis] < 0.0f) ? -1.0f : 1.0f;
-			normal = faceSign * *axes[faceAxis];
-			local.m[faceAxis] = faceSign * box.halfExtents.m[faceAxis];
-			position = box.center + local.x * box.axisX + local.y * box.axisY + local.z * box.axisZ;
-		} break;
+				const Vec3f *axes[3] = { &box.axisX, &box.axisY, &box.axisZ };
+				f32 faceSign = (local.m[faceAxis] < 0.0f) ? -1.0f : 1.0f;
+				normal = faceSign * *axes[faceAxis];
+				local.m[faceAxis] = faceSign * box.halfExtents.m[faceAxis];
+				position = box.center + local.x * box.axisX + local.y * box.axisY + local.z * box.axisZ;
+			} break;
 
-		default:
-			break;
+			default:
+				break;
+		}
+		outHit.position = position;
+		outHit.geometricNormal = normal;
+		outHit.distance = t;
+		outHit.materialIndex = materialIndex;
+		outHit.lightIndex = lightIndex;
 	}
-	outHit.position = position;
-	outHit.geometricNormal = normal;
-	outHit.distance = t;
-	outHit.materialIndex = primitive.materialIndex;
-	outHit.lightIndex = primitive.lightIndex;
-}
 
-static void ComputePlaneSurface(const PlanePrimitive &plane, const Ray3f &ray, const f32 t, SurfaceHit &outHit) {
-	Vec3f position = ray.origin + t * ray.direction;
-	f32 positionDot = V3fDot(plane.normal, position);
-	f32 planeError = positionDot - plane.planeOffset;
-	outHit.position = position - planeError * plane.normal;
-	outHit.geometricNormal = plane.normal;
-	outHit.distance = t;
-	outHit.materialIndex = plane.materialIndex;
-	outHit.lightIndex = NoIndex; // infinite planes can never be lights (unbounded area, not sampleable)
-}
+	AABB3f ComputeBounds() const {
+		AABB3f result = AABB3fInitEmpty();
+		switch (kind) {
+			case PrimitiveKind::Sphere:
+			{
+				Vec3f radiusVector = V3fInitScalar(sphere.radius);
+				result = AABB3fInitFromCenter(sphere.origin, radiusVector);
+			} break;
+
+			case PrimitiveKind::Quad:
+			{
+				result = Quad3fGetBounds(&quad);
+			} break;
+
+			case PrimitiveKind::Box:
+			{
+				result = OrientedBox3fGetBounds(&box);
+			} break;
+
+			default:
+				break;
+		}
+		f32 maxAbsoluteCoordinate = 1.0f;
+		for (u32 axis = 0; axis < 3; ++axis) {
+			f32 absoluteMinimum = F32Abs(result.min.m[axis]);
+			f32 absoluteMaximum = F32Abs(result.max.m[axis]);
+			maxAbsoluteCoordinate = F32Max(absoluteMinimum, maxAbsoluteCoordinate);
+			maxAbsoluteCoordinate = F32Max(absoluteMaximum, maxAbsoluteCoordinate);
+		}
+		Vec3f padding = V3fInitScalar(BoundsPaddingRelative * maxAbsoluteCoordinate);
+		result.min = result.min - padding;
+		result.max = result.max + padding;
+		return(result);
+	}
+};
+
+// Infinite plane, kept outside the BVH because it is unbounded
+struct PlanePrimitive {
+	Plane3f plane;
+	u32 materialIndex;
+
+	void ComputeSurface(const Ray3f &ray, const f32 t, SurfaceHit &outHit) const {
+		Vec3f position = ray.origin + t * ray.direction;
+		f32 positionDot = V3fDot(plane.normal, position);
+		f32 planeError = positionDot - plane.distance;
+		outHit.position = position - planeError * plane.normal;
+		outHit.geometricNormal = plane.normal;
+		outHit.distance = t;
+		outHit.materialIndex = materialIndex;
+		outHit.lightIndex = NoIndex; // infinite planes can never be lights (unbounded area, not sampleable)
+	}
+};
 
 //
 // Bounding volume hierarchy (binned SAH, 32 byte nodes, sibling pairs adjacent)
 //
-struct Aabb {
-	Vec3f minimum;
-	Vec3f maximum;
-};
-
-static inline Aabb AabbEmpty() {
-	Aabb result;
-	result.minimum = V3fInitScalar(F32MaxValue);
-	result.maximum = V3fInitScalar(-F32MaxValue);
-	return(result);
-}
-
-static inline void AabbGrowPoint(Aabb &box, const Vec3f &point) {
-	for (u32 axis = 0; axis < 3; ++axis) {
-		box.minimum.m[axis] = F32Min(box.minimum.m[axis], point.m[axis]);
-		box.maximum.m[axis] = F32Max(box.maximum.m[axis], point.m[axis]);
-	}
-}
-
-// Union must combine min with min and max with max, growing by the corners of an empty box would push the maximum to +F32MaxValue
-static inline void AabbGrowBox(Aabb &box, const Aabb &other) {
-	for (u32 axis = 0; axis < 3; ++axis) {
-		box.minimum.m[axis] = F32Min(box.minimum.m[axis], other.minimum.m[axis]);
-		box.maximum.m[axis] = F32Max(box.maximum.m[axis], other.maximum.m[axis]);
-	}
-}
-
-static inline f32 AabbHalfSurfaceArea(const Aabb &box) {
-	Vec3f extent = box.maximum - box.minimum;
-	f32 result = extent.x * extent.y + extent.y * extent.z + extent.z * extent.x;
-	return(result);
-}
-
-static constexpr f32 BoundsPaddingRelative = 1e-5f; // pads flat bounds (axis aligned quads) so the slab test is never degenerate
-
-static Aabb ComputePrimitiveBounds(const Primitive &primitive) {
-	Aabb result = AabbEmpty();
-	switch (primitive.kind) {
-		case PrimitiveKind::Sphere:
-		{
-			Vec3f radiusVector = V3fInitScalar(primitive.sphere.radius);
-			result.minimum = primitive.sphere.center - radiusVector;
-			result.maximum = primitive.sphere.center + radiusVector;
-		} break;
-
-		case PrimitiveKind::Quad:
-		{
-			const QuadShape &quad = primitive.quad;
-			Vec3f cornerU = quad.corner + quad.edgeU;
-			Vec3f cornerV = quad.corner + quad.edgeV;
-			Vec3f cornerUV = cornerU + quad.edgeV;
-			AabbGrowPoint(result, quad.corner);
-			AabbGrowPoint(result, cornerU);
-			AabbGrowPoint(result, cornerV);
-			AabbGrowPoint(result, cornerUV);
-		} break;
-
-		case PrimitiveKind::Box:
-		{
-			const BoxShape &box = primitive.box;
-			Vec3f extent;
-			for (u32 axis = 0; axis < 3; ++axis) {
-				f32 extentFromX = F32Abs(box.axisX.m[axis]) * box.halfExtents.x;
-				f32 extentFromY = F32Abs(box.axisY.m[axis]) * box.halfExtents.y;
-				f32 extentFromZ = F32Abs(box.axisZ.m[axis]) * box.halfExtents.z;
-				extent.m[axis] = extentFromX + extentFromY + extentFromZ;
-			}
-			result.minimum = box.center - extent;
-			result.maximum = box.center + extent;
-		} break;
-
-		default:
-			break;
-	}
-	f32 maxAbsoluteCoordinate = 1.0f;
-	for (u32 axis = 0; axis < 3; ++axis) {
-		f32 absoluteMinimum = F32Abs(result.minimum.m[axis]);
-		f32 absoluteMaximum = F32Abs(result.maximum.m[axis]);
-		maxAbsoluteCoordinate = F32Max(absoluteMinimum, maxAbsoluteCoordinate);
-		maxAbsoluteCoordinate = F32Max(absoluteMaximum, maxAbsoluteCoordinate);
-	}
-	Vec3f padding = V3fInitScalar(BoundsPaddingRelative * maxAbsoluteCoordinate);
-	result.minimum = result.minimum - padding;
-	result.maximum = result.maximum + padding;
-	return(result);
-}
-
 struct BvhNode {
-	Vec3f boundsMin;
+	AABB3f bounds;
 	u32 leftOrFirst;    // interior: index of the left child (right = left + 1), leaf: first primitive
-	Vec3f boundsMax;
 	u32 primitiveCount; // 0 = interior node
 };
 fplStaticAssert(sizeof(BvhNode) == 32);
@@ -750,162 +527,158 @@ static constexpr u32 BvhFirstChildNodeIndex = 2; // node 1 stays unused so sibli
 static constexpr f32 BvhTraversalCost = 2.0f;
 static constexpr f32 BvhIntersectionCost = 1.0f;
 
+struct BvhBin {
+	AABB3f bounds;
+	u32 count;
+};
+
 struct BvhBuilder {
-	const Aabb *primitiveBounds;
+	const AABB3f *primitiveBounds;
 	const Vec3f *primitiveCentroids;
 	u32 *primitiveIndices;
 	BvhNode *nodes;
 	u32 nodeCount;
-};
 
-struct BvhBin {
-	Aabb bounds;
-	u32 count;
-};
-
-static void BvhUpdateNodeBounds(BvhBuilder &builder, const u32 nodeIndex) {
-	BvhNode &node = builder.nodes[nodeIndex];
-	Aabb bounds = AabbEmpty();
-	for (u32 offset = 0; offset < node.primitiveCount; ++offset) {
-		u32 primitiveIndex = builder.primitiveIndices[node.leftOrFirst + offset];
-		AabbGrowBox(bounds, builder.primitiveBounds[primitiveIndex]);
-	}
-	node.boundsMin = bounds.minimum;
-	node.boundsMax = bounds.maximum;
-}
-
-// Must be used identically for binning and partitioning, otherwise a float mismatch can produce empty children
-static inline u32 BvhBinIndex(const f32 centroid, const f32 centroidMin, const f32 binScale) {
-	s32 rawIndex = (s32)((centroid - centroidMin) * binScale);
-	s32 lastBin = (s32)BvhBinCount - 1;
-	s32 clampedIndex = (rawIndex < 0) ? 0 : ((rawIndex > lastBin) ? lastBin : rawIndex);
-	return((u32)clampedIndex);
-}
-
-static void BvhSubdivide(BvhBuilder &builder, const u32 nodeIndex, const u32 depth) {
-	BvhNode &node = builder.nodes[nodeIndex];
-	u32 first = node.leftOrFirst;
-	u32 count = node.primitiveCount;
-	if (count <= 1 || depth >= BvhMaxDepth) {
-		return;
-	}
-
-	Aabb centroidBounds = AabbEmpty();
-	for (u32 offset = 0; offset < count; ++offset) {
-		u32 primitiveIndex = builder.primitiveIndices[first + offset];
-		AabbGrowPoint(centroidBounds, builder.primitiveCentroids[primitiveIndex]);
-	}
-
-	constexpr u32 splitPlaneCount = BvhBinCount - 1;
-	f32 bestCost = F32MaxValue;
-	s32 bestAxis = -1;
-	u32 bestSplitPlane = 0;
-	for (u32 axis = 0; axis < 3; ++axis) {
-		f32 centroidMin = centroidBounds.minimum.m[axis];
-		f32 centroidMax = centroidBounds.maximum.m[axis];
-		if (!(centroidMax > centroidMin)) {
-			continue; // all centroids coincide on this axis
+	void UpdateNodeBounds(const u32 nodeIndex) {
+		BvhNode &node = nodes[nodeIndex];
+		AABB3f bounds = AABB3fInitEmpty();
+		for (u32 offset = 0; offset < node.primitiveCount; ++offset) {
+			u32 primitiveIndex = primitiveIndices[node.leftOrFirst + offset];
+			AABB3fGrowBox(&bounds, &primitiveBounds[primitiveIndex]);
 		}
-		BvhBin bins[BvhBinCount];
-		for (u32 binIndex = 0; binIndex < BvhBinCount; ++binIndex) {
-			bins[binIndex].bounds = AabbEmpty();
-			bins[binIndex].count = 0;
+		node.bounds = bounds;
+	}
+
+	// Must be used identically for binning and partitioning, otherwise a float mismatch can produce empty children
+	static u32 BinIndex(const f32 centroid, const f32 centroidMin, const f32 binScale) {
+		s32 rawIndex = (s32)((centroid - centroidMin) * binScale);
+		s32 lastBin = (s32)BvhBinCount - 1;
+		s32 clampedIndex = (rawIndex < 0) ? 0 : ((rawIndex > lastBin) ? lastBin : rawIndex);
+		return((u32)clampedIndex);
+	}
+
+	void Subdivide(const u32 nodeIndex, const u32 depth) {
+		BvhNode &node = nodes[nodeIndex];
+		u32 first = node.leftOrFirst;
+		u32 count = node.primitiveCount;
+		if (count <= 1 || depth >= BvhMaxDepth) {
+			return;
 		}
-		f32 binScale = (f32)BvhBinCount / (centroidMax - centroidMin);
+
+		AABB3f centroidBounds = AABB3fInitEmpty();
 		for (u32 offset = 0; offset < count; ++offset) {
-			u32 primitiveIndex = builder.primitiveIndices[first + offset];
-			f32 centroid = builder.primitiveCentroids[primitiveIndex].m[axis];
-			u32 binIndex = BvhBinIndex(centroid, centroidMin, binScale);
-			bins[binIndex].count++;
-			AabbGrowBox(bins[binIndex].bounds, builder.primitiveBounds[primitiveIndex]);
+			u32 primitiveIndex = primitiveIndices[first + offset];
+			AABB3fGrowPoint(&centroidBounds, primitiveCentroids[primitiveIndex]);
 		}
-		// Sweep: split plane i separates bins [0..i] from [i+1..BvhBinCount-1]
-		f32 leftArea[BvhBinCount - 1];
-		f32 rightArea[BvhBinCount - 1];
-		u32 leftCount[BvhBinCount - 1];
-		u32 rightCount[BvhBinCount - 1];
-		Aabb leftBox = AabbEmpty();
-		Aabb rightBox = AabbEmpty();
-		u32 leftSum = 0;
-		u32 rightSum = 0;
-		for (u32 planeIndex = 0; planeIndex < splitPlaneCount; ++planeIndex) {
-			leftSum += bins[planeIndex].count;
-			leftCount[planeIndex] = leftSum;
-			AabbGrowBox(leftBox, bins[planeIndex].bounds);
-			leftArea[planeIndex] = (leftSum > 0) ? AabbHalfSurfaceArea(leftBox) : 0.0f;
-			u32 rightBinIndex = BvhBinCount - 1 - planeIndex;
-			u32 rightPlaneIndex = splitPlaneCount - 1 - planeIndex;
-			rightSum += bins[rightBinIndex].count;
-			rightCount[rightPlaneIndex] = rightSum;
-			AabbGrowBox(rightBox, bins[rightBinIndex].bounds);
-			rightArea[rightPlaneIndex] = (rightSum > 0) ? AabbHalfSurfaceArea(rightBox) : 0.0f;
-		}
-		for (u32 planeIndex = 0; planeIndex < splitPlaneCount; ++planeIndex) {
-			if (leftCount[planeIndex] == 0 || rightCount[planeIndex] == 0) {
-				continue;
+
+		constexpr u32 splitPlaneCount = BvhBinCount - 1;
+		f32 bestCost = F32MaxValue;
+		s32 bestAxis = -1;
+		u32 bestSplitPlane = 0;
+		for (u32 axis = 0; axis < 3; ++axis) {
+			f32 centroidMin = centroidBounds.min.m[axis];
+			f32 centroidMax = centroidBounds.max.m[axis];
+			if (!(centroidMax > centroidMin)) {
+				continue; // all centroids coincide on this axis
 			}
-			f32 cost = (f32)leftCount[planeIndex] * leftArea[planeIndex] + (f32)rightCount[planeIndex] * rightArea[planeIndex];
-			if (cost < bestCost) {
-				bestCost = cost;
-				bestAxis = (s32)axis;
-				bestSplitPlane = planeIndex;
+			BvhBin bins[BvhBinCount];
+			for (u32 binIndex = 0; binIndex < BvhBinCount; ++binIndex) {
+				bins[binIndex].bounds = AABB3fInitEmpty();
+				bins[binIndex].count = 0;
+			}
+			f32 binScale = (f32)BvhBinCount / (centroidMax - centroidMin);
+			for (u32 offset = 0; offset < count; ++offset) {
+				u32 primitiveIndex = primitiveIndices[first + offset];
+				f32 centroid = primitiveCentroids[primitiveIndex].m[axis];
+				u32 binIndex = BinIndex(centroid, centroidMin, binScale);
+				bins[binIndex].count++;
+				AABB3fGrowBox(&bins[binIndex].bounds, &primitiveBounds[primitiveIndex]);
+			}
+			// Sweep: split plane i separates bins [0..i] from [i+1..BvhBinCount-1]
+			f32 leftArea[BvhBinCount - 1];
+			f32 rightArea[BvhBinCount - 1];
+			u32 leftCount[BvhBinCount - 1];
+			u32 rightCount[BvhBinCount - 1];
+			AABB3f leftBox = AABB3fInitEmpty();
+			AABB3f rightBox = AABB3fInitEmpty();
+			u32 leftSum = 0;
+			u32 rightSum = 0;
+			for (u32 planeIndex = 0; planeIndex < splitPlaneCount; ++planeIndex) {
+				leftSum += bins[planeIndex].count;
+				leftCount[planeIndex] = leftSum;
+				AABB3fGrowBox(&leftBox, &bins[planeIndex].bounds);
+				leftArea[planeIndex] = (leftSum > 0) ? AABB3fGetHalfSurfaceArea(&leftBox) : 0.0f;
+				u32 rightBinIndex = BvhBinCount - 1 - planeIndex;
+				u32 rightPlaneIndex = splitPlaneCount - 1 - planeIndex;
+				rightSum += bins[rightBinIndex].count;
+				rightCount[rightPlaneIndex] = rightSum;
+				AABB3fGrowBox(&rightBox, &bins[rightBinIndex].bounds);
+				rightArea[rightPlaneIndex] = (rightSum > 0) ? AABB3fGetHalfSurfaceArea(&rightBox) : 0.0f;
+			}
+			for (u32 planeIndex = 0; planeIndex < splitPlaneCount; ++planeIndex) {
+				if (leftCount[planeIndex] == 0 || rightCount[planeIndex] == 0) {
+					continue;
+				}
+				f32 cost = (f32)leftCount[planeIndex] * leftArea[planeIndex] + (f32)rightCount[planeIndex] * rightArea[planeIndex];
+				if (cost < bestCost) {
+					bestCost = cost;
+					bestAxis = (s32)axis;
+					bestSplitPlane = planeIndex;
+				}
 			}
 		}
-	}
-	if (bestAxis < 0) {
-		return; // identical centroids: keep as leaf
-	}
-
-	Aabb nodeBounds;
-	nodeBounds.minimum = node.boundsMin;
-	nodeBounds.maximum = node.boundsMax;
-	f32 parentArea = AabbHalfSurfaceArea(nodeBounds);
-	f32 leafCost = (f32)count * BvhIntersectionCost;
-	f32 splitCost = BvhTraversalCost + BvhIntersectionCost * bestCost / parentArea;
-	if (splitCost >= leafCost && count <= BvhMaxLeafPrimitives) {
-		return;
-	}
-
-	// Partition in place with signed cursors (an unsigned right cursor would underflow at 0)
-	f32 centroidMin = centroidBounds.minimum.m[bestAxis];
-	f32 centroidMax = centroidBounds.maximum.m[bestAxis];
-	f32 binScale = (f32)BvhBinCount / (centroidMax - centroidMin);
-	s32 leftCursor = (s32)first;
-	s32 rightCursor = (s32)(first + count) - 1;
-	while (leftCursor <= rightCursor) {
-		u32 primitiveIndex = builder.primitiveIndices[leftCursor];
-		f32 centroid = builder.primitiveCentroids[primitiveIndex].m[bestAxis];
-		u32 binIndex = BvhBinIndex(centroid, centroidMin, binScale);
-		if (binIndex <= bestSplitPlane) {
-			++leftCursor;
-		} else {
-			u32 swapTemp = builder.primitiveIndices[leftCursor];
-			builder.primitiveIndices[leftCursor] = builder.primitiveIndices[rightCursor];
-			builder.primitiveIndices[rightCursor] = swapTemp;
-			--rightCursor;
+		if (bestAxis < 0) {
+			return; // identical centroids: keep as leaf
 		}
-	}
-	u32 leftPrimitiveCount = (u32)leftCursor - first;
-	if (leftPrimitiveCount == 0 || leftPrimitiveCount == count) {
-		return;
-	}
 
-	u32 leftChildIndex = builder.nodeCount;
-	u32 rightChildIndex = leftChildIndex + 1;
-	builder.nodeCount += 2;
-	BvhNode &leftChild = builder.nodes[leftChildIndex];
-	BvhNode &rightChild = builder.nodes[rightChildIndex];
-	leftChild.leftOrFirst = first;
-	leftChild.primitiveCount = leftPrimitiveCount;
-	rightChild.leftOrFirst = first + leftPrimitiveCount;
-	rightChild.primitiveCount = count - leftPrimitiveCount;
-	node.leftOrFirst = leftChildIndex;
-	node.primitiveCount = 0;
-	BvhUpdateNodeBounds(builder, leftChildIndex);
-	BvhUpdateNodeBounds(builder, rightChildIndex);
-	BvhSubdivide(builder, leftChildIndex, depth + 1);
-	BvhSubdivide(builder, rightChildIndex, depth + 1);
-}
+		f32 parentArea = AABB3fGetHalfSurfaceArea(&node.bounds);
+		f32 leafCost = (f32)count * BvhIntersectionCost;
+		f32 splitCost = BvhTraversalCost + BvhIntersectionCost * bestCost / parentArea;
+		if (splitCost >= leafCost && count <= BvhMaxLeafPrimitives) {
+			return;
+		}
+
+		// Partition in place with signed cursors (an unsigned right cursor would underflow at 0)
+		f32 centroidMin = centroidBounds.min.m[bestAxis];
+		f32 centroidMax = centroidBounds.max.m[bestAxis];
+		f32 binScale = (f32)BvhBinCount / (centroidMax - centroidMin);
+		s32 leftCursor = (s32)first;
+		s32 rightCursor = (s32)(first + count) - 1;
+		while (leftCursor <= rightCursor) {
+			u32 primitiveIndex = primitiveIndices[leftCursor];
+			f32 centroid = primitiveCentroids[primitiveIndex].m[bestAxis];
+			u32 binIndex = BinIndex(centroid, centroidMin, binScale);
+			if (binIndex <= bestSplitPlane) {
+				++leftCursor;
+			} else {
+				u32 swapTemp = primitiveIndices[leftCursor];
+				primitiveIndices[leftCursor] = primitiveIndices[rightCursor];
+				primitiveIndices[rightCursor] = swapTemp;
+				--rightCursor;
+			}
+		}
+		u32 leftPrimitiveCount = (u32)leftCursor - first;
+		if (leftPrimitiveCount == 0 || leftPrimitiveCount == count) {
+			return;
+		}
+
+		u32 leftChildIndex = nodeCount;
+		u32 rightChildIndex = leftChildIndex + 1;
+		nodeCount += 2;
+		BvhNode &leftChild = nodes[leftChildIndex];
+		BvhNode &rightChild = nodes[rightChildIndex];
+		leftChild.leftOrFirst = first;
+		leftChild.primitiveCount = leftPrimitiveCount;
+		rightChild.leftOrFirst = first + leftPrimitiveCount;
+		rightChild.primitiveCount = count - leftPrimitiveCount;
+		node.leftOrFirst = leftChildIndex;
+		node.primitiveCount = 0;
+		UpdateNodeBounds(leftChildIndex);
+		UpdateNodeBounds(rightChildIndex);
+		Subdivide(leftChildIndex, depth + 1);
+		Subdivide(rightChildIndex, depth + 1);
+	}
+};
 
 // Builds the BVH and reorders the primitives into leaf order (leaves reference contiguous ranges), main thread only
 static void BuildBvh(std::vector<Primitive> &primitives, std::vector<BvhNode> &outNodes) {
@@ -914,12 +687,12 @@ static void BuildBvh(std::vector<Primitive> &primitives, std::vector<BvhNode> &o
 	if (primitiveCount == 0) {
 		return;
 	}
-	std::vector<Aabb> bounds(primitiveCount);
+	std::vector<AABB3f> bounds(primitiveCount);
 	std::vector<Vec3f> centroids(primitiveCount);
 	std::vector<u32> indices(primitiveCount);
 	for (u32 primitiveIndex = 0; primitiveIndex < primitiveCount; ++primitiveIndex) {
-		Aabb primitiveBounds = ComputePrimitiveBounds(primitives[primitiveIndex]);
-		Vec3f boundsSum = primitiveBounds.minimum + primitiveBounds.maximum;
+		AABB3f primitiveBounds = primitives[primitiveIndex].ComputeBounds();
+		Vec3f boundsSum = primitiveBounds.min + primitiveBounds.max;
 		bounds[primitiveIndex] = primitiveBounds;
 		centroids[primitiveIndex] = 0.5f * boundsSum;
 		indices[primitiveIndex] = primitiveIndex;
@@ -935,8 +708,8 @@ static void BuildBvh(std::vector<Primitive> &primitives, std::vector<BvhNode> &o
 	builder.nodeCount = BvhFirstChildNodeIndex;
 	outNodes[0].leftOrFirst = 0;
 	outNodes[0].primitiveCount = primitiveCount;
-	BvhUpdateNodeBounds(builder, 0);
-	BvhSubdivide(builder, 0, 0);
+	builder.UpdateNodeBounds(0);
+	builder.Subdivide(0, 0);
 	std::vector<Primitive> ordered(primitiveCount);
 	for (u32 orderedIndex = 0; orderedIndex < primitiveCount; ++orderedIndex) {
 		ordered[orderedIndex] = primitives[indices[orderedIndex]];
@@ -945,52 +718,16 @@ static void BuildBvh(std::vector<Primitive> &primitives, std::vector<BvhNode> &o
 	outNodes.resize(builder.nodeCount);
 }
 
-struct RayQuery {
-	Vec3f origin;
-	Vec3f direction;
-	Vec3f inverseDirection; // computed once per ray, never per node
-};
-
-static inline RayQuery MakeRayQuery(const Ray3f &ray) {
-	f32 inverseX = SafeReciprocal(ray.direction.x);
-	f32 inverseY = SafeReciprocal(ray.direction.y);
-	f32 inverseZ = SafeReciprocal(ray.direction.z);
-	RayQuery result;
-	result.origin = ray.origin;
-	result.direction = ray.direction;
-	result.inverseDirection = V3fInit(inverseX, inverseY, inverseZ);
-	return(result);
-}
-
-// Returns the entry distance or NoHitDistance, conservative (RobustSlabScale) so grazing hits are never culled
-static inline f32 IntersectNodeBounds(const BvhNode &node, const RayQuery &ray, const f32 tMin, const f32 tMax) {
-	f32 tx0 = (node.boundsMin.x - ray.origin.x) * ray.inverseDirection.x;
-	f32 tx1 = (node.boundsMax.x - ray.origin.x) * ray.inverseDirection.x;
-	f32 ty0 = (node.boundsMin.y - ray.origin.y) * ray.inverseDirection.y;
-	f32 ty1 = (node.boundsMax.y - ray.origin.y) * ray.inverseDirection.y;
-	f32 tz0 = (node.boundsMin.z - ray.origin.z) * ray.inverseDirection.z;
-	f32 tz1 = (node.boundsMax.z - ray.origin.z) * ray.inverseDirection.z;
-	f32 nearX = F32Min(tx0, tx1);
-	f32 farX = F32Max(tx0, tx1);
-	f32 nearY = F32Min(ty0, ty1);
-	f32 farY = F32Max(ty0, ty1);
-	f32 nearZ = F32Min(tz0, tz1);
-	f32 farZ = F32Max(tz0, tz1);
-	f32 nearXY = F32Max(nearX, nearY);
-	f32 nearZClamped = F32Max(nearZ, tMin);
-	f32 tNear = F32Max(nearXY, nearZClamped);
-	f32 farXY = F32Min(farX, farY);
-	f32 farZClamped = F32Min(farZ, tMax);
-	f32 tFarUnscaled = F32Min(farXY, farZClamped);
-	f32 tFar = tFarUnscaled * RobustSlabScale;
-	f32 result = (tNear <= tFar) ? tNear : NoHitDistance;
-	return(result);
-}
-
 // Bounding sphere of a specular (mirror or glass) primitive, light tracing aims its photons at these
 struct CausticCaster {
 	Vec3f center;
 	f32 radius;
+};
+
+struct ClosestHit {
+	f32 t;
+	u32 primitiveIndex; // NoIndex when a plane (or nothing) was hit
+	u32 planeIndex;     // NoIndex when a primitive (or nothing) was hit
 };
 
 // Immutable while workers render: raw pointers and counts, no std::vector access in the hot loop
@@ -1017,148 +754,142 @@ struct SceneView {
 	Vec3f regionCenter;          // bounds of the finite primitives
 	f32 regionRadius;
 	b32 isLightTracingAvailable; // specular casters and at least one light that light tracing can emit from
-};
 
-struct ClosestHit {
-	f32 t;
-	u32 primitiveIndex; // NoIndex when a plane (or nothing) was hit
-	u32 planeIndex;     // NoIndex when a primitive (or nothing) was hit
-};
-
-static bool TraceClosest(const SceneView &scene, const Ray3f &ray, const f32 tMax, ClosestHit &outHit) {
-	f32 closestT = tMax;
-	u32 hitPrimitive = NoIndex;
-	u32 hitPlane = NoIndex;
-	// Planes first: the floor is hit often, which shrinks tMax early and makes BVH culling more effective
-	for (u32 planeIndex = 0; planeIndex < scene.planeCount; ++planeIndex) {
-		f32 t;
-		if (IntersectPlane(scene.planes[planeIndex], ray.origin, ray.direction, RayMinDistance, closestT, t)) {
-			closestT = t;
-			hitPlane = planeIndex;
+	bool TraceClosest(const Ray3f &ray, const f32 tMax, ClosestHit &outHit) const {
+		f32 closestT = tMax;
+		u32 hitPrimitive = NoIndex;
+		u32 hitPlane = NoIndex;
+		// Planes first: the floor is hit often, which shrinks tMax early and makes BVH culling more effective
+		for (u32 planeIndex = 0; planeIndex < planeCount; ++planeIndex) {
+			f32 t;
+			if (Plane3fIntersectRay(&planes[planeIndex].plane, &ray, RayMinDistance, closestT, &t)) {
+				closestT = t;
+				hitPlane = planeIndex;
+			}
 		}
+		if (bvhNodeCount > 0) {
+			Vec3f inverseDirection = Ray3fInverseDirection(ray.direction); // computed once per ray, never per node
+			u32 stackNodes[BvhStackCapacity];
+			f32 stackDistances[BvhStackCapacity];
+			u32 stackSize = 0;
+			u32 nodeIndex = 0;
+			f32 rootDistance = AABB3fIntersectRayInverse(&bvhNodes[0].bounds, ray.origin, inverseDirection, RayMinDistance, closestT);
+			bool isActive = rootDistance != NoHitDistance;
+			while (isActive) {
+				const BvhNode &node = bvhNodes[nodeIndex];
+				if (node.primitiveCount > 0) {
+					u32 primitiveEnd = node.leftOrFirst + node.primitiveCount;
+					for (u32 primitiveIndex = node.leftOrFirst; primitiveIndex < primitiveEnd; ++primitiveIndex) {
+						f32 t;
+						if (primitives[primitiveIndex].Intersect(ray, RayMinDistance, closestT, t)) {
+							closestT = t;
+							hitPrimitive = primitiveIndex;
+							hitPlane = NoIndex;
+						}
+					}
+				} else {
+					u32 nearChild = node.leftOrFirst;
+					u32 farChild = nearChild + 1;
+					f32 nearDistance = AABB3fIntersectRayInverse(&bvhNodes[nearChild].bounds, ray.origin, inverseDirection, RayMinDistance, closestT);
+					f32 farDistance = AABB3fIntersectRayInverse(&bvhNodes[farChild].bounds, ray.origin, inverseDirection, RayMinDistance, closestT);
+					if (nearDistance > farDistance) {
+						f32 swapDistance = nearDistance;
+						nearDistance = farDistance;
+						farDistance = swapDistance;
+						u32 swapChild = nearChild;
+						nearChild = farChild;
+						farChild = swapChild;
+					}
+					if (nearDistance != NoHitDistance) {
+						if (farDistance != NoHitDistance) {
+							fplAssert(stackSize < BvhStackCapacity);
+							stackNodes[stackSize] = farChild;
+							stackDistances[stackSize] = farDistance;
+							++stackSize;
+						}
+						nodeIndex = nearChild;
+						continue;
+					}
+				}
+				// Pop the next node that can still contain a closer hit
+				isActive = false;
+				while (stackSize > 0) {
+					--stackSize;
+					if (stackDistances[stackSize] < closestT) {
+						nodeIndex = stackNodes[stackSize];
+						isActive = true;
+						break;
+					}
+				}
+			}
+		}
+		outHit.t = closestT;
+		outHit.primitiveIndex = hitPrimitive;
+		outHit.planeIndex = hitPlane;
+		bool result = (hitPrimitive != NoIndex) || (hitPlane != NoIndex);
+		return(result);
 	}
-	if (scene.bvhNodeCount > 0) {
-		RayQuery query = MakeRayQuery(ray);
+
+	// Any hit in (0, tMax) for shadow rays: no ordering, returns at the first hit.
+	// The sampled light itself is skipped: the origin offset can push it inside tMax near the light, and a convex or flat emitter cannot occlude its own sampled point.
+	bool TraceOccluded(const Ray3f &ray, const f32 tMax, const u32 ignorePrimitiveIndex) const {
+		for (u32 planeIndex = 0; planeIndex < planeCount; ++planeIndex) {
+			f32 t;
+			if (Plane3fIntersectRay(&planes[planeIndex].plane, &ray, RayMinDistance, tMax, &t)) {
+				return(true);
+			}
+		}
+		if (bvhNodeCount == 0) {
+			return(false);
+		}
+		Vec3f inverseDirection = Ray3fInverseDirection(ray.direction);
 		u32 stackNodes[BvhStackCapacity];
-		f32 stackDistances[BvhStackCapacity];
 		u32 stackSize = 0;
-		u32 nodeIndex = 0;
-		f32 rootDistance = IntersectNodeBounds(scene.bvhNodes[0], query, RayMinDistance, closestT);
-		bool isActive = rootDistance != NoHitDistance;
-		while (isActive) {
-			const BvhNode &node = scene.bvhNodes[nodeIndex];
+		stackNodes[stackSize++] = 0;
+		while (stackSize > 0) {
+			u32 nodeIndex = stackNodes[--stackSize];
+			const BvhNode &node = bvhNodes[nodeIndex];
+			f32 entryDistance = AABB3fIntersectRayInverse(&node.bounds, ray.origin, inverseDirection, RayMinDistance, tMax);
+			if (entryDistance == NoHitDistance) {
+				continue;
+			}
 			if (node.primitiveCount > 0) {
 				u32 primitiveEnd = node.leftOrFirst + node.primitiveCount;
 				for (u32 primitiveIndex = node.leftOrFirst; primitiveIndex < primitiveEnd; ++primitiveIndex) {
+					if (primitiveIndex == ignorePrimitiveIndex) {
+						continue;
+					}
 					f32 t;
-					if (IntersectPrimitive(scene.primitives[primitiveIndex], ray.origin, ray.direction, RayMinDistance, closestT, t)) {
-						closestT = t;
-						hitPrimitive = primitiveIndex;
-						hitPlane = NoIndex;
+					if (primitives[primitiveIndex].Intersect(ray, RayMinDistance, tMax, t)) {
+						return(true);
 					}
 				}
 			} else {
-				u32 nearChild = node.leftOrFirst;
-				u32 farChild = nearChild + 1;
-				f32 nearDistance = IntersectNodeBounds(scene.bvhNodes[nearChild], query, RayMinDistance, closestT);
-				f32 farDistance = IntersectNodeBounds(scene.bvhNodes[farChild], query, RayMinDistance, closestT);
-				if (nearDistance > farDistance) {
-					f32 swapDistance = nearDistance;
-					nearDistance = farDistance;
-					farDistance = swapDistance;
-					u32 swapChild = nearChild;
-					nearChild = farChild;
-					farChild = swapChild;
-				}
-				if (nearDistance != NoHitDistance) {
-					if (farDistance != NoHitDistance) {
-						fplAssert(stackSize < BvhStackCapacity);
-						stackNodes[stackSize] = farChild;
-						stackDistances[stackSize] = farDistance;
-						++stackSize;
-					}
-					nodeIndex = nearChild;
-					continue;
-				}
-			}
-			// Pop the next node that can still contain a closer hit
-			isActive = false;
-			while (stackSize > 0) {
-				--stackSize;
-				if (stackDistances[stackSize] < closestT) {
-					nodeIndex = stackNodes[stackSize];
-					isActive = true;
-					break;
-				}
+				fplAssert(stackSize + 2 <= BvhStackCapacity);
+				stackNodes[stackSize++] = node.leftOrFirst;
+				stackNodes[stackSize++] = node.leftOrFirst + 1;
 			}
 		}
-	}
-	outHit.t = closestT;
-	outHit.primitiveIndex = hitPrimitive;
-	outHit.planeIndex = hitPlane;
-	bool result = (hitPrimitive != NoIndex) || (hitPlane != NoIndex);
-	return(result);
-}
-
-// Any hit in (0, tMax) for shadow rays: no ordering, returns at the first hit.
-// The sampled light itself is skipped: the origin offset can push it inside tMax near the light, and a convex or flat emitter cannot occlude its own sampled point.
-static bool TraceOccluded(const SceneView &scene, const Ray3f &ray, const f32 tMax, const u32 ignorePrimitiveIndex) {
-	for (u32 planeIndex = 0; planeIndex < scene.planeCount; ++planeIndex) {
-		f32 t;
-		if (IntersectPlane(scene.planes[planeIndex], ray.origin, ray.direction, RayMinDistance, tMax, t)) {
-			return(true);
-		}
-	}
-	if (scene.bvhNodeCount == 0) {
 		return(false);
 	}
-	RayQuery query = MakeRayQuery(ray);
-	u32 stackNodes[BvhStackCapacity];
-	u32 stackSize = 0;
-	stackNodes[stackSize++] = 0;
-	while (stackSize > 0) {
-		u32 nodeIndex = stackNodes[--stackSize];
-		const BvhNode &node = scene.bvhNodes[nodeIndex];
-		f32 entryDistance = IntersectNodeBounds(node, query, RayMinDistance, tMax);
-		if (entryDistance == NoHitDistance) {
-			continue;
+
+	// Closest hit plus surface reconstruction: the main entry point for the integrator
+	bool TraceSurface(const Ray3f &ray, const f32 tMax, SurfaceHit &outHit) const {
+		ClosestHit closest;
+		bool isHit = TraceClosest(ray, tMax, closest);
+		if (!isHit) {
+			return(false);
 		}
-		if (node.primitiveCount > 0) {
-			u32 primitiveEnd = node.leftOrFirst + node.primitiveCount;
-			for (u32 primitiveIndex = node.leftOrFirst; primitiveIndex < primitiveEnd; ++primitiveIndex) {
-				if (primitiveIndex == ignorePrimitiveIndex) {
-					continue;
-				}
-				f32 t;
-				if (IntersectPrimitive(scene.primitives[primitiveIndex], ray.origin, ray.direction, RayMinDistance, tMax, t)) {
-					return(true);
-				}
-			}
+		if (closest.primitiveIndex != NoIndex) {
+			primitives[closest.primitiveIndex].ComputeSurface(ray, closest.t, outHit);
 		} else {
-			fplAssert(stackSize + 2 <= BvhStackCapacity);
-			stackNodes[stackSize++] = node.leftOrFirst;
-			stackNodes[stackSize++] = node.leftOrFirst + 1;
+			planes[closest.planeIndex].ComputeSurface(ray, closest.t, outHit);
 		}
+		f32 facing = V3fDot(ray.direction, outHit.geometricNormal);
+		outHit.isFrontFace = facing < 0.0f;
+		return(true);
 	}
-	return(false);
-}
-
-// Closest hit plus surface reconstruction: the main entry point for the integrator
-static bool TraceSurface(const SceneView &scene, const Ray3f &ray, const f32 tMax, SurfaceHit &outHit) {
-	ClosestHit closest;
-	bool isHit = TraceClosest(scene, ray, tMax, closest);
-	if (!isHit) {
-		return(false);
-	}
-	if (closest.primitiveIndex != NoIndex) {
-		ComputePrimitiveSurface(scene.primitives[closest.primitiveIndex], ray, closest.t, outHit);
-	} else {
-		ComputePlaneSurface(scene.planes[closest.planeIndex], ray, closest.t, outHit);
-	}
-	f32 facing = V3fDot(ray.direction, outHit.geometricNormal);
-	outHit.isFrontFace = facing < 0.0f;
-	return(true);
-}
+};
 
 //
 // Materials
@@ -1183,36 +914,6 @@ enum class MaterialKind : u32 {
 	Dielectric,
 	Plastic,
 	Emissive,
-};
-
-// Coordinate into a vertex-centered lookup table axis: value = lerp(table[index0], fraction, table[index1])
-struct TableCoordinate {
-	u32 index0;
-	u32 index1;
-	f32 fraction;
-};
-
-struct Material {
-	MaterialKind kind;
-	Vec3f baseColor;              // Diffuse albedo, Plastic base albedo, first checker color (linear RGB)
-	Vec3f checkerColor;           // second checker color
-	f32 checkerSize;
-	f32 checkerFadeStart;         // distance from the origin in XY where the checker starts to fade into its average
-	f32 checkerFadeEnd;
-	b32 hasChecker;
-	Vec3f specularColor;          // Conductor: Schlick F0 color
-	f32 alpha;                    // GGX alpha (not perceptual roughness)
-	b32 isDeltaSpecular;          // Conductor: perfect mirror
-	f32 ior;                      // Dielectric: index of refraction, Plastic: coat index of refraction
-	f32 coatF0;                   // Plastic: ((ior - 1) / (ior + 1))^2
-	Vec3f emission;               // Emissive: radiance
-	b32 isTwoSided;               // Emissive: emits on both sides
-	Vec3f absorptionCoefficient;  // Dielectric: Beer-Lambert sigma_a per unit length
-	b32 hasAbsorption;
-	TableCoordinate roughnessCoordinate; // GGX albedo table row for alpha
-	f32 averageAlbedo;            // Conductor: average albedo with F0 = 1, Plastic: average coat albedo
-	Vec3f multipleScatteringColor; // Conductor: Kulla-Conty Fms / (pi * (1 - averageAlbedo))
-	f32 baseNormalization;        // Plastic: 1 / (pi * (1 - averageAlbedo))
 };
 
 //
@@ -1353,39 +1054,103 @@ static constexpr u64 GgxAlbedoTableSeed = 0x5EEDA1BEDull;
 static constexpr f32 GgxAlbedoTableMinAlpha = 1e-4f;
 static constexpr f32 GgxAlbedoTableMinCosine = 1e-3f;
 
+// Coordinate into a vertex-centered lookup table axis: value = lerp(table[index0], fraction, table[index1])
+struct TableCoordinate {
+	u32 index0;
+	u32 index1;
+	f32 fraction;
+
+	static TableCoordinate Make(const f32 unitValue) {
+		f32 lastIndex = (f32)(GgxAlbedoTableSize - 1);
+		f32 position = unitValue * lastIndex;
+		TableCoordinate result;
+		if (!(position > 0.0f)) {
+			result.index0 = 0;
+			result.index1 = 0;
+			result.fraction = 0.0f;
+		} else if (position >= lastIndex) {
+			result.index0 = GgxAlbedoTableSize - 1;
+			result.index1 = GgxAlbedoTableSize - 1;
+			result.fraction = 0.0f;
+		} else {
+			u32 index = (u32)position;
+			result.index0 = index;
+			result.index1 = index + 1;
+			result.fraction = position - (f32)index;
+		}
+		return(result);
+	}
+};
+
 struct GgxAlbedoTables {
 	f32 fullFresnel[GgxAlbedoTableSize][GgxAlbedoTableSize];   // directional albedo with F = 1
 	f32 schlickWeight[GgxAlbedoTableSize][GgxAlbedoTableSize]; // directional albedo with F = (1 - cos)^5
 	f32 fullFresnelAverage[GgxAlbedoTableSize];                // 2 * integral E(mu) mu dmu
 	f32 schlickWeightAverage[GgxAlbedoTableSize];
 	b32 isBuilt;
+
+	// Estimates the tables with stratified visible normal sampling and a fixed seed, so every run builds identical tables
+	void Build() {
+		PathSampler sampler;
+		sampler.state = GgxAlbedoTableSeed;
+		constexpr u32 sampleCount = GgxAlbedoStrataPerAxis * GgxAlbedoStrataPerAxis;
+		constexpr f32 inverseStrata = 1.0f / (f32)GgxAlbedoStrataPerAxis;
+		constexpr f32 inverseSampleCount = 1.0f / (f32)sampleCount;
+		for (u32 roughnessIndex = 0; roughnessIndex < GgxAlbedoTableSize; ++roughnessIndex) {
+			f32 roughness = (f32)roughnessIndex / (f32)(GgxAlbedoTableSize - 1);
+			f32 alpha = F32Max(roughness * roughness, GgxAlbedoTableMinAlpha);
+			f32 alphaSquared = alpha * alpha;
+			f32 fullAverageSum = 0.0f;
+			f32 schlickAverageSum = 0.0f;
+			for (u32 cosineIndex = 0; cosineIndex < GgxAlbedoTableSize; ++cosineIndex) {
+				f32 nodeCosine = (f32)cosineIndex / (f32)(GgxAlbedoTableSize - 1);
+				f32 cosine = F32Max(nodeCosine, GgxAlbedoTableMinCosine);
+				f32 sine = F32SquareRoot(1.0f - cosine * cosine);
+				Vec3f wo = V3fInit(sine, 0.0f, cosine);
+				f32 maskingOut = GgxMaskingG1(wo, alphaSquared);
+				f32 fullSum = 0.0f;
+				f32 schlickSum = 0.0f;
+				for (u32 strataY = 0; strataY < GgxAlbedoStrataPerAxis; ++strataY) {
+					for (u32 strataX = 0; strataX < GgxAlbedoStrataPerAxis; ++strataX) {
+						f32 jitterX = sampler.Next01();
+						f32 jitterY = sampler.Next01();
+						f32 u0 = ((f32)strataX + jitterX) * inverseStrata;
+						f32 u1 = ((f32)strataY + jitterY) * inverseStrata;
+						Vec3f halfVector = SampleGgxVisibleNormal(wo, alpha, u0, u1);
+						Vec3f wi = Reflect(wo, halfVector);
+						if (wi.z <= 0.0f) {
+							continue;
+						}
+						f32 maskingShadowing = GgxMaskingShadowingG2(wo, wi, alphaSquared);
+						f32 weight = maskingShadowing / maskingOut;
+						f32 cosineHalf = V3fDot(wo, halfVector);
+						f32 schlick = SchlickWeight(cosineHalf);
+						fullSum += weight;
+						schlickSum += weight * schlick;
+					}
+				}
+				f32 fullAlbedo = fullSum * inverseSampleCount;
+				f32 schlickAlbedo = schlickSum * inverseSampleCount;
+				fullFresnel[roughnessIndex][cosineIndex] = fullAlbedo;
+				schlickWeight[roughnessIndex][cosineIndex] = schlickAlbedo;
+				// Trapezoid rule over the nodes for 2 * integral E(mu) mu dmu: the end nodes count half
+				bool isEndNode = (cosineIndex == 0) || (cosineIndex == GgxAlbedoTableSize - 1);
+				f32 trapezoidWeight = isEndNode ? 0.5f : 1.0f;
+				fullAverageSum += trapezoidWeight * 2.0f * nodeCosine * fullAlbedo;
+				schlickAverageSum += trapezoidWeight * 2.0f * nodeCosine * schlickAlbedo;
+			}
+			f32 nodeSpacing = 1.0f / (f32)(GgxAlbedoTableSize - 1);
+			fullFresnelAverage[roughnessIndex] = fullAverageSum * nodeSpacing;
+			schlickWeightAverage[roughnessIndex] = schlickAverageSum * nodeSpacing;
+		}
+		isBuilt = true;
+	}
 };
 
 static GgxAlbedoTables GlobalGgxAlbedoTables;
 
-static TableCoordinate MakeTableCoordinate(const f32 unitValue) {
-	f32 lastIndex = (f32)(GgxAlbedoTableSize - 1);
-	f32 position = unitValue * lastIndex;
-	TableCoordinate result;
-	if (!(position > 0.0f)) {
-		result.index0 = 0;
-		result.index1 = 0;
-		result.fraction = 0.0f;
-	} else if (position >= lastIndex) {
-		result.index0 = GgxAlbedoTableSize - 1;
-		result.index1 = GgxAlbedoTableSize - 1;
-		result.fraction = 0.0f;
-	} else {
-		u32 index = (u32)position;
-		result.index0 = index;
-		result.index1 = index + 1;
-		result.fraction = position - (f32)index;
-	}
-	return(result);
-}
-
 static inline f32 LookupAlbedoTable(const f32 table[GgxAlbedoTableSize][GgxAlbedoTableSize], const TableCoordinate &roughness, const f32 cosine) {
-	TableCoordinate column = MakeTableCoordinate(cosine);
+	TableCoordinate column = TableCoordinate::Make(cosine);
 	f32 row0 = F32Lerp(table[roughness.index0][column.index0], column.fraction, table[roughness.index0][column.index1]);
 	f32 row1 = F32Lerp(table[roughness.index1][column.index0], column.fraction, table[roughness.index1][column.index1]);
 	f32 result = F32Lerp(row0, roughness.fraction, row1);
@@ -1414,253 +1179,11 @@ static inline f32 GgxAverageAlbedo(const TableCoordinate &roughness, const f32 f
 	return(result);
 }
 
-// Estimates the tables with stratified visible normal sampling and a fixed seed, so every run builds identical tables
-static void BuildGgxAlbedoTables(GgxAlbedoTables &tables) {
-	PathSampler sampler;
-	sampler.state = GgxAlbedoTableSeed;
-	constexpr u32 sampleCount = GgxAlbedoStrataPerAxis * GgxAlbedoStrataPerAxis;
-	constexpr f32 inverseStrata = 1.0f / (f32)GgxAlbedoStrataPerAxis;
-	constexpr f32 inverseSampleCount = 1.0f / (f32)sampleCount;
-	for (u32 roughnessIndex = 0; roughnessIndex < GgxAlbedoTableSize; ++roughnessIndex) {
-		f32 roughness = (f32)roughnessIndex / (f32)(GgxAlbedoTableSize - 1);
-		f32 alpha = F32Max(roughness * roughness, GgxAlbedoTableMinAlpha);
-		f32 alphaSquared = alpha * alpha;
-		f32 fullAverageSum = 0.0f;
-		f32 schlickAverageSum = 0.0f;
-		for (u32 cosineIndex = 0; cosineIndex < GgxAlbedoTableSize; ++cosineIndex) {
-			f32 nodeCosine = (f32)cosineIndex / (f32)(GgxAlbedoTableSize - 1);
-			f32 cosine = F32Max(nodeCosine, GgxAlbedoTableMinCosine);
-			f32 sine = F32SquareRoot(1.0f - cosine * cosine);
-			Vec3f wo = V3fInit(sine, 0.0f, cosine);
-			f32 maskingOut = GgxMaskingG1(wo, alphaSquared);
-			f32 fullSum = 0.0f;
-			f32 schlickSum = 0.0f;
-			for (u32 strataY = 0; strataY < GgxAlbedoStrataPerAxis; ++strataY) {
-				for (u32 strataX = 0; strataX < GgxAlbedoStrataPerAxis; ++strataX) {
-					f32 jitterX = PathSamplerNext01(sampler);
-					f32 jitterY = PathSamplerNext01(sampler);
-					f32 u0 = ((f32)strataX + jitterX) * inverseStrata;
-					f32 u1 = ((f32)strataY + jitterY) * inverseStrata;
-					Vec3f halfVector = SampleGgxVisibleNormal(wo, alpha, u0, u1);
-					Vec3f wi = Reflect(wo, halfVector);
-					if (wi.z <= 0.0f) {
-						continue;
-					}
-					f32 maskingShadowing = GgxMaskingShadowingG2(wo, wi, alphaSquared);
-					f32 weight = maskingShadowing / maskingOut;
-					f32 cosineHalf = V3fDot(wo, halfVector);
-					f32 schlick = SchlickWeight(cosineHalf);
-					fullSum += weight;
-					schlickSum += weight * schlick;
-				}
-			}
-			f32 fullAlbedo = fullSum * inverseSampleCount;
-			f32 schlickAlbedo = schlickSum * inverseSampleCount;
-			tables.fullFresnel[roughnessIndex][cosineIndex] = fullAlbedo;
-			tables.schlickWeight[roughnessIndex][cosineIndex] = schlickAlbedo;
-			// Trapezoid rule over the nodes for 2 * integral E(mu) mu dmu: the end nodes count half
-			bool isEndNode = (cosineIndex == 0) || (cosineIndex == GgxAlbedoTableSize - 1);
-			f32 trapezoidWeight = isEndNode ? 0.5f : 1.0f;
-			fullAverageSum += trapezoidWeight * 2.0f * nodeCosine * fullAlbedo;
-			schlickAverageSum += trapezoidWeight * 2.0f * nodeCosine * schlickAlbedo;
-		}
-		f32 nodeSpacing = 1.0f / (f32)(GgxAlbedoTableSize - 1);
-		tables.fullFresnelAverage[roughnessIndex] = fullAverageSum * nodeSpacing;
-		tables.schlickWeightAverage[roughnessIndex] = schlickAverageSum * nodeSpacing;
-	}
-	tables.isBuilt = true;
-}
-
-// Fills the derived fields of a material, requires the albedo tables
-static void FinalizeMaterial(Material &material) {
-	fplAssert(GlobalGgxAlbedoTables.isBuilt);
-	if (material.kind == MaterialKind::Plastic) {
-		material.alpha = F32Max(material.alpha, MinPlasticCoatAlpha);
-	}
-	f32 roughness = F32SquareRoot(material.alpha);
-	material.roughnessCoordinate = MakeTableCoordinate(roughness);
-	material.isDeltaSpecular = (material.kind == MaterialKind::Conductor) && (material.alpha < DeltaAlphaThreshold);
-	if (material.kind == MaterialKind::Conductor && !material.isDeltaSpecular) {
-		// Kulla-Conty: Favg = F0 + (1 - F0) / 21, Fms = Favg^2 Eavg / (1 - Favg (1 - Eavg))
-		f32 averageAlbedo = GgxAverageAlbedo(material.roughnessCoordinate, 1.0f);
-		Vec3f one = V3fInit(1.0f, 1.0f, 1.0f);
-		Vec3f averageFresnel = material.specularColor + SchlickAverageFactor * (one - material.specularColor);
-		Vec3f averageFresnelSquared = V3fHadamard(averageFresnel, averageFresnel);
-		f32 missingEnergy = 1.0f - averageAlbedo;
-		Vec3f multipleScattering = V3fZero();
-		for (u32 channel = 0; channel < 3; ++channel) {
-			f32 denominator = 1.0f - averageFresnel.m[channel] * missingEnergy;
-			multipleScattering.m[channel] = averageFresnelSquared.m[channel] * averageAlbedo / denominator;
-		}
-		material.averageAlbedo = averageAlbedo;
-		material.multipleScatteringColor = V3fZero();
-		if (UseMultipleScatteringCompensation && missingEnergy > MinEnergyCompensationDenominator) {
-			f32 normalization = 1.0f / (F32Pi * missingEnergy);
-			material.multipleScatteringColor = normalization * multipleScattering;
-		}
-	}
-	if (material.kind == MaterialKind::Plastic) {
-		f32 iorRatio = (material.ior - 1.0f) / (material.ior + 1.0f);
-		material.coatF0 = iorRatio * iorRatio;
-		material.averageAlbedo = GgxAverageAlbedo(material.roughnessCoordinate, material.coatF0);
-		f32 missingEnergy = F32Max(1.0f - material.averageAlbedo, MinEnergyCompensationDenominator);
-		material.baseNormalization = 1.0f / (F32Pi * missingEnergy);
-	}
-	if (material.kind == MaterialKind::Dielectric) {
-		material.hasAbsorption = !IsBlack(material.absorptionCoefficient);
-	}
-}
-
-// Procedural checker that fades into its average with distance, which stops horizon moire
-static Vec3f EvaluateBaseColor(const Material &material, const Vec3f &position) {
-	if (!material.hasChecker) {
-		return(material.baseColor);
-	}
-	Vec3f averageColor = 0.5f * (material.baseColor + material.checkerColor);
-	f32 distanceFromOrigin = F32SquareRoot(position.x * position.x + position.y * position.y);
-	f32 fadeRange = material.checkerFadeEnd - material.checkerFadeStart;
-	f32 fadeRaw = (distanceFromOrigin - material.checkerFadeStart) / fadeRange;
-	f32 fade = F32Clamp(fadeRaw, 0.0f, 1.0f);
-	Vec3f result = averageColor;
-	if (fade < 1.0f) {
-		// Floor, not a cast: truncation toward zero would make the cells at the origin double wide
-		f32 cellX = F32Floor(position.x / material.checkerSize);
-		f32 cellY = F32Floor(position.y / material.checkerSize);
-		s32 parity = ((s32)cellX + (s32)cellY) & 1;
-		Vec3f checker = parity ? material.checkerColor : material.baseColor;
-		result = V3fLerp(checker, fade, averageColor);
-	}
-	return(result);
-}
-
-static inline bool MaterialHasNonDeltaLobe(const Material &material) {
-	switch (material.kind) {
-		case MaterialKind::Diffuse:
-		case MaterialKind::Plastic:
-			return(true);
-		case MaterialKind::Conductor:
-			return(!material.isDeltaSpecular);
-		default:
-			return(false);
-	}
-}
-
 static inline f32 PlasticSpecularProbability(const Vec3f &baseColor, const f32 coatAlbedoOut) {
 	f32 baseLuminance = Luminance(baseColor);
 	f32 specularShare = coatAlbedoOut / (coatAlbedoOut + baseLuminance * (1.0f - coatAlbedoOut));
 	f32 result = F32Clamp(specularShare, PlasticSpecularProbabilityMin, PlasticSpecularProbabilityMax);
 	return(result);
-}
-
-static inline f32 ConductorMultipleScatteringProbability(const Material &material, const f32 albedoOut) {
-	if (IsBlack(material.multipleScatteringColor)) {
-		return(0.0f);
-	}
-	f32 result = F32Clamp(1.0f - albedoOut, 0.0f, 1.0f);
-	return(result);
-}
-
-// Non-delta part of the BSDF, without the cosine
-static Vec3f EvaluateBsdf(const Material &material, const Vec3f &baseColor, const Vec3f &wo, const Vec3f &wi) {
-	Vec3f result = V3fZero();
-	if (wo.z <= 0.0f || wi.z <= 0.0f) {
-		return(result);
-	}
-	switch (material.kind) {
-		case MaterialKind::Diffuse:
-		{
-			result = InversePi * baseColor;
-		} break;
-
-		case MaterialKind::Conductor:
-		{
-			if (material.isDeltaSpecular) {
-				break;
-			}
-			Vec3f halfSum = wo + wi;
-			Vec3f halfVector = V3fNormalize(halfSum);
-			f32 alphaSquared = material.alpha * material.alpha;
-			f32 distribution = GgxDistribution(halfVector, material.alpha);
-			f32 visibility = GgxVisibility(wo, wi, alphaSquared);
-			f32 cosineHalf = V3fDot(wo, halfVector);
-			Vec3f fresnel = SchlickFresnel(material.specularColor, cosineHalf);
-			result = (distribution * visibility) * fresnel;
-			if (!IsBlack(material.multipleScatteringColor)) {
-				f32 albedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, 1.0f, wo.z);
-				f32 albedoIn = GgxDirectionalAlbedo(material.roughnessCoordinate, 1.0f, wi.z);
-				f32 missingProduct = (1.0f - albedoOut) * (1.0f - albedoIn);
-				result += missingProduct * material.multipleScatteringColor;
-			}
-		} break;
-
-		case MaterialKind::Plastic:
-		{
-			Vec3f halfSum = wo + wi;
-			Vec3f halfVector = V3fNormalize(halfSum);
-			f32 alphaSquared = material.alpha * material.alpha;
-			f32 distribution = GgxDistribution(halfVector, material.alpha);
-			f32 visibility = GgxVisibility(wo, wi, alphaSquared);
-			f32 cosineHalf = V3fDot(wo, halfVector);
-			f32 fresnel = SchlickFresnelScalar(material.coatF0, cosineHalf);
-			f32 coatValue = fresnel * distribution * visibility;
-			f32 coatAlbedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, material.coatF0, wo.z);
-			f32 coatAlbedoIn = GgxDirectionalAlbedo(material.roughnessCoordinate, material.coatF0, wi.z);
-			f32 baseScale = (1.0f - coatAlbedoOut) * (1.0f - coatAlbedoIn) * material.baseNormalization;
-			Vec3f coat = V3fInit(coatValue, coatValue, coatValue);
-			result = coat + baseScale * baseColor;
-		} break;
-
-		default:
-			break;
-	}
-	return(result);
-}
-
-// Sharp (glossy) lobes defeat light tracing connections, so photon merging is offered as an extra strategy where the camera sees them
-static inline bool HasSharpLobe(const Material &material) {
-	bool isGlossyKind = (material.kind == MaterialKind::Conductor && !material.isDeltaSpecular) || (material.kind == MaterialKind::Plastic);
-	bool result = isGlossyKind && (material.alpha < RoughLobeAlphaThreshold);
-	return(result);
-}
-
-// Solid angle pdf of the non-delta part, including the lobe selection probabilities
-static f32 BsdfPdf(const Material &material, const Vec3f &baseColor, const Vec3f &wo, const Vec3f &wi) {
-	if (wo.z <= 0.0f || wi.z <= 0.0f) {
-		return(0.0f);
-	}
-	f32 cosinePdf = wi.z * InversePi;
-	switch (material.kind) {
-		case MaterialKind::Diffuse:
-			return(cosinePdf);
-
-		case MaterialKind::Conductor:
-		{
-			if (material.isDeltaSpecular) {
-				return(0.0f);
-			}
-			Vec3f halfSum = wo + wi;
-			Vec3f halfVector = V3fNormalize(halfSum);
-			f32 specularPdf = GgxReflectionPdf(wo, halfVector, material.alpha);
-			f32 albedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, 1.0f, wo.z);
-			f32 multipleProbability = ConductorMultipleScatteringProbability(material, albedoOut);
-			f32 result = (1.0f - multipleProbability) * specularPdf + multipleProbability * cosinePdf;
-			return(result);
-		}
-
-		case MaterialKind::Plastic:
-		{
-			Vec3f halfSum = wo + wi;
-			Vec3f halfVector = V3fNormalize(halfSum);
-			f32 specularPdf = GgxReflectionPdf(wo, halfVector, material.alpha);
-			f32 coatAlbedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, material.coatF0, wo.z);
-			f32 specularProbability = PlasticSpecularProbability(baseColor, coatAlbedoOut);
-			f32 result = specularProbability * specularPdf + (1.0f - specularProbability) * cosinePdf;
-			return(result);
-		}
-
-		default:
-			return(0.0f);
-	}
 }
 
 // Exact unpolarized Fresnel reflectance, eta = eta_transmitted / eta_incident, cosThetaI in [0,1]
@@ -1685,108 +1208,316 @@ struct BsdfSample {
 	b32 isDelta;
 };
 
-// Mixture lobes use the one-sample estimator: weight = f_total * cos / pdf_total, so the BSDF strategy density matches the MIS pdf
-static bool FinishMixtureSample(const Material &material, const Vec3f &baseColor, const Vec3f &wo, const Vec3f &wi, BsdfSample &outSample) {
-	if (wi.z <= 0.0f) {
-		return(false);
-	}
-	f32 pdf = BsdfPdf(material, baseColor, wo, wi);
-	if (!(pdf > 0.0f)) {
-		return(false);
-	}
-	Vec3f value = EvaluateBsdf(material, baseColor, wo, wi);
-	Vec3f weight = (wi.z / pdf) * value;
-	if (!IsFiniteV3(weight)) {
-		return(false);
-	}
-	outSample.wi = wi;
-	outSample.weight = weight;
-	outSample.pdf = pdf;
-	outSample.isDelta = false;
-	return(true);
-}
+struct Material {
+	MaterialKind kind;
+	Vec3f baseColor;              // Diffuse albedo, Plastic base albedo, first checker color (linear RGB)
+	Vec3f checkerColor;           // second checker color
+	f32 checkerSize;
+	f32 checkerFadeStart;         // distance from the origin in XY where the checker starts to fade into its average
+	f32 checkerFadeEnd;
+	b32 hasChecker;
+	Vec3f specularColor;          // Conductor: Schlick F0 color
+	f32 alpha;                    // GGX alpha (not perceptual roughness)
+	b32 isDeltaSpecular;          // Conductor: perfect mirror
+	f32 ior;                      // Dielectric: index of refraction, Plastic: coat index of refraction
+	f32 coatF0;                   // Plastic: ((ior - 1) / (ior + 1))^2
+	Vec3f emission;               // Emissive: radiance
+	b32 isTwoSided;               // Emissive: emits on both sides
+	Vec3f absorptionCoefficient;  // Dielectric: Beer-Lambert sigma_a per unit length
+	b32 hasAbsorption;
+	TableCoordinate roughnessCoordinate; // GGX albedo table row for alpha
+	f32 averageAlbedo;            // Conductor: average albedo with F0 = 1, Plastic: average coat albedo
+	Vec3f multipleScatteringColor; // Conductor: Kulla-Conty Fms / (pi * (1 - averageAlbedo))
+	f32 baseNormalization;        // Plastic: 1 / (pi * (1 - averageAlbedo))
 
-static bool SampleBsdf(const Material &material, const Vec3f &baseColor, const Vec3f &wo, const bool isFrontFace, PathSampler &sampler, BsdfSample &outSample) {
-	f32 uLobe = PathSamplerNext01(sampler);
-	f32 u0 = PathSamplerNext01(sampler);
-	f32 u1 = PathSamplerNext01(sampler);
-	switch (material.kind) {
-		case MaterialKind::Diffuse:
-		{
-			Vec3f wi = SampleCosineHemisphere(u0, u1);
-			f32 pdf = wi.z * InversePi;
-			if (!(pdf > 0.0f)) {
-				return(false);
-			}
-			outSample.wi = wi;
-			outSample.weight = baseColor;
-			outSample.pdf = pdf;
-			outSample.isDelta = false;
-			return(true);
+	// Fills the derived fields of a material, requires the albedo tables
+	void Finalize() {
+		fplAssert(GlobalGgxAlbedoTables.isBuilt);
+		if (kind == MaterialKind::Plastic) {
+			alpha = F32Max(alpha, MinPlasticCoatAlpha);
 		}
+		f32 roughness = F32SquareRoot(alpha);
+		roughnessCoordinate = TableCoordinate::Make(roughness);
+		isDeltaSpecular = (kind == MaterialKind::Conductor) && (alpha < DeltaAlphaThreshold);
+		if (kind == MaterialKind::Conductor && !isDeltaSpecular) {
+			// Kulla-Conty: Favg = F0 + (1 - F0) / 21, Fms = Favg^2 Eavg / (1 - Favg (1 - Eavg))
+			f32 conductorAverageAlbedo = GgxAverageAlbedo(roughnessCoordinate, 1.0f);
+			Vec3f one = V3fInit(1.0f, 1.0f, 1.0f);
+			Vec3f averageFresnel = specularColor + SchlickAverageFactor * (one - specularColor);
+			Vec3f averageFresnelSquared = V3fHadamard(averageFresnel, averageFresnel);
+			f32 missingEnergy = 1.0f - conductorAverageAlbedo;
+			Vec3f multipleScattering = V3fZero();
+			for (u32 channel = 0; channel < 3; ++channel) {
+				f32 denominator = 1.0f - averageFresnel.m[channel] * missingEnergy;
+				multipleScattering.m[channel] = averageFresnelSquared.m[channel] * conductorAverageAlbedo / denominator;
+			}
+			averageAlbedo = conductorAverageAlbedo;
+			multipleScatteringColor = V3fZero();
+			if (UseMultipleScatteringCompensation && missingEnergy > MinEnergyCompensationDenominator) {
+				f32 normalization = 1.0f / (F32Pi * missingEnergy);
+				multipleScatteringColor = normalization * multipleScattering;
+			}
+		}
+		if (kind == MaterialKind::Plastic) {
+			f32 iorRatio = (ior - 1.0f) / (ior + 1.0f);
+			coatF0 = iorRatio * iorRatio;
+			averageAlbedo = GgxAverageAlbedo(roughnessCoordinate, coatF0);
+			f32 missingEnergy = F32Max(1.0f - averageAlbedo, MinEnergyCompensationDenominator);
+			baseNormalization = 1.0f / (F32Pi * missingEnergy);
+		}
+		if (kind == MaterialKind::Dielectric) {
+			hasAbsorption = !IsBlack(absorptionCoefficient);
+		}
+	}
 
-		case MaterialKind::Conductor:
-		{
-			if (material.isDeltaSpecular) {
-				Vec3f mirrored = V3fInit(-wo.x, -wo.y, wo.z);
-				outSample.wi = mirrored;
-				outSample.weight = SchlickFresnel(material.specularColor, wo.z);
-				outSample.pdf = 1.0f;
+	// Procedural checker that fades into its average with distance, which stops horizon moire
+	Vec3f EvaluateBaseColor(const Vec3f &position) const {
+		if (!hasChecker) {
+			return(baseColor);
+		}
+		Vec3f averageColor = 0.5f * (baseColor + checkerColor);
+		f32 distanceFromOrigin = F32SquareRoot(position.x * position.x + position.y * position.y);
+		f32 fadeRange = checkerFadeEnd - checkerFadeStart;
+		f32 fadeRaw = (distanceFromOrigin - checkerFadeStart) / fadeRange;
+		f32 fade = F32Clamp(fadeRaw, 0.0f, 1.0f);
+		Vec3f result = averageColor;
+		if (fade < 1.0f) {
+			// Floor, not a cast: truncation toward zero would make the cells at the origin double wide
+			f32 cellX = F32Floor(position.x / checkerSize);
+			f32 cellY = F32Floor(position.y / checkerSize);
+			s32 parity = ((s32)cellX + (s32)cellY) & 1;
+			Vec3f checker = parity ? checkerColor : baseColor;
+			result = V3fLerp(checker, fade, averageColor);
+		}
+		return(result);
+	}
+
+	bool HasNonDeltaLobe() const {
+		switch (kind) {
+			case MaterialKind::Diffuse:
+			case MaterialKind::Plastic:
+				return(true);
+			case MaterialKind::Conductor:
+				return(!isDeltaSpecular);
+			default:
+				return(false);
+		}
+	}
+
+	f32 ConductorMultipleScatteringProbability(const f32 albedoOut) const {
+		if (IsBlack(multipleScatteringColor)) {
+			return(0.0f);
+		}
+		f32 result = F32Clamp(1.0f - albedoOut, 0.0f, 1.0f);
+		return(result);
+	}
+
+	// Non-delta part of the BSDF, without the cosine
+	Vec3f EvaluateBsdf(const Vec3f &surfaceBaseColor, const Vec3f &wo, const Vec3f &wi) const {
+		Vec3f result = V3fZero();
+		if (wo.z <= 0.0f || wi.z <= 0.0f) {
+			return(result);
+		}
+		switch (kind) {
+			case MaterialKind::Diffuse:
+			{
+				result = InversePi * surfaceBaseColor;
+			} break;
+
+			case MaterialKind::Conductor:
+			{
+				if (isDeltaSpecular) {
+					break;
+				}
+				Vec3f halfSum = wo + wi;
+				Vec3f halfVector = V3fNormalize(halfSum);
+				f32 alphaSquared = alpha * alpha;
+				f32 distribution = GgxDistribution(halfVector, alpha);
+				f32 visibility = GgxVisibility(wo, wi, alphaSquared);
+				f32 cosineHalf = V3fDot(wo, halfVector);
+				Vec3f fresnel = SchlickFresnel(specularColor, cosineHalf);
+				result = (distribution * visibility) * fresnel;
+				if (!IsBlack(multipleScatteringColor)) {
+					f32 albedoOut = GgxDirectionalAlbedo(roughnessCoordinate, 1.0f, wo.z);
+					f32 albedoIn = GgxDirectionalAlbedo(roughnessCoordinate, 1.0f, wi.z);
+					f32 missingProduct = (1.0f - albedoOut) * (1.0f - albedoIn);
+					result += missingProduct * multipleScatteringColor;
+				}
+			} break;
+
+			case MaterialKind::Plastic:
+			{
+				Vec3f halfSum = wo + wi;
+				Vec3f halfVector = V3fNormalize(halfSum);
+				f32 alphaSquared = alpha * alpha;
+				f32 distribution = GgxDistribution(halfVector, alpha);
+				f32 visibility = GgxVisibility(wo, wi, alphaSquared);
+				f32 cosineHalf = V3fDot(wo, halfVector);
+				f32 fresnel = SchlickFresnelScalar(coatF0, cosineHalf);
+				f32 coatValue = fresnel * distribution * visibility;
+				f32 coatAlbedoOut = GgxDirectionalAlbedo(roughnessCoordinate, coatF0, wo.z);
+				f32 coatAlbedoIn = GgxDirectionalAlbedo(roughnessCoordinate, coatF0, wi.z);
+				f32 baseScale = (1.0f - coatAlbedoOut) * (1.0f - coatAlbedoIn) * baseNormalization;
+				Vec3f coat = V3fInit(coatValue, coatValue, coatValue);
+				result = coat + baseScale * surfaceBaseColor;
+			} break;
+
+			default:
+				break;
+		}
+		return(result);
+	}
+
+	// Sharp (glossy) lobes defeat light tracing connections, so photon merging is offered as an extra strategy where the camera sees them
+	bool HasSharpLobe() const {
+		bool isGlossyKind = (kind == MaterialKind::Conductor && !isDeltaSpecular) || (kind == MaterialKind::Plastic);
+		bool result = isGlossyKind && (alpha < RoughLobeAlphaThreshold);
+		return(result);
+	}
+
+	// Solid angle pdf of the non-delta part, including the lobe selection probabilities
+	f32 BsdfPdf(const Vec3f &surfaceBaseColor, const Vec3f &wo, const Vec3f &wi) const {
+		if (wo.z <= 0.0f || wi.z <= 0.0f) {
+			return(0.0f);
+		}
+		f32 cosinePdf = wi.z * InversePi;
+		switch (kind) {
+			case MaterialKind::Diffuse:
+				return(cosinePdf);
+
+			case MaterialKind::Conductor:
+			{
+				if (isDeltaSpecular) {
+					return(0.0f);
+				}
+				Vec3f halfSum = wo + wi;
+				Vec3f halfVector = V3fNormalize(halfSum);
+				f32 specularPdf = GgxReflectionPdf(wo, halfVector, alpha);
+				f32 albedoOut = GgxDirectionalAlbedo(roughnessCoordinate, 1.0f, wo.z);
+				f32 multipleProbability = ConductorMultipleScatteringProbability(albedoOut);
+				f32 result = (1.0f - multipleProbability) * specularPdf + multipleProbability * cosinePdf;
+				return(result);
+			}
+
+			case MaterialKind::Plastic:
+			{
+				Vec3f halfSum = wo + wi;
+				Vec3f halfVector = V3fNormalize(halfSum);
+				f32 specularPdf = GgxReflectionPdf(wo, halfVector, alpha);
+				f32 coatAlbedoOut = GgxDirectionalAlbedo(roughnessCoordinate, coatF0, wo.z);
+				f32 specularProbability = PlasticSpecularProbability(surfaceBaseColor, coatAlbedoOut);
+				f32 result = specularProbability * specularPdf + (1.0f - specularProbability) * cosinePdf;
+				return(result);
+			}
+
+			default:
+				return(0.0f);
+		}
+	}
+
+	// Mixture lobes use the one-sample estimator: weight = f_total * cos / pdf_total, so the BSDF strategy density matches the MIS pdf
+	bool FinishMixtureSample(const Vec3f &surfaceBaseColor, const Vec3f &wo, const Vec3f &wi, BsdfSample &outSample) const {
+		if (wi.z <= 0.0f) {
+			return(false);
+		}
+		f32 pdf = BsdfPdf(surfaceBaseColor, wo, wi);
+		if (!(pdf > 0.0f)) {
+			return(false);
+		}
+		Vec3f value = EvaluateBsdf(surfaceBaseColor, wo, wi);
+		Vec3f weight = (wi.z / pdf) * value;
+		if (!IsFiniteV3(weight)) {
+			return(false);
+		}
+		outSample.wi = wi;
+		outSample.weight = weight;
+		outSample.pdf = pdf;
+		outSample.isDelta = false;
+		return(true);
+	}
+
+	bool SampleBsdf(const Vec3f &surfaceBaseColor, const Vec3f &wo, const bool isFrontFace, PathSampler &sampler, BsdfSample &outSample) const {
+		f32 uLobe = sampler.Next01();
+		f32 u0 = sampler.Next01();
+		f32 u1 = sampler.Next01();
+		switch (kind) {
+			case MaterialKind::Diffuse:
+			{
+				Vec3f wi = SampleCosineHemisphere(u0, u1);
+				f32 pdf = wi.z * InversePi;
+				if (!(pdf > 0.0f)) {
+					return(false);
+				}
+				outSample.wi = wi;
+				outSample.weight = surfaceBaseColor;
+				outSample.pdf = pdf;
+				outSample.isDelta = false;
+				return(true);
+			}
+
+			case MaterialKind::Conductor:
+			{
+				if (isDeltaSpecular) {
+					Vec3f mirrored = V3fInit(-wo.x, -wo.y, wo.z);
+					outSample.wi = mirrored;
+					outSample.weight = SchlickFresnel(specularColor, wo.z);
+					outSample.pdf = 1.0f;
+					outSample.isDelta = true;
+					return(true);
+				}
+				f32 albedoOut = GgxDirectionalAlbedo(roughnessCoordinate, 1.0f, wo.z);
+				f32 multipleProbability = ConductorMultipleScatteringProbability(albedoOut);
+				Vec3f wi;
+				if (uLobe < multipleProbability) {
+					wi = SampleCosineHemisphere(u0, u1);
+				} else {
+					Vec3f halfVector = SampleGgxVisibleNormal(wo, alpha, u0, u1);
+					wi = Reflect(wo, halfVector);
+				}
+				bool result = FinishMixtureSample(surfaceBaseColor, wo, wi, outSample);
+				return(result);
+			}
+
+			case MaterialKind::Plastic:
+			{
+				f32 coatAlbedoOut = GgxDirectionalAlbedo(roughnessCoordinate, coatF0, wo.z);
+				f32 specularProbability = PlasticSpecularProbability(surfaceBaseColor, coatAlbedoOut);
+				Vec3f wi;
+				if (uLobe < specularProbability) {
+					Vec3f halfVector = SampleGgxVisibleNormal(wo, alpha, u0, u1);
+					wi = Reflect(wo, halfVector);
+				} else {
+					wi = SampleCosineHemisphere(u0, u1);
+				}
+				bool result = FinishMixtureSample(surfaceBaseColor, wo, wi, outSample);
+				return(result);
+			}
+
+			case MaterialKind::Dielectric:
+			{
+				// The relative IOR is chosen by the side the ray arrived from; the 1/eta^2 radiance scale cancels because camera and lights are in air
+				f32 etaRelative = isFrontFace ? ior : (1.0f / ior);
+				f32 reflectance = FresnelDielectric(wo.z, etaRelative);
+				Vec3f one = V3fInit(1.0f, 1.0f, 1.0f);
+				if (uLobe < reflectance) {
+					outSample.wi = V3fInit(-wo.x, -wo.y, wo.z);
+					outSample.pdf = reflectance;
+				} else {
+					f32 sin2ThetaT = (1.0f - wo.z * wo.z) / (etaRelative * etaRelative);
+					f32 cosThetaT = F32SquareRoot(F32Max(0.0f, 1.0f - sin2ThetaT));
+					outSample.wi = V3fInit(-wo.x / etaRelative, -wo.y / etaRelative, -cosThetaT);
+					outSample.pdf = 1.0f - reflectance;
+				}
+				outSample.weight = one;
 				outSample.isDelta = true;
 				return(true);
 			}
-			f32 albedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, 1.0f, wo.z);
-			f32 multipleProbability = ConductorMultipleScatteringProbability(material, albedoOut);
-			Vec3f wi;
-			if (uLobe < multipleProbability) {
-				wi = SampleCosineHemisphere(u0, u1);
-			} else {
-				Vec3f halfVector = SampleGgxVisibleNormal(wo, material.alpha, u0, u1);
-				wi = Reflect(wo, halfVector);
-			}
-			bool result = FinishMixtureSample(material, baseColor, wo, wi, outSample);
-			return(result);
-		}
 
-		case MaterialKind::Plastic:
-		{
-			f32 coatAlbedoOut = GgxDirectionalAlbedo(material.roughnessCoordinate, material.coatF0, wo.z);
-			f32 specularProbability = PlasticSpecularProbability(baseColor, coatAlbedoOut);
-			Vec3f wi;
-			if (uLobe < specularProbability) {
-				Vec3f halfVector = SampleGgxVisibleNormal(wo, material.alpha, u0, u1);
-				wi = Reflect(wo, halfVector);
-			} else {
-				wi = SampleCosineHemisphere(u0, u1);
-			}
-			bool result = FinishMixtureSample(material, baseColor, wo, wi, outSample);
-			return(result);
+			default:
+				return(false);
 		}
-
-		case MaterialKind::Dielectric:
-		{
-			// The relative IOR is chosen by the side the ray arrived from; the 1/eta^2 radiance scale cancels because camera and lights are in air
-			f32 etaRelative = isFrontFace ? material.ior : (1.0f / material.ior);
-			f32 reflectance = FresnelDielectric(wo.z, etaRelative);
-			Vec3f one = V3fInit(1.0f, 1.0f, 1.0f);
-			if (uLobe < reflectance) {
-				outSample.wi = V3fInit(-wo.x, -wo.y, wo.z);
-				outSample.pdf = reflectance;
-			} else {
-				f32 sin2ThetaT = (1.0f - wo.z * wo.z) / (etaRelative * etaRelative);
-				f32 cosThetaT = F32SquareRoot(F32Max(0.0f, 1.0f - sin2ThetaT));
-				outSample.wi = V3fInit(-wo.x / etaRelative, -wo.y / etaRelative, -cosThetaT);
-				outSample.pdf = 1.0f - reflectance;
-			}
-			outSample.weight = one;
-			outSample.isDelta = true;
-			return(true);
-		}
-
-		default:
-			return(false);
 	}
-}
+};
 
 //
 // Lights and environment
@@ -1802,18 +1533,6 @@ enum class LightKind : u32 {
 	Quad,
 	Sun,
 	Environment, // uniform environment sampled as a light (white furnace MIS test)
-};
-
-struct Light {
-	LightKind kind;
-	u32 primitiveIndex;         // Sphere/Quad: the emissive primitive, NoIndex otherwise
-	Vec3f radiance;
-	f32 selectionProbability;
-	Vec3f direction;            // Sun: unit vector towards the sun
-	f32 oneMinusCosThetaMax;    // Sun: 2 sin^2(theta / 2), precise for tiny angles
-	f32 cosThetaMax;            // Sun
-	f32 conePdf;                // Sun: 1 / (2 pi oneMinusCosThetaMax)
-	b32 isTwoSided;
 };
 
 struct LightSample {
@@ -1843,6 +1562,23 @@ struct SkyDesc {
 	Vec3f sunTint;               // chromaticity only, normalized to luminance 1
 	f32 sunIlluminance;          // luminance of the irradiance on a plane facing the sun, independent of the disk size
 	f32 sunAngularRadiusDegrees;
+
+	Vec3f EvaluateBase(const Vec3f &sunDirection, const Vec3f &direction) const {
+		if (direction.z <= 0.0f) {
+			Vec3f below = skyScale * belowHorizonRadiance;
+			return(below);
+		}
+		f32 oneMinusUp = 1.0f - direction.z;
+		f32 horizonWeight = F32Power(oneMinusUp, horizonExponent);
+		Vec3f gradient = V3fLerp(zenithRadiance, horizonWeight, horizonRadiance);
+		f32 cosToSun = V3fDot(direction, sunDirection);
+		f32 clampedCosToSun = F32Max(cosToSun, 0.0f);
+		f32 aureoleFalloff = F32Power(clampedCosToSun, aureoleExponent);
+		Vec3f aureole = (aureoleStrength * aureoleFalloff) * aureoleTint;
+		Vec3f sum = gradient + aureole;
+		Vec3f result = skyScale * sum;
+		return(result);
+	}
 };
 
 struct Environment {
@@ -1853,42 +1589,25 @@ struct Environment {
 	Vec3f sunDirection;
 	u32 sunLightIndex;           // NoIndex when there is no sun
 	u32 environmentLightIndex;   // NoIndex unless the uniform environment is sampled
+
+	// Environment radiance for an escaped ray, without the sun disk (the sun is a separately sampled light)
+	Vec3f Evaluate(const Vec3f &direction) const {
+		switch (kind) {
+			case EnvironmentKind::Uniform:
+				return(uniformRadiance);
+			case EnvironmentKind::Sky:
+			{
+				Vec3f skyRadiance = sky.EvaluateBase(sunDirection, direction);
+				return(skyRadiance);
+			}
+			default:
+			{
+				Vec3f black = V3fZero();
+				return(black);
+			}
+		}
+	}
 };
-
-static Vec3f EvaluateSkyBase(const SkyDesc &sky, const Vec3f &sunDirection, const Vec3f &direction) {
-	if (direction.z <= 0.0f) {
-		Vec3f below = sky.skyScale * sky.belowHorizonRadiance;
-		return(below);
-	}
-	f32 oneMinusUp = 1.0f - direction.z;
-	f32 horizonWeight = F32Power(oneMinusUp, sky.horizonExponent);
-	Vec3f gradient = V3fLerp(sky.zenithRadiance, horizonWeight, sky.horizonRadiance);
-	f32 cosToSun = V3fDot(direction, sunDirection);
-	f32 clampedCosToSun = F32Max(cosToSun, 0.0f);
-	f32 aureoleFalloff = F32Power(clampedCosToSun, sky.aureoleExponent);
-	Vec3f aureole = (sky.aureoleStrength * aureoleFalloff) * sky.aureoleTint;
-	Vec3f sum = gradient + aureole;
-	Vec3f result = sky.skyScale * sum;
-	return(result);
-}
-
-// Environment radiance for an escaped ray, without the sun disk (the sun is a separately sampled light)
-static Vec3f EvaluateEnvironment(const Environment &environment, const Vec3f &direction) {
-	switch (environment.kind) {
-		case EnvironmentKind::Uniform:
-			return(environment.uniformRadiance);
-		case EnvironmentKind::Sky:
-		{
-			Vec3f sky = EvaluateSkyBase(environment.sky, environment.sunDirection, direction);
-			return(sky);
-		}
-		default:
-		{
-			Vec3f black = V3fZero();
-			return(black);
-		}
-	}
-}
 
 // Cone of directions subtended by a sphere, shared by sampling and the pdf on hit, so MIS weights always sum to one
 struct SphereCone {
@@ -1896,24 +1615,24 @@ struct SphereCone {
 	f32 distanceToCenter;
 	f32 oneMinusCosThetaMax;
 	Vec3f axis;
-};
 
-static SphereCone ComputeSphereCone(const Vec3f &position, const Vec3f &center, const f32 radius) {
-	SphereCone result = {};
-	Vec3f toCenter = center - position;
-	f32 distanceSquared = V3fDot(toCenter, toCenter);
-	f32 radiusSquared = radius * radius;
-	result.isInside = distanceSquared <= radiusSquared;
-	if (result.isInside) {
+	static SphereCone Compute(const Vec3f &position, const Vec3f &center, const f32 radius) {
+		SphereCone result = {};
+		Vec3f toCenter = center - position;
+		f32 distanceSquared = V3fDot(toCenter, toCenter);
+		f32 radiusSquared = radius * radius;
+		result.isInside = distanceSquared <= radiusSquared;
+		if (result.isInside) {
+			return(result);
+		}
+		result.distanceToCenter = F32SquareRoot(distanceSquared);
+		result.axis = (1.0f / result.distanceToCenter) * toCenter;
+		f32 sin2ThetaMax = radiusSquared / distanceSquared;
+		f32 cosThetaMax = F32SquareRoot(F32Max(0.0f, 1.0f - sin2ThetaMax));
+		result.oneMinusCosThetaMax = (sin2ThetaMax < SmallAngleSin2Threshold) ? (0.5f * sin2ThetaMax) : (1.0f - cosThetaMax);
 		return(result);
 	}
-	result.distanceToCenter = F32SquareRoot(distanceSquared);
-	result.axis = (1.0f / result.distanceToCenter) * toCenter;
-	f32 sin2ThetaMax = radiusSquared / distanceSquared;
-	f32 cosThetaMax = F32SquareRoot(F32Max(0.0f, 1.0f - sin2ThetaMax));
-	result.oneMinusCosThetaMax = (sin2ThetaMax < SmallAngleSin2Threshold) ? (0.5f * sin2ThetaMax) : (1.0f - cosThetaMax);
-	return(result);
-}
+};
 
 static inline f32 ConePdf(const f32 oneMinusCosThetaMax) {
 	f32 result = 1.0f / (F32Tau * oneMinusCosThetaMax);
@@ -1939,114 +1658,126 @@ static Vec3f SampleCone(const Vec3f &axis, const f32 oneMinusCosThetaMax, const 
 	return(result);
 }
 
-static bool SampleLight(const SceneView &scene, const Light &light, const Vec3f &position, const f32 u0, const f32 u1, LightSample &outSample) {
-	switch (light.kind) {
-		case LightKind::Sphere:
-		{
-			const SphereShape &sphere = scene.primitives[light.primitiveIndex].sphere;
-			SphereCone cone = ComputeSphereCone(position, sphere.center, sphere.radius);
-			if (cone.isInside) {
-				return(false); // a one-sided outward emitter sends nothing inward
-			}
-			f32 cosTheta;
-			f32 sin2Theta;
-			Vec3f wi = SampleCone(cone.axis, cone.oneMinusCosThetaMax, u0, u1, cosTheta, sin2Theta);
-			f32 distanceSquaredToCenter = cone.distanceToCenter * cone.distanceToCenter;
-			f32 radiusSquared = sphere.radius * sphere.radius;
-			f32 chordRadicand = F32Max(0.0f, radiusSquared - distanceSquaredToCenter * sin2Theta);
-			f32 chordHalf = F32SquareRoot(chordRadicand);
-			outSample.wi = wi;
-			outSample.distance = cone.distanceToCenter * cosTheta - chordHalf;
-			outSample.radiance = light.radiance;
-			outSample.pdf = ConePdf(cone.oneMinusCosThetaMax);
-			return(true);
-		}
+struct Light {
+	LightKind kind;
+	u32 primitiveIndex;         // Sphere/Quad: the emissive primitive, NoIndex otherwise
+	Vec3f radiance;
+	f32 selectionProbability;
+	Vec3f direction;            // Sun: unit vector towards the sun
+	f32 oneMinusCosThetaMax;    // Sun: 2 sin^2(theta / 2), precise for tiny angles
+	f32 cosThetaMax;            // Sun
+	f32 conePdf;                // Sun: 1 / (2 pi oneMinusCosThetaMax)
+	b32 isTwoSided;
 
-		case LightKind::Quad:
-		{
-			const QuadShape &quad = scene.primitives[light.primitiveIndex].quad;
-			Vec3f lightPoint = quad.corner + u0 * quad.edgeU + u1 * quad.edgeV;
-			Vec3f toLight = lightPoint - position;
-			f32 distanceSquared = V3fDot(toLight, toLight);
-			if (!(distanceSquared > 0.0f)) {
+	bool Sample(const SceneView &scene, const Vec3f &position, const f32 u0, const f32 u1, LightSample &outSample) const {
+		switch (kind) {
+			case LightKind::Sphere:
+			{
+				const Sphere3f &sphere = scene.primitives[primitiveIndex].sphere;
+				SphereCone cone = SphereCone::Compute(position, sphere.origin, sphere.radius);
+				if (cone.isInside) {
+					return(false); // a one-sided outward emitter sends nothing inward
+				}
+				f32 cosTheta;
+				f32 sin2Theta;
+				Vec3f wi = SampleCone(cone.axis, cone.oneMinusCosThetaMax, u0, u1, cosTheta, sin2Theta);
+				f32 distanceSquaredToCenter = cone.distanceToCenter * cone.distanceToCenter;
+				f32 radiusSquared = sphere.radius * sphere.radius;
+				f32 chordRadicand = F32Max(0.0f, radiusSquared - distanceSquaredToCenter * sin2Theta);
+				f32 chordHalf = F32SquareRoot(chordRadicand);
+				outSample.wi = wi;
+				outSample.distance = cone.distanceToCenter * cosTheta - chordHalf;
+				outSample.radiance = radiance;
+				outSample.pdf = ConePdf(cone.oneMinusCosThetaMax);
+				return(true);
+			}
+
+			case LightKind::Quad:
+			{
+				const Quad3f &quad = scene.primitives[primitiveIndex].quad;
+				Vec3f lightPoint = quad.corner + u0 * quad.edgeU + u1 * quad.edgeV;
+				Vec3f toLight = lightPoint - position;
+				f32 distanceSquared = V3fDot(toLight, toLight);
+				if (!(distanceSquared > 0.0f)) {
+					return(false);
+				}
+				f32 distance = F32SquareRoot(distanceSquared);
+				Vec3f wi = (1.0f / distance) * toLight;
+				f32 signedCosine = -V3fDot(quad.normal, wi);
+				f32 cosineAtLight = isTwoSided ? F32Abs(signedCosine) : signedCosine;
+				if (cosineAtLight < MinLightCosine) {
+					return(false); // back side or grazing: no emission, the pdf would explode
+				}
+				outSample.wi = wi;
+				outSample.distance = distance;
+				outSample.radiance = radiance;
+				outSample.pdf = distanceSquared / (cosineAtLight * quad.area);
+				return(true);
+			}
+
+			case LightKind::Sun:
+			{
+				f32 cosTheta;
+				f32 sin2Theta;
+				Vec3f wi = SampleCone(direction, oneMinusCosThetaMax, u0, u1, cosTheta, sin2Theta);
+				outSample.wi = wi;
+				outSample.distance = UnboundedDistance;
+				outSample.radiance = radiance;
+				outSample.pdf = conePdf;
+				return(true);
+			}
+
+			case LightKind::Environment:
+			{
+				f32 z = 1.0f - 2.0f * u0;
+				f32 ringRadius = F32SquareRoot(F32Max(0.0f, 1.0f - z * z));
+				f32 phi = F32Tau * u1;
+				f32 cosPhi = F32Cos(phi);
+				f32 sinPhi = F32Sin(phi);
+				outSample.wi = V3fInit(ringRadius * cosPhi, ringRadius * sinPhi, z);
+				outSample.distance = UnboundedDistance;
+				outSample.radiance = radiance;
+				outSample.pdf = UniformSpherePdf;
+				return(true);
+			}
+
+			default:
 				return(false);
-			}
-			f32 distance = F32SquareRoot(distanceSquared);
-			Vec3f wi = (1.0f / distance) * toLight;
-			f32 signedCosine = -V3fDot(quad.normal, wi);
-			f32 cosineAtLight = light.isTwoSided ? F32Abs(signedCosine) : signedCosine;
-			if (cosineAtLight < MinLightCosine) {
-				return(false); // back side or grazing: no emission, the pdf would explode
-			}
-			outSample.wi = wi;
-			outSample.distance = distance;
-			outSample.radiance = light.radiance;
-			outSample.pdf = distanceSquared / (cosineAtLight * quad.area);
-			return(true);
 		}
-
-		case LightKind::Sun:
-		{
-			f32 cosTheta;
-			f32 sin2Theta;
-			Vec3f wi = SampleCone(light.direction, light.oneMinusCosThetaMax, u0, u1, cosTheta, sin2Theta);
-			outSample.wi = wi;
-			outSample.distance = UnboundedDistance;
-			outSample.radiance = light.radiance;
-			outSample.pdf = light.conePdf;
-			return(true);
-		}
-
-		case LightKind::Environment:
-		{
-			f32 z = 1.0f - 2.0f * u0;
-			f32 ringRadius = F32SquareRoot(F32Max(0.0f, 1.0f - z * z));
-			f32 phi = F32Tau * u1;
-			f32 cosPhi = F32Cos(phi);
-			f32 sinPhi = F32Sin(phi);
-			outSample.wi = V3fInit(ringRadius * cosPhi, ringRadius * sinPhi, z);
-			outSample.distance = UnboundedDistance;
-			outSample.radiance = light.radiance;
-			outSample.pdf = UniformSpherePdf;
-			return(true);
-		}
-
-		default:
-			return(false);
 	}
-}
 
-// Solid angle pdf that SampleLight would give for the direction from position that hit the light at hit (no selection probability)
-static f32 LightPdfForHit(const SceneView &scene, const Light &light, const Vec3f &position, const Vec3f &rayDirection, const SurfaceHit &hit) {
-	switch (light.kind) {
-		case LightKind::Sphere:
-		{
-			const SphereShape &sphere = scene.primitives[light.primitiveIndex].sphere;
-			SphereCone cone = ComputeSphereCone(position, sphere.center, sphere.radius);
-			if (cone.isInside) {
-				return(0.0f);
+	// Solid angle pdf that SampleLight would give for the direction from position that hit the light at hit (no selection probability)
+	f32 PdfForHit(const SceneView &scene, const Vec3f &position, const Vec3f &rayDirection, const SurfaceHit &hit) const {
+		switch (kind) {
+			case LightKind::Sphere:
+			{
+				const Sphere3f &sphere = scene.primitives[primitiveIndex].sphere;
+				SphereCone cone = SphereCone::Compute(position, sphere.origin, sphere.radius);
+				if (cone.isInside) {
+					return(0.0f);
+				}
+				f32 result = ConePdf(cone.oneMinusCosThetaMax);
+				return(result);
 			}
-			f32 result = ConePdf(cone.oneMinusCosThetaMax);
-			return(result);
-		}
 
-		case LightKind::Quad:
-		{
-			const QuadShape &quad = scene.primitives[light.primitiveIndex].quad;
-			f32 signedCosine = -V3fDot(quad.normal, rayDirection);
-			f32 cosineAtLight = light.isTwoSided ? F32Abs(signedCosine) : signedCosine;
-			if (cosineAtLight < MinLightCosine) {
-				return(0.0f);
+			case LightKind::Quad:
+			{
+				const Quad3f &quad = scene.primitives[primitiveIndex].quad;
+				f32 signedCosine = -V3fDot(quad.normal, rayDirection);
+				f32 cosineAtLight = isTwoSided ? F32Abs(signedCosine) : signedCosine;
+				if (cosineAtLight < MinLightCosine) {
+					return(0.0f);
+				}
+				f32 distanceSquared = hit.distance * hit.distance;
+				f32 result = distanceSquared / (cosineAtLight * quad.area);
+				return(result);
 			}
-			f32 distanceSquared = hit.distance * hit.distance;
-			f32 result = distanceSquared / (cosineAtLight * quad.area);
-			return(result);
-		}
 
-		default:
-			return(0.0f);
+			default:
+				return(0.0f);
+		}
 	}
-}
+};
 
 static u32 SelectLight(const SceneView &scene, const f32 u) {
 	for (u32 lightIndex = 0; lightIndex < scene.lightCount; ++lightIndex) {
@@ -2098,7 +1829,7 @@ struct Scene {
 	}
 
 	u32 AddMaterial(Material material) {
-		FinalizeMaterial(material);
+		material.Finalize();
 		u32 result = (u32)materials.size();
 		materials.push_back(material);
 		return(result);
@@ -2170,22 +1901,22 @@ struct Scene {
 
 	void AddPlane(const Vec3f &normal, const Vec3f &pointOnPlane, const u32 materialIndex) {
 		fplAssert(materialIndex < materials.size());
-		PlanePrimitive plane = {};
-		plane.normal = V3fNormalize(normal);
-		plane.planeOffset = V3fDot(plane.normal, pointOnPlane);
-		plane.materialIndex = materialIndex;
-		planes.push_back(plane);
+		Vec3f unitNormal = V3fNormalize(normal);
+		PlanePrimitive planePrimitive = {};
+		planePrimitive.plane = Plane3fInitFromPoint(unitNormal, pointOnPlane);
+		planePrimitive.materialIndex = materialIndex;
+		planes.push_back(planePrimitive);
 	}
 
 	void AddSphere(const Vec3f &center, const f32 radius, const u32 materialIndex) {
 		fplAssert(materialIndex < materials.size());
-		Primitive primitive = MakeSpherePrimitive(center, radius, materialIndex);
+		Primitive primitive = Primitive::MakeSphere(center, radius, materialIndex);
 		primitives.push_back(primitive);
 	}
 
 	void AddQuad(const Vec3f &corner, const Vec3f &edgeU, const Vec3f &edgeV, const u32 materialIndex) {
 		fplAssert(materialIndex < materials.size());
-		Primitive primitive = MakeQuadPrimitive(corner, edgeU, edgeV, materialIndex);
+		Primitive primitive = Primitive::MakeQuad(corner, edgeU, edgeV, materialIndex);
 		primitives.push_back(primitive);
 	}
 
@@ -2205,7 +1936,7 @@ struct Scene {
 	void AddBox(const Vec3f &center, const Vec3f &halfExtents, const f32 rotationZDegrees, const u32 materialIndex) {
 		fplAssert(materialIndex < materials.size());
 		f32 yawRadians = F32DegreesToRadians(rotationZDegrees);
-		Primitive primitive = MakeBoxPrimitive(center, halfExtents, yawRadians, materialIndex);
+		Primitive primitive = Primitive::MakeBox(center, halfExtents, yawRadians, materialIndex);
 		primitives.push_back(primitive);
 	}
 
@@ -2236,41 +1967,41 @@ struct Scene {
 
 	// Builds the BVH, the light list and the raw view; must only be called while no worker renders this scene
 	void Bake();
-};
 
-static f32 EstimateLightPower(const Scene &scene, const Light &light, const f32 regionRadius) {
-	f32 luminance = Luminance(light.radiance);
-	f32 sideFactor = light.isTwoSided ? 2.0f : 1.0f;
-	switch (light.kind) {
-		case LightKind::Sphere:
-		{
-			// Area 4 pi r^2, each point emits pi L
-			f32 radius = scene.primitives[light.primitiveIndex].sphere.radius;
-			f32 result = 4.0f * F32Pi * F32Pi * radius * radius * luminance * sideFactor;
-			return(result);
+	f32 EstimateLightPower(const Light &light, const f32 regionRadius) const {
+		f32 luminance = Luminance(light.radiance);
+		f32 sideFactor = light.isTwoSided ? 2.0f : 1.0f;
+		switch (light.kind) {
+			case LightKind::Sphere:
+			{
+				// Area 4 pi r^2, each point emits pi L
+				f32 radius = primitives[light.primitiveIndex].sphere.radius;
+				f32 result = 4.0f * F32Pi * F32Pi * radius * radius * luminance * sideFactor;
+				return(result);
+			}
+			case LightKind::Quad:
+			{
+				f32 area = primitives[light.primitiveIndex].quad.area;
+				f32 result = F32Pi * area * luminance * sideFactor;
+				return(result);
+			}
+			case LightKind::Sun:
+			{
+				// Irradiance at normal incidence times the cross section of the region of interest
+				f32 irradiance = luminance * F32Pi * light.oneMinusCosThetaMax * (2.0f - light.oneMinusCosThetaMax);
+				f32 result = F32Pi * regionRadius * regionRadius * irradiance;
+				return(result);
+			}
+			case LightKind::Environment:
+			{
+				f32 result = 4.0f * F32Pi * F32Pi * regionRadius * regionRadius * luminance;
+				return(result);
+			}
+			default:
+				return(0.0f);
 		}
-		case LightKind::Quad:
-		{
-			f32 area = scene.primitives[light.primitiveIndex].quad.area;
-			f32 result = F32Pi * area * luminance * sideFactor;
-			return(result);
-		}
-		case LightKind::Sun:
-		{
-			// Irradiance at normal incidence times the cross section of the region of interest
-			f32 irradiance = luminance * F32Pi * light.oneMinusCosThetaMax * (2.0f - light.oneMinusCosThetaMax);
-			f32 result = F32Pi * regionRadius * regionRadius * irradiance;
-			return(result);
-		}
-		case LightKind::Environment:
-		{
-			f32 result = 4.0f * F32Pi * F32Pi * regionRadius * regionRadius * luminance;
-			return(result);
-		}
-		default:
-			return(0.0f);
 	}
-}
+};
 
 void Scene::Bake() {
 	BuildBvh(primitives, bvhNodes);
@@ -2340,8 +2071,9 @@ void Scene::Bake() {
 	f32 regionRadius = MinRegionRadius;
 	Vec3f regionCenter = V3fZero();
 	if (!bvhNodes.empty()) {
-		Vec3f rootExtent = bvhNodes[0].boundsMax - bvhNodes[0].boundsMin;
-		Vec3f rootSum = bvhNodes[0].boundsMax + bvhNodes[0].boundsMin;
+		const AABB3f &rootBounds = bvhNodes[0].bounds;
+		Vec3f rootExtent = rootBounds.max - rootBounds.min;
+		Vec3f rootSum = rootBounds.max + rootBounds.min;
 		f32 halfDiagonal = 0.5f * V3fLength(rootExtent);
 		regionRadius = F32Max(halfDiagonal, MinRegionRadius);
 		regionCenter = 0.5f * rootSum;
@@ -2351,14 +2083,14 @@ void Scene::Bake() {
 	if (lightCount > 0) {
 		f32 totalPower = 0.0f;
 		for (u32 lightIndex = 0; lightIndex < lightCount; ++lightIndex) {
-			f32 power = EstimateLightPower(*this, lights[lightIndex], regionRadius);
+			f32 power = EstimateLightPower(lights[lightIndex], regionRadius);
 			totalPower += power;
 		}
 		f32 uniformProbability = 1.0f / (f32)lightCount;
 		f32 cumulative = 0.0f;
 		for (u32 lightIndex = 0; lightIndex < lightCount; ++lightIndex) {
 			Light &light = lights[lightIndex];
-			f32 power = EstimateLightPower(*this, light, regionRadius);
+			f32 power = EstimateLightPower(light, regionRadius);
 			f32 powerProbability = (totalPower > 0.0f) ? (power / totalPower) : uniformProbability;
 			light.selectionProbability = LightSelectionPowerShare * powerProbability + (1.0f - LightSelectionPowerShare) * uniformProbability;
 			cumulative += light.selectionProbability;
@@ -2381,12 +2113,12 @@ void Scene::Bake() {
 		switch (primitive.kind) {
 			case PrimitiveKind::Sphere:
 			{
-				caster.center = primitive.sphere.center;
+				caster.center = primitive.sphere.origin;
 				caster.radius = primitive.sphere.radius;
 			} break;
 			case PrimitiveKind::Quad:
 			{
-				const QuadShape &quad = primitive.quad;
+				const Quad3f &quad = primitive.quad;
 				Vec3f diagonal = quad.edgeU + quad.edgeV;
 				Vec3f antiDiagonal = quad.edgeU - quad.edgeV;
 				f32 diagonalLength = V3fLength(diagonal);
@@ -2796,9 +2528,9 @@ static void BuildSphereFieldScene(Scene &scene) {
 	random.state = sphereFieldSeed;
 	for (s32 gridA = gridMin; gridA <= gridMax; ++gridA) {
 		for (s32 gridB = gridMin; gridB <= gridMax; ++gridB) {
-			f32 materialChoice = PathSamplerNext01(random);
-			f32 jitterX = PathSamplerNext01(random);
-			f32 jitterY = PathSamplerNext01(random);
+			f32 materialChoice = random.Next01();
+			f32 jitterX = random.Next01();
+			f32 jitterY = random.Next01();
 			f32 centerX = (f32)gridA + cellInset + cellJitter * jitterX;
 			f32 centerY = (f32)gridB + cellInset + cellJitter * jitterY;
 			Vec3f center = V3fInit(centerX, centerY, smallRadius);
@@ -2819,18 +2551,18 @@ static void BuildSphereFieldScene(Scene &scene) {
 				// Squared random numbers favor darker, more saturated colors
 				Vec3f albedo;
 				for (u32 channel = 0; channel < 3; ++channel) {
-					f32 first = PathSamplerNext01(random);
-					f32 second = PathSamplerNext01(random);
+					f32 first = random.Next01();
+					f32 second = random.Next01();
 					albedo.m[channel] = first * second;
 				}
 				materialIndex = scene.AddDiffuse(albedo);
 			} else if (materialChoice < conductorThreshold) {
 				Vec3f f0;
 				for (u32 channel = 0; channel < 3; ++channel) {
-					f32 channelRandom = PathSamplerNext01(random);
+					f32 channelRandom = random.Next01();
 					f0.m[channel] = conductorMinF0 + (1.0f - conductorMinF0) * channelRandom;
 				}
-				f32 alphaRandom = PathSamplerNext01(random);
+				f32 alphaRandom = random.Next01();
 				f32 alpha = conductorMinAlpha + conductorAlphaRange * alphaRandom;
 				materialIndex = scene.AddConductor(f0, alpha);
 			} else {
@@ -2915,38 +2647,38 @@ struct BidirectionalWeights {
 	f64 pathTracing;
 	f64 lightTracing;
 	f64 merging;
-};
 
-// Power heuristic over the three strategies; the ratios are light tracing and merging densities relative to the path tracer (0 = strategy not available for this path).
-// Every strategy computes the same ratios for the same path, so the weights always sum to one.
-static inline BidirectionalWeights ComputeBidirectionalWeights(const f64 lightTracingRatio, const f64 mergeRatio, const f64 lightPathCount) {
-	f64 lightTerm = lightTracingRatio * lightPathCount;
-	f64 mergeTerm = mergeRatio * lightPathCount;
-	// NaN guard, shared by all strategies: an undefined ratio means the strategy is not counted
-	if (!(lightTerm >= 0.0)) {
-		lightTerm = 0.0;
+	// Power heuristic over the three strategies; the ratios are light tracing and merging densities relative to the path tracer (0 = strategy not available for this path).
+	// Every strategy computes the same ratios for the same path, so the weights always sum to one.
+	static BidirectionalWeights Compute(const f64 lightTracingRatio, const f64 mergeRatio, const f64 lightPathCount) {
+		f64 lightTerm = lightTracingRatio * lightPathCount;
+		f64 mergeTerm = mergeRatio * lightPathCount;
+		// NaN guard, shared by all strategies: an undefined ratio means the strategy is not counted
+		if (!(lightTerm >= 0.0)) {
+			lightTerm = 0.0;
+		}
+		if (!(mergeTerm >= 0.0)) {
+			mergeTerm = 0.0;
+		}
+		lightTerm = fplMin(lightTerm, MaxWeightedRatio);
+		mergeTerm = fplMin(mergeTerm, MaxWeightedRatio);
+		f64 lightSquared = lightTerm * lightTerm;
+		f64 mergeSquared = mergeTerm * mergeTerm;
+		f64 inverseSum = 1.0 / (1.0 + lightSquared + mergeSquared);
+		BidirectionalWeights result;
+		result.pathTracing = inverseSum;
+		result.lightTracing = lightSquared * inverseSum;
+		result.merging = mergeSquared * inverseSum;
+		return(result);
 	}
-	if (!(mergeTerm >= 0.0)) {
-		mergeTerm = 0.0;
-	}
-	lightTerm = fplMin(lightTerm, MaxWeightedRatio);
-	mergeTerm = fplMin(mergeTerm, MaxWeightedRatio);
-	f64 lightSquared = lightTerm * lightTerm;
-	f64 mergeSquared = mergeTerm * mergeTerm;
-	f64 inverseSum = 1.0 / (1.0 + lightSquared + mergeSquared);
-	BidirectionalWeights result;
-	result.pathTracing = inverseSum;
-	result.lightTracing = lightSquared * inverseSum;
-	result.merging = mergeSquared * inverseSum;
-	return(result);
-}
+};
 
 // Solid angle density of the caster aimed photon emission from origin in direction, without the rule that a sampled cone always contains its own sample
 static f32 CasterDirectionDensity(const SceneView &scene, const Vec3f &origin, const Vec3f &direction) {
 	f32 totalWeight = 0.0f;
 	for (u32 casterIndex = 0; casterIndex < scene.casterCount; ++casterIndex) {
 		const CausticCaster &caster = scene.casters[casterIndex];
-		SphereCone cone = ComputeSphereCone(origin, caster.center, caster.radius);
+		SphereCone cone = SphereCone::Compute(origin, caster.center, caster.radius);
 		if (!cone.isInside) {
 			totalWeight += cone.oneMinusCosThetaMax;
 		}
@@ -2957,7 +2689,7 @@ static f32 CasterDirectionDensity(const SceneView &scene, const Vec3f &origin, c
 	f32 result = 0.0f;
 	for (u32 casterIndex = 0; casterIndex < scene.casterCount; ++casterIndex) {
 		const CausticCaster &caster = scene.casters[casterIndex];
-		SphereCone cone = ComputeSphereCone(origin, caster.center, caster.radius);
+		SphereCone cone = SphereCone::Compute(origin, caster.center, caster.radius);
 		if (cone.isInside) {
 			continue;
 		}
@@ -3047,25 +2779,6 @@ struct PhotonRecord {
 	f32 misPreviousGeometry;  // cos(previous vertex) / distance^2 of the last segment, converts that camera side pdf to area density
 };
 
-struct PhotonMapView {
-	const PhotonRecord *const *photons; // sorted by grid cell
-	const u32 *cellStarts;              // tableMask + 2 entries
-	u32 tableMask;
-	f32 radius;
-	f32 inverseCellSize;
-};
-
-// Light jobs fill their own job buffer, the photon map job at the start of the next pass builds the grid
-struct PhotonStorage {
-	std::vector<std::vector<PhotonRecord> > jobPhotons[PhotonBufferCount];
-	std::vector<const PhotonRecord *> sortedPhotons;
-	std::vector<u32> photonHashes;
-	std::vector<u32> cellStarts;
-	std::vector<u32> cellCursors;
-	PhotonMapView view;
-	volatile u32 readyEpoch; // epoch + 1 of the pass the view belongs to, 0 = none
-};
-
 static inline s64 PhotonCellCoordinate(const f32 value, const f32 inverseCellSize) {
 	f32 scaled = value * inverseCellSize;
 	f32 clamped = F32Clamp(scaled, -PhotonCellCoordinateLimit, PhotonCellCoordinateLimit);
@@ -3103,124 +2816,142 @@ static f64 MergeAreaForEpoch(const f32 initialRadius, const u32 epoch) {
 	return(result);
 }
 
-// Counting sort of all photons of the previous pass into a hashed grid, in job order, so the map is identical for any thread count
-static void BuildPhotonMap(PhotonStorage &storage, const u32 bufferIndex, const f32 radius) {
-	std::vector<std::vector<PhotonRecord> > &jobs = storage.jobPhotons[bufferIndex];
-	size_t jobCount = jobs.size();
-	size_t photonCount = 0;
-	for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
-		photonCount += jobs[jobIndex].size();
-	}
-	u32 tableSize = PhotonGridMinTableSize;
-	while ((size_t)tableSize < 2 * photonCount) {
-		tableSize <<= 1;
-	}
-	u32 tableMask = tableSize - 1;
-	f32 inverseCellSize = PhotonCellsPerRadius / radius;
-	storage.photonHashes.resize(photonCount);
-	storage.cellStarts.assign(tableSize + 1, 0);
-	size_t flatIndex = 0;
-	for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
-		const std::vector<PhotonRecord> &records = jobs[jobIndex];
-		for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
-			const Vec3f &position = records[recordIndex].position;
-			s64 cellX = PhotonCellCoordinate(position.x, inverseCellSize);
-			s64 cellY = PhotonCellCoordinate(position.y, inverseCellSize);
-			s64 cellZ = PhotonCellCoordinate(position.z, inverseCellSize);
-			u32 hash = PhotonCellHash(cellX, cellY, cellZ, tableMask);
-			storage.photonHashes[flatIndex++] = hash;
-			++storage.cellStarts[hash + 1];
-		}
-	}
-	for (u32 tableIndex = 1; tableIndex <= tableSize; ++tableIndex) {
-		storage.cellStarts[tableIndex] += storage.cellStarts[tableIndex - 1];
-	}
-	storage.cellCursors.assign(storage.cellStarts.begin(), storage.cellStarts.end() - 1);
-	storage.sortedPhotons.resize(photonCount);
-	flatIndex = 0;
-	for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
-		const std::vector<PhotonRecord> &records = jobs[jobIndex];
-		for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
-			u32 hash = storage.photonHashes[flatIndex++];
-			u32 sortedIndex = storage.cellCursors[hash]++;
-			storage.sortedPhotons[sortedIndex] = &records[recordIndex];
-		}
-	}
-	storage.view.photons = storage.sortedPhotons.data();
-	storage.view.cellStarts = storage.cellStarts.data();
-	storage.view.tableMask = tableMask;
-	storage.view.radius = radius;
-	storage.view.inverseCellSize = inverseCellSize;
-}
+struct PhotonMapView {
+	const PhotonRecord *const *photons; // sorted by grid cell
+	const u32 *cellStarts;              // tableMask + 2 entries
+	u32 tableMask;
+	f32 radius;
+	f32 inverseCellSize;
 
-// Photon merging at the camera path's first non-specular vertex: each photon within the radius forms a full caustic path with the camera prefix, weighted against path tracing and light tracing.
-// cameraDensity: camera side area density of the merge vertex when it is the camera hit (light tracing possible), 0 behind mirrors and glass
-static Vec3f GatherPhotonRadiance(const PhotonMapView &map, const Material &material, const Vec3f &baseColor, const Vec3f &position, const ShadingFrame &frame, const Vec3f &wo, const u32 maxVertexCount, const f64 cameraDensity, const f64 lightPathCount) {
-	f32 radius = map.radius;
-	f32 radiusSquared = radius * radius;
-	f64 mergeArea = (f64)F32Pi * (f64)radiusSquared;
-	f32 planeTolerance = PhotonPlaneToleranceFactor * radius;
-	s64 baseCellX = PhotonCellCoordinate(position.x - radius, map.inverseCellSize);
-	s64 baseCellY = PhotonCellCoordinate(position.y - radius, map.inverseCellSize);
-	s64 baseCellZ = PhotonCellCoordinate(position.z - radius, map.inverseCellSize);
-	u32 visitedHashes[PhotonVisitedCellCount];
-	u32 visitedCount = 0;
-	Vec3f sum = V3fZero();
-	for (u32 offsetZ = 0; offsetZ < PhotonCellsPerAxis; ++offsetZ) {
-		for (u32 offsetY = 0; offsetY < PhotonCellsPerAxis; ++offsetY) {
-			for (u32 offsetX = 0; offsetX < PhotonCellsPerAxis; ++offsetX) {
-				u32 hash = PhotonCellHash(baseCellX + offsetX, baseCellY + offsetY, baseCellZ + offsetZ, map.tableMask);
-				// Two cells can share a hash bucket, a bucket must be gathered only once
-				bool isVisited = false;
-				for (u32 visitedIndex = 0; visitedIndex < visitedCount; ++visitedIndex) {
-					if (visitedHashes[visitedIndex] == hash) {
-						isVisited = true;
+	// Photon merging at the camera path's first non-specular vertex: each photon within the radius forms a full caustic path with the camera prefix, weighted against path tracing and light tracing.
+	// cameraDensity: camera side area density of the merge vertex when it is the camera hit (light tracing possible), 0 behind mirrors and glass
+	Vec3f GatherRadiance(const Material &material, const Vec3f &baseColor, const Vec3f &position, const ShadingFrame &frame, const Vec3f &wo, const u32 maxVertexCount, const f64 cameraDensity, const f64 lightPathCount) const {
+		f32 radiusSquared = radius * radius;
+		f64 mergeArea = (f64)F32Pi * (f64)radiusSquared;
+		f32 planeTolerance = PhotonPlaneToleranceFactor * radius;
+		s64 baseCellX = PhotonCellCoordinate(position.x - radius, inverseCellSize);
+		s64 baseCellY = PhotonCellCoordinate(position.y - radius, inverseCellSize);
+		s64 baseCellZ = PhotonCellCoordinate(position.z - radius, inverseCellSize);
+		u32 visitedHashes[PhotonVisitedCellCount];
+		u32 visitedCount = 0;
+		Vec3f sum = V3fZero();
+		for (u32 offsetZ = 0; offsetZ < PhotonCellsPerAxis; ++offsetZ) {
+			for (u32 offsetY = 0; offsetY < PhotonCellsPerAxis; ++offsetY) {
+				for (u32 offsetX = 0; offsetX < PhotonCellsPerAxis; ++offsetX) {
+					u32 hash = PhotonCellHash(baseCellX + offsetX, baseCellY + offsetY, baseCellZ + offsetZ, tableMask);
+					// Two cells can share a hash bucket, a bucket must be gathered only once
+					bool isVisited = false;
+					for (u32 visitedIndex = 0; visitedIndex < visitedCount; ++visitedIndex) {
+						if (visitedHashes[visitedIndex] == hash) {
+							isVisited = true;
+						}
 					}
-				}
-				if (isVisited) {
-					continue;
-				}
-				visitedHashes[visitedCount++] = hash;
-				u32 bucketEnd = map.cellStarts[hash + 1];
-				for (u32 sortedIndex = map.cellStarts[hash]; sortedIndex < bucketEnd; ++sortedIndex) {
-					const PhotonRecord &photon = *map.photons[sortedIndex];
-					if (photon.vertexCount > maxVertexCount) {
+					if (isVisited) {
 						continue;
 					}
-					Vec3f offset = photon.position - position;
-					f32 distanceSquared = V3fDot(offset, offset);
-					if (distanceSquared > radiusSquared) {
-						continue;
+					visitedHashes[visitedCount++] = hash;
+					u32 bucketEnd = cellStarts[hash + 1];
+					for (u32 sortedIndex = cellStarts[hash]; sortedIndex < bucketEnd; ++sortedIndex) {
+						const PhotonRecord &photon = *photons[sortedIndex];
+						if (photon.vertexCount > maxVertexCount) {
+							continue;
+						}
+						Vec3f offset = photon.position - position;
+						f32 distanceSquared = V3fDot(offset, offset);
+						if (distanceSquared > radiusSquared) {
+							continue;
+						}
+						f32 planeDistance = V3fDot(offset, frame.normal);
+						if (F32Abs(planeDistance) > planeTolerance) {
+							continue;
+						}
+						Vec3f wi = frame.ToLocal(photon.towardsOrigin);
+						if (wi.z <= 0.0f) {
+							continue;
+						}
+						Vec3f bsdfValue = material.EvaluateBsdf(baseColor, wo, wi);
+						if (IsBlack(bsdfValue)) {
+							continue;
+						}
+						// The camera side density of the photon's previous vertex: the path tracer would sample it from here, coming from the camera
+						f32 cameraSidePdf = material.BsdfPdf(baseColor, wo, wi);
+						f64 previousCameraDensity = (f64)cameraSidePdf * (f64)photon.misPreviousGeometry;
+						f64 photonRatio = (f64)photon.misPartialRatio / previousCameraDensity;
+						f64 mergeRatio = photonRatio * mergeArea;
+						f64 lightTracingRatio = (cameraDensity > 0.0) ? (photonRatio / cameraDensity) : 0.0;
+						BidirectionalWeights weights = BidirectionalWeights::Compute(lightTracingRatio, mergeRatio, lightPathCount);
+						Vec3f weighted = V3fHadamard(bsdfValue, photon.power);
+						sum += (f32)weights.merging * weighted;
 					}
-					f32 planeDistance = V3fDot(offset, frame.normal);
-					if (F32Abs(planeDistance) > planeTolerance) {
-						continue;
-					}
-					Vec3f wi = ToLocal(frame, photon.towardsOrigin);
-					if (wi.z <= 0.0f) {
-						continue;
-					}
-					Vec3f bsdfValue = EvaluateBsdf(material, baseColor, wo, wi);
-					if (IsBlack(bsdfValue)) {
-						continue;
-					}
-					// The camera side density of the photon's previous vertex: the path tracer would sample it from here, coming from the camera
-					f32 cameraSidePdf = BsdfPdf(material, baseColor, wo, wi);
-					f64 previousCameraDensity = (f64)cameraSidePdf * (f64)photon.misPreviousGeometry;
-					f64 photonRatio = (f64)photon.misPartialRatio / previousCameraDensity;
-					f64 mergeRatio = photonRatio * mergeArea;
-					f64 lightTracingRatio = (cameraDensity > 0.0) ? (photonRatio / cameraDensity) : 0.0;
-					BidirectionalWeights weights = ComputeBidirectionalWeights(lightTracingRatio, mergeRatio, lightPathCount);
-					Vec3f weighted = V3fHadamard(bsdfValue, photon.power);
-					sum += (f32)weights.merging * weighted;
 				}
 			}
 		}
+		f32 inverseDiscArea = (f32)(1.0 / mergeArea);
+		Vec3f result = inverseDiscArea * sum;
+		return(result);
 	}
-	f32 inverseDiscArea = (f32)(1.0 / mergeArea);
-	Vec3f result = inverseDiscArea * sum;
-	return(result);
-}
+};
+
+// Light jobs fill their own job buffer, the photon map job at the start of the next pass builds the grid
+struct PhotonStorage {
+	std::vector<std::vector<PhotonRecord> > jobPhotons[PhotonBufferCount];
+	std::vector<const PhotonRecord *> sortedPhotons;
+	std::vector<u32> photonHashes;
+	std::vector<u32> cellStarts;
+	std::vector<u32> cellCursors;
+	PhotonMapView view;
+	volatile u32 readyEpoch; // epoch + 1 of the pass the view belongs to, 0 = none
+
+	// Counting sort of all photons of the previous pass into a hashed grid, in job order, so the map is identical for any thread count
+	void BuildMap(const u32 bufferIndex, const f32 radius) {
+		std::vector<std::vector<PhotonRecord> > &jobs = jobPhotons[bufferIndex];
+		size_t jobCount = jobs.size();
+		size_t photonCount = 0;
+		for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
+			photonCount += jobs[jobIndex].size();
+		}
+		u32 tableSize = PhotonGridMinTableSize;
+		while ((size_t)tableSize < 2 * photonCount) {
+			tableSize <<= 1;
+		}
+		u32 tableMask = tableSize - 1;
+		f32 inverseCellSize = PhotonCellsPerRadius / radius;
+		photonHashes.resize(photonCount);
+		cellStarts.assign(tableSize + 1, 0);
+		size_t flatIndex = 0;
+		for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
+			const std::vector<PhotonRecord> &records = jobs[jobIndex];
+			for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
+				const Vec3f &position = records[recordIndex].position;
+				s64 cellX = PhotonCellCoordinate(position.x, inverseCellSize);
+				s64 cellY = PhotonCellCoordinate(position.y, inverseCellSize);
+				s64 cellZ = PhotonCellCoordinate(position.z, inverseCellSize);
+				u32 hash = PhotonCellHash(cellX, cellY, cellZ, tableMask);
+				photonHashes[flatIndex++] = hash;
+				++cellStarts[hash + 1];
+			}
+		}
+		for (u32 tableIndex = 1; tableIndex <= tableSize; ++tableIndex) {
+			cellStarts[tableIndex] += cellStarts[tableIndex - 1];
+		}
+		cellCursors.assign(cellStarts.begin(), cellStarts.end() - 1);
+		sortedPhotons.resize(photonCount);
+		flatIndex = 0;
+		for (size_t jobIndex = 0; jobIndex < jobCount; ++jobIndex) {
+			const std::vector<PhotonRecord> &records = jobs[jobIndex];
+			for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
+				u32 hash = photonHashes[flatIndex++];
+				u32 sortedIndex = cellCursors[hash]++;
+				sortedPhotons[sortedIndex] = &records[recordIndex];
+			}
+		}
+		view.photons = sortedPhotons.data();
+		view.cellStarts = cellStarts.data();
+		view.tableMask = tableMask;
+		view.radius = radius;
+		view.inverseCellSize = inverseCellSize;
+	}
+};
 
 //
 // Integrator: unidirectional path tracer with next event estimation, multiple importance sampling and russian roulette
@@ -3238,16 +2969,6 @@ static const char *IntegratorModeNames[] = {
 	"BSDF",
 };
 fplStaticAssert(fplArrayCount(IntegratorModeNames) == (u32)IntegratorMode::Count);
-
-struct RenderSettings {
-	u32 maxBounces;                 // scattering events
-	u32 russianRouletteStartBounce; // bounces below this are never terminated by russian roulette
-	f32 russianRouletteMinSurvival;
-	f32 russianRouletteMaxSurvival;
-	f32 indirectClampLuminance;     // 0 = off; biased when on, removes energy from rare high value paths
-	IntegratorMode mode;
-	b32 isLightTracingActive;       // light tracing and photon mapping run for this generation (caustic paths are shared with them)
-};
 
 struct PathStats {
 	u32 rayCount;
@@ -3269,33 +2990,43 @@ static inline f32 PowerHeuristic(const f32 pdfA, const f32 pdfB) {
 	return(result);
 }
 
-// MIS weight of an emitter found by BSDF sampling, full weight on camera rays and after delta bounces
-static inline f32 EmitterHitMisWeight(const RenderSettings &settings, const bool previousWasDelta, const f32 previousBsdfPdf, const f32 lightPdfWithSelection) {
-	if (previousWasDelta) {
-		return(1.0f);
-	}
-	if (settings.mode == IntegratorMode::BsdfOnly) {
-		return(1.0f);
-	}
-	if (settings.mode == IntegratorMode::LightOnly) {
-		return(0.0f);
-	}
-	f32 result = PowerHeuristic(previousBsdfPdf, lightPdfWithSelection);
-	return(result);
-}
+struct RenderSettings {
+	u32 maxBounces;                 // scattering events
+	u32 russianRouletteStartBounce; // bounces below this are never terminated by russian roulette
+	f32 russianRouletteMinSurvival;
+	f32 russianRouletteMaxSurvival;
+	f32 indirectClampLuminance;     // 0 = off; biased when on, removes energy from rare high value paths
+	IntegratorMode mode;
+	b32 isLightTracingActive;       // light tracing and photon mapping run for this generation (caustic paths are shared with them)
 
-static inline Vec3f ClampIndirect(const RenderSettings &settings, const Vec3f &contribution, const bool isIndirect) {
-	if (!isIndirect || settings.indirectClampLuminance <= 0.0f) {
-		return(contribution);
+	// MIS weight of an emitter found by BSDF sampling, full weight on camera rays and after delta bounces
+	f32 EmitterHitMisWeight(const bool previousWasDelta, const f32 previousBsdfPdf, const f32 lightPdfWithSelection) const {
+		if (previousWasDelta) {
+			return(1.0f);
+		}
+		if (mode == IntegratorMode::BsdfOnly) {
+			return(1.0f);
+		}
+		if (mode == IntegratorMode::LightOnly) {
+			return(0.0f);
+		}
+		f32 result = PowerHeuristic(previousBsdfPdf, lightPdfWithSelection);
+		return(result);
 	}
-	f32 luminance = Luminance(contribution);
-	if (luminance <= settings.indirectClampLuminance) {
-		return(contribution);
+
+	Vec3f ClampIndirect(const Vec3f &contribution, const bool isIndirect) const {
+		if (!isIndirect || indirectClampLuminance <= 0.0f) {
+			return(contribution);
+		}
+		f32 luminance = Luminance(contribution);
+		if (luminance <= indirectClampLuminance) {
+			return(contribution);
+		}
+		f32 scale = indirectClampLuminance / luminance;
+		Vec3f result = scale * contribution;
+		return(result);
 	}
-	f32 scale = settings.indirectClampLuminance / luminance;
-	Vec3f result = scale * contribution;
-	return(result);
-}
+};
 
 // photonMap: caustic density estimate for paths that reach their first non-specular vertex through mirrors or glass, null in the first pass and without light tracing
 static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, const BidirectionalContext &bidirectional, const PhotonMapView *photonMap, Ray3f ray, PathSampler &sampler, PathStats &stats) {
@@ -3324,21 +3055,21 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 		bool isCausticTail = isLightTracingActive && hasMergeVertex && previousWasDelta && bounceIndex >= 2;
 		SurfaceHit hit;
 		++stats.rayCount;
-		bool isHit = TraceSurface(scene, ray, UnboundedDistance, hit);
+		bool isHit = scene.TraceSurface(ray, UnboundedDistance, hit);
 		Vec3f viewDirection = -ray.direction;
 		f32 previousCosine = F32Abs(V3fDot(previousNormal, ray.direction));
 
 		if (!isHit) {
 			// Environment: weight 1 unless the uniform environment is also sampled as a light
-			Vec3f environmentRadiance = EvaluateEnvironment(environment, ray.direction);
+			Vec3f environmentRadiance = environment.Evaluate(ray.direction);
 			f32 environmentWeight = 1.0f;
 			if (environment.environmentLightIndex != NoIndex) {
 				const Light &environmentLight = scene.lights[environment.environmentLightIndex];
 				f32 environmentLightPdf = environmentLight.selectionProbability * UniformSpherePdf;
-				environmentWeight = EmitterHitMisWeight(settings, previousWasDelta, previousBsdfPdf, environmentLightPdf);
+				environmentWeight = settings.EmitterHitMisWeight(previousWasDelta, previousBsdfPdf, environmentLightPdf);
 			}
 			Vec3f environmentContribution = environmentWeight * V3fHadamard(throughput, environmentRadiance);
-			Vec3f clampedEnvironment = ClampIndirect(settings, environmentContribution, isEmissionIndirect);
+			Vec3f clampedEnvironment = settings.ClampIndirect(environmentContribution, isEmissionIndirect);
 			radiance += clampedEnvironment;
 			// Sun disk: sampled by NEE, so MIS applies
 			if (environment.sunLightIndex != NoIndex) {
@@ -3346,7 +3077,7 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 				f32 cosToSun = V3fDot(ray.direction, sun.direction);
 				if (cosToSun >= sun.cosThetaMax) {
 					f32 sunLightPdf = sun.selectionProbability * sun.conePdf;
-					f32 sunWeight = EmitterHitMisWeight(settings, previousWasDelta, previousBsdfPdf, sunLightPdf);
+					f32 sunWeight = settings.EmitterHitMisWeight(previousWasDelta, previousBsdfPdf, sunLightPdf);
 					if (isCausticTail) {
 						// The sun photon line through the previous vertex, the sun vertex itself has camera side density 1 behind the specular vertex
 						f32 sunAreaDensity = SunCasterAreaDensity(scene, previousPosition, viewDirection);
@@ -3355,11 +3086,11 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 						f64 tailRatio = (previousLightDensity / (f64)previousCameraDensity) * sunVertexDensity;
 						f64 lightTracingRatio = isBidirectionalPath ? (densityRatio * tailRatio) : 0.0;
 						f64 mergeRatio = isMergeOffered ? (mergeDensityRatio * tailRatio * (f64)mergeVertexCameraDensity * bidirectional.mergeArea) : 0.0;
-						BidirectionalWeights weights = ComputeBidirectionalWeights(lightTracingRatio, mergeRatio, bidirectional.lightPathCount);
+						BidirectionalWeights weights = BidirectionalWeights::Compute(lightTracingRatio, mergeRatio, bidirectional.lightPathCount);
 						sunWeight *= (f32)weights.pathTracing;
 					}
 					Vec3f sunContribution = sunWeight * V3fHadamard(throughput, sun.radiance);
-					Vec3f clampedSun = ClampIndirect(settings, sunContribution, isEmissionIndirect);
+					Vec3f clampedSun = settings.ClampIndirect(sunContribution, isEmissionIndirect);
 					radiance += clampedSun;
 				}
 			}
@@ -3390,9 +3121,9 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 				bool isLightListed = hit.lightIndex != NoIndex;
 				if (isLightListed) {
 					const Light &light = scene.lights[hit.lightIndex];
-					f32 lightPdf = LightPdfForHit(scene, light, previousPosition, ray.direction, hit);
+					f32 lightPdf = light.PdfForHit(scene, previousPosition, ray.direction, hit);
 					f32 lightPdfWithSelection = light.selectionProbability * lightPdf;
-					emitterWeight = EmitterHitMisWeight(settings, previousWasDelta, previousBsdfPdf, lightPdfWithSelection);
+					emitterWeight = settings.EmitterHitMisWeight(previousWasDelta, previousBsdfPdf, lightPdfWithSelection);
 					if (isCausticTail) {
 						// Light tracing emits from this point towards the casters, a direction on the back of a one-sided emitter is never emitted
 						f32 emissionDensity = (hitCosine >= MinLightCosine) ? CasterDirectionDensity(scene, hit.position, viewDirection) : 0.0f;
@@ -3401,12 +3132,12 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 						f64 tailRatio = (previousLightDensity / (f64)previousCameraDensity) * (lightVertexDensity / (f64)cameraDensity);
 						f64 lightTracingRatio = isBidirectionalPath ? (densityRatio * tailRatio) : 0.0;
 						f64 mergeRatio = isMergeOffered ? (mergeDensityRatio * tailRatio * (f64)mergeVertexCameraDensity * bidirectional.mergeArea) : 0.0;
-						BidirectionalWeights weights = ComputeBidirectionalWeights(lightTracingRatio, mergeRatio, bidirectional.lightPathCount);
+						BidirectionalWeights weights = BidirectionalWeights::Compute(lightTracingRatio, mergeRatio, bidirectional.lightPathCount);
 						emitterWeight *= (f32)weights.pathTracing;
 					}
 				}
 				Vec3f emitterContribution = emitterWeight * V3fHadamard(throughput, material.emission);
-				Vec3f clampedEmitter = ClampIndirect(settings, emitterContribution, isEmissionIndirect);
+				Vec3f clampedEmitter = settings.ClampIndirect(emitterContribution, isEmissionIndirect);
 				radiance += clampedEmitter;
 			}
 			break; // emitters are black bodies, no scattering
@@ -3418,21 +3149,21 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 		}
 
 		Vec3f frameNormal = hit.isFrontFace ? hit.geometricNormal : -hit.geometricNormal;
-		ShadingFrame frame = MakeShadingFrame(frameNormal);
-		Vec3f wo = ToLocal(frame, viewDirection);
+		ShadingFrame frame = ShadingFrame::Make(frameNormal);
+		Vec3f wo = frame.ToLocal(viewDirection);
 		if (wo.z < MinCosine) {
 			break; // exactly grazing: measure zero, avoids divisions by wo.z
 		}
-		Vec3f baseColor = EvaluateBaseColor(material, hit.position);
-		bool hasNonDeltaLobe = MaterialHasNonDeltaLobe(material);
+		Vec3f baseColor = material.EvaluateBaseColor(hit.position);
+		bool hasNonDeltaLobe = material.HasNonDeltaLobe();
 		bool isMergeVertex = isLightTracingActive && !hasMergeVertex && hasNonDeltaLobe;
-		bool isMergeOfferedHere = isMergeVertex && ((bounceIndex > 0) || HasSharpLobe(material));
+		bool isMergeOfferedHere = isMergeVertex && ((bounceIndex > 0) || material.HasSharpLobe());
 
 		// Photon merging at the first non-specular vertex, weighted against path tracing and light tracing (the first pass has no photon map yet)
 		if (isMergeOfferedHere && photonMap != fpl_null) {
 			u32 maxPhotonVertexCount = settings.maxBounces - bounceIndex;
 			f64 lightTracingCameraDensity = (bounceIndex == 0) ? (f64)cameraDensity : 0.0;
-			Vec3f photonRadiance = GatherPhotonRadiance(*photonMap, material, baseColor, hit.position, frame, wo, maxPhotonVertexCount, lightTracingCameraDensity, bidirectional.lightPathCount);
+			Vec3f photonRadiance = photonMap->GatherRadiance(material, baseColor, hit.position, frame, wo, maxPhotonVertexCount, lightTracingCameraDensity, bidirectional.lightPathCount);
 			Vec3f photonContribution = V3fHadamard(throughput, photonRadiance);
 			radiance += photonContribution;
 		}
@@ -3440,30 +3171,30 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 		// Next event estimation
 		bool doLightSampling = settings.mode != IntegratorMode::BsdfOnly;
 		if (doLightSampling && hasNonDeltaLobe && scene.lightCount > 0) {
-			f32 uSelect = PathSamplerNext01(sampler);
-			f32 u0 = PathSamplerNext01(sampler);
-			f32 u1 = PathSamplerNext01(sampler);
+			f32 uSelect = sampler.Next01();
+			f32 u0 = sampler.Next01();
+			f32 u1 = sampler.Next01();
 			u32 lightIndex = SelectLight(scene, uSelect);
 			const Light &light = scene.lights[lightIndex];
 			LightSample lightSample;
-			bool hasLightSample = SampleLight(scene, light, hit.position, u0, u1, lightSample);
+			bool hasLightSample = light.Sample(scene, hit.position, u0, u1, lightSample);
 			if (hasLightSample && lightSample.pdf > 0.0f && IsFiniteF32(lightSample.pdf)) {
-				Vec3f wi = ToLocal(frame, lightSample.wi);
-				Vec3f bsdfValue = EvaluateBsdf(material, baseColor, wo, wi);
+				Vec3f wi = frame.ToLocal(lightSample.wi);
+				Vec3f bsdfValue = material.EvaluateBsdf(baseColor, wo, wi);
 				if (!IsBlack(bsdfValue)) {
 					f32 lightPdf = light.selectionProbability * lightSample.pdf;
-					f32 bsdfPdf = BsdfPdf(material, baseColor, wo, wi);
+					f32 bsdfPdf = material.BsdfPdf(baseColor, wo, wi);
 					f32 lightWeight = (settings.mode == IntegratorMode::Mis) ? PowerHeuristic(lightPdf, bsdfPdf) : 1.0f;
 					Ray3f shadowRay = SpawnRay(hit.position, hit.geometricNormal, lightSample.wi);
 					f32 shadowMaxDistance = (lightSample.distance < UnboundedDistance) ? (lightSample.distance * ShadowDistanceScale) : UnboundedDistance;
 					++stats.rayCount;
-					bool isOccluded = TraceOccluded(scene, shadowRay, shadowMaxDistance, light.primitiveIndex);
+					bool isOccluded = scene.TraceOccluded(shadowRay, shadowMaxDistance, light.primitiveIndex);
 					if (!isOccluded) {
 						f32 scale = wi.z * lightWeight / lightPdf;
 						Vec3f unshadowed = scale * V3fHadamard(bsdfValue, lightSample.radiance);
 						Vec3f lightContribution = V3fHadamard(throughput, unshadowed);
 						bool isLightIndirect = bounceIndex >= 1;
-						Vec3f clampedLight = ClampIndirect(settings, lightContribution, isLightIndirect);
+						Vec3f clampedLight = settings.ClampIndirect(lightContribution, isLightIndirect);
 						radiance += clampedLight;
 					}
 				}
@@ -3472,7 +3203,7 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 
 		// BSDF sampling
 		BsdfSample bsdfSample;
-		bool hasBsdfSample = SampleBsdf(material, baseColor, wo, hit.isFrontFace, sampler, bsdfSample);
+		bool hasBsdfSample = material.SampleBsdf(baseColor, wo, hit.isFrontFace, sampler, bsdfSample);
 		if (!hasBsdfSample) {
 			break;
 		}
@@ -3482,7 +3213,7 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 		if (isLightTracingActive && bounceIndex > 0) {
 			f64 previousLightDensity = 1.0;
 			if (!isSampleDelta) {
-				f32 reversePdf = BsdfPdf(material, baseColor, bsdfSample.wi, wo);
+				f32 reversePdf = material.BsdfPdf(baseColor, bsdfSample.wi, wo);
 				previousLightDensity = (f64)reversePdf * (f64)previousCosine / (f64)hitDistanceSquared;
 			}
 			f64 previousFactor = previousLightDensity / (f64)previousCameraDensity;
@@ -3502,7 +3233,7 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 			mergeVertexCameraDensity = cameraDensity;
 		}
 
-		Vec3f worldDirection = ToWorld(frame, bsdfSample.wi);
+		Vec3f worldDirection = frame.ToWorld(bsdfSample.wi);
 		Vec3f newDirection = V3fNormalize(worldDirection);
 		throughput = V3fHadamard(throughput, bsdfSample.weight);
 		previousWasDelta = isSampleDelta;
@@ -3516,7 +3247,7 @@ static Vec3f TracePath(const SceneView &scene, const RenderSettings &settings, c
 		if (bounceIndex >= settings.russianRouletteStartBounce) {
 			f32 maxThroughput = MaxComponent(throughput);
 			f32 survival = F32Clamp(maxThroughput, settings.russianRouletteMinSurvival, settings.russianRouletteMaxSurvival);
-			f32 uRoulette = PathSamplerNext01(sampler);
+			f32 uRoulette = sampler.Next01();
 			if (uRoulette >= survival) {
 				break;
 			}
@@ -3541,77 +3272,35 @@ struct OrbitCamera {
 	f32 referenceAspect;
 	f32 apertureRadius;
 	f32 focusRatio; // focus distance / target distance, so zooming keeps the same depth in focus
-};
 
-struct CameraFrame {
-	Vec3f eye;
-	Vec3f forward;
-	Vec3f right;
-	Vec3f up;
-	f32 tanHalfX;
-	f32 tanHalfY;
-	f32 apertureRadius;
-	f32 focusDistance;
-	f32 inverseOutputWidth;
-	f32 inverseOutputHeight;
-	f32 resolutionDivisor; // render pixel size in output pixels
-};
-
-static OrbitCamera MakeOrbitCamera(const SceneCameraDesc &desc) {
-	Vec3f offset = desc.eye - desc.target;
-	f32 distance = V3fLength(offset);
-	fplAssert(distance > 0.0f);
-	f32 heightRatio = offset.z / distance;
-	OrbitCamera result = {};
-	result.target = desc.target;
-	result.distance = distance;
-	result.yawRadians = F32ArcTan2(offset.y, offset.x);
-	result.pitchRadians = F32ArcSin(heightRatio);
-	result.fovYRadians = F32DegreesToRadians(desc.fovYDegrees);
-	result.referenceAspect = desc.referenceAspect;
-	result.apertureRadius = desc.apertureRadius;
-	result.focusRatio = (desc.focusDistance > 0.0f) ? (desc.focusDistance / distance) : 1.0f;
-	return(result);
-}
-
-static Vec3f ComputeOrbitOffset(const OrbitCamera &camera) {
-	f32 pitch = F32Clamp(camera.pitchRadians, -MaxPitchRadians, MaxPitchRadians);
-	f32 cosPitch = F32Cos(pitch);
-	f32 sinPitch = F32Sin(pitch);
-	f32 cosYaw = F32Cos(camera.yawRadians);
-	f32 sinYaw = F32Sin(camera.yawRadians);
-	Vec3f offsetDirection = V3fInit(cosPitch * cosYaw, cosPitch * sinYaw, sinPitch);
-	Vec3f result = camera.distance * offsetDirection;
-	return(result);
-}
-
-static CameraFrame MakeCameraFrame(const OrbitCamera &camera, const u32 outputWidth, const u32 outputHeight, const u32 resolutionDivisor) {
-	fplAssert(outputWidth > 0 && outputHeight > 0);
-	Vec3f offset = ComputeOrbitOffset(camera);
-	Vec3f forward = (-1.0f / camera.distance) * offset;
-	Vec3f rightRaw = V3fCross(forward, UnitUp);
-	Vec3f right = V3fNormalize(rightRaw);
-	Vec3f up = V3fCross(right, forward);
-	f32 aspect = (f32)outputWidth / (f32)outputHeight;
-	f32 tanHalfY = F32Tan(0.5f * camera.fovYRadians);
-	if (aspect < camera.referenceAspect) {
-		// Narrower window: widen vertically so the horizontal framing survives
-		tanHalfY *= camera.referenceAspect / aspect;
+	static OrbitCamera Make(const SceneCameraDesc &desc) {
+		Vec3f offset = desc.eye - desc.target;
+		f32 distance = V3fLength(offset);
+		fplAssert(distance > 0.0f);
+		f32 heightRatio = offset.z / distance;
+		OrbitCamera result = {};
+		result.target = desc.target;
+		result.distance = distance;
+		result.yawRadians = F32ArcTan2(offset.y, offset.x);
+		result.pitchRadians = F32ArcSin(heightRatio);
+		result.fovYRadians = F32DegreesToRadians(desc.fovYDegrees);
+		result.referenceAspect = desc.referenceAspect;
+		result.apertureRadius = desc.apertureRadius;
+		result.focusRatio = (desc.focusDistance > 0.0f) ? (desc.focusDistance / distance) : 1.0f;
+		return(result);
 	}
-	CameraFrame result;
-	result.eye = camera.target + offset;
-	result.forward = forward;
-	result.right = right;
-	result.up = up;
-	result.tanHalfY = tanHalfY;
-	result.tanHalfX = tanHalfY * aspect;
-	result.apertureRadius = camera.apertureRadius;
-	result.focusDistance = camera.focusRatio * camera.distance;
-	result.inverseOutputWidth = 1.0f / (f32)outputWidth;
-	result.inverseOutputHeight = 1.0f / (f32)outputHeight;
-	result.resolutionDivisor = (f32)resolutionDivisor;
-	return(result);
-}
+
+	Vec3f ComputeOffset() const {
+		f32 pitch = F32Clamp(pitchRadians, -MaxPitchRadians, MaxPitchRadians);
+		f32 cosPitch = F32Cos(pitch);
+		f32 sinPitch = F32Sin(pitch);
+		f32 cosYaw = F32Cos(yawRadians);
+		f32 sinYaw = F32Sin(yawRadians);
+		Vec3f offsetDirection = V3fInit(cosPitch * cosYaw, cosPitch * sinYaw, sinPitch);
+		Vec3f result = distance * offsetDirection;
+		return(result);
+	}
+};
 
 // Maps u in [0,1) to an offset in (-1, 1) with the tent pdf 1 - |x| (filter importance sampling: every sample has weight 1)
 static inline f32 SampleTentOffset(const f32 u) {
@@ -3652,41 +3341,83 @@ static inline Vec2f SampleConcentricDisk(const f32 u0, const f32 u1) {
 	return(result);
 }
 
-// The frustum is defined in output pixels, so preview and full resolution show exactly the same view; rows are top-down.
-// outFilterDensity: tent filter density of the film sample per render pixel area (for the bidirectional MIS camera density)
-static Ray3f GenerateCameraRay(const CameraFrame &frame, const u32 pixelX, const u32 pixelY, PathSampler &sampler, f32 &outFilterDensity) {
-	f32 filmU = PathSamplerNext01(sampler);
-	f32 filmV = PathSamplerNext01(sampler);
-	f32 lensU = PathSamplerNext01(sampler);
-	f32 lensV = PathSamplerNext01(sampler);
-	f32 tentX = SampleTentOffset(filmU);
-	f32 tentY = SampleTentOffset(filmV);
-	f32 absoluteTentX = F32Abs(tentX);
-	f32 absoluteTentY = F32Abs(tentY);
-	outFilterDensity = (1.0f - absoluteTentX) * (1.0f - absoluteTentY);
-	f32 filmX = ((f32)pixelX + 0.5f + TentFilterRadiusPixels * tentX) * frame.resolutionDivisor;
-	f32 filmY = ((f32)pixelY + 0.5f + TentFilterRadiusPixels * tentY) * frame.resolutionDivisor;
-	f32 ndcX = 2.0f * filmX * frame.inverseOutputWidth - 1.0f;
-	f32 ndcY = 1.0f - 2.0f * filmY * frame.inverseOutputHeight;
-	Vec3f horizontal = (ndcX * frame.tanHalfX) * frame.right;
-	Vec3f vertical = (ndcY * frame.tanHalfY) * frame.up;
-	// The forward component is exactly 1, so eye + focusDistance * cameraDirection lies on the focal plane
-	Vec3f cameraDirection = frame.forward + horizontal + vertical;
-	if (frame.apertureRadius <= 0.0f) {
-		Vec3f pinholeDirection = V3fNormalize(cameraDirection);
-		Ray3f pinholeRay = Ray3fInit(frame.eye, pinholeDirection);
-		return(pinholeRay);
+struct CameraFrame {
+	Vec3f eye;
+	Vec3f forward;
+	Vec3f right;
+	Vec3f up;
+	f32 tanHalfX;
+	f32 tanHalfY;
+	f32 apertureRadius;
+	f32 focusDistance;
+	f32 inverseOutputWidth;
+	f32 inverseOutputHeight;
+	f32 resolutionDivisor; // render pixel size in output pixels
+
+	static CameraFrame Make(const OrbitCamera &camera, const u32 outputWidth, const u32 outputHeight, const u32 resolutionDivisor) {
+		fplAssert(outputWidth > 0 && outputHeight > 0);
+		Vec3f offset = camera.ComputeOffset();
+		Vec3f forward = (-1.0f / camera.distance) * offset;
+		Vec3f rightRaw = V3fCross(forward, UnitUp);
+		Vec3f right = V3fNormalize(rightRaw);
+		Vec3f up = V3fCross(right, forward);
+		f32 aspect = (f32)outputWidth / (f32)outputHeight;
+		f32 tanHalfY = F32Tan(0.5f * camera.fovYRadians);
+		if (aspect < camera.referenceAspect) {
+			// Narrower window: widen vertically so the horizontal framing survives
+			tanHalfY *= camera.referenceAspect / aspect;
+		}
+		CameraFrame result;
+		result.eye = camera.target + offset;
+		result.forward = forward;
+		result.right = right;
+		result.up = up;
+		result.tanHalfY = tanHalfY;
+		result.tanHalfX = tanHalfY * aspect;
+		result.apertureRadius = camera.apertureRadius;
+		result.focusDistance = camera.focusRatio * camera.distance;
+		result.inverseOutputWidth = 1.0f / (f32)outputWidth;
+		result.inverseOutputHeight = 1.0f / (f32)outputHeight;
+		result.resolutionDivisor = (f32)resolutionDivisor;
+		return(result);
 	}
-	Vec3f focusPoint = frame.eye + frame.focusDistance * cameraDirection;
-	Vec2f diskPoint = SampleConcentricDisk(lensU, lensV);
-	Vec3f lensRight = (frame.apertureRadius * diskPoint.x) * frame.right;
-	Vec3f lensUp = (frame.apertureRadius * diskPoint.y) * frame.up;
-	Vec3f lensPoint = frame.eye + lensRight + lensUp;
-	Vec3f lensToFocus = focusPoint - lensPoint;
-	Vec3f direction = V3fNormalize(lensToFocus);
-	Ray3f result = Ray3fInit(lensPoint, direction);
-	return(result);
-}
+
+	// The frustum is defined in output pixels, so preview and full resolution show exactly the same view; rows are top-down.
+	// outFilterDensity: tent filter density of the film sample per render pixel area (for the bidirectional MIS camera density)
+	Ray3f GenerateRay(const u32 pixelX, const u32 pixelY, PathSampler &sampler, f32 &outFilterDensity) const {
+		f32 filmU = sampler.Next01();
+		f32 filmV = sampler.Next01();
+		f32 lensU = sampler.Next01();
+		f32 lensV = sampler.Next01();
+		f32 tentX = SampleTentOffset(filmU);
+		f32 tentY = SampleTentOffset(filmV);
+		f32 absoluteTentX = F32Abs(tentX);
+		f32 absoluteTentY = F32Abs(tentY);
+		outFilterDensity = (1.0f - absoluteTentX) * (1.0f - absoluteTentY);
+		f32 filmX = ((f32)pixelX + 0.5f + TentFilterRadiusPixels * tentX) * resolutionDivisor;
+		f32 filmY = ((f32)pixelY + 0.5f + TentFilterRadiusPixels * tentY) * resolutionDivisor;
+		f32 ndcX = 2.0f * filmX * inverseOutputWidth - 1.0f;
+		f32 ndcY = 1.0f - 2.0f * filmY * inverseOutputHeight;
+		Vec3f horizontal = (ndcX * tanHalfX) * right;
+		Vec3f vertical = (ndcY * tanHalfY) * up;
+		// The forward component is exactly 1, so eye + focusDistance * cameraDirection lies on the focal plane
+		Vec3f cameraDirection = forward + horizontal + vertical;
+		if (apertureRadius <= 0.0f) {
+			Vec3f pinholeDirection = V3fNormalize(cameraDirection);
+			Ray3f pinholeRay = Ray3fInit(eye, pinholeDirection);
+			return(pinholeRay);
+		}
+		Vec3f focusPoint = eye + focusDistance * cameraDirection;
+		Vec2f diskPoint = SampleConcentricDisk(lensU, lensV);
+		Vec3f lensRight = (apertureRadius * diskPoint.x) * right;
+		Vec3f lensUp = (apertureRadius * diskPoint.y) * up;
+		Vec3f lensPoint = eye + lensRight + lensUp;
+		Vec3f lensToFocus = focusPoint - lensPoint;
+		Vec3f direction = V3fNormalize(lensToFocus);
+		Ray3f result = Ray3fInit(lensPoint, direction);
+		return(result);
+	}
+};
 
 //
 // Light tracing for caustics
@@ -3722,32 +3453,32 @@ struct SplatCacheEntry {
 	u32 key;  // pixel index + 1, 0 = empty
 	u32 reserved;
 	u64 sums[CausticChannelCount];
+
+	void Flush(const CausticTarget &target) {
+		u32 pixelIndex = key - 1;
+		volatile u64 *pixelSums = target.sums + (size_t)pixelIndex * CausticChannelCount;
+		for (u32 channel = 0; channel < CausticChannelCount; ++channel) {
+			if (sums[channel] > 0) {
+				fplAtomicFetchAndAddU64(&pixelSums[channel], sums[channel]);
+			}
+			sums[channel] = 0;
+		}
+		key = SplatCacheEmptyKey;
+	}
 };
 
 struct SplatCache {
 	SplatCacheEntry entries[SplatCacheSize];
+
+	void Flush(const CausticTarget &target) {
+		for (u32 entryIndex = 0; entryIndex < SplatCacheSize; ++entryIndex) {
+			SplatCacheEntry &entry = entries[entryIndex];
+			if (entry.key != SplatCacheEmptyKey) {
+				entry.Flush(target);
+			}
+		}
+	}
 };
-
-static void FlushSplatCacheEntry(const CausticTarget &target, SplatCacheEntry &entry) {
-	u32 pixelIndex = entry.key - 1;
-	volatile u64 *pixelSums = target.sums + (size_t)pixelIndex * CausticChannelCount;
-	for (u32 channel = 0; channel < CausticChannelCount; ++channel) {
-		if (entry.sums[channel] > 0) {
-			fplAtomicFetchAndAddU64(&pixelSums[channel], entry.sums[channel]);
-		}
-		entry.sums[channel] = 0;
-	}
-	entry.key = SplatCacheEmptyKey;
-}
-
-static void FlushSplatCache(const CausticTarget &target, SplatCache &cache) {
-	for (u32 entryIndex = 0; entryIndex < SplatCacheSize; ++entryIndex) {
-		SplatCacheEntry &entry = cache.entries[entryIndex];
-		if (entry.key != SplatCacheEmptyKey) {
-			FlushSplatCacheEntry(target, entry);
-		}
-	}
-}
 
 struct PhotonEmission {
 	Vec3f lightPoint; // emission point on the light (without the ray origin offset), for the bidirectional MIS densities
@@ -3760,7 +3491,7 @@ static bool SampleDirectionTowardsCasters(const SceneView &scene, const Vec3f &o
 	f32 totalWeight = 0.0f;
 	for (u32 casterIndex = 0; casterIndex < scene.casterCount; ++casterIndex) {
 		const CausticCaster &caster = scene.casters[casterIndex];
-		SphereCone cone = ComputeSphereCone(origin, caster.center, caster.radius);
+		SphereCone cone = SphereCone::Compute(origin, caster.center, caster.radius);
 		if (!cone.isInside) {
 			totalWeight += cone.oneMinusCosThetaMax;
 		}
@@ -3774,7 +3505,7 @@ static bool SampleDirectionTowardsCasters(const SceneView &scene, const Vec3f &o
 	SphereCone selectedCone = {};
 	for (u32 casterIndex = 0; casterIndex < scene.casterCount; ++casterIndex) {
 		const CausticCaster &caster = scene.casters[casterIndex];
-		SphereCone cone = ComputeSphereCone(origin, caster.center, caster.radius);
+		SphereCone cone = SphereCone::Compute(origin, caster.center, caster.radius);
 		if (cone.isInside) {
 			continue;
 		}
@@ -3794,7 +3525,7 @@ static bool SampleDirectionTowardsCasters(const SceneView &scene, const Vec3f &o
 	f32 pdf = 0.0f;
 	for (u32 casterIndex = 0; casterIndex < scene.casterCount; ++casterIndex) {
 		const CausticCaster &caster = scene.casters[casterIndex];
-		SphereCone cone = ComputeSphereCone(origin, caster.center, caster.radius);
+		SphereCone cone = SphereCone::Compute(origin, caster.center, caster.radius);
 		if (cone.isInside) {
 			continue;
 		}
@@ -3818,27 +3549,27 @@ static bool SampleDirectionTowardsCasters(const SceneView &scene, const Vec3f &o
 
 // Sphere and quad lights: uniform point on the light, direction aimed at the casters
 static bool SampleAreaLightEmission(const SceneView &scene, const Light &light, PathSampler &sampler, PhotonEmission &outEmission) {
-	f32 u0 = PathSamplerNext01(sampler);
-	f32 u1 = PathSamplerNext01(sampler);
-	f32 uSelect = PathSamplerNext01(sampler);
-	f32 v0 = PathSamplerNext01(sampler);
-	f32 v1 = PathSamplerNext01(sampler);
+	f32 u0 = sampler.Next01();
+	f32 u1 = sampler.Next01();
+	f32 uSelect = sampler.Next01();
+	f32 v0 = sampler.Next01();
+	f32 v1 = sampler.Next01();
 	const Primitive &primitive = scene.primitives[light.primitiveIndex];
 	Vec3f position;
 	Vec3f normal;
 	f32 area;
 	if (light.kind == LightKind::Sphere) {
-		const SphereShape &sphere = primitive.sphere;
+		const Sphere3f &sphere = primitive.sphere;
 		f32 z = 1.0f - 2.0f * u0;
 		f32 ringRadius = F32SquareRoot(F32Max(0.0f, 1.0f - z * z));
 		f32 phi = F32Tau * u1;
 		f32 cosPhi = F32Cos(phi);
 		f32 sinPhi = F32Sin(phi);
 		normal = V3fInit(ringRadius * cosPhi, ringRadius * sinPhi, z);
-		position = sphere.center + sphere.radius * normal;
+		position = sphere.origin + sphere.radius * normal;
 		area = 4.0f * F32Pi * sphere.radius * sphere.radius;
 	} else {
-		const QuadShape &quad = primitive.quad;
+		const Quad3f &quad = primitive.quad;
 		position = quad.corner + u0 * quad.edgeU + u1 * quad.edgeV;
 		normal = quad.normal;
 		area = quad.area;
@@ -3862,11 +3593,11 @@ static bool SampleAreaLightEmission(const SceneView &scene, const Light &light, 
 
 // Sun: direction inside the sun cone, origin on the disc of a caster's bounding sphere perpendicular to the direction
 static bool SampleSunEmission(const SceneView &scene, const Light &sun, PathSampler &sampler, PhotonEmission &outEmission) {
-	f32 u0 = PathSamplerNext01(sampler);
-	f32 u1 = PathSamplerNext01(sampler);
-	f32 uSelect = PathSamplerNext01(sampler);
-	f32 v0 = PathSamplerNext01(sampler);
-	f32 v1 = PathSamplerNext01(sampler);
+	f32 u0 = sampler.Next01();
+	f32 u1 = sampler.Next01();
+	f32 uSelect = sampler.Next01();
+	f32 v0 = sampler.Next01();
+	f32 v1 = sampler.Next01();
 	if (!(scene.casterAreaSum > 0.0f)) {
 		return(false);
 	}
@@ -3955,7 +3686,7 @@ static void SplatCaustic(const CausticTarget &target, SplatCache &cache, const f
 			}
 			f64 cameraDensity = (f64)filterWeight * cameraDensityWithoutFilter;
 			f64 pixelRatio = ratioWithoutCamera / cameraDensity;
-			BidirectionalWeights weights = ComputeBidirectionalWeights(pixelRatio, mergeRatio, lightPathCount);
+			BidirectionalWeights weights = BidirectionalWeights::Compute(pixelRatio, mergeRatio, lightPathCount);
 			f32 pixelWeight = filterWeight * (f32)weights.lightTracing;
 			if (!(pixelWeight > 0.0f)) {
 				continue;
@@ -3965,7 +3696,7 @@ static void SplatCaustic(const CausticTarget &target, SplatCache &cache, const f
 			SplatCacheEntry &entry = cache.entries[pixelIndex & SplatCacheMask];
 			if (entry.key != key) {
 				if (entry.key != SplatCacheEmptyKey) {
-					FlushSplatCacheEntry(target, entry);
+					entry.Flush(target);
 				}
 				entry.key = key;
 			}
@@ -3989,9 +3720,9 @@ struct LightPathMisState {
 
 // Connects a photon at a non-specular surface to a point on the lens: contribution = throughput * f * cos(surface) / (pixel film area * cos^3(camera) * distance^2), weighted by bidirectional MIS
 static void ConnectPhotonToCamera(const SceneView &scene, const CameraFrame &camera, const CausticTarget &target, SplatCache &cache, const SurfaceHit &hit, const Material &material, const Vec3f &towardsPhotonOrigin, const Vec3f &throughput, const LightPathMisState &mis, const f64 mergeArea, PathSampler &sampler, PathStats &stats) {
-	f32 lensU = PathSamplerNext01(sampler);
-	f32 lensV = PathSamplerNext01(sampler);
-	f32 roundingRandom = PathSamplerNext01(sampler);
+	f32 lensU = sampler.Next01();
+	f32 lensV = sampler.Next01();
+	f32 roundingRandom = sampler.Next01();
 	Vec3f lensPoint = camera.eye;
 	if (camera.apertureRadius > 0.0f) {
 		Vec2f diskPoint = SampleConcentricDisk(lensU, lensV);
@@ -4034,18 +3765,18 @@ static void ConnectPhotonToCamera(const SceneView &scene, const CameraFrame &cam
 		return;
 	}
 	Vec3f frameNormal = FaceTowards(hit.geometricNormal, towardsLens);
-	ShadingFrame frame = MakeShadingFrame(frameNormal);
-	Vec3f wo = ToLocal(frame, towardsLens);
-	Vec3f wi = ToLocal(frame, towardsPhotonOrigin);
-	Vec3f baseColor = EvaluateBaseColor(material, hit.position);
-	Vec3f bsdfValue = EvaluateBsdf(material, baseColor, wo, wi);
+	ShadingFrame frame = ShadingFrame::Make(frameNormal);
+	Vec3f wo = frame.ToLocal(towardsLens);
+	Vec3f wi = frame.ToLocal(towardsPhotonOrigin);
+	Vec3f baseColor = material.EvaluateBaseColor(hit.position);
+	Vec3f bsdfValue = material.EvaluateBsdf(baseColor, wo, wi);
 	if (IsBlack(bsdfValue)) {
 		return;
 	}
 	Ray3f shadowRay = SpawnRay(hit.position, hit.geometricNormal, towardsLens);
 	f32 shadowMaxDistance = distance * ShadowDistanceScale;
 	++stats.rayCount;
-	bool isOccluded = TraceOccluded(scene, shadowRay, shadowMaxDistance, NoIndex);
+	bool isOccluded = scene.TraceOccluded(shadowRay, shadowMaxDistance, NoIndex);
 	if (isOccluded) {
 		return;
 	}
@@ -4057,20 +3788,20 @@ static void ConnectPhotonToCamera(const SceneView &scene, const CameraFrame &cam
 		return;
 	}
 	// The path tracer would sample the photon's previous vertex from here, coming from the camera
-	f32 cameraSidePdf = BsdfPdf(material, baseColor, wo, wi);
+	f32 cameraSidePdf = material.BsdfPdf(baseColor, wo, wi);
 	f64 previousCameraDensity = (f64)cameraSidePdf * (f64)mis.previousCosine / (f64)mis.segmentDistanceSquared;
 	f64 ratioWithoutCamera = mis.densityRatio * (mis.previousLightDensity / previousCameraDensity) * mis.lightDensity;
 	// Area density of this vertex from the camera without the tent density: the solid angle density 1 / (pixel film area * cos^3) times cos(surface) / distance^2
 	f64 cameraDensityWithoutFilter = (f64)importance;
 	// Merging at this vertex replaces its camera side density by the disc area, so its ratio does not depend on the pixel
-	bool isMergeOffered = HasSharpLobe(material);
+	bool isMergeOffered = material.HasSharpLobe();
 	f64 mergeRatio = isMergeOffered ? (ratioWithoutCamera * mergeArea) : 0.0;
 	SplatCaustic(target, cache, renderX, renderY, contribution, ratioWithoutCamera, cameraDensityWithoutFilter, mergeRatio, (f64)roundingRandom);
 }
 
 // One photon: emission aimed at the casters, one or more specular bounces, then a camera connection and a photon record at every non-specular vertex
 static void TraceLightPath(const SceneView &scene, const RenderSettings &settings, const CameraFrame &camera, const CausticTarget &target, const f64 mergeArea, SplatCache &cache, std::vector<PhotonRecord> &photonOutput, PathSampler &sampler, PathStats &stats) {
-	f32 uLight = PathSamplerNext01(sampler);
+	f32 uLight = sampler.Next01();
 	u32 lightIndex = SelectLight(scene, uLight);
 	const Light &light = scene.lights[lightIndex];
 	PhotonEmission emission;
@@ -4099,7 +3830,7 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 	for (;;) {
 		SurfaceHit hit;
 		++stats.rayCount;
-		bool isHit = TraceSurface(scene, ray, UnboundedDistance, hit);
+		bool isHit = scene.TraceSurface(ray, UnboundedDistance, hit);
 		if (!isHit) {
 			return;
 		}
@@ -4130,7 +3861,7 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 			relativeThroughput = V3fHadamard(relativeThroughput, transmittance);
 		}
 		Vec3f towardsOrigin = -ray.direction;
-		bool hasNonDeltaLobe = MaterialHasNonDeltaLobe(material);
+		bool hasNonDeltaLobe = material.HasNonDeltaLobe();
 		if (hasNonDeltaLobe) {
 			if (!hasPassedSpecularChain) {
 				// Light that reaches a non-specular surface without a specular bounce stays with the path tracer
@@ -4160,15 +3891,15 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 			return;
 		}
 		Vec3f frameNormal = hit.isFrontFace ? hit.geometricNormal : -hit.geometricNormal;
-		ShadingFrame frame = MakeShadingFrame(frameNormal);
-		Vec3f wo = ToLocal(frame, towardsOrigin);
+		ShadingFrame frame = ShadingFrame::Make(frameNormal);
+		Vec3f wo = frame.ToLocal(towardsOrigin);
 		if (wo.z < MinCosine) {
 			return;
 		}
 		// All BSDFs here are symmetric (no shading normals, the refraction radiance scale is omitted), so the adjoint equals the BSDF
-		Vec3f baseColor = EvaluateBaseColor(material, hit.position);
+		Vec3f baseColor = material.EvaluateBaseColor(hit.position);
 		BsdfSample bsdfSample;
-		bool hasBsdfSample = SampleBsdf(material, baseColor, wo, hit.isFrontFace, sampler, bsdfSample);
+		bool hasBsdfSample = material.SampleBsdf(baseColor, wo, hit.isFrontFace, sampler, bsdfSample);
 		if (!hasBsdfSample) {
 			return;
 		}
@@ -4177,7 +3908,7 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 		if (vertexCount >= 2) {
 			f64 previousCameraDensity = 1.0;
 			if (!isSampleDelta) {
-				f32 cameraSidePdf = BsdfPdf(material, baseColor, bsdfSample.wi, wo);
+				f32 cameraSidePdf = material.BsdfPdf(baseColor, bsdfSample.wi, wo);
 				previousCameraDensity = (f64)cameraSidePdf * (f64)previousCosine / (f64)hitDistanceSquared;
 			}
 			mis.densityRatio *= mis.previousLightDensity / previousCameraDensity;
@@ -4188,13 +3919,13 @@ static void TraceLightPath(const SceneView &scene, const RenderSettings &setting
 		previousWasDelta = isSampleDelta;
 		throughput = V3fHadamard(throughput, bsdfSample.weight);
 		relativeThroughput = V3fHadamard(relativeThroughput, bsdfSample.weight);
-		Vec3f worldDirection = ToWorld(frame, bsdfSample.wi);
+		Vec3f worldDirection = frame.ToWorld(bsdfSample.wi);
 		Vec3f newDirection = V3fNormalize(worldDirection);
 		ray = SpawnRay(hit.position, hit.geometricNormal, newDirection);
 		if (vertexCount >= settings.russianRouletteStartBounce) {
 			f32 maxThroughput = MaxComponent(relativeThroughput);
 			f32 survival = F32Clamp(maxThroughput, settings.russianRouletteMinSurvival, settings.russianRouletteMaxSurvival);
-			f32 uRoulette = PathSamplerNext01(sampler);
+			f32 uRoulette = sampler.Next01();
 			if (uRoulette >= survival) {
 				return;
 			}
@@ -4380,30 +4111,27 @@ struct TileState {
 	u32 sampleCount;     // samples per pixel committed for this tile in the current generation
 	u32 displayVersion;  // display settings version used for the last resolve of this tile
 	u32 reserved;
-};
 
-// Owned by the main thread, workers only see the copies in RenderConfig
-struct RenderTarget {
-	u32 outputWidth;              // backbuffer size the camera frustum refers to
-	u32 outputHeight;
-	u32 resolutionDivisor;        // 1 = full resolution, > 1 = preview
-	u32 width;                    // render resolution = ceil(output / resolutionDivisor)
-	u32 height;
-	u32 tileSize;
-	u32 tileCountX;
-	u32 tileCountY;
-	u32 tileCount;
-	size_t pixelCapacity;         // grow-only
-	AccumulationPixel *accumulation;
-	u32 *displayBuffers[DisplayBufferCount]; // 0xAARRGGBB, stride = width
-	u32 frontDisplayIndex;
-	size_t tileCapacity;          // grow-only
-	TileRect *tiles;              // job index -> tile, center-out order
-	TileState *tileStates;        // indexed by job index
-	volatile u64 *causticSums;    // light tracing splats, 3 fixed point channels per pixel, same capacity as the accumulation
-	u32 lightJobCount;            // 0 when light tracing is off for the current generation
-	size_t lightJobCapacity;      // grow-only
-	u32 *lightJobStates;          // passes completed per light job
+	void Lock() {
+		u32 spinCount = 0;
+		for (;;) {
+			bool isAcquired = fplAtomicIsCompareAndSwapU32(&lock, 0, 1);
+			if (isAcquired) {
+				return;
+			}
+			++spinCount;
+			if (spinCount < TileLockSpinCount) {
+				fplThreadYield();
+			} else {
+				// The real yield: a low priority worker may wait for the normal priority main thread
+				fplThreadSleep(TileLockSleepMilliseconds);
+			}
+		}
+	}
+
+	void Unlock() {
+		fplAtomicStoreU32(&lock, 0); // FPL atomics are full barriers, so this is a release
+	}
 };
 
 static void FillPixels(u32 *pixels, const size_t pixelCount, const u32 color) {
@@ -4437,226 +4165,228 @@ static bool CompareTileSortKeys(const TileSortKey &a, const TileSortKey &b) {
 	return(a.rowMajorIndex < b.rowMajorIndex);
 }
 
-// Tiles sorted center-out, so the interesting part appears first; the order never affects the result
-static bool BuildTiles(RenderTarget *target) {
-	u32 tileSize = target->tileSize;
-	u32 tileCountX = (target->width + tileSize - 1) / tileSize;
-	u32 tileCountY = (target->height + tileSize - 1) / tileSize;
-	u32 tileCount = tileCountX * tileCountY;
-	if (tileCount > target->tileCapacity) {
-		TileRect *newTiles = (TileRect *)fplMemoryAlignedAllocate(sizeof(TileRect) * tileCount, RenderBufferAlignment);
-		TileState *newTileStates = (TileState *)fplMemoryAlignedAllocate(sizeof(TileState) * tileCount, RenderBufferAlignment);
-		if (newTiles == fpl_null || newTileStates == fpl_null) {
-			if (newTiles != fpl_null) {
-				fplMemoryAlignedFree(newTiles);
-			}
-			if (newTileStates != fpl_null) {
-				fplMemoryAlignedFree(newTileStates);
-			}
-			target->tileCount = 0;
-			return(false);
-		}
-		if (target->tiles != fpl_null) {
-			fplMemoryAlignedFree(target->tiles);
-			fplMemoryAlignedFree(target->tileStates);
-		}
-		target->tiles = newTiles;
-		target->tileStates = newTileStates;
-		target->tileCapacity = tileCount;
-	}
-	target->tileCountX = tileCountX;
-	target->tileCountY = tileCountY;
-	target->tileCount = tileCount;
-	std::vector<TileSortKey> keys(target->tileCount);
-	for (u32 tileY = 0; tileY < target->tileCountY; ++tileY) {
-		for (u32 tileX = 0; tileX < target->tileCountX; ++tileX) {
-			u32 rowMajorIndex = tileY * target->tileCountX + tileX;
-			u32 x0 = tileX * tileSize;
-			u32 y0 = tileY * tileSize;
-			u32 x1 = fplMin(x0 + tileSize, target->width);
-			u32 y1 = fplMin(y0 + tileSize, target->height);
-			// Doubled integer coordinates avoid halves
-			s64 deltaX = (s64)(x0 + x1) - (s64)target->width;
-			s64 deltaY = (s64)(y0 + y1) - (s64)target->height;
-			keys[rowMajorIndex].distanceSquared = deltaX * deltaX + deltaY * deltaY;
-			keys[rowMajorIndex].rowMajorIndex = rowMajorIndex;
-		}
-	}
-	std::sort(keys.begin(), keys.end(), CompareTileSortKeys);
-	for (u32 jobIndex = 0; jobIndex < target->tileCount; ++jobIndex) {
-		u32 rowMajorIndex = keys[jobIndex].rowMajorIndex;
-		u32 tileX = rowMajorIndex % target->tileCountX;
-		u32 tileY = rowMajorIndex / target->tileCountX;
-		TileRect &tile = target->tiles[jobIndex];
-		tile.x0 = tileX * tileSize;
-		tile.y0 = tileY * tileSize;
-		tile.x1 = fplMin(tile.x0 + tileSize, target->width);
-		tile.y1 = fplMin(tile.y0 + tileSize, target->height);
-	}
-	return(true);
-}
+// Owned by the main thread, workers only see the copies in RenderConfig
+struct RenderTarget {
+	u32 outputWidth;              // backbuffer size the camera frustum refers to
+	u32 outputHeight;
+	u32 resolutionDivisor;        // 1 = full resolution, > 1 = preview
+	u32 width;                    // render resolution = ceil(output / resolutionDivisor)
+	u32 height;
+	u32 tileSize;
+	u32 tileCountX;
+	u32 tileCountY;
+	u32 tileCount;
+	size_t pixelCapacity;         // grow-only
+	AccumulationPixel *accumulation;
+	u32 *displayBuffers[DisplayBufferCount]; // 0xAARRGGBB, stride = width
+	u32 frontDisplayIndex;
+	size_t tileCapacity;          // grow-only
+	TileRect *tiles;              // job index -> tile, center-out order
+	TileState *tileStates;        // indexed by job index
+	volatile u64 *causticSums;    // light tracing splats, 3 fixed point channels per pixel, same capacity as the accumulation
+	u32 lightJobCount;            // 0 when light tracing is off for the current generation
+	size_t lightJobCapacity;      // grow-only
+	u32 *lightJobStates;          // passes completed per light job
 
-// Only while no worker is active: sizes the light jobs for the current resolution and clears the caustic sums and the job states
-static bool ConfigureLightTracing(RenderTarget *target, const bool isEnabled) {
-	target->lightJobCount = 0;
-	if (!isEnabled) {
-		return(true);
-	}
-	f32 photonsPerPass = (f32)target->width * (f32)target->height * LightPathsPerPixel;
-	u32 jobCount = (u32)(photonsPerPass / (f32)PhotonsPerLightJob) + 1;
-	if (jobCount > target->lightJobCapacity) {
-		u32 *newStates = (u32 *)fplMemoryAlignedAllocate(sizeof(u32) * jobCount, RenderBufferAlignment);
-		if (newStates == fpl_null) {
-			return(false);
-		}
-		if (target->lightJobStates != fpl_null) {
-			fplMemoryAlignedFree(target->lightJobStates);
-		}
-		target->lightJobStates = newStates;
-		target->lightJobCapacity = jobCount;
-	}
-	fplMemoryClear(target->lightJobStates, sizeof(u32) * jobCount);
-	size_t sumCount = (size_t)target->width * target->height * CausticChannelCount;
-	fplMemoryClear((void *)target->causticSums, sizeof(u64) * sumCount);
-	target->lightJobCount = jobCount;
-	return(true);
-}
-
-static void ResetTileStates(RenderTarget *target) {
-	for (u32 jobIndex = 0; jobIndex < target->tileCount; ++jobIndex) {
-		TileState &tileState = target->tileStates[jobIndex];
-		tileState.lock = 0;
-		tileState.sampleCount = 0;
-		tileState.displayVersion = 0;
-		tileState.reserved = 0;
-	}
-}
-
-// Only while no worker is active: resizes the grow-only buffers, keeps the old image visible (resampled) and rebuilds the tiles when needed, false when out of memory
-static bool ConfigureRenderTarget(RenderTarget *target, const u32 outputWidth, const u32 outputHeight, const u32 resolutionDivisor) {
-	fplAssert(outputWidth > 0 && outputHeight > 0 && resolutionDivisor > 0);
-	u32 newWidth = (outputWidth + resolutionDivisor - 1) / resolutionDivisor;
-	u32 newHeight = (outputHeight + resolutionDivisor - 1) / resolutionDivisor;
-	u32 newTileSize = (resolutionDivisor > 1) ? PreviewTileSize : FullResolutionTileSize;
-	bool isDimensionChanged = (newWidth != target->width) || (newHeight != target->height);
-	bool isTileSizeChanged = newTileSize != target->tileSize;
-	if (isDimensionChanged) {
-		size_t newPixelCount = (size_t)newWidth * (size_t)newHeight;
-		u32 *oldFront = target->displayBuffers[target->frontDisplayIndex];
-		bool hasOldImage = (oldFront != fpl_null) && (target->width > 0) && (target->height > 0);
-		if (newPixelCount > target->pixelCapacity) {
-			AccumulationPixel *newAccumulation = (AccumulationPixel *)fplMemoryAlignedAllocate(sizeof(AccumulationPixel) * newPixelCount, RenderBufferAlignment);
-			volatile u64 *newCausticSums = (volatile u64 *)fplMemoryAlignedAllocate(sizeof(u64) * CausticChannelCount * newPixelCount, RenderBufferAlignment);
-			u32 *newDisplays[DisplayBufferCount];
-			bool isAllocated = (newAccumulation != fpl_null) && (newCausticSums != fpl_null);
-			for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
-				newDisplays[bufferIndex] = (u32 *)fplMemoryAlignedAllocate(sizeof(u32) * newPixelCount, RenderBufferAlignment);
-				isAllocated = isAllocated && (newDisplays[bufferIndex] != fpl_null);
-			}
-			if (!isAllocated) {
-				// Keep the old buffers, the caller reports the failure
-				if (newAccumulation != fpl_null) {
-					fplMemoryAlignedFree(newAccumulation);
+	// Tiles sorted center-out, so the interesting part appears first; the order never affects the result
+	bool BuildTiles() {
+		u32 newTileCountX = (width + tileSize - 1) / tileSize;
+		u32 newTileCountY = (height + tileSize - 1) / tileSize;
+		u32 newTileCount = newTileCountX * newTileCountY;
+		if (newTileCount > tileCapacity) {
+			TileRect *newTiles = (TileRect *)fplMemoryAlignedAllocate(sizeof(TileRect) * newTileCount, RenderBufferAlignment);
+			TileState *newTileStates = (TileState *)fplMemoryAlignedAllocate(sizeof(TileState) * newTileCount, RenderBufferAlignment);
+			if (newTiles == fpl_null || newTileStates == fpl_null) {
+				if (newTiles != fpl_null) {
+					fplMemoryAlignedFree(newTiles);
 				}
-				if (newCausticSums != fpl_null) {
-					fplMemoryAlignedFree((void *)newCausticSums);
+				if (newTileStates != fpl_null) {
+					fplMemoryAlignedFree(newTileStates);
 				}
-				for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
-					if (newDisplays[bufferIndex] != fpl_null) {
-						fplMemoryAlignedFree(newDisplays[bufferIndex]);
-					}
-				}
+				tileCount = 0;
 				return(false);
 			}
-			if (hasOldImage) {
-				ResampleDisplay(oldFront, target->width, target->height, newDisplays[0], newWidth, newHeight);
-			} else {
-				FillPixels(newDisplays[0], newPixelCount, OpaqueBlackPixel);
+			if (tiles != fpl_null) {
+				fplMemoryAlignedFree(tiles);
+				fplMemoryAlignedFree(tileStates);
 			}
-			if (target->accumulation != fpl_null) {
-				fplMemoryAlignedFree(target->accumulation);
+			tiles = newTiles;
+			tileStates = newTileStates;
+			tileCapacity = newTileCount;
+		}
+		tileCountX = newTileCountX;
+		tileCountY = newTileCountY;
+		tileCount = newTileCount;
+		std::vector<TileSortKey> keys(tileCount);
+		for (u32 tileY = 0; tileY < tileCountY; ++tileY) {
+			for (u32 tileX = 0; tileX < tileCountX; ++tileX) {
+				u32 rowMajorIndex = tileY * tileCountX + tileX;
+				u32 x0 = tileX * tileSize;
+				u32 y0 = tileY * tileSize;
+				u32 x1 = fplMin(x0 + tileSize, width);
+				u32 y1 = fplMin(y0 + tileSize, height);
+				// Doubled integer coordinates avoid halves
+				s64 deltaX = (s64)(x0 + x1) - (s64)width;
+				s64 deltaY = (s64)(y0 + y1) - (s64)height;
+				keys[rowMajorIndex].distanceSquared = deltaX * deltaX + deltaY * deltaY;
+				keys[rowMajorIndex].rowMajorIndex = rowMajorIndex;
 			}
-			if (target->causticSums != fpl_null) {
-				fplMemoryAlignedFree((void *)target->causticSums);
+		}
+		std::sort(keys.begin(), keys.end(), CompareTileSortKeys);
+		for (u32 jobIndex = 0; jobIndex < tileCount; ++jobIndex) {
+			u32 rowMajorIndex = keys[jobIndex].rowMajorIndex;
+			u32 tileX = rowMajorIndex % tileCountX;
+			u32 tileY = rowMajorIndex / tileCountX;
+			TileRect &tile = tiles[jobIndex];
+			tile.x0 = tileX * tileSize;
+			tile.y0 = tileY * tileSize;
+			tile.x1 = fplMin(tile.x0 + tileSize, width);
+			tile.y1 = fplMin(tile.y0 + tileSize, height);
+		}
+		return(true);
+	}
+
+	// Only while no worker is active: sizes the light jobs for the current resolution and clears the caustic sums and the job states
+	bool ConfigureLightTracing(const bool isEnabled) {
+		lightJobCount = 0;
+		if (!isEnabled) {
+			return(true);
+		}
+		f32 photonsPerPass = (f32)width * (f32)height * LightPathsPerPixel;
+		u32 jobCount = (u32)(photonsPerPass / (f32)PhotonsPerLightJob) + 1;
+		if (jobCount > lightJobCapacity) {
+			u32 *newStates = (u32 *)fplMemoryAlignedAllocate(sizeof(u32) * jobCount, RenderBufferAlignment);
+			if (newStates == fpl_null) {
+				return(false);
 			}
-			for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
-				if (target->displayBuffers[bufferIndex] != fpl_null) {
-					fplMemoryAlignedFree(target->displayBuffers[bufferIndex]);
+			if (lightJobStates != fpl_null) {
+				fplMemoryAlignedFree(lightJobStates);
+			}
+			lightJobStates = newStates;
+			lightJobCapacity = jobCount;
+		}
+		fplMemoryClear(lightJobStates, sizeof(u32) * jobCount);
+		size_t sumCount = (size_t)width * height * CausticChannelCount;
+		fplMemoryClear((void *)causticSums, sizeof(u64) * sumCount);
+		lightJobCount = jobCount;
+		return(true);
+	}
+
+	void ResetTileStates() {
+		for (u32 jobIndex = 0; jobIndex < tileCount; ++jobIndex) {
+			TileState &tileState = tileStates[jobIndex];
+			tileState.lock = 0;
+			tileState.sampleCount = 0;
+			tileState.displayVersion = 0;
+			tileState.reserved = 0;
+		}
+	}
+
+	// Only while no worker is active: resizes the grow-only buffers, keeps the old image visible (resampled) and rebuilds the tiles when needed, false when out of memory
+	bool Configure(const u32 newOutputWidth, const u32 newOutputHeight, const u32 newResolutionDivisor) {
+		fplAssert(newOutputWidth > 0 && newOutputHeight > 0 && newResolutionDivisor > 0);
+		u32 newWidth = (newOutputWidth + newResolutionDivisor - 1) / newResolutionDivisor;
+		u32 newHeight = (newOutputHeight + newResolutionDivisor - 1) / newResolutionDivisor;
+		u32 newTileSize = (newResolutionDivisor > 1) ? PreviewTileSize : FullResolutionTileSize;
+		bool isDimensionChanged = (newWidth != width) || (newHeight != height);
+		bool isTileSizeChanged = newTileSize != tileSize;
+		if (isDimensionChanged) {
+			size_t newPixelCount = (size_t)newWidth * (size_t)newHeight;
+			u32 *oldFront = displayBuffers[frontDisplayIndex];
+			bool hasOldImage = (oldFront != fpl_null) && (width > 0) && (height > 0);
+			if (newPixelCount > pixelCapacity) {
+				AccumulationPixel *newAccumulation = (AccumulationPixel *)fplMemoryAlignedAllocate(sizeof(AccumulationPixel) * newPixelCount, RenderBufferAlignment);
+				volatile u64 *newCausticSums = (volatile u64 *)fplMemoryAlignedAllocate(sizeof(u64) * CausticChannelCount * newPixelCount, RenderBufferAlignment);
+				u32 *newDisplays[DisplayBufferCount];
+				bool isAllocated = (newAccumulation != fpl_null) && (newCausticSums != fpl_null);
+				for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
+					newDisplays[bufferIndex] = (u32 *)fplMemoryAlignedAllocate(sizeof(u32) * newPixelCount, RenderBufferAlignment);
+					isAllocated = isAllocated && (newDisplays[bufferIndex] != fpl_null);
 				}
-				target->displayBuffers[bufferIndex] = newDisplays[bufferIndex];
-			}
-			target->accumulation = newAccumulation;
-			target->causticSums = newCausticSums;
-			target->pixelCapacity = newPixelCount;
-			target->frontDisplayIndex = 0;
-		} else {
-			u32 backIndex = (target->frontDisplayIndex + 1) % DisplayBufferCount;
-			u32 *back = target->displayBuffers[backIndex];
-			if (hasOldImage) {
-				ResampleDisplay(oldFront, target->width, target->height, back, newWidth, newHeight);
+				if (!isAllocated) {
+					// Keep the old buffers, the caller reports the failure
+					if (newAccumulation != fpl_null) {
+						fplMemoryAlignedFree(newAccumulation);
+					}
+					if (newCausticSums != fpl_null) {
+						fplMemoryAlignedFree((void *)newCausticSums);
+					}
+					for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
+						if (newDisplays[bufferIndex] != fpl_null) {
+							fplMemoryAlignedFree(newDisplays[bufferIndex]);
+						}
+					}
+					return(false);
+				}
+				if (hasOldImage) {
+					ResampleDisplay(oldFront, width, height, newDisplays[0], newWidth, newHeight);
+				} else {
+					FillPixels(newDisplays[0], newPixelCount, OpaqueBlackPixel);
+				}
+				if (accumulation != fpl_null) {
+					fplMemoryAlignedFree(accumulation);
+				}
+				if (causticSums != fpl_null) {
+					fplMemoryAlignedFree((void *)causticSums);
+				}
+				for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
+					if (displayBuffers[bufferIndex] != fpl_null) {
+						fplMemoryAlignedFree(displayBuffers[bufferIndex]);
+					}
+					displayBuffers[bufferIndex] = newDisplays[bufferIndex];
+				}
+				accumulation = newAccumulation;
+				causticSums = newCausticSums;
+				pixelCapacity = newPixelCount;
+				frontDisplayIndex = 0;
 			} else {
-				FillPixels(back, newPixelCount, OpaqueBlackPixel);
+				u32 backIndex = (frontDisplayIndex + 1) % DisplayBufferCount;
+				u32 *back = displayBuffers[backIndex];
+				if (hasOldImage) {
+					ResampleDisplay(oldFront, width, height, back, newWidth, newHeight);
+				} else {
+					FillPixels(back, newPixelCount, OpaqueBlackPixel);
+				}
+				frontDisplayIndex = backIndex;
 			}
-			target->frontDisplayIndex = backIndex;
+			width = newWidth;
+			height = newHeight;
 		}
-		target->width = newWidth;
-		target->height = newHeight;
-	}
-	target->outputWidth = outputWidth;
-	target->outputHeight = outputHeight;
-	target->resolutionDivisor = resolutionDivisor;
-	if (isDimensionChanged || isTileSizeChanged) {
-		target->tileSize = newTileSize;
-		bool areTilesBuilt = BuildTiles(target);
-		if (!areTilesBuilt) {
-			return(false);
+		outputWidth = newOutputWidth;
+		outputHeight = newOutputHeight;
+		resolutionDivisor = newResolutionDivisor;
+		if (isDimensionChanged || isTileSizeChanged) {
+			tileSize = newTileSize;
+			bool areTilesBuilt = BuildTiles();
+			if (!areTilesBuilt) {
+				return(false);
+			}
 		}
+		return(true);
 	}
-	return(true);
-}
 
-static void ReleaseRenderTarget(RenderTarget *target) {
-	if (target->accumulation != fpl_null) {
-		fplMemoryAlignedFree(target->accumulation);
-	}
-	if (target->causticSums != fpl_null) {
-		fplMemoryAlignedFree((void *)target->causticSums);
-	}
-	if (target->lightJobStates != fpl_null) {
-		fplMemoryAlignedFree(target->lightJobStates);
-	}
-	for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
-		if (target->displayBuffers[bufferIndex] != fpl_null) {
-			fplMemoryAlignedFree(target->displayBuffers[bufferIndex]);
+	void Release() {
+		if (accumulation != fpl_null) {
+			fplMemoryAlignedFree(accumulation);
 		}
-	}
-	if (target->tiles != fpl_null) {
-		fplMemoryAlignedFree(target->tiles);
-		fplMemoryAlignedFree(target->tileStates);
-	}
-	fplClearStruct(target);
-}
-
-static void TileLock(TileState *tileState) {
-	u32 spinCount = 0;
-	for (;;) {
-		bool isAcquired = fplAtomicIsCompareAndSwapU32(&tileState->lock, 0, 1);
-		if (isAcquired) {
-			return;
+		if (causticSums != fpl_null) {
+			fplMemoryAlignedFree((void *)causticSums);
 		}
-		++spinCount;
-		if (spinCount < TileLockSpinCount) {
-			fplThreadYield();
-		} else {
-			// The real yield: a low priority worker may wait for the normal priority main thread
-			fplThreadSleep(TileLockSleepMilliseconds);
+		if (lightJobStates != fpl_null) {
+			fplMemoryAlignedFree(lightJobStates);
 		}
+		for (u32 bufferIndex = 0; bufferIndex < DisplayBufferCount; ++bufferIndex) {
+			if (displayBuffers[bufferIndex] != fpl_null) {
+				fplMemoryAlignedFree(displayBuffers[bufferIndex]);
+			}
+		}
+		if (tiles != fpl_null) {
+			fplMemoryAlignedFree(tiles);
+			fplMemoryAlignedFree(tileStates);
+		}
+		fplClearStruct(this);
 	}
-}
-
-static void TileUnlock(TileState *tileState) {
-	fplAtomicStoreU32(&tileState->lock, 0); // FPL atomics are full barriers, so this is a release
-}
+};
 
 //
 // Display settings: changeable at any time without a restart, packed into one 64-bit atomic so a worker reads a consistent snapshot
@@ -4671,25 +4401,25 @@ struct DisplaySettings {
 	f32 exposureEV;
 	TonemapOperator tonemapOperator;
 	u32 version; // +1 on every change, 24 bits are used when packed
+
+	u64 Pack() const {
+		u32 exposureBits;
+		memcpy(&exposureBits, &exposureEV, sizeof(exposureBits));
+		u64 versionPart = ((u64)version & DisplayVersionMask) << DisplayVersionShift;
+		u64 tonemapPart = ((u64)tonemapOperator & DisplayTonemapMask) << DisplayTonemapShift;
+		u64 result = versionPart | tonemapPart | (u64)exposureBits;
+		return(result);
+	}
+
+	static DisplaySettings Unpack(const u64 packed) {
+		u32 exposureBits = (u32)(packed & DisplayExposureMask);
+		DisplaySettings result;
+		memcpy(&result.exposureEV, &exposureBits, sizeof(exposureBits));
+		result.tonemapOperator = (TonemapOperator)((packed >> DisplayTonemapShift) & DisplayTonemapMask);
+		result.version = (u32)((packed >> DisplayVersionShift) & DisplayVersionMask);
+		return(result);
+	}
 };
-
-static u64 PackDisplaySettings(const DisplaySettings &display) {
-	u32 exposureBits;
-	memcpy(&exposureBits, &display.exposureEV, sizeof(exposureBits));
-	u64 versionPart = ((u64)display.version & DisplayVersionMask) << DisplayVersionShift;
-	u64 tonemapPart = ((u64)display.tonemapOperator & DisplayTonemapMask) << DisplayTonemapShift;
-	u64 result = versionPart | tonemapPart | (u64)exposureBits;
-	return(result);
-}
-
-static DisplaySettings UnpackDisplaySettings(const u64 packed) {
-	u32 exposureBits = (u32)(packed & DisplayExposureMask);
-	DisplaySettings result;
-	memcpy(&result.exposureEV, &exposureBits, sizeof(exposureBits));
-	result.tonemapOperator = (TonemapOperator)((packed >> DisplayTonemapShift) & DisplayTonemapMask);
-	result.version = (u32)((packed >> DisplayVersionShift) & DisplayVersionMask);
-	return(result);
-}
 
 //
 // Job system
@@ -4759,7 +4489,32 @@ struct alignas(128) WorkerContext {
 	WorkerStats stats;
 	Vec3f tileRadiance[MaxTileSize * MaxTileSize]; // job-local samples, stays in L1/L2
 	SplatCache splatCache;                         // job-local light tracing splats, flushed at the end of every light job
+
+	void UpdateStats(const u32 sampleCount, const u32 rayCount, const u32 droppedSampleCount) {
+		sampleCountShadow += sampleCount;
+		rayCountShadow += rayCount;
+		droppedSampleCountShadow += droppedSampleCount;
+		fplAtomicStoreU64(&stats.sampleCount, sampleCountShadow);
+		fplAtomicStoreU64(&stats.rayCount, rayCountShadow);
+		fplAtomicStoreU64(&stats.droppedSampleCount, droppedSampleCountShadow);
+	}
 };
+
+struct JobProgress {
+	RenderState state;
+	u32 completedEpochCount;
+	u32 completedJobCount;
+	fplTimestamp convergedTimestamp;
+};
+
+struct WorkerTotals {
+	u64 sampleCount;
+	u64 rayCount;
+	u64 droppedSampleCount;
+};
+
+// Defined after the worker procedures, JobSystem::Init starts the threads with it
+static void WorkerThreadProc(const fplThreadHandle *thread, void *userData);
 
 struct JobSystem {
 	// Hot lock-free fields, one padding block each
@@ -4789,6 +4544,157 @@ struct JobSystem {
 	u32 workerCount;
 	WorkerContext *workers;
 	fplThreadHandle *workerThreads[MaxWorkerCount];
+
+	void PublishNextEpoch(const u32 finishedEpoch) {
+		bool isPublished = false;
+		fplMutexLock(&mutex);
+		u32 nextEpoch = finishedEpoch + 1;
+		completedEpochCount = nextEpoch;
+		if (state == RenderState::Running) {
+			bool isTargetReached = (config.targetSamplesPerPixel > 0) && (nextEpoch >= config.targetSamplesPerPixel);
+			if (isTargetReached) {
+				state = RenderState::Converged;
+				convergedTimestamp = fplTimestampQuery();
+				fplConditionBroadcast(&mainCondition);
+			} else {
+				publishedEpoch = nextEpoch;
+				// Reset the completion counter BEFORE publishing the cursor, or an early completion of the new epoch is lost
+				fplAtomicStoreU32(&completedJobCount.value, 0);
+				u64 nextCursor = (u64)nextEpoch << JobCursorEpochShift;
+				fplAtomicExchangeU64(&jobCursor.value, nextCursor);
+				++dispatchSerial;
+				isPublished = true;
+			}
+		}
+		fplMutexUnlock(&mutex);
+		if (isPublished) {
+			fplConditionBroadcast(&workCondition);
+		}
+	}
+
+	bool Init(const u32 requestedWorkerCount) {
+		if (!fplMutexInit(&mutex)) {
+			return(false);
+		}
+		if (!fplConditionInit(&workCondition) || !fplConditionInit(&mainCondition)) {
+			return(false);
+		}
+		state = RenderState::Idle;
+		quit = false;
+		activeWorkerCount = 0;
+		dispatchSerial = 0;
+		fplAtomicStoreU32(&abortRequested.value, 1);
+
+		u32 hardwareThreadCount = (u32)fplCPUGetCoreCount();
+		u32 desiredWorkerCount = (requestedWorkerCount > 0) ? requestedWorkerCount : hardwareThreadCount;
+		u32 cappedWorkerCount = fplMin(desiredWorkerCount, MaxWorkerCount);
+		u32 clampedWorkerCount = fplMax(1u, cappedWorkerCount);
+		size_t workerMemorySize = sizeof(WorkerContext) * clampedWorkerCount;
+		workers = (WorkerContext *)fplMemoryAlignedAllocate(workerMemorySize, alignof(WorkerContext));
+		if (workers == fpl_null) {
+			return(false);
+		}
+
+		u32 createdCount = 0;
+		for (u32 workerIndex = 0; workerIndex < clampedWorkerCount; ++workerIndex) {
+			WorkerContext *worker = workers + workerIndex;
+			new (worker) WorkerContext();
+			worker->jobs = this;
+			worker->workerIndex = workerIndex;
+			fplThreadParameters parameters = fplZeroInit;
+			parameters.runFunc = WorkerThreadProc;
+			parameters.userData = worker;
+			parameters.priority = fplThreadPriority_Low; // the main thread wins the CPU on Windows, no effect on POSIX
+			fplThreadHandle *thread = fplThreadCreateWithParameters(&parameters);
+			if (thread == fpl_null) {
+				break;
+			}
+			workerThreads[createdCount] = thread;
+			++createdCount;
+		}
+		workerCount = createdCount;
+		bool result = createdCount > 0;
+		return(result);
+	}
+
+	// Stops all work; on return no worker is active, and config, buffers and tiles may be changed
+	void Quiesce(const RenderState stateAfterQuiesce) {
+		fplMutexLock(&mutex);
+		state = stateAfterQuiesce;
+		fplAtomicStoreU32(&abortRequested.value, 1);
+		while (activeWorkerCount > 0) {
+			fplConditionWait(&mainCondition, &mutex, FPL_TIMEOUT_INFINITE);
+		}
+		fplMutexUnlock(&mutex);
+	}
+
+	// Precondition: quiesced. Starts at the given epoch, a new generation also resets the completed pass count.
+	void Dispatch(const u32 epoch, const bool isNewGeneration) {
+		fplMutexLock(&mutex);
+		fplAssert(activeWorkerCount == 0);
+		if (isNewGeneration) {
+			++generation;
+			completedEpochCount = 0;
+		}
+		publishedEpoch = epoch;
+		fplAtomicStoreU32(&completedJobCount.value, 0);
+		u64 cursor = (u64)epoch << JobCursorEpochShift;
+		fplAtomicExchangeU64(&jobCursor.value, cursor);
+		fplAtomicStoreU32(&abortRequested.value, 0);
+		state = RenderState::Running;
+		++dispatchSerial;
+		fplMutexUnlock(&mutex);
+		fplConditionBroadcast(&workCondition);
+	}
+
+	void Shutdown() {
+		fplMutexLock(&mutex);
+		quit = true;
+		state = RenderState::Idle;
+		fplAtomicStoreU32(&abortRequested.value, 1);
+		fplMutexUnlock(&mutex);
+		fplConditionBroadcast(&workCondition);
+		if (workerCount > 0) {
+			fplThreadWaitForAll(workerThreads, workerCount, 0, FPL_TIMEOUT_INFINITE);
+		}
+		// No fplThreadTerminate: the threads have returned, and their slots may already belong to someone else
+		if (workers != fpl_null) {
+			for (u32 workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+				WorkerContext *worker = workers + workerIndex;
+				worker->~WorkerContext();
+			}
+			fplMemoryAlignedFree(workers);
+			workers = fpl_null;
+		}
+		fplConditionDestroy(&mainCondition);
+		fplConditionDestroy(&workCondition);
+		fplMutexDestroy(&mutex);
+	}
+
+	JobProgress GetProgress() {
+		JobProgress result;
+		fplMutexLock(&mutex);
+		result.state = state;
+		result.completedEpochCount = completedEpochCount;
+		result.convergedTimestamp = convergedTimestamp;
+		fplMutexUnlock(&mutex);
+		result.completedJobCount = fplAtomicLoadU32(&completedJobCount.value);
+		return(result);
+	}
+
+	WorkerTotals GetTotals() {
+		WorkerTotals result = {};
+		for (u32 workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+			WorkerContext *worker = workers + workerIndex;
+			u64 samples = fplAtomicLoadU64(&worker->stats.sampleCount);
+			u64 rays = fplAtomicLoadU64(&worker->stats.rayCount);
+			u64 dropped = fplAtomicLoadU64(&worker->stats.droppedSampleCount);
+			result.sampleCount += samples;
+			result.rayCount += rays;
+			result.droppedSampleCount += dropped;
+		}
+		return(result);
+	}
 };
 
 enum class JobResult : u32 {
@@ -4803,7 +4709,7 @@ static void ResolveTileLocked(const RenderConfig *config, const u32 jobIndex, co
 	if (tileState->sampleCount == 0) {
 		return;
 	}
-	DisplaySettings display = UnpackDisplaySettings(displaySettingsPacked);
+	DisplaySettings display = DisplaySettings::Unpack(displaySettingsPacked);
 	f32 exposureScale = F32Power(2.0f, display.exposureEV);
 	f64 inverseSampleCount = 1.0 / (f64)tileState->sampleCount;
 	bool hasCaustics = config->lightJobCount > 0;
@@ -4838,7 +4744,7 @@ static void CommitTile(WorkerContext *worker, const RenderConfig *config, const 
 	const TileRect &tile = config->tiles[jobIndex];
 	TileState *tileState = &config->tileStates[jobIndex];
 	u32 tileWidth = tile.x1 - tile.x0;
-	TileLock(tileState);
+	tileState->Lock();
 	bool isFirstCommit = tileState->sampleCount == 0; // the first commit stores, so the buffer never needs clearing
 	for (u32 y = tile.y0; y < tile.y1; ++y) {
 		for (u32 x = tile.x0; x < tile.x1; ++x) {
@@ -4859,17 +4765,8 @@ static void CommitTile(WorkerContext *worker, const RenderConfig *config, const 
 	tileState->sampleCount = samplesAfterCommit;
 	u64 displaySettingsPacked = fplAtomicLoadU64(&jobs->displaySettingsPacked.value);
 	ResolveTileLocked(config, jobIndex, displaySettingsPacked);
-	TileUnlock(tileState);
+	tileState->Unlock();
 	fplAtomicIncrementU32(&jobs->displayCommitCount.value);
-}
-
-static void UpdateWorkerStats(WorkerContext *worker, const u32 sampleCount, const u32 rayCount, const u32 droppedSampleCount) {
-	worker->sampleCountShadow += sampleCount;
-	worker->rayCountShadow += rayCount;
-	worker->droppedSampleCountShadow += droppedSampleCount;
-	fplAtomicStoreU64(&worker->stats.sampleCount, worker->sampleCountShadow);
-	fplAtomicStoreU64(&worker->stats.rayCount, worker->rayCountShadow);
-	fplAtomicStoreU64(&worker->stats.droppedSampleCount, worker->droppedSampleCountShadow);
 }
 
 static JobResult ExecuteTileJob(WorkerContext *worker, const RenderConfig *config, const u32 epoch, const u32 jobIndex) {
@@ -4916,9 +4813,9 @@ static JobResult ExecuteTileJob(WorkerContext *worker, const RenderConfig *confi
 		}
 		for (u32 x = tile.x0; x < tile.x1; ++x) {
 			u32 pixelIndex = y * config->width + x;
-			PathSampler sampler = MakePathSampler(pixelIndex, sampleIndex, config->seedSalt);
+			PathSampler sampler = PathSampler::Make(pixelIndex, sampleIndex, config->seedSalt);
 			f32 filterDensity;
-			Ray3f primaryRay = GenerateCameraRay(config->camera, x, y, sampler, filterDensity);
+			Ray3f primaryRay = config->camera.GenerateRay(x, y, sampler, filterDensity);
 			// Solid angle density of this camera ray for its pixel: tent density / (pixel film area * cos^3)
 			f32 cosCamera = V3fDot(primaryRay.direction, config->camera.forward);
 			f32 cosCameraCubed = cosCamera * cosCamera * cosCamera;
@@ -4939,7 +4836,7 @@ static JobResult ExecuteTileJob(WorkerContext *worker, const RenderConfig *confi
 	}
 
 	CommitTile(worker, config, jobIndex, samplesAfterCommit);
-	UpdateWorkerStats(worker, tileWidth * tileHeight, pathStats.rayCount, droppedSampleCount);
+	worker->UpdateStats(tileWidth * tileHeight, pathStats.rayCount, droppedSampleCount);
 	return(JobResult::Completed);
 }
 
@@ -4960,12 +4857,12 @@ static JobResult ExecuteLightJob(WorkerContext *worker, const RenderConfig *conf
 	f64 mergeArea = MergeAreaForEpoch(config->photonRadius, epoch);
 	for (u32 photonOffset = 0; photonOffset < PhotonsPerLightJob; ++photonOffset) {
 		u32 photonIndex = firstPhotonIndex + photonOffset;
-		PathSampler sampler = MakePathSampler(photonIndex, epoch, lightSeedSalt);
+		PathSampler sampler = PathSampler::Make(photonIndex, epoch, lightSeedSalt);
 		TraceLightPath(config->scene, config->transport, config->camera, config->caustics, mergeArea, worker->splatCache, photonOutput, sampler, pathStats);
 	}
-	FlushSplatCache(config->caustics, worker->splatCache);
+	worker->splatCache.Flush(config->caustics);
 	*jobState = passesAfterJob;
-	UpdateWorkerStats(worker, 0, pathStats.rayCount, 0);
+	worker->UpdateStats(0, pathStats.rayCount, 0);
 	return(JobResult::Completed);
 }
 
@@ -4980,37 +4877,10 @@ static JobResult ExecutePhotonMapJob(const RenderConfig *config, const u32 epoch
 	if (epoch > 0) {
 		u32 previousBufferIndex = (epoch - 1) % PhotonBufferCount;
 		f32 radius = PhotonRadiusForEpoch(config->photonRadius, epoch);
-		BuildPhotonMap(*storage, previousBufferIndex, radius);
+		storage->BuildMap(previousBufferIndex, radius);
 	}
 	fplAtomicStoreU32(&storage->readyEpoch, readyValue);
 	return(JobResult::Completed);
-}
-
-static void PublishNextEpoch(JobSystem *jobs, const RenderConfig *config, const u32 finishedEpoch) {
-	bool isPublished = false;
-	fplMutexLock(&jobs->mutex);
-	u32 nextEpoch = finishedEpoch + 1;
-	jobs->completedEpochCount = nextEpoch;
-	if (jobs->state == RenderState::Running) {
-		bool isTargetReached = (config->targetSamplesPerPixel > 0) && (nextEpoch >= config->targetSamplesPerPixel);
-		if (isTargetReached) {
-			jobs->state = RenderState::Converged;
-			jobs->convergedTimestamp = fplTimestampQuery();
-			fplConditionBroadcast(&jobs->mainCondition);
-		} else {
-			jobs->publishedEpoch = nextEpoch;
-			// Reset the completion counter BEFORE publishing the cursor, or an early completion of the new epoch is lost
-			fplAtomicStoreU32(&jobs->completedJobCount.value, 0);
-			u64 nextCursor = (u64)nextEpoch << JobCursorEpochShift;
-			fplAtomicExchangeU64(&jobs->jobCursor.value, nextCursor);
-			++jobs->dispatchSerial;
-			isPublished = true;
-		}
-	}
-	fplMutexUnlock(&jobs->mutex);
-	if (isPublished) {
-		fplConditionBroadcast(&jobs->workCondition);
-	}
 }
 
 static void RunJobs(WorkerContext *worker, const RenderConfig *config) {
@@ -5047,7 +4917,7 @@ static void RunJobs(WorkerContext *worker, const RenderConfig *config) {
 		// Commit happens before this increment, so the publisher and the next claimer of the tile see the committed data
 		u32 completedCount = fplAtomicAddAndFetchU32(&jobs->completedJobCount.value, 1);
 		if (completedCount == totalJobCount) {
-			PublishNextEpoch(jobs, config, epoch);
+			jobs->PublishNextEpoch(epoch);
 		}
 	}
 }
@@ -5080,143 +4950,6 @@ static void WorkerThreadProc(const fplThreadHandle * /* thread */, void *userDat
 		}
 	}
 	fplMutexUnlock(&jobs->mutex);
-}
-
-static bool JobSystemInit(JobSystem *jobs, const u32 requestedWorkerCount) {
-	if (!fplMutexInit(&jobs->mutex)) {
-		return(false);
-	}
-	if (!fplConditionInit(&jobs->workCondition) || !fplConditionInit(&jobs->mainCondition)) {
-		return(false);
-	}
-	jobs->state = RenderState::Idle;
-	jobs->quit = false;
-	jobs->activeWorkerCount = 0;
-	jobs->dispatchSerial = 0;
-	fplAtomicStoreU32(&jobs->abortRequested.value, 1);
-
-	u32 hardwareThreadCount = (u32)fplCPUGetCoreCount();
-	u32 desiredWorkerCount = (requestedWorkerCount > 0) ? requestedWorkerCount : hardwareThreadCount;
-	u32 cappedWorkerCount = fplMin(desiredWorkerCount, MaxWorkerCount);
-	u32 clampedWorkerCount = fplMax(1u, cappedWorkerCount);
-	size_t workerMemorySize = sizeof(WorkerContext) * clampedWorkerCount;
-	jobs->workers = (WorkerContext *)fplMemoryAlignedAllocate(workerMemorySize, alignof(WorkerContext));
-	if (jobs->workers == fpl_null) {
-		return(false);
-	}
-
-	u32 createdCount = 0;
-	for (u32 workerIndex = 0; workerIndex < clampedWorkerCount; ++workerIndex) {
-		WorkerContext *worker = jobs->workers + workerIndex;
-		new (worker) WorkerContext();
-		worker->jobs = jobs;
-		worker->workerIndex = workerIndex;
-		fplThreadParameters parameters = fplZeroInit;
-		parameters.runFunc = WorkerThreadProc;
-		parameters.userData = worker;
-		parameters.priority = fplThreadPriority_Low; // the main thread wins the CPU on Windows, no effect on POSIX
-		fplThreadHandle *thread = fplThreadCreateWithParameters(&parameters);
-		if (thread == fpl_null) {
-			break;
-		}
-		jobs->workerThreads[createdCount] = thread;
-		++createdCount;
-	}
-	jobs->workerCount = createdCount;
-	bool result = createdCount > 0;
-	return(result);
-}
-
-// Stops all work; on return no worker is active, and config, buffers and tiles may be changed
-static void JobSystemQuiesce(JobSystem *jobs, const RenderState stateAfterQuiesce) {
-	fplMutexLock(&jobs->mutex);
-	jobs->state = stateAfterQuiesce;
-	fplAtomicStoreU32(&jobs->abortRequested.value, 1);
-	while (jobs->activeWorkerCount > 0) {
-		fplConditionWait(&jobs->mainCondition, &jobs->mutex, FPL_TIMEOUT_INFINITE);
-	}
-	fplMutexUnlock(&jobs->mutex);
-}
-
-// Precondition: quiesced. Starts at the given epoch, a new generation also resets the completed pass count.
-static void JobSystemDispatch(JobSystem *jobs, const u32 epoch, const bool isNewGeneration) {
-	fplMutexLock(&jobs->mutex);
-	fplAssert(jobs->activeWorkerCount == 0);
-	if (isNewGeneration) {
-		++jobs->generation;
-		jobs->completedEpochCount = 0;
-	}
-	jobs->publishedEpoch = epoch;
-	fplAtomicStoreU32(&jobs->completedJobCount.value, 0);
-	u64 cursor = (u64)epoch << JobCursorEpochShift;
-	fplAtomicExchangeU64(&jobs->jobCursor.value, cursor);
-	fplAtomicStoreU32(&jobs->abortRequested.value, 0);
-	jobs->state = RenderState::Running;
-	++jobs->dispatchSerial;
-	fplMutexUnlock(&jobs->mutex);
-	fplConditionBroadcast(&jobs->workCondition);
-}
-
-static void JobSystemShutdown(JobSystem *jobs) {
-	fplMutexLock(&jobs->mutex);
-	jobs->quit = true;
-	jobs->state = RenderState::Idle;
-	fplAtomicStoreU32(&jobs->abortRequested.value, 1);
-	fplMutexUnlock(&jobs->mutex);
-	fplConditionBroadcast(&jobs->workCondition);
-	if (jobs->workerCount > 0) {
-		fplThreadWaitForAll(jobs->workerThreads, jobs->workerCount, 0, FPL_TIMEOUT_INFINITE);
-	}
-	// No fplThreadTerminate: the threads have returned, and their slots may already belong to someone else
-	if (jobs->workers != fpl_null) {
-		for (u32 workerIndex = 0; workerIndex < jobs->workerCount; ++workerIndex) {
-			WorkerContext *worker = jobs->workers + workerIndex;
-			worker->~WorkerContext();
-		}
-		fplMemoryAlignedFree(jobs->workers);
-		jobs->workers = fpl_null;
-	}
-	fplConditionDestroy(&jobs->mainCondition);
-	fplConditionDestroy(&jobs->workCondition);
-	fplMutexDestroy(&jobs->mutex);
-}
-
-struct JobProgress {
-	RenderState state;
-	u32 completedEpochCount;
-	u32 completedJobCount;
-	fplTimestamp convergedTimestamp;
-};
-
-static JobProgress JobSystemGetProgress(JobSystem *jobs) {
-	JobProgress result;
-	fplMutexLock(&jobs->mutex);
-	result.state = jobs->state;
-	result.completedEpochCount = jobs->completedEpochCount;
-	result.convergedTimestamp = jobs->convergedTimestamp;
-	fplMutexUnlock(&jobs->mutex);
-	result.completedJobCount = fplAtomicLoadU32(&jobs->completedJobCount.value);
-	return(result);
-}
-
-struct WorkerTotals {
-	u64 sampleCount;
-	u64 rayCount;
-	u64 droppedSampleCount;
-};
-
-static WorkerTotals JobSystemGetTotals(JobSystem *jobs) {
-	WorkerTotals result = {};
-	for (u32 workerIndex = 0; workerIndex < jobs->workerCount; ++workerIndex) {
-		WorkerContext *worker = jobs->workers + workerIndex;
-		u64 samples = fplAtomicLoadU64(&worker->stats.sampleCount);
-		u64 rays = fplAtomicLoadU64(&worker->stats.rayCount);
-		u64 dropped = fplAtomicLoadU64(&worker->stats.droppedSampleCount);
-		result.sampleCount += samples;
-		result.rayCount += rays;
-		result.droppedSampleCount += dropped;
-	}
-	return(result);
 }
 
 //
@@ -5297,163 +5030,6 @@ struct FrameCommands {
 	b32 isHelpRequested;
 };
 
-struct App {
-	JobSystem jobs;
-	RenderTarget target;
-	SceneEntry *scenes;
-	u32 currentSceneIndex;
-	OrbitCamera camera;
-	UserRenderSettings settings;
-	DisplaySettings display;
-	InputState input;
-	u32 previewDivisor;              // chosen when an interaction starts
-	b32 wasInteracting;
-	b32 hasInteraction;
-	fplTimestamp lastInteractionTimestamp;
-	fplTimestamp generationStartTimestamp;
-	fplTimestamp pauseStartTimestamp;
-	f64 pausedSeconds;
-	f64 smoothedSamplesPerSecond;
-	f64 smoothedRaysPerSecond;
-	WorkerTotals lastTotals;
-	fplTimestamp lastTotalsTimestamp;
-	fplTimestamp lastTitleTimestamp;
-	u32 retonemapCursor;             // == tileCount when no retonemap is pending
-	u32 lastPresentedCommitCount;
-	fplTimestamp lastPresentTimestamp;
-	b32 forcePresent;
-	u32 *blitColumnLookup;           // grow-only, one entry per backbuffer column
-	size_t blitColumnCapacity;
-	u32 screenshotCounter;
-	b32 wasSettled;                  // paused or converged in the previous frame
-	PhotonStorage photons;
-};
-
-static const Scene &GetCurrentScene(const App *app) {
-	const Scene &result = app->scenes[app->currentSceneIndex].scene;
-	return(result);
-}
-
-static void StoreDisplaySettings(App *app) {
-	++app->display.version;
-	u64 packed = PackDisplaySettings(app->display);
-	fplAtomicStoreU64(&app->jobs.displaySettingsPacked.value, packed);
-	app->retonemapCursor = 0;
-	app->forcePresent = true;
-}
-
-static void ApplyCameraDepthOfField(App *app) {
-	const Scene &scene = GetCurrentScene(app);
-	f32 sceneAperture = scene.camera.defaultApertureRadius;
-	f32 fallbackAperture = FallbackApertureDistanceFactor * app->camera.distance;
-	f32 enabledAperture = (sceneAperture > 0.0f) ? sceneAperture : fallbackAperture;
-	app->camera.apertureRadius = app->settings.isDepthOfFieldEnabled ? enabledAperture : 0.0f;
-}
-
-static void ResetCameraToScene(App *app) {
-	const Scene &scene = GetCurrentScene(app);
-	app->camera = MakeOrbitCamera(scene.camera);
-	ApplyCameraDepthOfField(app);
-}
-
-static void ApplySceneDefaults(App *app, const u32 sceneIndex) {
-	app->currentSceneIndex = sceneIndex;
-	const SceneEntry &entry = app->scenes[sceneIndex];
-	app->settings.maxBounces = entry.scene.maxBounces;
-	app->settings.isDepthOfFieldEnabled = entry.scene.camera.defaultApertureRadius > 0.0f;
-	app->display.exposureEV = entry.scene.exposureEV;
-	app->display.tonemapOperator = entry.tonemapOperator;
-	ResetCameraToScene(app);
-}
-
-static void BuildRenderConfig(App *app, RenderConfig *config) {
-	const Scene &scene = GetCurrentScene(app);
-	const RenderTarget &target = app->target;
-	bool isPreview = target.resolutionDivisor > 1;
-	config->scene = scene.view;
-	config->transport.maxBounces = isPreview ? fplMin(app->settings.maxBounces, PreviewMaxBounces) : app->settings.maxBounces;
-	config->transport.russianRouletteStartBounce = RussianRouletteStartBounce;
-	config->transport.russianRouletteMinSurvival = RussianRouletteMinSurvival;
-	config->transport.russianRouletteMaxSurvival = RussianRouletteMaxSurvival;
-	// Preview frames are replaced within a fraction of a second, so they always clamp fireflies (biased, but never accumulated)
-	bool isClamped = app->settings.isFireflyClampEnabled || isPreview;
-	config->transport.indirectClampLuminance = isClamped ? FireflyClampLuminance : 0.0f;
-	config->transport.mode = app->settings.integratorMode;
-	config->camera = MakeCameraFrame(app->camera, target.outputWidth, target.outputHeight, target.resolutionDivisor);
-	config->seedSalt = MakeSeedSalt(app->settings.seed);
-	config->targetSamplesPerPixel = isPreview ? 0 : app->settings.targetSamplesPerPixel;
-	config->width = target.width;
-	config->height = target.height;
-	config->tileCount = target.tileCount;
-	config->tiles = target.tiles;
-	config->tileStates = target.tileStates;
-	config->accumulation = target.accumulation;
-	config->display = target.displayBuffers[target.frontDisplayIndex];
-	config->lightJobCount = target.lightJobCount;
-	config->lightJobStates = target.lightJobStates;
-	config->photons = &app->photons;
-	config->photonRadius = scene.photonRadius;
-	config->transport.isLightTracingActive = target.lightJobCount > 0;
-	u32 photonsPerPass = target.lightJobCount * PhotonsPerLightJob;
-	f32 renderPixelFilmWidth = 2.0f * config->camera.tanHalfX * config->camera.resolutionDivisor * config->camera.inverseOutputWidth;
-	f32 renderPixelFilmHeight = 2.0f * config->camera.tanHalfY * config->camera.resolutionDivisor * config->camera.inverseOutputHeight;
-	config->caustics.sums = target.causticSums;
-	config->caustics.width = target.width;
-	config->caustics.height = target.height;
-	config->caustics.scale = (photonsPerPass > 0) ? (1.0f / (f32)photonsPerPass) : 0.0f;
-	config->caustics.pixelFilmArea = renderPixelFilmWidth * renderPixelFilmHeight;
-}
-
-// Quiesce -> reconfigure -> dispatch: nothing from an old generation can ever land in a reset buffer, false when the render buffers could not be allocated
-static bool RestartRendering(App *app, const u32 resolutionDivisor) {
-	JobSystemQuiesce(&app->jobs, RenderState::Idle);
-	bool isConfigured = ConfigureRenderTarget(&app->target, app->target.outputWidth, app->target.outputHeight, resolutionDivisor);
-	if (!isConfigured) {
-		return(false);
-	}
-	ResetTileStates(&app->target);
-	const Scene &scene = GetCurrentScene(app);
-	bool isLightTracing = app->settings.isLightTracingEnabled && scene.view.isLightTracingAvailable && resolutionDivisor == 1;
-	bool isLightTracingConfigured = ConfigureLightTracing(&app->target, isLightTracing);
-	if (!isLightTracingConfigured) {
-		// Out of memory for the light job states: render without caustic light tracing, the path tracer alone is still unbiased
-		ConfigureLightTracing(&app->target, false);
-	}
-	// Photon buffers per light job (grow-only capacity), no photon map before the first pass completed
-	for (u32 bufferIndex = 0; bufferIndex < PhotonBufferCount; ++bufferIndex) {
-		std::vector<std::vector<PhotonRecord> > &jobPhotons = app->photons.jobPhotons[bufferIndex];
-		if (jobPhotons.size() < app->target.lightJobCount) {
-			jobPhotons.resize(app->target.lightJobCount);
-		}
-		for (size_t jobIndex = 0; jobIndex < jobPhotons.size(); ++jobIndex) {
-			jobPhotons[jobIndex].clear();
-		}
-	}
-	fplAtomicStoreU32(&app->photons.readyEpoch, 0);
-	BuildRenderConfig(app, &app->jobs.config);
-	app->generationStartTimestamp = fplTimestampQuery();
-	app->pausedSeconds = 0.0;
-	app->retonemapCursor = app->target.tileCount; // reset tiles are resolved by their first commit
-	app->forcePresent = true;
-	JobSystemDispatch(&app->jobs, 0, true);
-	return(true);
-}
-
-static void PauseRendering(App *app) {
-	JobSystemQuiesce(&app->jobs, RenderState::Paused); // in-flight jobs are discarded and re-run on resume
-	app->pauseStartTimestamp = fplTimestampQuery();
-}
-
-static void ResumeRendering(App *app) {
-	fplTimestamp now = fplTimestampQuery();
-	f64 pausedNow = fplTimestampElapsed(app->pauseStartTimestamp, now);
-	app->pausedSeconds += pausedNow;
-	fplMutexLock(&app->jobs.mutex);
-	u32 epochToRestart = app->jobs.publishedEpoch;
-	fplMutexUnlock(&app->jobs.mutex);
-	JobSystemDispatch(&app->jobs, epochToRestart, false); // committed tiles are skipped
-}
-
 // Picks the preview resolution divisor so that one pass fits in the frame budget
 static u32 ChoosePreviewDivisor(const f64 samplesPerSecond, const u32 outputWidth, const u32 outputHeight) {
 	f64 budgetSamples = samplesPerSecond * PreviewFrameBudgetSeconds;
@@ -5469,67 +5045,6 @@ static u32 ChoosePreviewDivisor(const f64 samplesPerSecond, const u32 outputWidt
 	}
 	u32 largestDivisor = PreviewDivisors[divisorCount - 1];
 	return(largestDivisor);
-}
-
-static f64 GetElapsedRenderSeconds(App *app, const JobProgress &progress, const fplTimestamp now) {
-	fplTimestamp endTimestamp = now;
-	if (progress.state == RenderState::Converged) {
-		endTimestamp = progress.convergedTimestamp;
-	} else if (progress.state == RenderState::Paused) {
-		endTimestamp = app->pauseStartTimestamp;
-	}
-	f64 totalSeconds = fplTimestampElapsed(app->generationStartTimestamp, endTimestamp);
-	f64 activeSeconds = totalSeconds - app->pausedSeconds;
-	f64 result = fplMax(activeSeconds, 0.0);
-	return(result);
-}
-
-static void UpdateThroughput(App *app, const fplTimestamp now) {
-	WorkerTotals totals = JobSystemGetTotals(&app->jobs);
-	f64 elapsed = fplTimestampElapsed(app->lastTotalsTimestamp, now);
-	if (elapsed > 0.0) {
-		u64 sampleDelta = totals.sampleCount - app->lastTotals.sampleCount;
-		u64 rayDelta = totals.rayCount - app->lastTotals.rayCount;
-		if (sampleDelta > 0) {
-			f64 samplesPerSecond = (f64)sampleDelta / elapsed;
-			f64 raysPerSecond = (f64)rayDelta / elapsed;
-			app->smoothedSamplesPerSecond += ThroughputSmoothing * (samplesPerSecond - app->smoothedSamplesPerSecond);
-			app->smoothedRaysPerSecond += ThroughputSmoothing * (raysPerSecond - app->smoothedRaysPerSecond);
-		}
-	}
-	app->lastTotals = totals;
-	app->lastTotalsTimestamp = now;
-}
-
-static void UpdateWindowTitle(App *app) {
-	JobProgress progress = JobSystemGetProgress(&app->jobs);
-	const Scene &scene = GetCurrentScene(app);
-	const RenderTarget &target = app->target;
-	// A restart earlier in this frame may have set the generation start after the frame timestamp
-	fplTimestamp titleTimestamp = fplTimestampQuery();
-	f64 elapsedSeconds = GetElapsedRenderSeconds(app, progress, titleTimestamp);
-	u32 photonMapJobCount = (target.lightJobCount > 0) ? 1 : 0;
-	u32 passJobCount = target.tileCount + target.lightJobCount + photonMapJobCount;
-	u32 passPercent = (passJobCount > 0) ? (u32)((u64)progress.completedJobCount * 100 / passJobCount) : 0;
-	f64 megaRaysPerSecond = app->smoothedRaysPerSecond * MillionFactor;
-	const char *tonemapName = TonemapOperatorNames[(u32)app->display.tonemapOperator];
-	const char *integratorName = IntegratorModeNames[(u32)app->settings.integratorMode];
-	const char *stateSuffix = "";
-	if (progress.state == RenderState::Paused) {
-		stateSuffix = " | PAUSED";
-	} else if (progress.state == RenderState::Converged) {
-		stateSuffix = " | DONE";
-	}
-	char previewText[32] = "";
-	if (target.resolutionDivisor > 1) {
-		fplStringFormat(previewText, fplArrayCount(previewText), " preview 1/%u", target.resolutionDivisor);
-	}
-	const char *clampText = app->settings.isFireflyClampEnabled ? " clamp" : "";
-	const char *dofText = app->settings.isDepthOfFieldEnabled ? " DOF" : "";
-	const char *causticText = (target.lightJobCount > 0) ? " +caustics" : "";
-	char title[TitleBufferSize];
-	fplStringFormat(title, fplArrayCount(title), "FPL Raytracer | %s | %ux%u%s | %u spp (%u%%) | %.1f s | %.1f MR/s | EV %+.1f %s | %u bounces %s%s%s%s | %u threads%s", scene.name, target.outputWidth, target.outputHeight, previewText, progress.completedEpochCount, passPercent, elapsedSeconds, megaRaysPerSecond, app->display.exposureEV, tonemapName, app->settings.maxBounces, integratorName, causticText, clampText, dofText, app->jobs.workerCount, stateSuffix);
-	fplSetWindowTitle(title);
 }
 
 static void PrintHelp() {
@@ -5552,322 +5067,6 @@ static void PrintHelp() {
 	fplConsoleOut("  P / Shift+P             Save screenshot (BMP) / also HDR image (PFM)\n");
 	fplConsoleOut("  H/F1                    Help\n");
 	fplConsoleOut("  Escape                  Quit\n");
-}
-
-static void ClearInput(App *app) {
-	fplClearStruct(&app->input);
-}
-
-static void CycleBounces(App *app, const bool isBackward) {
-	u32 choiceCount = fplArrayCount(BounceDepthChoices);
-	u32 current = app->settings.maxBounces;
-	u32 next = BounceDepthChoices[0];
-	if (isBackward) {
-		next = BounceDepthChoices[choiceCount - 1];
-		for (u32 choiceIndex = choiceCount; choiceIndex > 0; --choiceIndex) {
-			u32 choice = BounceDepthChoices[choiceIndex - 1];
-			if (choice < current) {
-				next = choice;
-				break;
-			}
-		}
-	} else {
-		for (u32 choiceIndex = 0; choiceIndex < choiceCount; ++choiceIndex) {
-			u32 choice = BounceDepthChoices[choiceIndex];
-			if (choice > current) {
-				next = choice;
-				break;
-			}
-		}
-	}
-	app->settings.maxBounces = next;
-}
-
-static void ChangeExposure(App *app, const f32 deltaEV, FrameCommands &commands) {
-	f32 newExposure = app->display.exposureEV + deltaEV;
-	app->display.exposureEV = F32Clamp(newExposure, MinExposureEV, MaxExposureEV);
-	commands.isDisplaySettingsChanged = true;
-}
-
-static void HandleKeyPress(App *app, const fplKey key, const bool isRepeat, FrameCommands &commands) {
-	bool isShift = app->input.isShiftDown != 0;
-	// Exposure also follows key repeats
-	if (key == fplKey_OemPlus || key == fplKey_Add || key == fplKey_PageUp) {
-		ChangeExposure(app, ExposureStepEV, commands);
-		return;
-	}
-	if (key == fplKey_OemMinus || key == fplKey_Substract || key == fplKey_PageDown) {
-		ChangeExposure(app, -ExposureStepEV, commands);
-		return;
-	}
-	if (isRepeat) {
-		return;
-	}
-	if (key >= fplKey_0 && key <= fplKey_9) {
-		u32 sceneIndex = (u32)(key - fplKey_0);
-		if (sceneIndex < SceneCount) {
-			commands.isSceneChanged = true;
-			commands.sceneIndex = sceneIndex;
-		}
-		return;
-	}
-	switch (key) {
-		case fplKey_Escape:
-			fplWindowShutdown();
-			break;
-		case fplKey_Space:
-			commands.isPauseToggled = true;
-			break;
-		case fplKey_R:
-			commands.isRestartRequested = true;
-			break;
-		case fplKey_T:
-		{
-			u32 nextTonemap = ((u32)app->display.tonemapOperator + 1) % (u32)TonemapOperator::Count;
-			app->display.tonemapOperator = (TonemapOperator)nextTonemap;
-			commands.isDisplaySettingsChanged = true;
-		} break;
-		case fplKey_B:
-			CycleBounces(app, isShift);
-			commands.isRenderSettingsChanged = true;
-			break;
-		case fplKey_M:
-		{
-			u32 nextMode = ((u32)app->settings.integratorMode + 1) % (u32)IntegratorMode::Count;
-			app->settings.integratorMode = (IntegratorMode)nextMode;
-			commands.isRenderSettingsChanged = true;
-		} break;
-		case fplKey_F:
-			app->settings.isFireflyClampEnabled = !app->settings.isFireflyClampEnabled;
-			commands.isRenderSettingsChanged = true;
-			break;
-		case fplKey_C:
-			app->settings.isLightTracingEnabled = !app->settings.isLightTracingEnabled;
-			commands.isRenderSettingsChanged = true;
-			break;
-		case fplKey_O:
-			app->settings.isDepthOfFieldEnabled = !app->settings.isDepthOfFieldEnabled;
-			ApplyCameraDepthOfField(app);
-			commands.isRenderSettingsChanged = true;
-			break;
-		case fplKey_P:
-			commands.isScreenshotRequested = true;
-			commands.isHdrScreenshotRequested = isShift;
-			break;
-		case fplKey_H:
-		case fplKey_F1:
-			commands.isHelpRequested = true;
-			break;
-		case fplKey_Home:
-		case fplKey_Backspace:
-			commands.isCameraReset = true;
-			break;
-		default:
-			break;
-	}
-}
-
-static void OrbitCameraBy(App *app, const s32 deltaX, const s32 deltaY) {
-	app->camera.yawRadians -= (f32)deltaX * OrbitRadiansPerPixel;
-	f32 newPitch = app->camera.pitchRadians + (f32)deltaY * OrbitRadiansPerPixel;
-	app->camera.pitchRadians = F32Clamp(newPitch, -MaxPitchRadians, MaxPitchRadians);
-}
-
-// The point under the cursor stays under it
-static void PanCameraBy(App *app, const s32 deltaX, const s32 deltaY) {
-	CameraFrame frame = MakeCameraFrame(app->camera, app->target.outputWidth, app->target.outputHeight, 1);
-	f32 worldPerPixel = 2.0f * app->camera.distance * frame.tanHalfY / (f32)app->target.outputHeight;
-	Vec3f horizontalMove = ((f32)deltaX * worldPerPixel) * frame.right;
-	Vec3f verticalMove = ((f32)deltaY * worldPerPixel) * frame.up;
-	app->camera.target = app->camera.target - horizontalMove + verticalMove;
-}
-
-static void ZoomCameraBy(App *app, const f32 wheelDelta) {
-	f32 zoomFactor = F32Power(ZoomFactorPerWheelNotch, wheelDelta);
-	f32 newDistance = app->camera.distance * zoomFactor;
-	app->camera.distance = F32Clamp(newDistance, MinOrbitDistance, MaxOrbitDistance);
-}
-
-static void HandleEvent(App *app, const fplEvent &ev, FrameCommands &commands, fplTimestamp now) {
-	switch (ev.type) {
-		case fplEventType_Keyboard:
-		{
-			if (ev.keyboard.type != fplKeyboardEventType_Button) {
-				break;
-			}
-			u32 shiftMask = fplKeyboardModifierFlags_LShift | fplKeyboardModifierFlags_RShift;
-			app->input.isShiftDown = ((u32)ev.keyboard.modifiers & shiftMask) != 0;
-			u32 keyIndex = (u32)ev.keyboard.mappedKey;
-			bool isPress = ev.keyboard.buttonState == fplButtonState_Press;
-			bool isRepeat = ev.keyboard.buttonState == fplButtonState_Repeat;
-			bool isRelease = ev.keyboard.buttonState == fplButtonState_Release;
-			if (keyIndex < KeyStateCount) {
-				if (isPress) {
-					app->input.isKeyDown[keyIndex] = true;
-				} else if (isRelease) {
-					app->input.isKeyDown[keyIndex] = false;
-				}
-			}
-			if (isPress || isRepeat) {
-				HandleKeyPress(app, ev.keyboard.mappedKey, isRepeat, commands);
-			}
-		} break;
-
-		case fplEventType_Mouse:
-		{
-			if (ev.mouse.type == fplMouseEventType_Button) {
-				s32 buttonIndex = (s32)ev.mouse.mouseButton;
-				if (buttonIndex >= 0 && buttonIndex < (s32)MouseButtonCount) {
-					app->input.isMouseButtonDown[buttonIndex] = ev.mouse.buttonState != fplButtonState_Release;
-				}
-			} else if (ev.mouse.type == fplMouseEventType_Move) {
-				bool isOrbiting = app->input.isMouseButtonDown[fplMouseButtonType_Left] != 0;
-				bool isPanning = (app->input.isMouseButtonDown[fplMouseButtonType_Right] != 0) || (app->input.isMouseButtonDown[fplMouseButtonType_Middle] != 0);
-				bool hasDelta = (ev.mouse.deltaX != 0) || (ev.mouse.deltaY != 0);
-				if (hasDelta && isOrbiting) {
-					OrbitCameraBy(app, ev.mouse.deltaX, ev.mouse.deltaY);
-					commands.isCameraChanged = true;
-				} else if (hasDelta && isPanning) {
-					PanCameraBy(app, ev.mouse.deltaX, ev.mouse.deltaY);
-					commands.isCameraChanged = true;
-				}
-			} else if (ev.mouse.type == fplMouseEventType_Wheel) {
-				ZoomCameraBy(app, ev.mouse.wheelDelta);
-				ApplyCameraDepthOfField(app);
-				commands.isCameraChanged = true;
-			}
-		} break;
-
-		case fplEventType_Window:
-		{
-			switch (ev.window.type) {
-				case fplWindowEventType_Resized:
-					app->lastInteractionTimestamp = now;
-					app->hasInteraction = true;
-					app->forcePresent = true;
-					break;
-				case fplWindowEventType_LostFocus:
-					ClearInput(app);
-					app->forcePresent = true;
-					break;
-				case fplWindowEventType_GotFocus:
-				case fplWindowEventType_Maximized:
-				case fplWindowEventType_Restored:
-				case fplWindowEventType_Shown:
-				case fplWindowEventType_Exposed:
-				case fplWindowEventType_PositionChanged:
-					app->forcePresent = true;
-					break;
-				default:
-					break;
-			}
-		} break;
-
-		default:
-			break;
-	}
-}
-
-// Held keys move the target along the view axes
-static bool ApplyFlyMovement(App *app, const f32 deltaSeconds) {
-	const InputState &input = app->input;
-	f32 forwardAmount = (f32)(input.isKeyDown[fplKey_W] - input.isKeyDown[fplKey_S]);
-	f32 rightAmount = (f32)(input.isKeyDown[fplKey_D] - input.isKeyDown[fplKey_A]);
-	f32 upAmount = (f32)(input.isKeyDown[fplKey_E] - input.isKeyDown[fplKey_Q]);
-	if (forwardAmount == 0.0f && rightAmount == 0.0f && upAmount == 0.0f) {
-		return(false);
-	}
-	CameraFrame frame = MakeCameraFrame(app->camera, app->target.outputWidth, app->target.outputHeight, 1);
-	f32 speedFactor = input.isShiftDown ? FlyFastMultiplier : 1.0f;
-	f32 step = FlySpeedDistanceFactorPerSecond * app->camera.distance * speedFactor * deltaSeconds;
-	Vec3f forwardMove = (forwardAmount * step) * frame.forward;
-	Vec3f rightMove = (rightAmount * step) * frame.right;
-	Vec3f upMove = (upAmount * step) * UnitUp;
-	app->camera.target = app->camera.target + forwardMove + rightMove + upMove;
-	return(true);
-}
-
-// Re-resolves already rendered tiles after an exposure or tone mapper change, with a time budget per frame
-static void RetonemapStep(App *app) {
-	const RenderConfig *config = &app->jobs.config; // main thread owned, readable at any time
-	u64 displaySettingsPacked = PackDisplaySettings(app->display);
-	u32 currentVersion = (u32)((u64)app->display.version & DisplayVersionMask);
-	fplTimestamp startTimestamp = fplTimestampQuery();
-	while (app->retonemapCursor < config->tileCount) {
-		TileState *tileState = &config->tileStates[app->retonemapCursor];
-		TileLock(tileState);
-		bool needsResolve = tileState->sampleCount > 0 && tileState->displayVersion != currentVersion;
-		if (needsResolve) {
-			ResolveTileLocked(config, app->retonemapCursor, displaySettingsPacked);
-		}
-		TileUnlock(tileState);
-		++app->retonemapCursor;
-		fplTimestamp nowTimestamp = fplTimestampQuery();
-		f64 elapsedSeconds = fplTimestampElapsed(startTimestamp, nowTimestamp);
-		if (elapsedSeconds >= RetonemapBudgetSeconds) {
-			break;
-		}
-	}
-	app->forcePresent = true;
-}
-
-// Re-resolves every tile, so light tracing splats that arrived after a tile's last commit are shown
-static void ResolveAllTiles(App *app) {
-	StoreDisplaySettings(app);
-	while (app->retonemapCursor < app->target.tileCount) {
-		RetonemapStep(app);
-	}
-}
-
-static void EnsureBlitColumnCapacity(App *app, const u32 columnCount) {
-	if (columnCount <= app->blitColumnCapacity) {
-		return;
-	}
-	if (app->blitColumnLookup != fpl_null) {
-		fplMemoryFree(app->blitColumnLookup);
-	}
-	app->blitColumnCapacity = columnCount;
-	app->blitColumnLookup = (u32 *)fplMemoryAllocate(sizeof(u32) * columnCount);
-}
-
-// Nearest neighbor scaling from the render resolution to the backbuffer, the blit reads pixels while workers write them (aligned u32, never torn)
-static void BlitDisplayToBackbuffer(App *app, fplVideoBackBuffer *backbuffer) {
-	const RenderTarget *target = &app->target;
-	const u32 *display = target->displayBuffers[target->frontDisplayIndex];
-	u32 backbufferWidth = backbuffer->width;
-	u32 backbufferHeight = backbuffer->height;
-	bool isSameSize = backbufferWidth == target->width && backbufferHeight == target->height;
-	if (isSameSize) {
-		size_t rowSize = sizeof(u32) * backbufferWidth;
-		for (u32 row = 0; row < backbufferHeight; ++row) {
-			const u32 *sourceRow = display + (size_t)row * target->width;
-			u8 *targetRow = (u8 *)backbuffer->pixels + (size_t)row * backbuffer->lineWidth;
-			memcpy(targetRow, sourceRow, rowSize);
-		}
-		return;
-	}
-	EnsureBlitColumnCapacity(app, backbufferWidth);
-	if (app->blitColumnLookup == fpl_null) {
-		return;
-	}
-	u32 lastRenderColumn = target->width - 1;
-	u32 lastRenderRow = target->height - 1;
-	for (u32 column = 0; column < backbufferWidth; ++column) {
-		u64 outputX = (u64)column * target->outputWidth / backbufferWidth;
-		u32 renderX = (u32)(outputX / target->resolutionDivisor);
-		app->blitColumnLookup[column] = fplMin(renderX, lastRenderColumn);
-	}
-	for (u32 row = 0; row < backbufferHeight; ++row) {
-		u64 outputY = (u64)row * target->outputHeight / backbufferHeight;
-		u32 unclampedRenderY = (u32)(outputY / target->resolutionDivisor);
-		u32 renderY = fplMin(unclampedRenderY, lastRenderRow);
-		const u32 *sourceRow = display + (size_t)renderY * target->width;
-		u32 *targetRow = (u32 *)((u8 *)backbuffer->pixels + (size_t)row * backbuffer->lineWidth);
-		for (u32 column = 0; column < backbufferWidth; ++column) {
-			u32 sourceColumn = app->blitColumnLookup[column];
-			targetRow[column] = sourceRow[sourceColumn];
-		}
-	}
 }
 
 //
@@ -5946,7 +5145,7 @@ static void GatherMeanRadiance(const RenderTarget &target, std::vector<f32> &out
 	for (u32 jobIndex = 0; jobIndex < target.tileCount; ++jobIndex) {
 		const TileRect &tile = target.tiles[jobIndex];
 		TileState *tileState = &target.tileStates[jobIndex];
-		TileLock(tileState);
+		tileState->Lock();
 		u32 sampleCount = tileState->sampleCount;
 		if (sampleCount > 0) {
 			f64 inverseSampleCount = 1.0 / (f64)sampleCount;
@@ -5965,7 +5164,7 @@ static void GatherMeanRadiance(const RenderTarget &target, std::vector<f32> &out
 				}
 			}
 		}
-		TileUnlock(tileState);
+		tileState->Unlock();
 	}
 }
 
@@ -6013,14 +5212,14 @@ static void GatherDisplayPixels(const RenderTarget &target, std::vector<u32> &ou
 	for (u32 jobIndex = 0; jobIndex < target.tileCount; ++jobIndex) {
 		const TileRect &tile = target.tiles[jobIndex];
 		TileState *tileState = &target.tileStates[jobIndex];
-		TileLock(tileState);
+		tileState->Lock();
 		for (u32 y = tile.y0; y < tile.y1; ++y) {
 			size_t rowStart = (size_t)y * target.width;
 			for (u32 x = tile.x0; x < tile.x1; ++x) {
 				outPixels[rowStart + x] = front[rowStart + x];
 			}
 		}
-		TileUnlock(tileState);
+		tileState->Unlock();
 	}
 }
 
@@ -6034,22 +5233,6 @@ static bool WriteImageFile(const char *filePath, const RenderTarget &target) {
 		result = WriteBmp(filePath, displayPixels.data(), target.width, target.height);
 	}
 	return(result);
-}
-
-static void SaveScreenshot(App *app, const bool isHdr) {
-	JobProgress progress = JobSystemGetProgress(&app->jobs);
-	const Scene &scene = GetCurrentScene(app);
-	++app->screenshotCounter;
-	char bmpPath[PathBufferSize];
-	fplStringFormat(bmpPath, fplArrayCount(bmpPath), "fpl_raytracer_%s_%uspp_%u.bmp", scene.fileName, progress.completedEpochCount, app->screenshotCounter);
-	bool isBmpWritten = WriteImageFile(bmpPath, app->target);
-	fplConsoleFormatOut("%s screenshot: %s\n", isBmpWritten ? "Saved" : "Failed to save", bmpPath);
-	if (isHdr) {
-		char pfmPath[PathBufferSize];
-		fplStringFormat(pfmPath, fplArrayCount(pfmPath), "fpl_raytracer_%s_%uspp_%u.pfm", scene.fileName, progress.completedEpochCount, app->screenshotCounter);
-		bool isPfmWritten = WriteImageFile(pfmPath, app->target);
-		fplConsoleFormatOut("%s HDR image: %s\n", isPfmWritten ? "Saved" : "Failed to save", pfmPath);
-	}
 }
 
 static void PrintImageStatistics(const RenderTarget &target) {
@@ -6259,269 +5442,815 @@ static bool ParseCommandLine(const int argc, char **argv, CommandLineOptions &op
 //
 // Startup and main loops
 //
-static App *CreateApp(const CommandLineOptions &options) {
-	void *appMemory = fplMemoryAlignedAllocate(sizeof(App), alignof(App));
-	if (appMemory == fpl_null) {
-		return(fpl_null);
-	}
-	// C++11 new ignores alignments above 16, so App (128 byte aligned) is placement constructed
-	App *app = new (appMemory) App();
-	app->scenes = new SceneEntry[SceneCount];
-	BuildGgxAlbedoTables(GlobalGgxAlbedoTables);
-	BuildScenes(app->scenes);
-	app->settings.integratorMode = options.integratorMode;
-	app->settings.isFireflyClampEnabled = options.isFireflyClampEnabled;
-	app->settings.isLightTracingEnabled = !options.isLightTracingDisabled;
-	app->settings.seed = options.seed;
-	app->settings.targetSamplesPerPixel = options.samplesPerPixel;
-	ApplySceneDefaults(app, options.sceneIndex);
-	if (options.maxBounces > 0) {
-		app->settings.maxBounces = options.maxBounces;
-	}
-	if (options.hasExposure) {
-		app->display.exposureEV = options.exposureEV;
-	}
-	if (options.hasTonemap) {
-		app->display.tonemapOperator = options.tonemapOperator;
-	}
-	app->target.outputWidth = options.width;
-	app->target.outputHeight = options.height;
-	return(app);
-}
+struct App {
+	JobSystem jobs;
+	RenderTarget target;
+	SceneEntry *scenes;
+	u32 currentSceneIndex;
+	OrbitCamera camera;
+	UserRenderSettings settings;
+	DisplaySettings display;
+	InputState input;
+	u32 previewDivisor;              // chosen when an interaction starts
+	b32 wasInteracting;
+	b32 hasInteraction;
+	fplTimestamp lastInteractionTimestamp;
+	fplTimestamp generationStartTimestamp;
+	fplTimestamp pauseStartTimestamp;
+	f64 pausedSeconds;
+	f64 smoothedSamplesPerSecond;
+	f64 smoothedRaysPerSecond;
+	WorkerTotals lastTotals;
+	fplTimestamp lastTotalsTimestamp;
+	fplTimestamp lastTitleTimestamp;
+	u32 retonemapCursor;             // == tileCount when no retonemap is pending
+	u32 lastPresentedCommitCount;
+	fplTimestamp lastPresentTimestamp;
+	b32 forcePresent;
+	u32 *blitColumnLookup;           // grow-only, one entry per backbuffer column
+	size_t blitColumnCapacity;
+	u32 screenshotCounter;
+	b32 wasSettled;                  // paused or converged in the previous frame
+	PhotonStorage photons;
 
-static void DestroyApp(App *app) {
-	ReleaseRenderTarget(&app->target);
-	if (app->blitColumnLookup != fpl_null) {
-		fplMemoryFree(app->blitColumnLookup);
+	const Scene & GetCurrentScene() const {
+		const Scene &result = scenes[currentSceneIndex].scene;
+		return(result);
 	}
-	delete[] app->scenes;
-	app->~App();
-	fplMemoryAlignedFree(app);
-}
 
-static void PrintStartupInfo(const App *app) {
-	char cpuName[256] = "";
-	fplCPUGetName(cpuName, fplArrayCount(cpuName));
-	fplConsoleFormatOut("CPU: %s, %u worker threads\n", cpuName, app->jobs.workerCount);
-}
+	void StoreDisplaySettings() {
+		++display.version;
+		u64 packed = display.Pack();
+		fplAtomicStoreU64(&jobs.displaySettingsPacked.value, packed);
+		retonemapCursor = 0;
+		forcePresent = true;
+	}
 
-static void PrintDroppedSamples(App *app) {
-	WorkerTotals totals = JobSystemGetTotals(&app->jobs);
-	if (totals.droppedSampleCount > 0) {
-		fplConsoleFormatError("Warning: %llu non-finite or negative samples were dropped\n", (unsigned long long)totals.droppedSampleCount);
+	void ApplyCameraDepthOfField() {
+		const Scene &scene = GetCurrentScene();
+		f32 sceneAperture = scene.camera.defaultApertureRadius;
+		f32 fallbackAperture = FallbackApertureDistanceFactor * camera.distance;
+		f32 enabledAperture = (sceneAperture > 0.0f) ? sceneAperture : fallbackAperture;
+		camera.apertureRadius = settings.isDepthOfFieldEnabled ? enabledAperture : 0.0f;
 	}
-}
 
-static ExitCode RunHeadless(App *app, const CommandLineOptions &options) {
-	if (app->settings.targetSamplesPerPixel == 0) {
-		app->settings.targetSamplesPerPixel = DefaultHeadlessSamplesPerPixel;
+	void ResetCameraToScene() {
+		const Scene &scene = GetCurrentScene();
+		camera = OrbitCamera::Make(scene.camera);
+		ApplyCameraDepthOfField();
 	}
-	const Scene &scene = GetCurrentScene(app);
-	fplConsoleFormatOut("Rendering '%s' at %ux%u with %u spp on %u threads\n", scene.name, app->target.outputWidth, app->target.outputHeight, app->settings.targetSamplesPerPixel, app->jobs.workerCount);
-	u64 packed = PackDisplaySettings(app->display);
-	fplAtomicStoreU64(&app->jobs.displaySettingsPacked.value, packed);
-	fplTimestamp startTimestamp = fplTimestampQuery();
-	fplTimestamp lastProgressTimestamp = startTimestamp;
-	bool isStarted = RestartRendering(app, 1);
-	if (!isStarted) {
-		fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", app->target.outputWidth, app->target.outputHeight);
-		return(ExitCode::InitFailed);
+
+	void ApplySceneDefaults(const u32 sceneIndex) {
+		currentSceneIndex = sceneIndex;
+		const SceneEntry &entry = scenes[sceneIndex];
+		settings.maxBounces = entry.scene.maxBounces;
+		settings.isDepthOfFieldEnabled = entry.scene.camera.defaultApertureRadius > 0.0f;
+		display.exposureEV = entry.scene.exposureEV;
+		display.tonemapOperator = entry.tonemapOperator;
+		ResetCameraToScene();
 	}
-	bool isTimeLimitReached = false;
-	fplMutexLock(&app->jobs.mutex);
-	while (app->jobs.state != RenderState::Converged) {
-		fplConditionWait(&app->jobs.mainCondition, &app->jobs.mutex, (fplTimeoutValue)HeadlessWaitMilliseconds);
-		u32 completedPasses = app->jobs.completedEpochCount;
-		fplMutexUnlock(&app->jobs.mutex);
+
+	void BuildRenderConfig(RenderConfig *config) {
+		const Scene &scene = GetCurrentScene();
+		bool isPreview = target.resolutionDivisor > 1;
+		config->scene = scene.view;
+		config->transport.maxBounces = isPreview ? fplMin(settings.maxBounces, PreviewMaxBounces) : settings.maxBounces;
+		config->transport.russianRouletteStartBounce = RussianRouletteStartBounce;
+		config->transport.russianRouletteMinSurvival = RussianRouletteMinSurvival;
+		config->transport.russianRouletteMaxSurvival = RussianRouletteMaxSurvival;
+		// Preview frames are replaced within a fraction of a second, so they always clamp fireflies (biased, but never accumulated)
+		bool isClamped = settings.isFireflyClampEnabled || isPreview;
+		config->transport.indirectClampLuminance = isClamped ? FireflyClampLuminance : 0.0f;
+		config->transport.mode = settings.integratorMode;
+		config->camera = CameraFrame::Make(camera, target.outputWidth, target.outputHeight, target.resolutionDivisor);
+		config->seedSalt = PathSampler::MakeSeedSalt(settings.seed);
+		config->targetSamplesPerPixel = isPreview ? 0 : settings.targetSamplesPerPixel;
+		config->width = target.width;
+		config->height = target.height;
+		config->tileCount = target.tileCount;
+		config->tiles = target.tiles;
+		config->tileStates = target.tileStates;
+		config->accumulation = target.accumulation;
+		config->display = target.displayBuffers[target.frontDisplayIndex];
+		config->lightJobCount = target.lightJobCount;
+		config->lightJobStates = target.lightJobStates;
+		config->photons = &photons;
+		config->photonRadius = scene.photonRadius;
+		config->transport.isLightTracingActive = target.lightJobCount > 0;
+		u32 photonsPerPass = target.lightJobCount * PhotonsPerLightJob;
+		f32 renderPixelFilmWidth = 2.0f * config->camera.tanHalfX * config->camera.resolutionDivisor * config->camera.inverseOutputWidth;
+		f32 renderPixelFilmHeight = 2.0f * config->camera.tanHalfY * config->camera.resolutionDivisor * config->camera.inverseOutputHeight;
+		config->caustics.sums = target.causticSums;
+		config->caustics.width = target.width;
+		config->caustics.height = target.height;
+		config->caustics.scale = (photonsPerPass > 0) ? (1.0f / (f32)photonsPerPass) : 0.0f;
+		config->caustics.pixelFilmArea = renderPixelFilmWidth * renderPixelFilmHeight;
+	}
+
+	// Quiesce -> reconfigure -> dispatch: nothing from an old generation can ever land in a reset buffer, false when the render buffers could not be allocated
+	bool RestartRendering(const u32 resolutionDivisor) {
+		jobs.Quiesce(RenderState::Idle);
+		bool isConfigured = target.Configure(target.outputWidth, target.outputHeight, resolutionDivisor);
+		if (!isConfigured) {
+			return(false);
+		}
+		target.ResetTileStates();
+		const Scene &scene = GetCurrentScene();
+		bool isLightTracing = settings.isLightTracingEnabled && scene.view.isLightTracingAvailable && resolutionDivisor == 1;
+		bool isLightTracingConfigured = target.ConfigureLightTracing(isLightTracing);
+		if (!isLightTracingConfigured) {
+			// Out of memory for the light job states: render without caustic light tracing, the path tracer alone is still unbiased
+			target.ConfigureLightTracing(false);
+		}
+		// Photon buffers per light job (grow-only capacity), no photon map before the first pass completed
+		for (u32 bufferIndex = 0; bufferIndex < PhotonBufferCount; ++bufferIndex) {
+			std::vector<std::vector<PhotonRecord> > &jobPhotons = photons.jobPhotons[bufferIndex];
+			if (jobPhotons.size() < target.lightJobCount) {
+				jobPhotons.resize(target.lightJobCount);
+			}
+			for (size_t jobIndex = 0; jobIndex < jobPhotons.size(); ++jobIndex) {
+				jobPhotons[jobIndex].clear();
+			}
+		}
+		fplAtomicStoreU32(&photons.readyEpoch, 0);
+		BuildRenderConfig(&jobs.config);
+		generationStartTimestamp = fplTimestampQuery();
+		pausedSeconds = 0.0;
+		retonemapCursor = target.tileCount; // reset tiles are resolved by their first commit
+		forcePresent = true;
+		jobs.Dispatch(0, true);
+		return(true);
+	}
+
+	void PauseRendering() {
+		jobs.Quiesce(RenderState::Paused); // in-flight jobs are discarded and re-run on resume
+		pauseStartTimestamp = fplTimestampQuery();
+	}
+
+	void ResumeRendering() {
 		fplTimestamp now = fplTimestampQuery();
-		f64 elapsedSeconds = fplTimestampElapsed(startTimestamp, now);
-		f64 sinceProgress = fplTimestampElapsed(lastProgressTimestamp, now);
-		if (sinceProgress >= HeadlessProgressIntervalSeconds) {
-			fplConsoleFormatOut("  %u / %u spp, %.1f s\n", completedPasses, app->settings.targetSamplesPerPixel, elapsedSeconds);
-			lastProgressTimestamp = now;
-		}
-		if (options.timeLimitSeconds > 0.0 && elapsedSeconds >= options.timeLimitSeconds) {
-			isTimeLimitReached = true;
-			fplMutexLock(&app->jobs.mutex);
-			break;
-		}
-		fplMutexLock(&app->jobs.mutex);
+		f64 pausedNow = fplTimestampElapsed(pauseStartTimestamp, now);
+		pausedSeconds += pausedNow;
+		fplMutexLock(&jobs.mutex);
+		u32 epochToRestart = jobs.publishedEpoch;
+		fplMutexUnlock(&jobs.mutex);
+		jobs.Dispatch(epochToRestart, false); // committed tiles are skipped
 	}
-	fplMutexUnlock(&app->jobs.mutex);
-	// Tiles keep their own sample count, so a partial image is still correct per tile
-	JobSystemQuiesce(&app->jobs, RenderState::Idle);
-	ResolveAllTiles(app);
-	fplTimestamp endTimestamp = fplTimestampQuery();
-	f64 totalSeconds = fplTimestampElapsed(startTimestamp, endTimestamp);
-	WorkerTotals totals = JobSystemGetTotals(&app->jobs);
-	f64 megaRaysPerSecond = (totalSeconds > 0.0) ? ((f64)totals.rayCount / totalSeconds * MillionFactor) : 0.0;
-	fplConsoleFormatOut("Done in %.2f s, %.1f MR/s\n", totalSeconds, megaRaysPerSecond);
-	PrintImageStatistics(app->target);
-	PrintDroppedSamples(app);
-	ExitCode result = isTimeLimitReached ? ExitCode::TimeLimitReached : ExitCode::Success;
-	for (u32 outputIndex = 0; outputIndex < options.outputCount; ++outputIndex) {
-		const char *outputPath = options.outputPaths[outputIndex];
-		bool isWritten = WriteImageFile(outputPath, app->target);
-		if (isWritten) {
-			fplConsoleFormatOut("Wrote %s\n", outputPath);
+
+	f64 GetElapsedRenderSeconds(const JobProgress &progress, const fplTimestamp now) {
+		fplTimestamp endTimestamp = now;
+		if (progress.state == RenderState::Converged) {
+			endTimestamp = progress.convergedTimestamp;
+		} else if (progress.state == RenderState::Paused) {
+			endTimestamp = pauseStartTimestamp;
+		}
+		f64 totalSeconds = fplTimestampElapsed(generationStartTimestamp, endTimestamp);
+		f64 activeSeconds = totalSeconds - pausedSeconds;
+		f64 result = fplMax(activeSeconds, 0.0);
+		return(result);
+	}
+
+	void UpdateThroughput(const fplTimestamp now) {
+		WorkerTotals totals = jobs.GetTotals();
+		f64 elapsed = fplTimestampElapsed(lastTotalsTimestamp, now);
+		if (elapsed > 0.0) {
+			u64 sampleDelta = totals.sampleCount - lastTotals.sampleCount;
+			u64 rayDelta = totals.rayCount - lastTotals.rayCount;
+			if (sampleDelta > 0) {
+				f64 samplesPerSecond = (f64)sampleDelta / elapsed;
+				f64 raysPerSecond = (f64)rayDelta / elapsed;
+				smoothedSamplesPerSecond += ThroughputSmoothing * (samplesPerSecond - smoothedSamplesPerSecond);
+				smoothedRaysPerSecond += ThroughputSmoothing * (raysPerSecond - smoothedRaysPerSecond);
+			}
+		}
+		lastTotals = totals;
+		lastTotalsTimestamp = now;
+	}
+
+	void UpdateWindowTitle() {
+		JobProgress progress = jobs.GetProgress();
+		const Scene &scene = GetCurrentScene();
+		// A restart earlier in this frame may have set the generation start after the frame timestamp
+		fplTimestamp titleTimestamp = fplTimestampQuery();
+		f64 elapsedSeconds = GetElapsedRenderSeconds(progress, titleTimestamp);
+		u32 photonMapJobCount = (target.lightJobCount > 0) ? 1 : 0;
+		u32 passJobCount = target.tileCount + target.lightJobCount + photonMapJobCount;
+		u32 passPercent = (passJobCount > 0) ? (u32)((u64)progress.completedJobCount * 100 / passJobCount) : 0;
+		f64 megaRaysPerSecond = smoothedRaysPerSecond * MillionFactor;
+		const char *tonemapName = TonemapOperatorNames[(u32)display.tonemapOperator];
+		const char *integratorName = IntegratorModeNames[(u32)settings.integratorMode];
+		const char *stateSuffix = "";
+		if (progress.state == RenderState::Paused) {
+			stateSuffix = " | PAUSED";
+		} else if (progress.state == RenderState::Converged) {
+			stateSuffix = " | DONE";
+		}
+		char previewText[32] = "";
+		if (target.resolutionDivisor > 1) {
+			fplStringFormat(previewText, fplArrayCount(previewText), " preview 1/%u", target.resolutionDivisor);
+		}
+		const char *clampText = settings.isFireflyClampEnabled ? " clamp" : "";
+		const char *dofText = settings.isDepthOfFieldEnabled ? " DOF" : "";
+		const char *causticText = (target.lightJobCount > 0) ? " +caustics" : "";
+		char title[TitleBufferSize];
+		fplStringFormat(title, fplArrayCount(title), "FPL Raytracer | %s | %ux%u%s | %u spp (%u%%) | %.1f s | %.1f MR/s | EV %+.1f %s | %u bounces %s%s%s%s | %u threads%s", scene.name, target.outputWidth, target.outputHeight, previewText, progress.completedEpochCount, passPercent, elapsedSeconds, megaRaysPerSecond, display.exposureEV, tonemapName, settings.maxBounces, integratorName, causticText, clampText, dofText, jobs.workerCount, stateSuffix);
+		fplSetWindowTitle(title);
+	}
+
+	void ClearInput() {
+		fplClearStruct(&input);
+	}
+
+	void CycleBounces(const bool isBackward) {
+		u32 choiceCount = fplArrayCount(BounceDepthChoices);
+		u32 current = settings.maxBounces;
+		u32 next = BounceDepthChoices[0];
+		if (isBackward) {
+			next = BounceDepthChoices[choiceCount - 1];
+			for (u32 choiceIndex = choiceCount; choiceIndex > 0; --choiceIndex) {
+				u32 choice = BounceDepthChoices[choiceIndex - 1];
+				if (choice < current) {
+					next = choice;
+					break;
+				}
+			}
 		} else {
-			fplConsoleFormatError("Failed to write %s\n", outputPath);
-			result = ExitCode::WriteFailed;
+			for (u32 choiceIndex = 0; choiceIndex < choiceCount; ++choiceIndex) {
+				u32 choice = BounceDepthChoices[choiceIndex];
+				if (choice > current) {
+					next = choice;
+					break;
+				}
+			}
 		}
+		settings.maxBounces = next;
 	}
-	return(result);
-}
 
-static void RunInteractive(App *app) {
-	u64 packed = PackDisplaySettings(app->display);
-	fplAtomicStoreU64(&app->jobs.displaySettingsPacked.value, packed);
-	fplVideoBackBuffer *initialBackbuffer = fplGetVideoBackBuffer();
-	if (initialBackbuffer != fpl_null && initialBackbuffer->pixels != fpl_null && initialBackbuffer->width > 0 && initialBackbuffer->height > 0) {
-		app->target.outputWidth = initialBackbuffer->width;
-		app->target.outputHeight = initialBackbuffer->height;
+	void ChangeExposure(const f32 deltaEV, FrameCommands &commands) {
+		f32 newExposure = display.exposureEV + deltaEV;
+		display.exposureEV = F32Clamp(newExposure, MinExposureEV, MaxExposureEV);
+		commands.isDisplaySettingsChanged = true;
 	}
-	f64 initialSamplesPerSecond = InitialSamplesPerSecondPerWorker * (f64)app->jobs.workerCount;
-	app->smoothedSamplesPerSecond = initialSamplesPerSecond;
-	fplTimestamp startTimestamp = fplTimestampQuery();
-	app->lastTotalsTimestamp = startTimestamp;
-	app->lastTitleTimestamp = startTimestamp;
-	app->lastPresentTimestamp = startTimestamp;
-	bool isStarted = RestartRendering(app, 1);
-	if (!isStarted) {
-		fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", app->target.outputWidth, app->target.outputHeight);
-		return;
-	}
-	PrintHelp();
 
-	fplTimestamp lastFrameTimestamp = startTimestamp;
-	while (fplWindowUpdate()) {
-		fplTimestamp now = fplTimestampQuery();
-		f64 frameSeconds = fplTimestampElapsed(lastFrameTimestamp, now);
-		f32 deltaSeconds = (f32)fplMin(frameSeconds, MaxFrameDeltaSeconds);
-		lastFrameTimestamp = now;
-
-		// 1. Events (the backbuffer may be reallocated in here)
-		FrameCommands commands = {};
-		fplEvent ev;
-		while (fplPollEvent(&ev)) {
-			HandleEvent(app, ev, commands, now);
+	void HandleKeyPress(const fplKey key, const bool isRepeat, FrameCommands &commands) {
+		bool isShift = input.isShiftDown != 0;
+		// Exposure also follows key repeats
+		if (key == fplKey_OemPlus || key == fplKey_Add || key == fplKey_PageUp) {
+			ChangeExposure(ExposureStepEV, commands);
+			return;
 		}
-
-		// 2. Held-key movement
-		bool isFlying = ApplyFlyMovement(app, deltaSeconds);
-		if (isFlying) {
-			commands.isCameraChanged = true;
+		if (key == fplKey_OemMinus || key == fplKey_Substract || key == fplKey_PageDown) {
+			ChangeExposure(-ExposureStepEV, commands);
+			return;
 		}
-		if (commands.isCameraChanged) {
-			app->lastInteractionTimestamp = now;
-			app->hasInteraction = true;
+		if (isRepeat) {
+			return;
 		}
-
-		// 3. Output size, polled after the events
-		fplVideoBackBuffer *backbuffer = fplGetVideoBackBuffer();
-		bool hasBackbuffer = backbuffer != fpl_null && backbuffer->pixels != fpl_null && backbuffer->width > 0 && backbuffer->height > 0;
-		bool isSizeChanged = hasBackbuffer && (backbuffer->width != app->target.outputWidth || backbuffer->height != app->target.outputHeight);
-		if (isSizeChanged) {
-			app->target.outputWidth = backbuffer->width;
-			app->target.outputHeight = backbuffer->height;
-			app->lastInteractionTimestamp = now;
-			app->hasInteraction = true;
+		if (key >= fplKey_0 && key <= fplKey_9) {
+			u32 sceneIndex = (u32)(key - fplKey_0);
+			if (sceneIndex < SceneCount) {
+				commands.isSceneChanged = true;
+				commands.sceneIndex = sceneIndex;
+			}
+			return;
 		}
-
-		// 4. Preview decision: the divisor is chosen once when an interaction starts, so throughput noise cannot cause restart oscillation
-		f64 sinceInteraction = fplTimestampElapsed(app->lastInteractionTimestamp, now);
-		bool isInteracting = app->hasInteraction && sinceInteraction < PreviewSettleSeconds;
-		if (isInteracting && !app->wasInteracting) {
-			app->previewDivisor = ChoosePreviewDivisor(app->smoothedSamplesPerSecond, app->target.outputWidth, app->target.outputHeight);
-		}
-		app->wasInteracting = isInteracting;
-		u32 desiredDivisor = isInteracting ? app->previewDivisor : 1;
-
-		// 5. Apply, at most one restart per frame
-		if (commands.isSceneChanged) {
-			ApplySceneDefaults(app, commands.sceneIndex);
-			commands.isDisplaySettingsChanged = true;
-		}
-		if (commands.isCameraReset) {
-			ResetCameraToScene(app);
-		}
-		bool isUserRestart = commands.isCameraChanged || isSizeChanged || commands.isSceneChanged || commands.isCameraReset || commands.isRenderSettingsChanged || commands.isRestartRequested;
-		bool isRestartNeeded = isUserRestart || (desiredDivisor != app->target.resolutionDivisor);
-		if (isRestartNeeded) {
-			JobProgress progressBeforeRestart = JobSystemGetProgress(&app->jobs);
-			bool wasPaused = progressBeforeRestart.state == RenderState::Paused;
-			bool isRestarted = RestartRendering(app, desiredDivisor);
-			if (!isRestarted) {
-				fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", app->target.outputWidth, app->target.outputHeight);
+		switch (key) {
+			case fplKey_Escape:
 				fplWindowShutdown();
 				break;
-			}
-			// Only user changes end a pause, the automatic switch from the preview to full resolution keeps it
-			if (wasPaused && !isUserRestart) {
-				PauseRendering(app);
-			}
+			case fplKey_Space:
+				commands.isPauseToggled = true;
+				break;
+			case fplKey_R:
+				commands.isRestartRequested = true;
+				break;
+			case fplKey_T:
+			{
+				u32 nextTonemap = ((u32)display.tonemapOperator + 1) % (u32)TonemapOperator::Count;
+				display.tonemapOperator = (TonemapOperator)nextTonemap;
+				commands.isDisplaySettingsChanged = true;
+			} break;
+			case fplKey_B:
+				CycleBounces(isShift);
+				commands.isRenderSettingsChanged = true;
+				break;
+			case fplKey_M:
+			{
+				u32 nextMode = ((u32)settings.integratorMode + 1) % (u32)IntegratorMode::Count;
+				settings.integratorMode = (IntegratorMode)nextMode;
+				commands.isRenderSettingsChanged = true;
+			} break;
+			case fplKey_F:
+				settings.isFireflyClampEnabled = !settings.isFireflyClampEnabled;
+				commands.isRenderSettingsChanged = true;
+				break;
+			case fplKey_C:
+				settings.isLightTracingEnabled = !settings.isLightTracingEnabled;
+				commands.isRenderSettingsChanged = true;
+				break;
+			case fplKey_O:
+				settings.isDepthOfFieldEnabled = !settings.isDepthOfFieldEnabled;
+				ApplyCameraDepthOfField();
+				commands.isRenderSettingsChanged = true;
+				break;
+			case fplKey_P:
+				commands.isScreenshotRequested = true;
+				commands.isHdrScreenshotRequested = isShift;
+				break;
+			case fplKey_H:
+			case fplKey_F1:
+				commands.isHelpRequested = true;
+				break;
+			case fplKey_Home:
+			case fplKey_Backspace:
+				commands.isCameraReset = true;
+				break;
+			default:
+				break;
 		}
-		// After a restart in the same frame, so a pause key press is never lost
-		if (commands.isPauseToggled) {
-			JobProgress progress = JobSystemGetProgress(&app->jobs);
-			if (progress.state == RenderState::Running) {
-				PauseRendering(app);
-			} else if (progress.state == RenderState::Paused) {
-				ResumeRendering(app);
-			}
-		}
-		if (commands.isDisplaySettingsChanged) {
-			StoreDisplaySettings(app);
-		}
-
-		// Paused or converged: show the light tracing splats of the last pass in every tile
-		JobProgress frameProgress = JobSystemGetProgress(&app->jobs);
-		bool isSettled = frameProgress.state == RenderState::Paused || frameProgress.state == RenderState::Converged;
-		if (isSettled && !app->wasSettled && app->target.lightJobCount > 0) {
-			StoreDisplaySettings(app);
-		}
-		app->wasSettled = isSettled;
-
-		// 6. Re-resolve tiles after a display settings change
-		if (app->retonemapCursor < app->target.tileCount) {
-			RetonemapStep(app);
-		}
-
-		// 7. Screenshot and help
-		if (commands.isScreenshotRequested) {
-			SaveScreenshot(app, commands.isHdrScreenshotRequested != 0);
-		}
-		if (commands.isHelpRequested) {
-			PrintHelp();
-		}
-
-		// 8. Statistics and title
-		f64 sinceTitle = fplTimestampElapsed(app->lastTitleTimestamp, now);
-		if (sinceTitle >= TitleUpdateIntervalSeconds || isRestartNeeded || commands.isPauseToggled || commands.isDisplaySettingsChanged) {
-			UpdateThroughput(app, now);
-			UpdateWindowTitle(app);
-			app->lastTitleTimestamp = now;
-		}
-
-		// 9. Present, the backbuffer pointer is fetched again because it is only valid until the next event poll
-		u32 commitCount = fplAtomicLoadU32(&app->jobs.displayCommitCount.value);
-		bool isDisplayChanged = commitCount != app->lastPresentedCommitCount;
-		f64 sincePresent = fplTimestampElapsed(app->lastPresentTimestamp, now);
-		bool isPresentNeeded = isDisplayChanged || app->forcePresent || sincePresent >= MaxPresentIntervalSeconds;
-		bool isPresentAllowed = app->forcePresent || sincePresent >= MinPresentIntervalSeconds;
-		if (isPresentNeeded && isPresentAllowed && hasBackbuffer) {
-			BlitDisplayToBackbuffer(app, backbuffer);
-			fplVideoFlip();
-			app->lastPresentedCommitCount = commitCount;
-			app->lastPresentTimestamp = now;
-			app->forcePresent = false;
-		}
-
-		// 10. Sleep, the workers do the real work
-		u32 sleepMilliseconds = isInteracting ? InteractiveSleepMilliseconds : IdleSleepMilliseconds;
-		fplThreadSleep(sleepMilliseconds);
 	}
-}
+
+	void OrbitCameraBy(const s32 deltaX, const s32 deltaY) {
+		camera.yawRadians -= (f32)deltaX * OrbitRadiansPerPixel;
+		f32 newPitch = camera.pitchRadians + (f32)deltaY * OrbitRadiansPerPixel;
+		camera.pitchRadians = F32Clamp(newPitch, -MaxPitchRadians, MaxPitchRadians);
+	}
+
+	// The point under the cursor stays under it
+	void PanCameraBy(const s32 deltaX, const s32 deltaY) {
+		CameraFrame frame = CameraFrame::Make(camera, target.outputWidth, target.outputHeight, 1);
+		f32 worldPerPixel = 2.0f * camera.distance * frame.tanHalfY / (f32)target.outputHeight;
+		Vec3f horizontalMove = ((f32)deltaX * worldPerPixel) * frame.right;
+		Vec3f verticalMove = ((f32)deltaY * worldPerPixel) * frame.up;
+		camera.target = camera.target - horizontalMove + verticalMove;
+	}
+
+	void ZoomCameraBy(const f32 wheelDelta) {
+		f32 zoomFactor = F32Power(ZoomFactorPerWheelNotch, wheelDelta);
+		f32 newDistance = camera.distance * zoomFactor;
+		camera.distance = F32Clamp(newDistance, MinOrbitDistance, MaxOrbitDistance);
+	}
+
+	void HandleEvent(const fplEvent &ev, FrameCommands &commands, fplTimestamp now) {
+		switch (ev.type) {
+			case fplEventType_Keyboard:
+			{
+				if (ev.keyboard.type != fplKeyboardEventType_Button) {
+					break;
+				}
+				u32 shiftMask = fplKeyboardModifierFlags_LShift | fplKeyboardModifierFlags_RShift;
+				input.isShiftDown = ((u32)ev.keyboard.modifiers & shiftMask) != 0;
+				u32 keyIndex = (u32)ev.keyboard.mappedKey;
+				bool isPress = ev.keyboard.buttonState == fplButtonState_Press;
+				bool isRepeat = ev.keyboard.buttonState == fplButtonState_Repeat;
+				bool isRelease = ev.keyboard.buttonState == fplButtonState_Release;
+				if (keyIndex < KeyStateCount) {
+					if (isPress) {
+						input.isKeyDown[keyIndex] = true;
+					} else if (isRelease) {
+						input.isKeyDown[keyIndex] = false;
+					}
+				}
+				if (isPress || isRepeat) {
+					HandleKeyPress(ev.keyboard.mappedKey, isRepeat, commands);
+				}
+			} break;
+
+			case fplEventType_Mouse:
+			{
+				if (ev.mouse.type == fplMouseEventType_Button) {
+					s32 buttonIndex = (s32)ev.mouse.mouseButton;
+					if (buttonIndex >= 0 && buttonIndex < (s32)MouseButtonCount) {
+						input.isMouseButtonDown[buttonIndex] = ev.mouse.buttonState != fplButtonState_Release;
+					}
+				} else if (ev.mouse.type == fplMouseEventType_Move) {
+					bool isOrbiting = input.isMouseButtonDown[fplMouseButtonType_Left] != 0;
+					bool isPanning = (input.isMouseButtonDown[fplMouseButtonType_Right] != 0) || (input.isMouseButtonDown[fplMouseButtonType_Middle] != 0);
+					bool hasDelta = (ev.mouse.deltaX != 0) || (ev.mouse.deltaY != 0);
+					if (hasDelta && isOrbiting) {
+						OrbitCameraBy(ev.mouse.deltaX, ev.mouse.deltaY);
+						commands.isCameraChanged = true;
+					} else if (hasDelta && isPanning) {
+						PanCameraBy(ev.mouse.deltaX, ev.mouse.deltaY);
+						commands.isCameraChanged = true;
+					}
+				} else if (ev.mouse.type == fplMouseEventType_Wheel) {
+					ZoomCameraBy(ev.mouse.wheelDelta);
+					ApplyCameraDepthOfField();
+					commands.isCameraChanged = true;
+				}
+			} break;
+
+			case fplEventType_Window:
+			{
+				switch (ev.window.type) {
+					case fplWindowEventType_Resized:
+						lastInteractionTimestamp = now;
+						hasInteraction = true;
+						forcePresent = true;
+						break;
+					case fplWindowEventType_LostFocus:
+						ClearInput();
+						forcePresent = true;
+						break;
+					case fplWindowEventType_GotFocus:
+					case fplWindowEventType_Maximized:
+					case fplWindowEventType_Restored:
+					case fplWindowEventType_Shown:
+					case fplWindowEventType_Exposed:
+					case fplWindowEventType_PositionChanged:
+						forcePresent = true;
+						break;
+					default:
+						break;
+				}
+			} break;
+
+			default:
+				break;
+		}
+	}
+
+	// Held keys move the target along the view axes
+	bool ApplyFlyMovement(const f32 deltaSeconds) {
+		f32 forwardAmount = (f32)(input.isKeyDown[fplKey_W] - input.isKeyDown[fplKey_S]);
+		f32 rightAmount = (f32)(input.isKeyDown[fplKey_D] - input.isKeyDown[fplKey_A]);
+		f32 upAmount = (f32)(input.isKeyDown[fplKey_E] - input.isKeyDown[fplKey_Q]);
+		if (forwardAmount == 0.0f && rightAmount == 0.0f && upAmount == 0.0f) {
+			return(false);
+		}
+		CameraFrame frame = CameraFrame::Make(camera, target.outputWidth, target.outputHeight, 1);
+		f32 speedFactor = input.isShiftDown ? FlyFastMultiplier : 1.0f;
+		f32 step = FlySpeedDistanceFactorPerSecond * camera.distance * speedFactor * deltaSeconds;
+		Vec3f forwardMove = (forwardAmount * step) * frame.forward;
+		Vec3f rightMove = (rightAmount * step) * frame.right;
+		Vec3f upMove = (upAmount * step) * UnitUp;
+		camera.target = camera.target + forwardMove + rightMove + upMove;
+		return(true);
+	}
+
+	// Re-resolves already rendered tiles after an exposure or tone mapper change, with a time budget per frame
+	void RetonemapStep() {
+		const RenderConfig *config = &jobs.config; // main thread owned, readable at any time
+		u64 displaySettingsPacked = display.Pack();
+		u32 currentVersion = (u32)((u64)display.version & DisplayVersionMask);
+		fplTimestamp startTimestamp = fplTimestampQuery();
+		while (retonemapCursor < config->tileCount) {
+			TileState *tileState = &config->tileStates[retonemapCursor];
+			tileState->Lock();
+			bool needsResolve = tileState->sampleCount > 0 && tileState->displayVersion != currentVersion;
+			if (needsResolve) {
+				ResolveTileLocked(config, retonemapCursor, displaySettingsPacked);
+			}
+			tileState->Unlock();
+			++retonemapCursor;
+			fplTimestamp nowTimestamp = fplTimestampQuery();
+			f64 elapsedSeconds = fplTimestampElapsed(startTimestamp, nowTimestamp);
+			if (elapsedSeconds >= RetonemapBudgetSeconds) {
+				break;
+			}
+		}
+		forcePresent = true;
+	}
+
+	// Re-resolves every tile, so light tracing splats that arrived after a tile's last commit are shown
+	void ResolveAllTiles() {
+		StoreDisplaySettings();
+		while (retonemapCursor < target.tileCount) {
+			RetonemapStep();
+		}
+	}
+
+	void EnsureBlitColumnCapacity(const u32 columnCount) {
+		if (columnCount <= blitColumnCapacity) {
+			return;
+		}
+		if (blitColumnLookup != fpl_null) {
+			fplMemoryFree(blitColumnLookup);
+		}
+		blitColumnCapacity = columnCount;
+		blitColumnLookup = (u32 *)fplMemoryAllocate(sizeof(u32) * columnCount);
+	}
+
+	// Nearest neighbor scaling from the render resolution to the backbuffer, the blit reads pixels while workers write them (aligned u32, never torn)
+	void BlitDisplayToBackbuffer(fplVideoBackBuffer *backbuffer) {
+		const u32 *displayPixels = target.displayBuffers[target.frontDisplayIndex];
+		u32 backbufferWidth = backbuffer->width;
+		u32 backbufferHeight = backbuffer->height;
+		bool isSameSize = backbufferWidth == target.width && backbufferHeight == target.height;
+		if (isSameSize) {
+			size_t rowSize = sizeof(u32) * backbufferWidth;
+			for (u32 row = 0; row < backbufferHeight; ++row) {
+				const u32 *sourceRow = displayPixels + (size_t)row * target.width;
+				u8 *targetRow = (u8 *)backbuffer->pixels + (size_t)row * backbuffer->lineWidth;
+				memcpy(targetRow, sourceRow, rowSize);
+			}
+			return;
+		}
+		EnsureBlitColumnCapacity(backbufferWidth);
+		if (blitColumnLookup == fpl_null) {
+			return;
+		}
+		u32 lastRenderColumn = target.width - 1;
+		u32 lastRenderRow = target.height - 1;
+		for (u32 column = 0; column < backbufferWidth; ++column) {
+			u64 outputX = (u64)column * target.outputWidth / backbufferWidth;
+			u32 renderX = (u32)(outputX / target.resolutionDivisor);
+			blitColumnLookup[column] = fplMin(renderX, lastRenderColumn);
+		}
+		for (u32 row = 0; row < backbufferHeight; ++row) {
+			u64 outputY = (u64)row * target.outputHeight / backbufferHeight;
+			u32 unclampedRenderY = (u32)(outputY / target.resolutionDivisor);
+			u32 renderY = fplMin(unclampedRenderY, lastRenderRow);
+			const u32 *sourceRow = displayPixels + (size_t)renderY * target.width;
+			u32 *targetRow = (u32 *)((u8 *)backbuffer->pixels + (size_t)row * backbuffer->lineWidth);
+			for (u32 column = 0; column < backbufferWidth; ++column) {
+				u32 sourceColumn = blitColumnLookup[column];
+				targetRow[column] = sourceRow[sourceColumn];
+			}
+		}
+	}
+
+	void SaveScreenshot(const bool isHdr) {
+		JobProgress progress = jobs.GetProgress();
+		const Scene &scene = GetCurrentScene();
+		++screenshotCounter;
+		char bmpPath[PathBufferSize];
+		fplStringFormat(bmpPath, fplArrayCount(bmpPath), "fpl_raytracer_%s_%uspp_%u.bmp", scene.fileName, progress.completedEpochCount, screenshotCounter);
+		bool isBmpWritten = WriteImageFile(bmpPath, target);
+		fplConsoleFormatOut("%s screenshot: %s\n", isBmpWritten ? "Saved" : "Failed to save", bmpPath);
+		if (isHdr) {
+			char pfmPath[PathBufferSize];
+			fplStringFormat(pfmPath, fplArrayCount(pfmPath), "fpl_raytracer_%s_%uspp_%u.pfm", scene.fileName, progress.completedEpochCount, screenshotCounter);
+			bool isPfmWritten = WriteImageFile(pfmPath, target);
+			fplConsoleFormatOut("%s HDR image: %s\n", isPfmWritten ? "Saved" : "Failed to save", pfmPath);
+		}
+	}
+
+	static App * Create(const CommandLineOptions &options) {
+		void *appMemory = fplMemoryAlignedAllocate(sizeof(App), alignof(App));
+		if (appMemory == fpl_null) {
+			return(fpl_null);
+		}
+		// C++11 new ignores alignments above 16, so App (128 byte aligned) is placement constructed
+		App *app = new (appMemory) App();
+		app->scenes = new SceneEntry[SceneCount];
+		GlobalGgxAlbedoTables.Build();
+		BuildScenes(app->scenes);
+		app->settings.integratorMode = options.integratorMode;
+		app->settings.isFireflyClampEnabled = options.isFireflyClampEnabled;
+		app->settings.isLightTracingEnabled = !options.isLightTracingDisabled;
+		app->settings.seed = options.seed;
+		app->settings.targetSamplesPerPixel = options.samplesPerPixel;
+		app->ApplySceneDefaults(options.sceneIndex);
+		if (options.maxBounces > 0) {
+			app->settings.maxBounces = options.maxBounces;
+		}
+		if (options.hasExposure) {
+			app->display.exposureEV = options.exposureEV;
+		}
+		if (options.hasTonemap) {
+			app->display.tonemapOperator = options.tonemapOperator;
+		}
+		app->target.outputWidth = options.width;
+		app->target.outputHeight = options.height;
+		return(app);
+	}
+
+	static void Destroy(App *app) {
+		app->target.Release();
+		if (app->blitColumnLookup != fpl_null) {
+			fplMemoryFree(app->blitColumnLookup);
+		}
+		delete[] app->scenes;
+		app->~App();
+		fplMemoryAlignedFree(app);
+	}
+
+	void PrintStartupInfo() const {
+		char cpuName[256] = "";
+		fplCPUGetName(cpuName, fplArrayCount(cpuName));
+		fplConsoleFormatOut("CPU: %s, %u worker threads\n", cpuName, jobs.workerCount);
+	}
+
+	void PrintDroppedSamples() {
+		WorkerTotals totals = jobs.GetTotals();
+		if (totals.droppedSampleCount > 0) {
+			fplConsoleFormatError("Warning: %llu non-finite or negative samples were dropped\n", (unsigned long long)totals.droppedSampleCount);
+		}
+	}
+
+	ExitCode RunHeadless(const CommandLineOptions &options) {
+		if (settings.targetSamplesPerPixel == 0) {
+			settings.targetSamplesPerPixel = DefaultHeadlessSamplesPerPixel;
+		}
+		const Scene &scene = GetCurrentScene();
+		fplConsoleFormatOut("Rendering '%s' at %ux%u with %u spp on %u threads\n", scene.name, target.outputWidth, target.outputHeight, settings.targetSamplesPerPixel, jobs.workerCount);
+		u64 packed = display.Pack();
+		fplAtomicStoreU64(&jobs.displaySettingsPacked.value, packed);
+		fplTimestamp startTimestamp = fplTimestampQuery();
+		fplTimestamp lastProgressTimestamp = startTimestamp;
+		bool isStarted = RestartRendering(1);
+		if (!isStarted) {
+			fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", target.outputWidth, target.outputHeight);
+			return(ExitCode::InitFailed);
+		}
+		bool isTimeLimitReached = false;
+		fplMutexLock(&jobs.mutex);
+		while (jobs.state != RenderState::Converged) {
+			fplConditionWait(&jobs.mainCondition, &jobs.mutex, (fplTimeoutValue)HeadlessWaitMilliseconds);
+			u32 completedPasses = jobs.completedEpochCount;
+			fplMutexUnlock(&jobs.mutex);
+			fplTimestamp now = fplTimestampQuery();
+			f64 elapsedSeconds = fplTimestampElapsed(startTimestamp, now);
+			f64 sinceProgress = fplTimestampElapsed(lastProgressTimestamp, now);
+			if (sinceProgress >= HeadlessProgressIntervalSeconds) {
+				fplConsoleFormatOut("  %u / %u spp, %.1f s\n", completedPasses, settings.targetSamplesPerPixel, elapsedSeconds);
+				lastProgressTimestamp = now;
+			}
+			if (options.timeLimitSeconds > 0.0 && elapsedSeconds >= options.timeLimitSeconds) {
+				isTimeLimitReached = true;
+				fplMutexLock(&jobs.mutex);
+				break;
+			}
+			fplMutexLock(&jobs.mutex);
+		}
+		fplMutexUnlock(&jobs.mutex);
+		// Tiles keep their own sample count, so a partial image is still correct per tile
+		jobs.Quiesce(RenderState::Idle);
+		ResolveAllTiles();
+		fplTimestamp endTimestamp = fplTimestampQuery();
+		f64 totalSeconds = fplTimestampElapsed(startTimestamp, endTimestamp);
+		WorkerTotals totals = jobs.GetTotals();
+		f64 megaRaysPerSecond = (totalSeconds > 0.0) ? ((f64)totals.rayCount / totalSeconds * MillionFactor) : 0.0;
+		fplConsoleFormatOut("Done in %.2f s, %.1f MR/s\n", totalSeconds, megaRaysPerSecond);
+		PrintImageStatistics(target);
+		PrintDroppedSamples();
+		ExitCode result = isTimeLimitReached ? ExitCode::TimeLimitReached : ExitCode::Success;
+		for (u32 outputIndex = 0; outputIndex < options.outputCount; ++outputIndex) {
+			const char *outputPath = options.outputPaths[outputIndex];
+			bool isWritten = WriteImageFile(outputPath, target);
+			if (isWritten) {
+				fplConsoleFormatOut("Wrote %s\n", outputPath);
+			} else {
+				fplConsoleFormatError("Failed to write %s\n", outputPath);
+				result = ExitCode::WriteFailed;
+			}
+		}
+		return(result);
+	}
+
+	void RunInteractive() {
+		u64 packed = display.Pack();
+		fplAtomicStoreU64(&jobs.displaySettingsPacked.value, packed);
+		fplVideoBackBuffer *initialBackbuffer = fplGetVideoBackBuffer();
+		if (initialBackbuffer != fpl_null && initialBackbuffer->pixels != fpl_null && initialBackbuffer->width > 0 && initialBackbuffer->height > 0) {
+			target.outputWidth = initialBackbuffer->width;
+			target.outputHeight = initialBackbuffer->height;
+		}
+		f64 initialSamplesPerSecond = InitialSamplesPerSecondPerWorker * (f64)jobs.workerCount;
+		smoothedSamplesPerSecond = initialSamplesPerSecond;
+		fplTimestamp startTimestamp = fplTimestampQuery();
+		lastTotalsTimestamp = startTimestamp;
+		lastTitleTimestamp = startTimestamp;
+		lastPresentTimestamp = startTimestamp;
+		bool isStarted = RestartRendering(1);
+		if (!isStarted) {
+			fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", target.outputWidth, target.outputHeight);
+			return;
+		}
+		PrintHelp();
+
+		fplTimestamp lastFrameTimestamp = startTimestamp;
+		while (fplWindowUpdate()) {
+			fplTimestamp now = fplTimestampQuery();
+			f64 frameSeconds = fplTimestampElapsed(lastFrameTimestamp, now);
+			f32 deltaSeconds = (f32)fplMin(frameSeconds, MaxFrameDeltaSeconds);
+			lastFrameTimestamp = now;
+
+			// 1. Events (the backbuffer may be reallocated in here)
+			FrameCommands commands = {};
+			fplEvent ev;
+			while (fplPollEvent(&ev)) {
+				HandleEvent(ev, commands, now);
+			}
+
+			// 2. Held-key movement
+			bool isFlying = ApplyFlyMovement(deltaSeconds);
+			if (isFlying) {
+				commands.isCameraChanged = true;
+			}
+			if (commands.isCameraChanged) {
+				lastInteractionTimestamp = now;
+				hasInteraction = true;
+			}
+
+			// 3. Output size, polled after the events
+			fplVideoBackBuffer *backbuffer = fplGetVideoBackBuffer();
+			bool hasBackbuffer = backbuffer != fpl_null && backbuffer->pixels != fpl_null && backbuffer->width > 0 && backbuffer->height > 0;
+			bool isSizeChanged = hasBackbuffer && (backbuffer->width != target.outputWidth || backbuffer->height != target.outputHeight);
+			if (isSizeChanged) {
+				target.outputWidth = backbuffer->width;
+				target.outputHeight = backbuffer->height;
+				lastInteractionTimestamp = now;
+				hasInteraction = true;
+			}
+
+			// 4. Preview decision: the divisor is chosen once when an interaction starts, so throughput noise cannot cause restart oscillation
+			f64 sinceInteraction = fplTimestampElapsed(lastInteractionTimestamp, now);
+			bool isInteracting = hasInteraction && sinceInteraction < PreviewSettleSeconds;
+			if (isInteracting && !wasInteracting) {
+				previewDivisor = ChoosePreviewDivisor(smoothedSamplesPerSecond, target.outputWidth, target.outputHeight);
+			}
+			wasInteracting = isInteracting;
+			u32 desiredDivisor = isInteracting ? previewDivisor : 1;
+
+			// 5. Apply, at most one restart per frame
+			if (commands.isSceneChanged) {
+				ApplySceneDefaults(commands.sceneIndex);
+				commands.isDisplaySettingsChanged = true;
+			}
+			if (commands.isCameraReset) {
+				ResetCameraToScene();
+			}
+			bool isUserRestart = commands.isCameraChanged || isSizeChanged || commands.isSceneChanged || commands.isCameraReset || commands.isRenderSettingsChanged || commands.isRestartRequested;
+			bool isRestartNeeded = isUserRestart || (desiredDivisor != target.resolutionDivisor);
+			if (isRestartNeeded) {
+				JobProgress progressBeforeRestart = jobs.GetProgress();
+				bool wasPaused = progressBeforeRestart.state == RenderState::Paused;
+				bool isRestarted = RestartRendering(desiredDivisor);
+				if (!isRestarted) {
+					fplConsoleFormatError("Failed to allocate the render buffers for %ux%u\n", target.outputWidth, target.outputHeight);
+					fplWindowShutdown();
+					break;
+				}
+				// Only user changes end a pause, the automatic switch from the preview to full resolution keeps it
+				if (wasPaused && !isUserRestart) {
+					PauseRendering();
+				}
+			}
+			// After a restart in the same frame, so a pause key press is never lost
+			if (commands.isPauseToggled) {
+				JobProgress progress = jobs.GetProgress();
+				if (progress.state == RenderState::Running) {
+					PauseRendering();
+				} else if (progress.state == RenderState::Paused) {
+					ResumeRendering();
+				}
+			}
+			if (commands.isDisplaySettingsChanged) {
+				StoreDisplaySettings();
+			}
+
+			// Paused or converged: show the light tracing splats of the last pass in every tile
+			JobProgress frameProgress = jobs.GetProgress();
+			bool isSettled = frameProgress.state == RenderState::Paused || frameProgress.state == RenderState::Converged;
+			if (isSettled && !wasSettled && target.lightJobCount > 0) {
+				StoreDisplaySettings();
+			}
+			wasSettled = isSettled;
+
+			// 6. Re-resolve tiles after a display settings change
+			if (retonemapCursor < target.tileCount) {
+				RetonemapStep();
+			}
+
+			// 7. Screenshot and help
+			if (commands.isScreenshotRequested) {
+				SaveScreenshot(commands.isHdrScreenshotRequested != 0);
+			}
+			if (commands.isHelpRequested) {
+				PrintHelp();
+			}
+
+			// 8. Statistics and title
+			f64 sinceTitle = fplTimestampElapsed(lastTitleTimestamp, now);
+			if (sinceTitle >= TitleUpdateIntervalSeconds || isRestartNeeded || commands.isPauseToggled || commands.isDisplaySettingsChanged) {
+				UpdateThroughput(now);
+				UpdateWindowTitle();
+				lastTitleTimestamp = now;
+			}
+
+			// 9. Present, the backbuffer pointer is fetched again because it is only valid until the next event poll
+			u32 commitCount = fplAtomicLoadU32(&jobs.displayCommitCount.value);
+			bool isDisplayChanged = commitCount != lastPresentedCommitCount;
+			f64 sincePresent = fplTimestampElapsed(lastPresentTimestamp, now);
+			bool isPresentNeeded = isDisplayChanged || forcePresent || sincePresent >= MaxPresentIntervalSeconds;
+			bool isPresentAllowed = forcePresent || sincePresent >= MinPresentIntervalSeconds;
+			if (isPresentNeeded && isPresentAllowed && hasBackbuffer) {
+				BlitDisplayToBackbuffer(backbuffer);
+				fplVideoFlip();
+				lastPresentedCommitCount = commitCount;
+				lastPresentTimestamp = now;
+				forcePresent = false;
+			}
+
+			// 10. Sleep, the workers do the real work
+			u32 sleepMilliseconds = isInteracting ? InteractiveSleepMilliseconds : IdleSleepMilliseconds;
+			fplThreadSleep(sleepMilliseconds);
+		}
+	}
+};
 
 int main(int argc, char **argv) {
 	CommandLineOptions options;
@@ -6549,27 +6278,27 @@ int main(int argc, char **argv) {
 	}
 
 	ExitCode exitCode = ExitCode::Success;
-	App *app = CreateApp(options);
+	App *app = App::Create(options);
 	if (app == fpl_null) {
 		fplConsoleFormatError("Failed to allocate the application\n");
 		fplPlatformRelease();
 		return((int)ExitCode::InitFailed);
 	}
-	bool isJobSystemReady = JobSystemInit(&app->jobs, options.threadCount);
+	bool isJobSystemReady = app->jobs.Init(options.threadCount);
 	if (!isJobSystemReady) {
 		fplConsoleFormatError("Failed to start the worker threads\n");
 		exitCode = ExitCode::InitFailed;
 	} else {
-		PrintStartupInfo(app);
+		app->PrintStartupInfo();
 		if (isHeadless) {
-			exitCode = RunHeadless(app, options);
+			exitCode = app->RunHeadless(options);
 		} else {
-			RunInteractive(app);
-			PrintDroppedSamples(app);
+			app->RunInteractive();
+			app->PrintDroppedSamples();
 		}
 	}
-	JobSystemShutdown(&app->jobs);
-	DestroyApp(app);
+	app->jobs.Shutdown();
+	App::Destroy(app);
 	fplPlatformRelease();
 	return((int)exitCode);
 }
