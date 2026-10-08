@@ -182,6 +182,7 @@ SOFTWARE.
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
 	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
 	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
+	- Windows XP support
 	- Several bugfixes
 
 	### Breaking Changes
@@ -204,6 +205,10 @@ SOFTWARE.
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
 	- Fixed: fplX86CPUCapabilities.hasEM64T read bit 29 of CPUID leaf 1 (thermal monitor) instead of the long mode bit of the extended leaf 0x80000001, so it was always false on AMD CPUs
+	- Changed: [Win32] Windows XP is the minimum now, functions of Windows Vista or higher are loaded at runtime
+	- New: [Win32] fplMillisecondsQuery() handles the GetTickCount() wraparound on Windows XP
+	- New: [Win32] fplLocaleFormat_ISO639 works on Windows XP
+	- Fixed: [Win32] fplGetSystemLocale(), fplGetUserLocale() and fplGetInputLocale() read an uninitialized buffer on failure
 
 	#### Process
 	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
@@ -227,6 +232,7 @@ SOFTWARE.
 	- New: Scripts and whole command lines can be started through the default shell (ComSpec/cmd.exe or /bin/sh) or through a named interpreter
 	- New: Process creation flags for waiting, treating a non-zero exit code as an error, hiding the console window, detaching the child, stopping the whole process tree and killing the child when the own process exits
 	- New: Added flag fplProcessFlags_NoTerminal that starts a child without a controlling terminal, so a password or host key prompt on /dev/tty fails at once instead of hanging in the terminal the application was started from - [POSIX] a session of its own through setsid(), without detaching the child otherwise, [Win32] no effect
+	- Changed: [Win32] On Windows XP a child inherits every inheritable handle, the handle list needs Windows Vista
 
 	#### Threading
 	- Fixed: fplThreadWaitForOne waited on the native thread handle, which a thread closes/frees itself when it ends - the wait now runs on the thread state, like fplThreadWaitForAll/Any always did
@@ -239,6 +245,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
 	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
+	- New: [Win32] Condition variable fallback for Windows XP
 
 	#### IO
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
@@ -261,6 +268,7 @@ SOFTWARE.
 	#### Input
 	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
+	- New: [Win32] Keys sent without a scan code get one on Windows XP too
 
 	#### Window
 	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
@@ -3774,8 +3782,8 @@ fpl_globalvar const fplEndianess fpl__global_endianessOrder = { 1, 2, 3, 4 };
 		// @HACK(final/Win32): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
 struct IUnknown;
 #		include <windows.h> // Win32 api
-#		if _WIN32_WINNT < 0x0600
-#			error "Windows Vista or higher required!"
+#		if _WIN32_WINNT < 0x0501
+#			error "Windows XP or higher required!"
 #		endif
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -4689,8 +4697,6 @@ typedef fpl__Win32Handle fpl__Win32ThreadHandle;
 typedef uint64_t fpl__Win32MutexHandle[16];
 //! A win32 event HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SignalHandle;
-//! A win32 CONDITION_VARIABLE pointer (opaque, sizeof(void*) — wraps a single pointer-sized field).
-typedef void *fpl__Win32ConditionVariable;
 //! A win32 semaphore HANDLE pointer (opaque, alias of fpl__Win32Handle).
 typedef fpl__Win32Handle fpl__Win32SemaphoreHandle;
 //! A win32 HWND pointer (opaque, alias of fpl__Win32Handle).
@@ -4760,8 +4766,6 @@ typedef HANDLE fpl__Win32FileHandle;
 typedef CRITICAL_SECTION fpl__Win32MutexHandle;
 //! A win32 signal handle
 typedef HANDLE fpl__Win32SignalHandle;
-//! A win32 condition variable
-typedef CONDITION_VARIABLE fpl__Win32ConditionVariable;
 //! A win32 semaphore handle
 typedef HANDLE fpl__Win32SemaphoreHandle;
 //! A win32 window handle
@@ -4815,6 +4819,24 @@ typedef int fpl__LinuxSignalHandle;
 
 
 #endif
+
+#if defined(FPL_PLATFORM_WINDOWS)
+//! A win32 condition variable, the native CONDITION_VARIABLE of Windows Vista or higher or the fallback for Windows XP (same layout with and without platform includes).
+typedef struct fpl__Win32ConditionVariable {
+	//! The native CONDITION_VARIABLE, a single pointer (Windows Vista or higher).
+	void *native;
+	//! Mutex that guards the waiter counts (Windows XP fallback).
+	fpl__Win32Handle fallbackLock;
+	//! Semaphore the waiters sleep on (Windows XP fallback).
+	fpl__Win32Handle fallbackWaitSemaphore;
+	//! Semaphore a woken waiter confirms its wakeup with (Windows XP fallback).
+	fpl__Win32Handle fallbackDoneSemaphore;
+	//! Number of threads that wait (Windows XP fallback).
+	int32_t fallbackWaitingCount;
+	//! Number of released wakeups that no waiter has taken yet (Windows XP fallback).
+	int32_t fallbackPendingCount;
+} fpl__Win32ConditionVariable;
+#endif // FPL_PLATFORM_WINDOWS
 
 //
 // Constants
@@ -12231,6 +12253,13 @@ fpl_internal void fpl__ParseVersionString(const char *versionStr, fplVersionInfo
 #		define fpl__Win32CopyGuid(src, dst) fplMemoryCopy(src, sizeof(*(src)), dst)
 #	endif
 
+// Values of Windows Vista or higher, defined here so the headers of Windows XP are enough
+#define FPL__WIN32_WM_MOUSEHWHEEL 0x020E
+#define FPL__WIN32_MAPVK_VK_TO_VSC_EX 4
+#define FPL__WIN32_LOCALE_SNAME 0x0000005C
+#define FPL__WIN32_EXTENDED_STARTUPINFO_PRESENT 0x00080000
+#define FPL__WIN32_PROC_THREAD_ATTRIBUTE_HANDLE_LIST 0x00020002
+
 fpl_globalvar const fpl__Win32Guid FPL__WIN32_GUID_ZERO = { 0x0, 0x0, 0x0, { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 } };
 
 fpl_internal const char *fpl__Win32FormatGuidString(char *buffer, const size_t maxBufferLen, const fpl__Win32Guid *guid) {
@@ -19449,6 +19478,35 @@ fpl_internal void fpl__Win32RefreshInputGrab(fpl__PlatformAppState *appState) {
 #define FPL__WIN32_KEY_STATE_DOWN 0x80
 
 #if defined(FPL__ENABLE_INPUT)
+// Virtual keys whose scan code has the extended prefix, needed on Windows XP that has no MAPVK_VK_TO_VSC_EX
+fpl_internal bool fpl__Win32IsExtendedVirtualKey(const uint32_t virtualKey) {
+	switch (virtualKey) {
+		case VK_CANCEL:
+		case VK_PRIOR:
+		case VK_NEXT:
+		case VK_END:
+		case VK_HOME:
+		case VK_LEFT:
+		case VK_UP:
+		case VK_RIGHT:
+		case VK_DOWN:
+		case VK_INSERT:
+		case VK_DELETE:
+		case VK_LWIN:
+		case VK_RWIN:
+		case VK_APPS:
+		case VK_DIVIDE:
+		case VK_RCONTROL:
+		case VK_RMENU:
+			return(true);
+		default:
+			break;
+	}
+	// Browser, volume, media and launch keys
+	bool isMultimediaKey = (virtualKey >= VK_BROWSER_BACK) && (virtualKey <= VK_LAUNCH_APP2);
+	return(isMultimediaKey);
+}
+
 // Makes the PC set 1 scan code from the scan code and the extended flag of a key message or the low level hook
 fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uint32_t virtualKey, const uint32_t messageScanCode, const bool isExtendedKey) {
 	// Windows swaps the scan codes of Pause (0x45) and NumLock (0xE045), wine has others for them, the key codes tell them apart everywhere
@@ -19463,7 +19521,17 @@ fpl_internal uint32_t fpl__Win32GetScanCode(const fpl__Win32Api *wapi, const uin
 		scanCode = isExtendedKey ? (FPL__SCANCODE_EXTENDED_PREFIX | messageScanCode) : messageScanCode;
 	} else {
 		// Keys sent by programs may come without a scan code
-		scanCode = wapi->user.MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC_EX);
+		scanCode = wapi->user.MapVirtualKeyW(virtualKey, FPL__WIN32_MAPVK_VK_TO_VSC_EX);
+		if (scanCode == 0) {
+			// Windows XP has no MAPVK_VK_TO_VSC_EX and returns zero, the plain scan code gets the prefix by the key then (Print stays 0x54, which is mapped below)
+			uint32_t plainScanCode = wapi->user.MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC);
+			bool isExtendedVirtualKey = fpl__Win32IsExtendedVirtualKey(virtualKey);
+			if ((plainScanCode != 0) && isExtendedVirtualKey) {
+				scanCode = FPL__SCANCODE_EXTENDED_PREFIX | plainScanCode;
+			} else {
+				scanCode = plainScanCode;
+			}
+		}
 	}
 	// A prefix without a code is no key (wine maps an extended virtual key it has no scan code for to 0xE000)
 	if (scanCode == FPL__SCANCODE_EXTENDED_PREFIX) {
@@ -19981,7 +20049,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_XBUTTONUP:
 		case WM_MOUSEMOVE:
 		case WM_MOUSEWHEEL:
-		case WM_MOUSEHWHEEL:
+		case FPL__WIN32_WM_MOUSEHWHEEL:
 		case WM_MOUSELEAVE:
 		{
 			if (msg == WM_MOUSELEAVE) {
@@ -21686,7 +21754,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 		}
 
 		case WM_MOUSEWHEEL:
-		case WM_MOUSEHWHEEL:
+		case FPL__WIN32_WM_MOUSEHWHEEL:
 		{
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Mouse)) return true;
 			// Unlike the other mouse messages the wheel messages carry the position in screen coordinates
@@ -21696,7 +21764,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
 			short wheelRotation = GET_WHEEL_DELTA_WPARAM(msg->wParam);
 			float wheelDelta = wheelRotation / (float)WHEEL_DELTA;
-			fplMouseEventType wheelType = (msg->message == WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
+			fplMouseEventType wheelType = (msg->message == FPL__WIN32_WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
 			fpl__HandleMouseWheelEvent(&appState->window, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
 			return true;
 		}
@@ -22207,6 +22275,117 @@ fpl_platform_api bool fplMemoryGetUsage(fplMemoryInfos *outInfos) {
 }
 
 //
+// Win32 Kernel32 (functions of Windows Vista or higher)
+//
+#define FPL__FUNC_WIN32_KERNEL32_InitializeConditionVariable(name) VOID WINAPI name(void *ConditionVariable)
+typedef FPL__FUNC_WIN32_KERNEL32_InitializeConditionVariable(fpl__win32_kernel_func_InitializeConditionVariable);
+#define FPL__FUNC_WIN32_KERNEL32_SleepConditionVariableCS(name) BOOL WINAPI name(void *ConditionVariable, CRITICAL_SECTION *CriticalSection, DWORD dwMilliseconds)
+typedef FPL__FUNC_WIN32_KERNEL32_SleepConditionVariableCS(fpl__win32_kernel_func_SleepConditionVariableCS);
+#define FPL__FUNC_WIN32_KERNEL32_WakeConditionVariable(name) VOID WINAPI name(void *ConditionVariable)
+typedef FPL__FUNC_WIN32_KERNEL32_WakeConditionVariable(fpl__win32_kernel_func_WakeConditionVariable);
+#define FPL__FUNC_WIN32_KERNEL32_WakeAllConditionVariable(name) VOID WINAPI name(void *ConditionVariable)
+typedef FPL__FUNC_WIN32_KERNEL32_WakeAllConditionVariable(fpl__win32_kernel_func_WakeAllConditionVariable);
+#define FPL__FUNC_WIN32_KERNEL32_GetTickCount64(name) ULONGLONG WINAPI name(void)
+typedef FPL__FUNC_WIN32_KERNEL32_GetTickCount64(fpl__win32_kernel_func_GetTickCount64);
+#define FPL__FUNC_WIN32_KERNEL32_InitializeProcThreadAttributeList(name) BOOL WINAPI name(void *lpAttributeList, DWORD dwAttributeCount, DWORD dwFlags, SIZE_T *lpSize)
+typedef FPL__FUNC_WIN32_KERNEL32_InitializeProcThreadAttributeList(fpl__win32_kernel_func_InitializeProcThreadAttributeList);
+#define FPL__FUNC_WIN32_KERNEL32_UpdateProcThreadAttribute(name) BOOL WINAPI name(void *lpAttributeList, DWORD dwFlags, DWORD_PTR Attribute, void *lpValue, SIZE_T cbSize, void *lpPreviousValue, SIZE_T *lpReturnSize)
+typedef FPL__FUNC_WIN32_KERNEL32_UpdateProcThreadAttribute(fpl__win32_kernel_func_UpdateProcThreadAttribute);
+#define FPL__FUNC_WIN32_KERNEL32_DeleteProcThreadAttributeList(name) VOID WINAPI name(void *lpAttributeList)
+typedef FPL__FUNC_WIN32_KERNEL32_DeleteProcThreadAttributeList(fpl__win32_kernel_func_DeleteProcThreadAttributeList);
+
+// Functions of Windows Vista or higher are looked up at runtime, so the executable still starts on Windows XP - a missing function stays null
+typedef struct fpl__Win32KernelApi {
+	fpl__win32_kernel_func_InitializeConditionVariable *InitializeConditionVariable;
+	fpl__win32_kernel_func_SleepConditionVariableCS *SleepConditionVariableCS;
+	fpl__win32_kernel_func_WakeConditionVariable *WakeConditionVariable;
+	fpl__win32_kernel_func_WakeAllConditionVariable *WakeAllConditionVariable;
+	fpl__win32_kernel_func_GetTickCount64 *GetTickCount64;
+	fpl__win32_kernel_func_InitializeProcThreadAttributeList *InitializeProcThreadAttributeList;
+	fpl__win32_kernel_func_UpdateProcThreadAttribute *UpdateProcThreadAttribute;
+	fpl__win32_kernel_func_DeleteProcThreadAttributeList *DeleteProcThreadAttributeList;
+	fpl_b32 hasConditionVariables;
+	fpl_b32 hasProcThreadAttributes;
+} fpl__Win32KernelApi;
+
+typedef enum fpl__Win32KernelApiState {
+	fpl__Win32KernelApiState_Unresolved = 0,
+	fpl__Win32KernelApiState_Resolving,
+	fpl__Win32KernelApiState_Resolved,
+} fpl__Win32KernelApiState;
+
+// Resolved on first use, because threading and timings work without fplPlatformInit()
+fpl_globalvar fpl__Win32KernelApi fpl__global__Win32KernelApi = fplZeroInit;
+fpl_globalvar volatile int32_t fpl__global__Win32KernelApiState = fpl__Win32KernelApiState_Unresolved;
+
+#define FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(libHandle, target, type, name) \
+	(target)->name = (type *)(void *)GetProcAddress(libHandle, #name)
+
+fpl_internal void fpl__Win32ResolveKernelApi(fpl__Win32KernelApi *kernelApi) {
+	// kernel32.dll is part of every process, so it is never loaded or released here
+	HMODULE kernelLibrary = GetModuleHandleW(L"kernel32.dll");
+	if (kernelLibrary == fpl_null) {
+		return;
+	}
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_InitializeConditionVariable, InitializeConditionVariable);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_SleepConditionVariableCS, SleepConditionVariableCS);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_WakeConditionVariable, WakeConditionVariable);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_WakeAllConditionVariable, WakeAllConditionVariable);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_GetTickCount64, GetTickCount64);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_InitializeProcThreadAttributeList, InitializeProcThreadAttributeList);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_UpdateProcThreadAttribute, UpdateProcThreadAttribute);
+	FPL__WIN32_GET_KERNEL_FUNCTION_ADDRESS(kernelLibrary, kernelApi, fpl__win32_kernel_func_DeleteProcThreadAttributeList, DeleteProcThreadAttributeList);
+	kernelApi->hasConditionVariables = (kernelApi->InitializeConditionVariable != fpl_null) && (kernelApi->SleepConditionVariableCS != fpl_null) && (kernelApi->WakeConditionVariable != fpl_null) && (kernelApi->WakeAllConditionVariable != fpl_null);
+	kernelApi->hasProcThreadAttributes = (kernelApi->InitializeProcThreadAttributeList != fpl_null) && (kernelApi->UpdateProcThreadAttribute != fpl_null) && (kernelApi->DeleteProcThreadAttributeList != fpl_null);
+}
+
+fpl_internal const fpl__Win32KernelApi *fpl__Win32GetKernelApi(void) {
+	int32_t state = fplAtomicLoadS32(&fpl__global__Win32KernelApiState);
+	if (state == fpl__Win32KernelApiState_Resolved) {
+		return(&fpl__global__Win32KernelApi);
+	}
+	bool isResolver = fplAtomicIsCompareAndSwapS32(&fpl__global__Win32KernelApiState, fpl__Win32KernelApiState_Unresolved, fpl__Win32KernelApiState_Resolving);
+	if (isResolver) {
+		fpl__Win32ResolveKernelApi(&fpl__global__Win32KernelApi);
+		fplAtomicStoreS32(&fpl__global__Win32KernelApiState, fpl__Win32KernelApiState_Resolved);
+	} else {
+		// Another thread resolves the functions right now, that takes only a few microseconds
+		while (fplAtomicLoadS32(&fpl__global__Win32KernelApiState) != fpl__Win32KernelApiState_Resolved) {
+			Sleep(0);
+		}
+	}
+	return(&fpl__global__Win32KernelApi);
+}
+
+// Windows XP has no GetTickCount64, there the 32-bit tick count is extended by its wraparounds (every 49.7 days) in the upper 32 bits
+fpl_globalvar volatile uint64_t fpl__global__Win32ExtendedTickCount = 0;
+
+fpl_internal uint64_t fpl__Win32GetTickCount64(void) {
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	if (kernelApi->GetTickCount64 != fpl_null) {
+		uint64_t result = kernelApi->GetTickCount64();
+		return(result);
+	}
+	const uint64_t lowTicksMask = 0xFFFFFFFFull;
+	const uint64_t wraparoundTicks = 0x100000000ull;
+	for (;;) {
+		// The previous value is loaded before the tick count is read, so a value another thread stores in between never looks like a wraparound
+		uint64_t previousTicks = fplAtomicLoadU64(&fpl__global__Win32ExtendedTickCount);
+		uint64_t currentLowTicks = (uint64_t)GetTickCount();
+		uint64_t previousLowTicks = previousTicks & lowTicksMask;
+		uint64_t highTicks = previousTicks & ~lowTicksMask;
+		if (currentLowTicks < previousLowTicks) {
+			highTicks += wraparoundTicks;
+		}
+		uint64_t currentTicks = highTicks | currentLowTicks;
+		bool isStored = fplAtomicIsCompareAndSwapU64(&fpl__global__Win32ExtendedTickCount, previousTicks, currentTicks);
+		if (isStored) {
+			return(currentTicks);
+		}
+	}
+}
+
+//
 // Win32 Threading
 //
 fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
@@ -22519,12 +22698,89 @@ fpl_platform_api bool fplSignalReset(fplSignalHandle *signal) {
 	return(result);
 }
 
+// Windows XP has no condition variables: the fallback lets the waiters sleep on a semaphore, and a wake call waits until every waiter it woke up has confirmed it.
+// The confirmation keeps a thread that starts waiting after the wake call from taking the wakeup of a thread that waited before, as long as the caller holds the mutex.
+fpl_internal void fpl__Win32FallbackConditionRelease(fpl__Win32ConditionVariable *condVar) {
+	if (condVar->fallbackDoneSemaphore != fpl_null) {
+		CloseHandle(condVar->fallbackDoneSemaphore);
+	}
+	if (condVar->fallbackWaitSemaphore != fpl_null) {
+		CloseHandle(condVar->fallbackWaitSemaphore);
+	}
+	if (condVar->fallbackLock != fpl_null) {
+		CloseHandle(condVar->fallbackLock);
+	}
+	fplClearStruct(condVar);
+}
+
+fpl_internal bool fpl__Win32FallbackConditionInit(fpl__Win32ConditionVariable *condVar) {
+	condVar->fallbackLock = CreateMutexW(fpl_null, FALSE, fpl_null);
+	condVar->fallbackWaitSemaphore = CreateSemaphoreW(fpl_null, 0, INT32_MAX, fpl_null);
+	condVar->fallbackDoneSemaphore = CreateSemaphoreW(fpl_null, 0, INT32_MAX, fpl_null);
+	if ((condVar->fallbackLock == fpl_null) || (condVar->fallbackWaitSemaphore == fpl_null) || (condVar->fallbackDoneSemaphore == fpl_null)) {
+		fpl__Win32FallbackConditionRelease(condVar);
+		return(false);
+	}
+	condVar->fallbackWaitingCount = 0;
+	condVar->fallbackPendingCount = 0;
+	return(true);
+}
+
+fpl_internal bool fpl__Win32FallbackConditionWait(fpl__Win32ConditionVariable *condVar, CRITICAL_SECTION *criticalSection, const DWORD milliseconds) {
+	WaitForSingleObject(condVar->fallbackLock, INFINITE);
+	++condVar->fallbackWaitingCount;
+	ReleaseMutex(condVar->fallbackLock);
+
+	LeaveCriticalSection(criticalSection);
+	DWORD waitResult = WaitForSingleObject(condVar->fallbackWaitSemaphore, milliseconds);
+
+	WaitForSingleObject(condVar->fallbackLock, INFINITE);
+	--condVar->fallbackWaitingCount;
+	bool isWokenUp = (waitResult == WAIT_OBJECT_0);
+	if (!isWokenUp && (condVar->fallbackPendingCount > condVar->fallbackWaitingCount)) {
+		// A wakeup was released while this waiter timed out and the waiters left cannot take all of them, so this one takes it - otherwise the wake call would wait for its confirmation forever
+		DWORD lateWaitResult = WaitForSingleObject(condVar->fallbackWaitSemaphore, 0);
+		isWokenUp = (lateWaitResult == WAIT_OBJECT_0);
+	}
+	if (isWokenUp) {
+		--condVar->fallbackPendingCount;
+		ReleaseSemaphore(condVar->fallbackDoneSemaphore, 1, fpl_null);
+	}
+	ReleaseMutex(condVar->fallbackLock);
+
+	EnterCriticalSection(criticalSection);
+	return(isWokenUp);
+}
+
+fpl_internal void fpl__Win32FallbackConditionWake(fpl__Win32ConditionVariable *condVar, const bool wakeAll) {
+	WaitForSingleObject(condVar->fallbackLock, INFINITE);
+	int32_t unreleasedWaiterCount = condVar->fallbackWaitingCount - condVar->fallbackPendingCount;
+	int32_t wakeCount = 0;
+	if (unreleasedWaiterCount > 0) {
+		wakeCount = wakeAll ? unreleasedWaiterCount : 1;
+		condVar->fallbackPendingCount += wakeCount;
+		ReleaseSemaphore(condVar->fallbackWaitSemaphore, wakeCount, fpl_null);
+	}
+	ReleaseMutex(condVar->fallbackLock);
+	for (int32_t confirmIndex = 0; confirmIndex < wakeCount; ++confirmIndex) {
+		WaitForSingleObject(condVar->fallbackDoneSemaphore, INFINITE);
+	}
+}
+
 fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 	FPL__CheckArgumentNull(condition, false);
 	fplClearStruct(condition);
-	fplAssert(sizeof(condition->internalHandle.win32Condition) == sizeof(CONDITION_VARIABLE));
-	CONDITION_VARIABLE *condVar = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
-	InitializeConditionVariable(condVar);
+	fpl__Win32ConditionVariable *condVar = &condition->internalHandle.win32Condition;
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	if (kernelApi->hasConditionVariables) {
+		kernelApi->InitializeConditionVariable(&condVar->native);
+	} else {
+		bool isFallbackCreated = fpl__Win32FallbackConditionInit(condVar);
+		if (!isFallbackCreated) {
+			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating the condition '%p' for Windows XP", condition);
+			return false;
+		}
+	}
 	condition->isValid = true;
 	return true;
 }
@@ -22532,6 +22788,8 @@ fpl_platform_api bool fplConditionInit(fplConditionVariable *condition) {
 fpl_platform_api void fplConditionDestroy(fplConditionVariable *condition) {
 	FPL__CheckArgumentNullNoRet(condition);
 	if (condition->isValid) {
+		// The native condition variable has nothing to release, only the fallback has handles
+		fpl__Win32FallbackConditionRelease(&condition->internalHandle.win32Condition);
 		fplClearStruct(condition);
 	}
 }
@@ -22549,8 +22807,14 @@ fpl_platform_api bool fplConditionWait(fplConditionVariable *condition, fplMutex
 	}
 	DWORD t = timeout == FPL_TIMEOUT_INFINITE ? INFINITE : timeout;
 	CRITICAL_SECTION *critSection = (CRITICAL_SECTION *)&mutex->internalHandle.win32CriticalSection;
-	CONDITION_VARIABLE *condVar = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
-	bool result = SleepConditionVariableCS(condVar, critSection, t) != 0;
+	fpl__Win32ConditionVariable *condVar = &condition->internalHandle.win32Condition;
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	bool result;
+	if (kernelApi->hasConditionVariables) {
+		result = kernelApi->SleepConditionVariableCS(&condVar->native, critSection, t) != 0;
+	} else {
+		result = fpl__Win32FallbackConditionWait(condVar, critSection, t);
+	}
 	return(result);
 }
 
@@ -22560,8 +22824,13 @@ fpl_platform_api bool fplConditionSignal(fplConditionVariable *condition) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
 		return false;
 	}
-	CONDITION_VARIABLE *critSection = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
-	WakeConditionVariable(critSection);
+	fpl__Win32ConditionVariable *condVar = &condition->internalHandle.win32Condition;
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	if (kernelApi->hasConditionVariables) {
+		kernelApi->WakeConditionVariable(&condVar->native);
+	} else {
+		fpl__Win32FallbackConditionWake(condVar, false);
+	}
 	return true;
 }
 
@@ -22571,8 +22840,13 @@ fpl_platform_api bool fplConditionBroadcast(fplConditionVariable *condition) {
 		FPL__ERROR(FPL__MODULE_THREADING, "Condition '%p' is not valid", condition);
 		return false;
 	}
-	CONDITION_VARIABLE *critSection = (CONDITION_VARIABLE *)&condition->internalHandle.win32Condition;
-	WakeAllConditionVariable(critSection);
+	fpl__Win32ConditionVariable *condVar = &condition->internalHandle.win32Condition;
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	if (kernelApi->hasConditionVariables) {
+		kernelApi->WakeAllConditionVariable(&condVar->native);
+	} else {
+		fpl__Win32FallbackConditionWake(condVar, true);
+	}
 	return true;
 }
 
@@ -23428,7 +23702,7 @@ fpl_platform_api fplTimestamp fplTimestampQuery(void) {
 		QueryPerformanceCounter(&time);
 		result.win32.qpc.QuadPart = time.QuadPart;
 	} else {
-		result.win32.ticks = GetTickCount64();
+		result.win32.ticks = fpl__Win32GetTickCount64();
 	}
 	return(result);
 }
@@ -23448,7 +23722,7 @@ fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const 
 }
 
 fpl_platform_api fplMilliseconds fplMillisecondsQuery(void) {
-	fplMilliseconds result = (fplMilliseconds)GetTickCount64();
+	fplMilliseconds result = (fplMilliseconds)fpl__Win32GetTickCount64();
 	return(result);
 }
 
@@ -24398,30 +24672,58 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 }
 #endif // FPL__ENABLE_WINDOW
 
-fpl_internal LCTYPE fpl__Win32GetLocaleLCIDFromFormat(const fplLocaleFormat format) {
-	switch (format) {
-		case fplLocaleFormat_ISO639:
-			return LOCALE_SNAME;
-		default:
-			return LOCALE_SABBREVLANGNAME;
+// Gets the locale in the given format as a wide string, returns its length without the terminator or zero on failure
+fpl_internal size_t fpl__Win32GetLocaleString(const LCID localeId, const fplLocaleFormat format, wchar_t *bufferWide, const int maxBufferWideLen) {
+	if (format != fplLocaleFormat_ISO639) {
+		int abbreviationLength = GetLocaleInfoW(localeId, LOCALE_SABBREVLANGNAME, bufferWide, maxBufferWideLen);
+		size_t result = (abbreviationLength > 0) ? (size_t)(abbreviationLength - 1) : 0;
+		return(result);
 	}
+	int nameLength = GetLocaleInfoW(localeId, FPL__WIN32_LOCALE_SNAME, bufferWide, maxBufferWideLen);
+	if (nameLength > 0) {
+		return((size_t)(nameLength - 1));
+	}
+	// Windows XP has no LOCALE_SNAME, the name is built from the language and the country code there (e.g. de-DE)
+	int languageLength = GetLocaleInfoW(localeId, LOCALE_SISO639LANGNAME, bufferWide, maxBufferWideLen);
+	if (languageLength <= 0) {
+		return(0);
+	}
+	int separatorIndex = languageLength - 1;
+	int countryIndex = separatorIndex + 1;
+	int maxCountryLen = maxBufferWideLen - countryIndex;
+	// A buffer length of zero would only query the required length, so at least one character and the terminator must fit
+	const int minCountryLen = 2;
+	if (maxCountryLen < minCountryLen) {
+		return((size_t)separatorIndex);
+	}
+	int countryLength = GetLocaleInfoW(localeId, LOCALE_SISO3166CTRYNAME, bufferWide + countryIndex, maxCountryLen);
+	if (countryLength <= 0) {
+		return((size_t)separatorIndex);
+	}
+	bufferWide[separatorIndex] = L'-';
+	size_t result = (size_t)(countryIndex + countryLength - 1);
+	return(result);
 }
 
 fpl_platform_api size_t fplGetSystemLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
-	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
-	int r = GetLocaleInfoW(LOCALE_SYSTEM_DEFAULT, lcType, bufferWide, fplArrayCount(bufferWide));
-	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
+	size_t wideLength = fpl__Win32GetLocaleString(LOCALE_SYSTEM_DEFAULT, targetFormat, bufferWide, fplArrayCount(bufferWide));
+	if (wideLength == 0) {
+		return(0);
+	}
+	size_t result = fplWideStringToUTF8String(bufferWide, wideLength, buffer, maxBufferLen);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetUserLocale(const fplLocaleFormat targetFormat, char *buffer, const size_t maxBufferLen) {
 	FPL__CheckArgumentInvalid(targetFormat, targetFormat == fplLocaleFormat_None, 0);
-	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
-	int r = GetLocaleInfoW(LOCALE_USER_DEFAULT, lcType, bufferWide, fplArrayCount(bufferWide));
-	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
+	size_t wideLength = fpl__Win32GetLocaleString(LOCALE_USER_DEFAULT, targetFormat, bufferWide, fplArrayCount(bufferWide));
+	if (wideLength == 0) {
+		return(0);
+	}
+	size_t result = fplWideStringToUTF8String(bufferWide, wideLength, buffer, maxBufferLen);
 	return(result);
 }
 
@@ -24432,10 +24734,12 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 	const fpl__Win32Api *wapi = &appState->winApi;
 	HKL kbLayout = wapi->user.GetKeyboardLayout(GetCurrentThreadId());
 	LCID langId = (DWORD)(intptr_t)kbLayout & 0xFFFF;
-	LCTYPE lcType = fpl__Win32GetLocaleLCIDFromFormat(targetFormat);
 	wchar_t bufferWide[FPL_MAX_BUFFER_LENGTH];
-	int r = GetLocaleInfoW(langId, lcType, bufferWide, fplArrayCount(bufferWide));
-	size_t result = fplWideStringToUTF8String(bufferWide, lstrlenW(bufferWide), buffer, maxBufferLen);
+	size_t wideLength = fpl__Win32GetLocaleString(langId, targetFormat, bufferWide, fplArrayCount(bufferWide));
+	if (wideLength == 0) {
+		return(0);
+	}
+	size_t result = fplWideStringToUTF8String(bufferWide, wideLength, buffer, maxBufferLen);
 	return(result);
 }
 #endif // FPL_PLATFORM_WINDOWS
@@ -24462,6 +24766,14 @@ fpl_platform_api size_t fplGetInputLocale(const fplLocaleFormat targetFormat, ch
 #define FPL__WIN32_PROCESS_DEFAULT_SHELL_ARGUMENT "/s /c"
 // Argument a custom shell gets when the caller does not specify one
 #define FPL__WIN32_PROCESS_CUSTOM_SHELL_ARGUMENT "/c"
+
+// Same layout as STARTUPINFOEXW of Windows Vista or higher, defined here so the headers of Windows XP are enough
+typedef struct fpl__Win32StartupInfoEx {
+	//! The plain startup info, cb tells CreateProcessW which variant it gets.
+	STARTUPINFOW StartupInfo;
+	//! The LPPROC_THREAD_ATTRIBUTE_LIST with the handles the child inherits.
+	void *lpAttributeList;
+} fpl__Win32StartupInfoEx;
 
 typedef struct fpl__Win32ProcessStartArgs {
 	//! Single memory block holding the wide command line, its unmodified copy and the wide work directory.
@@ -25197,7 +25509,7 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 
 	// The extended variant is used as soon as the handles the child inherits are listed explicitly,
 	// its first member is the plain STARTUPINFOW, so both cases share the same fields
-	STARTUPINFOEXW startupInfoEx = fplZeroInit;
+	fpl__Win32StartupInfoEx startupInfoEx = fplZeroInit;
 	STARTUPINFOW *startupInfo = &startupInfoEx.StartupInfo;
 	startupInfo->cb = sizeof(STARTUPINFOW);
 
@@ -25274,28 +25586,30 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 	if (usesStdHandles) {
 		inheritableHandleCount = fpl__Win32CollectInheritableHandles(startupInfo, inheritableHandles, fplArrayCount(inheritableHandles));
 	}
-	LPPROC_THREAD_ATTRIBUTE_LIST attributeList = fpl_null;
+	// Windows XP has no handle list, the child inherits every inheritable handle there
+	const fpl__Win32KernelApi *kernelApi = fpl__Win32GetKernelApi();
+	void *attributeList = fpl_null;
 	bool isAttributeListInitialized = false;
-	if (inheritableHandleCount > 0) {
+	if ((inheritableHandleCount > 0) && kernelApi->hasProcThreadAttributes) {
 		SIZE_T attributeListSize = 0;
-		InitializeProcThreadAttributeList(fpl_null, 1, 0, &attributeListSize);
+		kernelApi->InitializeProcThreadAttributeList(fpl_null, 1, 0, &attributeListSize);
 		if (attributeListSize > 0) {
-			attributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)fpl__AllocateTemporaryMemory((size_t)attributeListSize, FPL__PROCESS_MEMORY_ALIGNMENT);
+			attributeList = fpl__AllocateTemporaryMemory((size_t)attributeListSize, FPL__PROCESS_MEMORY_ALIGNMENT);
 		}
 		if (attributeList != fpl_null) {
-			isAttributeListInitialized = InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize) != 0;
+			isAttributeListInitialized = kernelApi->InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize) != 0;
 			BOOL attributeResult = FALSE;
 			if (isAttributeListInitialized) {
-				attributeResult = UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritableHandles, inheritableHandleCount * sizeof(HANDLE), fpl_null, fpl_null);
+				attributeResult = kernelApi->UpdateProcThreadAttribute(attributeList, 0, FPL__WIN32_PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritableHandles, inheritableHandleCount * sizeof(HANDLE), fpl_null, fpl_null);
 			}
 			if (attributeResult) {
 				startupInfoEx.lpAttributeList = attributeList;
 				startupInfo->cb = sizeof(startupInfoEx);
-				creationFlags |= EXTENDED_STARTUPINFO_PRESENT;
+				creationFlags |= FPL__WIN32_EXTENDED_STARTUPINFO_PRESENT;
 			} else {
 				FPL__WARNING(FPL__MODULE_PROCESS, "Failed building the handle list for the process '%s' with code %lu", context->name, GetLastError());
 				if (isAttributeListInitialized) {
-					DeleteProcThreadAttributeList(attributeList);
+					kernelApi->DeleteProcThreadAttributeList(attributeList);
 					isAttributeListInitialized = false;
 				}
 				fpl__ReleaseTemporaryMemory(attributeList);
@@ -25313,14 +25627,14 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		FPL__WARNING(FPL__MODULE_PROCESS, "Failed starting the process '%s' with an explicit handle list with code %lu, retrying with the default handle inheritance", context->name, attributeErrorCode);
 		startupInfoEx.lpAttributeList = fpl_null;
 		startupInfo->cb = sizeof(STARTUPINFOW);
-		creationFlags &= ~(DWORD)EXTENDED_STARTUPINFO_PRESENT;
+		creationFlags &= ~(DWORD)FPL__WIN32_EXTENDED_STARTUPINFO_PRESENT;
 		// CreateProcessW is allowed to write into the command line, so the second attempt gets the copy
 		fpl__Win32RestoreProcessCommandLine(&startArgs);
 		createResult = CreateProcessW(fpl_null, startArgs.commandLine, fpl_null, fpl_null, inheritHandles, creationFlags, fpl_null, startArgs.workDir, startupInfo, &processInfo);
 	}
 	if (attributeList != fpl_null) {
 		if (isAttributeListInitialized) {
-			DeleteProcThreadAttributeList(attributeList);
+			kernelApi->DeleteProcThreadAttributeList(attributeList);
 		}
 		fpl__ReleaseTemporaryMemory(attributeList);
 		attributeList = fpl_null;
@@ -45514,8 +45828,8 @@ fpl_common_api fplPlatformType fplGetPlatformType(void) {
 		// @STUPID(final): Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here"
 struct IUnknown;
 #		include <windows.h> // Win32 api
-#		if _WIN32_WINNT < 0x0600
-#			error "Windows Vista or higher required!"
+#		if _WIN32_WINNT < 0x0501
+#			error "Windows XP or higher required!"
 #		endif
 #	endif // FPL_PLATFORM_WINDOWS
 
@@ -45684,10 +45998,17 @@ fpl_internal void fpl__Win32InitConsole(void) {
 		SetStdHandle(STD_INPUT_HANDLE, hConIn);
 
 #if !defined(FPL_NO_CRT)
+		// The msvcrt.dll of Windows XP has no freopen_s, so only the MSVC runtime uses it (it has it on every Windows) and MinGW takes freopen
+#	if defined(_MSC_VER)
 		FILE *dummy;
 		freopen_s(&dummy, "CONIN$", "r", stdin);
 		freopen_s(&dummy, "CONOUT$", "w", stderr);
 		freopen_s(&dummy, "CONOUT$", "w", stdout);
+#	else
+		freopen("CONIN$", "r", stdin);
+		freopen("CONOUT$", "w", stderr);
+		freopen("CONOUT$", "w", stdout);
+#	endif
 #endif
 	}
 }
