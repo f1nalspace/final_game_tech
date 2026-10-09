@@ -5,6 +5,7 @@ Name:
 Description:
 	An interactive demo for final_ui.h, on FPL and legacy OpenGL.
 	With --gl3 the same interface is drawn on an OpenGL 3.3 core profile through fui_backend_gl3.h instead, so both backends can be compared on the same frame.
+	With --gl46 it is drawn on an OpenGL 4.6 core profile through fui_backend_gl46.h, in batches of multi draw indirect calls.
 
 	Everything the library has: a menu bar with a submenu, a context menu, a command table whose
 	shortcuts fire from the keyboard AND print themselves into their own menu rows, tool strips, floating
@@ -14,10 +15,10 @@ Description:
 
 	This is also the smallest honest answer to "what does it take to use this library". Four things:
 
-	  1. Bake a font and upload its atlas                (fuiStbttFontBake + fuiGL1UploadFontAtlas or fuiGL3UploadFontAtlas)
+	  1. Bake a font and upload its atlas                (fuiStbttFontBake + fuiGL1UploadFontAtlas, fuiGL3UploadFontAtlas or fuiGL46UploadFontAtlas)
 	  2. Fill a fuiInput each frame                      (BuildInput, below - about sixty lines)
 	  3. Build the interface between begin and end       (BuildUserInterface, below)
-	  4. Drain fuiGetDrawData through a backend          (fuiGL1Render or fuiGL3Render)
+	  4. Drain fuiGetDrawData through a backend          (fuiGL1Render, fuiGL3Render or fuiGL46Render)
 
 	final_ui.h itself pulls in nothing but the C standard library. FPL, stb_truetype and OpenGL all appear
 	in THIS file and in the two headers next to it, never in the library.
@@ -31,11 +32,13 @@ Requirements:
 	- C99 compiler
 	- OpenGL 1.1 (fixed function, which is all the backend here uses)
 	- OpenGL 3.3 core profile with --gl3
+	- OpenGL 4.6 core profile with --gl46
 
 Build (from the repository root):
 	gcc -std=c99 demos/FUI_Test/fui_test.c -I . -I demos/additions -I demos/dependencies -o fui_test -lm -ldl
 	./fui_test
 	./fui_test --gl3
+	./fui_test --gl46
 
 	Or with cmake:  cmake -S demos/FUI_Test -B build/fui_test && cmake --build build/fui_test
 
@@ -68,6 +71,9 @@ License:
 #define FUI_GL3_IMPLEMENTATION
 #include <fui_backend_gl3.h>
 
+#define FUI_GL46_IMPLEMENTATION
+#include <fui_backend_gl46.h>
+
 #define FUI_INPUT_FPL_IMPLEMENTATION
 #include <fui_input_fpl.h>
 
@@ -82,10 +88,15 @@ License:
 // other one restains it.
 #define DEMO_HOST_LABEL_GL1 "FPL + OpenGL 1.1"
 #define DEMO_HOST_LABEL_GL3 "FPL + OpenGL 3.3 core"
+#define DEMO_HOST_LABEL_GL46 "FPL + OpenGL 4.6 core"
 // Command line switch that draws through fui_backend_gl3.h on a core profile instead of the fixed function backend
 #define DEMO_GL3_ARGUMENT "--gl3"
 #define DEMO_GL3_MAJOR_VERSION 3
 #define DEMO_GL3_MINOR_VERSION 3
+// Command line switch that draws through fui_backend_gl46.h on a 4.6 core profile
+#define DEMO_GL46_ARGUMENT "--gl46"
+#define DEMO_GL46_MAJOR_VERSION 4
+#define DEMO_GL46_MINOR_VERSION 6
 // Grid lines the core profile path sends to the GPU per draw call, two vertices of two floats each
 #define DEMO_GRID_BATCH_LINE_COUNT 512
 #define DEMO_GRID_VERTICES_PER_LINE 2
@@ -1556,19 +1567,33 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 }
 
 // ----------------------------------------------------------------------------
-// The two backends
+// The three backends
 // ----------------------------------------------------------------------------
 
-//! Which backend draws the interface and the grid behind it: the fixed function one by default, the core profile one with --gl3
+//! The backend that draws the interface, picked on the command line
+typedef enum DemoBackendKind {
+	//! fui_backend_gl1.h on a legacy context, the default
+	DemoBackendKind_GL1 = 0,
+	//! fui_backend_gl3.h on a 3.3 core profile, with --gl3
+	DemoBackendKind_GL3,
+	//! fui_backend_gl46.h on a 4.6 core profile, with --gl46
+	DemoBackendKind_GL46,
+} DemoBackendKind;
+
+//! Which backend draws the interface and the grid behind it: the fixed function one by default, a core profile one with --gl3 or --gl46
 typedef struct DemoRenderer {
-	//! The interface backend of the core profile path, unused on the fixed function path
+	//! The interface backend of --gl3, unused on the other paths
 	fuiGL3Backend gl3Backend;
+	//! The interface backend of --gl46, unused on the other paths
+	fuiGL46Backend gl46Backend;
 	//! The grid of the core profile path: GL_LINES from a buffer, because a core profile has no glBegin
 	GLuint gridProgram;
 	GLuint gridVertexArray;
 	GLuint gridVertexBuffer;
 	GLint gridLocationProjection;
 	GLint gridLocationColor;
+	DemoBackendKind backendKind;
+	//! Both core profile paths draw the grid through the same shader
 	bool isCoreProfile;
 } DemoRenderer;
 
@@ -1650,16 +1675,26 @@ static void DemoRendererRelease(DemoRenderer *renderer) {
 	if(renderer->gridProgram != 0) {
 		glDeleteProgram(renderer->gridProgram);
 	}
-	fuiGL3Release(&renderer->gl3Backend);
+	if(renderer->backendKind == DemoBackendKind_GL46) {
+		fuiGL46Release(&renderer->gl46Backend);
+	} else {
+		fuiGL3Release(&renderer->gl3Backend);
+	}
 }
 
-static bool DemoRendererInit(DemoRenderer *renderer, const bool isCoreProfile) {
+static bool DemoRendererInit(DemoRenderer *renderer, const DemoBackendKind backendKind) {
 	fplClearStruct(renderer);
-	renderer->isCoreProfile = isCoreProfile;
-	if(!isCoreProfile) {
+	renderer->backendKind = backendKind;
+	renderer->isCoreProfile = backendKind != DemoBackendKind_GL1;
+	if(!renderer->isCoreProfile) {
 		return true;
 	}
-	if(!fuiGL3Init(&renderer->gl3Backend)) {
+	if(backendKind == DemoBackendKind_GL46) {
+		if(!fuiGL46Init(&renderer->gl46Backend)) {
+			fprintf(stderr, "failed to initialize the OpenGL 4.6 backend: %s\n", renderer->gl46Backend.errorLog);
+			return false;
+		}
+	} else if(!fuiGL3Init(&renderer->gl3Backend)) {
 		fprintf(stderr, "failed to initialize the OpenGL 3.3 backend: %s\n", renderer->gl3Backend.errorLog);
 		return false;
 	}
@@ -1681,32 +1716,52 @@ static bool DemoRendererInit(DemoRenderer *renderer, const bool isCoreProfile) {
 }
 
 static bool DemoUploadCoverage(const DemoRenderer *renderer, const unsigned char *alphaPixels, const uint32_t width, const uint32_t height, uint32_t *outTexture) {
-	if(renderer->isCoreProfile) {
-		return fuiGL3UploadFontAtlas(alphaPixels, width, height, outTexture);
+	switch(renderer->backendKind) {
+		case DemoBackendKind_GL46:
+			return fuiGL46UploadFontAtlas(alphaPixels, width, height, outTexture);
+		case DemoBackendKind_GL3:
+			return fuiGL3UploadFontAtlas(alphaPixels, width, height, outTexture);
+		default:
+			return fuiGL1UploadFontAtlas(alphaPixels, width, height, outTexture);
 	}
-	return fuiGL1UploadFontAtlas(alphaPixels, width, height, outTexture);
 }
 
 static bool DemoUploadImageRGBA(const DemoRenderer *renderer, const unsigned char *rgbaPixels, const uint32_t width, const uint32_t height, const bool useLinearFilter, uint32_t *outTexture) {
-	if(renderer->isCoreProfile) {
-		return fuiGL3UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
+	switch(renderer->backendKind) {
+		case DemoBackendKind_GL46:
+			return fuiGL46UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
+		case DemoBackendKind_GL3:
+			return fuiGL3UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
+		default:
+			return fuiGL1UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
 	}
-	return fuiGL1UploadImageRGBA(rgbaPixels, width, height, useLinearFilter, outTexture);
 }
 
 static void DemoDeleteTexture(const DemoRenderer *renderer, const uint32_t texture) {
-	if(renderer->isCoreProfile) {
-		fuiGL3DeleteTexture(texture);
-	} else {
-		fuiGL1DeleteTexture(texture);
+	switch(renderer->backendKind) {
+		case DemoBackendKind_GL46:
+			fuiGL46DeleteTexture(texture);
+			break;
+		case DemoBackendKind_GL3:
+			fuiGL3DeleteTexture(texture);
+			break;
+		default:
+			fuiGL1DeleteTexture(texture);
+			break;
 	}
 }
 
 static void DemoRenderInterface(DemoRenderer *renderer, const fuiDrawData *drawData) {
-	if(renderer->isCoreProfile) {
-		fuiGL3Render(&renderer->gl3Backend, drawData);
-	} else {
-		fuiGL1Render(drawData);
+	switch(renderer->backendKind) {
+		case DemoBackendKind_GL46:
+			fuiGL46Render(&renderer->gl46Backend, drawData);
+			break;
+		case DemoBackendKind_GL3:
+			fuiGL3Render(&renderer->gl3Backend, drawData);
+			break;
+		default:
+			fuiGL1Render(drawData);
+			break;
 	}
 }
 
@@ -1824,10 +1879,14 @@ static void RenderBackdrop(const DemoRenderer *renderer, const DemoState *demo, 
 // ----------------------------------------------------------------------------
 
 int main(int argc, char **argv) {
-	bool useCoreProfile = false;
+	// The last backend switch on the command line wins
+	DemoBackendKind backendKind = DemoBackendKind_GL1;
 	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
-		if(fplIsStringEqual(argv[argumentIndex], DEMO_GL3_ARGUMENT)) {
-			useCoreProfile = true;
+		const char *argument = argv[argumentIndex];
+		if(fplIsStringEqual(argument, DEMO_GL3_ARGUMENT)) {
+			backendKind = DemoBackendKind_GL3;
+		} else if(fplIsStringEqual(argument, DEMO_GL46_ARGUMENT)) {
+			backendKind = DemoBackendKind_GL46;
 		}
 	}
 
@@ -1837,7 +1896,11 @@ int main(int argc, char **argv) {
 	settings.window.windowSize.width = DEMO_WINDOW_WIDTH;
 	settings.window.windowSize.height = DEMO_WINDOW_HEIGHT;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-	if(useCoreProfile) {
+	if(backendKind == DemoBackendKind_GL46) {
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
+		settings.video.graphics.opengl.majorVersion = DEMO_GL46_MAJOR_VERSION;
+		settings.video.graphics.opengl.minorVersion = DEMO_GL46_MINOR_VERSION;
+	} else if(backendKind == DemoBackendKind_GL3) {
 		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
 		settings.video.graphics.opengl.majorVersion = DEMO_GL3_MAJOR_VERSION;
 		settings.video.graphics.opengl.minorVersion = DEMO_GL3_MINOR_VERSION;
@@ -1858,7 +1921,7 @@ int main(int argc, char **argv) {
 	}
 
 	DemoRenderer renderer;
-	if(!DemoRendererInit(&renderer, useCoreProfile)) {
+	if(!DemoRendererInit(&renderer, backendKind)) {
 		fglUnloadOpenGL();
 		fplPlatformRelease();
 		return 1;
@@ -1909,7 +1972,17 @@ int main(int argc, char **argv) {
 
 	DemoState demo;
 	DemoInit(&demo);
-	demo.hostLabel = useCoreProfile ? DEMO_HOST_LABEL_GL3 : DEMO_HOST_LABEL_GL1;
+	switch(backendKind) {
+		case DemoBackendKind_GL46:
+			demo.hostLabel = DEMO_HOST_LABEL_GL46;
+			break;
+		case DemoBackendKind_GL3:
+			demo.hostLabel = DEMO_HOST_LABEL_GL3;
+			break;
+		default:
+			demo.hostLabel = DEMO_HOST_LABEL_GL1;
+			break;
+	}
 
 	// The other textures, and the only assets in the demo that are not a font: four icon cells the demo draws
 	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of

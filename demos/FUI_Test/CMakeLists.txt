@@ -31,6 +31,7 @@ set(MY_HEADER_FILES
 	"../additions/final_fonts.h"
 	"../additions/fui_backend_gl1.h"
 	"../additions/fui_backend_gl3.h"
+	"../additions/fui_backend_gl46.h"
 	"../additions/fui_input_fpl.h"
 	)
 
