@@ -15,13 +15,34 @@
     <ClInclude Include="..\dependencies\stb\stb_truetype.h">
       <Filter>dependencies</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\final_ui.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\final_fonts.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_backend_gl3.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_font_stbtt.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
+    <ClInclude Include="..\additions\fui_input_fpl.h">
+      <Filter>dependencies</Filter>
+    </ClInclude>
     <ClInclude Include="shadersources.h" />
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="logging.h" />
-    <ClInclude Include="..\dependencies\stb\stb_image_resize.h">
-      <Filter>dependencies</Filter>
-    </ClInclude>
+    <ClInclude Include="selftest.h" />
+    <ClInclude Include="resamplepipeline.h" />
+    <ClInclude Include="imageloader.h" />
+    <ClInclude Include="imageloader_stb.h" />
+    <ClInclude Include="imageloader_pnm.h" />
+    <ClInclude Include="imageloader_bmp.h" />
+    <ClInclude Include="imagepyramid.h" />
+    <ClInclude Include="imagepyramid_x86.h" />
+    <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.cpp" />

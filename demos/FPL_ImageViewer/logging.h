@@ -15,12 +15,17 @@
 #define FLOG_INIT_STRUCT {0}
 #endif
 
+#define FLOG_MAX_FILE_PATH_LENGTH 4096
+#define FLOG_MAX_LINE_LENGTH 2048
+
 typedef struct flogLogState {
-	const char *filePath;
+	char filePath[FLOG_MAX_FILE_PATH_LENGTH];
 	bool isInitialized;
 } flogLogState;
 
+// Copies the path, so a temporary buffer is fine
 extern void flogInit(const char *filePath);
+// Thread-safe, each call appends exactly one line
 extern void flogWrite(const char *format, ...);
 
 #endif // LOGGING_H
@@ -29,96 +34,63 @@ extern void flogWrite(const char *format, ...);
 #define FLOG_IMPLEMENTED
 
 static flogLogState flog__globalState = FLOG_INIT_STRUCT;
-static char flog_formatBuffer[2048];
 
 extern void flogInit(const char *filePath) {
 	flogLogState *state = &flog__globalState;
-	state->filePath = filePath;
+	size_t filePathLength = strlen(filePath);
+	if(filePathLength >= sizeof(state->filePath)) {
+		state->isInitialized = false;
+		return;
+	}
+	memcpy(state->filePath, filePath, filePathLength + 1);
 	state->isInitialized = true;
 }
 
-static void flog__WriteString(FILE *file, const char *str) {
-	if(*str) {
-		const char *p = str;
-		while(*p) { ++p; }
-		size_t len = p - str;
-		fwrite(str, len, 1, file);
-	}
-}
-
-static char *flog__IntToStr(const uint32_t value, char *buffer, uint32_t leadingZeroCount) {
-	buffer[0] = 0;
-	uint32_t v = value;
-	char *p = buffer;
-	uint32_t tmp = v;
-	do {
-		++p;
-		tmp = tmp / 10;
-	} while(tmp);
-	uint32_t digitCount = (int)(p - buffer);
-	if(digitCount < leadingZeroCount) {
-		int diff = leadingZeroCount - digitCount;
-		p--;
-		for(int i = 0; i < diff; ++i) {
-			*p = '0';
-			++p;
-		}
-		++p;
-	}
-	*p = 0;
-	const char *digits = "0123456789";
-	v = value;
-	do {
-		*--p = digits[v % 10];
-		v /= 10;
-	} while(v != 0);
-	return (buffer);
-}
-
-static void flog__WriteLine(flogLogState *state, const char *line) {
-	time_t now = time(NULL);
-	struct tm nowTime = *localtime(&now);
-	int year = 1900 + nowTime.tm_year;
-	int month = nowTime.tm_mon;
-	int day = nowTime.tm_mday;
-	int hour = nowTime.tm_hour;
-	int min = nowTime.tm_min;
-	int sec = nowTime.tm_sec;
-	FILE *file = fopen(state->filePath, "a+");
-	if(file != NULL) {
-		char intBuffer[8];
-		flog__WriteString(file, "[");
-		flog__WriteString(file, flog__IntToStr(year, intBuffer, 4));
-		flog__WriteString(file, "-");
-		flog__WriteString(file, flog__IntToStr(month, intBuffer, 2));
-		flog__WriteString(file, "-");
-		flog__WriteString(file, flog__IntToStr(day, intBuffer, 2));
-		flog__WriteString(file, " ");
-		flog__WriteString(file, flog__IntToStr(hour, intBuffer, 2));
-		flog__WriteString(file, ":");
-		flog__WriteString(file, flog__IntToStr(min, intBuffer, 2));
-		flog__WriteString(file, ":");
-		flog__WriteString(file, flog__IntToStr(sec, intBuffer, 2));
-		flog__WriteString(file, "] ");
-		flog__WriteString(file, line);
-		flog__WriteString(file, "\n");
-		fflush(file);
-		fclose(file);
-	}
-}
-
 extern void flogWrite(const char *format, ...) {
-	if(!flog__globalState.isInitialized) {
+	const flogLogState *state = &flog__globalState;
+	if(!state->isInitialized) {
 		return;
 	}
-	size_t bufferSize = sizeof(flog_formatBuffer);
+
+	const int tmYearBase = 1900;
+	const int tmMonthBase = 1;
+	time_t now = time(NULL);
+	struct tm nowTime;
+#if defined(_WIN32)
+	localtime_s(&nowTime, &now);
+#else
+	localtime_r(&now, &nowTime);
+#endif
+	int year = tmYearBase + nowTime.tm_year;
+	int month = tmMonthBase + nowTime.tm_mon;
+
+	// The whole line is built on the stack, so concurrent callers never share a buffer and each line is a single write
+	char line[FLOG_MAX_LINE_LENGTH];
+	int prefixLength = snprintf(line, sizeof(line), "[%04d-%02d-%02d %02d:%02d:%02d] ", year, month, nowTime.tm_mday, nowTime.tm_hour, nowTime.tm_min, nowTime.tm_sec);
+	if(prefixLength < 0 || prefixLength >= (int)sizeof(line)) {
+		return;
+	}
+
+	const size_t newlineLength = 1;
+	size_t messageCapacity = sizeof(line) - (size_t)prefixLength - newlineLength;
 	va_list argList;
 	va_start(argList, format);
-	flog_formatBuffer[0] = 0;
-	int count = vsnprintf(flog_formatBuffer, bufferSize, format, argList);
+	int messageLength = vsnprintf(line + prefixLength, messageCapacity, format, argList);
 	va_end(argList);
-	if(count > 0) {
-		flog__WriteLine(&flog__globalState, flog_formatBuffer);
+	if(messageLength <= 0) {
+		return;
+	}
+
+	// Too long messages are cut off
+	size_t storedMessageLength = ((size_t)messageLength < messageCapacity) ? (size_t)messageLength : (messageCapacity - 1);
+	size_t lineLength = (size_t)prefixLength + storedMessageLength;
+	line[lineLength] = '\n';
+	lineLength += newlineLength;
+
+	FILE *file = fopen(state->filePath, "a");
+	if(file != NULL) {
+		fwrite(line, 1, lineLength, file);
+		fclose(file);
 	}
 }
 
