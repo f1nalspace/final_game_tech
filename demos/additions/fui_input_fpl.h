@@ -15,6 +15,10 @@ from events. The cost is that such a tap is not seen at all - two half transitio
 something only an event stream can express - and for an interface that is the right trade. What polling
 cannot give at all is drained from the queue instead: typed characters, the wheel, the focus and whether the window is minimized.
 
+The polled state is the whole desktop's, not the window's (X11 XQueryKeymap and XQueryPointer, Win32 GetAsyncKeyState),
+so without the focus every key and mouse button counts as up: Enter typed into another program must not press the default
+button of a window that merely stands open beside it. A key held when the focus goes comes back as released.
+
 --- Getting started ---
 
 - Include this AFTER final_platform_layer.h and final_ui.h
@@ -129,6 +133,7 @@ fui_api void fuiFplInputHandleEvent(fuiFplInput *bridge, const fplEvent *event);
 /**
 * @brief Fills this frame's fuiInput from the polled device state and the drained events.
 * @param[in,out] bridge Reference to the bridge @ref fuiFplInput.
+* @note Without the focus every key and mouse button is reported as up: the polled state is the whole desktop's.
 */
 fui_api void fuiFplInputBuild(fuiFplInput *bridge);
 
@@ -294,8 +299,11 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 	const fplMouseButtonType fplButtonForFuiButton[FUI_MOUSE_BUTTON_COUNT] = {
 		fplMouseButtonType_Left, fplMouseButtonType_Middle, fplMouseButtonType_Right,
 	};
+	// Without the focus nothing is down, see About.
+	const bool hasFocus = bridge->windowHasFocus;
 	for(int32_t buttonIndex = 0; buttonIndex < FUI_MOUSE_BUTTON_COUNT; ++buttonIndex) {
-		bool isDown = mouseState.buttonStates[fplButtonForFuiButton[buttonIndex]] != fplButtonState_Release;
+		bool isPolledDown = mouseState.buttonStates[fplButtonForFuiButton[buttonIndex]] != fplButtonState_Release;
+		bool isDown = hasFocus && isPolledDown;
 		bool wasDown = bridge->mouseWasDown[buttonIndex];
 		input->mouseButtons[buttonIndex].endedDown = isDown;
 		input->mouseButtons[buttonIndex].halfTransitionCount = (isDown != wasDown) ? 1 : 0;
@@ -313,7 +321,8 @@ fui_api void fuiFplInputBuild(fuiFplInput *bridge) {
 		if(mappedKey == fuiKey_None) {
 			continue;
 		}
-		bool isDown = keyboardState.buttonStatesMapped[rawKey] != fplButtonState_Release;
+		bool isPolledDown = keyboardState.buttonStatesMapped[rawKey] != fplButtonState_Release;
+		bool isDown = hasFocus && isPolledDown;
 		// Several raw keys can land on one fui key, so a key already reported down stays down.
 		if(isDown) {
 			input->keys[mappedKey].endedDown = true;
