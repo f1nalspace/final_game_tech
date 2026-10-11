@@ -239,6 +239,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplThreadSleep(1000) did not sleep at all, because exactly one second ended up as 1000000000 nanoseconds in tv_nsec and nanosleep rejected it with EINVAL
 	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
+	- Fixed: [POSIX] ThreadSanitizer and other interposers see the pthread calls
 
 	#### IO
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
@@ -13131,6 +13132,36 @@ typedef struct fpl__PThreadApi {
 
 #define FPL__POSIX_DL_LOADTYPE RTLD_NOW
 
+#if !defined(FPL_NO_RUNTIME_LINKING)
+#	if defined(RTLD_DEFAULT)
+#		define FPL__POSIX_DL_GLOBAL_SCOPE RTLD_DEFAULT
+#	else
+		// glibc and musl declare RTLD_DEFAULT only with _GNU_SOURCE, its value there is a null handle
+#		define FPL__POSIX_DL_GLOBAL_SCOPE fpl_null
+#	endif
+
+// Interposed pthread functions (ThreadSanitizer, profilers, LD_PRELOAD) only exist in the global scope, a lookup in the library handle alone would bypass them
+fpl_internal void *fpl__PThreadGetProcAddress(void *libHandle, const char *name) {
+	void *result = dlsym(FPL__POSIX_DL_GLOBAL_SCOPE, name);
+	if (result == fpl_null) {
+		result = dlsym(libHandle, name);
+	}
+	return(result);
+}
+
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
+		(target)->name = (type *)fpl__PThreadGetProcAddress(libHandle, #name); \
+		if ((target)->name == fpl_null) { \
+			FPL_LOG_INFO(mod, "Unable to get procedure address '%s' from library '%s'", #name, libName); \
+			break; \
+		}
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
+		(target)->name = (type *)fpl__PThreadGetProcAddress(libHandle, #name)
+#else
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS FPL__POSIX_GET_FUNCTION_ADDRESS
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL
+#endif
+
 fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
 	fplAssert(pthreadApi != fpl_null);
 	if (pthreadApi->libHandle != fpl_null) {
@@ -13157,47 +13188,47 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_PTHREAD, libHandle, libName);
 
 			// pthread_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_self, pthread_self);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
-			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
-			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_self, pthread_self);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
 
 			// pthread_attr_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedparam, pthread_attr_setschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setstacksize, pthread_attr_setstacksize);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setdetachstate, pthread_attr_setdetachstate);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedpolicy, pthread_attr_setschedpolicy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedparam, pthread_attr_setschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setstacksize, pthread_attr_setstacksize);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setdetachstate, pthread_attr_setdetachstate);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedpolicy, pthread_attr_setschedpolicy);
 
 			// pthread_mutex_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_destroy, pthread_mutex_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_lock, pthread_mutex_lock);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_trylock, pthread_mutex_trylock);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_unlock, pthread_mutex_unlock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_destroy, pthread_mutex_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_lock, pthread_mutex_lock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_trylock, pthread_mutex_trylock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_unlock, pthread_mutex_unlock);
 
 			// pthread_cond_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_init, pthread_cond_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_destroy, pthread_cond_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_timedwait, pthread_cond_timedwait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_wait, pthread_cond_wait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_broadcast, pthread_cond_broadcast);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_signal, pthread_cond_signal);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_init, pthread_cond_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_destroy, pthread_cond_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_timedwait, pthread_cond_timedwait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_wait, pthread_cond_wait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_broadcast, pthread_cond_broadcast);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_signal, pthread_cond_signal);
 
 			// sem_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_init, sem_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_destroy, sem_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_wait, sem_wait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_timedwait, sem_timedwait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_trywait, sem_trywait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_post, sem_post);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_getvalue, sem_getvalue);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_init, sem_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_destroy, sem_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_wait, sem_wait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_timedwait, sem_timedwait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_trywait, sem_trywait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_post, sem_post);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_getvalue, sem_getvalue);
 
 			pthreadApi->libHandle = libHandle;
 			result = true;
