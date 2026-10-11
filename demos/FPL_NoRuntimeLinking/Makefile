@@ -108,7 +108,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_linuxx64)
@@ -118,7 +118,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_linuxarm32)
@@ -128,7 +128,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_linuxarm64)
@@ -138,7 +138,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_unixx86)
@@ -148,7 +148,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX86_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32
 
 else ifeq ($(config),debug_unixx64)
@@ -158,7 +158,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64
 
 else ifeq ($(config),debug_unixarm32)
@@ -168,7 +168,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM32_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),debug_unixarm64)
@@ -178,7 +178,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM64_Debug
 DEFINES += -DDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O0 -g
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O0 -g -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32
 
 else ifeq ($(config),release_winx86)
@@ -208,7 +208,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_linuxx64)
@@ -218,7 +218,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_linuxarm32)
@@ -228,7 +228,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_linuxarm64)
@@ -238,7 +238,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/LinuxARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_unixx86)
@@ -248,7 +248,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX86_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m32 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m32 -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib32 -m32 -s
 
 else ifeq ($(config),release_unixx64)
@@ -258,7 +258,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixX64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -m64 -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -m64 -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -L/usr/lib64 -m64 -s
 
 else ifeq ($(config),release_unixarm32)
@@ -268,7 +268,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM32_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11 -latomic
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi -latomic
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 else ifeq ($(config),release_unixarm64)
@@ -278,7 +278,7 @@ OBJDIR = ../immediates/FPL_NoRuntimeLinking/UnixARM64_Release
 DEFINES += -DNDEBUG
 ALL_CFLAGS += $(CFLAGS) $(ALL_CPPFLAGS) -O2
 ALL_CXXFLAGS += $(CXXFLAGS) $(ALL_CPPFLAGS) -O2 -std=c++11
-LIBS += -lm -lpthread -lGL -lvulkan -lasound -lX11
+LIBS += -lm -lpthread -lGL -lvulkan -lasound -lpulse -lX11 -lXrandr -lXinerama -lXi
 ALL_LDFLAGS += $(LDFLAGS) -L/usr/lib32 -s
 
 endif

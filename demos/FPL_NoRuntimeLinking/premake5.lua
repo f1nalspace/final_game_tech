@@ -17,5 +17,10 @@ project "FPL_NoRuntimeLinking"
 		local vulkanLibPath = os.findlib("vulkan")
 		local alsaLibPath = os.findlib("asound")
 		local x11LibPath = os.findlib("X11")
+		local pulseLibPath = os.findlib("pulse")
 		libdirs { openGLLibPath, vulkanLibPath, alsaLibPath, x11LibPath }
-		links { "m", "pthread", "GL", "vulkan", "asound", "X11" }
+		links { "m", "pthread", "GL", "vulkan", "asound", "X11", "Xrandr", "Xinerama", "Xi" }
+		-- FPL enables the PulseAudio backend by itself when the headers are installed, then the library is needed as well
+		if pulseLibPath then
+			links { "pulse" }
+		end

@@ -246,6 +246,13 @@ SOFTWARE.
 	- Fixed: [POSIX] fplThreadSleep returned early when a signal interrupted the sleep, the time that is left is slept again now
 	- Improved: All thread waits now spin briefly and then sleep in 1 ms slices - [POSIX] fplThreadWaitForAll/Any slept 10 ms per thread and per round instead of 10 ms per round, [Win32] they busy spun on YieldProcessor for the whole wait without ever sleeping
 	- New: [Win32] Condition variable fallback for Windows XP
+	- Fixed: [POSIX] ThreadSanitizer and other interposers see the pthread calls
+	- Fixed: A new thread could end and hand its slot to the next thread before its creator had stored the handle and the identifier
+	- Fixed: [Win32] An ending thread could close a stale handle of the previous thread in its slot
+	- Fixed: A thread wait could wait for a later thread that got the same system identifier
+	- Changed: Stopped thread slots are handed out again as late as possible
+	- Changed: [POSIX] fplAtomicStore* are sequentially consistent stores (__atomic_store_n)
+	- New: Added field generation to fplThreadHandle
 
 	#### IO
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
@@ -321,6 +328,7 @@ SOFTWARE.
 	- Changed: Refactored internal X11 functions init/release into separate functions
 	- New: The clipboard releases the text it owns when another application takes the selection away
 	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
+	- Fixed: XDisplayKeycodes was declared with the wrong return type
 
 	## v1.0.0
 
@@ -8210,6 +8218,8 @@ typedef struct fplThreadHandle {
 	volatile fpl_b32 isValid;
 	//! Is this thread stopping.
 	volatile fpl_b32 isStopping;
+	//! Counts how often this slot was handed to a new thread. A wait remembers it, because the identifier of an ended thread can be reused by the system for the next one.
+	volatile uint32_t generation;
 } fplThreadHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
@@ -13198,6 +13208,36 @@ typedef struct fpl__PThreadApi {
 
 #define FPL__POSIX_DL_LOADTYPE RTLD_NOW
 
+#if !defined(FPL_NO_RUNTIME_LINKING)
+#	if defined(RTLD_DEFAULT)
+#		define FPL__POSIX_DL_GLOBAL_SCOPE RTLD_DEFAULT
+#	else
+		// glibc and musl declare RTLD_DEFAULT only with _GNU_SOURCE, its value there is a null handle
+#		define FPL__POSIX_DL_GLOBAL_SCOPE fpl_null
+#	endif
+
+// Interposed pthread functions (ThreadSanitizer, profilers, LD_PRELOAD) only exist in the global scope, a lookup in the library handle alone would bypass them
+fpl_internal void *fpl__PThreadGetProcAddress(void *libHandle, const char *name) {
+	void *result = dlsym(FPL__POSIX_DL_GLOBAL_SCOPE, name);
+	if (result == fpl_null) {
+		result = dlsym(libHandle, name);
+	}
+	return(result);
+}
+
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS(mod, libHandle, libName, target, type, name) \
+		(target)->name = (type *)fpl__PThreadGetProcAddress(libHandle, #name); \
+		if ((target)->name == fpl_null) { \
+			FPL_LOG_INFO(mod, "Unable to get procedure address '%s' from library '%s'", #name, libName); \
+			break; \
+		}
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(mod, libHandle, libName, target, type, name) \
+		(target)->name = (type *)fpl__PThreadGetProcAddress(libHandle, #name)
+#else
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS FPL__POSIX_GET_FUNCTION_ADDRESS
+#	define FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL
+#endif
+
 fpl_internal void fpl__PThreadUnloadApi(fpl__PThreadApi *pthreadApi) {
 	fplAssert(pthreadApi != fpl_null);
 	if (pthreadApi->libHandle != fpl_null) {
@@ -13224,47 +13264,47 @@ fpl_internal bool fpl__PThreadLoadApi(fpl__PThreadApi *pthreadApi) {
 			FPL__POSIX_LOAD_LIBRARY(FPL__MODULE_PTHREAD, libHandle, libName);
 
 			// pthread_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_self, pthread_self);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
-			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
-			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_self, pthread_self);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_setschedparam, pthread_setschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_getschedparam, pthread_getschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_create, pthread_create);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_kill, pthread_kill);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_join, pthread_join);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_exit, pthread_exit);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_yield, pthread_yield);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_timedjoin_np, pthread_timedjoin_np);
 
 			// pthread_attr_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedparam, pthread_attr_setschedparam);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setstacksize, pthread_attr_setstacksize);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setdetachstate, pthread_attr_setdetachstate);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedpolicy, pthread_attr_setschedpolicy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_init, pthread_attr_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_getschedparam, pthread_attr_getschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedparam, pthread_attr_setschedparam);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setstacksize, pthread_attr_setstacksize);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setdetachstate, pthread_attr_setdetachstate);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_attr_setschedpolicy, pthread_attr_setschedpolicy);
 
 			// pthread_mutex_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_destroy, pthread_mutex_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_lock, pthread_mutex_lock);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_trylock, pthread_mutex_trylock);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_unlock, pthread_mutex_unlock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_init, pthread_mutex_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_destroy, pthread_mutex_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_lock, pthread_mutex_lock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_trylock, pthread_mutex_trylock);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_mutex_unlock, pthread_mutex_unlock);
 
 			// pthread_cond_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_init, pthread_cond_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_destroy, pthread_cond_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_timedwait, pthread_cond_timedwait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_wait, pthread_cond_wait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_broadcast, pthread_cond_broadcast);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_signal, pthread_cond_signal);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_init, pthread_cond_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_destroy, pthread_cond_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_timedwait, pthread_cond_timedwait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_wait, pthread_cond_wait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_broadcast, pthread_cond_broadcast);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_pthread_cond_signal, pthread_cond_signal);
 
 			// sem_t
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_init, sem_init);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_destroy, sem_destroy);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_wait, sem_wait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_timedwait, sem_timedwait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_trywait, sem_trywait);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_post, sem_post);
-			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_getvalue, sem_getvalue);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_init, sem_init);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_destroy, sem_destroy);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_wait, sem_wait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_timedwait, sem_timedwait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_trywait, sem_trywait);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_post, sem_post);
+			FPL__PTHREAD_GET_FUNCTION_ADDRESS(FPL__MODULE_PTHREAD, libHandle, libName, pthreadApi, fpl__pthread_func_sem_getvalue, sem_getvalue);
 
 			pthreadApi->libHandle = libHandle;
 			result = true;
@@ -13463,7 +13503,7 @@ typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
 typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
 #define FPL__FUNC_X11_XMoveWindow(name) int name(fpl__X11_Display *display, fpl__X11_Window w, int x, int y)
 typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
-#define FPL__FUNC_X11_XDisplayKeycodes(name) fpl__X11_KeySym *name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
+#define FPL__FUNC_X11_XDisplayKeycodes(name) int name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
 typedef FPL__FUNC_X11_XDisplayKeycodes(fpl__func_x11_XDisplayKeycodes);
 #define FPL__FUNC_X11_XGetKeyboardMapping(name) fpl__X11_KeySym *name(fpl__X11_Display *display, fpl__X11_KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
@@ -15528,6 +15568,8 @@ typedef struct fpl__ThreadBucket {
 typedef struct fpl__ThreadState {
 	fplThreadHandle mainThread;
 	fpl__ThreadBucket *buckets;
+	// Number of the slot after the one handed out last, the search for a free slot starts there
+	size_t nextSlotNumber;
 	volatile uint32_t lock;
 } fpl__ThreadState;
 
@@ -15584,46 +15626,96 @@ fpl_internal void fpl__FreeThreadStateBuckets(fpl__ThreadState *state) {
 	fpl__ThreadBucket *bucket = state->buckets;
 	while (bucket != fpl_null) {
 		fpl__ThreadBucket *next = bucket->next;
+#if defined(FPL_PLATFORM_WINDOWS)
+		// Ended threads keep their handle until the slot is handed out again, the ones never reused are closed here
+		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
+			HANDLE threadHandle = bucket->threads[slotIndex].internalHandle.win32ThreadHandle;
+			if (threadHandle != fpl_null) {
+				CloseHandle(threadHandle);
+			}
+		}
+#endif
 		fpl__ReleaseDynamicMemory(bucket->threads);
 		fpl__ReleaseDynamicMemory(bucket);
 		bucket = next;
 	}
 	state->buckets = fpl_null;
+	state->nextSlotNumber = 0;
 	fpl__UnlockThreadState(state);
+}
+
+// Returns the slot with the given number counted over all buckets, every bucket has the same capacity. Must be called while holding the lock.
+fpl_internal fplThreadHandle *fpl__GetThreadSlot(fpl__ThreadState *state, const size_t slotNumber) {
+	const size_t bucketCapacity = FPL__THREAD_BUCKET_CAPACITY;
+	size_t bucketIndex = slotNumber / bucketCapacity;
+	size_t slotIndex = slotNumber % bucketCapacity;
+	fpl__ThreadBucket *bucket = state->buckets;
+	while ((bucket != fpl_null) && (bucketIndex > 0)) {
+		bucket = bucket->next;
+		--bucketIndex;
+	}
+	fplThreadHandle *result = (bucket != fpl_null) ? (bucket->threads + slotIndex) : fpl_null;
+	return(result);
 }
 
 // Finds a free thread slot and reserves it atomically, allocating a new bucket when none is free.
 // Reserving (Stopped -> Starting) under the lock prevents two concurrent creates from grabbing the same slot.
+// The search continues after the slot handed out last, so a stopped slot is reused as late as possible and a late waiter or terminate still finds its own thread there.
 fpl_internal fplThreadHandle *fpl__GetFreeThread(void) {
 	fpl__ThreadState *state = &fpl__global__ThreadState;
 	fpl__LockThreadState(state);
-	fplThreadHandle *result = fpl_null;
+	size_t totalSlotCount = 0;
 	fpl__ThreadBucket *bucket = state->buckets;
-	while ((result == fpl_null) && (bucket != fpl_null)) {
-		for (size_t slotIndex = 0; slotIndex < bucket->capacity; ++slotIndex) {
-			fplThreadHandle *thread = bucket->threads + slotIndex;
-			fplThreadState slotState = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
-			if (slotState == fplThreadState_Stopped) {
-				result = thread;
-				break;
-			}
-		}
+	while (bucket != fpl_null) {
+		totalSlotCount += bucket->capacity;
 		bucket = bucket->next;
+	}
+	fplThreadHandle *result = fpl_null;
+	size_t resultSlotNumber = 0;
+	for (size_t step = 0; step < totalSlotCount; ++step) {
+		size_t slotNumber = (state->nextSlotNumber + step) % totalSlotCount;
+		fplThreadHandle *thread = fpl__GetThreadSlot(state, slotNumber);
+		fplThreadState slotState = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+		if (slotState == fplThreadState_Stopped) {
+			result = thread;
+			resultSlotNumber = slotNumber;
+			break;
+		}
 	}
 	if (result == fpl_null) {
 		fpl__ThreadBucket *appendedBucket = fpl__AppendThreadBucket(state);
 		if (appendedBucket != fpl_null) {
 			result = appendedBucket->threads + 0;
+			resultSlotNumber = totalSlotCount;
 		}
 	}
 	if (result != fpl_null) {
-		// The identifier is cleared before the slot is reserved, so a waiter on the previous thread sees
-		// right away that the slot does not belong to its thread anymore
+		state->nextSlotNumber = resultSlotNumber + 1;
+#if defined(FPL_PLATFORM_WINDOWS)
+		// The previous thread of this slot left its handle open, so a waiter or terminate never touched a closed or reused handle - this is the one place it gets closed
+		HANDLE previousHandle = result->internalHandle.win32ThreadHandle;
+		if (previousHandle != fpl_null) {
+			CloseHandle(previousHandle);
+		}
+#endif
+		fplClearStruct(&result->internalHandle);
+		fplClearStruct(&result->parameters);
+		// A new generation tells a waiter on the previous thread right away that the slot does not belong to its thread anymore
+		uint32_t previousGeneration = fplAtomicLoadU32(&result->generation);
+		fplAtomicStoreU32(&result->generation, previousGeneration + 1);
 		fplAtomicStoreU64((volatile uint64_t *)&result->id, 0);
+		fplAtomicStoreU32((volatile uint32_t *)&result->isValid, 0);
+		fplAtomicStoreU32((volatile uint32_t *)&result->isStopping, 0);
 		fplAtomicStoreU32((volatile uint32_t *)&result->currentState, (uint32_t)fplThreadState_Starting);
 	}
 	fpl__UnlockThreadState(state);
 	return(result);
+}
+
+// Hands a reserved slot back when its thread could not be created
+fpl_internal void fpl__ReleaseReservedThread(fplThreadHandle *thread) {
+	fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 0);
+	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 }
 
 fpl_internal bool fpl__IsEqualsMemory(const void *a, const void *b, const size_t size) {
@@ -16806,17 +16898,16 @@ fpl_common_api size_t fplGetUsedThreadCount(void) {
 // Number of milliseconds a thread wait sleeps between two state checks, after the spinning is over
 #define FPL__THREAD_WAIT_SLICE_MILLISECONDS 1
 
-// Waits until the specified thread has stopped. The wait is done on the state in the thread slot and never on the
-// native handle: a thread closes/releases its own handle when it ends and the slot may be handed to a new thread
-// right after that, so a waiter that touches the handle can hit a released handle or a completely different thread.
+// Waits until the specified thread has stopped. The wait is done on the state in the thread slot and never on the native handle:
+// the slot may be handed to a new thread right after the thread ended, so a waiter that touches the handle can hit a completely different thread.
 // Returns false only when the timeout was exceeded.
 fpl_internal bool fpl__WaitForThreadStopped(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	if (thread == fpl_null) {
 		return(false);
 	}
-	// A slot that was handed to a new thread carries a new identifier, which is how the waiter notices
-	// that the thread it was waiting for is gone already
-	uint64_t waitedThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+	// A slot that was handed to a new thread carries a new generation, which is how the waiter notices that the thread it was waiting for is gone already.
+	// The identifier cannot tell that, the system hands the identifier of an ended thread to the next one.
+	uint32_t waitedGeneration = fplAtomicLoadU32(&thread->generation);
 	fplMilliseconds startTime = fplMillisecondsQuery();
 	size_t spinCount = 0;
 	for (;;) {
@@ -16824,8 +16915,8 @@ fpl_internal bool fpl__WaitForThreadStopped(fplThreadHandle *thread, const fplTi
 		if (state == fplThreadState_Stopped) {
 			return(true);
 		}
-		uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
-		if (currentThreadId != waitedThreadId) {
+		uint32_t currentGeneration = fplAtomicLoadU32(&thread->generation);
+		if (currentGeneration != waitedGeneration) {
 			return(true);
 		}
 		if (timeout != FPL_TIMEOUT_INFINITE) {
@@ -16848,27 +16939,28 @@ fpl_internal bool fpl__WaitForThreadsStopped(fplThreadHandle **threads, const si
 	FPL__CheckArgumentNull(threads, false);
 	FPL__CheckArgumentMax(maxCount, FPL_MAX_THREAD_WAIT_COUNT, false);
 	const size_t actualStride = (stride > 0) ? stride : sizeof(fplThreadHandle *);
+	// The pointers are read from the caller's array once, every later check works on this copy
+	fplThreadHandle *waitedThreads[FPL_MAX_THREAD_WAIT_COUNT];
+	uint32_t waitedGenerations[FPL_MAX_THREAD_WAIT_COUNT];
 	for (size_t index = 0; index < maxCount; ++index) {
 		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
 		if (thread == fpl_null) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Thread for index '%zu' are not allowed to be null", index);
 			return(false);
 		}
-	}
-	uint64_t waitedThreadIds[FPL_MAX_THREAD_WAIT_COUNT];
-	for (size_t index = 0; index < maxCount; ++index) {
-		fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-		waitedThreadIds[index] = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
+		waitedThreads[index] = thread;
+		waitedGenerations[index] = fplAtomicLoadU32(&thread->generation);
 	}
 	fplMilliseconds startTime = fplMillisecondsQuery();
 	size_t spinCount = 0;
 	for (;;) {
 		size_t stoppedCount = 0;
 		for (size_t index = 0; index < maxCount; ++index) {
-			fplThreadHandle *thread = *(fplThreadHandle **)((uint8_t *)threads + index * actualStride);
-			fplThreadState state = fplGetThreadState(thread);
-			uint64_t currentThreadId = fplAtomicLoadU64((volatile uint64_t *)&thread->id);
-			if ((state == fplThreadState_Stopped) || (currentThreadId != waitedThreadIds[index])) {
+			fplThreadHandle *thread = waitedThreads[index];
+			// Read directly, every pointer was checked above and the null check in fplGetThreadState only confuses the compiler into a stringop-overflow warning
+			fplThreadState state = (fplThreadState)fplAtomicLoadU32((volatile uint32_t *)&thread->currentState);
+			uint32_t currentGeneration = fplAtomicLoadU32(&thread->generation);
+			if ((state == fplThreadState_Stopped) || (currentGeneration != waitedGenerations[index])) {
 				++stoppedCount;
 			}
 		}
@@ -22525,11 +22617,10 @@ fpl_internal DWORD WINAPI fpl__Win32ThreadProc(void *data) {
 	}
 
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
-	HANDLE handle = thread->internalHandle.win32ThreadHandle;
-	if (handle != fpl_null) {
-		CloseHandle(handle);
-	}
-	thread->isValid = false;
+	// The handle stays open, it is closed when the slot is handed to the next thread (fpl__GetFreeThread) or the platform is released.
+	// Closing it here raced with the creator, which may not even have stored it yet, and hit a stale handle of the previous thread in this slot.
+	fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 0);
+	// This store frees the slot, nothing in here may touch it afterwards - a new thread can own it already
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	ExitThread(0);
 }
@@ -22572,23 +22663,23 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 	fplThreadHandle *result = fpl_null;
 	fplThreadHandle *thread = fpl__GetFreeThread();
 	if (thread != fpl_null) {
-		DWORD creationFlags = 0;
+		// Suspended, so everything the thread or a waiter reads is in the slot before the thread runs.
+		// Once it runs, it can end at any time and the slot can belong to the next thread, so nothing is written into it after the resume.
+		DWORD creationFlags = CREATE_SUSPENDED;
 		DWORD threadId = 0;
 		SIZE_T stackSize = parameters->stackSize;
 		thread->parameters = *parameters;
-		// The slot was already reserved as Starting by fpl__GetFreeThread, this keeps it consistent for reused slots.
-		thread->currentState = fplThreadState_Starting;
 		HANDLE handle = CreateThread(fpl_null, stackSize, fpl__Win32ThreadProc, thread, creationFlags, &threadId);
 		if (handle != fpl_null) {
-			fpl__Win32SetThreadPriority(handle, thread->parameters.priority);
-			thread->isValid = true;
-			thread->id = threadId;
+			fpl__Win32SetThreadPriority(handle, parameters->priority);
 			thread->internalHandle.win32ThreadHandle = handle;
+			fplAtomicStoreU64((volatile uint64_t *)&thread->id, (uint64_t)threadId);
+			fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 1);
 			result = thread;
+			ResumeThread(handle);
 		} else {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", GetLastError());
-			// Release the reserved slot back to Stopped so it can be reused.
-			fplClearStruct(thread);
+			fpl__ReleaseReservedThread(thread);
 		}
 	} else {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
@@ -22662,10 +22753,10 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
 		HANDLE handle = thread->internalHandle.win32ThreadHandle;
 		if (handle != fpl_null) {
+			// The handle is closed when the slot is handed out again, like for a thread that ended by itself
 			TerminateThread(handle, 0);
-			CloseHandle(handle);
 		}
-		thread->isValid = false;
+		fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 0);
 		fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 		return true;
 	} else {
@@ -22676,7 +22767,7 @@ fpl_platform_api bool fplThreadTerminate(fplThreadHandle *thread) {
 fpl_platform_api bool fplThreadWaitForOne(fplThreadHandle *thread, const fplTimeoutValue timeout) {
 	FPL__CheckArgumentNull(thread, false);
 	// WaitForSingleObject cannot be used here, for the same reason it cannot be used for several threads:
-	// the thread closes its own handle when it ends, so a waiter can end up waiting on a closed handle
+	// the slot, and with it the handle, can belong to the next thread already when the wait starts
 	bool result = fpl__WaitForThreadStopped(thread, timeout);
 	return(result);
 }
@@ -26173,6 +26264,11 @@ void *fpl__PosixThreadProc(void *data) {
 	const fpl__PThreadApi *pthreadApi = &fpl__global__AppState->posix.pthreadApi;
 	fplThreadHandle *thread = (fplThreadHandle *)data;
 	fplAssert(thread != fpl_null);
+	// The creator writes the identifier after pthread_create returned and then sets isValid.
+	// Until then this thread must not run, or it could end and free the slot while the creator still writes into it.
+	while (fplAtomicLoadU32((volatile uint32_t *)&thread->isValid) == 0) {
+		fplThreadYield();
+	}
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Running);
 
 	fplThreadParameters parameters = thread->parameters;
@@ -26181,7 +26277,7 @@ void *fpl__PosixThreadProc(void *data) {
 	}
 
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopping);
-	thread->isValid = false;
+	fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 0);
 	// This store frees the slot, so nothing in here may touch the handle afterwards - a new thread can own it already
 	fplAtomicStoreU32((volatile uint32_t *)&thread->currentState, (uint32_t)fplThreadState_Stopped);
 	return 0;
@@ -26386,21 +26482,24 @@ fpl_platform_api int64_t fplAtomicLoadS64(volatile int64_t *source) {
 	return(result);
 }
 
+// A sequentially consistent store is also a release, which is what publishes the writes before it to a thread that loads the value.
+// __sync_lock_test_and_set alone is only an acquire, and ThreadSanitizer does not see the fence in front of it.
+#if defined(__ATOMIC_SEQ_CST)
+#	define FPL__POSIX_ATOMIC_STORE(dest, value) __atomic_store_n(dest, value, __ATOMIC_SEQ_CST)
+#else
+#	define FPL__POSIX_ATOMIC_STORE(dest, value) do { __sync_synchronize(); __sync_lock_test_and_set(dest, value); __sync_synchronize(); } while (0)
+#endif
 fpl_platform_api void fplAtomicStoreU32(volatile uint32_t *dest, const uint32_t value) {
-	__sync_synchronize();
-	__sync_lock_test_and_set(dest, value);
+	FPL__POSIX_ATOMIC_STORE(dest, value);
 }
 fpl_platform_api void fplAtomicStoreU64(volatile uint64_t *dest, const uint64_t value) {
-	__sync_synchronize();
-	__sync_lock_test_and_set(dest, value);
+	FPL__POSIX_ATOMIC_STORE(dest, value);
 }
 fpl_platform_api void fplAtomicStoreS32(volatile int32_t *dest, const int32_t value) {
-	__sync_synchronize();
-	__sync_lock_test_and_set(dest, value);
+	FPL__POSIX_ATOMIC_STORE(dest, value);
 }
 fpl_platform_api void fplAtomicStoreS64(volatile int64_t *dest, const int64_t value) {
-	__sync_synchronize();
-	__sync_lock_test_and_set(dest, value);
+	FPL__POSIX_ATOMIC_STORE(dest, value);
 }
 #else
 #	error "This POSIX compiler/platform is not supported!"
@@ -26471,8 +26570,6 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 	if (thread != fpl_null) {
 		// The slot is already reserved as Starting by fpl__GetFreeThread, do not reset it to Stopped here or a concurrent create could grab it.
 		thread->parameters = *parameters;
-		thread->isValid = false;
-		thread->isStopping = false;
 
 		fplThreadPriority initialPriority = parameters->priority;
 
@@ -26553,21 +26650,23 @@ fpl_platform_api fplThreadHandle *fplThreadCreateWithParameters(fplThreadParamet
 			attrPtr = &attr;
 		}
 
-		// Create thread
-		thread->currentState = fplThreadState_Starting;
+		// Create thread, it waits in fpl__PosixThreadProc until the slot is complete
+		pthread_t posixThread;
 		int threadRes;
 		do {
-			threadRes = pthreadApi->pthread_create(&thread->internalHandle.posixThread, attrPtr, fpl__PosixThreadProc, (void *)thread);
+			threadRes = pthreadApi->pthread_create(&posixThread, attrPtr, fpl__PosixThreadProc, (void *)thread);
 		} while (threadRes == EAGAIN);
 		if (threadRes != 0) {
 			FPL__ERROR(FPL__MODULE_THREADING, "Failed creating thread, error code: %d", threadRes);
 		}
 		if (threadRes == 0) {
-			thread->id = (uint64_t)(uintptr_t)thread->internalHandle.posixThread;
-			thread->isValid = true;
+			thread->internalHandle.posixThread = posixThread;
+			fplAtomicStoreU64((volatile uint64_t *)&thread->id, (uint64_t)(uintptr_t)posixThread);
 			result = thread;
+			// Lets the thread run, from here on the slot may belong to the next thread and nothing is written into it anymore
+			fplAtomicStoreU32((volatile uint32_t *)&thread->isValid, 1);
 		} else {
-			fplClearStruct(thread);
+			fpl__ReleaseReservedThread(thread);
 		}
 	} else {
 		FPL__ERROR(FPL__MODULE_THREADING, "Failed to allocate a thread slot, out of memory");
@@ -33326,9 +33425,15 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	(void)initState;
+	(void)appState;
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	(void)initFlags;
+	(void)initSettings;
+	(void)initState;
+	(void)appState;
 	return true;
 }
 
