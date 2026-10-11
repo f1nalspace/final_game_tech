@@ -18,6 +18,9 @@ cannot give at all is drained from the queue instead: typed characters, the whee
 The polled state is the whole desktop's, not the window's (X11 XQueryKeymap and XQueryPointer, Win32 GetAsyncKeyState),
 so without the focus every key and mouse button counts as up: Enter typed into another program must not press the default
 button of a window that merely stands open beside it. A key held when the focus goes comes back as released.
+The bridge starts with the focus only for a window that took it when it was shown at the start (fplWindowSettings.isFocusedOnStart).
+A window that opens without it, or starts hidden or minimized and is shown later, does not count the keys typed into another program until its first focus event.
+A focus the system refused at the start counts until the first focus event, FPL can not be asked for the focus itself.
 
 --- Getting started ---
 
@@ -104,6 +107,7 @@ fui_api fuiKey fuiFplMapKey(const fplKey key);
 /**
 * @brief Prepares a bridge for its first frame.
 * @param[out] bridge Reference to the bridge @ref fuiFplInput to initialize.
+* @note Call this after fplPlatformInit: the bridge starts with the focus for a window that took it when it was shown at the start (fplWindowSettings.isFocusedOnStart), and without it for a window that started hidden or minimized, then follows the focus events. Without an initialized platform it assumes the focus.
 */
 fui_api void fuiFplInputInit(fuiFplInput *bridge);
 
@@ -213,7 +217,16 @@ fui_api fuiKey fuiFplMapKey(const fplKey key) {
 fui_api void fuiFplInputInit(fuiFplInput *bridge) {
 	fplClearStruct(bridge);
 	bridge->input = fuiZeroInput();
+	// The focus the window took when it was shown at the start. A window that started hidden or minimized took none, it gets the focus with a focus event.
+	// FPL can not be asked for the focus itself, so a focus the system refused counts until the first focus event.
 	bridge->windowHasFocus = true;
+	if(fplIsPlatformInitialized()) {
+		const fplSettings *settings = fplGetCurrentSettings();
+		const fplWindowSettings *windowSettings = &settings->window;
+		bool isShownOnStart = windowSettings->initialVisibility != fplWindowVisibilityState_Hide;
+		bool isMinimizedOnStart = windowSettings->initialState == fplWindowState_Iconify;
+		bridge->windowHasFocus = windowSettings->isFocusedOnStart && isShownOnStart && !isMinimizedOnStart;
+	}
 	bridge->lastTimestamp = fplTimestampQuery();
 }
 

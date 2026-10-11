@@ -306,6 +306,13 @@ SOFTWARE.
 	- Fixed: [Win32] While both Shift keys are down, Windows sends no release for the one that is let go first - FPL releases it by itself now, like SDL
 	- Fixed: [Win32] When the system takes a shortcut like Win+Space or Win+G, Windows sends no release for the Win key, so it stayed down - FPL releases it by itself now, like SDL
 	- Fixed: [X11] WM_NAME and WM_ICON_NAME are set again
+	- New: Added field isFocusedOnStart to fplWindowSettings, the window takes the input focus when it is shown at the start (default true)
+	- New: [Win32] A window that does not take the focus on start is shown without activation, also maximized and in fullscreen
+	- Changed: [Win32] A window that starts minimized is no longer activated
+	- Fixed: [Win32] The fplWindowEventType_GotFocus of a window shown at the start or by fplSetWindowVisibility() was cleared by the next fplWindowUpdate()
+	- New: [X11] The window takes the focus on start, with _NET_ACTIVE_WINDOW or with XSetInputFocus when no EWMH window manager runs
+	- New: [X11] A window that does not take the focus on start has a _NET_WM_USER_TIME of zero until it is mapped
+	- New: [X11] WM_HINTS input is set to True
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -3888,6 +3895,7 @@ typedef XSetWindowAttributes fpl__X11_XSetWindowAttributes;
 typedef XWindowAttributes fpl__X11_XWindowAttributes;
 typedef XVisualInfo fpl__X11_XVisualInfo;
 typedef XSizeHints fpl__X11_XSizeHints;
+typedef XWMHints fpl__X11_XWMHints;
 typedef XTextProperty fpl__X11_XTextProperty;
 typedef XICCEncodingStyle fpl__X11_XICCEncodingStyle;
 typedef XClassHint fpl__X11_XClassHint;
@@ -3949,6 +3957,8 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_FocusIn FocusIn
 #define FPL__X11_FocusOut FocusOut
 #define FPL__X11_Expose Expose
+#define FPL__X11_VisibilityNotify VisibilityNotify
+#define FPL__X11_MapNotify MapNotify
 #define FPL__X11_ConfigureNotify ConfigureNotify
 #define FPL__X11_PropertyNotify PropertyNotify
 #define FPL__X11_PropertyNewValue PropertyNewValue
@@ -3966,6 +3976,8 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_Button5 Button5
 #define FPL__X11_PMinSize PMinSize
 #define FPL__X11_PMaxSize PMaxSize
+#define FPL__X11_InputHint InputHint
+#define FPL__X11_RevertToParent RevertToParent
 #define FPL__X11_NoEventMask NoEventMask
 #define FPL__X11_KeyPressMask KeyPressMask
 #define FPL__X11_KeyReleaseMask KeyReleaseMask
@@ -3997,6 +4009,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_CWColormap CWColormap
 #define FPL__X11_XA_ATOM XA_ATOM
 #define FPL__X11_XA_CARDINAL XA_CARDINAL
+#define FPL__X11_XA_WINDOW XA_WINDOW
 #define FPL__X11_XA_STRING XA_STRING
 #define FPL__X11_XA_WM_ICON_NAME XA_WM_ICON_NAME
 #define FPL__X11_XA_WM_NAME XA_WM_NAME
@@ -4422,6 +4435,17 @@ typedef struct fpl__X11_XSizeHints {
 	int win_gravity;
 } fpl__X11_XSizeHints;
 
+typedef struct fpl__X11_XWMHints {
+	long flags;
+	fpl__X11_Bool input;
+	int initial_state;
+	fpl__X11_Pixmap icon_pixmap;
+	fpl__X11_Window icon_window;
+	int icon_x, icon_y;
+	fpl__X11_Pixmap icon_mask;
+	fpl__X11_XID window_group;
+} fpl__X11_XWMHints;
+
 typedef struct fpl__X11_XClassHint {
 	char *res_name;
 	char *res_class;
@@ -4502,6 +4526,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_FocusIn 9
 #define FPL__X11_FocusOut 10
 #define FPL__X11_Expose 12
+#define FPL__X11_VisibilityNotify 15
+#define FPL__X11_MapNotify 19
 #define FPL__X11_ConfigureNotify 22
 #define FPL__X11_PropertyNotify 28
 #define FPL__X11_PropertyNewValue 0
@@ -4519,6 +4545,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_Button5 5
 #define FPL__X11_PMinSize (1L << 4)
 #define FPL__X11_PMaxSize (1L << 5)
+#define FPL__X11_InputHint (1L << 0)
+#define FPL__X11_RevertToParent 2
 #define FPL__X11_NoEventMask 0L
 #define FPL__X11_KeyPressMask (1L<<0)
 #define FPL__X11_KeyReleaseMask (1L<<1)
@@ -4551,6 +4579,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XA_ATOM ((fpl__X11_Atom)4)
 #define FPL__X11_XA_CARDINAL ((fpl__X11_Atom)6)
 #define FPL__X11_XA_STRING ((fpl__X11_Atom)31)
+#define FPL__X11_XA_WINDOW ((fpl__X11_Atom)33)
 #define FPL__X11_XA_WM_ICON_NAME ((fpl__X11_Atom)37)
 #define FPL__X11_XA_WM_NAME ((fpl__X11_Atom)39)
 
@@ -6964,6 +6993,8 @@ typedef struct fplWindowSettings {
 	fplWindowState initialState;
 	//! The @ref fplWindowVisibilityState the window starts with, @ref fplWindowVisibilityState_Unknown is the same as @ref fplWindowVisibilityState_Show. A hidden window has a working video context (e.g. for rendering into framebuffer objects), but is not managed by the window manager and has no taskbar entry.
 	fplWindowVisibilityState initialVisibility;
+	//! Does the window take the input focus and come to the foreground when it is shown at the start (true), or does the focus stay where it is (false: the window may open behind the active one and gets the focus when the user activates it). The system may refuse the focus to a program that is not in the foreground (Win32 foreground lock, focus stealing prevention of the window manager). A window that starts minimized never takes the focus, a window that starts hidden is not affected: @ref fplSetWindowVisibility() shows it like any hidden window. The focus it gets arrives as @ref fplWindowEventType_GotFocus.
+	fpl_b32 isFocusedOnStart;
 } fplWindowSettings;
 
 /**
@@ -12934,6 +12965,10 @@ typedef struct fpl__Win32WindowState {
 	int pixelFormat;
 	fpl_b32 isCursorActive;
 	fpl_b32 isFrameInteraction;
+	// Set while a window that does not take the focus on start is shown, entering fullscreen then shows it without activation
+	fpl_b32 isShownWithoutActivation;
+	// The window was activated while it was shown, at the start or by fplSetWindowVisibility(). The next fplWindowUpdate() clears the queue with its fplWindowEventType_GotFocus, so the event is pushed again after that, unless the events were polled before.
+	fpl_b32 isFocusEventPending;
 	// WM_MOUSELEAVE is only sent once per TrackMouseEvent, so it is armed again with the next WM_MOUSEMOVE
 	fpl_b32 isTrackingMouseLeave;
 	// The mouse grab: the clip rectangle FPL applied in screen coordinates, whether the current clip rectangle is still that one and when it was applied last
@@ -13544,6 +13579,12 @@ typedef FPL__FUNC_X11_XGetSelectionOwner(fpl__func_x11_XGetSelectionOwner);
 typedef FPL__FUNC_X11_XCheckTypedWindowEvent(fpl__func_x11_XCheckTypedWindowEvent);
 #define FPL__FUNC_X11_XTranslateCoordinates(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_Window src_w, fpl__X11_Window dest_w, int src_x, int src_y, int *dest_x_return, int *dest_y_return, fpl__X11_Window *child_return)
 typedef FPL__FUNC_X11_XTranslateCoordinates(fpl__func_x11_XTranslateCoordinates);
+#define FPL__FUNC_X11_XSetWMHints(name) int name(fpl__X11_Display *display, fpl__X11_Window w, fpl__X11_XWMHints *wm_hints)
+typedef FPL__FUNC_X11_XSetWMHints(fpl__func_x11_XSetWMHints);
+#define FPL__FUNC_X11_XSetInputFocus(name) int name(fpl__X11_Display *display, fpl__X11_Window focus, int revert_to, fpl__X11_Time time)
+typedef FPL__FUNC_X11_XSetInputFocus(fpl__func_x11_XSetInputFocus);
+#define FPL__FUNC_X11_XRaiseWindow(name) int name(fpl__X11_Display *display, fpl__X11_Window w)
+typedef FPL__FUNC_X11_XRaiseWindow(fpl__func_x11_XRaiseWindow);
 
 
 // Direct extern declarations for non-runtime-linking builds (no X11 headers present)
@@ -13620,6 +13661,9 @@ extern FPL__FUNC_X11_XStringListToTextProperty(XStringListToTextProperty);
 extern FPL__FUNC_X11_Xutf8TextListToTextProperty(Xutf8TextListToTextProperty);
 extern FPL__FUNC_X11_XSync(XSync);
 extern FPL__FUNC_X11_XTranslateCoordinates(XTranslateCoordinates);
+extern FPL__FUNC_X11_XSetWMHints(XSetWMHints);
+extern FPL__FUNC_X11_XSetInputFocus(XSetInputFocus);
+extern FPL__FUNC_X11_XRaiseWindow(XRaiseWindow);
 extern FPL__FUNC_X11_XUndefineCursor(XUndefineCursor);
 extern FPL__FUNC_X11_XWarpPointer(XWarpPointer);
 extern FPL__FUNC_X11_XGrabPointer(XGrabPointer);
@@ -13722,6 +13766,9 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XGetSelectionOwner *XGetSelectionOwner;
 	fpl__func_x11_XCheckTypedWindowEvent *XCheckTypedWindowEvent;
 	fpl__func_x11_XTranslateCoordinates *XTranslateCoordinates;
+	fpl__func_x11_XSetWMHints *XSetWMHints;
+	fpl__func_x11_XSetInputFocus *XSetInputFocus;
+	fpl__func_x11_XRaiseWindow *XRaiseWindow;
 } fpl__X11Api;
 
 fpl_internal void fpl__UnloadX11Api(fpl__X11Api *x11Api) {
@@ -13832,6 +13879,9 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetSelectionOwner, XGetSelectionOwner);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCheckTypedWindowEvent, XCheckTypedWindowEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XTranslateCoordinates, XTranslateCoordinates);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetWMHints, XSetWMHints);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSetInputFocus, XSetInputFocus);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XRaiseWindow, XRaiseWindow);
 			x11Api->libHandle = libHandle;
 			result = true;
 		} while (0);
@@ -14262,6 +14312,10 @@ typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netWMName;
 	fpl__X11_Atom netWMIconName;
 	fpl__X11_Atom netWMStateAbove;
+	fpl__X11_Atom netWMUserTime;
+	fpl__X11_Atom netActiveWindow;
+	fpl__X11_Atom netSupportingWMCheck;
+	fpl__X11_Atom netSupported;
 } fpl__X11NetWMAtoms;
 
 // Drag and drop runtime state + atoms
@@ -14378,6 +14432,16 @@ typedef struct fpl__X11RelativeMouseState {
 	bool isActive;
 } fpl__X11RelativeMouseState;
 
+// What is left to do for fplWindowSettings.isFocusedOnStart once the window is mapped
+typedef enum fpl__X11StartFocusState {
+	// Nothing left to do
+	fpl__X11StartFocusState_None = 0,
+	// The window takes the focus as soon as it is viewable
+	fpl__X11StartFocusState_Take,
+	// The window does not take the focus, its _NET_WM_USER_TIME of zero is removed once the window manager has seen it
+	fpl__X11StartFocusState_Avoid,
+} fpl__X11StartFocusState;
+
 typedef struct fpl__X11WindowState {
 	fpl__X11WindowStateInfo lastWindowStateInfo;
 	fpl__X11RelativeMouseState relativeMouse;
@@ -14390,6 +14454,7 @@ typedef struct fpl__X11WindowState {
 	fpl__X11ClipboardState clipboard;
 	fpl__X11CursorState cursor;
 	fpl__X11IMState im;
+	fpl__X11StartFocusState startFocus;
 	int screen;
 	int colorDepth;
 } fpl__X11WindowState;
@@ -17122,6 +17187,16 @@ fpl_internal fplWindowState fpl__GetInitialWindowState(const fplWindowSettings *
 	return(windowSettings->initialState);
 }
 
+// Whether the window takes the focus when it is shown at the start, a window that starts minimized never does and one that starts hidden is not shown at the start
+fpl_internal bool fpl__IsWindowFocusedOnStart(const fplWindowSettings *windowSettings) {
+	if (!windowSettings->isFocusedOnStart || windowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
+		return(false);
+	}
+	fplWindowState initialState = fpl__GetInitialWindowState(windowSettings);
+	bool result = initialState != fplWindowState_Iconify;
+	return(result);
+}
+
 // A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown
 fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
 	appState->window.isHidden = true;
@@ -17922,6 +17997,7 @@ fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window) {
 	window->isMonitorPowerPrevented = false;
 	window->initialState = fplWindowState_Normal;
 	window->initialVisibility = fplWindowVisibilityState_Show;
+	window->isFocusedOnStart = true;
 }
 
 fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
@@ -18913,11 +18989,16 @@ fpl_internal void fpl__Win32SaveWindowState(const fpl__Win32Api *wapi, fpl__Win3
 	wapi->user.GetWindowPlacement(windowHandle, &target->placement);
 }
 
-fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const fpl__Win32LastWindowInfo *target, HWND windowHandle) {
+fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const fpl__Win32LastWindowInfo *target, HWND windowHandle, const bool isShownWithoutActivation) {
 	fplAssert(target->style > 0 && target->exStyle > 0);
 	fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, target->style);
 	fpl__win32_SetWindowLong(windowHandle, GWL_EXSTYLE, target->exStyle);
-	wapi->user.SetWindowPlacement(windowHandle, &target->placement);
+	// The placement saved from a window that was not shown yet says SW_SHOWNORMAL, which would activate a window that does not take the focus on start
+	WINDOWPLACEMENT placement = target->placement;
+	if (isShownWithoutActivation && placement.showCmd == SW_SHOWNORMAL) {
+		placement.showCmd = SW_SHOWNOACTIVATE;
+	}
+	wapi->user.SetWindowPlacement(windowHandle, &placement);
 	wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 	if (target->isMaximized) {
 		wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
@@ -18935,7 +19016,8 @@ fpl_internal bool fpl__Win32LeaveFullscreen(void) {
 	const fpl__Win32WindowState *win32Window = &platState->window.win32;
 	const fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
 	HWND windowHandle = win32Window->windowHandle;
-	fpl__Win32RestoreWindowState(wapi, fullscreenInfo, windowHandle);
+	bool isShownWithoutActivation = win32Window->isShownWithoutActivation != 0;
+	fpl__Win32RestoreWindowState(wapi, fullscreenInfo, windowHandle, isShownWithoutActivation);
 	bool result;
 	if (fullscreenInfo->wasResolutionChanged) {
 		result = (wapi->user.ChangeDisplaySettingsW(fpl_null, CDS_RESET) == DISP_CHANGE_SUCCESSFUL);
@@ -18995,7 +19077,8 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 		WINDOWPLACEMENT placement = fplZeroInit;
 		placement.length = sizeof(placement);
 		placement.rcNormalPosition = windowRect;
-		placement.showCmd = SW_SHOW;
+		// SW_SHOWNA is SW_SHOW without activation, for a window that does not take the focus on start
+		placement.showCmd = win32Window->isShownWithoutActivation ? SW_SHOWNA : SW_SHOW;
 		wapi->user.SetWindowPlacement(windowHandle, &placement);
 		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
@@ -19021,7 +19104,8 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 		WINDOWPLACEMENT placement = fplZeroInit;
 		placement.length = sizeof(placement);
 		placement.rcNormalPosition = windowRect;
-		placement.showCmd = SW_SHOWNORMAL;
+		// SW_SHOWNOACTIVATE is SW_SHOWNORMAL without activation
+		placement.showCmd = win32Window->isShownWithoutActivation ? SW_SHOWNOACTIVATE : SW_SHOWNORMAL;
 		wapi->user.SetWindowPlacement(windowHandle, &placement);
 		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		result = true;
@@ -20582,8 +20666,17 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		windowHeight = CW_USEDEFAULT;
 	}
 
+	// ShowWindow() can not maximize without activating, so a window that starts maximized without taking the focus is created maximized and shown as it is
+	fplWindowState initialState = fpl__GetInitialWindowState(initWindowSettings);
+	bool isShownOnStart = initWindowSettings->initialVisibility != fplWindowVisibilityState_Hide;
+	bool isFocusedOnStart = fpl__IsWindowFocusedOnStart(initWindowSettings);
+	bool isShownWithoutActivation = isShownOnStart && !isFocusedOnStart;
+	int initialShowCommand = fpl__Win32GetShowCommand(initialState, initWindowSettings);
+	bool isCreatedMaximized = isShownWithoutActivation && initialShowCommand == SW_SHOWMAXIMIZED;
+	DWORD createStyle = isCreatedMaximized ? (style | WS_MAXIMIZE) : style;
+
 	// Create window
-	windowState->windowHandle = wapi->user.CreateWindowExW(exStyle, windowClass.lpszClassName, windowTitle, style, windowX, windowY, windowWidth, windowHeight, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
+	windowState->windowHandle = wapi->user.CreateWindowExW(exStyle, windowClass.lpszClassName, windowTitle, createStyle, windowX, windowY, windowWidth, windowHeight, fpl_null, fpl_null, windowClass.hInstance, fpl_null);
 	if (windowState->windowHandle == fpl_null) {
 		FPL__ERROR(FPL__MODULE_WINDOW, "Failed creating window for class '%s' and position (%d x %d) with size (%d x %d)", windowState->windowClass, windowX, windowY, windowWidth, windowHeight);
 		return false;
@@ -20613,21 +20706,35 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
 	}
 
-	fplWindowState initialState = fpl__GetInitialWindowState(initWindowSettings);
-	if (initWindowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
+	if (!isShownOnStart) {
 		fpl__DeferInitialWindowState(platAppState, currentWindowSettings, initialState);
 	} else {
+		windowState->isShownWithoutActivation = isShownWithoutActivation;
+
 		// Enter fullscreen if needed, the flag is cleared first, otherwise the window placement to return to is never saved
 		if (initialState == fplWindowState_Fullscreen) {
 			currentWindowSettings->isFullscreen = false;
 			fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
 		}
 
-		// Show window
+		// Show window, without activation when it does not take the focus: a minimized one stays minimized, a maximized one was created maximized
 		int showCommand = fpl__Win32GetShowCommand(initialState, currentWindowSettings);
+		if (isShownWithoutActivation) {
+			showCommand = showCommand == SW_SHOWMINIMIZED ? SW_SHOWMINNOACTIVE : SW_SHOWNA;
+		}
 		wapi->user.ShowWindow(windowState->windowHandle, showCommand);
-		wapi->user.SetForegroundWindow(windowState->windowHandle);
-		wapi->user.SetFocus(windowState->windowHandle);
+		if (isFocusedOnStart) {
+			// Windows refuses the foreground to a process that is not in the foreground itself (foreground lock) and flashes the taskbar button instead
+			BOOL isForeground = wapi->user.SetForegroundWindow(windowState->windowHandle);
+			if (!isForeground) {
+				FPL_LOG_VERBOSE(FPL__MODULE_WIN32, "The system refused the foreground to the window");
+			}
+			wapi->user.SetFocus(windowState->windowHandle);
+		}
+		windowState->isShownWithoutActivation = false;
+
+		// The activation pushed its fplWindowEventType_GotFocus already, but the first fplWindowUpdate() clears the event queue
+		windowState->isFocusEventPending = platAppState->window.hasFocus;
 	}
 
 	// Cursor is visible at start
@@ -24223,7 +24330,7 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	bool isHidden = appState->window.isHidden != 0;
@@ -24252,6 +24359,8 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 			wapi->user.ShowWindow(windowHandle, showCommand);
 			wapi->user.SetForegroundWindow(windowHandle);
 			wapi->user.SetFocus(windowHandle);
+			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
+			windowState->isFocusEventPending = appState->window.hasFocus;
 			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(appState);
 			fpl__UpdateInputGrab(appState);
@@ -24312,6 +24421,9 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
+	// Polled before the next fplWindowUpdate(), the fplWindowEventType_GotFocus of the show is still in the queue
+	windowState->isFocusEventPending = false;
+
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
 		return(true);
@@ -24364,7 +24476,14 @@ fpl_platform_api void fplPollEvents(void) {
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__Win32WindowState *windowState = &appState->window.win32;
+	bool isFocusEventPending = windowState->isFocusEventPending != 0;
+	windowState->isFocusEventPending = false;
 	fpl__ClearInternalEvents();
+	// The window was activated while it was shown, that event was cleared with the queue just now
+	if (isFocusEventPending && appState->window.hasFocus) {
+		fpl__PushWindowStateEvent(fplWindowEventType_GotFocus);
+	}
 	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
 	if (!appState->currentSettings.input.disabledEvents) {
@@ -29339,6 +29458,9 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 #define FPL__X11_DEFAULT_WINDOW_WIDTH 1280
 #define FPL__X11_DEFAULT_WINDOW_HEIGHT 720
 
+// The format of a property or client message whose items are 32 bit (CARDINAL, ATOM, WINDOW), Xlib passes them as long
+#define FPL__X11_PROPERTY_FORMAT_32 32
+
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
 #if !defined(FPL_NO_X11_XINPUT2)
@@ -29799,6 +29921,10 @@ fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11Wi
 	windowState->netWM.netWMName = x11Api->XInternAtom(windowState->display, "_NET_WM_NAME", FPL__X11_False);
 	windowState->netWM.netWMIconName = x11Api->XInternAtom(windowState->display, "_NET_WM_ICON_NAME", FPL__X11_False);
 	windowState->netWM.netWMStateAbove = x11Api->XInternAtom(windowState->display, "_NET_WM_STATE_ABOVE", FPL__X11_False);
+	windowState->netWM.netWMUserTime = x11Api->XInternAtom(windowState->display, "_NET_WM_USER_TIME", FPL__X11_False);
+	windowState->netWM.netActiveWindow = x11Api->XInternAtom(windowState->display, "_NET_ACTIVE_WINDOW", FPL__X11_False);
+	windowState->netWM.netSupportingWMCheck = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTING_WM_CHECK", FPL__X11_False);
+	windowState->netWM.netSupported = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTED", FPL__X11_False);
 }
 
 fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -29932,8 +30058,30 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
+	// ICCCM passive input: the window manager gives the window the focus when the user clicks it, also when it did not take the focus on start
+	{
+		fpl__X11_XWMHints wmHints = fplZeroInit;
+		wmHints.flags = FPL__X11_InputHint;
+		wmHints.input = FPL__X11_True;
+		x11Api->XSetWMHints(windowState->display, windowState->core.window, &wmHints);
+	}
+
+	// A window that is shown at the start without taking the focus asks the window manager not to focus it on map (EWMH: a _NET_WM_USER_TIME of zero),
+	// a window that takes it asks for it once it is viewable (see fpl__X11HandleStartFocus)
+	bool isShownOnStart = initSettings->window.initialVisibility != fplWindowVisibilityState_Hide;
+	bool isFocusedOnStart = fpl__IsWindowFocusedOnStart(&initSettings->window);
+	windowState->startFocus = fpl__X11StartFocusState_None;
+	if (isFocusedOnStart) {
+		windowState->startFocus = fpl__X11StartFocusState_Take;
+	} else if (isShownOnStart) {
+		const long noUserTime = 0;
+		const int userTimeCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMUserTime, FPL__X11_XA_CARDINAL, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&noUserTime, userTimeCount);
+		windowState->startFocus = fpl__X11StartFocusState_Avoid;
+	}
+
 	// A window that starts hidden is never mapped, so the window manager does not see it until fplSetWindowVisibility() shows it
-	if (initSettings->window.initialVisibility != fplWindowVisibilityState_Hide) {
+	if (isShownOnStart) {
 		x11Api->XMapWindow(windowState->display, windowState->core.window);
 	}
 	x11Api->XFlush(windowState->display);
@@ -30857,6 +31005,106 @@ fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl_
 	}
 }
 
+// EWMH source indication of a _NET_ACTIVE_WINDOW request that comes from a normal application
+#define FPL__NET_ACTIVE_WINDOW_SOURCE_APPLICATION 1L
+
+// Reads a property that holds one window, FPL__X11_None when it is not there
+fpl_internal fpl__X11_Window fpl__X11GetWindowPropertyWindow(const fpl__X11Api *x11Api, fpl__X11_Display *display, const fpl__X11_Window window, const fpl__X11_Atom property) {
+	fpl__X11_Atom actualType = FPL__X11_None;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	fpl__X11_Window result = FPL__X11_None;
+	// One item from the start of the property
+	const long propertyOffset = 0;
+	const long windowCount = 1;
+	int status = x11Api->XGetWindowProperty(display, window, property, propertyOffset, windowCount, FPL__X11_False, FPL__X11_XA_WINDOW, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	if (status == FPL__X11_Success && data != fpl_null && itemCount == (unsigned long)windowCount) {
+		result = *(fpl__X11_Window *)data;
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+	return(result);
+}
+
+// Whether a window manager runs that takes activation requests: _NET_SUPPORTING_WM_CHECK of the root window names a window whose own _NET_SUPPORTING_WM_CHECK names itself (EWMH),
+// and _NET_SUPPORTED lists _NET_ACTIVE_WINDOW. A window manager that is gone may have left the property behind, so the window it names is read under the error guard.
+fpl_internal bool fpl__X11IsWindowActivationSupported(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState) {
+	fpl__X11_Display *display = windowState->display;
+	const fpl__X11NetWMAtoms *netWM = &windowState->netWM;
+	fpl__X11_Window checkWindow = fpl__X11GetWindowPropertyWindow(x11Api, display, windowState->core.root, netWM->netSupportingWMCheck);
+	if (checkWindow == FPL__X11_None) {
+		return(false);
+	}
+	fpl__X11BeginClipboardErrorGuard(x11Api);
+	fpl__X11_Window checkWindowOfCheckWindow = fpl__X11GetWindowPropertyWindow(x11Api, display, checkWindow, netWM->netSupportingWMCheck);
+	bool isCheckWindowAlive = fpl__X11EndClipboardErrorGuard(x11Api, display);
+	if (!isCheckWindowAlive || checkWindowOfCheckWindow != checkWindow) {
+		return(false);
+	}
+	fpl__X11_Atom *supportedAtoms = fpl_null;
+	unsigned long supportedCount = fpl__X11GetWindowProperty(x11Api, display, windowState->core.root, netWM->netSupported, FPL__X11_XA_ATOM, (unsigned char **)&supportedAtoms);
+	bool result = false;
+	for (unsigned long atomIndex = 0; atomIndex < supportedCount; ++atomIndex) {
+		if (supportedAtoms[atomIndex] == netWM->netActiveWindow) {
+			result = true;
+			break;
+		}
+	}
+	if (supportedAtoms != fpl_null) {
+		x11Api->XFree(supportedAtoms);
+	}
+	return(result);
+}
+
+// Called for every MapNotify and VisibilityNotify: the window takes the focus on start once it is viewable, or its _NET_WM_USER_TIME of zero is removed once the window manager has mapped it
+fpl_internal void fpl__X11HandleStartFocus(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
+	if (windowState->startFocus == fpl__X11StartFocusState_None) {
+		return;
+	}
+	fpl__X11_Display *display = windowState->display;
+	fpl__X11_Window window = windowState->core.window;
+	if (windowState->startFocus == fpl__X11StartFocusState_Avoid) {
+		// The window manager decided about the focus when it mapped the window, a later fplSetWindowVisibility() must not inherit the zero
+		windowState->startFocus = fpl__X11StartFocusState_None;
+		x11Api->XDeleteProperty(display, window, windowState->netWM.netWMUserTime);
+		x11Api->XFlush(display);
+		return;
+	}
+	// XSetInputFocus on a window that is not viewable fails with BadMatch, and a reparenting window manager maps the window before its frame
+	fpl__X11_XWindowAttributes attributes = fplZeroInit;
+	x11Api->XGetWindowAttributes(display, window, &attributes);
+	if (attributes.map_state != FPL__X11_IsViewable) {
+		return;
+	}
+	windowState->startFocus = fpl__X11StartFocusState_None;
+	x11Api->XRaiseWindow(display, window);
+	bool isActivationSupported = fpl__X11IsWindowActivationSupported(x11Api, windowState);
+	if (isActivationSupported) {
+		// The window manager activates the window, a request without a timestamp because no user action led to it
+		fpl__X11_XEvent ev = fplZeroInit;
+		ev.type = FPL__X11_ClientMessage;
+		ev.xclient.window = window;
+		ev.xclient.message_type = windowState->netWM.netActiveWindow;
+		ev.xclient.format = FPL__X11_PROPERTY_FORMAT_32;
+		ev.xclient.data.l[0] = FPL__NET_ACTIVE_WINDOW_SOURCE_APPLICATION;
+		ev.xclient.data.l[1] = FPL__X11_CurrentTime;
+		ev.xclient.data.l[2] = FPL__X11_None;
+		x11Api->XSendEvent(display, windowState->core.root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
+		x11Api->XFlush(display);
+	} else {
+		// Without a window manager nobody gives a new window the focus. A window that goes away in between makes it fail, and Xlib would end the process on that error.
+		fpl__X11BeginClipboardErrorGuard(x11Api);
+		x11Api->XSetInputFocus(display, window, FPL__X11_RevertToParent, FPL__X11_CurrentTime);
+		bool isFocusSet = fpl__X11EndClipboardErrorGuard(x11Api, display);
+		if (!isFocusSet) {
+			FPL_LOG_VERBOSE(FPL__MODULE_X11, "Setting the input focus on start failed");
+		}
+	}
+}
+
 // The relative mouse mode, defined next to the grab functions further down
 fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev);
 fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
@@ -31193,6 +31441,13 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
 				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.exposedUserData);
 			}
+		} break;
+
+		case FPL__X11_MapNotify:
+		case FPL__X11_VisibilityNotify:
+		{
+			// The focus on start waits until the window is viewable, a reparenting window manager maps the window before its frame
+			fpl__X11HandleStartFocus(x11Api, x11WinState);
 		} break;
 
 		case FPL__X11_FocusIn:
