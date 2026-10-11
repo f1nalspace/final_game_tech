@@ -311,6 +311,7 @@ SOFTWARE.
 	- Changed: Refactored internal X11 functions init/release into separate functions
 	- New: The clipboard releases the text it owns when another application takes the selection away
 	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
+	- Fixed: XDisplayKeycodes was declared with the wrong return type
 
 	## v1.0.0
 
@@ -13435,7 +13436,7 @@ typedef FPL__FUNC_X11_XGetWindowAttributes(fpl__func_x11_XGetWindowAttributes);
 typedef FPL__FUNC_X11_XResizeWindow(fpl__func_x11_XResizeWindow);
 #define FPL__FUNC_X11_XMoveWindow(name) int name(fpl__X11_Display *display, fpl__X11_Window w, int x, int y)
 typedef FPL__FUNC_X11_XMoveWindow(fpl__func_x11_XMoveWindow);
-#define FPL__FUNC_X11_XDisplayKeycodes(name) fpl__X11_KeySym *name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
+#define FPL__FUNC_X11_XDisplayKeycodes(name) int name(fpl__X11_Display *display, int* ret_min_keycode, int* ret_max_keycode)
 typedef FPL__FUNC_X11_XDisplayKeycodes(fpl__func_x11_XDisplayKeycodes);
 #define FPL__FUNC_X11_XGetKeyboardMapping(name) fpl__X11_KeySym *name(fpl__X11_Display *display, fpl__X11_KeyCode first_keycode, int keycode_count, int *keysyms_per_keycode_return)
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
@@ -32799,9 +32800,15 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	(void)initState;
+	(void)appState;
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
+	(void)initFlags;
+	(void)initSettings;
+	(void)initState;
+	(void)appState;
 	return true;
 }
 
