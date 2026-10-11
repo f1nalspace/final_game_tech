@@ -313,6 +313,8 @@ SOFTWARE.
 	- New: [X11] The window takes the focus on start, with _NET_ACTIVE_WINDOW or with XSetInputFocus when no EWMH window manager runs
 	- New: [X11] A window that does not take the focus on start has a _NET_WM_USER_TIME of zero until it is mapped
 	- New: [X11] WM_HINTS input is set to True
+	- Changed: [X11] fplSetWindowVisibility() shows the window and gives it the focus, as on Win32
+	- Changed: The first fplSetWindowVisibility() show of a window that started hidden is its start, it takes the focus only when isFocusedOnStart is set and it is not shown minimized ([Win32] it was always activated)
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -6993,7 +6995,7 @@ typedef struct fplWindowSettings {
 	fplWindowState initialState;
 	//! The @ref fplWindowVisibilityState the window starts with, @ref fplWindowVisibilityState_Unknown is the same as @ref fplWindowVisibilityState_Show. A hidden window has a working video context (e.g. for rendering into framebuffer objects), but is not managed by the window manager and has no taskbar entry.
 	fplWindowVisibilityState initialVisibility;
-	//! Does the window take the input focus and come to the foreground when it is shown at the start (true), or does the focus stay where it is (false: the window may open behind the active one and gets the focus when the user activates it). The system may refuse the focus to a program that is not in the foreground (Win32 foreground lock, focus stealing prevention of the window manager). A window that starts minimized never takes the focus, a window that starts hidden is not affected: @ref fplSetWindowVisibility() shows it like any hidden window. The focus it gets arrives as @ref fplWindowEventType_GotFocus.
+	//! Does the window take the input focus and come to the foreground when it is shown at the start (true), or does the focus stay where it is (false: the window may open behind the active one and gets the focus when the user activates it). The system may refuse the focus to a program that is not in the foreground (Win32 foreground lock, focus stealing prevention of the window manager). A window that starts minimized never takes the focus. For a window that starts hidden the first @ref fplSetWindowVisibility() that shows it is the start: the setting applies there, and a window shown minimized does not take the focus either. Every later show takes the focus, see @ref fplSetWindowVisibility(). The focus it gets arrives as @ref fplWindowEventType_GotFocus.
 	fpl_b32 isFocusedOnStart;
 } fplWindowSettings;
 
@@ -10863,6 +10865,7 @@ fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
 * @param[in] newVisibility The new visibility.
 * @return Returns true when the window has the new visibility, false otherwise.
 * @note A hidden window keeps its state and its video context. It is not managed by the window manager and has no taskbar entry. Showing it applies the state it had or was given while it was hidden.
+* @note Showing a hidden window brings it to the foreground and gives it the focus, the system may refuse that (see @ref fplWindowSettings.isFocusedOnStart). The first show of a window that started hidden is its start: it takes the focus only when @ref fplWindowSettings.isFocusedOnStart is set and it is not shown minimized. [X11] A window shown minimized never takes the focus.
 * @note Pushes a @ref fplWindowEventType_Shown or @ref fplWindowEventType_Hidden event when the visibility changes.
 */
 fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
@@ -14432,7 +14435,7 @@ typedef struct fpl__X11RelativeMouseState {
 	bool isActive;
 } fpl__X11RelativeMouseState;
 
-// What is left to do for fplWindowSettings.isFocusedOnStart once the window is mapped
+// What is left to do for the focus once FPL has mapped the window, at the start (fplWindowSettings.isFocusedOnStart) or in fplSetWindowVisibility()
 typedef enum fpl__X11StartFocusState {
 	// Nothing left to do
 	fpl__X11StartFocusState_None = 0,
@@ -14604,6 +14607,8 @@ typedef struct {
 	fpl_b32 isMouseLockSuspended;
 	// The state a hidden window gets when it is shown, fplWindowState_Unknown when there is nothing to apply
 	fplWindowState pendingState;
+	// Set while a window that started hidden was not shown yet, its first show by fplSetWindowVisibility() is its start (fplWindowSettings.isFocusedOnStart)
+	fpl_b32 isStartShowPending;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
@@ -17187,19 +17192,26 @@ fpl_internal fplWindowState fpl__GetInitialWindowState(const fplWindowSettings *
 	return(windowSettings->initialState);
 }
 
-// Whether the window takes the focus when it is shown at the start, a window that starts minimized never does and one that starts hidden is not shown at the start
-fpl_internal bool fpl__IsWindowFocusedOnStart(const fplWindowSettings *windowSettings) {
-	if (!windowSettings->isFocusedOnStart || windowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
-		return(false);
-	}
-	fplWindowState initialState = fpl__GetInitialWindowState(windowSettings);
-	bool result = initialState != fplWindowState_Iconify;
+// Whether the window takes the focus when it is shown the first time in the given state, at the start or by fplSetWindowVisibility() after a hidden start. A window shown minimized never does.
+fpl_internal bool fpl__IsWindowFocusedOnFirstShow(const fplWindowSettings *windowSettings, const fplWindowState state) {
+	bool result = windowSettings->isFocusedOnStart && state != fplWindowState_Iconify;
 	return(result);
 }
 
-// A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown
+// Whether the window takes the focus when it is shown at the start, a window that starts minimized never does and one that starts hidden is not shown at the start
+fpl_internal bool fpl__IsWindowFocusedOnStart(const fplWindowSettings *windowSettings) {
+	if (windowSettings->initialVisibility == fplWindowVisibilityState_Hide) {
+		return(false);
+	}
+	fplWindowState initialState = fpl__GetInitialWindowState(windowSettings);
+	bool result = fpl__IsWindowFocusedOnFirstShow(windowSettings, initialState);
+	return(result);
+}
+
+// A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown and that first show is its start
 fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
 	appState->window.isHidden = true;
+	appState->window.isStartShowPending = true;
 	appState->window.pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
 	currentWindowSettings->isFullscreen = false;
 }
@@ -19133,7 +19145,9 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 	if (!windowSettings->isFullscreen) {
 		fpl__Win32SaveWindowState(wapi, fullscreenState, windowHandle);
 		if (fullscreenState->isMaximized || fullscreenState->isMinimized) {
-			wapi->user.ShowWindow(windowHandle, SW_RESTORE);
+			// SW_SHOWNOACTIVATE restores without activation, for a window created maximized that does not take the focus on its first show
+			int restoreCommand = windowState->isShownWithoutActivation ? SW_SHOWNOACTIVATE : SW_RESTORE;
+			wapi->user.ShowWindow(windowHandle, restoreCommand);
 		}
 	}
 
@@ -20666,13 +20680,15 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		windowHeight = CW_USEDEFAULT;
 	}
 
-	// ShowWindow() can not maximize without activating, so a window that starts maximized without taking the focus is created maximized and shown as it is
+	// ShowWindow() can not maximize without activating, so a window that starts maximized without taking the focus is created maximized and shown as it is.
+	// That goes for a window that starts hidden too, its first show is its start.
 	fplWindowState initialState = fpl__GetInitialWindowState(initWindowSettings);
 	bool isShownOnStart = initWindowSettings->initialVisibility != fplWindowVisibilityState_Hide;
 	bool isFocusedOnStart = fpl__IsWindowFocusedOnStart(initWindowSettings);
 	bool isShownWithoutActivation = isShownOnStart && !isFocusedOnStart;
+	bool isFocusedOnFirstShow = fpl__IsWindowFocusedOnFirstShow(initWindowSettings, initialState);
 	int initialShowCommand = fpl__Win32GetShowCommand(initialState, initWindowSettings);
-	bool isCreatedMaximized = isShownWithoutActivation && initialShowCommand == SW_SHOWMAXIMIZED;
+	bool isCreatedMaximized = !isFocusedOnFirstShow && initialShowCommand == SW_SHOWMAXIMIZED;
 	DWORD createStyle = isCreatedMaximized ? (style | WS_MAXIMIZE) : style;
 
 	// Create window
@@ -24350,15 +24366,36 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 			int showCommand = fpl__Win32GetShowCommand(pendingState, &appState->currentSettings.window);
 			bool isFullscreen = appState->currentSettings.window.isFullscreen != 0;
 			bool leavesFullscreen = pendingState == fplWindowState_Normal && isFullscreen;
+			// The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so. Every later show takes it.
+			bool isStartShow = appState->window.isStartShowPending != 0;
+			bool isFocusedOnShow = !isStartShow || fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
+			appState->window.isStartShowPending = false;
 			appState->window.isHidden = false;
+			windowState->isShownWithoutActivation = !isFocusedOnShow;
 			if (pendingState == fplWindowState_Fullscreen || leavesFullscreen) {
 				fpl__ApplyPendingWindowState(appState);
 			} else if (showCommand != SW_SHOW) {
 				appState->window.pendingState = fplWindowState_Unknown;
 			}
+			if (!isFocusedOnShow) {
+				// Like at the start: a minimized window stays minimized, one created maximized is shown as it is and SW_SHOWNOACTIVATE restores one that was set to normal while it was hidden.
+				// ShowWindow() can not maximize without activating, so a window that was set to maximized while it was hidden is activated anyway.
+				bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
+				if (showCommand == SW_SHOWMINIMIZED) {
+					showCommand = SW_SHOWMINNOACTIVE;
+				} else if (pendingState == fplWindowState_Normal) {
+					showCommand = SW_SHOWNOACTIVATE;
+					appState->window.pendingState = fplWindowState_Unknown;
+				} else if (showCommand != SW_SHOWMAXIMIZED || isMaximized) {
+					showCommand = SW_SHOWNA;
+				}
+			}
 			wapi->user.ShowWindow(windowHandle, showCommand);
-			wapi->user.SetForegroundWindow(windowHandle);
-			wapi->user.SetFocus(windowHandle);
+			if (isFocusedOnShow) {
+				wapi->user.SetForegroundWindow(windowHandle);
+				wapi->user.SetFocus(windowHandle);
+			}
+			windowState->isShownWithoutActivation = false;
 			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
 			windowState->isFocusEventPending = appState->window.hasFocus;
 			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
@@ -30023,6 +30060,21 @@ fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSetti
 	return true;
 }
 
+// Called before FPL maps the window, at the start or in fplSetWindowVisibility(): a window that takes the focus asks for it once it is viewable (see fpl__X11HandleStartFocus),
+// one that does not asks the window manager not to focus it on map (EWMH: a _NET_WM_USER_TIME of zero)
+fpl_internal void fpl__X11PrepareFocusOnMap(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState, const bool isFocused) {
+	if (isFocused) {
+		// A zero left by an earlier show that was hidden again before the window manager mapped it would hold the focus back
+		x11Api->XDeleteProperty(windowState->display, windowState->core.window, windowState->netWM.netWMUserTime);
+		windowState->startFocus = fpl__X11StartFocusState_Take;
+	} else {
+		const long noUserTime = 0;
+		const int userTimeCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMUserTime, FPL__X11_XA_CARDINAL, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&noUserTime, userTimeCount);
+		windowState->startFocus = fpl__X11StartFocusState_Avoid;
+	}
+}
+
 fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
@@ -30066,18 +30118,12 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 		x11Api->XSetWMHints(windowState->display, windowState->core.window, &wmHints);
 	}
 
-	// A window that is shown at the start without taking the focus asks the window manager not to focus it on map (EWMH: a _NET_WM_USER_TIME of zero),
-	// a window that takes it asks for it once it is viewable (see fpl__X11HandleStartFocus)
+	// A window that is shown at the start takes the focus or leaves it where it is, one that starts hidden decides that when fplSetWindowVisibility() shows it
 	bool isShownOnStart = initSettings->window.initialVisibility != fplWindowVisibilityState_Hide;
 	bool isFocusedOnStart = fpl__IsWindowFocusedOnStart(&initSettings->window);
 	windowState->startFocus = fpl__X11StartFocusState_None;
-	if (isFocusedOnStart) {
-		windowState->startFocus = fpl__X11StartFocusState_Take;
-	} else if (isShownOnStart) {
-		const long noUserTime = 0;
-		const int userTimeCount = 1;
-		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMUserTime, FPL__X11_XA_CARDINAL, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&noUserTime, userTimeCount);
-		windowState->startFocus = fpl__X11StartFocusState_Avoid;
+	if (isShownOnStart) {
+		fpl__X11PrepareFocusOnMap(x11Api, windowState, isFocusedOnStart);
 	}
 
 	// A window that starts hidden is never mapped, so the window manager does not see it until fplSetWindowVisibility() shows it
@@ -31059,7 +31105,7 @@ fpl_internal bool fpl__X11IsWindowActivationSupported(const fpl__X11Api *x11Api,
 	return(result);
 }
 
-// Called for every MapNotify and VisibilityNotify: the window takes the focus on start once it is viewable, or its _NET_WM_USER_TIME of zero is removed once the window manager has mapped it
+// Called for every MapNotify and VisibilityNotify: the window takes the focus once it is viewable, or its _NET_WM_USER_TIME of zero is removed once the window manager has mapped it
 fpl_internal void fpl__X11HandleStartFocus(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
 	if (windowState->startFocus == fpl__X11StartFocusState_None) {
 		return;
@@ -31100,7 +31146,7 @@ fpl_internal void fpl__X11HandleStartFocus(const fpl__X11Api *x11Api, fpl__X11Wi
 		x11Api->XSetInputFocus(display, window, FPL__X11_RevertToParent, FPL__X11_CurrentTime);
 		bool isFocusSet = fpl__X11EndClipboardErrorGuard(x11Api, display);
 		if (!isFocusSet) {
-			FPL_LOG_VERBOSE(FPL__MODULE_X11, "Setting the input focus on start failed");
+			FPL_LOG_VERBOSE(FPL__MODULE_X11, "Setting the input focus failed");
 		}
 	}
 }
@@ -31446,7 +31492,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_MapNotify:
 		case FPL__X11_VisibilityNotify:
 		{
-			// The focus on start waits until the window is viewable, a reparenting window manager maps the window before its frame
+			// The focus of a window FPL has mapped waits until it is viewable, a reparenting window manager maps the window before its frame
 			fpl__X11HandleStartFocus(x11Api, x11WinState);
 		} break;
 
@@ -32349,6 +32395,16 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	}
 	if (newVisibility == fplWindowVisibilityState_Show) {
 		if (isHidden) {
+			// Like on Win32 the window takes the focus. The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so.
+			// A window shown minimized does not take it, the activation would restore it.
+			fplWindowState pendingState = appState->window.pendingState;
+			bool isStartShow = appState->window.isStartShowPending != 0;
+			bool isFocusedOnShow = pendingState != fplWindowState_Iconify;
+			if (isStartShow) {
+				isFocusedOnShow = fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
+			}
+			appState->window.isStartShowPending = false;
+			fpl__X11PrepareFocusOnMap(x11Api, windowState, isFocusedOnShow);
 			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
 			appState->window.isHidden = false;
