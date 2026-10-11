@@ -81,7 +81,8 @@ License:
 #include <stdarg.h>
 #include <string.h>
 
-#define DEMO_WINDOW_TITLE "final_ui.h demo (FPL + OpenGL)"
+// The window title names the backend too, filled with one of the host labels below
+#define DEMO_WINDOW_TITLE_FORMAT "final_ui.h demo (%s)"
 
 // Named in the status bar, because FUI_Framework builds this same interface on the Final Framework and a
 // screenshot of either one has to say which is which. This demo keeps the theme's default amber accent; the
@@ -1715,6 +1716,17 @@ static bool DemoRendererInit(DemoRenderer *renderer, const DemoBackendKind backe
 	return true;
 }
 
+static const char *DemoGetHostLabel(const DemoBackendKind backendKind) {
+	switch(backendKind) {
+		case DemoBackendKind_GL46:
+			return DEMO_HOST_LABEL_GL46;
+		case DemoBackendKind_GL3:
+			return DEMO_HOST_LABEL_GL3;
+		default:
+			return DEMO_HOST_LABEL_GL1;
+	}
+}
+
 static bool DemoUploadCoverage(const DemoRenderer *renderer, const unsigned char *alphaPixels, const uint32_t width, const uint32_t height, uint32_t *outTexture) {
 	switch(renderer->backendKind) {
 		case DemoBackendKind_GL46:
@@ -1890,9 +1902,11 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	const char *hostLabel = DemoGetHostLabel(backendKind);
+
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
-	fplCopyString(DEMO_WINDOW_TITLE, settings.window.title, fplArrayCount(settings.window.title));
+	fplStringFormat(settings.window.title, fplArrayCount(settings.window.title), DEMO_WINDOW_TITLE_FORMAT, hostLabel);
 	settings.window.windowSize.width = DEMO_WINDOW_WIDTH;
 	settings.window.windowSize.height = DEMO_WINDOW_HEIGHT;
 	settings.video.backend = fplVideoBackendType_OpenGL;
@@ -1972,17 +1986,7 @@ int main(int argc, char **argv) {
 
 	DemoState demo;
 	DemoInit(&demo);
-	switch(backendKind) {
-		case DemoBackendKind_GL46:
-			demo.hostLabel = DEMO_HOST_LABEL_GL46;
-			break;
-		case DemoBackendKind_GL3:
-			demo.hostLabel = DEMO_HOST_LABEL_GL3;
-			break;
-		default:
-			demo.hostLabel = DEMO_HOST_LABEL_GL1;
-			break;
-	}
+	demo.hostLabel = hostLabel;
 
 	// The other textures, and the only assets in the demo that are not a font: four icon cells the demo draws
 	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of
