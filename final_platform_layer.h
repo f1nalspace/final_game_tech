@@ -2058,7 +2058,9 @@ SOFTWARE.
 
 	@section section_support_status_supported_platforms Supported Platforms
 
-	- Windows 7 or higher
+	- Windows XP SP3 or higher, functions of Windows Vista or higher are loaded at runtime
+		- Windows XP 32 bit: MinGW-w64 with the msvcrt runtime (-mcrtdll=msvcrt-os), or MSVC with the v141_xp toolset
+		- MSVC 19.28 or newer (required for C17) cannot build for Windows XP anymore
 	- Linux 2.6 or higher
 	- Unix/BSD
 	- Raspberry Pi (Partially)
