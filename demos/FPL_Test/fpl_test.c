@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-20
+	- Added wildcard match tests
+
 	## 2026-09-28
 	- Fixed the condition test waiting without the mutex and without a flag
 	- Fixed the memory tests freeing a moved pointer
@@ -1689,6 +1692,35 @@ static void TestStrings(void) {
 		buffer[3] = 0;
 		size_t actual = fplGetStringLength(buffer);
 		ftAssertSizeEquals(3, actual);
+	}
+
+	ftMsg("Test string wildcard match\n");
+	{
+		ftAssertTrue(fplIsStringMatchWildcard("file.txt", "*.txt"));
+		ftAssertTrue(fplIsStringMatchWildcard("a.b.txt", "*.txt"));
+		ftAssertTrue(fplIsStringMatchWildcard("archive.tar.gz", "*.gz"));
+		ftAssertTrue(fplIsStringMatchWildcard("abcabd", "*abd"));
+		ftAssertTrue(fplIsStringMatchWildcard("x GLX_A GLX_B", "*GLX_B*"));
+		ftAssertTrue(fplIsStringMatchWildcard("NAME=Arch Linux", "NAME=*"));
+		ftAssertTrue(fplIsStringMatchWildcard("sysdefault:CARD=bcm2835", "*bcm2835*"));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "a?c"));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "***"));
+		ftAssertTrue(fplIsStringMatchWildcard("", "*"));
+		ftAssertTrue(fplIsStringMatchWildcard("", ""));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "abc"));
+		ftAssertTrue(fplIsStringMatchWildcard("a*c", "a*c"));
+	}
+	{
+		ftAssertFalse(fplIsStringMatchWildcard("file.txt.bak", "*.txt"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "a"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "abcd"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "a?"));
+		ftAssertFalse(fplIsStringMatchWildcard("ab", "a?c"));
+		ftAssertFalse(fplIsStringMatchWildcard("Makefile", "*.*"));
+		ftAssertFalse(fplIsStringMatchWildcard("", "?"));
+		ftAssertFalse(fplIsStringMatchWildcard("PRETTY_NAME=Arch", "NAME=*"));
+		ftAssertFalse(fplIsStringMatchWildcard(fpl_null, "*"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", fpl_null));
 	}
 
 	ftMsg("Test string equal\n");
