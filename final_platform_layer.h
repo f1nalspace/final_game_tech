@@ -209,6 +209,8 @@ SOFTWARE.
 	- New: [Win32] fplMillisecondsQuery() handles the GetTickCount() wraparound on Windows XP
 	- New: [Win32] fplLocaleFormat_ISO639 works on Windows XP
 	- Fixed: [Win32] fplGetSystemLocale(), fplGetUserLocale() and fplGetInputLocale() read an uninitialized buffer on failure
+	- Fixed: [MinGW] fpl_force_inline links with -O0, CPUID/XCR0/RDTSC work and the GCC warning pragmas apply
+	- Changed: [MinGW] fplAlignAs and fplMinAlignment take effect, aligned structs can change their layout
 
 	#### Process
 	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
@@ -2573,7 +2575,7 @@ SOFTWARE.
 //
 // Assembler keyword is compiler specific
 //
-#if defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_GCC)
+#if defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_MINGW)
 #	define fpl__m_Asm __asm__
 #elif defined(FPL_COMPILER_MSVC)
 #	define fpl__m_Asm __asm
@@ -2592,7 +2594,7 @@ SOFTWARE.
 //
 #if defined(FPL_COMPILER_MSVC)
 #	define fpl__MinAlignment 8
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
 #	if defined(FPL_CPU_64BIT)
 #		define fpl__MinAlignment 8
 #	else
@@ -2616,7 +2618,7 @@ SOFTWARE.
 #	define fpl__m_AlignAs(N) alignas(N)
 #elif defined(FPL_COMPILER_MSVC)
 #	define fpl__m_AlignAs(N) __declspec(align(N))
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
 #	define fpl__m_AlignAs(N) __attribute__((aligned(N)))
 #else
 #	define fpl__m_AlignAs(N)
@@ -2823,7 +2825,7 @@ fpl_common_api const char *fplGetVersion(void);
 #if defined(FPL_COMPILER_MSVC)
 #	define fpl__m_force_inline __forceinline
 #	define fpl__m_no_inline __declspec(noinline)
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
 #	define fpl__m_force_inline __attribute__((__always_inline__)) inline
 #	define fpl__m_no_inline __attribute__((noinline))
 #else
@@ -3358,7 +3360,7 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__(".inst 0xd4200000"); }
 #	elif defined(FPL_ARCH_ARM32)
 fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile__(".inst 0xe7f001f0"); }
-#	elif defined(FPL_COMPILER_GCC)
+#	elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_MINGW)
 #		define fpl__m_DebugBreak() __builtin_trap()
 #	else
 #		define FPL__INCLUDE_SIGNAL
@@ -3826,7 +3828,7 @@ struct IUnknown;
 //
 #if defined(FPL_COMPILER_MSVC)
 #	 include <intrin.h> // __cpuid, _Interlocked*
-#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
 #	 if defined(FPL_ARCH_X86) || defined(FPL_ARCH_X64)
 #		 include <cpuid.h> // __cpuid_count
 #	 endif // X86 or X64
@@ -11772,7 +11774,7 @@ fpl_common_api const char *fplGetVersion(void) {
 	// Disable "nonstandard extension used: non-constant aggregate initializer" warning
 #	pragma warning( disable : 4204 )
 
-#elif defined(FPL_COMPILER_GCC)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_MINGW)
 
 	// Start to overwrite warning settings (GCC)
 #	pragma GCC diagnostic push
@@ -16408,8 +16410,8 @@ fpl_common_api fplDateTimeCreationResult fplDateTimeCreate(const uint16_t year, 
 #		endif
 		// RDTSC for MSVC
 #		define fpl__m_RDTSC() ((uint64_t)__rdtsc())
-#	elif defined(FPL_COMPILER_GCC) ||defined(FPL_COMPILER_CLANG)
-		// CPUID for GCC/CLANG
+#	elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
+		// CPUID for GCC/CLANG/MINGW
 fpl_internal void fpl__m_CPUID_Impl(fplCPUIDLeaf *outLeaf, const uint32_t functionId) {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	__cpuid_count(functionId, 0, eax, ebx, ecx, edx);
@@ -46206,7 +46208,7 @@ fpl_common_api fplPlatformType fplGetPlatformType(void) {
 #if defined(FPL_COMPILER_MSVC)
 //! Reset MSVC warning settings
 #	pragma warning( pop )
-#elif defined(FPL_COMPILER_GCC)
+#elif defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_MINGW)
 //! Reset GCC warning settings
 #	pragma GCC diagnostic pop
 #elif defined(FPL_COMPILER_CLANG)
