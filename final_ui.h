@@ -204,6 +204,7 @@ SOFTWARE.
 	# v0.9.8:
 	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
 	- New: fuiImageSliceMode and fuiImageSliceBorders, the fields sliceMode and sliceBorders of fuiImageDesc
+	- New: fuiSetScale and fuiGetScale, the interface is laid out in ui units and drawn that many screen pixels per unit
 
 	# v0.9.7:
 	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
@@ -2379,8 +2380,14 @@ typedef struct fuiContext {
 	//! How many entries of the clip stack are in use
 	uint32_t clipDepth;
 
-	//! Size of the window the current frame is built for
+	//! Size of the window the current frame is built for, in ui units
 	fuiVec2i windowSize;
+	//! Size of the window the current frame is built for, in screen pixels as the application passed it
+	fuiVec2i screenSize;
+	//! Screen pixels per ui unit as set by @ref fuiSetScale, the next frame picks it up
+	float uiScale;
+	//! Screen pixels per ui unit of the frame that is built, latched by @ref fuiBeginDrawFrame
+	float frameScale;
 	//! True between @ref fuiBeginDrawFrame and @ref fuiEndDrawFrame
 	bool isBuildingFrame;
 	//! Set when geometry had to be dropped because the index type ran out of range
@@ -2630,6 +2637,23 @@ fui_api void fuiSetTheme(fuiContext *context, const fuiTheme *theme);
 * @return Returns a reference to the theme @ref fuiTheme, or null when the context is not initialized.
 */
 fui_api fuiTheme *fuiGetTheme(fuiContext *context);
+
+/**
+* @brief Sets how many screen pixels one ui unit covers, which scales the whole interface for high resolutions and DPI.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] scale Screen pixels per ui unit, 1.0 by default, zero or less restores 1.0.
+* @note Every measure of the interface is in ui units: the theme, the sizes inside the widgets and the rectangles and text heights the application passes. The input and the window size come in screen pixels and are divided by the scale, the draw data goes out in screen pixels.
+* @note Text is drawn at its pixel height times the scale. A font baked at the theme's font height times the scale and set again with @ref fuiSetFont maps its atlas one to one onto the screen, a font baked at another size is stretched.
+* @note Takes effect with the next @ref fuiBeginFrame or @ref fuiBeginDrawFrame.
+*/
+fui_api void fuiSetScale(fuiContext *context, const float scale);
+
+/**
+* @brief Returns how many screen pixels one ui unit covers.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns the scale set by @ref fuiSetScale, 1.0 by default or for a null context.
+*/
+fui_api float fuiGetScale(const fuiContext *context);
 
 /**
 * @brief Tests whether the context ran out of memory at any point since it was initialized.
@@ -6165,6 +6189,9 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 // > Context
 // ----------------------------------------------------------------------------
 
+//! Screen pixels per ui unit of a context nobody scaled
+#define FUI__DEFAULT_UI_SCALE 1.0f
+
 fui_api bool fuiInit(fuiContext *context, const fuiFont *font, const fuiAllocator *allocator) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
@@ -6183,6 +6210,8 @@ fui_api bool fuiInit(fuiContext *context, const fuiFont *font, const fuiAllocato
 	fui__ArenaInit(&context->arena, allocator, (size_t)FUI_ARENA_MIN_BLOCK_SIZE);
 	context->theme = fuiDefaultTheme();
 	context->font = font;
+	context->uiScale = FUI__DEFAULT_UI_SCALE;
+	context->frameScale = FUI__DEFAULT_UI_SCALE;
 	context->isInitialized = true;
 	return(true);
 }
@@ -6202,6 +6231,22 @@ fui_api void fuiSetFont(fuiContext *context, const fuiFont *font) {
 		return;
 	}
 	context->font = font;
+}
+
+fui_api void fuiSetScale(fuiContext *context, const float scale) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	context->uiScale = (scale > 0.0f) ? scale : FUI__DEFAULT_UI_SCALE;
+}
+
+fui_api float fuiGetScale(const fuiContext *context) {
+	if(context == fui_null) {
+		return(FUI__DEFAULT_UI_SCALE);
+	}
+	float result = (context->uiScale > 0.0f) ? context->uiScale : FUI__DEFAULT_UI_SCALE;
+	return(result);
 }
 
 fui_api void fuiSetTheme(fuiContext *context, const fuiTheme *theme) {
@@ -6769,6 +6814,72 @@ fui_inline void fui__WidgetStateMapGrow(fuiContext *context);
 //! Written with the clipping it is built out of, and called from the two ends of a frame and nowhere else
 static void fui__LiftOverlayCommands(fuiContext *context);
 
+//! The window size in ui units, rounded up so the frame scaled back to screen pixels still covers every pixel of the window
+fui_inline fuiVec2i fui__ScreenSizeToUiSize(const fuiVec2i screenSize, const float scale) {
+	float width = (float)screenSize.x / scale;
+	float height = (float)screenSize.y / scale;
+	int32_t wholeWidth = (int32_t)width;
+	int32_t wholeHeight = (int32_t)height;
+	if((float)wholeWidth < width) {
+		++wholeWidth;
+	}
+	if((float)wholeHeight < height) {
+		++wholeHeight;
+	}
+	fuiVec2i result = fuiV2i(wholeWidth, wholeHeight);
+	return(result);
+}
+
+fui_inline fuiRect fui__ScaleRect(const fuiRect rect, const float scale) {
+	fuiRect result = fuiRectMake(rect.x * scale, rect.y * scale, rect.w * scale, rect.h * scale);
+	return(result);
+}
+
+//! Turns the geometry of the frame from ui units into screen pixels: every vertex, every clip rectangle and every fast path payload
+static void fui__ScaleDrawGeometry(fuiContext *context, const float scale) {
+	fuiVertex *vertices = (fuiVertex *)context->vertexBuffer.items;
+	for(uint32_t vertexIndex = 0; vertexIndex < context->vertexBuffer.count; ++vertexIndex) {
+		fuiVertex *vertex = &vertices[vertexIndex];
+		vertex->position = fuiV2Scale(vertex->position, scale);
+	}
+	fuiDrawCommand *commands = (fuiDrawCommand *)context->commandBuffer.items;
+	for(uint32_t commandIndex = 0; commandIndex < context->commandBuffer.count; ++commandIndex) {
+		fuiDrawCommand *command = &commands[commandIndex];
+		command->clipRect = fui__ScaleRect(command->clipRect, scale);
+		switch(command->kind) {
+			case fuiDrawKind_Rect:
+			{
+				command->payload.rect.rect = fui__ScaleRect(command->payload.rect.rect, scale);
+			} break;
+			case fuiDrawKind_RectOutline:
+			{
+				command->payload.rectOutline.rect = fui__ScaleRect(command->payload.rectOutline.rect, scale);
+				command->payload.rectOutline.thickness *= scale;
+			} break;
+			case fuiDrawKind_Line:
+			{
+				command->payload.line.start = fuiV2Scale(command->payload.line.start, scale);
+				command->payload.line.end = fuiV2Scale(command->payload.line.end, scale);
+				command->payload.line.thickness *= scale;
+			} break;
+			case fuiDrawKind_Text:
+			{
+				command->payload.text.position = fuiV2Scale(command->payload.text.position, scale);
+				command->payload.text.pixelHeight *= scale;
+			} break;
+			case fuiDrawKind_Image:
+			{
+				command->payload.image.rect = fui__ScaleRect(command->payload.image.rect, scale);
+			} break;
+			case fuiDrawKind_Triangles:
+			default:
+			{
+				// The vertices above are all there is to it
+			} break;
+		}
+	}
+}
+
 fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fuiPass pass) {
 	FUI_ASSERT(context != fui_null && input != fui_null);
 	if(context == fui_null || input == fui_null || !context->isInitialized) {
@@ -6792,9 +6903,12 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 	// a caret blink stepped twice per frame would run at double speed.
 	context->frameTime = isDrawPass ? 0.0f : input->deltaTime;
 
+	// The cursor comes in screen pixels, the frame is built in ui units
 	fuiVec2 previousMousePosition = context->mousePosition;
-	context->mousePosition = input->mousePosition;
-	context->mouseDelta = context->hasSeenAFrame ? fuiV2Subtract(input->mousePosition, previousMousePosition) : fuiV2(0.0f, 0.0f);
+	float inverseScale = 1.0f / context->frameScale;
+	fuiVec2 mousePosition = fuiV2Scale(input->mousePosition, inverseScale);
+	context->mousePosition = mousePosition;
+	context->mouseDelta = context->hasSeenAFrame ? fuiV2Subtract(mousePosition, previousMousePosition) : fuiV2(0.0f, 0.0f);
 	context->mouseWheelDelta = isDrawPass ? 0.0f : input->mouseWheelDelta;
 	context->inputIsActive = input->isActive;
 
@@ -6980,7 +7094,11 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 		return;
 	}
 
-	context->windowSize = windowSize;
+	// The application passes screen pixels, the frame is laid out in ui units, rounded up so the scaled frame still covers the whole window
+	float frameScale = (context->uiScale > 0.0f) ? context->uiScale : FUI__DEFAULT_UI_SCALE;
+	context->frameScale = frameScale;
+	context->screenSize = windowSize;
+	context->windowSize = fui__ScreenSizeToUiSize(windowSize, frameScale);
 	context->vertexBuffer.count = 0;
 	context->indexBuffer.count = 0;
 	context->commandBuffer.count = 0;
@@ -7043,6 +7161,12 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	// its own relies on. Ahead of the clip stack going, since the lift touches no clip of its own.
 	fui__LiftOverlayCommands(context);
 
+	// The frame was built in ui units and goes out in screen pixels. Only once, a second end of the same frame must not scale it again
+	bool isFrameBeingBuilt = context->isBuildingFrame;
+	if(isFrameBeingBuilt && context->frameScale != FUI__DEFAULT_UI_SCALE) {
+		fui__ScaleDrawGeometry(context, context->frameScale);
+	}
+
 	// An unbalanced push must not leak into the next frame, so both stacks are emptied rather than trusted.
 	// The root container goes with them: the next frame opens its own.
 	context->clipDepth = 0;
@@ -7057,7 +7181,7 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	context->drawData.indexCount = context->indexBuffer.count;
 	context->drawData.commandCount = context->commandBuffer.count;
 	context->drawData.textBufferSize = context->textBuffer.count;
-	context->drawData.windowSize = context->windowSize;
+	context->drawData.windowSize = context->screenSize;
 }
 
 fui_api void fuiSetDrawBatching(fuiContext *context, const bool enabled) {
