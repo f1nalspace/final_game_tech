@@ -19,6 +19,7 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../demos/additions/final_math.h"
+	"../../demos/additions/final_geometry.h"
 	)
 
 set(MY_TRANSLATION_UNITS
