@@ -7,6 +7,7 @@ Description:
 	With --gl3 the same interface is drawn on an OpenGL 3.3 core profile through fui_backend_gl3.h instead, so both backends can be compared on the same frame.
 	With --gl46 it is drawn on an OpenGL 4.6 core profile through fui_backend_gl46.h, in batches of multi draw indirect calls.
 	With --nine-slice only the nine-slice panel opens, which is what screenshots of the three backends compare.
+	With --scale=<factor> the whole interface is drawn that much larger (fuiSetScale), in a window that much larger and with the font baked at that size.
 
 	Everything the library has: a menu bar with a submenu, a context menu, a command table whose
 	shortcuts fire from the keyboard AND print themselves into their own menu rows, tool strips, floating
@@ -41,6 +42,7 @@ Build (from the repository root):
 	./fui_test --gl3
 	./fui_test --gl46
 	./fui_test --nine-slice --gl3
+	./fui_test --scale=1.5 --gl46
 
 	Or with cmake:  cmake -S demos/FUI_Test -B build/fui_test && cmake --build build/fui_test
 
@@ -80,6 +82,7 @@ License:
 #include <fui_input_fpl.h>
 
 #include <stdio.h>
+#include <stdlib.h> // strtof
 #include <stdarg.h>
 #include <string.h>
 
@@ -102,6 +105,12 @@ License:
 #define DEMO_GL46_MINOR_VERSION 6
 // Command line switch that opens the nine-slice panel alone, so a screenshot shows nothing else
 #define DEMO_NINE_SLICE_ARGUMENT "--nine-slice"
+// Command line switch with the ui scale behind the equals sign, e.g. --scale=1.5
+#define DEMO_SCALE_ARGUMENT_PREFIX "--scale="
+// The ui scale without --scale=, and the range a given one is clamped to
+#define DEMO_DEFAULT_UI_SCALE 1.0f
+#define DEMO_MIN_UI_SCALE 0.5f
+#define DEMO_MAX_UI_SCALE 4.0f
 // Grid lines the core profile path sends to the GPU per draw call, two vertices of two floats each
 #define DEMO_GRID_BATCH_LINE_COUNT 512
 #define DEMO_GRID_VERTICES_PER_LINE 2
@@ -2090,14 +2099,21 @@ int main(int argc, char **argv) {
 	// The last backend switch on the command line wins
 	DemoBackendKind backendKind = DemoBackendKind_GL1;
 	bool showsNineSliceOnly = false;
+	float uiScale = DEMO_DEFAULT_UI_SCALE;
+	size_t scalePrefixLength = fplGetStringLength(DEMO_SCALE_ARGUMENT_PREFIX);
 	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
 		const char *argument = argv[argumentIndex];
+		size_t argumentLength = fplGetStringLength(argument);
+		bool isScaleArgument = (argumentLength > scalePrefixLength) && fplIsStringEqualLen(argument, scalePrefixLength, DEMO_SCALE_ARGUMENT_PREFIX, scalePrefixLength);
 		if(fplIsStringEqual(argument, DEMO_GL3_ARGUMENT)) {
 			backendKind = DemoBackendKind_GL3;
 		} else if(fplIsStringEqual(argument, DEMO_GL46_ARGUMENT)) {
 			backendKind = DemoBackendKind_GL46;
 		} else if(fplIsStringEqual(argument, DEMO_NINE_SLICE_ARGUMENT)) {
 			showsNineSliceOnly = true;
+		} else if(isScaleArgument) {
+			float requestedScale = strtof(argument + scalePrefixLength, fpl_null);
+			uiScale = fplMax(DEMO_MIN_UI_SCALE, fplMin(requestedScale, DEMO_MAX_UI_SCALE));
 		}
 	}
 
@@ -2106,8 +2122,11 @@ int main(int argc, char **argv) {
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
 	fplStringFormat(settings.window.title, fplArrayCount(settings.window.title), DEMO_WINDOW_TITLE_FORMAT, hostLabel);
-	settings.window.windowSize.width = DEMO_WINDOW_WIDTH;
-	settings.window.windowSize.height = DEMO_WINDOW_HEIGHT;
+	// The window grows with the scale, so the interface keeps the room it has at 1.0
+	float scaledWindowWidth = (float)DEMO_WINDOW_WIDTH * uiScale;
+	float scaledWindowHeight = (float)DEMO_WINDOW_HEIGHT * uiScale;
+	settings.window.windowSize.width = (uint32_t)scaledWindowWidth;
+	settings.window.windowSize.height = (uint32_t)scaledWindowHeight;
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	if(backendKind == DemoBackendKind_GL46) {
 		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
@@ -2142,11 +2161,18 @@ int main(int argc, char **argv) {
 
 	// One bake, one upload, and the interface has a font. Nothing is read from disk: the face is one of
 	// final_fonts.h's embedded ones, so the demo is a single executable with no asset beside it.
+	// Baked at the size it is drawn at on the screen, so the atlas maps one texel to one pixel at every scale
 	fuiStbttFont bakedFont;
 	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
-	bakeSettings.pixelHeight = DEMO_FONT_PIXEL_HEIGHT;
-	bakeSettings.atlasWidth = DEMO_FONT_ATLAS_SIDE;
-	bakeSettings.atlasHeight = DEMO_FONT_ATLAS_SIDE;
+	float scaledFontPixelHeight = DEMO_FONT_PIXEL_HEIGHT * uiScale;
+	uint32_t atlasSideFactor = (uint32_t)uiScale;
+	if((float)atlasSideFactor < uiScale) {
+		++atlasSideFactor;
+	}
+	uint32_t scaledAtlasSide = DEMO_FONT_ATLAS_SIDE * atlasSideFactor;
+	bakeSettings.pixelHeight = scaledFontPixelHeight;
+	bakeSettings.atlasWidth = scaledAtlasSide;
+	bakeSettings.atlasHeight = scaledAtlasSide;
 	if(!fuiStbttFontBake(&bakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
 		fprintf(stderr, "failed to bake the font\n");
 		DemoRendererRelease(&renderer);
@@ -2176,6 +2202,7 @@ int main(int argc, char **argv) {
 		fplPlatformRelease();
 		return 1;
 	}
+	fuiSetScale(&ui, uiScale);
 
 	// Optional, and worth wiring: without it the text field simply has no clipboard.
 	fuiPlatform platform = fplZeroInit;
