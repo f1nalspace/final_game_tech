@@ -2,7 +2,7 @@
 -------------------------------------------------------------------------------
 # Name
 	OpenGL Header Parser/Generator.	For internal usage only!
-	Version 1.1
+	Version 1.2
 
 # Author
 	Torsten Spaete
@@ -12,6 +12,10 @@
 	- C++/11 Compiler
 
 # Changelog
+	## v1.2
+	- Generates the definitions of the isGL_VERSION_x_y flags and the loader code that sets them
+	- Optional core profile header (--core glcorearb.h), the functions missing there are loaded as compatibility-only
+
 	## v1.1
 	- Generating better output to support extern
 
@@ -35,6 +39,7 @@
 #include <map>
 #include <assert.h>
 #include <algorithm> 
+#include <set>
 
 static const int HeaderIdent = 1;
 static const int LoaderIdent = 1;
@@ -46,8 +51,15 @@ static const char *ApiName = "fgl_api";
 static const char *FunctionPrefix = "fgl_";
 static const char *GLApiDefineName = "FGL_GLAPI";
 static const char *APIEntryDefineName = "FGL_APIENTRY";
-static const char *GetProcAddressName = "fgl__GetOpenGLProcAddress";
 static const char *NullName = "fgl_null";
+static const char *LoaderName = "loader";
+static const char *BeginFunctionBlockName = "fgl__BeginOpenGLFunctionBlock";
+static const char *EndFunctionBlockName = "fgl__EndOpenGLFunctionBlock";
+static const char *LoadCoreFunctionName = "fgl__LoadOpenGLCoreFunction";
+static const char *LoadCompatibilityFunctionName = "fgl__LoadOpenGLCompatibilityFunction";
+
+// Command line argument in front of the core profile header (glcorearb.h)
+static const char *CoreHeaderArgument = "--core";
 
 struct GLConstant {
 	std::string name;
@@ -397,35 +409,99 @@ std::string GetTabbedString(const int count) {
 	return(result);
 }
 
+struct GLVersionNumber {
+	int major;
+	int minor;
+};
+
+// Reads major and minor out of a version block name like GL_VERSION_4_6
+static GLVersionNumber ParseVersionNumber(const std::string &version) {
+	GLVersionNumber result = {};
+	size_t minorSeparatorIndex = version.find_last_of('_');
+	size_t majorSeparatorIndex = version.find_last_of('_', minorSeparatorIndex - 1);
+	size_t majorLength = minorSeparatorIndex - majorSeparatorIndex - 1;
+	std::string majorString = version.substr(majorSeparatorIndex + 1, majorLength);
+	std::string minorString = version.substr(minorSeparatorIndex + 1);
+	result.major = std::stoi(majorString);
+	result.minor = std::stoi(minorString);
+	return(result);
+}
+
+static bool LoadLines(const std::string &filePath, std::vector<std::string> &lines) {
+	std::cout << "Load '" << filePath << "'" << std::endl;
+	std::ifstream fileStream = std::ifstream(filePath, std::ios::in | std::ios::binary);
+	if(!fileStream.is_open()) {
+		std::cerr << "File '" << filePath << "' not found!" << std::endl;
+		return false;
+	}
+	for(std::string line; getline(fileStream, line); ) {
+		lines.emplace_back(line);
+	}
+	fileStream.close();
+	return true;
+}
+
+// Collects the names of all functions inside the version blocks of the core profile header, every other function of gl.h/glext.h is compatibility-only
+static std::set<std::string> ParseCoreFunctionNames(const std::vector<std::string> &lines) {
+	std::set<std::string> result;
+	bool isInsideVersionBlock = false;
+	for(const std::string &line : lines) {
+		if(line.find("#ifndef GL_VERSION_") != std::string::npos) {
+			isInsideVersionBlock = true;
+		} else if(line.find("#endif /* GL_VERSION_") != std::string::npos) {
+			isInsideVersionBlock = false;
+		} else if(isInsideVersionBlock && line.find("GLAPI ") != std::string::npos) {
+			GLPrototype proto = ParsePrototype(line, "GLAPI");
+			std::string name = Trim(proto.name);
+			result.insert(name);
+		}
+	}
+	return(result);
+}
+
 int main(int argc, char *args[]) {
 	if(argc < 3) {
 		std::cerr << "Files (gl.h and glext.h) arguments are missing!" << std::endl;
+		std::cerr << "Usage: OpenGLExtParser gl.h glext.h [" << CoreHeaderArgument << " glcorearb.h]" << std::endl;
 		return -1;
 	}
 
-	int inputFileCount = argc - 1;
-
 	std::vector<std::string> inputFilePaths;
-	for(int inputFileIndex = 1; inputFileIndex < argc; ++inputFileIndex) {
-		inputFilePaths.push_back(std::string(args[inputFileIndex]));
+	std::string coreHeaderFilePath = "";
+	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+		std::string argument = std::string(args[argumentIndex]);
+		int valueIndex = argumentIndex + 1;
+		if(argument.compare(CoreHeaderArgument) == 0 && valueIndex < argc) {
+			coreHeaderFilePath = std::string(args[valueIndex]);
+			argumentIndex = valueIndex;
+		} else {
+			inputFilePaths.push_back(argument);
+		}
 	}
+
+	size_t inputFileCount = inputFilePaths.size();
 
 	std::vector<std::string> lines;
 
-	for(int inputFileIndex = 0; inputFileIndex < inputFilePaths.size(); ++inputFileIndex) {
+	for(size_t inputFileIndex = 0; inputFileIndex < inputFileCount; ++inputFileIndex) {
 		const std::string &inputFilePath = inputFilePaths[inputFileIndex];
-		std::cout << "Load '" << inputFilePath << "'" << std::endl;
-		std::ifstream fileStream = std::ifstream(inputFilePath, std::ios::in | std::ios::binary);
-		if(fileStream.is_open()) {
-			for(std::string line; getline(fileStream, line); ) {
-				lines.emplace_back(line);
-			}
-			fileStream.close();
-		} else {
-			std::cerr << "File '" << inputFilePath << "' not found!" << std::endl;
-			return -1;
+		if(!LoadLines(inputFilePath, lines)) {
 			return -1;
 		}
+	}
+
+	// Without a core profile header every function is required in every context, as if it were a core function
+	bool hasCoreHeader = coreHeaderFilePath.size() > 0;
+	std::set<std::string> coreFunctionNames;
+	if(hasCoreHeader) {
+		std::vector<std::string> coreLines;
+		if(!LoadLines(coreHeaderFilePath, coreLines)) {
+			return -1;
+		}
+		coreFunctionNames = ParseCoreFunctionNames(coreLines);
+		std::cout << "Found " << coreFunctionNames.size() << " core profile functions" << std::endl;
+	} else {
+		std::cout << "No core profile header (" << CoreHeaderArgument << " glcorearb.h), every function is loaded as a core function" << std::endl;
 	}
 
 	std::string headerOutputFilePath = "header.txt";
@@ -509,7 +585,9 @@ int main(int argc, char *args[]) {
 
 		headerOutStream << "#" << ident0 << "ifndef " << version << std::endl;
 
+		GLVersionNumber versionNumber = ParseVersionNumber(version);
 		headerOutStream << "#" << ident1 << "define " << version << " 1" << std::endl;
+		headerOutStream << ident1 << "//! Is OpenGL " << versionNumber.major << "." << versionNumber.minor << " available, see fglLoadOpenGLFunctions()" << std::endl;
 		headerOutStream << ident1 << ApiName << " bool is" << version << ";" << std::endl;
 		headerOutStream << std::endl;
 
@@ -576,7 +654,6 @@ int main(int argc, char *args[]) {
 	bodyOutStream << vident0 << "// Automatically generated. Do not modify by hand!" << std::endl;
 	bodyOutStream << vident0 << "//" << std::endl;
 	bodyOutStream << vident0 << "// *******************************************************************************" << std::endl;
-	bodyOutStream << std::endl;
 	for(auto it : prototypes) {
 		const std::string version = Trim(it.first);
 		const std::vector<GLPrototype> prototypeList = it.second;
@@ -586,11 +663,12 @@ int main(int argc, char *args[]) {
 
 		bodyOutStream << "#" << ident0 << "if " << version << std::endl;
 
+		bodyOutStream << ident1 << "bool is" << version << " = false;" << std::endl;
 		for(auto prototype : prototypeList) {
 			std::string originalName = Trim(prototype.name);
 			std::string typedefName = MakeFunctionPtrName(FunctionPrefix, originalName);
 			std::string staticFunctionName = FunctionPrefix + originalName;
-			bodyOutStream << ident1 << ApiName << " " << typedefName << "* " << staticFunctionName << " = " << NullName << ";" << std::endl;
+			bodyOutStream << ident1 << typedefName << "* " << staticFunctionName << " = " << NullName << ";" << std::endl;
 		}
 
 		bodyOutStream << "#" << ident0 << "endif //" << version << std::endl;
@@ -614,12 +692,17 @@ int main(int argc, char *args[]) {
 
 		bodyOutStream << "#" << ident0 << "if " << version << std::endl;
 
+		GLVersionNumber versionNumber = ParseVersionNumber(version);
+		bodyOutStream << ident1 << BeginFunctionBlockName << "(&" << LoaderName << ", \"" << version << "\", " << versionNumber.major << ", " << versionNumber.minor << ");" << std::endl;
 		for(auto prototype : prototypeList) {
 			std::string originalName = Trim(prototype.name);
 			std::string funcPtrName = MakeFunctionPtrName(FunctionPrefix, originalName);
 			std::string staticFunctionName = FunctionPrefix + originalName;
-			bodyOutStream << ident1 << staticFunctionName << " = (" << funcPtrName << " *)" << GetProcAddressName << "(state, \"" << originalName << "\");" << std::endl;
+			bool isCoreFunction = !hasCoreHeader || coreFunctionNames.count(originalName) > 0;
+			const char *loadFunctionName = isCoreFunction ? LoadCoreFunctionName : LoadCompatibilityFunctionName;
+			bodyOutStream << ident1 << staticFunctionName << " = (" << funcPtrName << " *)" << loadFunctionName << "(&" << LoaderName << ", \"" << originalName << "\");" << std::endl;
 		}
+		bodyOutStream << ident1 << "is" << version << " = " << EndFunctionBlockName << "(&" << LoaderName << ");" << std::endl;
 
 		bodyOutStream << "#" << ident0 << "endif //" << version << std::endl;
 		bodyOutStream << std::endl;
