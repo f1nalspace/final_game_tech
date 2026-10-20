@@ -2117,6 +2117,43 @@
 	}
 	@endcode
 
+	@subsection subsection_category_video_modern_opengl_context_flags Debug and no error contexts
+
+	Set @ref fplOpenGLSettings.contextFlags to @ref fplOpenGLContextFlags_Debug for a debug context (KHR_debug output) or to @ref fplOpenGLContextFlags_NoError for a context without error checking.<br>
+	Both flags exclude each other, FPL then logs an error and requests the debug context only.<br>
+	A no error context needs WGL_ARB_create_context_no_error or GLX_ARB_create_context_no_error. Without the extension, or when the driver refuses it anyway, the context is created without the flag.<br>
+	@ref fplVideoSurfaceOpenGL.contextFlags (from @ref fplGetVideoSurface()) tells which flags the context was requested with.<br>
+
+	@subsection subsection_category_video_modern_opengl_fallback Fallback versions and the legacy fallback
+
+	When the desired version cannot be created, FPL tries the versions in @ref fplOpenGLSettings.fallbackVersions one after another (up to @ref FPL_MAX_OPENGL_FALLBACK_VERSION_COUNT, the number is set in @ref fplOpenGLSettings.fallbackVersionCount).<br>
+	When none of them works either, FPL keeps a legacy context. Set @ref fplOpenGLSettings.isLegacyFallbackDisabled to let @ref fplPlatformInit() fail with @ref fplPlatformResultType_FailedVideo instead.<br>
+	@ref fplVideoSurfaceOpenGL.versionIndex tells which version created the context: 0 is the desired version, 1 or higher is fallbackVersions[versionIndex - 1] and @ref FPL_OPENGL_VERSION_INDEX_LEGACY_FALLBACK is the legacy fallback.<br>
+
+	@code{.c}
+	fplSettings settings;
+	fplSetDefaultSettings(&settings);
+	fplOpenGLSettings *glSettings = &settings.video.graphics.opengl;
+
+	// OpenGL 4.6 core with a debug context, else 3.3 core, but never a legacy context
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	glSettings->compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
+	glSettings->majorVersion = 4;
+	glSettings->minorVersion = 6;
+	glSettings->contextFlags = fplOpenGLContextFlags_Debug;
+	glSettings->fallbackVersions[0].compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
+	glSettings->fallbackVersions[0].majorVersion = 3;
+	glSettings->fallbackVersions[0].minorVersion = 3;
+	glSettings->fallbackVersionCount = 1;
+	glSettings->isLegacyFallbackDisabled = true;
+
+	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
+		const fplVideoSurface *surface = fplGetVideoSurface();
+		bool isGL46 = surface->opengl.versionIndex == 0;
+		// ... modern context is ready
+	}
+	@endcode
+
 	@section section_category_video_modern_opengl_notes Notes
 	FPL does not provide any OpenGL types, prototypes, or functions - it's fully up to the caller how to handle this.
 	<br>
