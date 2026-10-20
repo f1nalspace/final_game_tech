@@ -12,6 +12,10 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog
+	## 2026-10-20
+	- Fixed QuatYaw() always returned Pi/2
+	- Fixed AngleFromDegrees() and AngleFromRadians() swapped radians and degrees in C
+
 	## 2026-10-06
 	- Added function RGBAToLinearHex24WithAlpha()
 
@@ -1017,12 +1021,14 @@ typedef struct Angle {
 #endif
 } Angle;
 
-fpl_force_inline Angle AngleFromDegrees(const float degrees) {
-	return fplStructInit(Angle, degrees, degrees * F32Deg2Rad);
+fpl_extern_inline Angle AngleFromDegrees(const float degrees) {
+	float radians = degrees * F32Deg2Rad;
+	return fplStructInit(Angle, radians, degrees);
 }
 
-fpl_force_inline Angle AngleFromRadians(const float radians) {
-	return fplStructInit(Angle, radians* F32Rad2Deg, radians);
+fpl_extern_inline Angle AngleFromRadians(const float radians) {
+	float degrees = radians * F32Rad2Deg;
+	return fplStructInit(Angle, radians, degrees);
 }
 
 //
@@ -2667,7 +2673,9 @@ fpl_extern_inline float QuatPitch(const Quaternion q) {
 * @return The yaw angle in radians.
 */
 fpl_extern_inline float QuatYaw(const Quaternion q) {
-	float result = F32ArcSin(F32Clamp(-2.0f * (q.x * q.z - q.w * q.y), 1.0f, 1.0f));
+	float sinYaw = -2.0f * (q.x * q.z - q.w * q.y);
+	float clampedSinYaw = F32Clamp(sinYaw, -1.0f, 1.0f);
+	float result = F32ArcSin(clampedSinYaw);
 	return(result);
 }
 
