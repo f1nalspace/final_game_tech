@@ -2065,7 +2065,7 @@ SOFTWARE.
 
 	@section section_support_status_supported_archs Supported Architectures
 
-	- x86
+	- x86 (i586 or higher, i386/i486 are not supported)
 	- x64
 	- Arm32 (partially)
 	- Arm64 (partially)

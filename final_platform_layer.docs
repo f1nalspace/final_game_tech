@@ -81,6 +81,8 @@
 	- Linux (x86/x64/arm)
 	- Unix/BSD (x86/x64)
 
+	@warning x86 needs an i586 or higher, i386/i486 are not supported!
+
 	For more details see the page: @subpage page_support_status
 	
 	@subsection subsection_intro_supported_compilers Which compilers are supported by FPL?
