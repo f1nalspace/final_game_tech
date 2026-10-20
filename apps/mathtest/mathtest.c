@@ -13,6 +13,8 @@ Description:
 	(V4fMultM4f, M4fInverse, M4fTranspose, V2iProject/V2fUnproject, QuatToMat4,
 	M4fRotationY) and self-defined constants (no math.h constants).
 
+	Also covers the 3D helpers: QuatSlerp, QuatFromEuler, QuatFromMat3, QuatLookRotation, M3fInverse, M4fToNormalMatrix and the Frustum3f tests of final_geometry.h.
+
 	Returns 0 when all tests pass, 1 otherwise.
 
 Requirements:
@@ -30,6 +32,7 @@ License:
 
 #include <final_platform_layer.h>
 #include <final_math.h>
+#include <final_geometry.h>
 
 #include <stdio.h>
 
@@ -510,6 +513,385 @@ static void TestQuaternion(void) {
 }
 
 //
+// Angle
+//
+static void TestAngle(void) {
+	Section("Angle - C constructors keep radians and degrees apart");
+	Angle fromDegrees = AngleFromDegrees(90.0f);
+	CHECK_F(fromDegrees.radians, F32Pi * 0.5f);
+	CHECK_F(fromDegrees.degree, 90.0f);
+	Angle fromRadians = AngleFromRadians(F32Pi);
+	CHECK_F(fromRadians.radians, F32Pi);
+	CHECK_F(fromRadians.degree, 180.0f);
+}
+
+//
+// Quaternion - slerp, euler, matrix and look rotation
+//
+static bool QuatEq(const Quaternion a, const Quaternion b) {
+	return FloatEq(a.w, b.w) && FloatEq(a.x, b.x) && FloatEq(a.y, b.y) && FloatEq(a.z, b.z);
+}
+
+// q and -q are the same rotation
+static bool QuatSameRotation(const Quaternion a, const Quaternion b) {
+	Quaternion negatedB = QuatMultScalar(b, -1.0f);
+	return QuatEq(a, b) || QuatEq(a, negatedB);
+}
+
+static void TestQuaternion3D(void) {
+	const Vec3f axisX = V3fInit(1, 0, 0);
+	const Vec3f axisY = V3fInit(0, 1, 0);
+	const Vec3f axisZ = V3fInit(0, 0, 1);
+	const Vec3f negativeAxisZ = V3fInit(0, 0, -1);
+	const float quarterTurn = F32Pi * 0.5f;
+
+	Section("Quaternion - slerp endpoints and constant speed");
+	Quaternion identity = QuatIdentity();
+	Quaternion zQuarter = QuatFromAngleAxis(quarterTurn, axisZ);
+	Quaternion slerpStart = QuatSlerp(identity, 0.0f, zQuarter);
+	Quaternion slerpEnd = QuatSlerp(identity, 1.0f, zQuarter);
+	Quaternion slerpHalf = QuatSlerp(identity, 0.5f, zQuarter);
+	Quaternion slerpQuarter = QuatSlerp(identity, 0.25f, zQuarter);
+	Quaternion zEighth = QuatFromAngleAxis(quarterTurn * 0.5f, axisZ);
+	Quaternion zSixteenth = QuatFromAngleAxis(quarterTurn * 0.25f, axisZ);
+	CHECK(QuatEq(slerpStart, identity));
+	CHECK(QuatEq(slerpEnd, zQuarter));
+	CHECK(QuatEq(slerpHalf, zEighth));
+	CHECK(QuatEq(slerpQuarter, zSixteenth));
+	float slerpHalfLength = QuatLength(slerpHalf);
+	CHECK_F(slerpHalfLength, 1.0f);
+
+	Section("Quaternion - slerp takes the shortest path");
+	Quaternion zQuarterNegated = QuatMultScalar(zQuarter, -1.0f);
+	Quaternion slerpHalfNegated = QuatSlerp(identity, 0.5f, zQuarterNegated);
+	CHECK(QuatSameRotation(slerpHalfNegated, zEighth));
+	Quaternion zLarge = QuatFromAngleAxis(F32Pi * 0.9f, axisZ);
+	Quaternion slerpLargeHalf = QuatSlerp(identity, 0.5f, zLarge);
+	Quaternion zLargeHalf = QuatFromAngleAxis(F32Pi * 0.45f, axisZ);
+	CHECK(QuatEq(slerpLargeHalf, zLargeHalf));
+
+	Section("Quaternion - slerp near-parallel fallback");
+	const float tinyAngle = 0.01f;
+	Quaternion zTiny = QuatFromAngleAxis(tinyAngle, axisZ);
+	Quaternion slerpTinyHalf = QuatSlerp(identity, 0.5f, zTiny);
+	Quaternion zTinyHalf = QuatFromAngleAxis(tinyAngle * 0.5f, axisZ);
+	CHECK(QuatEq(slerpTinyHalf, zTinyHalf));
+	float slerpTinyLength = QuatLength(slerpTinyHalf);
+	CHECK_F(slerpTinyLength, 1.0f);
+	Quaternion slerpSame = QuatSlerp(zQuarter, 0.7f, zQuarter);
+	CHECK(QuatEq(slerpSame, zQuarter));
+
+	Section("Quaternion - slerp general axis");
+	Vec3f tiltedDirection = V3fInit(1, 2, 3);
+	Vec3f tiltedAxis = V3fNormalize(tiltedDirection);
+	Quaternion tiltedStart = QuatFromAngleAxis(0.4f, tiltedAxis);
+	Quaternion tiltedEnd = QuatFromAngleAxis(1.6f, tiltedAxis);
+	Quaternion slerpTilted = QuatSlerp(tiltedStart, 0.25f, tiltedEnd);
+	Quaternion tiltedExpected = QuatFromAngleAxis(0.7f, tiltedAxis);
+	CHECK(QuatEq(slerpTilted, tiltedExpected));
+
+	Section("Quaternion - euler single axes and order");
+	Quaternion eulerZero = QuatFromEuler(0.0f, 0.0f, 0.0f);
+	CHECK(QuatEq(eulerZero, identity));
+	Quaternion eulerPitch = QuatFromEuler(0.3f, 0.0f, 0.0f);
+	Quaternion eulerYaw = QuatFromEuler(0.0f, 0.4f, 0.0f);
+	Quaternion eulerRoll = QuatFromEuler(0.0f, 0.0f, 0.5f);
+	Quaternion pitchAxisAngle = QuatFromAngleAxis(0.3f, axisX);
+	Quaternion yawAxisAngle = QuatFromAngleAxis(0.4f, axisY);
+	Quaternion rollAxisAngle = QuatFromAngleAxis(0.5f, axisZ);
+	CHECK(QuatEq(eulerPitch, pitchAxisAngle));
+	CHECK(QuatEq(eulerYaw, yawAxisAngle));
+	CHECK(QuatEq(eulerRoll, rollAxisAngle));
+	Quaternion eulerAll = QuatFromEuler(0.3f, 0.4f, 0.5f);
+	Quaternion rollYaw = QuatCross(rollAxisAngle, yawAxisAngle);
+	Quaternion rollYawPitch = QuatCross(rollYaw, pitchAxisAngle);
+	CHECK(QuatEq(eulerAll, rollYawPitch));
+
+	Section("Quaternion - euler camera yaw turns -z to -x");
+	Quaternion cameraYaw = QuatFromEuler(0.0f, quarterTurn, 0.0f);
+	Vec3f cameraForward = QuatMultV3f(cameraYaw, negativeAxisZ);
+	CHECK(V3Eq(cameraForward, -1.0f, 0.0f, 0.0f));
+
+	Section("Quaternion - QuatYaw no longer stuck at Pi/2");
+	float yawOfYaw = QuatYaw(yawAxisAngle);
+	CHECK_F(yawOfYaw, 0.4f);
+	Quaternion negativeYaw = QuatFromAngleAxis(-0.6f, axisY);
+	float yawOfNegativeYaw = QuatYaw(negativeYaw);
+	CHECK_F(yawOfNegativeYaw, -0.6f);
+
+	Section("Quaternion - euler round trips through QuatPitch/QuatYaw/QuatRoll");
+	struct { float pitch, yaw, roll; } eulerCases[] = {
+		{ 0.3f, 0.4f, 0.5f },
+		{ -1.2f, 0.9f, 2.5f },
+		{ 2.8f, -1.3f, -0.7f },
+		{ -0.1f, -0.2f, -3.0f },
+	};
+	const int eulerCaseCount = (int)fplArrayCount(eulerCases);
+	for (int i = 0; i < eulerCaseCount; ++i) {
+		Quaternion eulerQuat = QuatFromEuler(eulerCases[i].pitch, eulerCases[i].yaw, eulerCases[i].roll);
+		float pitchBack = QuatPitch(eulerQuat);
+		float yawBack = QuatYaw(eulerQuat);
+		float rollBack = QuatRoll(eulerQuat);
+		CHECK(FloatEq(pitchBack, eulerCases[i].pitch) && FloatEq(yawBack, eulerCases[i].yaw) && FloatEq(rollBack, eulerCases[i].roll));
+	}
+
+	Section("Quaternion - QuatFromMat3 round trips (all four branches)");
+	// A small angle hits the positive trace branch, half turns around x, y and z hit the three diagonal branches
+	Vec3f mostlyXDirection = V3fInit(-1, 0.5f, 0.2f);
+	Vec3f mostlyZDirection = V3fInit(0.1f, -0.3f, 1);
+	Vec3f mostlyXAxis = V3fNormalize(mostlyXDirection);
+	Vec3f mostlyZAxis = V3fNormalize(mostlyZDirection);
+	Quaternion matrixCases[] = {
+		QuatFromAngleAxis(0.8f, tiltedAxis),
+		QuatFromAngleAxis(F32Pi, axisX),
+		QuatFromAngleAxis(F32Pi, axisY),
+		QuatFromAngleAxis(F32Pi, axisZ),
+		QuatFromAngleAxis(2.9f, mostlyXAxis),
+		QuatFromAngleAxis(3.0f, mostlyZAxis),
+	};
+	const int matrixCaseCount = (int)fplArrayCount(matrixCases);
+	for (int i = 0; i < matrixCaseCount; ++i) {
+		Mat4f rotation4 = QuatToMat4(matrixCases[i]);
+		Mat3f rotation3 = M3fFromMat4(rotation4);
+		Quaternion fromMatrix = QuatFromMat3(rotation3);
+		CHECK(QuatSameRotation(fromMatrix, matrixCases[i]));
+	}
+
+	Section("Quaternion - look rotation");
+	Quaternion lookForward = QuatLookRotation(negativeAxisZ, axisY);
+	CHECK(QuatSameRotation(lookForward, identity));
+	Vec3f unnormalizedRight = V3fInit(5, 0, 0);
+	Quaternion lookRight = QuatLookRotation(unnormalizedRight, axisY);
+	Vec3f lookRightForward = QuatMultV3f(lookRight, negativeAxisZ);
+	Vec3f lookRightUp = QuatMultV3f(lookRight, axisY);
+	CHECK(V3Eq(lookRightForward, 1.0f, 0.0f, 0.0f));
+	CHECK(V3Eq(lookRightUp, 0.0f, 1.0f, 0.0f));
+
+	Vec3f lookDirectionRaw = V3fInit(1, 2, -3);
+	Vec3f lookDirection = V3fNormalize(lookDirectionRaw);
+	Quaternion lookGeneral = QuatLookRotation(lookDirection, axisY);
+	Vec3f lookGeneralForward = QuatMultV3f(lookGeneral, negativeAxisZ);
+	Vec3f lookGeneralUp = QuatMultV3f(lookGeneral, axisY);
+	Vec3f lookGeneralRight = QuatMultV3f(lookGeneral, axisX);
+	CHECK(V3Eq(lookGeneralForward, lookDirection.x, lookDirection.y, lookDirection.z));
+	float upDotDirection = V3fDot(lookGeneralUp, lookDirection);
+	float upDotWorldUp = V3fDot(lookGeneralUp, axisY);
+	float rightDotWorldUp = V3fDot(lookGeneralRight, axisY);
+	CHECK_F(upDotDirection, 0.0f);
+	CHECK(upDotWorldUp > 0.0f);
+	CHECK_F(rightDotWorldUp, 0.0f);
+	float lookGeneralLength = QuatLength(lookGeneral);
+	CHECK_F(lookGeneralLength, 1.0f);
+
+	Section("Quaternion - look rotation is the inverse of M4fLookAtRH");
+	Vec3f eye = V3fInit(3, -2, 7);
+	Vec3f lookTarget = V3fAdd(eye, lookDirection);
+	Mat4f lookAtView = M4fLookAtRH(eye, lookTarget, axisY);
+	Mat3f lookAtRotation = M3fFromMat4(lookAtView);
+	Quaternion lookGeneralInverse = QuatConjugate(lookGeneral);
+	Mat4f lookInverseMatrix4 = QuatToMat4(lookGeneralInverse);
+	Mat3f lookInverseMatrix = M3fFromMat4(lookInverseMatrix4);
+	CHECK(Mat3Eq(lookAtRotation, lookInverseMatrix));
+
+	Section("Quaternion - look rotation parallel to up");
+	Quaternion lookUp = QuatLookRotation(axisY, axisY);
+	Vec3f lookUpForward = QuatMultV3f(lookUp, negativeAxisZ);
+	float lookUpLength = QuatLength(lookUp);
+	CHECK(V3Eq(lookUpForward, 0.0f, 1.0f, 0.0f));
+	CHECK_F(lookUpLength, 1.0f);
+	Quaternion lookAlongZ = QuatLookRotation(negativeAxisZ, axisZ);
+	Vec3f lookAlongZForward = QuatMultV3f(lookAlongZ, negativeAxisZ);
+	float lookAlongZLength = QuatLength(lookAlongZ);
+	CHECK(V3Eq(lookAlongZForward, 0.0f, 0.0f, -1.0f));
+	CHECK_F(lookAlongZLength, 1.0f);
+}
+
+//
+// Mat3f - determinant, inverse and normal matrix
+//
+static void TestMat3Inverse(void) {
+	const Vec3f planeNormal = V3fInit(1, 1, 0);
+	const Vec3f planeTangentA = V3fInit(1, -1, 0);
+	const Vec3f planeTangentB = V3fInit(0, 0, 1);
+
+	Section("Mat3f - determinant");
+	Mat3f identity = M3fIdentity();
+	float identityDeterminant = M3fDeterminant(identity);
+	CHECK_F(identityDeterminant, 1.0f);
+	Vec3f scaleFactors = V3fInit(2, 3, 4);
+	Mat4f scale4 = M4fScaleV3(scaleFactors);
+	Mat3f scale3 = M3fFromMat4(scale4);
+	float scaleDeterminant = M3fDeterminant(scale3);
+	CHECK_F(scaleDeterminant, 24.0f);
+	Mat3f singular;
+	singular.col1 = V3fInit(2, 0, 1);
+	singular.col2 = V3fInit(1, 3, 2);
+	singular.col3 = V3fInit(1, 1, 1);
+	// det of rows (2 1 1 / 0 3 1 / 1 2 1) = 2*(3-2) - 1*(0-1) + 1*(0-3) = 0
+	float singularDeterminant = M3fDeterminant(singular);
+	CHECK_F(singularDeterminant, 0.0f);
+	Mat3f general;
+	general.col1 = V3fInit(4, 2, 1);
+	general.col2 = V3fInit(-1, 3, 0.5f);
+	general.col3 = V3fInit(2, -2, 5);
+	// det of rows (4 -1 2 / 2 3 -2 / 1 0.5 5) = 4*(15+1) + 1*(10+2) + 2*(1-3) = 72
+	float generalDeterminant = M3fDeterminant(general);
+	CHECK_F(generalDeterminant, 72.0f);
+
+	Section("Mat3f - inverse");
+	Mat3f generalInverse = M3fInverse(general);
+	Mat3f generalTimesInverse = M3fMult(general, generalInverse);
+	Mat3f inverseTimesGeneral = M3fMult(generalInverse, general);
+	CHECK(Mat3IsIdentity(generalTimesInverse));
+	CHECK(Mat3IsIdentity(inverseTimesGeneral));
+	Mat3f singularInverse = M3fInverse(singular);
+	Mat3f zero = M3fInit(0.0f);
+	CHECK(Mat3Eq(singularInverse, zero));
+
+	Section("Mat3f - normal matrix keeps normals perpendicular under non-uniform scale");
+	// The plane x + y = 1 has the tangent (1,-1,0) and the normal (1,1,0); scaling x by 2 turns the tangent into (2,-1,0)
+	Vec3f stretchFactors = V3fInit(2, 1, 1);
+	Mat4f stretchX = M4fScaleV3(stretchFactors);
+	Mat3f stretchNormalMatrix = M4fToNormalMatrix(stretchX);
+	Vec3f stretchedNormal = V3fMultM3f(stretchNormalMatrix, planeNormal);
+	Vec3f stretchedNormalUnit = V3fNormalize(stretchedNormal);
+	Mat3f stretchUpper = M3fFromMat4(stretchX);
+	Vec3f stretchedTangent = V3fMultM3f(stretchUpper, planeTangentA);
+	float normalDotTangent = V3fDot(stretchedNormal, stretchedTangent);
+	CHECK_F(normalDotTangent, 0.0f);
+	CHECK(V3Eq(stretchedNormalUnit, 0.4472136f, 0.8944272f, 0.0f));
+
+	Section("Mat3f - normal matrix ignores translation, equals the rotation for rigid transforms");
+	Vec3f rigidOffset = V3fInit(10, -4, 3);
+	Mat4f rigidRotation = M4fRotationY(0.7f);
+	Mat4f rigidTranslation = M4fTranslationV3(rigidOffset);
+	Mat4f rigid = M4fMult(rigidTranslation, rigidRotation);
+	Mat3f rigidNormalMatrix = M4fToNormalMatrix(rigid);
+	Mat3f rigidRotation3 = M3fFromMat4(rigidRotation);
+	CHECK(Mat3Eq(rigidNormalMatrix, rigidRotation3));
+
+	Section("Mat3f - normal matrix of rotation * non-uniform scale");
+	Vec3f skewFactors = V3fInit(3, 0.5f, 2);
+	Mat4f skewScale = M4fScaleV3(skewFactors);
+	Mat4f skewModel = M4fMult(rigid, skewScale);
+	Mat3f skewNormalMatrix = M4fToNormalMatrix(skewModel);
+	Mat3f skewUpper = M3fFromMat4(skewModel);
+	Vec3f skewTangentA = V3fMultM3f(skewUpper, planeTangentA);
+	Vec3f skewTangentB = V3fMultM3f(skewUpper, planeTangentB);
+	Vec3f skewNormal = V3fMultM3f(skewNormalMatrix, planeNormal);
+	float skewDotA = V3fDot(skewNormal, skewTangentA);
+	float skewDotB = V3fDot(skewNormal, skewTangentB);
+	CHECK_F(skewDotA, 0.0f);
+	CHECK_F(skewDotB, 0.0f);
+}
+
+//
+// Plane3f and Frustum3f (final_geometry.h)
+//
+static bool PlaneEq(const Plane3f plane, const float normalX, const float normalY, const float normalZ, const float distance) {
+	return V3Eq(plane.normal, normalX, normalY, normalZ) && FloatEq(plane.distance, distance);
+}
+
+static void TestFrustum(void) {
+	const float halfSqrt2 = 0.70710678f;
+
+	Section("Plane3f - from equation and signed distance");
+	Vec4f scaledEquation = V4fInit(0, 2, 0, -4);
+	Plane3f groundOffset = Plane3fInitFromEquation(scaledEquation);
+	CHECK(PlaneEq(groundOffset, 0.0f, 1.0f, 0.0f, 2.0f));
+	Vec3f abovePlane = V3fInit(7, 5, -3);
+	Vec3f belowPlane = V3fInit(0, -1, 0);
+	float aboveDistance = Plane3fSignedDistance(&groundOffset, abovePlane);
+	float belowDistance = Plane3fSignedDistance(&groundOffset, belowPlane);
+	CHECK_F(aboveDistance, 3.0f);
+	CHECK_F(belowDistance, -3.0f);
+	Vec4f zeroEquation = V4fInit(0, 0, 0, 5);
+	Plane3f zeroPlane = Plane3fInitFromEquation(zeroEquation);
+	CHECK(PlaneEq(zeroPlane, 0.0f, 0.0f, 0.0f, 0.0f));
+
+	Section("Frustum3f - planes of an orthographic projection");
+	// View space: x in [-2, 2], y in [-1, 1], z in [-10, -1]
+	Mat4f ortho = M4fOrthoRH(-2, 2, -1, 1, 1, 10);
+	Frustum3f orthoFrustum = Frustum3fInitFromMatrix(ortho);
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Left], 1.0f, 0.0f, 0.0f, -2.0f));
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Right], -1.0f, 0.0f, 0.0f, -2.0f));
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Bottom], 0.0f, 1.0f, 0.0f, -1.0f));
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Top], 0.0f, -1.0f, 0.0f, -1.0f));
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Near], 0.0f, 0.0f, -1.0f, 1.0f));
+	CHECK(PlaneEq(orthoFrustum.planes[Frustum3fPlane_Far], 0.0f, 0.0f, 1.0f, -10.0f));
+
+	Section("Frustum3f - planes of a perspective projection (90 degrees, near 1, far 10)");
+	Mat4f perspective = M4fPerspectiveRH(F32Pi * 0.5f, 1.0f, 1.0f, 10.0f);
+	Frustum3f perspectiveFrustum = Frustum3fInitFromMatrix(perspective);
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Left], halfSqrt2, 0.0f, -halfSqrt2, 0.0f));
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Right], -halfSqrt2, 0.0f, -halfSqrt2, 0.0f));
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Bottom], 0.0f, halfSqrt2, -halfSqrt2, 0.0f));
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Top], 0.0f, -halfSqrt2, -halfSqrt2, 0.0f));
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Near], 0.0f, 0.0f, -1.0f, 1.0f));
+	CHECK(PlaneEq(perspectiveFrustum.planes[Frustum3fPlane_Far], 0.0f, 0.0f, 1.0f, -10.0f));
+
+	Section("Frustum3f - world space planes of projection * view");
+	// The camera at z=5 looks down -z, so the near plane sits at z=4 and the far plane at z=-5
+	Vec3f eye = V3fInit(0, 0, 5);
+	Vec3f origin = V3fZero();
+	Vec3f up = V3fInit(0, 1, 0);
+	Mat4f view = M4fLookAtRH(eye, origin, up);
+	Mat4f viewProjection = M4fMult(perspective, view);
+	Frustum3f worldFrustum = Frustum3fInitFromMatrix(viewProjection);
+	CHECK(PlaneEq(worldFrustum.planes[Frustum3fPlane_Near], 0.0f, 0.0f, -1.0f, -4.0f));
+	CHECK(PlaneEq(worldFrustum.planes[Frustum3fPlane_Far], 0.0f, 0.0f, 1.0f, -5.0f));
+
+	Section("Frustum3f - sphere inside, outside and intersecting");
+	struct { Vec3f center; float radius; Frustum3fContainment expected; } sphereCases[] = {
+		{ V3fInit(0, 0, -5), 1.0f, Frustum3fContainment_Inside },
+		{ V3fInit(0, 0, 5), 1.0f, Frustum3fContainment_Outside },
+		{ V3fInit(0, 0, -20), 1.0f, Frustum3fContainment_Outside },
+		{ V3fInit(-10, 0, -5), 1.0f, Frustum3fContainment_Outside },
+		{ V3fInit(0, 0, -1), 0.5f, Frustum3fContainment_Intersecting },
+		{ V3fInit(-5, 0, -5), 1.0f, Frustum3fContainment_Intersecting },
+		{ V3fInit(0, 0, -10.5f), 1.0f, Frustum3fContainment_Intersecting },
+		{ V3fInit(0, -50, -5), 100.0f, Frustum3fContainment_Intersecting },
+	};
+	const int sphereCaseCount = (int)fplArrayCount(sphereCases);
+	for (int i = 0; i < sphereCaseCount; ++i) {
+		Sphere3f sphere = Sphere3fInit(sphereCases[i].center, sphereCases[i].radius);
+		Frustum3fContainment containment = Frustum3fClassifySphere(&perspectiveFrustum, &sphere);
+		bool isVisible = Frustum3fIntersectsSphere(&perspectiveFrustum, &sphere);
+		bool isExpectedVisible = sphereCases[i].expected != Frustum3fContainment_Outside;
+		CHECK(containment == sphereCases[i].expected && isVisible == isExpectedVisible);
+	}
+
+	Section("Frustum3f - AABB inside, outside and intersecting");
+	struct { Vec3f center; Vec3f radius; Frustum3fContainment expected; } boxCases[] = {
+		{ V3fInit(0, 0, -5), V3fInit(0.5f, 0.5f, 0.5f), Frustum3fContainment_Inside },
+		{ V3fInit(0, 0, 5), V3fInit(1, 1, 1), Frustum3fContainment_Outside },
+		{ V3fInit(0, 0, -30), V3fInit(1, 1, 1), Frustum3fContainment_Outside },
+		{ V3fInit(-20, 0, -5), V3fInit(1, 1, 1), Frustum3fContainment_Outside },
+		{ V3fInit(0, 30, -5), V3fInit(1, 1, 1), Frustum3fContainment_Outside },
+		{ V3fInit(0, 0, -10), V3fInit(1, 1, 1), Frustum3fContainment_Intersecting },
+		{ V3fInit(-5, 0, -5), V3fInit(1, 1, 1), Frustum3fContainment_Intersecting },
+		{ V3fInit(0, 0, -5), V3fInit(50, 50, 50), Frustum3fContainment_Intersecting },
+	};
+	const int boxCaseCount = (int)fplArrayCount(boxCases);
+	for (int i = 0; i < boxCaseCount; ++i) {
+		AABB3f box = AABB3fInitFromCenter(boxCases[i].center, boxCases[i].radius);
+		Frustum3fContainment containment = Frustum3fClassifyAABB(&perspectiveFrustum, &box);
+		bool isVisible = Frustum3fIntersectsAABB(&perspectiveFrustum, &box);
+		bool isExpectedVisible = boxCases[i].expected != Frustum3fContainment_Outside;
+		CHECK(containment == boxCases[i].expected && isVisible == isExpectedVisible);
+	}
+
+	Section("Frustum3f - world space culling follows the camera");
+	Vec3f behindCameraCenter = V3fInit(0, 0, 8);
+	Sphere3f behindCamera = Sphere3fInit(behindCameraCenter, 1.0f);
+	Sphere3f inFrontOfCamera = Sphere3fInit(origin, 1.0f);
+	bool isBehindVisible = Frustum3fIntersectsSphere(&worldFrustum, &behindCamera);
+	bool isInFrontVisible = Frustum3fIntersectsSphere(&worldFrustum, &inFrontOfCamera);
+	CHECK(!isBehindVisible);
+	CHECK(isInFrontVisible);
+}
+
+//
 // Color / Pixel
 //
 static void TestColorPixel(void) {
@@ -586,6 +968,10 @@ int main(int argc, char **argv) {
 	TestMat4();
 	TestProjectUnproject();
 	TestQuaternion();
+	TestAngle();
+	TestQuaternion3D();
+	TestMat3Inverse();
+	TestFrustum();
 	TestColorPixel();
 	TestViewportRatio();
 
