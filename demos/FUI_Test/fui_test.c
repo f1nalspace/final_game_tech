@@ -6,6 +6,8 @@ Description:
 	An interactive demo for final_ui.h, on FPL and legacy OpenGL.
 	With --gl3 the same interface is drawn on an OpenGL 3.3 core profile through fui_backend_gl3.h instead, so both backends can be compared on the same frame.
 	With --gl46 it is drawn on an OpenGL 4.6 core profile through fui_backend_gl46.h, in batches of multi draw indirect calls.
+	With --nine-slice only the nine-slice panel opens, which is what screenshots of the three backends compare.
+	With --scale=<factor> the whole interface is drawn that much larger (fuiSetScale), in a window that much larger and with the font baked at that size.
 
 	Everything the library has: a menu bar with a submenu, a context menu, a command table whose
 	shortcuts fire from the keyboard AND print themselves into their own menu rows, tool strips, floating
@@ -39,6 +41,8 @@ Build (from the repository root):
 	./fui_test
 	./fui_test --gl3
 	./fui_test --gl46
+	./fui_test --nine-slice --gl3
+	./fui_test --scale=1.5 --gl46
 
 	Or with cmake:  cmake -S demos/FUI_Test -B build/fui_test && cmake --build build/fui_test
 
@@ -78,6 +82,7 @@ License:
 #include <fui_input_fpl.h>
 
 #include <stdio.h>
+#include <stdlib.h> // strtof
 #include <stdarg.h>
 #include <string.h>
 
@@ -98,6 +103,14 @@ License:
 #define DEMO_GL46_ARGUMENT "--gl46"
 #define DEMO_GL46_MAJOR_VERSION 4
 #define DEMO_GL46_MINOR_VERSION 6
+// Command line switch that opens the nine-slice panel alone, so a screenshot shows nothing else
+#define DEMO_NINE_SLICE_ARGUMENT "--nine-slice"
+// Command line switch with the ui scale behind the equals sign, e.g. --scale=1.5
+#define DEMO_SCALE_ARGUMENT_PREFIX "--scale="
+// The ui scale without --scale=, and the range a given one is clamped to
+#define DEMO_DEFAULT_UI_SCALE 1.0f
+#define DEMO_MIN_UI_SCALE 0.5f
+#define DEMO_MAX_UI_SCALE 4.0f
 // Grid lines the core profile path sends to the GPU per draw call, two vertices of two floats each
 #define DEMO_GRID_BATCH_LINE_COUNT 512
 #define DEMO_GRID_VERTICES_PER_LINE 2
@@ -140,6 +153,16 @@ License:
 #define DEMO_ICON_SHEET_HEIGHT DEMO_ICON_CELL_SIDE
 #define DEMO_ICON_SHEET_CHANNELS 4u
 #define DEMO_ICON_SHEET_COLOR_BYTES (DEMO_ICON_SHEET_WIDTH * DEMO_ICON_SHEET_HEIGHT * DEMO_ICON_SHEET_CHANNELS)
+
+// The nine-slice sheet the demo draws itself: two frames side by side, each one cell with borders of a quarter of its side
+#define DEMO_NINE_SLICE_CELL_SIDE 64u
+#define DEMO_NINE_SLICE_CELL_COUNT 2u
+#define DEMO_NINE_SLICE_BORDER 16u
+// Four corner colours, two stripe shades and two checker shades per cell
+#define DEMO_NINE_SLICE_COLORS_PER_CELL 8
+#define DEMO_NINE_SLICE_SHEET_WIDTH (DEMO_NINE_SLICE_CELL_SIDE * DEMO_NINE_SLICE_CELL_COUNT)
+#define DEMO_NINE_SLICE_SHEET_HEIGHT DEMO_NINE_SLICE_CELL_SIDE
+#define DEMO_NINE_SLICE_SHEET_BYTES (DEMO_NINE_SLICE_SHEET_WIDTH * DEMO_NINE_SLICE_SHEET_HEIGHT * DEMO_ICON_SHEET_CHANNELS)
 
 #define DEMO_TREE_NODE_MAX 64
 #define DEMO_TREE_ID "projecttree"
@@ -224,6 +247,11 @@ typedef struct DemoState {
 	int32_t previewScaleMode;
 	bool previewIsMirrored;
 	bool previewIsTurned;
+
+	//! The nine-slice panel, closed unless the View menu or --nine-slice opens it, and its sheet of two frames
+	bool showNineSlicePanel;
+	fuiTextureId nineSliceSheet;
+	fuiVec2 nineSliceSheetSize;
 
 	// The project tree. The nodes and their flags are the DEMO's, exactly like the table's rows: the library
 	// reads them, writes a flag when an expander is clicked, and copies nothing.
@@ -518,6 +546,87 @@ static void DemoDrawColorIconSheet(unsigned char *rgbaPixels) {
 	}
 }
 
+/*
+	Two frames of 64 by 64 side by side, each with borders of 16, and every part of a frame looks different so a part
+	that is stretched, tiled or put in the wrong place shows at once: four corners in four colours with a light outer
+	rim, edges striped ACROSS their length (stretching widens the stripes, tiling repeats them) and a checkerboard in
+	the middle. The second frame is the same pattern in warmer colours, an atlas cell that is cut out by uv.
+*/
+static void DemoDrawNineSliceSheet(unsigned char *rgbaPixels) {
+	const int32_t cellSide = (int32_t)DEMO_NINE_SLICE_CELL_SIDE;
+	const int32_t border = (int32_t)DEMO_NINE_SLICE_BORDER;
+	const int32_t sheetWidth = (int32_t)DEMO_NINE_SLICE_SHEET_WIDTH;
+	const int32_t bytesPerTexel = (int32_t)DEMO_ICON_SHEET_CHANNELS;
+	const int32_t stripeWidth = 4;
+	const int32_t checkerSide = 8;
+	const int32_t rimWidth = 2;
+	const float fullChannel = 255.0f;
+	// Per cell: top-left, top-right, bottom-left and bottom-right corner, then the two stripe shades, then the two checker shades
+	static const fuiColor cellColors[DEMO_NINE_SLICE_CELL_COUNT][DEMO_NINE_SLICE_COLORS_PER_CELL] = {
+		{
+			{ 0.86f, 0.24f, 0.24f, 1.0f }, { 0.26f, 0.74f, 0.32f, 1.0f }, { 0.26f, 0.42f, 0.88f, 1.0f }, { 0.92f, 0.82f, 0.22f, 1.0f },
+			{ 0.62f, 0.64f, 0.70f, 1.0f }, { 0.34f, 0.36f, 0.42f, 1.0f },
+			{ 0.20f, 0.22f, 0.28f, 1.0f }, { 0.14f, 0.15f, 0.19f, 1.0f },
+		},
+		{
+			{ 0.82f, 0.46f, 0.20f, 1.0f }, { 0.72f, 0.58f, 0.24f, 1.0f }, { 0.58f, 0.34f, 0.18f, 1.0f }, { 0.90f, 0.66f, 0.34f, 1.0f },
+			{ 0.86f, 0.76f, 0.56f, 1.0f }, { 0.64f, 0.50f, 0.32f, 1.0f },
+			{ 0.96f, 0.90f, 0.74f, 1.0f }, { 0.90f, 0.82f, 0.64f, 1.0f },
+		},
+	};
+	// The corners are slots 0 to 3, the bottom ones two slots behind the top ones and the right ones one behind the left ones
+	const int32_t bottomCornerSlotOffset = 2;
+	const int32_t rightCornerSlotOffset = 1;
+	const int32_t lightStripeSlot = 4;
+	const int32_t darkStripeSlot = 5;
+	const int32_t lightCheckerSlot = 6;
+	const int32_t darkCheckerSlot = 7;
+	// How far the rim of a corner is lifted toward white
+	const float rimHighlight = 0.5f;
+
+	for(int32_t cellIndex = 0; cellIndex < (int32_t)DEMO_NINE_SLICE_CELL_COUNT; ++cellIndex) {
+		const fuiColor *colors = cellColors[cellIndex];
+		for(int32_t y = 0; y < cellSide; ++y) {
+			bool isTop = y < border;
+			bool isBottom = y >= cellSide - border;
+			for(int32_t x = 0; x < cellSide; ++x) {
+				bool isLeft = x < border;
+				bool isRight = x >= cellSide - border;
+				bool isAcrossEdge = isLeft || isRight;
+				bool isDownEdge = isTop || isBottom;
+				fuiColor color;
+				if(isAcrossEdge && isDownEdge) {
+					int32_t rowSlot = isBottom ? bottomCornerSlotOffset : 0;
+					int32_t columnSlot = isRight ? rightCornerSlotOffset : 0;
+					int32_t cornerSlot = rowSlot + columnSlot;
+					color = colors[cornerSlot];
+					bool isRim = (x < rimWidth) || (y < rimWidth) || (x >= cellSide - rimWidth) || (y >= cellSide - rimWidth);
+					if(isRim) {
+						color.r += (1.0f - color.r) * rimHighlight;
+						color.g += (1.0f - color.g) * rimHighlight;
+						color.b += (1.0f - color.b) * rimHighlight;
+					}
+				} else if(isDownEdge) {
+					bool isLightStripe = ((x / stripeWidth) % 2) == 0;
+					color = colors[isLightStripe ? lightStripeSlot : darkStripeSlot];
+				} else if(isAcrossEdge) {
+					bool isLightStripe = ((y / stripeWidth) % 2) == 0;
+					color = colors[isLightStripe ? lightStripeSlot : darkStripeSlot];
+				} else {
+					bool isLightChecker = (((x / checkerSide) + (y / checkerSide)) % 2) == 0;
+					color = colors[isLightChecker ? lightCheckerSlot : darkCheckerSlot];
+				}
+				int32_t sheetX = cellIndex * cellSide + x;
+				size_t texelAt = ((size_t)y * (size_t)sheetWidth + (size_t)sheetX) * (size_t)bytesPerTexel;
+				rgbaPixels[texelAt + 0] = (unsigned char)(color.r * fullChannel);
+				rgbaPixels[texelAt + 1] = (unsigned char)(color.g * fullChannel);
+				rgbaPixels[texelAt + 2] = (unsigned char)(color.b * fullChannel);
+				rgbaPixels[texelAt + 3] = (unsigned char)fullChannel;
+			}
+		}
+	}
+}
+
 //! Every node's icon, worked out from what it IS and from whether it happens to be folded open right now
 /*
 	Called every frame before the tree is built, which is cheap for a table this size and always right. It is
@@ -756,6 +865,9 @@ static void BuildMenuBar(fuiContext *ui, DemoState *demo, const fuiRect barRect)
 		}
 		if(fuiMenuItemCheck(ui, "Project tree", demo->showTreePanel, true)) {
 			demo->showTreePanel = !demo->showTreePanel;
+		}
+		if(fuiMenuItemCheck(ui, "Nine-slice", demo->showNineSlicePanel, true)) {
+			demo->showNineSlicePanel = !demo->showNineSlicePanel;
 		}
 		fuiMenuSeparator(ui);
 		if(fuiMenuItemCheck(ui, "Hover tooltips", demo->showTooltips, true)) {
@@ -1169,6 +1281,98 @@ static void BuildListPanel(fuiContext *ui, DemoState *demo) {
 	fuiEndPanel(ui);
 }
 
+#define DEMO_NINE_SLICE_PANEL_X 24.0f
+#define DEMO_NINE_SLICE_PANEL_Y 110.0f
+#define DEMO_NINE_SLICE_PANEL_WIDTH 1100.0f
+#define DEMO_NINE_SLICE_PANEL_HEIGHT 600.0f
+#define DEMO_NINE_SLICE_BOX_GAP 24.0f
+
+//! One labelled nine-slice case of the panel: where it goes and how it is drawn
+typedef struct DemoNineSliceCase {
+	const char *label;
+	fuiRect box;
+	int32_t cellIndex;
+	fuiImageSliceMode mode;
+	float borderScale;
+	//! Through fuiImage and a fuiImageDesc rather than fuiDrawImageNineSlice, so both roads are on screen
+	bool usesImageDesc;
+} DemoNineSliceCase;
+
+/*
+	Nine-slice frames from the generated sheet: stretched and tiled, a cell of the sheet cut out by uv, boxes smaller
+	than the two borders together (the corners shrink and keep their shape), twice the border size, and a box at
+	fractional pixels whose last tiles are cut.
+*/
+static void BuildNineSlicePanel(fuiContext *ui, DemoState *demo) {
+	if(!demo->showNineSlicePanel) {
+		return;
+	}
+	if(fuiBeginPanelClosable(ui, "Nine-slice", fuiDock_None, DEMO_NINE_SLICE_PANEL_X, DEMO_NINE_SLICE_PANEL_Y, DEMO_NINE_SLICE_PANEL_WIDTH, DEMO_NINE_SLICE_PANEL_HEIGHT, &demo->showNineSlicePanel)) {
+		fuiRect content = fuiLayoutRemaining(ui);
+		if(demo->nineSliceSheet == 0) {
+			fuiLabel(ui, fuiRectMake(content.x, content.y, content.w, DEMO_ROW_HEIGHT), "The nine-slice sheet failed to upload.");
+		} else {
+			const float largeWidth = 320.0f;
+			const float largeHeight = 200.0f;
+			const float smallSide = 20.0f;
+			const float narrowWidth = 24.0f;
+			const float narrowHeight = 150.0f;
+			const float doubledWidth = 300.0f;
+			const float doubledHeight = 150.0f;
+			const float fractionalWidth = 250.5f;
+			const float fractionalHeight = 137.25f;
+			const float fractionalOffset = 0.5f;
+			const float doubleBorderScale = 2.0f;
+			const float singleBorderScale = 1.0f;
+			// A tiny box still gets a label that can be read, and the next box starts behind that label
+			const float labelMinimumWidth = 120.0f;
+			float firstRowTop = content.y + DEMO_ROW_HEIGHT;
+			float secondRowTop = firstRowTop + largeHeight + DEMO_NINE_SLICE_BOX_GAP + DEMO_ROW_HEIGHT;
+			float secondColumn = content.x + largeWidth + DEMO_NINE_SLICE_BOX_GAP;
+			float thirdColumn = secondColumn + largeWidth + DEMO_NINE_SLICE_BOX_GAP;
+			float narrowColumn = content.x + labelMinimumWidth + DEMO_NINE_SLICE_BOX_GAP;
+			float doubledColumn = narrowColumn + labelMinimumWidth + DEMO_NINE_SLICE_BOX_GAP;
+			float fractionalColumn = doubledColumn + doubledWidth + DEMO_NINE_SLICE_BOX_GAP;
+			const DemoNineSliceCase cases[] = {
+				{ "Stretch", fuiRectMake(content.x, firstRowTop, largeWidth, largeHeight), 0, fuiImageSliceMode_Stretch, singleBorderScale, false },
+				{ "Tile", fuiRectMake(secondColumn, firstRowTop, largeWidth, largeHeight), 0, fuiImageSliceMode_Tile, singleBorderScale, false },
+				{ "Tile, second cell by uv (fuiImage)", fuiRectMake(thirdColumn, firstRowTop, largeWidth, largeHeight), 1, fuiImageSliceMode_Tile, singleBorderScale, true },
+				{ "20x20", fuiRectMake(content.x, secondRowTop, smallSide, smallSide), 0, fuiImageSliceMode_Stretch, singleBorderScale, false },
+				{ "24 wide", fuiRectMake(narrowColumn, secondRowTop, narrowWidth, narrowHeight), 0, fuiImageSliceMode_Tile, singleBorderScale, false },
+				{ "Borders x2 (fuiImage)", fuiRectMake(doubledColumn, secondRowTop, doubledWidth, doubledHeight), 1, fuiImageSliceMode_Stretch, doubleBorderScale, true },
+				{ "Tile at fractional pixels", fuiRectMake(fractionalColumn + fractionalOffset, secondRowTop + fractionalOffset, fractionalWidth, fractionalHeight), 0, fuiImageSliceMode_Tile, singleBorderScale, false },
+			};
+			const float cellWidthInUv = 1.0f / (float)DEMO_NINE_SLICE_CELL_COUNT;
+			const float border = (float)DEMO_NINE_SLICE_BORDER;
+			fuiImageSliceBorders borders = { border, border, border, border };
+			fuiColor white = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+			for(int32_t caseIndex = 0; caseIndex < (int32_t)fplArrayCount(cases); ++caseIndex) {
+				const DemoNineSliceCase *sliceCase = &cases[caseIndex];
+				// The label goes over the box, as wide as the box or wide enough to read when the box is tiny
+				float labelWidth = fuiMaxF(sliceCase->box.w, labelMinimumWidth);
+				fuiRect labelRect = fuiRectMake(sliceCase->box.x, sliceCase->box.y - DEMO_ROW_HEIGHT, labelWidth, DEMO_ROW_HEIGHT);
+				fuiLabel(ui, labelRect, sliceCase->label);
+				fuiVec2 uvMin = fuiV2((float)sliceCase->cellIndex * cellWidthInUv, 0.0f);
+				fuiVec2 uvMax = fuiV2((float)(sliceCase->cellIndex + 1) * cellWidthInUv, 1.0f);
+				if(sliceCase->usesImageDesc) {
+					fuiImageDesc desc = fplZeroInit;
+					desc.texture = demo->nineSliceSheet;
+					desc.textureSize = demo->nineSliceSheetSize;
+					desc.uvMin = uvMin;
+					desc.uvMax = uvMax;
+					desc.scaleFactor = sliceCase->borderScale;
+					desc.sliceMode = sliceCase->mode;
+					desc.sliceBorders = borders;
+					fuiImage(ui, sliceCase->box, &desc);
+				} else {
+					fuiDrawImageNineSlice(ui, sliceCase->box, demo->nineSliceSheet, demo->nineSliceSheetSize, uvMin, uvMax, borders, sliceCase->borderScale, sliceCase->mode, white);
+				}
+			}
+		}
+	}
+	fuiEndPanel(ui);
+}
+
 #define DEMO_TREE_PANEL_X 1160.0f
 #define DEMO_TREE_PANEL_Y 110.0f
 #define DEMO_TREE_PANEL_WIDTH 370.0f
@@ -1536,6 +1740,7 @@ static void BuildUserInterface(fuiContext *ui, DemoState *demo, const bool right
 	BuildListPanel(ui, demo);
 	BuildTablePanel(ui, demo);
 	BuildTreePanel(ui, demo);
+	BuildNineSlicePanel(ui, demo);
 
 	BuildStatusBar(ui, demo, statusBarRect);
 
@@ -1893,12 +2098,22 @@ static void RenderBackdrop(const DemoRenderer *renderer, const DemoState *demo, 
 int main(int argc, char **argv) {
 	// The last backend switch on the command line wins
 	DemoBackendKind backendKind = DemoBackendKind_GL1;
+	bool showsNineSliceOnly = false;
+	float uiScale = DEMO_DEFAULT_UI_SCALE;
+	size_t scalePrefixLength = fplGetStringLength(DEMO_SCALE_ARGUMENT_PREFIX);
 	for(int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
 		const char *argument = argv[argumentIndex];
+		size_t argumentLength = fplGetStringLength(argument);
+		bool isScaleArgument = (argumentLength > scalePrefixLength) && fplIsStringEqualLen(argument, scalePrefixLength, DEMO_SCALE_ARGUMENT_PREFIX, scalePrefixLength);
 		if(fplIsStringEqual(argument, DEMO_GL3_ARGUMENT)) {
 			backendKind = DemoBackendKind_GL3;
 		} else if(fplIsStringEqual(argument, DEMO_GL46_ARGUMENT)) {
 			backendKind = DemoBackendKind_GL46;
+		} else if(fplIsStringEqual(argument, DEMO_NINE_SLICE_ARGUMENT)) {
+			showsNineSliceOnly = true;
+		} else if(isScaleArgument) {
+			float requestedScale = strtof(argument + scalePrefixLength, fpl_null);
+			uiScale = fplMax(DEMO_MIN_UI_SCALE, fplMin(requestedScale, DEMO_MAX_UI_SCALE));
 		}
 	}
 
@@ -1907,8 +2122,11 @@ int main(int argc, char **argv) {
 	fplSettings settings = fplZeroInit;
 	fplSetDefaultSettings(&settings);
 	fplStringFormat(settings.window.title, fplArrayCount(settings.window.title), DEMO_WINDOW_TITLE_FORMAT, hostLabel);
-	settings.window.windowSize.width = DEMO_WINDOW_WIDTH;
-	settings.window.windowSize.height = DEMO_WINDOW_HEIGHT;
+	// The window grows with the scale, so the interface keeps the room it has at 1.0
+	float scaledWindowWidth = (float)DEMO_WINDOW_WIDTH * uiScale;
+	float scaledWindowHeight = (float)DEMO_WINDOW_HEIGHT * uiScale;
+	settings.window.windowSize.width = (uint32_t)scaledWindowWidth;
+	settings.window.windowSize.height = (uint32_t)scaledWindowHeight;
 	settings.video.backend = fplVideoBackendType_OpenGL;
 	if(backendKind == DemoBackendKind_GL46) {
 		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
@@ -1943,11 +2161,18 @@ int main(int argc, char **argv) {
 
 	// One bake, one upload, and the interface has a font. Nothing is read from disk: the face is one of
 	// final_fonts.h's embedded ones, so the demo is a single executable with no asset beside it.
+	// Baked at the size it is drawn at on the screen, so the atlas maps one texel to one pixel at every scale
 	fuiStbttFont bakedFont;
 	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
-	bakeSettings.pixelHeight = DEMO_FONT_PIXEL_HEIGHT;
-	bakeSettings.atlasWidth = DEMO_FONT_ATLAS_SIDE;
-	bakeSettings.atlasHeight = DEMO_FONT_ATLAS_SIDE;
+	float scaledFontPixelHeight = DEMO_FONT_PIXEL_HEIGHT * uiScale;
+	uint32_t atlasSideFactor = (uint32_t)uiScale;
+	if((float)atlasSideFactor < uiScale) {
+		++atlasSideFactor;
+	}
+	uint32_t scaledAtlasSide = DEMO_FONT_ATLAS_SIDE * atlasSideFactor;
+	bakeSettings.pixelHeight = scaledFontPixelHeight;
+	bakeSettings.atlasWidth = scaledAtlasSide;
+	bakeSettings.atlasHeight = scaledAtlasSide;
 	if(!fuiStbttFontBake(&bakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
 		fprintf(stderr, "failed to bake the font\n");
 		DemoRendererRelease(&renderer);
@@ -1977,6 +2202,7 @@ int main(int argc, char **argv) {
 		fplPlatformRelease();
 		return 1;
 	}
+	fuiSetScale(&ui, uiScale);
 
 	// Optional, and worth wiring: without it the text field simply has no clipboard.
 	fuiPlatform platform = fplZeroInit;
@@ -1987,6 +2213,14 @@ int main(int argc, char **argv) {
 	DemoState demo;
 	DemoInit(&demo);
 	demo.hostLabel = hostLabel;
+	if(showsNineSliceOnly) {
+		demo.showWidgetsPanel = false;
+		demo.showPickerPanel = false;
+		demo.showListPanel = false;
+		demo.showTablePanel = false;
+		demo.showTreePanel = false;
+		demo.showNineSlicePanel = true;
+	}
 
 	// The other textures, and the only assets in the demo that are not a font: four icon cells the demo draws
 	// itself, once in coverage and once in color. A failed upload leaves that sheet at zero, which is a list of
@@ -2015,6 +2249,16 @@ int main(int argc, char **argv) {
 	if(DemoUploadImageRGBA(&renderer, colorIconPixels, DEMO_ICON_SHEET_WIDTH, DEMO_ICON_SHEET_HEIGHT, colorSheetIsFilteredLinearly, &colorIconTexture)) {
 		demo.iconSheetColor = (fuiTextureId)colorIconTexture;
 		demo.iconSheetColorSize = fuiV2((float)DEMO_ICON_SHEET_WIDTH, (float)DEMO_ICON_SHEET_HEIGHT);
+	}
+
+	// The nine-slice frames, through the RGBA road with a NEAREST filter, so the stripes stay crisp when a part is stretched
+	unsigned char nineSlicePixels[DEMO_NINE_SLICE_SHEET_BYTES];
+	DemoDrawNineSliceSheet(nineSlicePixels);
+	uint32_t nineSliceTexture = 0;
+	const bool nineSliceIsFilteredLinearly = false;
+	if(DemoUploadImageRGBA(&renderer, nineSlicePixels, DEMO_NINE_SLICE_SHEET_WIDTH, DEMO_NINE_SLICE_SHEET_HEIGHT, nineSliceIsFilteredLinearly, &nineSliceTexture)) {
+		demo.nineSliceSheet = (fuiTextureId)nineSliceTexture;
+		demo.nineSliceSheetSize = fuiV2((float)DEMO_NINE_SLICE_SHEET_WIDTH, (float)DEMO_NINE_SLICE_SHEET_HEIGHT);
 	}
 
 	fuiFplInput bridge;
@@ -2053,6 +2297,9 @@ int main(int argc, char **argv) {
 	}
 	if(colorIconTexture != 0) {
 		DemoDeleteTexture(&renderer, colorIconTexture);
+	}
+	if(nineSliceTexture != 0) {
+		DemoDeleteTexture(&renderer, nineSliceTexture);
 	}
 	DemoDeleteTexture(&renderer, atlasTexture);
 	fuiStbttFontRelease(&bakedFont);

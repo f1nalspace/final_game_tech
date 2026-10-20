@@ -186,7 +186,7 @@ SOFTWARE.
 
 /*!
 	@file final_ui.h
-	@version v0.9.7
+	@version v0.9.8
 	@author Torsten Spaete
 	@brief Final UI (FUI) - A pure C99 single file header immediate mode user interface library.
 */
@@ -200,6 +200,11 @@ SOFTWARE.
 /*!
 	@page page_changelog Changelog
 	@tableofcontents
+
+	# v0.9.8:
+	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
+	- New: fuiImageSliceMode and fuiImageSliceBorders, the fields sliceMode and sliceBorders of fuiImageDesc
+	- New: fuiSetScale and fuiGetScale, the interface is laid out in ui units and drawn that many screen pixels per unit
 
 	# v0.9.7:
 	What an outside widget needs from this library in order to be one. final_ui_texteditor.h sits beside
@@ -718,7 +723,7 @@ SOFTWARE.
 //! Version of this library, so an application can report which build it was compiled against
 #define FUI_VERSION_MAJOR 0
 #define FUI_VERSION_MINOR 9
-#define FUI_VERSION_PATCH 7
+#define FUI_VERSION_PATCH 8
 
 // Two expansion steps are required here, because the argument of the # operator is not macro-expanded, so the outer macro expands the version constant to its number first
 #define FUI__STRINGIFY_EXPANDED(value) #value
@@ -2375,8 +2380,14 @@ typedef struct fuiContext {
 	//! How many entries of the clip stack are in use
 	uint32_t clipDepth;
 
-	//! Size of the window the current frame is built for
+	//! Size of the window the current frame is built for, in ui units
 	fuiVec2i windowSize;
+	//! Size of the window the current frame is built for, in screen pixels as the application passed it
+	fuiVec2i screenSize;
+	//! Screen pixels per ui unit as set by @ref fuiSetScale, the next frame picks it up
+	float uiScale;
+	//! Screen pixels per ui unit of the frame that is built, latched by @ref fuiBeginDrawFrame
+	float frameScale;
 	//! True between @ref fuiBeginDrawFrame and @ref fuiEndDrawFrame
 	bool isBuildingFrame;
 	//! Set when geometry had to be dropped because the index type ran out of range
@@ -2626,6 +2637,23 @@ fui_api void fuiSetTheme(fuiContext *context, const fuiTheme *theme);
 * @return Returns a reference to the theme @ref fuiTheme, or null when the context is not initialized.
 */
 fui_api fuiTheme *fuiGetTheme(fuiContext *context);
+
+/**
+* @brief Sets how many screen pixels one ui unit covers, which scales the whole interface for high resolutions and DPI.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] scale Screen pixels per ui unit, 1.0 by default, zero or less restores 1.0.
+* @note Every measure of the interface is in ui units: the theme, the sizes inside the widgets and the rectangles and text heights the application passes. The input and the window size come in screen pixels and are divided by the scale, the draw data goes out in screen pixels.
+* @note Text is drawn at its pixel height times the scale. A font baked at the theme's font height times the scale and set again with @ref fuiSetFont maps its atlas one to one onto the screen, a font baked at another size is stretched.
+* @note Takes effect with the next @ref fuiBeginFrame or @ref fuiBeginDrawFrame.
+*/
+fui_api void fuiSetScale(fuiContext *context, const float scale);
+
+/**
+* @brief Returns how many screen pixels one ui unit covers.
+* @param[in] context Reference to the context @ref fuiContext.
+* @return Returns the scale set by @ref fuiSetScale, 1.0 by default or for a null context.
+*/
+fui_api float fuiGetScale(const fuiContext *context);
 
 /**
 * @brief Tests whether the context ran out of memory at any point since it was initialized.
@@ -5071,6 +5099,35 @@ typedef enum fuiImageScaleMode {
 } fuiImageScaleMode;
 
 /**
+* @enum fuiImageSliceMode
+* @brief How a nine-slice image fills the space between its four corners, which always keep their size.
+* @note None is what a zeroed description asks for, and draws the image as one quad the way it always was.
+*/
+typedef enum fuiImageSliceMode {
+	//! No nine-slice, the image is one quad sized by the scale mode
+	fuiImageSliceMode_None = 0,
+	//! The edges and the center are stretched over the space between the corners
+	fuiImageSliceMode_Stretch,
+	//! The edges and the center are repeated at their own size, the last copy of a row or column is cut off
+	fuiImageSliceMode_Tile,
+} fuiImageSliceMode;
+
+/**
+* @struct fuiImageSliceBorders
+* @brief The four borders of a nine-slice image, in pixels of the sampled part of the texture.
+*/
+typedef struct fuiImageSliceBorders {
+	//! Width of the left column
+	float left;
+	//! Height of the top row
+	float top;
+	//! Width of the right column
+	float right;
+	//! Height of the bottom row
+	float bottom;
+} fuiImageSliceBorders;
+
+/**
 * @struct fuiImageDesc
 * @brief Everything one image draw needs. Zero it and fill in what matters.
 * @note An all-zero description draws the whole texture at its own pixel size, centered in its box. Every
@@ -5101,6 +5158,10 @@ typedef struct fuiImageDesc {
 	fuiImageScaleMode scaleMode;
 	//! Mirroring and quarter turns @ref fuiImageFlags. A quarter turn swaps the shape it is fitted by
 	fuiImageFlags flags;
+	//! Nine-slice mode @ref fuiImageSliceMode. Any mode but None fills the whole box and ignores renderSize, pixelsPerUnit, keepAspectRatio, placement, scaleMode and flags
+	fuiImageSliceMode sliceMode;
+	//! Borders of the nine-slice in pixels of the sampled part, drawn at that size times scaleFactor
+	fuiImageSliceBorders sliceBorders;
 } fuiImageDesc;
 
 /**
@@ -5112,6 +5173,25 @@ typedef struct fuiImageDesc {
 *       nothing at all in the interact pass, like every other drawing call.
 */
 fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDesc *desc);
+
+/**
+* @brief Draws a part of a texture as a nine-slice: the four corners keep their size, the edges and the center stretch or tile to fill the box.
+* @param[in,out] context Reference to the context @ref fuiContext.
+* @param[in] rect The box it fills, in pixels.
+* @param[in] texture The texture to sample.
+* @param[in] textureSize Full size of the texture in pixels, which turns the borders into texture coordinates.
+* @param[in] uvMin Top-left texture coordinate of the sampled part, e.g. one cell of an atlas.
+* @param[in] uvMax Bottom-right texture coordinate of the sampled part.
+* @param[in] borders The four borders in pixels of the sampled part @ref fuiImageSliceBorders.
+* @param[in] borderScale Screen pixels per texture pixel for the borders and for the tiles, zero or less takes 1.0.
+* @param[in] mode Stretch or tile @ref fuiImageSliceMode, None draws nothing.
+* @param[in] color Tint multiplied onto the texture, use white to leave it unchanged.
+* @note When the box is narrower or lower than two opposite borders, all four borders shrink by the same factor until they fit, so the corners keep their shape (the rule of CSS border-image).
+* @note Borders larger than the sampled part are cut to it, and an edge or a center without a pixel of its own is left out.
+* @note Corners and stretched pieces are single @ref fuiDrawKind_Image quads. The copies of one tiled piece go out together as ONE @ref fuiDrawKind_Triangles command, which a backend draws through its indices with the command's texture.
+* @note At most 64 copies are laid along one axis of a tiled piece, a smaller tile is stretched up to that, so a huge box never costs millions of quads.
+*/
+fui_api void fuiDrawImageNineSlice(fuiContext *context, const fuiRect rect, const fuiTextureId texture, const fuiVec2 textureSize, const fuiVec2 uvMin, const fuiVec2 uvMax, const fuiImageSliceBorders borders, const float borderScale, const fuiImageSliceMode mode, const fuiColor color);
 
 // ****************************************************************************
 //
@@ -6109,6 +6189,9 @@ fui_api fuiTheme fuiDefaultTheme(void) {
 // > Context
 // ----------------------------------------------------------------------------
 
+//! Screen pixels per ui unit of a context nobody scaled
+#define FUI__DEFAULT_UI_SCALE 1.0f
+
 fui_api bool fuiInit(fuiContext *context, const fuiFont *font, const fuiAllocator *allocator) {
 	FUI_ASSERT(context != fui_null);
 	if(context == fui_null) {
@@ -6127,6 +6210,8 @@ fui_api bool fuiInit(fuiContext *context, const fuiFont *font, const fuiAllocato
 	fui__ArenaInit(&context->arena, allocator, (size_t)FUI_ARENA_MIN_BLOCK_SIZE);
 	context->theme = fuiDefaultTheme();
 	context->font = font;
+	context->uiScale = FUI__DEFAULT_UI_SCALE;
+	context->frameScale = FUI__DEFAULT_UI_SCALE;
 	context->isInitialized = true;
 	return(true);
 }
@@ -6146,6 +6231,22 @@ fui_api void fuiSetFont(fuiContext *context, const fuiFont *font) {
 		return;
 	}
 	context->font = font;
+}
+
+fui_api void fuiSetScale(fuiContext *context, const float scale) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null) {
+		return;
+	}
+	context->uiScale = (scale > 0.0f) ? scale : FUI__DEFAULT_UI_SCALE;
+}
+
+fui_api float fuiGetScale(const fuiContext *context) {
+	if(context == fui_null) {
+		return(FUI__DEFAULT_UI_SCALE);
+	}
+	float result = (context->uiScale > 0.0f) ? context->uiScale : FUI__DEFAULT_UI_SCALE;
+	return(result);
 }
 
 fui_api void fuiSetTheme(fuiContext *context, const fuiTheme *theme) {
@@ -6713,6 +6814,72 @@ fui_inline void fui__WidgetStateMapGrow(fuiContext *context);
 //! Written with the clipping it is built out of, and called from the two ends of a frame and nowhere else
 static void fui__LiftOverlayCommands(fuiContext *context);
 
+//! The window size in ui units, rounded up so the frame scaled back to screen pixels still covers every pixel of the window
+fui_inline fuiVec2i fui__ScreenSizeToUiSize(const fuiVec2i screenSize, const float scale) {
+	float width = (float)screenSize.x / scale;
+	float height = (float)screenSize.y / scale;
+	int32_t wholeWidth = (int32_t)width;
+	int32_t wholeHeight = (int32_t)height;
+	if((float)wholeWidth < width) {
+		++wholeWidth;
+	}
+	if((float)wholeHeight < height) {
+		++wholeHeight;
+	}
+	fuiVec2i result = fuiV2i(wholeWidth, wholeHeight);
+	return(result);
+}
+
+fui_inline fuiRect fui__ScaleRect(const fuiRect rect, const float scale) {
+	fuiRect result = fuiRectMake(rect.x * scale, rect.y * scale, rect.w * scale, rect.h * scale);
+	return(result);
+}
+
+//! Turns the geometry of the frame from ui units into screen pixels: every vertex, every clip rectangle and every fast path payload
+static void fui__ScaleDrawGeometry(fuiContext *context, const float scale) {
+	fuiVertex *vertices = (fuiVertex *)context->vertexBuffer.items;
+	for(uint32_t vertexIndex = 0; vertexIndex < context->vertexBuffer.count; ++vertexIndex) {
+		fuiVertex *vertex = &vertices[vertexIndex];
+		vertex->position = fuiV2Scale(vertex->position, scale);
+	}
+	fuiDrawCommand *commands = (fuiDrawCommand *)context->commandBuffer.items;
+	for(uint32_t commandIndex = 0; commandIndex < context->commandBuffer.count; ++commandIndex) {
+		fuiDrawCommand *command = &commands[commandIndex];
+		command->clipRect = fui__ScaleRect(command->clipRect, scale);
+		switch(command->kind) {
+			case fuiDrawKind_Rect:
+			{
+				command->payload.rect.rect = fui__ScaleRect(command->payload.rect.rect, scale);
+			} break;
+			case fuiDrawKind_RectOutline:
+			{
+				command->payload.rectOutline.rect = fui__ScaleRect(command->payload.rectOutline.rect, scale);
+				command->payload.rectOutline.thickness *= scale;
+			} break;
+			case fuiDrawKind_Line:
+			{
+				command->payload.line.start = fuiV2Scale(command->payload.line.start, scale);
+				command->payload.line.end = fuiV2Scale(command->payload.line.end, scale);
+				command->payload.line.thickness *= scale;
+			} break;
+			case fuiDrawKind_Text:
+			{
+				command->payload.text.position = fuiV2Scale(command->payload.text.position, scale);
+				command->payload.text.pixelHeight *= scale;
+			} break;
+			case fuiDrawKind_Image:
+			{
+				command->payload.image.rect = fui__ScaleRect(command->payload.image.rect, scale);
+			} break;
+			case fuiDrawKind_Triangles:
+			default:
+			{
+				// The vertices above are all there is to it
+			} break;
+		}
+	}
+}
+
 fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fuiPass pass) {
 	FUI_ASSERT(context != fui_null && input != fui_null);
 	if(context == fui_null || input == fui_null || !context->isInitialized) {
@@ -6736,9 +6903,12 @@ fui_api void fuiBeginFrame(fuiContext *context, const fuiInput *input, const fui
 	// a caret blink stepped twice per frame would run at double speed.
 	context->frameTime = isDrawPass ? 0.0f : input->deltaTime;
 
+	// The cursor comes in screen pixels, the frame is built in ui units
 	fuiVec2 previousMousePosition = context->mousePosition;
-	context->mousePosition = input->mousePosition;
-	context->mouseDelta = context->hasSeenAFrame ? fuiV2Subtract(input->mousePosition, previousMousePosition) : fuiV2(0.0f, 0.0f);
+	float inverseScale = 1.0f / context->frameScale;
+	fuiVec2 mousePosition = fuiV2Scale(input->mousePosition, inverseScale);
+	context->mousePosition = mousePosition;
+	context->mouseDelta = context->hasSeenAFrame ? fuiV2Subtract(mousePosition, previousMousePosition) : fuiV2(0.0f, 0.0f);
 	context->mouseWheelDelta = isDrawPass ? 0.0f : input->mouseWheelDelta;
 	context->inputIsActive = input->isActive;
 
@@ -6924,7 +7094,11 @@ fui_api void fuiBeginDrawFrame(fuiContext *context, const fuiVec2i windowSize) {
 		return;
 	}
 
-	context->windowSize = windowSize;
+	// The application passes screen pixels, the frame is laid out in ui units, rounded up so the scaled frame still covers the whole window
+	float frameScale = (context->uiScale > 0.0f) ? context->uiScale : FUI__DEFAULT_UI_SCALE;
+	context->frameScale = frameScale;
+	context->screenSize = windowSize;
+	context->windowSize = fui__ScreenSizeToUiSize(windowSize, frameScale);
 	context->vertexBuffer.count = 0;
 	context->indexBuffer.count = 0;
 	context->commandBuffer.count = 0;
@@ -6987,6 +7161,12 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	// its own relies on. Ahead of the clip stack going, since the lift touches no clip of its own.
 	fui__LiftOverlayCommands(context);
 
+	// The frame was built in ui units and goes out in screen pixels. Only once, a second end of the same frame must not scale it again
+	bool isFrameBeingBuilt = context->isBuildingFrame;
+	if(isFrameBeingBuilt && context->frameScale != FUI__DEFAULT_UI_SCALE) {
+		fui__ScaleDrawGeometry(context, context->frameScale);
+	}
+
 	// An unbalanced push must not leak into the next frame, so both stacks are emptied rather than trusted.
 	// The root container goes with them: the next frame opens its own.
 	context->clipDepth = 0;
@@ -7001,7 +7181,7 @@ fui_api void fuiEndDrawFrame(fuiContext *context) {
 	context->drawData.indexCount = context->indexBuffer.count;
 	context->drawData.commandCount = context->commandBuffer.count;
 	context->drawData.textBufferSize = context->textBuffer.count;
-	context->drawData.windowSize = context->windowSize;
+	context->drawData.windowSize = context->screenSize;
 }
 
 fui_api void fuiSetDrawBatching(fuiContext *context, const bool enabled) {
@@ -15170,6 +15350,20 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 		return;
 	}
 
+	// A fully transparent tint is what a zeroed description holds, and nobody asks to draw an image nobody
+	// can see - so that is the one value taken as "no tint was chosen".
+	fuiColor tint = desc->tint;
+	if(tint.a <= 0.0f) {
+		tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	// A nine-slice fills the whole box, so nothing below that sizes, fits or places the image applies to it
+	if(desc->sliceMode != fuiImageSliceMode_None) {
+		float borderScale = (desc->scaleFactor > 0.0f) ? desc->scaleFactor : 1.0f;
+		fuiDrawImageNineSlice(context, rect, desc->texture, desc->textureSize, uvMin, uvMax, desc->sliceBorders, borderScale, desc->sliceMode, tint);
+		return;
+	}
+
 	// The size asked for: the caller's own units turned into pixels, or the sampled size, and then the plain
 	// multiplier on top - all of it BEFORE the scale mode places or fits it.
 	bool hasRenderSize = (desc->renderSize.x > 0.0f) && (desc->renderSize.y > 0.0f) && (desc->pixelsPerUnit > 0.0f);
@@ -15228,14 +15422,206 @@ fui_api void fuiImage(fuiContext *context, const fuiRect rect, const fuiImageDes
 	float drawLeft = rect.x + freeWidth * ((float)placeAcross * 0.5f);
 	float drawTop = rect.y + freeHeight * ((float)placeDown * 0.5f);
 
-	// A fully transparent tint is what a zeroed description holds, and nobody asks to draw an image nobody
-	// can see - so that is the one value taken as "no tint was chosen".
-	fuiColor tint = desc->tint;
-	if(tint.a <= 0.0f) {
-		tint = fuiColorRGBA(1.0f, 1.0f, 1.0f, 1.0f);
-	}
 	fuiRect drawRect = fuiRectMake(drawLeft, drawTop, drawWidth, drawHeight);
 	fuiDrawImageEx(context, drawRect, desc->texture, uvMin, uvMax, tint, desc->flags);
+}
+
+//! Most copies of one tiled nine-slice piece along one axis, a smaller tile is stretched up to that many
+#define FUI__IMAGE_SLICE_MAX_TILES_PER_AXIS 64u
+//! What is left over after the whole copies of a tile, below this many pixels, is not worth a copy of its own
+#define FUI__IMAGE_SLICE_TILE_REMAINDER_EPSILON 0.001f
+
+//! One axis of a nine-slice: the four boundaries of its three pieces on screen and in the texture
+typedef struct fui__ImageSliceAxis {
+	//! Screen positions of the boundaries, from the start of the box to its end
+	float positions[4];
+	//! Texture coordinates of the same boundaries
+	float uvs[4];
+	//! Screen size of one copy of the middle piece, when it is tiled
+	float middleTileSize;
+	//! False when the borders use up the whole sampled part, then the middle piece has no texel to show and is left out
+	bool hasMiddle;
+} fui__ImageSliceAxis;
+
+//! Lays out one axis from the borders that are already cut to the sampled part and the screen pixels per texture pixel
+fui_inline fui__ImageSliceAxis fui__BuildImageSliceAxis(const float boxStart, const float boxSize, const float uvStart, const float uvEnd, const float sampledPixels, const float startBorder, const float endBorder, const float pixelScale) {
+	// Signed, so a part sampled from right to left (a mirrored uv pair) slices the same way
+	float uvPerPixel = (uvEnd - uvStart) / sampledPixels;
+	float startOnScreen = startBorder * pixelScale;
+	float endOnScreen = endBorder * pixelScale;
+	float middlePixels = sampledPixels - startBorder - endBorder;
+
+	fui__ImageSliceAxis result;
+	result.positions[0] = boxStart;
+	result.positions[1] = boxStart + startOnScreen;
+	result.positions[2] = boxStart + boxSize - endOnScreen;
+	result.positions[3] = boxStart + boxSize;
+	result.uvs[0] = uvStart;
+	result.uvs[1] = uvStart + startBorder * uvPerPixel;
+	result.uvs[2] = uvEnd - endBorder * uvPerPixel;
+	result.uvs[3] = uvEnd;
+	result.middleTileSize = middlePixels * pixelScale;
+	result.hasMiddle = middlePixels > 0.0f;
+	return(result);
+}
+
+//! How many copies of a tile cover a length, capped at the most a piece may have, with the tile grown to match when the cap bites
+fui_inline uint32_t fui__CountImageSliceTiles(const float length, float *tileSize) {
+	uint32_t wholeCount = (uint32_t)(length / *tileSize);
+	float remainder = length - (float)wholeCount * (*tileSize);
+	uint32_t result = (remainder > FUI__IMAGE_SLICE_TILE_REMAINDER_EPSILON) ? (wholeCount + 1u) : wholeCount;
+	if(result > FUI__IMAGE_SLICE_MAX_TILES_PER_AXIS) {
+		result = FUI__IMAGE_SLICE_MAX_TILES_PER_AXIS;
+		*tileSize = length / (float)result;
+	}
+	if(result == 0) {
+		result = 1u;
+	}
+	return(result);
+}
+
+//! Moves both ends of one axis of a uv range half a texel inwards, which is what keeps a copy from sampling its neighbour in the texture
+fui_inline void fui__InsetImageSliceUvRange(const float textureSize, float *uvStart, float *uvEnd) {
+	float span = *uvEnd - *uvStart;
+	float halfTexel = 0.5f / textureSize;
+	// A part of a single texel or less has no inside to move into
+	if(FUI_FABSF(span) <= halfTexel * 2.0f) {
+		return;
+	}
+	// Signed, so a part sampled from right to left moves inwards too
+	float inset = (span > 0.0f) ? halfTexel : -halfTexel;
+	*uvStart += inset;
+	*uvEnd -= inset;
+}
+
+//! Covers one piece with copies of its texture part, all of them in one command, the copies at the end and the bottom cut short
+fui_inline void fui__DrawImageSliceTiles(fuiContext *context, const fuiRect piece, const fuiTextureId texture, const fuiVec2 textureSize, const fuiVec2 pieceUvMin, const fuiVec2 pieceUvMax, const float tileWidth, const float tileHeight, const fuiColor color) {
+	if(tileWidth <= 0.0f || tileHeight <= 0.0f) {
+		return;
+	}
+	if(fui__IsClippedAway(context, piece)) {
+		return;
+	}
+
+	float copyWidth = tileWidth;
+	float copyHeight = tileHeight;
+	uint32_t countAcross = fui__CountImageSliceTiles(piece.w, &copyWidth);
+	uint32_t countDown = fui__CountImageSliceTiles(piece.h, &copyHeight);
+	uint32_t quadCount = countAcross * countDown;
+	const uint32_t verticesPerQuad = 4u;
+	const uint32_t indicesPerQuad = 6u;
+	fui__GeometryWriter writer = fui__BeginGeometry(context, fuiDrawKind_Triangles, texture, quadCount * verticesPerQuad, quadCount * indicesPerQuad);
+	if(!writer.isValid) {
+		return;
+	}
+
+	// Where one copy starts and the next one follows, the texels beside the part are something else entirely (a corner, an edge), so every copy samples half a texel inside its part.
+	// The pattern shrinks by one texel per copy, which shifts no sample out of its texel at the own size.
+	fuiVec2 uvMin = pieceUvMin;
+	fuiVec2 uvMax = pieceUvMax;
+	fui__InsetImageSliceUvRange(textureSize.x, &uvMin.x, &uvMax.x);
+	fui__InsetImageSliceUvRange(textureSize.y, &uvMin.y, &uvMax.y);
+
+	uint32_t packedColor = fuiPackColor(color);
+	float pieceRight = piece.x + piece.w;
+	float pieceBottom = piece.y + piece.h;
+	fuiVec2 uvSpan = fuiV2(uvMax.x - uvMin.x, uvMax.y - uvMin.y);
+	uint32_t quadIndex = 0;
+	for(uint32_t row = 0; row < countDown; ++row) {
+		float top = piece.y + (float)row * copyHeight;
+		float height = fuiMinF(copyHeight, pieceBottom - top);
+		// A cut copy samples only as much of the part as it shows, so the pattern is cut and never squeezed
+		float shownDown = height / copyHeight;
+		float vEnd = uvMin.y + uvSpan.y * shownDown;
+		for(uint32_t column = 0; column < countAcross; ++column) {
+			float left = piece.x + (float)column * copyWidth;
+			float width = fuiMinF(copyWidth, pieceRight - left);
+			float shownAcross = width / copyWidth;
+			float uEnd = uvMin.x + uvSpan.x * shownAcross;
+			fuiRect copyRect = fuiRectMake(left, top, width, height);
+			fuiVec2 copyUvMax = fuiV2(uEnd, vEnd);
+			fui__WriteQuad(&writer, quadIndex * verticesPerQuad, quadIndex * indicesPerQuad, copyRect, uvMin, copyUvMax, packedColor);
+			++quadIndex;
+		}
+	}
+}
+
+fui_api void fuiDrawImageNineSlice(fuiContext *context, const fuiRect rect, const fuiTextureId texture, const fuiVec2 textureSize, const fuiVec2 uvMin, const fuiVec2 uvMax, const fuiImageSliceBorders borders, const float borderScale, const fuiImageSliceMode mode, const fuiColor color) {
+	FUI_ASSERT(context != fui_null);
+	if(context == fui_null || texture == FUI_TEXTURE_ID_NONE || mode == fuiImageSliceMode_None) {
+		return;
+	}
+	if(context->pass == fuiPass_Interact || fuiRectIsEmpty(rect) || color.a <= 0.0f) {
+		return;
+	}
+	if(fui__IsClippedAway(context, rect)) {
+		return;
+	}
+
+	float sampledWidth = FUI_FABSF(uvMax.x - uvMin.x) * textureSize.x;
+	float sampledHeight = FUI_FABSF(uvMax.y - uvMin.y) * textureSize.y;
+	if(sampledWidth <= 0.0f || sampledHeight <= 0.0f) {
+		return;
+	}
+
+	// Borders cut to the sampled part, the start border first, so a part smaller than its borders still has corners
+	float leftBorder = fuiClampF(borders.left, 0.0f, sampledWidth);
+	float rightBorder = fuiClampF(borders.right, 0.0f, sampledWidth - leftBorder);
+	float topBorder = fuiClampF(borders.top, 0.0f, sampledHeight);
+	float bottomBorder = fuiClampF(borders.bottom, 0.0f, sampledHeight - topBorder);
+
+	// One factor for both axes when the box cannot hold two opposite borders, so the corners shrink without changing their shape
+	float pixelScale = (borderScale > 0.0f) ? borderScale : 1.0f;
+	float bordersAcross = (leftBorder + rightBorder) * pixelScale;
+	float bordersDown = (topBorder + bottomBorder) * pixelScale;
+	float fitFactor = 1.0f;
+	if(bordersAcross > rect.w) {
+		fitFactor = fuiMinF(fitFactor, rect.w / bordersAcross);
+	}
+	if(bordersDown > rect.h) {
+		fitFactor = fuiMinF(fitFactor, rect.h / bordersDown);
+	}
+	float fittedScale = pixelScale * fitFactor;
+
+	fui__ImageSliceAxis across = fui__BuildImageSliceAxis(rect.x, rect.w, uvMin.x, uvMax.x, sampledWidth, leftBorder, rightBorder, fittedScale);
+	fui__ImageSliceAxis down = fui__BuildImageSliceAxis(rect.y, rect.h, uvMin.y, uvMax.y, sampledHeight, topBorder, bottomBorder, fittedScale);
+
+	// Row by row, so the pieces are drawn top-left to bottom-right like the texture is read
+	const int32_t middleIndex = 1;
+	const int32_t pieceCountPerAxis = 3;
+	bool isTiled = (mode == fuiImageSliceMode_Tile);
+	for(int32_t row = 0; row < pieceCountPerAxis; ++row) {
+		float pieceTop = down.positions[row];
+		float pieceHeight = down.positions[row + 1] - pieceTop;
+		if(pieceHeight <= 0.0f) {
+			continue;
+		}
+		for(int32_t column = 0; column < pieceCountPerAxis; ++column) {
+			float pieceLeft = across.positions[column];
+			float pieceWidth = across.positions[column + 1] - pieceLeft;
+			if(pieceWidth <= 0.0f) {
+				continue;
+			}
+			bool isMissingAcross = (column == middleIndex) && !across.hasMiddle;
+			bool isMissingDown = (row == middleIndex) && !down.hasMiddle;
+			if(isMissingAcross || isMissingDown) {
+				continue;
+			}
+			fuiRect piece = fuiRectMake(pieceLeft, pieceTop, pieceWidth, pieceHeight);
+			fuiVec2 pieceUvMin = fuiV2(across.uvs[column], down.uvs[row]);
+			fuiVec2 pieceUvMax = fuiV2(across.uvs[column + 1], down.uvs[row + 1]);
+			bool isTiledAcross = isTiled && (column == middleIndex);
+			bool isTiledDown = isTiled && (row == middleIndex);
+			if(!isTiledAcross && !isTiledDown) {
+				fuiDrawImage(context, piece, texture, pieceUvMin, pieceUvMax, color);
+				continue;
+			}
+			// A tiled middle repeats at its own size, a corner column or row keeps the size of its border
+			float tileWidth = isTiledAcross ? across.middleTileSize : pieceWidth;
+			float tileHeight = isTiledDown ? down.middleTileSize : pieceHeight;
+			fui__DrawImageSliceTiles(context, piece, texture, textureSize, pieceUvMin, pieceUvMax, tileWidth, tileHeight, color);
+		}
+	}
 }
 
 // ----------------------------------------------------------------------------
