@@ -198,6 +198,7 @@ SOFTWARE.
 	- Fixed: FPL_LOG_MULTIPLE_WRITERS did not compile anymore, the default settings still wrote the field logToError that was removed from fplLogWriterConsole (the error console is selected by fplLogWriterFlags_ErrorConsole)
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
+	- Fixed: fplIsStringMatchWildcard() did not backtrack ("a.b.txt" missed "*.txt") and matched prefixes ("abc" matched "a")
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
@@ -255,6 +256,7 @@ SOFTWARE.
 	- New: Added field generation to fplThreadHandle
 
 	#### IO
+	- Fixed: [POSIX] fplDirectoryListBegin() with a filter like "*.txt" missed names with more than one dot
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
 	- Fixed: fplExtractFilePath() left the destination untouched for an empty source path, it writes an empty string now
 	- Fixed: fplPathCombine() put a separator in front of the first path when all paths before it were empty, so an empty directory and "file" were combined into the absolute path "/file"
@@ -8707,8 +8709,8 @@ fpl_platform_api bool fplSemaphoreRelease(fplSemaphoreHandle *semaphore);
 /**
 * @brief Matches the given string by the given wildcard and returns a boolean indicating the match.
 * @param[in] source The source string.
-* @param[in] wildcard The wildcard string.
-* @return Returns true when the source string matches the wildcard, false otherwise.
+* @param[in] wildcard The wildcard string, * matches zero or more characters and ? exactly one.
+* @return Returns true when the whole source string matches the wildcard, false otherwise.
 */
 fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wildcard);
 
@@ -15765,31 +15767,31 @@ fpl_common_api bool fplIsStringMatchWildcard(const char *source, const char *wil
 	}
 	const char *s = source;
 	const char *w = wildcard;
-	while (*w) {
-		if (*w == '?') {
-			if (!*s) {
-				return false;
-			}
+	// The wildcard behind the last star and the source position that star was tried at, on a mismatch the star takes one more character and the rest is tried again
+	const char *afterStar = fpl_null;
+	const char *starSource = fpl_null;
+	while (*s) {
+		if (*w == '*') {
+			++w;
+			afterStar = w;
+			starSource = s;
+		} else if ((*w != 0) && ((*w == '?') || (*w == *s))) {
+			++w;
 			++s;
-		} else if (*w == '*') {
-			while (*s) {
-				char nw = w[1];
-				if (nw != 0) {
-					if ((*s == nw) || (nw == '?') || (nw == '*')) {
-						break;
-					}
-				}
-				++s;
-			}
+		} else if (afterStar != fpl_null) {
+			w = afterStar;
+			++starSource;
+			s = starSource;
 		} else {
-			if (*s != *w) {
-				return false;
-			}
-			++s;
+			return false;
 		}
+	}
+	// Trailing stars match the empty rest of the source
+	while (*w == '*') {
 		++w;
 	}
-	return true;
+	bool result = (*w == 0);
+	return(result);
 }
 
 fpl_common_api bool fplIsStringEqualLen(const char *a, const size_t aLen, const char *b, const size_t bLen) {
