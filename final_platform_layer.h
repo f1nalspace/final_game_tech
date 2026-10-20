@@ -329,6 +329,7 @@ SOFTWARE.
 	- New: The clipboard releases the text it owns when another application takes the selection away
 	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
 	- Fixed: XDisplayKeycodes was declared with the wrong return type
+	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
 
@@ -35246,6 +35247,14 @@ typedef FPL__FUNC_GLX_glXQueryExtensionsString(fpl__func_glx_glXQueryExtensionsS
 #define FPL__FUNC_GLX_glXCreateContextAttribsARB(name) GLXContext name(fpl__X11_Display *dpy, GLXFBConfig config, GLXContext share_context, fpl__X11_Bool direct, const int *attrib_list)
 typedef FPL__FUNC_GLX_glXCreateContextAttribsARB(fpl__func_glx_glXCreateContextAttribsARB);
 
+// Swap control (GLX_EXT_swap_control, GLX_MESA_swap_control, GLX_SGI_swap_control)
+#define FPL__FUNC_GLX_glXSwapIntervalEXT(name) void name(fpl__X11_Display *dpy, GLXDrawable drawable, int interval)
+typedef FPL__FUNC_GLX_glXSwapIntervalEXT(fpl__func_glx_glXSwapIntervalEXT);
+#define FPL__FUNC_GLX_glXSwapIntervalMESA(name) int name(unsigned int interval)
+typedef FPL__FUNC_GLX_glXSwapIntervalMESA(fpl__func_glx_glXSwapIntervalMESA);
+#define FPL__FUNC_GLX_glXSwapIntervalSGI(name) int name(int interval)
+typedef FPL__FUNC_GLX_glXSwapIntervalSGI(fpl__func_glx_glXSwapIntervalSGI);
+
 #define FPL__GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #define FPL__GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
 #define FPL__GLX_CONTEXT_FLAGS_ARB 0x2094
@@ -35295,6 +35304,9 @@ typedef struct fpl__X11VideoOpenGLApi {
 	fpl__func_glx_glXQueryExtension *glXQueryExtension;
 	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
 	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
+	fpl__func_glx_glXSwapIntervalEXT *glXSwapIntervalEXT;
+	fpl__func_glx_glXSwapIntervalMESA *glXSwapIntervalMESA;
+	fpl__func_glx_glXSwapIntervalSGI *glXSwapIntervalSGI;
 } fpl__X11VideoOpenGLApi;
 
 fpl_internal void fpl__UnloadX11OpenGLApi(fpl__X11VideoOpenGLApi *api) {
@@ -35502,6 +35514,80 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 	return true;
 }
 
+// True when the space separated GLX extension list contains the extension as a whole name, so a name is never matched as the prefix of a longer one
+fpl_internal bool fpl__X11IsGLXExtensionInList(const char *extensionList, const char *extensionName) {
+	size_t extensionNameLength = fplGetStringLength(extensionName);
+	const char *cursor = extensionList;
+	while (*cursor != 0) {
+		while (*cursor == ' ') {
+			++cursor;
+		}
+		const char *entryStart = cursor;
+		while (*cursor != 0 && *cursor != ' ') {
+			++cursor;
+		}
+		size_t entryLength = (size_t)(cursor - entryStart);
+		if (entryLength > 0 && fplIsStringEqualLen(entryStart, entryLength, extensionName, extensionNameLength)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Sets the swap interval of the current context through the first swap control extension the screen supports: GLX_EXT_swap_control, GLX_MESA_swap_control, GLX_SGI_swap_control
+fpl_internal void fpl__X11SetGLXSwapInterval(fpl__X11VideoOpenGLApi *glApi, fpl__X11_Display *display, const int screen, GLXDrawable drawable, const bool isVSync) {
+	const int swapInterval = isVSync ? 1 : 0;
+	// The client library may know an extension the screen does not support, only the screen list counts
+	const char *extensions = glApi->glXQueryExtensionsString(display, screen);
+	if (extensions == fpl_null) {
+		FPL_LOG_WARN(FPL__MODULE_GLX, "No GLX extensions on display '%p' and screen '%d', the swap interval stays at the default of the driver", display, screen);
+		return;
+	}
+
+	if (fpl__X11IsGLXExtensionInList(extensions, "GLX_EXT_swap_control")) {
+		glApi->glXSwapIntervalEXT = (fpl__func_glx_glXSwapIntervalEXT *)glApi->glXGetProcAddress((const GLubyte *)"glXSwapIntervalEXT");
+		if (glApi->glXSwapIntervalEXT != fpl_null) {
+			FPL_LOG_INFO(FPL__MODULE_GLX, "Set swap interval '%d' for drawable '%d' with glXSwapIntervalEXT", swapInterval, (int)drawable);
+			glApi->glXSwapIntervalEXT(display, drawable, swapInterval);
+			return;
+		}
+		FPL_LOG_WARN(FPL__MODULE_GLX, "GLX_EXT_swap_control is supported, but glXSwapIntervalEXT was not found");
+	}
+
+	if (fpl__X11IsGLXExtensionInList(extensions, "GLX_MESA_swap_control")) {
+		glApi->glXSwapIntervalMESA = (fpl__func_glx_glXSwapIntervalMESA *)glApi->glXGetProcAddress((const GLubyte *)"glXSwapIntervalMESA");
+		if (glApi->glXSwapIntervalMESA != fpl_null) {
+			FPL_LOG_INFO(FPL__MODULE_GLX, "Set swap interval '%d' with glXSwapIntervalMESA", swapInterval);
+			int mesaResult = glApi->glXSwapIntervalMESA((unsigned int)swapInterval);
+			if (mesaResult != 0) {
+				FPL_LOG_WARN(FPL__MODULE_GLX, "glXSwapIntervalMESA failed with error '%d'", mesaResult);
+			}
+			return;
+		}
+		FPL_LOG_WARN(FPL__MODULE_GLX, "GLX_MESA_swap_control is supported, but glXSwapIntervalMESA was not found");
+	}
+
+	if (fpl__X11IsGLXExtensionInList(extensions, "GLX_SGI_swap_control")) {
+		glApi->glXSwapIntervalSGI = (fpl__func_glx_glXSwapIntervalSGI *)glApi->glXGetProcAddress((const GLubyte *)"glXSwapIntervalSGI");
+		if (glApi->glXSwapIntervalSGI != fpl_null) {
+			// GLX_SGI_swap_control rejects an interval of zero, so it can turn the vertical synchronisation on but never off
+			if (swapInterval == 0) {
+				FPL_LOG_WARN(FPL__MODULE_GLX, "glXSwapIntervalSGI cannot turn off the vertical synchronisation, the swap interval stays at the default of the driver");
+				return;
+			}
+			FPL_LOG_INFO(FPL__MODULE_GLX, "Set swap interval '%d' with glXSwapIntervalSGI", swapInterval);
+			int sgiResult = glApi->glXSwapIntervalSGI(swapInterval);
+			if (sgiResult != 0) {
+				FPL_LOG_WARN(FPL__MODULE_GLX, "glXSwapIntervalSGI failed with error '%d'", sgiResult);
+			}
+			return;
+		}
+		FPL_LOG_WARN(FPL__MODULE_GLX, "GLX_SGI_swap_control is supported, but glXSwapIntervalSGI was not found");
+	}
+
+	FPL_LOG_WARN(FPL__MODULE_GLX, "No swap control extension on display '%p' and screen '%d', the swap interval stays at the default of the driver", display, screen);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdown) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
 	const fpl__X11Api *x11Api = &nativeAppState->api;
@@ -35660,6 +35746,9 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	fplAssert(activeRenderingContext != fpl_null);
 	nativeBackend->context = activeRenderingContext;
 	nativeBackend->isActiveContext = true;
+
+	// Set vertical synchronisation if available
+	fpl__X11SetGLXSwapInterval(glApi, display, nativeWindowState->screen, (GLXDrawable)window, videoSettings->isVSync);
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)display;
 	backend->surface.window.x11.window = (fpl__X11_Window)window;
