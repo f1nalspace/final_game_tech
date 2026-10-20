@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-20
+	- Changed: Switched to PNG textures instead, due to invalid BMP loading of stb_image 2.30 vs v2.19
+
 	## 2026-08-07
 	- Changed: Reflect for API change final_audiosystem.h (AudioSystemPlaySource takes a pitch, passing AudioSystemDefaultPitch)
 
@@ -717,20 +720,20 @@ static bool LoadAssets(GameState &state) {
 
 	char tmpPath[1024];
 		
-	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "ball.bmp");
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "ball.png");
 	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.ballTexture);
 
-	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bricks.bmp");
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bricks.png");
 	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.bricksTexture);
 
-	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "paddle.bmp");
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "paddle.png");
 	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.paddleTexture);
 
-	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "frame.bmp");
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "frame.png");
 	LoadTexture(allocator, tmpPath, DefaultTextureWrapMode, state.assets.frameTexture);
 
 	TextureData bgImage = fplZeroInit;
-	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bg.bmp");
+	fplPathCombine(tmpPath, fplArrayCount(tmpPath), 2, state.dataPath, "bg.png");
 	if(TextureDataLoadFromFile(allocator, &bgImage, tmpPath)) {
 		TextureData bgTileImage0 = fplZeroInit;
 		if(TextureDataLoadFromSourceRect(allocator, &bgImage, &bgTileImage0, 2, 2, 16, 16)) {
