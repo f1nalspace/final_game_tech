@@ -329,6 +329,7 @@ SOFTWARE.
 	- New: Added field isLegacyFallbackDisabled to fplOpenGLSettings
 	- New: Added fields versionIndex and contextFlags to fplVideoSurfaceOpenGL
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
+	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
 
 	#### X11
