@@ -13,6 +13,8 @@ License:
 
 Changelog
 	## 2026-10-20
+	- Added QuatSlerp(), QuatFromEuler(), QuatFromMat3() and QuatLookRotation()
+	- Added M3fDeterminant(), M3fInverse() and M4fToNormalMatrix()
 	- Fixed QuatYaw() always returned Pi/2
 	- Fixed AngleFromDegrees() and AngleFromRadians() swapped radians and degrees in C
 
@@ -2614,6 +2616,38 @@ fpl_extern_inline Quaternion QuatLerp(const Quaternion a, const float t, const Q
 }
 
 /**
+* @brief Spherically interpolates between two unit quaternions along the shortest path, with constant angular speed.
+* @param[in] a The start quaternion (at t=0), assumed normalized.
+* @param[in] t The interpolation factor, typically in [0, 1].
+* @param[in] b The end quaternion (at t=1), assumed normalized.
+* @return The interpolated unit quaternion.
+* @note b is negated when it lies in the other hemisphere, so the rotation never takes the long way, and nearly parallel quaternions are lerped and normalized.
+*/
+fpl_extern_inline Quaternion QuatSlerp(const Quaternion a, const float t, const Quaternion b) {
+	// Above this cosine sin(theta) gets too small to divide by, so the normalized lerp takes over
+	const float linearThreshold = 0.9995f;
+	float cosTheta = QuatDot(a, b);
+	Quaternion target = b;
+	if (cosTheta < 0.0f) {
+		target = QuatMultScalar(b, -1.0f);
+		cosTheta = -cosTheta;
+	}
+	if (cosTheta > linearThreshold) {
+		Quaternion lerped = QuatLerp(a, t, target);
+		Quaternion result = QuatNormalize(lerped);
+		return(result);
+	}
+	float theta = F32ArcCos(cosTheta);
+	float sinTheta = F32Sin(theta);
+	float weightA = F32Sin((1.0f - t) * theta) / sinTheta;
+	float weightB = F32Sin(t * theta) / sinTheta;
+	Quaternion weightedA = QuatMultScalar(a, weightA);
+	Quaternion weightedB = QuatMultScalar(target, weightB);
+	Quaternion result = QuatAdd(weightedA, weightedB);
+	return(result);
+}
+
+/**
 * @brief Computes the rotation angle of a quaternion.
 * @param[in] q The input quaternion (assumed normalized).
 * @return The rotation angle in radians.
@@ -2676,6 +2710,32 @@ fpl_extern_inline float QuatYaw(const Quaternion q) {
 	float sinYaw = -2.0f * (q.x * q.z - q.w * q.y);
 	float clampedSinYaw = F32Clamp(sinYaw, -1.0f, 1.0f);
 	float result = F32ArcSin(clampedSinYaw);
+	return(result);
+}
+
+/**
+* @brief Builds a quaternion from euler angles, the inverse of QuatPitch(), QuatYaw() and QuatRoll().
+* @param[in] pitch The rotation around the x axis in radians, applied first.
+* @param[in] yaw The rotation around the y axis in radians, applied second.
+* @param[in] roll The rotation around the z axis in radians, applied last.
+* @return The unit rotation quaternion qRoll * qYaw * qPitch.
+* @note Without roll this is the usual camera rotation: yaw around the world y axis, pitch around the turned x axis.
+*/
+fpl_extern_inline Quaternion QuatFromEuler(const float pitch, const float yaw, const float roll) {
+	float halfPitch = pitch * 0.5f;
+	float halfYaw = yaw * 0.5f;
+	float halfRoll = roll * 0.5f;
+	float cosPitch = F32Cos(halfPitch);
+	float sinPitch = F32Sin(halfPitch);
+	float cosYaw = F32Cos(halfYaw);
+	float sinYaw = F32Sin(halfYaw);
+	float cosRoll = F32Cos(halfRoll);
+	float sinRoll = F32Sin(halfRoll);
+	float w = cosPitch * cosYaw * cosRoll + sinPitch * sinYaw * sinRoll;
+	float x = sinPitch * cosYaw * cosRoll - cosPitch * sinYaw * sinRoll;
+	float y = cosPitch * sinYaw * cosRoll + sinPitch * cosYaw * sinRoll;
+	float z = cosPitch * cosYaw * sinRoll - sinPitch * sinYaw * cosRoll;
+	Quaternion result = QuatInit(w, x, y, z);
 	return(result);
 }
 
@@ -3337,6 +3397,121 @@ fpl_extern_inline Mat3f M3fRotationZ(const float angle) {
 	result.col1 = V3fInit(c, s, 0.0f);
 	result.col2 = V3fInit(-s, c, 0.0f);
 	result.col3 = V3fInit(0.0f, 0.0f, 1.0f);
+	return(result);
+}
+
+/**
+* @brief Computes the determinant of a 3x3 matrix.
+* @param[in] m The input matrix.
+* @return The determinant, the triple product of the three columns.
+*/
+fpl_extern_inline float M3fDeterminant(const Mat3f m) {
+	Vec3f crossCol2Col3 = V3fCross(m.col2, m.col3);
+	float result = V3fDot(m.col1, crossCol2Col3);
+	return(result);
+}
+
+/**
+* @brief Computes the inverse of a 3x3 matrix.
+* @param[in] m The input matrix.
+* @return The inverse matrix, or a zero matrix when the matrix is singular.
+*/
+fpl_extern_inline Mat3f M3fInverse(const Mat3f m) {
+	// The rows of the inverse are the cross products of the columns, divided by the determinant
+	Vec3f row1 = V3fCross(m.col2, m.col3);
+	Vec3f row2 = V3fCross(m.col3, m.col1);
+	Vec3f row3 = V3fCross(m.col1, m.col2);
+	float determinant = V3fDot(m.col1, row1);
+	if (determinant == 0.0f) {
+		Mat3f zero = M3fInit(0.0f);
+		return(zero);
+	}
+	float inverseDeterminant = 1.0f / determinant;
+	Mat3f rows;
+	rows.col1 = V3fMultScalar(row1, inverseDeterminant);
+	rows.col2 = V3fMultScalar(row2, inverseDeterminant);
+	rows.col3 = V3fMultScalar(row3, inverseDeterminant);
+	Mat3f result = M3fTranspose(rows);
+	return(result);
+}
+
+/**
+* @brief Computes the normal matrix of a model matrix, the inverse transpose of its upper-left 3x3.
+* @param[in] model The model (or model-view) matrix.
+* @return The matrix that transforms normals, so they stay perpendicular to the surface under non-uniform scale.
+* @note The transformed normals are not unit length, normalize them after the transform. A singular model matrix gives a zero matrix.
+*/
+fpl_extern_inline Mat3f M4fToNormalMatrix(const Mat4f model) {
+	Mat3f upperLeft = M3fFromMat4(model);
+	Mat3f inverse = M3fInverse(upperLeft);
+	Mat3f result = M3fTranspose(inverse);
+	return(result);
+}
+
+/**
+* @brief Converts a 3x3 rotation matrix to a quaternion, the inverse of QuatToMat4().
+* @param[in] m The column-major rotation matrix, assumed orthonormal without reflection.
+* @return The unit rotation quaternion.
+*/
+fpl_extern_inline Quaternion QuatFromMat3(const Mat3f m) {
+	// Element (row i, column j) is r[j][i]
+	float m00 = m.r[0][0];
+	float m11 = m.r[1][1];
+	float m22 = m.r[2][2];
+	float m01 = m.r[1][0];
+	float m10 = m.r[0][1];
+	float m02 = m.r[2][0];
+	float m20 = m.r[0][2];
+	float m12 = m.r[2][1];
+	float m21 = m.r[1][2];
+	float trace = m00 + m11 + m22;
+	// Divides by the largest of the four components, so the square root never runs near zero
+	Quaternion result;
+	if (trace > 0.0f) {
+		float s = F32SquareRoot(trace + 1.0f) * 2.0f;
+		result = QuatInit(0.25f * s, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s);
+	} else if (m00 > m11 && m00 > m22) {
+		float s = F32SquareRoot(1.0f + m00 - m11 - m22) * 2.0f;
+		result = QuatInit((m21 - m12) / s, 0.25f * s, (m01 + m10) / s, (m02 + m20) / s);
+	} else if (m11 > m22) {
+		float s = F32SquareRoot(1.0f + m11 - m00 - m22) * 2.0f;
+		result = QuatInit((m02 - m20) / s, (m01 + m10) / s, 0.25f * s, (m12 + m21) / s);
+	} else {
+		float s = F32SquareRoot(1.0f + m22 - m00 - m11) * 2.0f;
+		result = QuatInit((m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, 0.25f * s);
+	}
+	return(result);
+}
+
+/**
+* @brief Builds the rotation of an object or camera that looks into a direction, in the right-handed convention of M4fLookAtRH().
+* @param[in] direction The direction to look into, need not be normalized.
+* @param[in] up The world up direction, need not be normalized.
+* @return The unit quaternion that rotates the local -z axis onto direction and the local y axis toward up.
+* @note The conjugate is the rotation part of M4fLookAtRH(eye, eye + direction, up). When direction is parallel to up, another world axis is taken as up.
+*/
+fpl_extern_inline Quaternion QuatLookRotation(const Vec3f direction, const Vec3f up) {
+	// Below this squared sine between up and direction the two count as parallel
+	const float parallelLimit = 1e-6f;
+	// Below this absolute z of the backward axis the z axis serves as fallback up, otherwise the x axis
+	const float fallbackAxisLimit = 0.9f;
+	Vec3f forward = V3fNormalize(direction);
+	Vec3f back = V3fNegate(forward);
+	Vec3f upAxisHint = V3fNormalize(up);
+	Vec3f right = V3fCross(upAxisHint, back);
+	float rightLengthSquared = V3fLength2(right);
+	if (rightLengthSquared < parallelLimit) {
+		float absBackZ = F32Abs(back.z);
+		Vec3f fallbackUp = (absBackZ < fallbackAxisLimit) ? V3fInit(0.0f, 0.0f, 1.0f) : V3fInit(1.0f, 0.0f, 0.0f);
+		right = V3fCross(fallbackUp, back);
+	}
+	Vec3f rightAxis = V3fNormalize(right);
+	Vec3f upAxis = V3fCross(back, rightAxis);
+	Mat3f rotation;
+	rotation.col1 = rightAxis;
+	rotation.col2 = upAxis;
+	rotation.col3 = back;
+	Quaternion result = QuatFromMat3(rotation);
 	return(result);
 }
 
