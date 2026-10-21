@@ -96,7 +96,11 @@ How the demo works:
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
+
+	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48 or 44.1 kHz, random volume, pitch 0.6 to 2), changes volume, pitch or pause of a tone, or stops one.
+	It keeps 16 tones and removes the source of the oldest one before it plays the next, which waits for the mixer. The tones are play items of their own, the end of a track does not wait for them.
+	With --render it plays a tone and removes its source before the first mix, which must not wait because no mixer ever ran, and prints: stress: remove_source_ms=<f>
 
 Known Issues / Limitations:
 	- Visualization of FFT is incorrect
@@ -134,6 +138,7 @@ Changelog:
 	- Fixed: Silence of up to a second after a track switch in thread mode
 	- Changed: --stats takes its values from AudioSystemGetStats() and shows the play items
 	- Changed: The end of a track is found by the id of its play item, other play items do not hold it up
+	- New: --stress plays, changes and stops short sine tones from a second thread
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -431,6 +436,7 @@ typedef struct PlayerOptions {
 	bool isRepeat;
 	bool isRender;
 	bool isStats;
+	bool isStress;
 	bool isHelp;
 } PlayerOptions;
 
@@ -639,6 +645,7 @@ typedef struct AudioDemo {
 	AudioSineWaveData sineWave;
 	fplAudioFormat targetAudioFormat;
 	fplThreadHandle *streamingThread;
+	fplThreadHandle *stressThread;
 
 	uint64_t lastVideoAudioChunkUpdateTime;
 	volatile uint32_t numFramesPlayed;
@@ -677,6 +684,7 @@ typedef struct AudioDemo {
 	uint32_t streamedTrackEndFrameCount;
 
 	volatile fpl_b32 isStreamingThreadStopped;
+	volatile uint32_t isStressThreadStopped;
 	fpl_b32 useRealTimeSamples;
 	SpectrumMode spectrumMode;
 	PlaybackMode playbackMode;
@@ -2221,6 +2229,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
 	{ PlayerOptionType_Choice, "play-mode", fpl_null, PLAYER_OPTION_FIELD(playMode), PlayModeChoices, fplArrayCount(PlayModeChoices), "What follows a track that has played to its end, a repeating track never ends:" },
 	{ PlayerOptionType_Flag, "stats", fpl_null, PLAYER_OPTION_FIELD(isStats), fpl_null, 0, "Log memory and mixer cost every 5 seconds" },
+	{ PlayerOptionType_Flag, "stress", fpl_null, PLAYER_OPTION_FIELD(isStress), fpl_null, 0, "A second thread plays, changes and stops short sine tones every 1 to 20 ms" },
 	{ PlayerOptionType_Heading, fpl_null, fpl_null, 0, 0, fpl_null, 0, "Offline render (no window, no audio device):" },
 	{ PlayerOptionType_Flag, "render", fpl_null, PLAYER_OPTION_FIELD(isRender), fpl_null, 0, "Mix the first track in fixed chunks and print a hash of the samples" },
 	{ PlayerOptionType_String, "render-wav", "<file.wav>", PLAYER_OPTION_FIELD(renderWavePath), fpl_null, 0, "Like --render, and also write the samples into a wave file" },
@@ -2632,7 +2641,7 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 	}
 	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
@@ -2662,6 +2671,196 @@ static void UpdateStats(AudioDemo *demo, fplMilliseconds *lastRequestTime) {
 	} else {
 		fplAtomicStoreU32(&stats->swapState, MixCostSwapState_Requested);
 	}
+}
+
+//
+// Stress (--stress)
+//
+
+#define STRESS_TONE_COUNT 16
+
+// A short sine tone of the stress thread, its source is removed when its slot is used again
+typedef struct StressTone {
+	AudioSource *source;
+	AudioPlayItemID playId;
+} StressTone;
+
+typedef enum StressAction {
+	StressAction_Play = 0,
+	StressAction_SetVolume,
+	StressAction_SetPitch,
+	StressAction_SetPaused,
+	StressAction_Stop,
+} StressAction;
+
+// Every entry has the same chance, so a tone starts twice as often as anything else happens
+static const StressAction StressActions[] = { StressAction_Play, StressAction_Play, StressAction_SetVolume, StressAction_SetPitch, StressAction_SetPaused, StressAction_Stop };
+
+// Sample rates of the tones, passthrough and SinC at 48 kHz output. With the pitch range of RunStressAction the played rate stays between half and twice the output rate
+static const AudioHertz StressToneSampleRates[] = { 48000, 44100 };
+
+typedef struct StressState {
+	StressTone tones[STRESS_TONE_COUNT];
+	uint32_t nextToneIndex;
+	uint32_t randomState;
+} StressState;
+
+static const uint32_t StressRandomSeed = 12345u;
+
+// Numerical Recipes LCG, the order of the actions is the same in every run, only their timing differs
+static uint32_t NextStressRandom(StressState *state, const uint32_t range) {
+	const uint32_t randomMultiplier = 1664525u;
+	const uint32_t randomIncrement = 1013904223u;
+	const uint32_t randomShift = 16;
+	state->randomState = state->randomState * randomMultiplier + randomIncrement;
+	uint32_t value = state->randomState >> randomShift;
+	uint32_t result = value % range;
+	return(result);
+}
+
+static float NextStressFloat(StressState *state, const float minValue, const float maxValue) {
+	const uint32_t stepCount = 1000;
+	uint32_t step = NextStressRandom(state, stepCount + 1);
+	float result = minValue + (maxValue - minValue) * (float)step / (float)stepCount;
+	return(result);
+}
+
+// Allocates a mono sine tone of 50 to 300 ms and adds it, null when the memory could not be allocated
+static AudioSource *CreateStressToneSource(AudioSystem *audioSys, StressState *state) {
+	const AudioChannelIndex toneChannelCount = 1;
+	const float minToneSeconds = 0.05f;
+	const float maxToneSeconds = 0.3f;
+	const AudioHertz minToneFrequency = 200;
+	const AudioHertz toneFrequencyRange = 1800;
+	const double toneVolume = 0.2;
+
+	uint32_t sampleRateIndex = NextStressRandom(state, fplArrayCount(StressToneSampleRates));
+	AudioHertz sampleRate = StressToneSampleRates[sampleRateIndex];
+	float toneSeconds = NextStressFloat(state, minToneSeconds, maxToneSeconds);
+	AudioFrameIndex frameCount = (AudioFrameIndex)(toneSeconds * (float)sampleRate);
+	AudioSource *source = AudioSystemAllocateSource(audioSys, toneChannelCount, sampleRate, fplAudioFormatType_S16, frameCount);
+	if(source == fpl_null) {
+		return(fpl_null);
+	}
+
+	uint32_t frequencyOffset = NextStressRandom(state, toneFrequencyRange);
+	AudioSineWaveData sineWave = fplZeroInit;
+	sineWave.duration = toneSeconds;
+	sineWave.toneVolume = toneVolume;
+	sineWave.frequency = minToneFrequency + frequencyOffset;
+	AudioGenerateSineWave(&sineWave, source->buffer.samples, fplAudioFormatType_S16, sampleRate, toneChannelCount, frameCount);
+
+	bool isAdded = AudioSystemAddSource(audioSys, source);
+	if(!isAdded) {
+		// The source and its samples are one memory block
+		fplMemoryFree(source);
+		return(fpl_null);
+	}
+	return(source);
+}
+
+// One random action on the tones: start one, change one or stop one
+static void RunStressAction(AudioSystem *audioSys, StressState *state) {
+	const float minToneVolume = 0.05f;
+	const float maxToneVolume = 0.3f;
+	const float minTonePitch = 0.6f;
+	const float maxTonePitch = 2.0f;
+	const uint32_t pauseChoiceCount = 2;
+
+	uint32_t actionIndex = NextStressRandom(state, fplArrayCount(StressActions));
+	StressAction action = StressActions[actionIndex];
+	uint32_t toneIndex = NextStressRandom(state, STRESS_TONE_COUNT);
+	StressTone *tone = &state->tones[toneIndex];
+	switch(action) {
+		case StressAction_Play:
+		{
+			StressTone *nextTone = &state->tones[state->nextToneIndex];
+			state->nextToneIndex = (state->nextToneIndex + 1) % STRESS_TONE_COUNT;
+			if(nextTone->source != fpl_null) {
+				// Waits until the mixer has ended every play item of the source
+				AudioSystemRemoveSource(audioSys, nextTone->source);
+				nextTone->source = fpl_null;
+				nextTone->playId.value = 0;
+			}
+			AudioSource *source = CreateStressToneSource(audioSys, state);
+			if(source == fpl_null) {
+				break;
+			}
+			float volume = NextStressFloat(state, minToneVolume, maxToneVolume);
+			float pitch = NextStressFloat(state, minTonePitch, maxTonePitch);
+			nextTone->source = source;
+			nextTone->playId = AudioSystemPlaySource(audioSys, source, false, volume, pitch);
+		} break;
+
+		// The id may belong to a tone that has ended, the setters then do nothing
+		case StressAction_SetVolume:
+		{
+			float volume = NextStressFloat(state, minToneVolume, maxToneVolume);
+			AudioSystemSetPlayItemVolume(audioSys, tone->playId, volume);
+		} break;
+
+		case StressAction_SetPitch:
+		{
+			float pitch = NextStressFloat(state, minTonePitch, maxTonePitch);
+			AudioSystemSetPlayItemPitch(audioSys, tone->playId, pitch);
+		} break;
+
+		case StressAction_SetPaused:
+		{
+			bool paused = NextStressRandom(state, pauseChoiceCount) == 0;
+			AudioSystemSetPlayItemPaused(audioSys, tone->playId, paused);
+		} break;
+
+		case StressAction_Stop:
+		{
+			AudioSystemStopOne(audioSys, tone->playId);
+		} break;
+	}
+}
+
+static void ReleaseStressTones(AudioSystem *audioSys, StressState *state) {
+	for(uint32_t toneIndex = 0; toneIndex < STRESS_TONE_COUNT; ++toneIndex) {
+		StressTone *tone = &state->tones[toneIndex];
+		if(tone->source != fpl_null) {
+			AudioSystemRemoveSource(audioSys, tone->source);
+			tone->source = fpl_null;
+		}
+	}
+}
+
+// --stress: a random action on short sine tones every 1 to 20 ms, from its own thread while the tracks play
+static void AudioStressThread(const fplThreadHandle *thread, void *rawData) {
+	const uint32_t minDelayMilliseconds = 1;
+	const uint32_t delayRangeMilliseconds = 20;
+	(void)thread;
+	AudioDemo *demo = (AudioDemo *)rawData;
+	StressState state = fplZeroInit;
+	state.randomState = StressRandomSeed;
+	while(fplAtomicLoadU32(&demo->isStressThreadStopped) == 0) {
+		uint32_t delayMilliseconds = minDelayMilliseconds + NextStressRandom(&state, delayRangeMilliseconds);
+		fplThreadSleep(delayMilliseconds);
+		RunStressAction(&demo->audioSys, &state);
+	}
+	ReleaseStressTones(&demo->audioSys, &state);
+}
+
+// --stress with --render: plays a tone and removes its source before the first mix, no mixer ever ran, so the remove must not wait for one
+static void RunRenderStressCheck(AudioSystem *audioSys) {
+	const double millisecondsPerSecond = 1000.0;
+	StressState state = fplZeroInit;
+	state.randomState = StressRandomSeed;
+	AudioSource *source = CreateStressToneSource(audioSys, &state);
+	if(source == fpl_null) {
+		FPL_LOG_ERROR("Stress", "Failed to create the tone");
+		return;
+	}
+	AudioSystemPlaySource(audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+	fplTimestamp removeStart = fplTimestampQuery();
+	AudioSystemRemoveSource(audioSys, source);
+	fplTimestamp removeEnd = fplTimestampQuery();
+	fplSeconds removeSeconds = fplTimestampElapsed(removeStart, removeEnd);
+	double removeMilliseconds = removeSeconds * millisecondsPerSecond;
+	fplConsoleFormatOut("stress: remove_source_ms=%.3f\n", removeMilliseconds);
 }
 
 //
@@ -2781,6 +2980,10 @@ static int RenderOffline(const PlayerOptions *options) {
 	if(playID.value == 0) {
 		FPL_LOG_ERROR("Render", "Failed to play the track");
 		goto done;
+	}
+
+	if(options->isStress) {
+		RunRenderStressCheck(audioSys);
 	}
 
 	AudioFrameIndex totalFrameCount;
@@ -3048,6 +3251,10 @@ int main(int argc, char **args) {
 
 		// Start streaming thread
 		demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
+
+		if(options.isStress) {
+			demo->stressThread = fplThreadCreate(AudioStressThread, demo);
+		}
 	}
 
 	// Start audio playback (This will start calling clientReadCallback regularly)
@@ -3206,6 +3413,13 @@ int main(int argc, char **args) {
 	result = 0;
 
 done:
+	// The stress thread removes its sources, before the audio system goes away
+	if(demo->stressThread != fpl_null) {
+		fplAtomicStoreU32(&demo->isStressThreadStopped, 1);
+		fplThreadWaitForOne(demo->stressThread, FPL_TIMEOUT_INFINITE);
+		fplThreadTerminate(demo->stressThread);
+	}
+
 	// Wait for decoding thread to stop
 	if(demo->streamingThread != fpl_null) {
 		demo->isStreamingThreadStopped = 1;
