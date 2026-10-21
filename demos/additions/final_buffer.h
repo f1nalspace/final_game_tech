@@ -16,6 +16,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Fixed: LockFreeRingBuffer reads and writes head, tail and the fill count atomically everywhere, its asserts and a thread that shows the positions raced with the other side
+
 	## 2026-07-19
 	- Fixed unconditional FINAL_BUFFER_IMPLEMENTATION define causing duplicate-symbol link errors across multiple TUs (callers must now define it in one TU)
 	- Fixed false-sharing padding computed as 64 - UINTPTR_MAX (wraps to 65); now 64 - sizeof(void*)
@@ -77,11 +80,12 @@ typedef struct LockFreeRingBuffer {
 	uint8_t lengthPadding[64 - 8];
 	uint64_t length;
 
+	// Only the consumer moves the tail and only the producer moves the head, both atomically, so another thread may show them
 	uint8_t tailPadding[64 - 8];
-	uint64_t tail;
+	volatile uint64_t tail;
 
 	uint8_t headPadding[64 - 8];
-	uint64_t head;
+	volatile uint64_t head;
 
 	uint8_t fillCountPadding[64 - 8];
 	volatile int64_t fillCount;
@@ -458,16 +462,23 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer) {
 
 fpl_force_inline void f_LockFreeRingBufferProduce(LockFreeRingBuffer *buffer, uint64_t amount) {
 	fplAssert(buffer != fpl_null);
-	buffer->head = (buffer->head + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
-	assert(buffer->fillCount <= (int64_t)buffer->length);
+	uint64_t head = fplAtomicLoadU64(&buffer->head);
+	uint64_t nextHead = (head + amount) % buffer->length;
+	fplAtomicStoreU64(&buffer->head, nextHead);
+	// The fill count of the add itself, the other thread changes it at any time
+	int64_t previousFillCount = fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
+	assert(previousFillCount + (int64_t)amount <= (int64_t)buffer->length);
+	(void)previousFillCount;
 }
 
 fpl_force_inline void f_LockFreeRingBufferConsume(LockFreeRingBuffer *buffer, uint64_t amount) {
 	fplAssert(buffer != fpl_null);
-	buffer->tail = (buffer->tail + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
-	assert(buffer->fillCount >= 0);
+	uint64_t tail = fplAtomicLoadU64(&buffer->tail);
+	uint64_t nextTail = (tail + amount) % buffer->length;
+	fplAtomicStoreU64(&buffer->tail, nextTail);
+	int64_t previousFillCount = fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
+	assert(previousFillCount - (int64_t)amount >= 0);
+	(void)previousFillCount;
 }
 
 extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availableBytes) {
@@ -497,11 +508,12 @@ extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src,
 
 	uint8_t *srcAddr = (uint8_t *)src;
 	uint8_t *dstAddr = (uint8_t *)buffer->buffer;
-	if(buffer->isMirror || (buffer->head + len) <= buffer->length) {
-		memcpy(dstAddr + buffer->head, srcAddr, len);
+	uint64_t head = fplAtomicLoadU64(&buffer->head);
+	if(buffer->isMirror || (head + len) <= buffer->length) {
+		memcpy(dstAddr + head, srcAddr, len);
 	} else {
-		uint64_t bytesLeft = fplMin(fplMin(len, available), buffer->length - buffer->head);
-		memcpy(dstAddr + buffer->head, srcAddr, (size_t)bytesLeft);
+		uint64_t bytesLeft = fplMin(fplMin(len, available), buffer->length - head);
+		memcpy(dstAddr + head, srcAddr, (size_t)bytesLeft);
 
 		uint64_t bytesRight = len - bytesLeft;
 		memcpy(dstAddr, srcAddr + bytesLeft, (size_t)bytesRight);
@@ -517,11 +529,12 @@ extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const 
 	uint8_t *srcAddr = (uint8_t *)buffer->buffer;
 	uint8_t *dstAddr = (uint8_t *)dst;
 	if(dst != fpl_null) {
-		if(buffer->isMirror || (buffer->tail + len) <= buffer->length) {
-			memcpy(dstAddr, srcAddr + buffer->tail, len);
+		uint64_t tail = fplAtomicLoadU64(&buffer->tail);
+		if(buffer->isMirror || (tail + len) <= buffer->length) {
+			memcpy(dstAddr, srcAddr + tail, len);
 		} else {
-			uint64_t bytesLeft = fplMin(fplMin(len, fillCount), buffer->length - buffer->tail);
-			memcpy(dstAddr, srcAddr + buffer->tail, (size_t)bytesLeft);
+			uint64_t bytesLeft = fplMin(fplMin(len, fillCount), buffer->length - tail);
+			memcpy(dstAddr, srcAddr + tail, (size_t)bytesLeft);
 
 			uint64_t bytesRight = len - bytesLeft;
 			memcpy(dstAddr + bytesLeft, srcAddr, (size_t)bytesRight);
@@ -538,10 +551,11 @@ extern bool LockFreeRingBufferPeek(LockFreeRingBuffer *buffer, void *dst, const 
 	uint8_t *srcAddr = (uint8_t *)buffer->buffer;
 	uint8_t *dstAddr = (uint8_t *)dst;
 	if(dst != fpl_null) {
-		if(buffer->isMirror || (buffer->tail + offset + len) <= buffer->length) {
-			memcpy(dstAddr, srcAddr + buffer->tail + offset, len);
+		uint64_t currentTail = fplAtomicLoadU64(&buffer->tail);
+		if(buffer->isMirror || (currentTail + offset + len) <= buffer->length) {
+			memcpy(dstAddr, srcAddr + currentTail + offset, len);
 		} else {
-			uint64_t tail = (buffer->tail + offset) % buffer->length;
+			uint64_t tail = (currentTail + offset) % buffer->length;
 
 			uint64_t bytesLeft = fplMin(fplMin(len, fillCount - offset), buffer->length - tail);
 			memcpy(dstAddr, srcAddr + tail, (size_t)bytesLeft);
@@ -560,7 +574,8 @@ extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
 	}
-	buffer->tail = buffer->head = 0;
+	fplAtomicStoreU64(&buffer->tail, 0);
+	fplAtomicStoreU64(&buffer->head, 0);
 	fplAtomicExchangeS64(&buffer->fillCount, 0);
 }
 
