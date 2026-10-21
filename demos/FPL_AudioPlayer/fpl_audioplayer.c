@@ -46,6 +46,7 @@ How the demo works:
 	The thread function AudioStreamingThread() is filling a ring buffer that will be used in the audio playback thread, that eventually plays back the audio samples.
 
 	It also detects new audio tracks that needs to be loaded and loads them automatically.
+	It alone changes the track list: drag & drop only leaves a request, and at a track switch the device callback empties the output ring, so the ring keeps one producer and one consumer.
 
 	There is a audio buffer that is fully loaded once, that is used for visualizing the samples.
 	This may take a while, depending on the input/target sample rates and the length of the source tracks.
@@ -82,13 +83,12 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
-	--volume, --pitch and --repeat apply to the play item of every loaded file.
+	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
 	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n>
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
-	In render mode --volume, --pitch and --repeat apply to the sine wave too.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
@@ -117,6 +117,10 @@ Changelog:
 	- Fixed: The temporary stream buffer was smaller than the output ring, which is rounded up to whole memory pages
 	- New: Offline render mode (--render, --render-wav) that prints a hash of the mixed samples
 	- New: --stats logs memory and mixer cost every 5 seconds
+	- Changed: Drag & drop only leaves a request, the streaming thread switches the track and the device callback empties the output ring
+	- Changed: --volume, --pitch and --repeat apply to the sine wave too
+	- Fixed: Loaded tracks were never added to the audio system, so they were neither counted nor freed
+	- Fixed: The full-track buffers of replaced tracks were never freed
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -588,6 +592,23 @@ typedef struct AudioDemo {
 	volatile uint32_t currentTrackFrameCount;
 	// A repeating track starts over after currentTrackFrameCount, so its position wraps around
 	volatile uint32_t isCurrentTrackRepeating;
+
+	// Only the streaming thread changes the track list, the main thread leaves requests and draws under trackLock.
+	// The lock guards the track list against Render and the name of the current track, the device callback never takes it.
+	fplMutexHandle trackLock;
+	// Track switches the main thread asked for, +1 for the next and -1 for the previous track
+	volatile int32_t pendingTrackStep;
+	// 1 while droppedFilePath waits for the streaming thread
+	volatile uint32_t hasDroppedFile;
+	char droppedFilePath[FPL_MAX_PATH_LENGTH];
+	// Set by the streaming thread at a track switch, the device callback empties the output ring, resets numFramesPlayed and clears it
+	volatile uint32_t isPlaybackResetRequested;
+	// The play item of the current track
+	volatile uint64_t currentPlayItemId;
+	// Counts the track starts, the main thread updates title and visualization when it changes
+	volatile uint32_t trackChangeCount;
+	// Name of the current track, guarded by trackLock
+	char currentTrackName[256];
 
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
@@ -1183,6 +1204,18 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 
 	AudioFrameIndex result = 0;
 
+	// A track switch: only the consumer may drop what is left of the track before in the ring, the streaming thread waits for this
+	if(fplAtomicLoadU32(&demo->isPlaybackResetRequested) != 0) {
+		if(demo->playbackMode == PlaybackMode_Thread) {
+			size_t availableBytes = 0;
+			if(LockFreeRingBufferCanRead(&demo->outputRingBuffer, &availableBytes)) {
+				LockFreeRingBufferSkip(&demo->outputRingBuffer, availableBytes);
+			}
+		}
+		fplAtomicStoreU32(&demo->numFramesPlayed, 0);
+		fplAtomicStoreU32(&demo->isPlaybackResetRequested, 0);
+	}
+
 	switch(demo->playbackMode) {
 		case PlaybackMode_DeviceSine:
 		{
@@ -1279,45 +1312,214 @@ static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const floa
 	return(result);
 }
 
-/**
-* @brief Plays a track the streaming thread has loaded, publishes its length and in thread mode renders it into the full-track buffer for the visualization.
-* @param[in] demo The audio demo.
-* @param[in] track The loaded track.
-* @param[in] source The audio source of the track.
-* @param[in] repeat Loop the track, ignored when the track plays already.
-* @param[in] volume The volume of the play item, ignored when the track plays already.
-* @param[in] pitch The pitch of the play item, the one it plays with when it plays already.
-* @note Rendering the whole track takes long and holds the mixer, which would block the device callback in callback mode, so the other modes visualize the real-time samples only.
-*/
-static void StartLoadedTrack(AudioDemo *demo, AudioTrack *track, const AudioSource *source, const bool repeat, const float volume, const float pitch) {
-	fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
+static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource *track, const char *filePath) {
+	PCMWaveFormat fileFormat = fplZeroInit;
+	if (!AudioSystemLoadFileFormat(audioSys, filePath, &fileFormat)) {
+		FPL_LOG_WARN("Demo", "Audio file '%s' is not unsupported!", filePath);
+		return false;
+	}
+	if (!IsAudioSampleRateSupported(audioSys, fileFormat.samplesPerSecond)) {
+		FPL_LOG_WARN("Demo", "Audio file '%s' cannot be converted from sample-rate '%u' to '%u'", filePath, fileFormat.samplesPerSecond, audioSys->targetFormat.sampleRate);
+		return false;
+	}
+	const char *filename = fplExtractFileName(filePath);
+	track->type = AudioTrackSourceType_URL;
+	fplCopyString(filename, track->name, fplArrayCount(track->name));
+	fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
+	FPL_LOG_INFO("Demo", "Audio file '%s' used with sample rate", filePath, fileFormat.samplesPerSecond);
+	return true;
+}
 
-	// PlayAudioTrack starts an already loaded track itself, a second play item would play it twice
-	if(track->playID.value == 0) {
-		track->playID = AudioSystemPlaySource(&demo->audioSys, source, repeat, volume, pitch);
+// The sine wave track has no file or data source, LoadAudioTrackList generates it
+static bool IsSineTrack(const AudioTrack *track) {
+	bool result = (track->source.type == AudioTrackSourceType_None);
+	return(result);
+}
+
+// Lets the device callback empty the output ring and reset numFramesPlayed, only the consumer may drop what is in the ring. Waits at most one second for its confirmation.
+static void ResetPlayback(AudioDemo *demo) {
+	const fplMilliseconds confirmTimeoutMilliseconds = 1000;
+	const uint32_t confirmPollMilliseconds = 1;
+	fplAtomicStoreU32(&demo->isPlaybackResetRequested, 1);
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	while(fplAtomicLoadU32(&demo->isPlaybackResetRequested) != 0) {
+		fplMilliseconds waitedMilliseconds = fplMillisecondsQuery() - startTime;
+		if(waitedMilliseconds >= confirmTimeoutMilliseconds) {
+			FPL_LOG_WARN("Track", "The device callback did not confirm the playback reset within %llu ms", (unsigned long long)confirmTimeoutMilliseconds);
+			break;
+		}
+		fplThreadSleep(confirmPollMilliseconds);
+	}
+	fplAtomicStoreU32(&demo->numFramesStreamed, 0);
+}
+
+// Stops every play item, once AudioSystemStopAll returns the mixer mixes nothing of them anymore
+static void StopCurrentTrack(AudioDemo *demo) {
+	AudioSystemStopAll(&demo->audioSys);
+	for(uint32_t trackIndex = 0; trackIndex < demo->trackList.count; ++trackIndex) {
+		demo->trackList.tracks[trackIndex].playID.value = 0;
+	}
+	fplAtomicStoreU64(&demo->currentPlayItemId, 0);
+	fplAtomicStoreU32(&demo->currentTrackFrameCount, 0);
+	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, 0);
+	ResetPlayback(demo);
+}
+
+// Loads the samples of a file or data track and adds them to the audio system, which counts and frees them from then on
+static AudioSource *LoadTrackSource(AudioDemo *demo, const AudioTrack *track) {
+	AudioSource *source = fpl_null;
+	switch(track->source.type) {
+		case AudioTrackSourceType_URL:
+		{
+			source = AudioSystemLoadFileSource(&demo->audioSys, track->source.url.urlOrFilePath);
+		} break;
+
+		case AudioTrackSourceType_Data:
+		{
+			source = AudioSystemLoadDataSource(&demo->audioSys, track->source.data.size, track->source.data.data);
+		} break;
+
+		default:
+			break;
+	}
+	if(source == fpl_null) {
+		return(fpl_null);
+	}
+	if(!AudioSystemAddSource(&demo->audioSys, source)) {
+		FPL_LOG_ERROR("Track", "Failed to add the source of '%s'", track->name);
+		return(fpl_null);
+	}
+	return(source);
+}
+
+/**
+* @brief Stops the current track and starts the track at the given index, only the streaming thread calls it.
+* @param[in] demo The audio demo.
+* @param[in] trackIndex Index into the track list.
+* @note A track loads on its first start and keeps its source and its full-track buffer while the track list lives.
+* @note Only thread mode renders the whole track for the visualization: it takes long and holds the mixer, which would block the device callback in callback mode.
+*/
+static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
+	AudioTrackList *trackList = &demo->trackList;
+	AudioTrack *track = &trackList->tracks[trackIndex];
+	const PlayerOptions *options = &demo->options;
+	const char *trackName = IsSineTrack(track) ? "Sine wave" : track->name;
+
+	if(trackList->currentIndex >= 0) {
+		StopCurrentTrack(demo);
 	}
 
-	AudioFrameIndex targetFrameCount = GetPlayedFrameCount(source, pitch, demo->targetAudioFormat.sampleRate);
-	fplAtomicStoreU32(&demo->currentTrackFrameCount, targetFrameCount);
-	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, repeat ? 1 : 0);
+	AudioSource *source = fpl_null;
+	AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
+	if(state == AudioTrackState_Unloaded) {
+		fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
+		source = LoadTrackSource(demo, track);
+		if(source != fpl_null) {
+			track->sourceID = source->id;
+		}
+	} else if(state == AudioTrackState_Ready || state == AudioTrackState_Full) {
+		source = AudioSystemGetSourceByID(&demo->audioSys, track->sourceID);
+	}
 
-	if(demo->playbackMode != PlaybackMode_Thread) {
+	if(source == fpl_null) {
+		fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
+		fplMutexLock(&demo->trackLock);
+		trackList->currentIndex = trackIndex;
+		fplMutexUnlock(&demo->trackLock);
+		FPL_LOG_ERROR("Track", "Track %d of %u cannot be played: %s", trackIndex + 1, trackList->count, trackName);
 		return;
 	}
 
-	// Allocate the full audio buffer for the whole track
-	AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
-	AudioFormat fullAudioBufferFormat = fplZeroInit;
-	fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
-	fullAudioBufferFormat.format = demo->targetAudioFormat.type;
-	fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-	AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
+	track->playID = AudioSystemPlaySource(&demo->audioSys, source, options->isRepeat, options->volume, options->pitch);
+	fplAtomicStoreU64(&demo->currentPlayItemId, track->playID.value);
+
+	AudioFrameIndex trackFrameCount = GetPlayedFrameCount(source, options->pitch, demo->targetAudioFormat.sampleRate);
+	fplAtomicStoreU32(&demo->currentTrackFrameCount, trackFrameCount);
+	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, options->isRepeat ? 1 : 0);
+
+	bool needsPreview = (demo->playbackMode == PlaybackMode_Thread) && !track->outputFullBuffer.isAllocated;
+
+	fplMutexLock(&demo->trackLock);
+	if(needsPreview) {
+		AudioFormat fullAudioBufferFormat = fplZeroInit;
+		fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+		fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+		fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+		AllocateAudioBuffer(&demo->audioSys.memory, &track->outputFullBuffer, &fullAudioBufferFormat, trackFrameCount);
+	}
+	fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
+	trackList->currentIndex = trackIndex;
+	trackList->changedPending = false;
+	fplCopyString(trackName, demo->currentTrackName, fplArrayCount(demo->currentTrackName));
+	fplMutexUnlock(&demo->trackLock);
+
+	fplAtomicFetchAndAddU32(&demo->trackChangeCount, 1);
+	FPL_LOG_INFO("Track", "Track %d of %u: %s", trackIndex + 1, trackList->count, trackName);
 
 	// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
 	// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
-	if (fullAudioBuffer->bufferSize > 0) {
-		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
-		fplAssert(writtenFrames == targetFrameCount);
+	if(needsPreview && track->outputFullBuffer.bufferSize > 0) {
+		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, track->outputFullBuffer.samples, &demo->targetAudioFormat, trackFrameCount, false);
+		fplAssert(writtenFrames == trackFrameCount);
+	}
+}
+
+// Replaces the track list with the dropped file (and the sine wave with --sine), the streaming thread starts its first track next
+static void ReplaceTrackList(AudioDemo *demo, const char *filePath) {
+	AudioTrackSource trackSource = fplZeroInit;
+	if(!SetAudioTrackSourceFromFile(&demo->audioSys, &trackSource, filePath)) {
+		FPL_LOG_WARN("Track", "The dropped file '%s' cannot be played, the track list stays", filePath);
+		return;
+	}
+
+	if(demo->trackList.currentIndex >= 0) {
+		StopCurrentTrack(demo);
+	}
+
+	fplMutexLock(&demo->trackLock);
+	for(uint32_t trackIndex = 0; trackIndex < fplArrayCount(demo->trackList.tracks); ++trackIndex) {
+		AudioTrack *track = &demo->trackList.tracks[trackIndex];
+		FreeAudioBuffer(&demo->audioSys.memory, &track->outputFullBuffer);
+		fplClearStruct(track);
+	}
+	demo->trackList.count = 0;
+	demo->trackList.currentIndex = -1;
+	// No play item is left after StopCurrentTrack, so the sources can go
+	AudioSystemClearSources(&demo->audioSys);
+	bool isLoaded = LoadAudioTrackList(&demo->audioSys, &trackSource, 1, demo->options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList);
+	fplMutexUnlock(&demo->trackLock);
+
+	if(!isLoaded) {
+		FPL_LOG_ERROR("Track", "Failed to build the track list for the dropped file '%s'", filePath);
+	}
+}
+
+// Executes the requests of the main thread, called at the start of every loop of the streaming thread
+static void ProcessTrackRequests(AudioDemo *demo) {
+	if(fplAtomicLoadU32(&demo->hasDroppedFile) != 0) {
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplCopyString(demo->droppedFilePath, filePath, fplArrayCount(filePath));
+		fplAtomicStoreU32(&demo->hasDroppedFile, 0);
+		ReplaceTrackList(demo, filePath);
+	}
+
+	int32_t trackStep = fplAtomicExchangeS32(&demo->pendingTrackStep, 0);
+	int32_t trackCount = (int32_t)demo->trackList.count;
+	if(trackCount == 0) {
+		return;
+	}
+
+	// Nothing started yet, at the start and after a drop
+	int32_t currentIndex = demo->trackList.currentIndex;
+	if(currentIndex < 0) {
+		StartTrack(demo, 0);
+		return;
+	}
+
+	if(trackStep != 0) {
+		int32_t steppedIndex = (currentIndex + trackStep) % trackCount;
+		int32_t nextIndex = (steppedIndex + trackCount) % trackCount;
+		StartTrack(demo, nextIndex);
 	}
 }
 
@@ -1460,67 +1662,10 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	bool ignoreWait = false;
 	uint64_t startTime = fplMillisecondsQuery();
 	while(!demo->isStreamingThreadStopped) {
-		// Load source and play it if needed
-		if(demo->trackList.changedPending) {
-			fplAssert(demo->trackList.currentIndex >= 0 && demo->trackList.currentIndex < (int32_t)demo->trackList.count);
-			AudioTrack *track = demo->trackList.tracks + demo->trackList.currentIndex;
-			AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
-			if (state == AudioTrackState_AquireLoading) {
-				// Loading file source and play it
-				fplAssert(track->outputFullBuffer.bufferSize == 0);
-				fplAssert(!track->outputFullBuffer.isAllocated);
-				fplAssert(track->source.type != AudioTrackSourceType_None);
-
-				fplAtomicStoreS32(&track->state, AudioTrackState_Loading);
-
-				AudioSource *source = fpl_null;
-				switch (track->source.type) {
-					case AudioTrackSourceType_URL:
-					{
-						size_t urlOrFileLen = fplGetStringLength(track->source.url.urlOrFilePath);
-						fplAssert(urlOrFileLen > 0);
-						source = AudioSystemLoadFileSource(&demo->audioSys, track->source.url.urlOrFilePath);
-					} break;
-
-					case AudioTrackSourceType_Data:
-					{
-						source = AudioSystemLoadDataSource(&demo->audioSys, track->source.data.size, track->source.data.data);
-					} break;
-
-					default:
-						FPL_NOT_IMPLEMENTED;
-						break;
-				}
-
-				if (source != fpl_null) {
-					// Mark as playing
-					track->sourceID = source->id;
-					const PlayerOptions *options = &demo->options;
-					StartLoadedTrack(demo, track, source, options->isRepeat, options->volume, options->pitch);
-				} else {
-					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
-				}
-				demo->trackList.changedPending = false;
-				startTime = fplMillisecondsQuery();
-			} else if (state == AudioTrackState_Full) {
-				fplAssert(track->outputFullBuffer.bufferSize == 0);
-				fplAssert(!track->outputFullBuffer.isAllocated);
-				fplAssert(track->sourceID.value > 0);
-
-				AudioSource *source = AudioSystemGetSourceByID(&demo->audioSys, track->sourceID);
-				if (source == fpl_null) {
-					fplAlwaysAssert(!"Audio Source not found!");
-					continue;
-				}
-
-				// The generated sine track, PlayAudioTrack started it with these fixed values already
-				StartLoadedTrack(demo, track, source, false, 1.0f, AudioSystemDefaultPitch);
-
-				demo->trackList.changedPending = false;
-				startTime = fplMillisecondsQuery();
-			} else {
-				fplAlwaysAssert(!"Invalid code path!");
-			}
+		uint32_t trackChangeCount = fplAtomicLoadU32(&demo->trackChangeCount);
+		ProcessTrackRequests(demo);
+		if(fplAtomicLoadU32(&demo->trackChangeCount) != trackChangeCount) {
+			startTime = fplMillisecondsQuery();
 		}
 
 		// No audio track?
@@ -1677,24 +1822,6 @@ static void TestAudioMath() {
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(22050, 22050) == 1000);
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(44100, 44100) == 1000);
 	fplAlwaysAssert(fplGetAudioBufferSizeInMilliseconds(48000, 48000) == 1000);
-}
-
-static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource *track, const char *filePath) {
-	PCMWaveFormat fileFormat = fplZeroInit;
-	if (!AudioSystemLoadFileFormat(audioSys, filePath, &fileFormat)) {
-		FPL_LOG_WARN("Demo", "Audio file '%s' is not unsupported!", filePath);
-		return false;
-	}
-	if (!IsAudioSampleRateSupported(audioSys, fileFormat.samplesPerSecond)) {
-		FPL_LOG_WARN("Demo", "Audio file '%s' cannot be converted from sample-rate '%u' to '%u'", filePath, fileFormat.samplesPerSecond, audioSys->targetFormat.sampleRate);
-		return false;
-	}
-	const char *filename = fplExtractFileName(filePath);
-	track->type = AudioTrackSourceType_URL;
-	fplCopyString(filename, track->name, fplArrayCount(track->name));
-	fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
-	FPL_LOG_INFO("Demo", "Audio file '%s' used with sample rate", filePath, fileFormat.samplesPerSecond);
-	return true;
 }
 
 static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
@@ -2599,7 +2726,10 @@ int main(int argc, char **args) {
 			goto done;
 		}
 
-		PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
+		// The streaming thread starts the first track itself
+		if(!fplMutexInit(&demo->trackLock)) {
+			goto done;
+		}
 
 #if 0
 		// Stream in initial frames
@@ -2626,9 +2756,9 @@ int main(int argc, char **args) {
 			outSampleRate,
 			outChannels);
 
-		// The device sine plays none of the tracks
-		bool hasTrackName = (audioTrackCount > 0) && (demo->playbackMode != PlaybackMode_DeviceSine);
-		const char *audioTrackName = hasTrackName ? audioTracks[0].name : fpl_null;
+		// The streaming thread names the track it starts, the device sine plays none
+		char audioTrackName[256] = fplZeroInit;
+		uint32_t lastTrackChangeCount = 0;
         UpdateTitle(demo, audioTrackName, 0.0);
 
 		// Loop
@@ -2669,33 +2799,13 @@ int main(int argc, char **args) {
 						if (ev.window.type == fplWindowEventType_DroppedFiles) {
 							// The device sine plays without the audio system, there is no track to swap
 							if (ev.window.dropFiles.fileCount > 0 && demo->playbackMode != PlaybackMode_DeviceSine) {
-								const char *newMediaTrack = ev.window.dropFiles.files[0];
-								AudioTrackSource newTrack = fplZeroInit;
-
-								StopAllAudioTracks(&demo->audioSys, &demo->trackList);
-
-								AudioSystemClearSources(&demo->audioSys);
-
-								if (demo->playbackMode == PlaybackMode_Thread) {
-									LockFreeRingBufferClear(&demo->outputRingBuffer);
-									fplMemoryClear(demo->outputTempBuffer.samples, demo->outputTempBuffer.bufferSize);
-								}
-
-								fplAtomicExchangeU32(&demo->numFramesPlayed, 0);
-								fplAtomicExchangeU32(&demo->numFramesStreamed, 0);
-								fplAtomicExchangeU32(&demo->currentTrackFrameCount, 0);
-								fplAtomicExchangeU32(&demo->isCurrentTrackRepeating, 0);
-
-								ClearVisualization(demo);
-
-								if (SetAudioTrackSourceFromFile(&demo->audioSys, &newTrack, newMediaTrack)) {
-									audioTrackCount = 1;
-									audioTracks[0] = newTrack;
-									audioTrackName = audioTracks[0].name;
-                                    UpdateTitle(demo, audioTrackName, currentFps);
-									if (LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
-										PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
-									}
+								// Only a request, the streaming thread replaces the track list
+								const char *droppedFilePath = ev.window.dropFiles.files[0];
+								if (fplAtomicLoadU32(&demo->hasDroppedFile) == 0) {
+									fplCopyString(droppedFilePath, demo->droppedFilePath, fplArrayCount(demo->droppedFilePath));
+									fplAtomicStoreU32(&demo->hasDroppedFile, 1);
+								} else {
+									FPL_LOG_WARN("Track", "The dropped file '%s' is ignored, the file dropped before is not loaded yet", droppedFilePath);
 								}
 							}
 						}
@@ -2706,10 +2816,29 @@ int main(int argc, char **args) {
 				}
 			}
 
+			// A new track: its name for the title, a fresh visualization
+			uint32_t trackChangeCount = fplAtomicLoadU32(&demo->trackChangeCount);
+			if(trackChangeCount != lastTrackChangeCount) {
+				lastTrackChangeCount = trackChangeCount;
+				fplMutexLock(&demo->trackLock);
+				fplCopyString(demo->currentTrackName, audioTrackName, fplArrayCount(audioTrackName));
+				fplMutexUnlock(&demo->trackLock);
+				ClearVisualization(demo);
+				UpdateTitle(demo, audioTrackName, currentFps);
+			}
+
             fplWindowSize winSize = fplZeroInit;
             fplGetWindowSize(&winSize);
 
+			// The streaming thread changes the track list only under this lock
+			bool hasTrackLock = (demo->playbackMode != PlaybackMode_DeviceSine);
+			if(hasTrackLock) {
+				fplMutexLock(&demo->trackLock);
+			}
             Render(demo, winSize.width, winSize.height, totalTime);
+			if(hasTrackLock) {
+				fplMutexUnlock(&demo->trackLock);
+			}
 			fplVideoFlip();
 
 			if(demo->options.isStats) {
@@ -2769,7 +2898,11 @@ done:
 
     // Release audio system
     StopAllAudioTracks(&demo->audioSys, &demo->trackList);
+	for(uint32_t trackIndex = 0; trackIndex < fplArrayCount(demo->trackList.tracks); ++trackIndex) {
+		FreeAudioBuffer(&demo->audioSys.memory, &demo->trackList.tracks[trackIndex].outputFullBuffer);
+	}
     AudioSystemShutdown(&demo->audioSys);
+	fplMutexDestroy(&demo->trackLock);
 
     // Shutdown OpenGL
 	fglUnloadOpenGL();
