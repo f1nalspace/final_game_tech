@@ -533,6 +533,82 @@ static void fsec__File_CloseZeroInitHandleIsSafe(void) {
 	fplFileClose(&h);
 }
 
+// The search handle is released once nothing is left to list, so a loop without fplDirectoryListEnd() leaks nothing
+static bool fsec__IsDirectoryListReleased(const fplFileEntry *entry) {
+	const fplInternalFileEntryHandle releasedHandle = fplZeroInit;
+	int compareResult = memcmp(&entry->internalHandle, &releasedHandle, sizeof(releasedHandle));
+	bool result = (compareResult == 0);
+	return(result);
+}
+
+static void fsec__File_DirectoryListReleasesAtEnd(void) {
+	fsec__Banner("files", "fplDirectoryListBegin/Next release the search handle at the end");
+	const char *matchAllFilter = "*";
+	const char *fileName = "entry.bin";
+	char directoryPath[FPL_MAX_PATH_LENGTH];
+	bool hasDirectoryPath = fsec__GetTempPath(directoryPath, sizeof(directoryPath), "fsec_list_dir");
+	FSEC_ASSERT_TRUE(hasDirectoryPath);
+	char filePath[FPL_MAX_PATH_LENGTH];
+	size_t filePathLength = fplPathCombine(filePath, sizeof(filePath), 2, directoryPath, fileName);
+	FSEC_ASSERT_TRUE(filePathLength > 0);
+	(void)fplFileDelete(filePath);
+	(void)fplDirectoriesCreate(directoryPath);
+	bool isDirectoryCreated = fplDirectoryExists(directoryPath);
+	FSEC_ASSERT_TRUE(isDirectoryCreated);
+
+	// An empty directory, fplDirectoryListBegin only sees "." and ".."
+	fplFileEntry emptyEntry = fplZeroInit;
+	bool hasEmptyEntry = fplDirectoryListBegin(directoryPath, matchAllFilter, &emptyEntry);
+	FSEC_ASSERT_FALSE(hasEmptyEntry);
+	bool isEmptyListReleased = fsec__IsDirectoryListReleased(&emptyEntry);
+	FSEC_ASSERT_TRUE(isEmptyListReleased);
+
+	// One file, fplDirectoryListNext finds nothing after it
+	const char payload[] = "FPL-LIST-FIXTURE";
+	fsec__File_WriteFixture(filePath, payload, sizeof(payload) - 1);
+	size_t entryCount = 0;
+	fplFileEntry fileEntry = fplZeroInit;
+	for (bool hasEntry = fplDirectoryListBegin(directoryPath, matchAllFilter, &fileEntry); hasEntry; hasEntry = fplDirectoryListNext(&fileEntry)) {
+		++entryCount;
+	}
+	FSEC_ASSERT_EQ_SZ(entryCount, 1);
+	bool isFileListReleased = fsec__IsDirectoryListReleased(&fileEntry);
+	FSEC_ASSERT_TRUE(isFileListReleased);
+	// Still safe after the release
+	fplDirectoryListEnd(&fileEntry);
+
+	(void)fplFileDelete(filePath);
+	(void)fplDirectoryRemove(directoryPath);
+}
+
+// fplDirectoriesCreate makes every missing parent, and an existing directory counts as success
+static void fsec__File_DirectoriesCreateMakesParents(void) {
+	fsec__Banner("files", "fplDirectoriesCreate creates the parents");
+	char rootPath[FPL_MAX_PATH_LENGTH];
+	bool hasRootPath = fsec__GetTempPath(rootPath, sizeof(rootPath), "fsec_mkdirs");
+	FSEC_ASSERT_TRUE(hasRootPath);
+	char middlePath[FPL_MAX_PATH_LENGTH];
+	size_t middlePathLength = fplPathCombine(middlePath, sizeof(middlePath), 2, rootPath, "level1");
+	FSEC_ASSERT_TRUE(middlePathLength > 0);
+	char nestedPath[FPL_MAX_PATH_LENGTH];
+	size_t nestedPathLength = fplPathCombine(nestedPath, sizeof(nestedPath), 2, middlePath, "level2");
+	FSEC_ASSERT_TRUE(nestedPathLength > 0);
+	(void)fplDirectoryRemove(nestedPath);
+	(void)fplDirectoryRemove(middlePath);
+	(void)fplDirectoryRemove(rootPath);
+
+	bool isCreated = fplDirectoriesCreate(nestedPath);
+	FSEC_ASSERT_TRUE(isCreated);
+	bool hasNestedDirectory = fplDirectoryExists(nestedPath);
+	FSEC_ASSERT_TRUE(hasNestedDirectory);
+	bool isCreatedAgain = fplDirectoriesCreate(nestedPath);
+	FSEC_ASSERT_TRUE(isCreatedAgain);
+
+	(void)fplDirectoryRemove(nestedPath);
+	(void)fplDirectoryRemove(middlePath);
+	(void)fplDirectoryRemove(rootPath);
+}
+
 void FPLSecurityTests_Files(void) {
 	fsec__File_ReadBlock64Accumulates();
 	fsec__File_ReadBlock32RespectsMax();
@@ -540,6 +616,8 @@ void FPLSecurityTests_Files(void) {
 	fsec__File_CopyTargetMatchesSource();
 	fsec__File_MoveSwitchesPaths();
 	fsec__File_CloseZeroInitHandleIsSafe();
+	fsec__File_DirectoryListReleasesAtEnd();
+	fsec__File_DirectoriesCreateMakesParents();
 }
 
 /* ===========================================================================

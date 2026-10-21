@@ -259,6 +259,7 @@ SOFTWARE.
 	- New: Added field generation to fplThreadHandle
 
 	#### IO
+	- Fixed: [POSIX] fplDirectoryRemove() was missing, its implementation was named fplRemoveDirectory()
 	- Fixed: [POSIX] fplDirectoryListBegin() with a filter like "*.txt" missed names with more than one dot
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
 	- Fixed: fplExtractFilePath() left the destination untouched for an empty source path, it writes an empty string now
@@ -266,6 +267,8 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDirectoryListBegin() found nothing for an empty path, it lists the current working directory now, just like on Win32
 	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
 	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
+	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
+	- Fixed[#184]: [Win32] fplDirectoriesCreate() does not create parent sub-directories, an existing directory counts as success like on POSIX
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -284,6 +287,7 @@ SOFTWARE.
 	- New: [Win32] Keys sent without a scan code get one on Windows XP too
 	- Fixed: [X11] Media and volume keys were reported as fplKey_None
 	- New: [X11] Media and volume keys reach the focused window even while the desktop uses them as global shortcuts, read from XInput2 raw key events
+	- Fixed: [X11/Win32] Undefined behavior (1 << 31) in the key press handling
 
 	#### Window
 	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
@@ -9429,7 +9433,7 @@ fpl_platform_api bool fplFileDelete(const char *filePath);
 /**
 * @brief Creates all the directories in the given path.
 * @param[in] path The path to the directory.
-* @return Returns true when at least one directory was created, false otherwise.
+* @return Returns true when the last directory was created or already exists, false otherwise.
 */
 fpl_platform_api bool fplDirectoriesCreate(const char *path);
 
@@ -21949,9 +21953,9 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (eventsDisabled) return true;
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			uint64_t keyCode = msg->wParam;
-			bool isDown = (msg->lParam & (1 << 31)) == 0;
-			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
 			WORD keyFlags = HIWORD(msg->lParam);
+			bool isDown = (keyFlags & KF_UP) == 0;
+			fplButtonState keyState = isDown ? fplButtonState_Press : fplButtonState_Release;
 			uint32_t messageScanCode = LOBYTE(keyFlags);
 			bool isExtendedKey = (keyFlags & KF_EXTENDED) != 0;
 			uint32_t scanCode = fpl__Win32GetScanCode(wapi, (uint32_t)keyCode, messageScanCode, isExtendedKey);
@@ -23804,7 +23808,23 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
+	// Every parent from the front, '/' and '\\' both as separators like on POSIX.
+	// A parent that cannot be created (a drive root, a network share, an existing one) is fine, the last directory reports whether the path could be made.
+	size_t pathLength = (size_t)lstrlenW(pathWide);
+	for (size_t charIndex = 1; charIndex < pathLength; ++charIndex) {
+		wchar_t c = pathWide[charIndex];
+		if (c != L'/' && c != L'\\') {
+			continue;
+		}
+		pathWide[charIndex] = 0;
+		CreateDirectoryW(pathWide, fpl_null);
+		pathWide[charIndex] = L'\\';
+	}
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
+	if (!result) {
+		DWORD lastError = GetLastError();
+		result = (lastError == ERROR_ALREADY_EXISTS);
+	}
 	return(result);
 }
 
@@ -23898,6 +23918,11 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 				break;
 			}
 		}
+		// Only "." and "..": nothing to list, the search handle is released here like on POSIX
+		if (!result) {
+			FindClose(searchHandle);
+			fplClearStruct(entry);
+		}
 	}
 	return(result);
 }
@@ -23920,6 +23945,11 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 				break;
 			}
 		} while (foundNext);
+		// No entry left, the search handle is released here like on POSIX
+		if (!result) {
+			FindClose(searchHandle);
+			fplClearStruct(entry);
+		}
 	}
 	return(result);
 }
@@ -27772,7 +27802,8 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 
 	return true;
 }
-fpl_platform_api bool fplRemoveDirectory(const char *path) {
+
+fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	bool result = rmdir(path) == 0;
 	return(result);
@@ -31031,7 +31062,9 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			fpl__X11_Time diffTime = keyTime - lastPressTime;
 			FPL_LOG_TRACE(FPL__MODULE_X11, "Diff for key '%llu', time: %lu, diff: %lu, last: %lu", keyCode, keyTime, diffTime, lastPressTime);
 			fpl__X11IMState *inputMethod = &x11WinState->im;
-			if (diffTime == keyTime || (diffTime > 0 && diffTime < (1 << 31))) {
+			uint32_t timeSinceLastPress = (uint32_t)diffTime;
+			bool isLaterPress = timeSinceLastPress > 0 && timeSinceLastPress < FPL__X11_TIME_HALF_RANGE;
+			if (diffTime == keyTime || isLaterPress) {
 				if (keyCode) {
 					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
 					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
