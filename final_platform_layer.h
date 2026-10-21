@@ -276,6 +276,7 @@ SOFTWARE.
 	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
 	- Fixed: [PipeWire] Audio initialization could hang forever when no PipeWire server was reachable, because stopping a thread loop right after starting it deadlocks inside libpipewire - the thread loop now waits until its thread has entered the loop (PipeWire 0.3.80 or newer)
 	- Fixed: [PipeWire] The target device was ignored, the stream always played on the default device
+	- Fixed: The memory of the audio backend did not include its fplAudioBackend header, the backend wrote past the platform memory (a crash in fplPlatformInit on 32-bit Windows)
 
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
@@ -44445,6 +44446,10 @@ fpl_internal uint32_t fpl__GetMaxAudioBackendSize(const fplAudioSettings *settin
 	for (size_t i = 0; i < count; ++i) {
 		uint32_t size = descriptors[i].header.backendSize;
 		result = fplMax(result, size);
+	}
+	// The backend data lives behind its fplAudioBackend header, see FPL_GET_AUDIO_BACKEND_IMPL()
+	if (result > 0) {
+		result += (uint32_t)FPL_AUDIO_BACKEND_DATA_OFFSET;
 	}
 	return(result);
 }
