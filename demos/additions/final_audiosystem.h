@@ -120,11 +120,21 @@ Data flow diagram:
 │              Final output buffer filled with mixed audio        │
 └─────────────────────────────────────────────────────────────────┘
 
+Threading:
+
+- One thread at a time mixes: the one that calls AudioSystemWriteFrames() with advance, usually the audio device callback or a streaming thread. The library starts no thread itself, the mixing thread may change between calls.
+- The mixer takes no lock, allocates nothing, does no file IO and never waits for another thread.
+- Any number of other threads may play, stop and change play items. AudioSystemPlaySource() takes a slot of the fixed pool, each of these calls sends a command, and the mixer applies the commands at the start of its next call in the order they were sent.
+- A play item id is valid as soon as AudioSystemPlaySource() returns. The id of an ended item matches nothing, the setters then return false.
+- AudioSystemGetPlayItems() reads without a lock and never holds up the mixer. It returns every item that is started and not finished, also one the mixer has not taken yet. A change by a command shows up after the next mix call.
+- AudioSystemRemoveSource(), AudioSystemClearSources(), AudioSystemStopAll() and AudioSystemShutdown() free what the mixer reads, so they return only after their command is applied. When the caller is the mixing thread, or no mixer ran for two periods (at least 50 ms, a stopped device for example), they apply the queue themselves and return at once.
+- While one of these functions or a preview (advance = false) holds the mixer, a mixing call writes silence and advances nothing. A second thread that mixes at the same time gets silence as well, it is counted in AudioSystemStats::concurrentWriteCount and a debug build asserts.
+- Playing, stopping one item and the setters never block. With a full pool AudioSystemPlaySource() returns the id 0, with a full command queue (FINAL_AUDIOSYSTEM_COMMAND_CAPACITY) they return false or the id 0 and count AudioSystemStats::droppedCommandCount.
+- The master volume and the suspend flag are atomic, the mixer reads them once per call.
+- The source list has its own lock (sources.lock), the mixer never touches it.
+
 Todo:
-	- Performance is really bad, so we need to do a lot of things
-		- Remove the need for mutexes (Lock-free!)
-		- Dont allocate any memory
-		- Dont do any file/network IO
+	- Performance
 		- Unroll loops (x4), but keep reference implementation
 		- SIMD everything
 
@@ -155,6 +165,7 @@ Changelog:
 	- New: AudioSystemStats.droppedCommandCount and concurrentWriteCount, a second thread that mixes at the same time gets silence
 	- Fixed: AudioSystemShutdown(), AudioSystemStopAll() and AudioSystemClearSources() return at once on a never initialized audio system
 	- Changed (API BREAKING): The master volume and the suspend flag are atomic, AudioSystem.masterVolume became masterVolumeBits
+	- New: Threading section at the top of this header
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
