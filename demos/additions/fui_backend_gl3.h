@@ -61,6 +61,11 @@ The colors of final_ui.h go into the framebuffer as they are and are blended the
 A host that draws its scene with GL_FRAMEBUFFER_SRGB enabled would otherwise get an interface that is encoded once more and looks brighter than anywhere else.
 So the interface pass turns GL_FRAMEBUFFER_SRGB OFF for its draw calls and restores it afterwards.
 
+--- Changelog ---
+
+## 2026-10-21
+- New: fuiGL3Settings, fuiGL3DefaultSettings and fuiGL3InitWithSettings: render without saving and restoring the GL state, with the clip origin given by the host
+
 --- License ---
 
 MIT License, Copyright (c) 2017-2026 Torsten Spaete
@@ -77,6 +82,30 @@ extern "C" {
 
 //! Capacity of fuiGL3Backend::errorLog in bytes, including the terminator
 #define FUI_GL3_ERROR_LOG_CAPACITY 1024
+
+/**
+* @enum fuiGL3ClipOrigin
+* @brief Where clip space has its origin, which decides which way up the interface is drawn.
+*/
+typedef enum fuiGL3ClipOrigin {
+	//! Asked with glGetIntegerv every frame on a 4.5 or newer context, lower left before 4.5
+	fuiGL3ClipOrigin_Query = 0,
+	//! Lower left, the default of OpenGL
+	fuiGL3ClipOrigin_LowerLeft,
+	//! Upper left, as a host sets it with glClipControl
+	fuiGL3ClipOrigin_UpperLeft,
+} fuiGL3ClipOrigin;
+
+/**
+* @struct fuiGL3Settings
+* @brief How @ref fuiGL3Render treats the GL state of the host, given to @ref fuiGL3InitWithSettings.
+*/
+typedef struct fuiGL3Settings {
+	//! Where clip space has its origin, fuiGL3ClipOrigin_Query asks GL every frame from 4.5 on
+	fuiGL3ClipOrigin clipOrigin;
+	//! For a host that keeps track of its own GL state: @ref fuiGL3Render then neither reads nor restores any state and leaves behind what its documentation lists
+	bool isStateRestoreDisabled;
+} fuiGL3Settings;
 
 /**
 * @struct fuiGL3Backend
@@ -108,18 +137,34 @@ typedef struct fuiGL3Backend {
 	bool hasPrimitiveRestartFixedIndex;
 	//! True on a 4.5 or newer context, where a host may have moved the clip origin with glClipControl
 	bool canQueryClipOrigin;
+	//! The settings it was initialized with
+	fuiGL3Settings settings;
 	//! True between a successful @ref fuiGL3Init and @ref fuiGL3Release
 	bool isInitialized;
 } fuiGL3Backend;
 
 /**
-* @brief Creates the program, the vertex array, the buffers and the white texel.
+* @brief Fills the settings with the defaults: the state is saved and restored, and the clip origin is asked from GL.
+* @param[out] outSettings Reference to the settings @ref fuiGL3Settings to fill.
+*/
+fui_api void fuiGL3DefaultSettings(fuiGL3Settings *outSettings);
+
+/**
+* @brief Creates the program, the vertex array, the buffers and the white texel, with the defaults of @ref fuiGL3DefaultSettings.
 * @param[out] backend Reference to the backend @ref fuiGL3Backend to initialize.
 * @return Returns true when everything was created, false with the reason in fuiGL3Backend::errorLog otherwise.
 * @note Needs a current OpenGL 3.3 core (or compatible) context. Whatever was created before a failure is deleted again.
 * @note Starts from a cleared struct, so a backend that is still initialized has to go through @ref fuiGL3Release first or its objects leak.
 */
 fui_api bool fuiGL3Init(fuiGL3Backend *backend);
+
+/**
+* @brief Same as @ref fuiGL3Init, with settings.
+* @param[out] backend Reference to the backend @ref fuiGL3Backend to initialize.
+* @param[in] settings Reference to the settings @ref fuiGL3Settings, null for the defaults.
+* @return Returns true when everything was created, false with the reason in fuiGL3Backend::errorLog otherwise.
+*/
+fui_api bool fuiGL3InitWithSettings(fuiGL3Backend *backend, const fuiGL3Settings *settings);
 
 /**
 * @brief Deletes everything @ref fuiGL3Init created.
@@ -166,6 +211,8 @@ fui_api void fuiGL3DeleteTexture(const uint32_t texture);
 * @param[in,out] backend Reference to the backend @ref fuiGL3Backend, its buffers grow when a frame needs more.
 * @param[in] drawData The draw data from @ref fuiGetDrawData.
 * @note Everything it changes is restored afterwards: program, vertex array, array buffer, active texture unit, texture and sampler of unit 0, blending, scissor, depth test, face culling, stencil test, viewport, polygon mode, primitive restart (also the fixed index one from 4.3), rasterizer discard, logic op, color mask and GL_FRAMEBUFFER_SRGB.
+* @note With fuiGL3Settings::isStateRestoreDisabled nothing is read or restored. It leaves behind: its program, vertex array and vertex buffer bound, texture unit 0 active with the texture of the last command and no sampler, blending on (add, source alpha and one minus source alpha for the color, one and one minus source alpha for the alpha), the scissor test on with the box of the last command, depth test, face culling, stencil test, GL_FRAMEBUFFER_SRGB, primitive restart (also the fixed index one from 4.3), rasterizer discard and logic op off, polygon mode fill, the viewport over fuiDrawData::windowSize and a full color mask.
+* @note A frame without anything to draw changes no state at all.
 */
 fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData);
 
@@ -480,6 +527,24 @@ static void fui__GL3RestoreState(const fuiGL3Backend *backend, const fui__GL3Sav
 	fui__GL3SetEnabled(GL_COLOR_LOGIC_OP, saved->isColorLogicOpEnabled);
 }
 
+//! Whether clip space has its origin in the upper left: as the settings say, or asked from GL on a 4.5 or newer context
+static bool fui__GL3IsClipOriginUpperLeft(const fuiGL3Backend *backend) {
+	switch(backend->settings.clipOrigin) {
+		case fuiGL3ClipOrigin_UpperLeft:
+			return(true);
+		case fuiGL3ClipOrigin_LowerLeft:
+			return(false);
+		default:
+			break;
+	}
+	if(!backend->canQueryClipOrigin) {
+		return(false);
+	}
+	GLint clipOrigin = GL_LOWER_LEFT;
+	glGetIntegerv(FUI__GL3_CLIP_ORIGIN, &clipOrigin);
+	return(clipOrigin == GL_UPPER_LEFT);
+}
+
 static bool fui__GL3IsVersionAtLeast(const GLint majorVersion, const GLint minorVersion, const GLint requiredMajorVersion, const GLint requiredMinorVersion) {
 	if(majorVersion != requiredMajorVersion) {
 		return(majorVersion > requiredMajorVersion);
@@ -487,11 +552,32 @@ static bool fui__GL3IsVersionAtLeast(const GLint majorVersion, const GLint minor
 	return(minorVersion >= requiredMinorVersion);
 }
 
+fui_api void fuiGL3DefaultSettings(fuiGL3Settings *outSettings) {
+	if(outSettings == fui_null) {
+		return;
+	}
+	memset(outSettings, 0, sizeof(*outSettings));
+	outSettings->clipOrigin = fuiGL3ClipOrigin_Query;
+	outSettings->isStateRestoreDisabled = false;
+}
+
 fui_api bool fuiGL3Init(fuiGL3Backend *backend) {
+	fuiGL3Settings defaultSettings;
+	fuiGL3DefaultSettings(&defaultSettings);
+	bool isInitialized = fuiGL3InitWithSettings(backend, &defaultSettings);
+	return(isInitialized);
+}
+
+fui_api bool fuiGL3InitWithSettings(fuiGL3Backend *backend, const fuiGL3Settings *settings) {
 	if(backend == fui_null) {
 		return(false);
 	}
 	memset(backend, 0, sizeof(*backend));
+	if(settings != fui_null) {
+		backend->settings = *settings;
+	} else {
+		fuiGL3DefaultSettings(&backend->settings);
+	}
 
 	backend->program = fui__GL3CreateProgram(backend);
 	if(backend->program == 0) {
@@ -680,8 +766,13 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData) {
 		return;
 	}
 
+	// A host that keeps its own state gets none of it read or restored, every glGet would be a round trip it pays for nothing
+	bool isStateRestored = !backend->settings.isStateRestoreDisabled;
 	fui__GL3SavedState saved;
-	fui__GL3SaveState(backend, &saved);
+	memset(&saved, 0, sizeof(saved));
+	if(isStateRestored) {
+		fui__GL3SaveState(backend, &saved);
+	}
 
 	glViewport(0, 0, windowWidth, windowHeight);
 	glDisable(GL_DEPTH_TEST);
@@ -704,12 +795,7 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData) {
 	glEnable(GL_SCISSOR_TEST);
 
 	// A clip origin in the upper left (glClipControl) turns clip space upside down, so the projection turns it back. Scissor and viewport stay in window coordinates either way.
-	bool isClipOriginUpperLeft = false;
-	if(backend->canQueryClipOrigin) {
-		GLint clipOrigin = GL_LOWER_LEFT;
-		glGetIntegerv(FUI__GL3_CLIP_ORIGIN, &clipOrigin);
-		isClipOriginUpperLeft = (clipOrigin == GL_UPPER_LEFT);
-	}
+	bool isClipOriginUpperLeft = fui__GL3IsClipOriginUpperLeft(backend);
 
 	// y-down window pixels to clip space: x' = x * 2 / width - 1 and y' = 1 - y * 2 / height, column major like glOrtho builds it
 	const double clipSpaceSize = 2.0;
@@ -795,7 +881,9 @@ fui_api void fuiGL3Render(fuiGL3Backend *backend, const fuiDrawData *drawData) {
 		glDrawElements(GL_TRIANGLES, (GLsizei)command->indexCount, indexType, indexPointer);
 	}
 
-	fui__GL3RestoreState(backend, &saved);
+	if(isStateRestored) {
+		fui__GL3RestoreState(backend, &saved);
+	}
 }
 
 #endif // FUI_GL3_IMPLEMENTATION
