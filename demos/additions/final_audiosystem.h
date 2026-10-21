@@ -144,6 +144,7 @@ Changelog:
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
 	- Fixed: Even upsampling left the end of every mix call silent when its frame count was no multiple of the factor
+	- Fixed: AudioSystemGetPlayItems() and AudioSystemGetSources() could write past the destination when an entry was added between the size check and the copy
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -1106,41 +1107,47 @@ fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const Au
 }
 
 fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest, const size_t maxDestCount) {
+	// Counted and copied under the same lock, another thread may add or remove a source in between
+	fplMutexLock(&audioSys->sources.lock);
 	size_t count = audioSys->sources.count;
+	size_t result = count;
 	if(dest != fpl_null) {
 		if(count > maxDestCount) {
-			return(0); // Error, destination array to small
+			result = 0; // Error, destination array to small
+		} else {
+			const AudioSource *src = audioSys->sources.first;
+			AudioSource *dst = dest;
+			while(src != fpl_null) {
+				*dst = *src;
+				src = src->next;
+				++dst;
+			}
 		}
-		fplMutexLock(&audioSys->sources.lock);
-		const AudioSource *src = audioSys->sources.first;
-		AudioSource *dst = dest;
-		while(src != fpl_null) {
-			*dst = *src;
-			src = src->next;
-			++dst;
-		}
-		fplMutexUnlock(&audioSys->sources.lock);
 	}
-	return(count);
+	fplMutexUnlock(&audioSys->sources.lock);
+	return(result);
 }
 
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount) {
+	// Counted and copied under the same lock, the mixer removes finished items and another thread may add one in between
+	fplMutexLock(&audioSys->playItems.lock);
 	size_t count = audioSys->playItems.count;
+	size_t result = count;
 	if(dest != fpl_null) {
 		if(count > maxDestCount) {
-			return(0); // Error, destination array to small
+			result = 0; // Error, destination array to small
+		} else {
+			const AudioPlayItem *src = audioSys->playItems.first;
+			AudioPlayItem *dst = dest;
+			while(src != fpl_null) {
+				*dst = *src;
+				src = src->next;
+				++dst;
+			}
 		}
-		fplMutexLock(&audioSys->playItems.lock);
-		const AudioPlayItem *src = audioSys->playItems.first;
-		AudioPlayItem *dst = dest;
-		while(src != fpl_null) {
-			*dst = *src;
-			src = src->next;
-			++dst;
-		}
-		fplMutexUnlock(&audioSys->playItems.lock);
 	}
-	return(count);
+	fplMutexUnlock(&audioSys->playItems.lock);
+	return(result);
 }
 
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
