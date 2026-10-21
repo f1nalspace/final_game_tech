@@ -14,6 +14,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Added a timestamp test across fplPlatformInit and fplPlatformRelease
+
 	## 2026-10-20
 	- Added wildcard match tests
 
@@ -2114,6 +2117,28 @@ static void TestTimes(void) {
 		fplTimestamp ende = fplTimestampQuery();
 		double delta = fplTimestampElapsed(start, ende);
 		ftAssert(delta >= 1.5 && delta < 1.75);
+	}
+
+	// Across fplPlatformInit and fplPlatformRelease, [Win32] the first timestamp was a tick count and the second a performance counter value, which came out as the system uptime
+	ftMsg("Test fplTimestampElapsed across fplPlatformInit and fplPlatformRelease\n");
+	{
+		const uint32_t sleepMilliseconds = 100;
+		const double minExpectedSeconds = 0.1;
+		const double maxExpectedSeconds = 5.0;
+
+		fplTimestamp beforeInit = fplTimestampQuery();
+		fplThreadSleep(sleepMilliseconds);
+		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
+		ftAssert(inited);
+		fplTimestamp afterInit = fplTimestampQuery();
+		double initDelta = fplTimestampElapsed(beforeInit, afterInit);
+		ftAssert(initDelta >= minExpectedSeconds && initDelta < maxExpectedSeconds);
+
+		fplThreadSleep(sleepMilliseconds);
+		fplPlatformRelease();
+		fplTimestamp afterRelease = fplTimestampQuery();
+		double releaseDelta = fplTimestampElapsed(afterInit, afterRelease);
+		ftAssert(releaseDelta >= minExpectedSeconds && releaseDelta < maxExpectedSeconds);
 	}
 }
 
