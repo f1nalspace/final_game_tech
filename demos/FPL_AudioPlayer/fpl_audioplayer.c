@@ -96,7 +96,7 @@ How the demo works:
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
 
 Known Issues / Limitations:
 	- Visualization of FFT is incorrect
@@ -132,6 +132,7 @@ Changelog:
 	- New: Play mode (--play-mode, key M), by default the next track follows until the last one
 	- Fixed: The track position ran on during a pause
 	- Fixed: Silence of up to a second after a track switch in thread mode
+	- Changed: --stats takes its values from AudioSystemGetStats() and shows the play items
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -2592,8 +2593,8 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 
 	ProcessMemoryUsage memoryUsage = GetProcessMemoryUsage();
 
-	size_t sourceByteCount = 0;
-	size_t sourceCount = AudioSystemGetSourceStats(&demo->audioSys, &sourceByteCount);
+	AudioSystemStats audioStats = fplZeroInit;
+	AudioSystemGetStats(&demo->audioSys, &audioStats);
 
 	// Only thread mode has an output ring
 	char ringFillText[32] = "-";
@@ -2615,7 +2616,7 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 	}
 	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, sourceCount, sourceByteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
@@ -3040,8 +3041,10 @@ int main(int argc, char **args) {
 		const char *outFormatName = fplGetAudioFormatName(demo->audioSys.targetFormat.format);
 		uint32_t outSampleRate = demo->audioSys.targetFormat.sampleRate;
 		uint32_t outChannels = demo->audioSys.targetFormat.channels;
-		fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %lu Hz, %lu channels)\n",
-			demo->audioSys.playItems.count,
+		AudioSystemStats audioStats = fplZeroInit;
+		AudioSystemGetStats(&demo->audioSys, &audioStats);
+		fplConsoleFormatOut("Playing %u audio sources (%s, %s, %lu Hz, %lu channels)\n",
+			audioStats.activePlayItemCount,
 			outBackendName,
 			outFormatName,
 			outSampleRate,
