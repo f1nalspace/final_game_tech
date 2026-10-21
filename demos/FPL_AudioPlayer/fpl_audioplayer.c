@@ -98,7 +98,7 @@ How the demo works:
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
 
-	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48 or 44.1 kHz, random volume, pitch 0.6 to 2), changes volume, pitch or pause of a tone, or stops one.
+	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
 	It keeps 16 tones and removes the source of the oldest one before it plays the next, which waits for the mixer. The tones are play items of their own, the end of a track does not wait for them.
 	With --render it plays a tone and removes its source before the first mix, which must not wait because no mixer ever ran, and prints: stress: remove_source_ms=<f>
 
@@ -2708,8 +2708,8 @@ typedef enum StressAction {
 // Every entry has the same chance, so a tone starts twice as often as anything else happens
 static const StressAction StressActions[] = { StressAction_Play, StressAction_Play, StressAction_SetVolume, StressAction_SetPitch, StressAction_SetPaused, StressAction_Stop };
 
-// Sample rates of the tones, passthrough and SinC at 48 kHz output. With the pitch range of RunStressAction the played rate stays between half and twice the output rate
-static const AudioHertz StressToneSampleRates[] = { 48000, 44100 };
+// Sample rates of the tones at 48 kHz output: passthrough, SinC and the even 2:1 downsampling. With the pitch range of RunStressAction the played rate goes from 22.05 to 192 kHz
+static const AudioHertz StressToneSampleRates[] = { 48000, 44100, 96000 };
 
 typedef struct StressState {
 	StressTone tones[STRESS_TONE_COUNT];
@@ -2775,7 +2775,7 @@ static AudioSource *CreateStressToneSource(AudioSystem *audioSys, StressState *s
 static void RunStressAction(AudioSystem *audioSys, StressState *state) {
 	const float minToneVolume = 0.05f;
 	const float maxToneVolume = 0.3f;
-	const float minTonePitch = 0.6f;
+	const float minTonePitch = 0.5f;
 	const float maxTonePitch = 2.0f;
 	const uint32_t pauseChoiceCount = 2;
 
