@@ -1716,6 +1716,7 @@ static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
 	//audio->targetFormat.sampleRate = 44100;
 	//audio->targetFormat.sampleRate = 48000;
 	//audio->targetFormat.sampleRate = 88200;
+	//audio->targetFormat.sampleRate = 96000;
 
 	// Overwrite buffer size in milliseconds or in frames
 	//audio->targetFormat.bufferSizeInMilliseconds = 16;
