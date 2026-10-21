@@ -1111,6 +1111,8 @@
 
 	@note [X11] The scan code comes from the Linux evdev key code, which the X server reports plus 8.
 
+	@note Media and volume keys (@ref fplKey_MediaPlayPause, @ref fplKey_MediaNextTrack, @ref fplKey_VolumeUp, ...) only reach the window when the desktop does not take them itself. Desktops like KDE Plasma and GNOME often grab them globally and pass them to media players instead.
+
 	@note Every physical key has its own pressed state, even when it shares the key code with another one (like the left and right Shift or Enter and the keypad Enter on Win32). Holding both gives two presses and two releases, each with its own scan code.
 
 	@note [X11] A dead key and the key that ends its composition (like ^ and then 1 on a German keyboard) give their button events like any other key, the composed text comes as one character input event.

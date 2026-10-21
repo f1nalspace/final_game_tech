@@ -281,6 +281,7 @@ SOFTWARE.
 	- Fixed[#191]: X11 keyboard mapping table initialization was not respecting XDisplayKeycodes()
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 	- New: [Win32] Keys sent without a scan code get one on Windows XP too
+	- Fixed: [X11] Media and volume keys were reported as fplKey_None
 
 	#### Window
 	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
@@ -4721,6 +4722,16 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XK_z 0x007a
 
 #endif // FPL__HAS_PLATFORM_INCLUDES
+
+// Media and volume key symbols from X11/XF86keysym.h, defined by value for both header modes, because that header is not part of every X11 installation
+#define FPL__X11_XF86XK_AudioLowerVolume 0x1008FF11
+#define FPL__X11_XF86XK_AudioMute 0x1008FF12
+#define FPL__X11_XF86XK_AudioRaiseVolume 0x1008FF13
+#define FPL__X11_XF86XK_AudioPlay 0x1008FF14
+#define FPL__X11_XF86XK_AudioStop 0x1008FF15
+#define FPL__X11_XF86XK_AudioPrev 0x1008FF16
+#define FPL__X11_XF86XK_AudioNext 0x1008FF17
+#define FPL__X11_XF86XK_AudioPause 0x1008FF31
 
 #endif // FPL_SUBPLATFORM_X11
 
@@ -30006,6 +30017,23 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 			return fplKey_OemMinus;
 		case FPL__X11_XK_plus:
 			return fplKey_OemPlus;
+
+		case FPL__X11_XF86XK_AudioLowerVolume:
+			return fplKey_VolumeDown;
+		case FPL__X11_XF86XK_AudioMute:
+			return fplKey_VolumeMute;
+		case FPL__X11_XF86XK_AudioRaiseVolume:
+			return fplKey_VolumeUp;
+		// Win32 has a single play/pause key, so both X11 keys map to it
+		case FPL__X11_XF86XK_AudioPlay:
+		case FPL__X11_XF86XK_AudioPause:
+			return fplKey_MediaPlayPause;
+		case FPL__X11_XF86XK_AudioStop:
+			return fplKey_MediaStop;
+		case FPL__X11_XF86XK_AudioPrev:
+			return fplKey_MediaPrevTrack;
+		case FPL__X11_XF86XK_AudioNext:
+			return fplKey_MediaNextTrack;
 
 			// @TODO(final/X11): X11 map OEM1-OEM8 key
 
