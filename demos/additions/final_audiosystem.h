@@ -150,6 +150,10 @@ Changelog:
 	- Changed: Play items live in a fixed pool of FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT (256) slots, starting or ending one allocates and frees nothing
 	- Changed: AudioSystemGetPlayItems() reads without a lock and returns the items in slot order
 	- Changed (API BREAKING): AudioSystem.playItems has no list and no count anymore, use AudioSystemGetStats() or AudioSystemGetPlayItems()
+	- Changed: Play, stop and the play item setters are commands that the mixer applies at the start of its next call, AudioSystemWriteFrames() takes no lock anymore
+	- Changed: AudioSystemStopAll(), AudioSystemRemoveSource(), AudioSystemClearSources() and AudioSystemShutdown() wait for the mixer, or end the play items themselves when no mixer runs
+	- New: AudioSystemStats.droppedCommandCount and concurrentWriteCount, a second thread that mixes at the same time gets silence
+	- Fixed: AudioSystemShutdown(), AudioSystemStopAll() and AudioSystemClearSources() return at once on a never initialized audio system
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -187,6 +191,11 @@ Changelog:
 #ifndef FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT
 //! Number of play items that can be started and not finished at the same time, the size of the fixed pool in @ref AudioSystem (at most 65535)
 #	define FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT 256
+#endif
+
+#ifndef FINAL_AUDIOSYSTEM_COMMAND_CAPACITY
+//! Number of commands that can wait for the mixer, a power of two
+#	define FINAL_AUDIOSYSTEM_COMMAND_CAPACITY 1024
 #endif
 
 typedef struct AudioSourceID {
@@ -283,7 +292,7 @@ typedef struct AudioPublishedPlayItem {
 
 //! One slot of the play item pool in @ref AudioPlayItems
 typedef struct AudioPlayItemSlot {
-	//! The item the mixer plays, read and written only under playItems.lock once the slot is playing
+	//! The item the mixer plays, read and written only by the owner of the mixer (@ref AudioSystem::mixerOwner) once the slot is playing
 	AudioPlayItem item;
 	//! What @ref AudioSystemGetPlayItems copies
 	AudioPublishedPlayItem published;
@@ -296,13 +305,71 @@ typedef struct AudioPlayItemSlot {
 //! The play item pool, starting or ending a play item allocates or frees nothing
 typedef struct AudioPlayItems {
 	AudioPlayItemSlot slots[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
-	//! The slots the mixer plays in the order they were started, which is the order they are mixed in
+	//! The slots the mixer plays in the order they were started, which is the order they are mixed in. Only the owner of the mixer reads and writes them
 	uint32_t activeSlotIndices[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
 	uint32_t activeCount;
 	//! Where the search for a free slot starts, so a finished slot is not taken again at once
 	volatile uint32_t nextSlotIndex;
-	fplMutexHandle lock;
 } AudioPlayItems;
+
+//! Kinds of @ref AudioCommand
+typedef enum AudioCommandKind {
+	AudioCommandKind_None = 0,
+	//! Starts the reserved slot of playId
+	AudioCommandKind_Play,
+	//! Ends the item of playId
+	AudioCommandKind_Stop,
+	//! Ends every item that plays value.source
+	AudioCommandKind_StopSource,
+	//! Ends every item
+	AudioCommandKind_StopAll,
+	AudioCommandKind_SetVolume,
+	AudioCommandKind_SetPitch,
+	AudioCommandKind_SetRepeat,
+	AudioCommandKind_SetPaused,
+} AudioCommandKind;
+
+//! A change of the play items, the mixer applies it at the start of its next @ref AudioSystemWriteFrames call
+typedef struct AudioCommand {
+	AudioPlayItemID playId;
+	union {
+		const AudioSource *source;
+		float volume;
+		float pitch;
+		bool isRepeat;
+		bool isPaused;
+	} value;
+	//! @ref AudioCommandKind
+	uint32_t kind;
+} AudioCommand;
+
+/**
+* @brief The commands of every thread to the mixer, a ring with a single reader.
+* @note Producers take producerLock, the mixer never does: it applies everything up to writeIndex and then moves readIndex, which acknowledges the commands to a waiting producer.
+*/
+typedef struct AudioCommandQueue {
+	AudioCommand commands[FINAL_AUDIOSYSTEM_COMMAND_CAPACITY];
+	fplMutexHandle producerLock;
+	//! Commands sent so far, wraps around
+	volatile uint32_t writeIndex;
+	//! Commands applied so far, wraps around
+	volatile uint32_t readIndex;
+	//! Commands refused because the queue was full
+	volatile uint32_t droppedCount;
+} AudioCommandQueue;
+
+//! Who holds the mixer, see @ref AudioSystem::mixerOwner
+typedef enum AudioMixerOwner {
+	AudioMixerOwner_None = 0,
+	//! @ref AudioSystemWriteFrames with advance
+	AudioMixerOwner_Mixing,
+	//! @ref AudioSystemWriteFrames without advance
+	AudioMixerOwner_Preview,
+	//! A function that waits for its commands and applies them itself, because no mixer answers
+	AudioMixerOwner_Drain,
+	//! @ref AudioSystemShutdown, held until the audio system is initialized again
+	AudioMixerOwner_Shutdown,
+} AudioMixerOwner;
 
 typedef struct AudioSineWaveData {
 	AudioDuration duration;
@@ -325,9 +392,20 @@ typedef struct AudioSystem {
 	AudioFormat targetFormat;
 	AudioSources sources;
 	AudioPlayItems playItems;
+	AudioCommandQueue commandQueue;
 	AudioMemory memory;
-	fplMutexHandle writeFramesLock;
+	//! The thread of the last @ref AudioSystemWriteFrames call with advance (fplGetCurrentThreadId), null before the first one
+	volatile void *lastMixThread;
+	//! @ref AudioMixerOwner, taken with a compare-and-swap. Only its holder reads and writes the active play items and applies commands, nobody ever waits for it inside the mixer
+	volatile uint32_t mixerOwner;
+	//! Low 32 bits of fplMillisecondsQuery at the last call with advance
+	volatile uint32_t lastMixMilliseconds;
+	//! Length of the last call with advance in milliseconds, rounded up
+	volatile uint32_t lastMixPeriodMilliseconds;
+	//! Calls with advance that found another one mixing, see @ref AudioSystemStats::concurrentWriteCount
+	volatile uint32_t concurrentWriteCount;
 	float masterVolume;
+	bool isInitialized;
 	bool isShutdown;
 	//! While set, @ref AudioSystemWriteFrames hands the device SILENCE and advances nothing.
 	//! Written from the game thread, read on the audio thread, and deliberately a plain bool: the worst a torn read can do is mix one more buffer, which is a few milliseconds of sound nobody was listening to anyway.
@@ -346,7 +424,7 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 
 /**
 * @brief Stops all play items, frees all sources and releases every resource the audio system owns.
-* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
 * @note The audio system is marked as shut down and has to be initialized again with @ref AudioSystemInit before it can be used.
 * @see @ref AudioSystemInit
 */
@@ -442,6 +520,8 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 * @param[in] advance Pass true to advance the play items and remove the finished ones, false to render a preview that leaves every play item unchanged.
 * @return Returns the number of frames written, which is always frameCount.
 * @note This is the heart of the audio system, usually called from the audio device callback. Frames not covered by any play item are filled with silence.
+* @note It takes no lock and allocates nothing. It first applies the commands that other threads sent (play, stop, the play item setters).
+* @note Only one thread at a time may call it with advance. A second one at the same time gets silence, advances nothing and is counted in @ref AudioSystemStats::concurrentWriteCount, a debug build asserts. A call while a preview runs or a function applies the commands itself gets silence as well.
 * @note While the mixer is suspended this only writes silence, see @ref AudioSystemSetSuspended.
 */
 fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *outSamples, const fplAudioFormat *outFormat, const AudioFrameIndex frameCount, const bool advance);
@@ -484,9 +564,9 @@ fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 * @param[in] repeat Pass true to loop the source until the play item is stopped.
 * @param[in] volume The volume of the play item, where 1.0 is unchanged.
 * @param[in] pitch The playback rate multiplier (see @ref AudioPlayItem::pitch), pass @ref AudioSystemDefaultPitch for the file as recorded, which costs nothing.
-* @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null or all @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items are in use.
+* @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null, all @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items are in use or the command queue is full.
 * @note A pitch of zero or below is treated as 1 rather than refused: silence would be the one outcome nobody could debug.
-* @note Allocates nothing, the play item takes a slot of the fixed pool. The id is valid at once.
+* @note Allocates nothing, the play item takes a slot of the fixed pool. The id is valid at once and @ref AudioSystemGetPlayItems returns the item at once, the mixer plays it from its next call.
 */
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
 
@@ -494,7 +574,8 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 * @brief Stops one play item immediately and frees its slot.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
-* @return Returns true when the play item was stopped, false when it no longer exists or an argument is null.
+* @return Returns true when the stop was sent to a live play item, false when it no longer exists, an argument is null or the command queue is full.
+* @note The mixer ends it at the start of its next call, until then @ref AudioSystemGetPlayItems still returns it.
 * @note The play position is lost. Use @ref AudioSystemSetPlayItemPaused to pause, or @ref AudioSystemSetPlayItemRepeat to let a looping item finish its current pass.
 */
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
@@ -504,7 +585,8 @@ fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID 
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] volume The new volume of the play item, where 1.0 is unchanged.
-* @return Returns true when the volume was changed, false when the item no longer exists, which is not an error - it just finished.
+* @return Returns true when the volume was sent to a live play item, false when the item no longer exists, which is not an error - it just finished, or the command queue is full.
+* @note The mixer applies it at the start of its next call, @ref AudioSystemGetPlayItems shows it from then on. An item that ends before that ignores it. The same holds for every play item setter.
 * @note Takes an id and not a pointer on purpose: the audio thread ends a finished play item and its slot is used again, the id of an ended item matches nothing.
 */
 fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
@@ -514,7 +596,7 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] pitch The new playback rate multiplier (see @ref AudioPlayItem::pitch), values <= 0 are ignored rather than obeyed.
-* @return Returns true when the pitch was changed, false when the pitch is <= 0 or the item no longer exists, which is not an error - it just finished.
+* @return Returns true when the pitch was sent to a live play item, false when the pitch is <= 0, the item no longer exists, which is not an error - it just finished, or the command queue is full.
 * @note Lets a pitch control be dragged and heard while it moves - which on a sound effect is the only way to judge one, most being over before a slider settles.
 * @note The rate changes from the next mixed chunk; frames already written to the device keep the old one.
 */
@@ -525,7 +607,7 @@ fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPl
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] repeat Pass true to keep looping, false to let the current pass finish.
-* @return Returns true when the repeat state was changed, false when the item no longer exists, which is not an error - it just ended.
+* @return Returns true when the repeat state was sent to a live play item, false when the item no longer exists, which is not an error - it just ended, or the command queue is full.
 * @note Clearing it lets the current pass finish and the item free itself normally, which is what "stop looping" should mean - @ref AudioSystemStopOne would cut it off mid-sound instead.
 * @note Setting it makes an item that has not ended yet carry on.
 */
@@ -536,22 +618,23 @@ fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioP
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] paused Pass true to pause, false to resume.
-* @return Returns true when the pause state was changed, false when the item no longer exists.
+* @return Returns true when the pause state was sent to a live play item, false when the item no longer exists or the command queue is full.
 * @note The mixer skips it while paused and leaves its position alone, so resuming continues from the exact frame it stopped on.
 * @note That is what separates this from @ref AudioSystemStopOne, which frees the item and forgets where it was.
 */
 fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused);
 
 /**
-* @brief Stops and frees all play items and clears the internal mixing buffers.
-* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @brief Stops and frees all play items.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
 * @note The sources stay loaded, use @ref AudioSystemClearSources to free them as well.
+* @note Returns once the mixer has ended them. When the calling thread is the one that mixes, or no mixer ran for two of its periods (at least 50 ms), it ends them itself at once, otherwise it waits at most that long for the mixer. The same holds for @ref AudioSystemRemoveSource, @ref AudioSystemClearSources and @ref AudioSystemShutdown.
 */
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
 
 /**
 * @brief Stops all play items, then removes and frees all sources.
-* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
 * @note Nothing is left playing, because a play item outliving the source it points at would read freed samples on the next mix.
 */
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
@@ -617,6 +700,10 @@ typedef struct AudioSystemStats {
 	uint32_t activePlayItemCount;
 	//! Size of the play item pool, @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT
 	uint32_t maxPlayItemCount;
+	//! Commands refused because the command queue (@ref FINAL_AUDIOSYSTEM_COMMAND_CAPACITY) was full
+	uint32_t droppedCommandCount;
+	//! Calls of @ref AudioSystemWriteFrames with advance that found another thread mixing, a programming error
+	uint32_t concurrentWriteCount;
 } AudioSystemStats;
 
 /**
@@ -735,10 +822,7 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 	if(!fplMutexInit(&audioSys->sources.lock)) {
 		return false;
 	}
-	if(!fplMutexInit(&audioSys->playItems.lock)) {
-		return false;
-	}
-	if(!fplMutexInit(&audioSys->writeFramesLock)) {
+	if(!fplMutexInit(&audioSys->commandQueue.producerLock)) {
 		return false;
 	}
 
@@ -752,6 +836,8 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 	audioSys->tempWaveData.duration = 0.5;
 
 	audioSys->conversionFuncs = CreateAudioSamplesConversionFunctions();
+
+	audioSys->isInitialized = true;
 
 	return(true);
 }
@@ -1171,25 +1257,37 @@ static AudioPlayItemID MakePlayItemID(const uint32_t slotIndex, const uint32_t g
 	return(result);
 }
 
-// Returns the slot of an id while its item plays, null for the id of an ended item, whose slot may play another one by now. Only under playItems.lock
-static AudioPlayItemSlot *FindPlayingSlot(AudioPlayItems *playItems, const AudioPlayItemID playId, uint32_t *outSlotIndex) {
+// Splits an id into its slot and generation, false for an id that no slot can have
+static bool DecodePlayItemID(const AudioPlayItemID playId, uint32_t *outSlotIndex, uint32_t *outGeneration) {
 	const uint64_t slotNumber = playId.value & AudioPlayItemIDSlotMask;
 	const uint64_t idGeneration = playId.value >> AudioPlayItemIDSlotBitCount;
 	if(slotNumber == 0 || slotNumber > FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT || idGeneration > UINT32_MAX) {
+		return(false);
+	}
+	*outSlotIndex = (uint32_t)(slotNumber - 1);
+	*outGeneration = (uint32_t)idGeneration;
+	return(true);
+}
+
+// Returns the slot of an id while its item plays, null for the id of an ended item, whose slot may play another one by now. Only by the owner of the mixer
+static AudioPlayItemSlot *FindPlayingSlot(AudioPlayItems *playItems, const AudioPlayItemID playId, uint32_t *outSlotIndex) {
+	uint32_t slotIndex = 0;
+	uint32_t idGeneration = 0;
+	const bool isValid = DecodePlayItemID(playId, &slotIndex, &idGeneration);
+	if(!isValid) {
 		return(fpl_null);
 	}
-	const uint32_t slotIndex = (uint32_t)(slotNumber - 1);
 	AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
 	const uint32_t state = fplAtomicLoadU32(&slot->state);
 	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
-	if(state != AudioPlayItemSlotState_Playing || generation != (uint32_t)idGeneration) {
+	if(state != AudioPlayItemSlotState_Playing || generation != idGeneration) {
 		return(fpl_null);
 	}
 	*outSlotIndex = slotIndex;
 	return(slot);
 }
 
-// Finds the position of a playing item in the active slots. Only under playItems.lock
+// Finds the position of a playing item in the active slots. Only by the owner of the mixer
 static bool FindActivePlayItem(AudioPlayItems *playItems, const AudioPlayItemID playId, uint32_t *outActiveIndex) {
 	uint32_t slotIndex = 0;
 	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
@@ -1205,7 +1303,7 @@ static bool FindActivePlayItem(AudioPlayItems *playItems, const AudioPlayItemID 
 	return(false);
 }
 
-// Writes the item of a slot into its published state, see AudioPublishedPlayItem. One thread at a time: under playItems.lock, or the caller of AudioSystemPlaySource while the slot is reserved
+// Writes the item of a slot into its published state, see AudioPublishedPlayItem. One thread at a time: the owner of the mixer, or the caller of AudioSystemPlaySource while the slot is reserved
 static void PublishPlayItem(AudioPlayItemSlot *slot, const bool isLive) {
 	const AudioPlayItem *item = &slot->item;
 	AudioPublishedPlayItem *published = &slot->published;
@@ -1300,7 +1398,7 @@ static AudioPlayItemSlot *ReservePlayItemSlot(AudioPlayItems *playItems, uint32_
 	return(fpl_null);
 }
 
-// Ends the item of an active slot: AudioSystemGetPlayItems no longer returns it, its id matches nothing and the slot can be taken again. Only under playItems.lock
+// Ends the item of an active slot: AudioSystemGetPlayItems no longer returns it, its id matches nothing and the slot can be taken again. Only by the owner of the mixer
 static void FinishActivePlayItem(AudioPlayItems *playItems, const uint32_t activeIndex) {
 	fplAssert(activeIndex < playItems->activeCount);
 	const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
@@ -1315,6 +1413,261 @@ static void FinishActivePlayItem(AudioPlayItems *playItems, const uint32_t activ
 	}
 	--playItems->activeCount;
 }
+
+static const uint32_t AudioMillisecondsPerSecond = 1000;
+
+// A mixer that did not call AudioSystemWriteFrames for this many of its periods counts as stopped, but never before the minimum
+static const uint32_t AudioMixerIdlePeriodCount = 2;
+static const uint32_t AudioMixerIdleMinimumMilliseconds = 50;
+
+// A waiting function yields this many times before it sleeps between its checks
+static const uint32_t AudioCommandWaitYieldCount = 64;
+static const uint32_t AudioCommandWaitSleepMilliseconds = 1;
+
+// The indices of the command queue wrap around at 2^32, which only works for a power of two
+fplStaticAssert(FINAL_AUDIOSYSTEM_COMMAND_CAPACITY > 0 && (FINAL_AUDIOSYSTEM_COMMAND_CAPACITY & (FINAL_AUDIOSYSTEM_COMMAND_CAPACITY - 1)) == 0);
+
+// Whether an id belongs to an item that is started and not finished, from any thread
+static bool IsPlayItemLive(AudioPlayItems *playItems, const AudioPlayItemID playId) {
+	uint32_t slotIndex = 0;
+	uint32_t idGeneration = 0;
+	const bool isValid = DecodePlayItemID(playId, &slotIndex, &idGeneration);
+	if(!isValid) {
+		return(false);
+	}
+	AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+	const uint32_t state = fplAtomicLoadU32(&slot->state);
+	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
+	const bool isStarted = (state == AudioPlayItemSlotState_Reserved) || (state == AudioPlayItemSlotState_Playing);
+	const bool result = isStarted && (generation == idGeneration);
+	return(result);
+}
+
+// Puts a reserved slot into the active slots, it is mixed from now on. Only by the owner of the mixer
+static void StartReservedPlayItem(AudioPlayItems *playItems, const AudioPlayItemID playId) {
+	uint32_t slotIndex = 0;
+	uint32_t idGeneration = 0;
+	const bool isValid = DecodePlayItemID(playId, &slotIndex, &idGeneration);
+	fplAssert(isValid);
+	if(!isValid) {
+		return;
+	}
+	AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+	const uint32_t state = fplAtomicLoadU32(&slot->state);
+	fplAssert(state == AudioPlayItemSlotState_Reserved);
+	fplAssert(playItems->activeCount < FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT);
+	if(state != AudioPlayItemSlotState_Reserved || playItems->activeCount >= FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT) {
+		return;
+	}
+	playItems->activeSlotIndices[playItems->activeCount] = slotIndex;
+	++playItems->activeCount;
+	fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Playing);
+}
+
+// Sends a command to the mixer, false when the queue is full. The sequence is the write index after it, a waiting function waits until the read index reaches it
+static bool PushAudioCommand(AudioCommandQueue *queue, const AudioCommand *command, uint32_t *outSequence) {
+	bool result = false;
+	fplMutexLock(&queue->producerLock);
+	const uint32_t writeIndex = fplAtomicLoadU32(&queue->writeIndex);
+	const uint32_t readIndex = fplAtomicLoadU32(&queue->readIndex);
+	const uint32_t queuedCount = writeIndex - readIndex;
+	if(queuedCount < FINAL_AUDIOSYSTEM_COMMAND_CAPACITY) {
+		const uint32_t commandIndex = writeIndex % FINAL_AUDIOSYSTEM_COMMAND_CAPACITY;
+		queue->commands[commandIndex] = *command;
+		const uint32_t nextWriteIndex = writeIndex + 1;
+		// The command is visible to the mixer once the index moves on
+		fplAtomicStoreU32(&queue->writeIndex, nextWriteIndex);
+		if(outSequence != fpl_null) {
+			*outSequence = nextWriteIndex;
+		}
+		result = true;
+	}
+	fplMutexUnlock(&queue->producerLock);
+	return(result);
+}
+
+// Applies one command to the play items. Only by the owner of the mixer
+static void ApplyAudioCommand(AudioPlayItems *playItems, const AudioCommand *command) {
+	uint32_t slotIndex = 0;
+	switch(command->kind) {
+		case AudioCommandKind_Play:
+		{
+			StartReservedPlayItem(playItems, command->playId);
+		} break;
+
+		case AudioCommandKind_Stop:
+		{
+			uint32_t activeIndex = 0;
+			const bool isActive = FindActivePlayItem(playItems, command->playId, &activeIndex);
+			if(isActive) {
+				FinishActivePlayItem(playItems, activeIndex);
+			}
+		} break;
+
+		case AudioCommandKind_StopSource:
+		{
+			uint32_t activeIndex = 0;
+			while(activeIndex < playItems->activeCount) {
+				const uint32_t activeSlotIndex = playItems->activeSlotIndices[activeIndex];
+				const AudioPlayItem *playItem = &playItems->slots[activeSlotIndex].item;
+				if(playItem->source == command->value.source) {
+					// The next item moves up to this index
+					FinishActivePlayItem(playItems, activeIndex);
+					continue;
+				}
+				++activeIndex;
+			}
+		} break;
+
+		case AudioCommandKind_StopAll:
+		{
+			// From the end, so nothing has to move up
+			while(playItems->activeCount > 0) {
+				FinishActivePlayItem(playItems, playItems->activeCount - 1);
+			}
+		} break;
+
+		// A setter whose item ended before the command arrived changes nothing
+		case AudioCommandKind_SetVolume:
+		{
+			AudioPlayItemSlot *slot = FindPlayingSlot(playItems, command->playId, &slotIndex);
+			if(slot != fpl_null) {
+				slot->item.volume = command->value.volume;
+				PublishPlayItem(slot, true);
+			}
+		} break;
+
+		case AudioCommandKind_SetPitch:
+		{
+			AudioPlayItemSlot *slot = FindPlayingSlot(playItems, command->playId, &slotIndex);
+			if(slot != fpl_null) {
+				slot->item.pitch = command->value.pitch;
+				PublishPlayItem(slot, true);
+			}
+		} break;
+
+		case AudioCommandKind_SetRepeat:
+		{
+			AudioPlayItemSlot *slot = FindPlayingSlot(playItems, command->playId, &slotIndex);
+			if(slot != fpl_null) {
+				slot->item.isRepeat = command->value.isRepeat;
+				PublishPlayItem(slot, true);
+			}
+		} break;
+
+		case AudioCommandKind_SetPaused:
+		{
+			AudioPlayItemSlot *slot = FindPlayingSlot(playItems, command->playId, &slotIndex);
+			if(slot != fpl_null) {
+				slot->item.isPaused = command->value.isPaused;
+				PublishPlayItem(slot, true);
+			}
+		} break;
+
+		default:
+		{
+			fplAssert(!"Unknown audio command");
+		} break;
+	}
+}
+
+// Applies every queued command in the order it was sent, then moves the read index, which acknowledges them. Only by the owner of the mixer
+static void DrainAudioCommands(AudioSystem *audioSys) {
+	AudioCommandQueue *queue = &audioSys->commandQueue;
+	const uint32_t writeIndex = fplAtomicLoadU32(&queue->writeIndex);
+	uint32_t readIndex = fplAtomicLoadU32(&queue->readIndex);
+	while(readIndex != writeIndex) {
+		const uint32_t commandIndex = readIndex % FINAL_AUDIOSYSTEM_COMMAND_CAPACITY;
+		ApplyAudioCommand(&audioSys->playItems, &queue->commands[commandIndex]);
+		++readIndex;
+	}
+	fplAtomicStoreU32(&queue->readIndex, readIndex);
+}
+
+// Takes the mixer for the given owner, returns the owner it had before: AudioMixerOwner_None when it was taken
+static uint32_t TryAcquireMixerOwner(AudioSystem *audioSys, const AudioMixerOwner owner) {
+	const uint32_t result = fplAtomicCompareAndSwapU32(&audioSys->mixerOwner, AudioMixerOwner_None, owner);
+	return(result);
+}
+
+static void ReleaseMixerOwner(AudioSystem *audioSys) {
+	fplAtomicStoreU32(&audioSys->mixerOwner, AudioMixerOwner_None);
+}
+
+static void WaitForAudioCommandStep(const uint32_t attemptIndex) {
+	if(attemptIndex < AudioCommandWaitYieldCount) {
+		fplThreadYield();
+	} else {
+		fplThreadSleep(AudioCommandWaitSleepMilliseconds);
+	}
+}
+
+// Returns once the commands up to the sequence are applied. Applies the queue itself when the calling thread is the one that mixes, when no mixer runs, or when the mixer did not answer in time
+static void WaitForAudioCommands(AudioSystem *audioSys, const uint32_t sequence) {
+	AudioCommandQueue *queue = &audioSys->commandQueue;
+	const fplMilliseconds startMilliseconds = fplMillisecondsQuery();
+	const uint64_t currentThreadId = fplGetCurrentThreadId();
+	for(uint32_t attemptIndex = 0;; ++attemptIndex) {
+		const uint32_t readIndex = fplAtomicLoadU32(&queue->readIndex);
+		const int32_t missingCount = (int32_t)(sequence - readIndex);
+		if(missingCount <= 0) {
+			return;
+		}
+
+		void *lastMixThread = fplAtomicLoadPtr(&audioSys->lastMixThread);
+		const bool hasMixed = (lastMixThread != fpl_null);
+		const bool isMixerThread = hasMixed && ((uintptr_t)lastMixThread == (uintptr_t)currentThreadId);
+
+		const uint32_t periodMilliseconds = fplAtomicLoadU32(&audioSys->lastMixPeriodMilliseconds);
+		const uint32_t idleMilliseconds = fplMax(periodMilliseconds * AudioMixerIdlePeriodCount, AudioMixerIdleMinimumMilliseconds);
+		const fplMilliseconds nowMilliseconds = fplMillisecondsQuery();
+		const uint32_t lastMixMilliseconds = fplAtomicLoadU32(&audioSys->lastMixMilliseconds);
+		const uint32_t sinceLastMixMilliseconds = (uint32_t)nowMilliseconds - lastMixMilliseconds;
+		const bool isMixerIdle = !hasMixed || (sinceLastMixMilliseconds > idleMilliseconds);
+		const uint64_t waitedMilliseconds = nowMilliseconds - startMilliseconds;
+		const bool hasWaitedTooLong = (waitedMilliseconds > idleMilliseconds);
+
+		if(isMixerThread || isMixerIdle || hasWaitedTooLong) {
+			const uint32_t previousOwner = TryAcquireMixerOwner(audioSys, AudioMixerOwner_Drain);
+			if(previousOwner == AudioMixerOwner_None) {
+				DrainAudioCommands(audioSys);
+				ReleaseMixerOwner(audioSys);
+				continue;
+			}
+		}
+		WaitForAudioCommandStep(attemptIndex);
+	}
+}
+
+// Sends a command that a function waits for before it frees memory, so it is never dropped: with a full queue it first waits for room
+static void SendAudioCommandAndWait(AudioSystem *audioSys, const AudioCommand *command) {
+	AudioCommandQueue *queue = &audioSys->commandQueue;
+	uint32_t sequence = 0;
+	for(;;) {
+		const bool isSent = PushAudioCommand(queue, command, &sequence);
+		if(isSent) {
+			break;
+		}
+		const uint32_t queuedSequence = fplAtomicLoadU32(&queue->writeIndex);
+		WaitForAudioCommands(audioSys, queuedSequence);
+	}
+	WaitForAudioCommands(audioSys, sequence);
+}
+
+// Sends a change of one play item when its id is live, false when it has ended or the queue is full (counted)
+static bool SendPlayItemCommand(AudioSystem *audioSys, const AudioCommand *command) {
+	const bool isLive = IsPlayItemLive(&audioSys->playItems, command->playId);
+	if(!isLive) {
+		return(false);
+	}
+	AudioCommandQueue *queue = &audioSys->commandQueue;
+	const bool result = PushAudioCommand(queue, command, fpl_null);
+	if(!result) {
+		fplAtomicIncrementU32(&queue->droppedCount);
+	}
+	return(result);
+}
+
 
 fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id) {
 	fplMutexLock(&audioSys->sources.lock);
@@ -1389,17 +1742,10 @@ fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID 
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// The mixer ends items concurrently, so the whole find-and-end must run under the lock
-	AudioPlayItems *playItems = &audioSys->playItems;
-	bool result = false;
-	fplMutexLock(&playItems->lock);
-	uint32_t activeIndex = 0;
-	const bool isActive = FindActivePlayItem(playItems, playId, &activeIndex);
-	if(isActive) {
-		FinishActivePlayItem(playItems, activeIndex);
-		result = true;
-	}
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_Stop;
+	command.playId = playId;
+	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
 
@@ -1407,18 +1753,11 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// The mixer reads item->volume under this same lock (ProcessSinglePlayItem) and can end the item concurrently, so the whole find-and-write must run under it
-	AudioPlayItems *playItems = &audioSys->playItems;
-	bool result = false;
-	fplMutexLock(&playItems->lock);
-	uint32_t slotIndex = 0;
-	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
-	if(slot != fpl_null) {
-		slot->item.volume = volume;
-		PublishPlayItem(slot, true);
-		result = true;
-	}
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetVolume;
+	command.playId = playId;
+	command.value.volume = volume;
+	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
 
@@ -1426,18 +1765,11 @@ fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPl
 	if(audioSys == fpl_null || pitch <= 0.0f) {
 		return false;
 	}
-	// Same find-and-write under the same lock as the volume setter, and for the same reason
-	AudioPlayItems *playItems = &audioSys->playItems;
-	bool result = false;
-	fplMutexLock(&playItems->lock);
-	uint32_t slotIndex = 0;
-	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
-	if(slot != fpl_null) {
-		slot->item.pitch = pitch;
-		PublishPlayItem(slot, true);
-		result = true;
-	}
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetPitch;
+	command.playId = playId;
+	command.value.pitch = pitch;
+	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
 
@@ -1445,18 +1777,11 @@ fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// Same find-and-write under the same lock as the volume setter, and for the same reason
-	AudioPlayItems *playItems = &audioSys->playItems;
-	bool result = false;
-	fplMutexLock(&playItems->lock);
-	uint32_t slotIndex = 0;
-	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
-	if(slot != fpl_null) {
-		slot->item.isRepeat = repeat;
-		PublishPlayItem(slot, true);
-		result = true;
-	}
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetRepeat;
+	command.playId = playId;
+	command.value.isRepeat = repeat;
+	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
 
@@ -1464,18 +1789,11 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// Same find-and-write under the same lock as the volume setter, and for the same reason
-	AudioPlayItems *playItems = &audioSys->playItems;
-	bool result = false;
-	fplMutexLock(&playItems->lock);
-	uint32_t slotIndex = 0;
-	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
-	if(slot != fpl_null) {
-		slot->item.isPaused = paused;
-		PublishPlayItem(slot, true);
-		result = true;
-	}
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetPaused;
+	command.playId = playId;
+	command.value.isPaused = paused;
+	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
 
@@ -1510,11 +1828,19 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	// AudioSystemGetPlayItems sees it from here on, before it is mixed
 	PublishPlayItem(slot, true);
 
-	fplMutexLock(&playItems->lock);
-	playItems->activeSlotIndices[playItems->activeCount] = slotIndex;
-	++playItems->activeCount;
-	fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Playing);
-	fplMutexUnlock(&playItems->lock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_Play;
+	command.playId = result;
+	AudioCommandQueue *queue = &audioSys->commandQueue;
+	const bool isSent = PushAudioCommand(queue, &command, fpl_null);
+	if(!isSent) {
+		// The queue is full, the slot is given back. Its id never left this function, so the generation stays
+		fplAtomicIncrementU32(&queue->droppedCount);
+		PublishPlayItem(slot, false);
+		fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Finished);
+		AudioPlayItemID empty = fplZeroInit;
+		return(empty);
+	}
 
 	return(result);
 }
@@ -1647,9 +1973,9 @@ static void ApplyVolumeToSamples(const AudioChannelIndex inChannelCount, const A
 	}
 }
 
+// Only by the owner of the mixer, like RestorePlayStates
 static void SavePlayStates(AudioSystem *audioSys) {
 	AudioPlayItems *playItems = &audioSys->playItems;
-	fplMutexLock(&playItems->lock);
 	for(uint32_t activeIndex = 0; activeIndex < playItems->activeCount; ++activeIndex) {
 		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
 		AudioPlayItem *item = &playItems->slots[slotIndex].item;
@@ -1657,12 +1983,10 @@ static void SavePlayStates(AudioSystem *audioSys) {
 		item->isFinished[1] = item->isFinished[0];
 		item->copiesPlayed[1] = item->copiesPlayed[0];
 	}
-	fplMutexUnlock(&playItems->lock);
 }
 
 static void RestorePlayStates(AudioSystem *audioSys) {
 	AudioPlayItems *playItems = &audioSys->playItems;
-	fplMutexLock(&playItems->lock);
 	for(uint32_t activeIndex = 0; activeIndex < playItems->activeCount; ++activeIndex) {
 		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
 		AudioPlayItem *item = &playItems->slots[slotIndex].item;
@@ -1670,7 +1994,6 @@ static void RestorePlayStates(AudioSystem *audioSys) {
 		item->isFinished[0] = item->isFinished[1];
 		item->copiesPlayed[0] = item->copiesPlayed[1];
 	}
-	fplMutexUnlock(&playItems->lock);
 }
 
 // ============================================================================
@@ -2091,7 +2414,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 * @return Returns the maximum number of output frames produced by any single play item.
 *                         This represents the valid range of the mixing buffer — frames beyond this
 *                         are zero (the buffer is cleared at the start).
-* @note                   Thread safety: Acquires playItems.lock for the duration of the call. Must not be called concurrently (guarded externally by writeFramesLock).
+* @note                   Thread safety: Only by the owner of the mixer (AudioSystem::mixerOwner), which AudioSystemWriteFrames takes. No lock.
 */
 static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const AudioFrameIndex targetFrameCount, const bool advance) {
 	// The requested frame count must fit in the mixing buffer
@@ -2114,7 +2437,6 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	AudioFrameIndex maxOutputFrameCount = 0;
 
 	AudioPlayItems *playItems = &audioSys->playItems;
-	fplMutexLock(&playItems->lock);
 
 	uint32_t activeIndex = 0;
 	while (activeIndex < playItems->activeCount) {
@@ -2160,15 +2482,8 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 		}
 	}
 
-	fplMutexUnlock(&playItems->lock);
-
 	return maxOutputFrameCount;
 #endif
-}
-
-static void ClearConversionBuffer(AudioSystem *audioSys) {
-	audioSys->conversionBuffer.framesRemaining = 0;
-	audioSys->conversionBuffer.readFrameIndex = 0;
 }
 
 /**
@@ -2220,15 +2535,40 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 	fplAssert(audioSys->targetFormat.channels == outFormat->channels);
 	fplAssert(audioSys->targetFormat.channels <= MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT);
 
-	if(audioSys->isSuspended) {
-		// Silence, and NOTHING else touched -- no play item advanced, no source consumed, no lock taken.
-		// That is what makes this a pause: the mixer picks up exactly where it left off.
-		size_t suspendedFrameStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
-		fplMemoryClear(outSamples, suspendedFrameStride * frameCount);
+	const size_t outputFrameSize = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
+	const AudioMixerOwner requestedOwner = advance ? AudioMixerOwner_Mixing : AudioMixerOwner_Preview;
+	const uint32_t previousOwner = TryAcquireMixerOwner(audioSys, requestedOwner);
+	if(previousOwner != AudioMixerOwner_None) {
+		// Someone else mixes or applies commands: silence, nothing advances and nobody waits
+		if(advance && previousOwner == AudioMixerOwner_Mixing) {
+			fplAtomicIncrementU32(&audioSys->concurrentWriteCount);
+			fplAssert(!"AudioSystemWriteFrames was called with advance from two threads at the same time");
+		}
+		fplMemoryClear(outSamples, outputFrameSize * frameCount);
 		return(frameCount);
 	}
 
-	fplMutexLock(&audioSys->writeFramesLock);
+	if(advance) {
+		// Tells a waiting function which thread mixes and whether it still runs
+		const uint64_t threadId = fplGetCurrentThreadId();
+		const fplMilliseconds nowMilliseconds = fplMillisecondsQuery();
+		const uint64_t sampleRate = audioSys->targetFormat.sampleRate;
+		const uint64_t periodMilliseconds = ((uint64_t)frameCount * AudioMillisecondsPerSecond + sampleRate - 1) / sampleRate;
+		fplAtomicStorePtr(&audioSys->lastMixThread, (void *)(uintptr_t)threadId);
+		fplAtomicStoreU32(&audioSys->lastMixMilliseconds, (uint32_t)nowMilliseconds);
+		fplAtomicStoreU32(&audioSys->lastMixPeriodMilliseconds, (uint32_t)periodMilliseconds);
+	}
+
+	// What the other threads sent takes effect from this call on
+	DrainAudioCommands(audioSys);
+
+	if(audioSys->isSuspended) {
+		// Silence, and nothing else touched -- no play item advanced, no source consumed.
+		// That is what makes this a pause: the mixer picks up exactly where it left off.
+		fplMemoryClear(outSamples, outputFrameSize * frameCount);
+		ReleaseMixerOwner(audioSys);
+		return(frameCount);
+	}
 
 	if(!advance) {
 		SavePlayStates(audioSys);
@@ -2236,7 +2576,7 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 
 	AudioFrameIndex result = 0;
 
-	size_t outputSampleStride = fplGetAudioFrameSizeInBytes(audioSys->targetFormat.format, audioSys->targetFormat.channels);
+	size_t outputSampleStride = outputFrameSize;
 	size_t maxOutputSampleBufferSize = outputSampleStride * frameCount;
 
 	AudioStream *convBuffer = &audioSys->conversionBuffer;
@@ -2286,56 +2626,33 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 		RestorePlayStates(audioSys);
 	}
 
-	fplMutexUnlock(&audioSys->writeFramesLock);
+	ReleaseMixerOwner(audioSys);
 
 	return result;
 }
 
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
-	if(audioSys == fpl_null || audioSys->isShutdown)
+	if(audioSys == fpl_null || !audioSys->isInitialized) {
 		return;
-
-	AudioPlayItems *playItems = &audioSys->playItems;
-
-	fplMutexLock(&playItems->lock);
-	// From the end, so nothing has to move up
-	while(playItems->activeCount > 0) {
-		FinishActivePlayItem(playItems, playItems->activeCount - 1);
 	}
-	fplMutexUnlock(&playItems->lock);
-
-	fplMutexLock(&audioSys->writeFramesLock);
-	ClearConversionBuffer(audioSys);
-	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
-	fplMemoryClear(audioSys->dspInBuffer.samples, fplArrayCount(audioSys->dspInBuffer.samples));
-	fplMemoryClear(audioSys->dspOutBuffer.samples, fplArrayCount(audioSys->dspOutBuffer.samples));
-	fplMutexUnlock(&audioSys->writeFramesLock);
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_StopAll;
+	SendAudioCommandAndWait(audioSys, &command);
 }
 
 fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source) {
-	if(audioSys == fpl_null || source == fpl_null || audioSys->isShutdown) {
+	if(audioSys == fpl_null || source == fpl_null || !audioSys->isInitialized) {
 		return false;
 	}
 
 	AudioMemory *memory = &audioSys->memory;
 	AudioSources *sources = &audioSys->sources;
 
-	// Play items first: one still pointing at this source would read freed samples on the very next mix.
-	// Its own lock section - the audio thread only ever takes playItems.lock, so there is no lock order to invert here
-	AudioPlayItems *playItems = &audioSys->playItems;
-	fplMutexLock(&playItems->lock);
-	uint32_t activeIndex = 0;
-	while(activeIndex < playItems->activeCount) {
-		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
-		const AudioPlayItem *playItem = &playItems->slots[slotIndex].item;
-		if(playItem->source == source) {
-			// The next item moves up to this index
-			FinishActivePlayItem(playItems, activeIndex);
-			continue;
-		}
-		++activeIndex;
-	}
-	fplMutexUnlock(&playItems->lock);
+	// Play items first: one still pointing at this source would read freed samples on the very next mix
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_StopSource;
+	command.value.source = source;
+	SendAudioCommandAndWait(audioSys, &command);
 
 	// Singly linked, so the predecessor is found by walking (AudioSource has no prev pointer)
 	bool result = false;
@@ -2372,8 +2689,9 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 }
 
 fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
-	if(audioSys == fpl_null || audioSys->isShutdown)
+	if(audioSys == fpl_null || !audioSys->isInitialized) {
 		return;
+	}
 
 	// A play item outliving the source it points at would read freed samples on the next mix, so nothing is left playing.
 	// AudioSystemShutdown already did this before calling here; a second pass over an empty list costs nothing
@@ -2441,22 +2759,34 @@ fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *out
 	outStats->pcmByteCount = pcmByteCount;
 	outStats->activePlayItemCount = (uint32_t)playItemCount;
 	outStats->maxPlayItemCount = FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT;
+	outStats->droppedCommandCount = fplAtomicLoadU32(&audioSys->commandQueue.droppedCount);
+	outStats->concurrentWriteCount = fplAtomicLoadU32(&audioSys->concurrentWriteCount);
 	return(true);
 }
 
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
-	if(audioSys != fpl_null) {
-		AudioSystemStopAll(audioSys);
-		AudioSystemClearSources(audioSys);
-
-		FreeAudioStream(&audioSys->memory, &audioSys->conversionBuffer);
-
-		fplMutexDestroy(&audioSys->writeFramesLock);
-		fplMutexDestroy(&audioSys->playItems.lock);
-		fplMutexDestroy(&audioSys->sources.lock);
-
-		audioSys->isShutdown = true;
+	if(audioSys == fpl_null || !audioSys->isInitialized) {
+		return;
 	}
+	AudioSystemStopAll(audioSys);
+	AudioSystemClearSources(audioSys);
+
+	// Held until the next AudioSystemInit: a mixer that still runs gets silence and touches nothing that is freed here
+	for(uint32_t attemptIndex = 0;; ++attemptIndex) {
+		const uint32_t previousOwner = TryAcquireMixerOwner(audioSys, AudioMixerOwner_Shutdown);
+		if(previousOwner == AudioMixerOwner_None) {
+			break;
+		}
+		WaitForAudioCommandStep(attemptIndex);
+	}
+
+	FreeAudioStream(&audioSys->memory, &audioSys->conversionBuffer);
+
+	fplMutexDestroy(&audioSys->commandQueue.producerLock);
+	fplMutexDestroy(&audioSys->sources.lock);
+
+	audioSys->isInitialized = false;
+	audioSys->isShutdown = true;
 }
 
 static inline bool AreSampleRatesEven(const uint32_t rateA, const uint32_t rateB) {
