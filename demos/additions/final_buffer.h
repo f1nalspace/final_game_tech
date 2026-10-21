@@ -19,6 +19,7 @@ Changelog:
 	## 2026-10-21
 	- Fixed: LockFreeRingBuffer reads and writes head, tail and the fill count atomically everywhere, its asserts and a thread that shows the positions raced with the other side
 	- Changed: Uses fplMemoryCopy, fplMemorySet and fplAssert instead of memcpy, memset and assert, which it used without including their headers
+	- Fixed: [Win32] VirtualAlloc2 and MapViewOfFile3 were called without WINAPI, which broke the stack of a 32-bit build (crash on Windows 10 32-bit and Wine)
 
 	## 2026-07-19
 	- Fixed unconditional FINAL_BUFFER_IMPLEMENTATION define causing duplicate-symbol link errors across multiple TUs (callers must now define it in one TU)
@@ -161,10 +162,10 @@ typedef struct MEM_EXTENDED_PARAMETER {
 
 #define WIN32_KERNEL_DLL "kernelbase.dll"
 
-#define WIN32_FUNC_VirtualAlloc2(name) PVOID name(HANDLE process, PVOID baseAddress, SIZE_T size, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
+#define WIN32_FUNC_VirtualAlloc2(name) PVOID WINAPI name(HANDLE process, PVOID baseAddress, SIZE_T size, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
 typedef WIN32_FUNC_VirtualAlloc2(win32_func_virtualalloc2);
 
-#define WIN32_FUNC_MapViewOfFile3(name) PVOID name(HANDLE fileMapping, HANDLE process, PVOID baseAddress, ULONG64 offset, SIZE_T viewSize, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
+#define WIN32_FUNC_MapViewOfFile3(name) PVOID WINAPI name(HANDLE fileMapping, HANDLE process, PVOID baseAddress, ULONG64 offset, SIZE_T viewSize, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
 typedef WIN32_FUNC_MapViewOfFile3(win32_func_mapviewoffile3);
 
 static void f_ReleaseMemoryMirrorWin32(MirroredMemory *mem) {
