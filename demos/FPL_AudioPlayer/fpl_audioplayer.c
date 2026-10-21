@@ -125,6 +125,8 @@ Changelog:
 	- Fixed: Loaded tracks were never added to the audio system, so they were neither counted nor freed
 	- Fixed: The full-track buffers of replaced tracks were never freed
 	- New: Keys N/P and the media keys switch tracks, Space pauses, R toggles repeat, Up/Down change the volume
+	- Fixed: The log line of a loaded file missed its sample rate
+	- Changed: F1 logs the visualization, outside thread mode that it stays real-time
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -1327,7 +1329,7 @@ static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const floa
 static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource *track, const char *filePath) {
 	PCMWaveFormat fileFormat = fplZeroInit;
 	if (!AudioSystemLoadFileFormat(audioSys, filePath, &fileFormat)) {
-		FPL_LOG_WARN("Demo", "Audio file '%s' is not unsupported!", filePath);
+		FPL_LOG_WARN("Demo", "Audio file '%s' is missing or not supported!", filePath);
 		return false;
 	}
 	if (!IsAudioSampleRateSupported(audioSys, fileFormat.samplesPerSecond)) {
@@ -1338,7 +1340,7 @@ static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource 
 	track->type = AudioTrackSourceType_URL;
 	fplCopyString(filename, track->name, fplArrayCount(track->name));
 	fplCopyString(filePath, track->url.urlOrFilePath, fplArrayCount(track->url.urlOrFilePath));
-	FPL_LOG_INFO("Demo", "Audio file '%s' used with sample rate", filePath, fileFormat.samplesPerSecond);
+	FPL_LOG_INFO("Demo", "Audio file '%s' used with sample rate %u Hz", filePath, fileFormat.samplesPerSecond);
 	return true;
 }
 
@@ -1887,6 +1889,16 @@ static void RequestTrackStep(AudioDemo *demo, const int32_t trackStep) {
 	FPL_LOG_INFO("Keys", "%s track", (trackStep > 0) ? "Next" : "Previous");
 }
 
+// Only thread mode has the full-track buffer, the other modes always visualize the real-time samples
+static void ToggleRealTimeVisualization(AudioDemo *demo) {
+	if(demo->playbackMode != PlaybackMode_Thread) {
+		FPL_LOG_INFO("Keys", "Visualization: real-time only, the full-track buffer exists in thread mode only");
+		return;
+	}
+	demo->useRealTimeSamples = !demo->useRealTimeSamples;
+	FPL_LOG_INFO("Keys", "Visualization: %s", demo->useRealTimeSamples ? "real-time samples" : "full-track buffer");
+}
+
 static AudioPlayItemID GetCurrentPlayItemId(AudioDemo *demo) {
 	AudioPlayItemID result = fplZeroInit;
 	result.value = fplAtomicLoadU64(&demo->currentPlayItemId);
@@ -1948,7 +1960,7 @@ static const PlayerKeyHelp PlayerKeyHelps[] = {
 	{ "Space, media play/pause", "Pause and resume" },
 	{ "R", "Repeat on and off, for the next tracks too" },
 	{ "Up, Down", "Volume +0.1 and -0.1, for the next tracks too" },
-	{ "F, F1, F2", "Fullscreen, real-time visualization, spectrum mode" },
+	{ "F, F1, F2", "Fullscreen, real-time visualization (thread mode only), spectrum mode" },
 };
 
 //
@@ -2890,7 +2902,7 @@ int main(int argc, char **args) {
 									else
 										fplDisableWindowFullscreen();
 								} else if(key == fplKey_F1) {
-									demo->useRealTimeSamples = !demo->useRealTimeSamples;
+									ToggleRealTimeVisualization(demo);
 								} else if(key == fplKey_F2) {
 									demo->spectrumMode = (SpectrumMode)((demo->spectrumMode + 1) % SpectrumMode_Count);
 								} else if(key == fplKey_N || key == fplKey_MediaNextTrack) {
