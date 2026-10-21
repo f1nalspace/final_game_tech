@@ -271,6 +271,7 @@ SOFTWARE.
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
 	- Changed: While the backends are probed, a backend that cannot be loaded or rejects the audio format only logs info ("Unable to ...") instead of an error or warning, and no longer pushes an error - only when no backend could be used at all, one error names the last result of every backend
 	- Fixed: [PipeWire] Audio initialization could hang forever when no PipeWire server was reachable, because stopping a thread loop right after starting it deadlocks inside libpipewire - the thread loop now waits until its thread has entered the loop (PipeWire 0.3.80 or newer)
+	- Fixed: [PipeWire] The target device was ignored, the stream always played on the default device
 
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
@@ -6727,7 +6728,7 @@ typedef union fplAudioDeviceID {
 	uint32_t pulse;
 #endif
 #if defined(FPL__ENABLE_AUDIO_PIPEWIRE)
-	//! PipeWire node id.
+	//! PipeWire object serial of the sink node.
 	uint32_t pipewire;
 #endif
 #if defined(FPL__ENABLE_AUDIO_OSS)
@@ -42792,6 +42793,7 @@ enum spa_audio_channel {
 #define PW_KEY_AUDIO_CHANNELS "audio.channels"
 #define PW_KEY_AUDIO_RATE "audio.rate"
 #define PW_KEY_TARGET_OBJECT "target.object"
+#define PW_KEY_OBJECT_SERIAL "object.serial"
 
 
 // SPA basic type identifiers (from spa/utils/type.h)
@@ -43538,6 +43540,17 @@ fpl_globalvar struct pw_core_events fpl__global_pipeWireEnumCoreEvents = {
 	fpl_null,
 };
 
+// target.object takes the object.serial of a node (since PipeWire 0.3.64), not its registry id, which is reused for new objects.
+// Falls back to the registry id when the server gives no serial.
+fpl_internal uint32_t fpl__PipeWireGetObjectSerial(const uint32_t id, const struct spa_dict *props) {
+	const char *serialText = fpl__PipeWireSpaDictLookup(props, PW_KEY_OBJECT_SERIAL);
+	int32_t serial = 0;
+	if (serialText != fpl_null && fplTryStringToS32(serialText, &serial) && serial > 0) {
+		return (uint32_t)serial;
+	}
+	return id;
+}
+
 // Registry listener callbacks, operating on a stack-local fpl__PipeWireEnumState.
 fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
 	(void)permissions;
@@ -43556,7 +43569,8 @@ fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t i
 	if (!fplIsStringEqual(mediaClass, "Audio/Sink")) {
 		return;
 	}
-	if (s->hasTargetId && id != s->targetId) {
+	uint32_t serial = fpl__PipeWireGetObjectSerial(id, props);
+	if (s->hasTargetId && serial != s->targetId) {
 		return;
 	}
 	const char *description = fpl__PipeWireSpaDictLookup(props, PW_KEY_NODE_DESCRIPTION);
@@ -43572,7 +43586,7 @@ fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t i
 		} else {
 			fplAudioDeviceInfo *outInfo = (fplAudioDeviceInfo *)((uint8_t *)s->deviceInfos + (s->deviceInfoSize * s->resultCount));
 			fplClearStruct(outInfo);
-			outInfo->id.pipewire = id;
+			outInfo->id.pipewire = serial;
 			if (description != fpl_null && fplGetStringLength(description) > 0) {
 				fplCopyString(description, outInfo->name, fplArrayCount(outInfo->name));
 			} else {
@@ -44016,6 +44030,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 	api->pw_properties_setf(props, PW_KEY_AUDIO_CHANNELS, "%u", (uint32_t)channelCount);
 	api->pw_properties_setf(props, PW_KEY_AUDIO_RATE, "%u", sampleRate);
 	if (targetDevice != fpl_null && fplGetStringLength(targetDevice->name) > 0) {
+		// The object serial from the device enumeration, see fpl__PipeWireGetObjectSerial
 		api->pw_properties_setf(props, PW_KEY_TARGET_OBJECT, "%u", targetDevice->id.pipewire);
 	}
 
