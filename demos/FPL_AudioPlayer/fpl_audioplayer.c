@@ -84,6 +84,8 @@ How the demo works:
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
+	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
+	A track ends when it is heard to its end, in thread mode that is after the latency of the output ring. A repeating track never ends.
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
@@ -91,7 +93,7 @@ How the demo works:
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
-	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. In thread mode a key is heard only after the latency of the output ring.
+	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
@@ -127,6 +129,9 @@ Changelog:
 	- New: Keys N/P and the media keys switch tracks, Space pauses, R toggles repeat, Up/Down change the volume
 	- Fixed: The log line of a loaded file missed its sample rate
 	- Changed: F1 logs the visualization, outside thread mode that it stays real-time
+	- New: Play mode (--play-mode, key M), by default the next track follows until the last one
+	- Fixed: The track position ran on during a pause
+	- Fixed: Silence of up to a second after a track switch in thread mode
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -352,6 +357,42 @@ typedef enum PlaybackMode {
 	PlaybackMode_Count,
 } PlaybackMode;
 
+// What follows a track that has played to its end, chosen with --play-mode and switched with M. A repeating track never ends.
+typedef enum PlayMode {
+	// Silence after the track, only N/P switch
+	PlayMode_Off = 0,
+	// The next track of the command line, silence after the last one
+	PlayMode_List,
+	// The next track, after the last one the first again
+	PlayMode_Loop,
+
+	PlayMode_Count,
+} PlayMode;
+
+// One name of a choice option, also used for the log
+typedef struct PlayerOptionChoice {
+	const char *name;
+	const char *description;
+} PlayerOptionChoice;
+
+// Same order as PlayMode
+static const PlayerOptionChoice PlayModeChoices[] = {
+	{ "off", "silence after every track, only N/P switch" },
+	{ "list", "the next track of the command line, silence after the last one" },
+	{ "loop", "the next track, after the last one the first again" },
+};
+fplStaticAssert(fplArrayCount(PlayModeChoices) == PlayMode_Count);
+
+// Only the streaming thread: how far the current track is from its end, for the play mode
+typedef enum TrackEndState {
+	// The mixer still plays the current track
+	TrackEndState_Playing = 0,
+	// The mixer is done, the end is heard once numFramesPlayed reaches trackEndFrameCount
+	TrackEndState_Mixed,
+	// Heard to its end, and the play mode keeps the silence
+	TrackEndState_Stopped,
+} TrackEndState;
+
 // Output sample format of the offline render, chosen with --format
 typedef enum RenderFormat {
 	RenderFormat_S16 = 0,
@@ -374,6 +415,7 @@ typedef struct PlayerOptions {
 	const char *files[MAX_PLAYER_FILE_COUNT];
 	size_t fileCount;
 	int32_t mixerMode;
+	int32_t playMode;
 	int32_t ringMilliseconds;
 	int32_t renderChunkFrameCount;
 	int32_t renderSampleRate;
@@ -577,6 +619,7 @@ static ProcessMemoryUsage GetProcessMemoryUsage(void) {
 // Changed by the keys on the main thread and used for every track the streaming thread starts, guarded by AudioDemo.trackLock
 typedef struct PlayerControls {
 	float volume;
+	PlayMode playMode;
 	bool isRepeat;
 } PlayerControls;
 
@@ -623,6 +666,13 @@ typedef struct AudioDemo {
 	char currentTrackName[256];
 	// Guarded by trackLock
 	PlayerControls controls;
+	// 1 while paused, every track start clears it. Nothing is mixed then (by the device callback in callback mode, by the streaming thread in thread mode), so numFramesPlayed counts only what is heard.
+	volatile uint32_t isPaused;
+	// Only the streaming thread: how far the current track is from its end, and the numFramesPlayed at which its end is heard
+	TrackEndState trackEndState;
+	uint32_t trackEndFrameCount;
+	// Only the streaming thread in thread mode: the numFramesStreamed at which the current track ends, UINT32_MAX while unknown (repeating)
+	uint32_t streamedTrackEndFrameCount;
 
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
@@ -1241,6 +1291,10 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 
 		case PlaybackMode_Callback:
 		{
+			// Nothing while paused: the play item stays where it is, and FPL fills the device buffer with silence
+			if(fplAtomicLoadU32(&demo->isPaused) != 0) {
+				break;
+			}
 			// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
 			fplTimestamp mixStart = fplTimestampQuery();
 			result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount, true);
@@ -1317,13 +1371,37 @@ static bool WriteAudioToRingBuffer(const fplAudioFormat *format, const uint32_t 
 	return(false);
 }
 
-// Pitch is varispeed, the mixer plays a pitched source as if it had its sample rate times the pitch (without the neutral tolerance of the mixer)
-static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const float pitch, const AudioHertz targetSampleRate) {
+// The output frames that sourceFrameCount frames of the source become. Pitch is varispeed, the mixer plays a pitched source as if it had its sample rate times the pitch (without the neutral tolerance of the mixer).
+static AudioFrameIndex ConvertToPlayedFrameCount(const AudioSource *source, const AudioFrameIndex sourceFrameCount, const float pitch, const AudioHertz targetSampleRate) {
 	const float roundingOffset = 0.5f;
 	float pitchedSampleRate = (float)source->format.sampleRate * pitch + roundingOffset;
 	AudioHertz playedSampleRate = (AudioHertz)pitchedSampleRate;
-	AudioFrameIndex result = fplGetTargetAudioFrameCount(source->buffer.frameCount, playedSampleRate, targetSampleRate);
+	AudioFrameIndex result = fplGetTargetAudioFrameCount(sourceFrameCount, playedSampleRate, targetSampleRate);
 	return(result);
+}
+
+static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const float pitch, const AudioHertz targetSampleRate) {
+	AudioFrameIndex result = ConvertToPlayedFrameCount(source, source->buffer.frameCount, pitch, targetSampleRate);
+	return(result);
+}
+
+// Output frames left in the current pass of the play item of the current track, false when it is gone or repeats.
+// Only in thread mode, where the streaming thread is the only one that mixes and the only one that adds play items.
+static bool GetRemainingPlayItemFrameCount(AudioDemo *demo, AudioFrameIndex *outFrameCount) {
+	size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
+	if(playItemCount != 1) {
+		return(false);
+	}
+	AudioPlayItem playItem = fplZeroInit;
+	size_t copiedCount = AudioSystemGetPlayItems(&demo->audioSys, &playItem, 1);
+	if(copiedCount != 1 || playItem.isRepeat || playItem.isFinished[0]) {
+		return(false);
+	}
+	AudioFrameIndex sourceFrameCount = playItem.source->buffer.frameCount;
+	AudioFrameIndex playedSourceFrameCount = playItem.framesPlayed[0];
+	AudioFrameIndex remainingSourceFrameCount = (playedSourceFrameCount < sourceFrameCount) ? (sourceFrameCount - playedSourceFrameCount) : 0;
+	*outFrameCount = ConvertToPlayedFrameCount(playItem.source, remainingSourceFrameCount, playItem.pitch, demo->targetAudioFormat.sampleRate);
+	return(true);
 }
 
 static bool SetAudioTrackSourceFromFile(AudioSystem *audioSys, AudioTrackSource *track, const char *filePath) {
@@ -1423,6 +1501,11 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 		StopCurrentTrack(demo);
 	}
 
+	// A new track starts unpaused
+	fplAtomicStoreU32(&demo->isPaused, 0);
+	demo->trackEndState = TrackEndState_Playing;
+	demo->streamedTrackEndFrameCount = UINT32_MAX;
+
 	fplMutexLock(&demo->trackLock);
 	PlayerControls controls = demo->controls;
 	fplMutexUnlock(&demo->trackLock);
@@ -1512,6 +1595,69 @@ static void ReplaceTrackList(AudioDemo *demo, const char *filePath) {
 	}
 }
 
+// The track that follows the current one by the play mode, tracks that failed to load are skipped. -1 when the play mode stops here.
+static int32_t FindNextTrackIndex(AudioTrackList *trackList, const PlayMode playMode) {
+	if(playMode == PlayMode_Off) {
+		return(-1);
+	}
+	int32_t trackCount = (int32_t)trackList->count;
+	for(int32_t trackStep = 1; trackStep <= trackCount; ++trackStep) {
+		int32_t steppedIndex = trackList->currentIndex + trackStep;
+		if(steppedIndex >= trackCount && playMode == PlayMode_List) {
+			return(-1);
+		}
+		int32_t trackIndex = steppedIndex % trackCount;
+		AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&trackList->tracks[trackIndex].state);
+		if(state != AudioTrackState_Failed) {
+			return(trackIndex);
+		}
+	}
+	return(-1);
+}
+
+// Starts the track that follows by the play mode once the current one is heard to its end, not while paused
+static void AdvanceAtTrackEnd(AudioDemo *demo) {
+	AudioTrackList *trackList = &demo->trackList;
+	if(fplAtomicLoadU32(&demo->isPaused) != 0) {
+		return;
+	}
+
+	if(demo->trackEndState == TrackEndState_Playing) {
+		// The mixer removes a play item at its end, a repeating one never ends. The player plays one item at a time, and a track that failed to load has none.
+		AudioTrack *currentTrack = &trackList->tracks[trackList->currentIndex];
+		AudioTrackState currentState = (AudioTrackState)fplAtomicLoadS32(&currentTrack->state);
+		size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
+		if(currentState != AudioTrackState_Failed && playItemCount > 0) {
+			return;
+		}
+		// In thread mode the end is still in the output ring, it is heard once the device callback has played the stream up to it. Without a known end, up to everything streamed so far.
+		uint32_t streamedFrameCount = fplAtomicLoadU32(&demo->numFramesStreamed);
+		uint32_t streamedTrackEndFrameCount = fplMin(streamedFrameCount, demo->streamedTrackEndFrameCount);
+		uint32_t playedFrameCount = fplAtomicLoadU32(&demo->numFramesPlayed);
+		demo->trackEndFrameCount = (demo->playbackMode == PlaybackMode_Thread) ? streamedTrackEndFrameCount : playedFrameCount;
+		demo->trackEndState = TrackEndState_Mixed;
+	}
+
+	uint32_t playedFrameCount = fplAtomicLoadU32(&demo->numFramesPlayed);
+	if(playedFrameCount < demo->trackEndFrameCount) {
+		return;
+	}
+
+	// Asked again after a stop, so switching the play mode in the silence goes on at once
+	fplMutexLock(&demo->trackLock);
+	PlayMode playMode = demo->controls.playMode;
+	fplMutexUnlock(&demo->trackLock);
+	int32_t nextIndex = FindNextTrackIndex(trackList, playMode);
+	if(nextIndex < 0) {
+		if(demo->trackEndState != TrackEndState_Stopped) {
+			demo->trackEndState = TrackEndState_Stopped;
+			FPL_LOG_INFO("Track", "Track %d of %u has ended, play mode %s", trackList->currentIndex + 1, trackList->count, PlayModeChoices[playMode].name);
+		}
+		return;
+	}
+	StartTrack(demo, nextIndex);
+}
+
 // Executes the requests of the main thread, called at the start of every loop of the streaming thread
 static void ProcessTrackRequests(AudioDemo *demo) {
 	if(fplAtomicLoadU32(&demo->hasDroppedFile) != 0) {
@@ -1538,7 +1684,10 @@ static void ProcessTrackRequests(AudioDemo *demo) {
 		int32_t steppedIndex = (currentIndex + trackStep) % trackCount;
 		int32_t nextIndex = (steppedIndex + trackCount) % trackCount;
 		StartTrack(demo, nextIndex);
+		return;
 	}
+
+	AdvanceAtTrackEnd(demo);
 }
 
 typedef struct {
@@ -1682,8 +1831,12 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	while(!demo->isStreamingThreadStopped) {
 		uint32_t trackChangeCount = fplAtomicLoadU32(&demo->trackChangeCount);
 		ProcessTrackRequests(demo);
+		// The output ring is empty after a track switch, it fills from the first entry on without waiting
 		if(fplAtomicLoadU32(&demo->trackChangeCount) != trackChangeCount) {
 			startTime = fplMillisecondsQuery();
+			entryIndex = intitialIndex;
+			currentEntry = entries[entryIndex];
+			ignoreWait = true;
 		}
 
 		// No audio track?
@@ -1694,6 +1847,12 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 		// Outside thread mode the device callback mixes, this thread only loads the tracks
 		if (demo->playbackMode != PlaybackMode_Thread) {
+			fplThreadSleep(trackLoadPollMilliseconds);
+			continue;
+		}
+
+		// Nothing is mixed while paused, the output ring runs empty and the device callback counts no frames
+		if (fplAtomicLoadU32(&demo->isPaused) != 0) {
 			fplThreadSleep(trackLoadPollMilliseconds);
 			continue;
 		}
@@ -1716,6 +1875,15 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 		bool tooSlow = false;
 		bool tooFast = false;
+
+		// Where the current track ends in the stream, for the play mode: the write that mixes its end fills the rest with silence, up to the whole chunk
+		AudioFrameIndex remainingTrackFrameCount = 0;
+		if(GetRemainingPlayItemFrameCount(demo, &remainingTrackFrameCount)) {
+			uint32_t streamedFrameCount = fplAtomicLoadU32(&demo->numFramesStreamed);
+			demo->streamedTrackEndFrameCount = streamedFrameCount + remainingTrackFrameCount;
+		} else {
+			demo->streamedTrackEndFrameCount = UINT32_MAX;
+		}
 
 		uint64_t streamDuration = 0;
 		if(WriteAudioToRingBuffer(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
@@ -1905,16 +2073,26 @@ static AudioPlayItemID GetCurrentPlayItemId(AudioDemo *demo) {
 	return(result);
 }
 
-static void TogglePause(AudioDemo *demo, bool *isPaused) {
+// Every track start resumes
+static void TogglePause(AudioDemo *demo) {
 	AudioPlayItemID playID = GetCurrentPlayItemId(demo);
-	bool newPaused = !*isPaused;
-	bool isApplied = (playID.value != 0) && AudioSystemSetPlayItemPaused(&demo->audioSys, playID, newPaused);
-	if(!isApplied) {
+	if(playID.value == 0) {
 		FPL_LOG_INFO("Keys", "Pause: no track plays");
 		return;
 	}
-	*isPaused = newPaused;
-	FPL_LOG_INFO("Keys", "Pause: %s", newPaused ? "on" : "off");
+	uint32_t isPaused = fplAtomicLoadU32(&demo->isPaused);
+	uint32_t newPaused = (isPaused != 0) ? 0 : 1;
+	fplAtomicStoreU32(&demo->isPaused, newPaused);
+	FPL_LOG_INFO("Keys", "Pause: %s", (newPaused != 0) ? "on" : "off");
+}
+
+// For the current track and every track after it
+static void CyclePlayMode(AudioDemo *demo) {
+	fplMutexLock(&demo->trackLock);
+	PlayMode playMode = (PlayMode)((demo->controls.playMode + 1) % PlayMode_Count);
+	demo->controls.playMode = playMode;
+	fplMutexUnlock(&demo->trackLock);
+	FPL_LOG_INFO("Keys", "Play mode: %s", PlayModeChoices[playMode].name);
 }
 
 // For the current track and every track after it
@@ -1959,6 +2137,7 @@ static const PlayerKeyHelp PlayerKeyHelps[] = {
 	{ "N, P, media next/prev", "Next or previous track of the command line" },
 	{ "Space, media play/pause", "Pause and resume" },
 	{ "R", "Repeat on and off, for the next tracks too" },
+	{ "M", "Play mode off, list or loop, what follows a track that has played to its end" },
 	{ "Up, Down", "Volume +0.1 and -0.1, for the next tracks too" },
 	{ "F, F1, F2", "Fullscreen, real-time visualization (thread mode only), spectrum mode" },
 };
@@ -1981,11 +2160,6 @@ typedef enum PlayerOptionType {
 	// No option, a heading line in the help (the description)
 	PlayerOptionType_Heading,
 } PlayerOptionType;
-
-typedef struct PlayerOptionChoice {
-	const char *name;
-	const char *description;
-} PlayerOptionChoice;
 
 // Same order as PlaybackMode
 static const PlayerOptionChoice MixerModeChoices[] = {
@@ -2028,6 +2202,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
 	{ PlayerOptionType_Float, "pitch", "<p>", PLAYER_OPTION_FIELD(pitch), fpl_null, 0, "Pitch of the play item, 2 is an octave up and half as long" },
 	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
+	{ PlayerOptionType_Choice, "play-mode", fpl_null, PLAYER_OPTION_FIELD(playMode), PlayModeChoices, fplArrayCount(PlayModeChoices), "What follows a track that has played to its end, a repeating track never ends:" },
 	{ PlayerOptionType_Flag, "stats", fpl_null, PLAYER_OPTION_FIELD(isStats), fpl_null, 0, "Log memory and mixer cost every 5 seconds" },
 	{ PlayerOptionType_Heading, fpl_null, fpl_null, 0, 0, fpl_null, 0, "Offline render (no window, no audio device):" },
 	{ PlayerOptionType_Flag, "render", fpl_null, PLAYER_OPTION_FIELD(isRender), fpl_null, 0, "Mix the first track in fixed chunks and print a hash of the samples" },
@@ -2050,6 +2225,7 @@ static PlayerOptions MakeDefaultPlayerOptions(void) {
 	const int32_t defaultRenderChannelCount = 2;
 	PlayerOptions result = fplZeroInit;
 	result.mixerMode = PlaybackMode_Thread;
+	result.playMode = PlayMode_List;
 	result.ringMilliseconds = defaultRingMilliseconds;
 	result.sineSeconds = defaultSineSeconds;
 	result.volume = defaultVolume;
@@ -2843,6 +3019,7 @@ int main(int argc, char **args) {
 			goto done;
 		}
 		demo->controls.volume = options.volume;
+		demo->controls.playMode = (PlayMode)options.playMode;
 		demo->controls.isRepeat = options.isRepeat;
 
 #if 0
@@ -2873,8 +3050,6 @@ int main(int argc, char **args) {
 		// The streaming thread names the track it starts, the device sine plays none
 		char audioTrackName[256] = fplZeroInit;
 		uint32_t lastTrackChangeCount = 0;
-		// Of the current play item, a new track starts unpaused
-		bool isPaused = false;
 		const float volumeKeyStep = 0.1f;
         UpdateTitle(demo, audioTrackName, 0.0);
 
@@ -2910,9 +3085,11 @@ int main(int argc, char **args) {
 								} else if(key == fplKey_P || key == fplKey_MediaPrevTrack) {
 									RequestTrackStep(demo, -1);
 								} else if(key == fplKey_Space || key == fplKey_MediaPlayPause) {
-									TogglePause(demo, &isPaused);
+									TogglePause(demo);
 								} else if(key == fplKey_R) {
 									ToggleRepeat(demo);
+								} else if(key == fplKey_M) {
+									CyclePlayMode(demo);
 								} else if(key == fplKey_Up) {
 									ChangeVolume(demo, volumeKeyStep);
 								} else if(key == fplKey_Down) {
@@ -2953,7 +3130,6 @@ int main(int argc, char **args) {
 				fplCopyString(demo->currentTrackName, audioTrackName, fplArrayCount(audioTrackName));
 				fplMutexUnlock(&demo->trackLock);
 				ClearVisualization(demo);
-				isPaused = false;
 				UpdateTitle(demo, audioTrackName, currentFps);
 			}
 
