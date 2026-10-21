@@ -134,6 +134,8 @@ typedef enum LoadAudioTrackFlags {
 	LoadAudioTrackFlags_None = 0,
 	LoadAudioTrackFlags_AutoLoad = 1 << 0,
 	LoadAudioTrackFlags_AutoPlay = 1 << 1,
+	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed
+	LoadAudioTrackFlags_Stream = 1 << 2,
 } LoadAudioTrackFlags;
 
 static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *sources, const size_t sourceCount, const bool forceSineWave, const AudioSineWaveData *sineWave, const LoadAudioTrackFlags flags, AudioTrackList *tracklist) {
@@ -145,6 +147,7 @@ static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSou
 
 	bool autoLoad = flags & LoadAudioTrackFlags_AutoLoad;
 	bool autoPlay = flags & LoadAudioTrackFlags_AutoPlay;
+	bool isStream = flags & LoadAudioTrackFlags_Stream;
 
 	// Add to track list (Optionally start playing)
 	uint32_t maxTrackCount = fplArrayCount(tracklist->tracks);
@@ -223,24 +226,29 @@ static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSou
 			AudioSineWaveData waveData = *sineWave;
 			AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
 			AudioChannelIndex channels = audioSys->targetFormat.channels;
-			AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
-			AudioSource *source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, frameCount);
+			AudioSource *source;
+			if(isStream) {
+				source = AudioSystemCreateSineStreamSource(audioSys, channels, sampleRate, &waveData);
+			} else {
+				AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
+				source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, frameCount);
+			}
 			if(source != fpl_null) {
-				fplAssert(source->type == AudioSourceType_Allocated);
-
 				if (!AudioSystemAddSource(audioSys, source)) {
 					fplConsoleFormatError("Failed to add sine wave audio source id '%zu'!\n", source->id.value);
 					return false;
 				}
 
-				// Generate sine wave
-				source->type = AudioSourceType_Stream;
-				AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+				// A stream generates its frames while it is mixed, the other source gets all of them now
+				if(!isStream) {
+					fplAssert(source->type == AudioSourceType_Allocated);
+					AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+				}
 
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
 				track->sourceID = source->id;
-				track->state = AudioTrackState_Full;
+				track->state = isStream ? AudioTrackState_Ready : AudioTrackState_Full;
 
 				if(autoPlay) {
 					AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, true, 1.0f, AudioSystemDefaultPitch);
