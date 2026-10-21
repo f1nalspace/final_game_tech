@@ -40,3 +40,4 @@ fui_editor_demo_saved.txt
 /demos/**/[iI]mmediates
 .claude/
 *.bak
+/plans/*
