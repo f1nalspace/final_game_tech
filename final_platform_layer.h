@@ -267,6 +267,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDirectoryListBegin() found nothing for an empty path, it lists the current working directory now, just like on Win32
 	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
 	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
+	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -23900,6 +23901,11 @@ fpl_platform_api bool fplDirectoryListBegin(const char *path, const char *filter
 				break;
 			}
 		}
+		// Only "." and "..": nothing to list, the search handle is released here like on POSIX
+		if (!result) {
+			FindClose(searchHandle);
+			fplClearStruct(entry);
+		}
 	}
 	return(result);
 }
@@ -23922,6 +23928,11 @@ fpl_platform_api bool fplDirectoryListNext(fplFileEntry *entry) {
 				break;
 			}
 		} while (foundNext);
+		// No entry left, the search handle is released here like on POSIX
+		if (!result) {
+			FindClose(searchHandle);
+			fplClearStruct(entry);
+		}
 	}
 	return(result);
 }
