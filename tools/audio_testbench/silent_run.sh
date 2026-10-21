@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs a command on the private X server with its sound going into a null sink, so nothing is heard and no window shows up on the desktop.
-# Usage: silent_run.sh <label> <seconds> [--keys "<key>@<second> ..."] -- <command> [arguments ...]
+# Usage: silent_run.sh <label> <seconds> [--keys "<key>@<second> ..."] [--close] -- <command> [arguments ...]
+# --close ends the command by closing its window (WM_DELETE_WINDOW, needs python-xlib) instead of SIGTERM, so its own shutdown runs and must end within 10 seconds.
 # The command must play on the device "fpl_test_null" by itself (FPL_AudioPlayer: --device=fpl_test_null).
 # If its stream shows up on any other sink, the command is killed at once and the run fails.
 # Results: runs/<label>/run.log and runs/<label>/result.txt
@@ -10,14 +11,18 @@ testbench_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LC_ALL=C
 export LANG=C
 
-label=${1:?usage: silent_run.sh <label> <seconds> [--keys "..."] -- <command> [arguments ...]}
+label=${1:?usage: silent_run.sh <label> <seconds> [--keys "..."] [--close] -- <command> [arguments ...]}
 run_seconds=${2:?missing seconds}
 shift 2
 key_plan=""
-if [ "$1" == "--keys" ]; then
-	key_plan=$2
-	shift 2
-fi
+is_close=0
+while [ $# -gt 0 ] && [ "$1" != "--" ]; do
+	case "$1" in
+		--keys) key_plan=$2; shift 2 ;;
+		--close) is_close=1; shift ;;
+		*) echo "unknown option $1" >&2; exit 2 ;;
+	esac
+done
 if [ "$1" != "--" ]; then
 	echo "missing -- before the command" >&2
 	exit 2
@@ -183,11 +188,35 @@ exited_early=0
 if ! kill -0 "$command_pid" 2> /dev/null; then
 	exited_early=1
 fi
-kill -TERM "$command_pid" 2> /dev/null
+if [ $is_close -eq 1 ]; then
+	close_window_id=$(DISPLAY=$display xdotool search --pid "$command_pid" 2> /dev/null | head -n 1)
+	if [ -n "$close_window_id" ]; then
+		# The same message a window manager sends for the close button, there is none on the private X server
+		python3 -c '
+import sys
+from Xlib import display, protocol, X
+connection = display.Display(sys.argv[1])
+window = connection.create_resource_object("window", int(sys.argv[2]))
+protocols_atom = connection.intern_atom("WM_PROTOCOLS")
+delete_atom = connection.intern_atom("WM_DELETE_WINDOW")
+event = protocol.event.ClientMessage(window=window, client_type=protocols_atom, data=(32, [delete_atom, X.CurrentTime, 0, 0, 0]))
+window.send_event(event, event_mask=X.NoEventMask)
+connection.flush()
+' "$display" "$close_window_id" 2>> "$run_dir/close.log"
+		echo "closed window $close_window_id at $(( $(date +%s%3N) - start_milliseconds )) ms" >> "$run_dir/close.log"
+	else
+		echo "no window to close, SIGTERM" >> "$run_dir/close.log"
+		kill -TERM "$command_pid" 2> /dev/null
+	fi
+else
+	kill -TERM "$command_pid" 2> /dev/null
+fi
+stop_start_milliseconds=$(date +%s%3N)
 stop_deadline=$((SECONDS + stop_timeout_seconds))
 while kill -0 "$command_pid" 2> /dev/null && [ $SECONDS -lt $stop_deadline ]; do
-	sleep 0.1
+	sleep 0.02
 done
+stop_milliseconds=$(( $(date +%s%3N) - stop_start_milliseconds ))
 hung=0
 if kill -0 "$command_pid" 2> /dev/null; then
 	hung=1
@@ -204,9 +233,15 @@ problem_count=$(grep -c -i -E "assert|too slow|underrun|segmentation|sanitizer|r
 	echo "exited_early: $exited_early"
 	echo "hung_on_stop: $hung"
 	echo "exit_code: $exit_code"
+	echo "stop_ms: $stop_milliseconds"
 	echo "problem_lines: $problem_count"
 } > "$result_file"
-if [ "$routing_state" == "null" ] && [ $hung -eq 0 ] && [ "$problem_count" -eq 0 ]; then
+# A closed command has to end by itself and without an error
+close_failed=0
+if [ $is_close -eq 1 ] && [ "$exit_code" -ne 0 ]; then
+	close_failed=1
+fi
+if [ "$routing_state" == "null" ] && [ $hung -eq 0 ] && [ "$problem_count" -eq 0 ] && [ $close_failed -eq 0 ]; then
 	echo "result: ok" >> "$result_file"
 else
 	echo "result: FAILED" >> "$result_file"

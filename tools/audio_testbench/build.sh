@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds FPL_AudioPlayer in the test bench variants, one directory per variant below bin/.
 # Usage: build.sh [variant ...]   (default: all)
-# Variants: gcc-x64-o2 gcc-x64-o0 clang-x64-o2 gcc-x86-o2 asan mingw32-xp-o2 mingw32-xp-o0
+# Variants: gcc-x64-o2 gcc-x64-o0 clang-x64-o2 gcc-x86-o2 asan tsan mingw32-xp-o2 mingw32-xp-o0 (tsan is not part of the default list)
 # Each variant writes bin/<variant>/build.log; the summary line counts errors and warnings.
 
 testbench_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +34,7 @@ build_variant() {
 		clang-x64-o2) clang -std=c99 -g -O2 "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" "${linux_libs[@]}" ;;
 		gcc-x86-o2) gcc -m32 -std=c99 -g -O2 -march=prescott -mfpmath=sse "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" "${linux_libs[@]}" -latomic ;;
 		asan) gcc -std=c99 -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" "${linux_libs[@]}" ;;
+		tsan) gcc -std=c99 -g -O1 -fno-omit-frame-pointer -fsanitize=thread "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" "${linux_libs[@]}" ;;
 		mingw32-xp-o2) i686-w64-mingw32-gcc -std=c99 -g -O2 "${xp_flags[@]}" "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" ;;
 		mingw32-xp-o0) i686-w64-mingw32-gcc -std=c99 -g -O0 "${xp_flags[@]}" "${warnings[@]}" "${defines[@]}" "${includes[@]}" "$player_source" -o "$output" ;;
 		*) echo "unknown variant $variant" >&2; return 1 ;;
