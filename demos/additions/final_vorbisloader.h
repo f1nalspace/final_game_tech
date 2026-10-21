@@ -10,6 +10,10 @@ Description:
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
+
+Changelog:
+	## 2026-10-21
+	- Fixed: Stereo files loaded only half their length
 */
 
 #ifndef FINAL_VORBISLOADER_H
@@ -65,16 +69,17 @@ extern bool LoadVorbisFormatFromBuffer(const uint8_t *buffer, const size_t buffe
 		return false;
 	}
 
-	uint32_t sampleCount = stb_vorbis_stream_length_in_samples(vorbis);
+	// stb_vorbis counts samples per channel, so this is already the frame count
+	uint32_t frameCount = stb_vorbis_stream_length_in_samples(vorbis);
 
 	fplClearStruct(outFormat);
 
-	if (sampleCount > 0) {
+	if (frameCount > 0) {
 		outFormat->formatType = fplAudioFormatType_S16;
 		outFormat->bytesPerSample = fplGetAudioFrameSizeInBytes(outFormat->formatType, 1);
 		outFormat->channelCount = (uint16_t)fplMax(0, vorbis->channels);
 		outFormat->samplesPerSecond = (uint32_t)fplMax(0, vorbis->sample_rate);
-		outFormat->frameCount = fplMax(0, sampleCount / outFormat->channelCount);
+		outFormat->frameCount = frameCount;
 	}
 
 	stb_vorbis_close(vorbis);
@@ -90,8 +95,9 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 	int channels = 0;
 	int sampleRate = 0;
 	short *output = fpl_null;
-	int sampleCount = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
-	if (sampleCount <= 0) {
+	// stb_vorbis counts samples per channel, so this is already the frame count
+	int frameCount = stb_vorbis_decode_memory(buffer, (int)bufferSize, &channels, &sampleRate, &output);
+	if (frameCount <= 0) {
 		return(false);
 	}
 
@@ -99,7 +105,7 @@ extern bool LoadVorbisFromBuffer(const uint8_t *buffer, const size_t bufferSize,
 	outWave->format.bytesPerSample = fplGetAudioFrameSizeInBytes(outWave->format.formatType, 1);
 	outWave->format.samplesPerSecond = (uint32_t)fplMax(0, sampleRate);
 	outWave->format.channelCount = (uint16_t)fplMax(0, channels);
-	outWave->format.frameCount = fplMax(0, sampleCount / outWave->format.channelCount);
+	outWave->format.frameCount = (uint32_t)frameCount;
 
 	size_t sampleMemorySize = outWave->format.bytesPerSample * outWave->format.channelCount * outWave->format.frameCount;
 	outWave->samplesSize = sampleMemorySize;
