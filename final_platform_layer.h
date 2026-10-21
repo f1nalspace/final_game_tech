@@ -345,6 +345,7 @@ SOFTWARE.
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
+	- Fixed: [Vulkan] 32-bit builds used pointers for the 64-bit surface and debug messenger handles
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -36462,7 +36463,14 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 #	define fpl__VKAPI_ATTR
 #endif
 
-#define FPL__VK_NULL_HANDLE fpl_null
+// Non-dispatchable handles are 64-bit on every platform, they are pointers on 64-bit platforms only
+#if defined(FPL_CPU_64BIT)
+typedef void *fpl__VkNonDispatchableHandle;
+#	define FPL__VK_NULL_HANDLE fpl_null
+#else
+typedef uint64_t fpl__VkNonDispatchableHandle;
+#	define FPL__VK_NULL_HANDLE 0
+#endif
 
 #define FPL__VK_MAX_EXTENSION_NAME_SIZE 256
 #define FPL__VK_MAX_DESCRIPTION_SIZE 256
@@ -36502,7 +36510,7 @@ typedef uint32_t fpl__VkBool32;
 typedef void fpl__VkAllocationCallbacks;
 
 typedef void *fpl__VkInstance;
-typedef void *fpl__VkSurfaceKHR;
+typedef fpl__VkNonDispatchableHandle fpl__VkSurfaceKHR;
 typedef void *fpl__VkPhysicalDevice;
 
 typedef enum fpl__VkStructureType {
@@ -36590,7 +36598,7 @@ typedef fpl__VkBool32(fpl__VKAPI_PTR *fpl__func_vkGetPhysicalDeviceXlibPresentat
 
 #endif
 
-typedef void *fpl__VkDebugUtilsMessengerEXT;
+typedef fpl__VkNonDispatchableHandle fpl__VkDebugUtilsMessengerEXT;
 
 typedef enum fpl__VkDebugUtilsMessageSeverityFlagBitsEXT {
 	FPL__VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT = 0x00000001,
@@ -36974,13 +36982,14 @@ fpl_internal fpl__VKAPI_ATTR fpl__VkBool32 fpl__VKAPI_CALL fpl__VulkanDebugCallb
 }
 
 fpl_internal void fpl__VulkanDestroyDebugMessenger(fpl__VideoBackendVulkan *nativeBackend) {
-	if (nativeBackend->debugMessenger != fpl_null) {
-		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Debug Messenger '%p'", nativeBackend->debugMessenger);
+	if (nativeBackend->debugMessenger != FPL__VK_NULL_HANDLE) {
+		void *debugMessengerAddress = (void *)(uintptr_t)nativeBackend->debugMessenger;
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Debug Messenger '%p'", debugMessengerAddress);
 		const fpl__VulkanApi *api = &nativeBackend->api;
 		fpl__func_vkDestroyDebugUtilsMessengerEXT destroyFunc = (fpl__func_vkDestroyDebugUtilsMessengerEXT)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroyDebugUtilsMessengerEXT");
 		fplAssert(destroyFunc != fpl_null);
 		destroyFunc(nativeBackend->instanceHandle, nativeBackend->debugMessenger, nativeBackend->allocator);
-		nativeBackend->debugMessenger = fpl_null;
+		nativeBackend->debugMessenger = FPL__VK_NULL_HANDLE;
 	}
 	fplClearStruct(&nativeBackend->debugMessengerUserData);
 }
@@ -37188,7 +37197,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown)
 		fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
 		fplAssert(destroyProc != fpl_null);
 
-		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", nativeBackend->surfaceHandle);
+		void *surfaceAddress = (void *)(uintptr_t)nativeBackend->surfaceHandle;
+		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", surfaceAddress);
 		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
 
 		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
@@ -37254,7 +37264,12 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	nativeBackend->surfaceHandle = surfaceHandle;
 
 	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
-	backend->surface.vulkan.surfaceKHR = (void *)nativeBackend->surfaceHandle;
+#if defined(FPL_CPU_32BIT)
+	// The public surface is a pointer, a 32-bit platform stores the 64-bit handle only when it fits
+	const uint64_t surfaceValue = (uint64_t)nativeBackend->surfaceHandle;
+	fplAssert(surfaceValue <= UINTPTR_MAX);
+#endif
+	backend->surface.vulkan.surfaceKHR = (void *)(uintptr_t)nativeBackend->surfaceHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
@@ -37273,7 +37288,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_DESTROYEDWINDOW(fpl__VideoBackend_Vulkan_De
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 
 	// Destroy Vulkan Debug Messenger
-	if (!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null && nativeBackend->debugMessenger != fpl_null) {
+	if (!nativeBackend->isInstanceUserDefined && nativeBackend->instanceHandle != fpl_null && nativeBackend->debugMessenger != FPL__VK_NULL_HANDLE) {
 		fpl__VulkanDestroyDebugMessenger(nativeBackend);
 	}
 
