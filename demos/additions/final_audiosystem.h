@@ -154,6 +154,7 @@ Changelog:
 	- Changed: AudioSystemStopAll(), AudioSystemRemoveSource(), AudioSystemClearSources() and AudioSystemShutdown() wait for the mixer, or end the play items themselves when no mixer runs
 	- New: AudioSystemStats.droppedCommandCount and concurrentWriteCount, a second thread that mixes at the same time gets silence
 	- Fixed: AudioSystemShutdown(), AudioSystemStopAll() and AudioSystemClearSources() return at once on a never initialized audio system
+	- Changed (API BREAKING): The master volume and the suspend flag are atomic, AudioSystem.masterVolume became masterVolumeBits
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -404,12 +405,12 @@ typedef struct AudioSystem {
 	volatile uint32_t lastMixPeriodMilliseconds;
 	//! Calls with advance that found another one mixing, see @ref AudioSystemStats::concurrentWriteCount
 	volatile uint32_t concurrentWriteCount;
-	float masterVolume;
+	//! Bits of the float master volume, any thread stores it, the mixer loads it once per call
+	volatile uint32_t masterVolumeBits;
+	//! While not 0, @ref AudioSystemWriteFrames hands the device SILENCE and advances nothing. Any thread stores it, the mixer loads it once per call
+	volatile uint32_t isSuspended;
 	bool isInitialized;
 	bool isShutdown;
-	//! While set, @ref AudioSystemWriteFrames hands the device SILENCE and advances nothing.
-	//! Written from the game thread, read on the audio thread, and deliberately a plain bool: the worst a torn read can do is mix one more buffer, which is a few milliseconds of sound nobody was listening to anyway.
-	bool isSuspended;
 } AudioSystem;
 
 /**
@@ -434,6 +435,7 @@ fpl_extern void AudioSystemShutdown(AudioSystem *audioSys);
 * @brief Changes the master volume that is applied on top of the volume of every play item.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] newMasterVolume The new master volume, where 1.0 is unchanged (the default) and 0.0 is silent.
+* @note Any thread may call it, the mixer uses the new value from its next call on.
 */
 fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume);
 
@@ -532,6 +534,7 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 * @param[in] suspended Pass true to suspend, false to resume.
 * @note While suspended the device is fed silence and no play item advances, so this is a PAUSE and not a mute: every position, every fade and the playlist all stand still, and what comes back is the exact frame that was playing when it stopped.
 * @note What a game uses when its window loses focus -- music playing on to an empty desktop is the thing this prevents.
+* @note Any thread may call it, the mixer uses the new state from its next call on.
 * @see @ref AudioSystemIsSuspended
 */
 fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended);
@@ -804,6 +807,19 @@ static void FreeAudioStream(AudioMemory *memory, AudioStream *audioStream) {
 	fplClearStruct(audioStream);
 }
 
+// FPL has no float atomics, a float is stored and loaded as its bits
+static uint32_t AudioFloatToBits(const float value) {
+	uint32_t result;
+	fplMemoryCopy(&value, sizeof(result), &result);
+	return(result);
+}
+
+static float AudioBitsToFloat(const uint32_t bits) {
+	float result;
+	fplMemoryCopy(&bits, sizeof(result), &result);
+	return(result);
+}
+
 fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *targetFormat) {
 	if(audioSys == fpl_null) {
 		return false;
@@ -813,7 +829,9 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 	}
 	fplClearStruct(audioSys);
 
-	audioSys->masterVolume = 1.0f;
+	const float defaultMasterVolume = 1.0f;
+	const uint32_t defaultMasterVolumeBits = AudioFloatToBits(defaultMasterVolume);
+	fplAtomicStoreU32(&audioSys->masterVolumeBits, defaultMasterVolumeBits);
 
 	audioSys->targetFormat.channels = targetFormat->channels;
 	audioSys->targetFormat.sampleRate = targetFormat->sampleRate;
@@ -843,21 +861,25 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 }
 
 fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float newMasterVolume) {
-	audioSys->masterVolume = newMasterVolume;
+	const uint32_t masterVolumeBits = AudioFloatToBits(newMasterVolume);
+	fplAtomicStoreU32(&audioSys->masterVolumeBits, masterVolumeBits);
 }
 
 fpl_extern void AudioSystemSetSuspended(AudioSystem *audioSys, const bool suspended) {
 	if (audioSys == fpl_null) {
 		return; // no device: there is nothing to suspend, and no caller should have to check
 	}
-	audioSys->isSuspended = suspended;
+	const uint32_t isSuspended = suspended ? 1 : 0;
+	fplAtomicStoreU32(&audioSys->isSuspended, isSuspended);
 }
 
 fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys) {
 	if (audioSys == fpl_null) {
 		return false;
 	}
-	return audioSys->isSuspended;
+	// The FPL atomics take no const pointer, a load changes nothing
+	const uint32_t isSuspended = fplAtomicLoadU32((volatile uint32_t *)&audioSys->isSuspended);
+	return(isSuspended != 0);
 }
 
 fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source) {
@@ -1238,18 +1260,6 @@ static const uint64_t AudioPlayItemIDSlotMask = 0xFFFF;
 
 // The slot number has to fit into the low bits of an id
 fplStaticAssert(FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT > 0 && FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT <= 0xFFFF);
-
-static uint32_t AudioFloatToBits(const float value) {
-	uint32_t result;
-	fplMemoryCopy(&value, sizeof(result), &result);
-	return(result);
-}
-
-static float AudioBitsToFloat(const uint32_t bits) {
-	float result;
-	fplMemoryCopy(&bits, sizeof(result), &result);
-	return(result);
-}
 
 static AudioPlayItemID MakePlayItemID(const uint32_t slotIndex, const uint32_t generation) {
 	AudioPlayItemID result;
@@ -2262,6 +2272,7 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 * @param[in] targetFrameCount Number of output frames to fill in the mixing buffer.
 * @param[in,out] mixingBuffer Pointer to the start of the F32 mixing buffer for this item.
 *                             Must have at least targetFrameCount * outChannels floats.
+* @param[in] masterVolume     Master volume of this mix call, applied on top of the item volume.
 *
 * @return Returns the number of output frames actually produced and mixed into the buffer.
 *
@@ -2271,7 +2282,7 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 *   - mixingBuffer: outRemainingFrameCount counts down from targetFrameCount, preventing overflow.
 *   - Source data:  Bounded by inTotalFrameCount - framesPlayed[0].
 */
-static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, const AudioFrameIndex targetFrameCount, float *mixingBuffer) {
+static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, const AudioFrameIndex targetFrameCount, float *mixingBuffer, const float masterVolume) {
 	const AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
 
@@ -2287,7 +2298,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 	const size_t inBytesPerSample = fplGetAudioSampleSizeInBytes(inFormat);
 	const size_t inBytesPerFrame = (size_t)inChannelCount * inBytesPerSample;
 
-	const float volume = item->volume * audioSys->masterVolume;
+	const float volume = item->volume * masterVolume;
 
 	// Maximum frames the DSP output buffer can hold (for the source channel count)
 	const AudioFrameIndex dspOutMaxFrames = audioSys->dspOutBuffer.maxFrameCount;
@@ -2436,6 +2447,10 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	float *mixingBuffer = (float *)audioSys->mixingBuffer.samples;
 	AudioFrameIndex maxOutputFrameCount = 0;
 
+	// Every item of this call gets the same master volume, even when another thread changes it meanwhile
+	const uint32_t masterVolumeBits = fplAtomicLoadU32(&audioSys->masterVolumeBits);
+	const float masterVolume = AudioBitsToFloat(masterVolumeBits);
+
 	AudioPlayItems *playItems = &audioSys->playItems;
 
 	uint32_t activeIndex = 0;
@@ -2456,7 +2471,7 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 		}
 
 		// Process this play item through the full pipeline
-		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, targetFrameCount, mixingBuffer);
+		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, targetFrameCount, mixingBuffer, masterVolume);
 		if (itemOutputFrames > maxOutputFrameCount) {
 			maxOutputFrameCount = itemOutputFrames;
 		}
@@ -2562,7 +2577,8 @@ fpl_extern AudioFrameIndex AudioSystemWriteFrames(AudioSystem *audioSys, void *o
 	// What the other threads sent takes effect from this call on
 	DrainAudioCommands(audioSys);
 
-	if(audioSys->isSuspended) {
+	const uint32_t isSuspended = fplAtomicLoadU32(&audioSys->isSuspended);
+	if(isSuspended != 0) {
 		// Silence, and nothing else touched -- no play item advanced, no source consumed.
 		// That is what makes this a pause: the mixer picks up exactly where it left off.
 		fplMemoryClear(outSamples, outputFrameSize * frameCount);
