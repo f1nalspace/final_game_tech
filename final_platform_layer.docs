@@ -1111,7 +1111,9 @@
 
 	@note [X11] The scan code comes from the Linux evdev key code, which the X server reports plus 8.
 
-	@note Media and volume keys (@ref fplKey_MediaPlayPause, @ref fplKey_MediaNextTrack, @ref fplKey_VolumeUp, ...) only reach the window when the desktop does not take them itself. Desktops like KDE Plasma and GNOME often grab them globally and pass them to media players instead.
+	@note Media and volume keys (@ref fplKey_MediaPlayPause, @ref fplKey_MediaNextTrack, @ref fplKey_VolumeUp, ...) only reach the window that has the focus. The desktop acts on them as well, a media player in the background may pause too.
+
+	@note [X11] Desktops like KDE Plasma and GNOME grab the media and volume keys as global shortcuts, so the window never gets them as normal key events. FPL reads them from XInput2 raw key events while the window has the focus, they arrive anyway then. Without XInput2 2.1 or with FPL_NO_X11_XINPUT2 they only arrive when the desktop does not grab them.
 
 	@note Every physical key has its own pressed state, even when it shares the key code with another one (like the left and right Shift or Enter and the keypad Enter on Win32). Holding both gives two presses and two releases, each with its own scan code.
 

@@ -188,7 +188,7 @@ SOFTWARE.
 	### Breaking Changes
 	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText(), so the clipboard comes first in the name and the verb after it
 	- Changed: fplClipboardGetText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
-	- Changed: [X11] Builds with FPL_NO_RUNTIME_LINKING need libXi now (-lXi) for the relative mouse mode, define FPL_NO_X11_XINPUT2 to build without it
+	- Changed: [X11] Builds with FPL_NO_RUNTIME_LINKING need libXi now (-lXi) for the relative mouse mode and the media keys, define FPL_NO_X11_XINPUT2 to build without it
 
 	### Details
 
@@ -282,6 +282,7 @@ SOFTWARE.
 	- Fixed[#193]: Linux joystick polling hicks up blocks IO every second by default #193
 	- New: [Win32] Keys sent without a scan code get one on Windows XP too
 	- Fixed: [X11] Media and volume keys were reported as fplKey_None
+	- New: [X11] Media and volume keys reach the focused window even while the desktop uses them as global shortcuts, read from XInput2 raw key events
 
 	#### Window
 	- New: Added field initialState to fplWindowSettings, the fplWindowState the window starts in (fplWindowState_Fullscreen is the same as isFullscreen)
@@ -14245,9 +14246,11 @@ fpl_internal bool fpl__LoadXineramaApi(fpl__XineramaApi *xineramaApi) {
 }
 
 //
-// XInput2 Api (optional), raw mouse motion for the relative mouse mode. FPL_NO_X11_XINPUT2 leaves it out, the relative mode warps the cursor back to the window center then.
+// XInput2 Api (optional), raw mouse motion for the relative mouse mode and raw media keys. FPL_NO_X11_XINPUT2 leaves it out, the relative mode warps the cursor back to the window center then and media keys only arrive when the desktop does not use them itself.
 //
 #if !defined(FPL_NO_X11_XINPUT2)
+#define FPL__X11_XI_RawKeyPress 13
+#define FPL__X11_XI_RawKeyRelease 14
 #define FPL__X11_XI_RawMotion 17
 #define FPL__X11_XIAllMasterDevices 1
 #define FPL__X11_XIValuatorClass 2
@@ -14526,6 +14529,8 @@ typedef struct fpl__X11RelativeMouseState {
 	uint32_t deviceCount;
 	uint32_t nextDeviceSlot;
 	int xinput2Opcode;
+	// The XInput2 minor version the server granted, raw key events while another client grabs the key need 2.1
+	int xinput2MinorVersion;
 	int rootWidth;
 	int rootHeight;
 	bool isXInput2Checked;
@@ -14573,6 +14578,10 @@ typedef struct fpl__X11WindowState {
 	fpl__X11StartFocusState startFocus;
 	int screen;
 	int colorDepth;
+#if !defined(FPL_NO_X11_XINPUT2)
+	// Media keys come from XInput2 raw key events while the window has the focus, desktops grab them as global shortcuts and the window never sees them otherwise
+	bool isRawMediaKeysSelected;
+#endif
 } fpl__X11WindowState;
 
 #define FPL__XDND_VERSION 5
@@ -30953,6 +30962,38 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *bac
 }
 
 #if defined(FPL__ENABLE_WINDOW)
+// The media and volume keys, the keys desktops take as global shortcuts
+fpl_internal bool fpl__IsMediaKey(const fplKey key) {
+	switch (key) {
+		case fplKey_VolumeMute:
+		case fplKey_VolumeDown:
+		case fplKey_VolumeUp:
+		case fplKey_MediaNextTrack:
+		case fplKey_MediaPrevTrack:
+		case fplKey_MediaStop:
+		case fplKey_MediaPlayPause:
+			return(true);
+		default:
+			return(false);
+	}
+}
+
+// While raw media keys are selected, the core key events of the media keys are left out, otherwise a key nobody grabs would come twice
+fpl_internal bool fpl__X11IsMediaKeyFromRawEvents(const fpl__PlatformAppState *appState, const uint64_t keyCode) {
+#if !defined(FPL_NO_X11_XINPUT2)
+	if (!appState->window.x11.isRawMediaKeysSelected) {
+		return(false);
+	}
+	fplKey mappedKey = fpl__GetMappedKey(&appState->window, keyCode);
+	bool result = fpl__IsMediaKey(mappedKey);
+	return(result);
+#else
+	(void)appState;
+	(void)keyCode;
+	return(false);
+#endif
+}
+
 fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11Kbm *backend, const fpl__NativeInputEvent *nev) {
 	fplAssertPtr(backend);
 	fplAssertPtr(nev);
@@ -30975,6 +31016,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
+			if (fpl__X11IsMediaKeyFromRawEvents(appState, keyCode)) return true;
 			// Input-method committed text (dead-key / compose result) is delivered as a synthetic KeyPress with keycode 0.
 			// There is no physical key to debounce or emit a button event for, so just deliver the committed text.
 			if (keyCode == 0) {
@@ -31016,6 +31058,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 		{
 			if (eventsDisabled) return true;
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
+			if (fpl__X11IsMediaKeyFromRawEvents(appState, (uint64_t)ev->xkey.keycode)) return true;
 			bool isRepeat = false;
 			if (x11Api->XEventsQueued(x11WinState->display, FPL__X11_QueuedAfterReading)) {
 				fpl__X11_XEvent nextEvent;
@@ -31344,6 +31387,9 @@ fpl_internal void fpl__X11HandleStartFocus(const fpl__X11Api *x11Api, fpl__X11Wi
 
 // The relative mouse mode, defined next to the grab functions further down
 fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev);
+#if !defined(FPL_NO_X11_XINPUT2)
+fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState);
+#endif
 fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
 
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
@@ -31695,6 +31741,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				return;
 			}
 			fpl__HandleWindowFocusChanged(appState, true);
+#if !defined(FPL_NO_X11_XINPUT2)
+			fpl__X11UpdateRawMediaKeys(appState);
+#endif
 		} break;
 
 		case FPL__X11_FocusOut:
@@ -31705,6 +31754,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				return;
 			}
 			fpl__HandleWindowFocusChanged(appState, false);
+#if !defined(FPL_NO_X11_XINPUT2)
+			fpl__X11UpdateRawMediaKeys(appState);
+#endif
 		} break;
 
 		case FPL__X11_PropertyNotify:
@@ -31988,31 +32040,39 @@ fpl_internal bool fpl__X11IsXInput2Available(fpl__PlatformAppState *appState) {
 	int firstEvent = 0;
 	int firstError = 0;
 	if (!x11Api->XQueryExtension(windowState->display, "XInputExtension", &opcode, &firstEvent, &firstError)) {
-		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput extension, the relative mouse mode reports accelerated movement");
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput extension, the relative mouse mode reports accelerated movement and media keys only arrive when the desktop does not use them");
 		return(false);
 	}
-	// The raw events on the root window need version 2.0, the server answers with the version both sides support
+	// The raw events on the root window need version 2.0. Version 2.1 or higher also delivers raw key events while another client grabs the key, which desktops do for media keys.
+	// The server answers with the version both sides support, and it remembers the version a client announced first.
 	const int requiredMajorVersion = 2;
-	const int requiredMinorVersion = 0;
+	const int requestedMinorVersion = 2;
 	int majorVersion = requiredMajorVersion;
-	int minorVersion = requiredMinorVersion;
+	int minorVersion = requestedMinorVersion;
 	fpl__X11_Status versionStatus = xinput2Api->XIQueryVersion(windowState->display, &majorVersion, &minorVersion);
 	if (versionStatus != FPL__X11_Success || majorVersion < requiredMajorVersion) {
-		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput 2.0, the relative mouse mode reports accelerated movement");
+		FPL_LOG_INFO(FPL__MODULE_XINPUT2, "The X server has no XInput 2.0, the relative mouse mode reports accelerated movement and media keys only arrive when the desktop does not use them");
 		return(false);
 	}
 	relativeMouse->xinput2Opcode = opcode;
+	relativeMouse->xinput2MinorVersion = minorVersion;
 	relativeMouse->isXInput2Available = true;
 	return(true);
 }
 
-// Raw motion is only selected while the relative mode is active, it comes for every mouse movement on the whole screen
-fpl_internal bool fpl__X11SelectRawMotion(fpl__PlatformAppState *appState, const bool enabled) {
+// One selection on the root window holds every raw event type FPL wants, a second XISelectEvents call would replace the first.
+// Raw motion is only selected while the relative mode is active, it comes for every mouse movement on the whole screen.
+// Raw keys are only selected while the window has the focus, the handler takes the media keys from them.
+fpl_internal bool fpl__X11SelectRawEvents(fpl__PlatformAppState *appState, const bool rawMotion, const bool rawKeys) {
 	const fpl__XInput2Api *xinput2Api = &appState->x11.xinput2;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	unsigned char maskBits[FPL__X11_XI_MASK_LENGTH(FPL__X11_XI_RawMotion)] = fplZeroInit;
-	if (enabled) {
+	if (rawMotion) {
 		FPL__X11_XI_SET_MASK(maskBits, FPL__X11_XI_RawMotion);
+	}
+	if (rawKeys) {
+		FPL__X11_XI_SET_MASK(maskBits, FPL__X11_XI_RawKeyPress);
+		FPL__X11_XI_SET_MASK(maskBits, FPL__X11_XI_RawKeyRelease);
 	}
 	fpl__X11_XIEventMask eventMask = fplZeroInit;
 	eventMask.deviceid = FPL__X11_XIAllMasterDevices;
@@ -32106,22 +32166,68 @@ fpl_internal void fpl__X11HandleRawMotion(fpl__PlatformAppState *appState, const
 }
 #endif // !FPL_NO_X11_XINPUT2
 
-// GenericEvent: the raw motion of XInput2 while the relative mode is active
+#if !defined(FPL_NO_X11_XINPUT2)
+// Selects the raw key events while the window has the focus, so the media keys arrive even while the desktop grabs them as global shortcuts. The desktop still acts on them too.
+fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState) {
+	fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
+	const int grabbedRawKeysMinorVersion = 1;
+	bool isWanted = appState->window.hasFocus && fpl__X11IsXInput2Available(appState) && relativeMouse->xinput2MinorVersion >= grabbedRawKeysMinorVersion;
+	if (isWanted == windowState->isRawMediaKeysSelected) {
+		return;
+	}
+	bool isSelected = fpl__X11SelectRawEvents(appState, relativeMouse->isRawMotionSelected, isWanted);
+	windowState->isRawMediaKeysSelected = isSelected && isWanted;
+}
+
+// XI_RawKeyPress, XI_RawKeyRelease: only media keys are taken from them, every other key comes as a core event to the focused window
+fpl_internal void fpl__X11HandleRawKey(fpl__PlatformAppState *appState, const fpl__X11_XIRawEvent *rawEvent, const bool isPress) {
+	fpl__PlatformWindowState *winState = &appState->window;
+	if (!winState->hasFocus) {
+		return;
+	}
+	if (appState->currentSettings.input.disabledEvents != 0) {
+		return;
+	}
+#if defined(FPL__ENABLE_INPUT)
+	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) {
+		return;
+	}
+#endif
+	uint64_t keyCode = (uint64_t)rawEvent->detail;
+	fplKey mappedKey = fpl__GetMappedKey(winState, keyCode);
+	if (!fpl__IsMediaKey(mappedKey)) {
+		return;
+	}
+	// Every physical key has its own X11 key code, so the key code is the key state slot. Raw events carry no modifier state.
+	uint32_t keySlot = (uint32_t)keyCode;
+	uint32_t scanCode = fpl__X11GetScanCode(keyCode);
+	fplButtonState buttonState = isPress ? fplButtonState_Press : fplButtonState_Release;
+	bool isForced = !isPress;
+	fpl__HandleKeyboardButtonEvent(winState, (uint64_t)rawEvent->time, keySlot, keyCode, scanCode, fplKeyboardModifierFlags_None, buttonState, isForced);
+}
+#endif // !FPL_NO_X11_XINPUT2
+
+// GenericEvent: the raw motion of XInput2 while the relative mode is active, and the raw keys while the window has the focus
 fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
 #if !defined(FPL_NO_X11_XINPUT2)
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	const fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
 	fpl__X11_XGenericEventCookie *cookie = &ev->xcookie;
-	if (!relativeMouse->isRawMotionSelected || cookie->extension != relativeMouse->xinput2Opcode) {
+	bool isAnyRawEventSelected = relativeMouse->isRawMotionSelected || windowState->isRawMediaKeysSelected;
+	if (!isAnyRawEventSelected || cookie->extension != relativeMouse->xinput2Opcode) {
 		return;
 	}
 	if (!x11Api->XGetEventData(windowState->display, cookie)) {
 		return;
 	}
-	if (cookie->evtype == FPL__X11_XI_RawMotion) {
-		const fpl__X11_XIRawEvent *rawEvent = (const fpl__X11_XIRawEvent *)cookie->data;
+	const fpl__X11_XIRawEvent *rawEvent = (const fpl__X11_XIRawEvent *)cookie->data;
+	if (cookie->evtype == FPL__X11_XI_RawMotion && relativeMouse->isRawMotionSelected) {
 		fpl__X11HandleRawMotion(appState, rawEvent);
+	} else if ((cookie->evtype == FPL__X11_XI_RawKeyPress || cookie->evtype == FPL__X11_XI_RawKeyRelease) && windowState->isRawMediaKeysSelected) {
+		bool isPress = cookie->evtype == FPL__X11_XI_RawKeyPress;
+		fpl__X11HandleRawKey(appState, rawEvent, isPress);
 	}
 	x11Api->XFreeEventData(windowState->display, cookie);
 #else
@@ -32213,7 +32319,7 @@ fpl_internal bool fpl__X11StartRelativeMouse(fpl__PlatformAppState *appState) {
 		x11Api->XGetWindowAttributes(windowState->display, windowState->core.root, &rootAttributes);
 		relativeMouse->rootWidth = rootAttributes.width;
 		relativeMouse->rootHeight = rootAttributes.height;
-		relativeMouse->isRawMotionSelected = fpl__X11SelectRawMotion(appState, true);
+		relativeMouse->isRawMotionSelected = fpl__X11SelectRawEvents(appState, true, windowState->isRawMediaKeysSelected);
 	}
 #endif
 	relativeMouse->isActive = true;
@@ -32229,7 +32335,7 @@ fpl_internal void fpl__X11StopRelativeMouse(fpl__PlatformAppState *appState) {
 	fpl__InputGrabState *inputGrab = &appState->window.inputGrab;
 #if !defined(FPL_NO_X11_XINPUT2)
 	if (relativeMouse->isRawMotionSelected) {
-		fpl__X11SelectRawMotion(appState, false);
+		fpl__X11SelectRawEvents(appState, false, windowState->isRawMediaKeysSelected);
 		relativeMouse->isRawMotionSelected = false;
 	}
 #endif
