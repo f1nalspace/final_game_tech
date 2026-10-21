@@ -90,6 +90,9 @@ How the demo works:
 	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n>
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
 
+	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
+	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. In thread mode a key is heard only after the latency of the output ring.
+
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
 
@@ -121,6 +124,7 @@ Changelog:
 	- Changed: --volume, --pitch and --repeat apply to the sine wave too
 	- Fixed: Loaded tracks were never added to the audio system, so they were neither counted nor freed
 	- Fixed: The full-track buffers of replaced tracks were never freed
+	- New: Keys N/P and the media keys switch tracks, Space pauses, R toggles repeat, Up/Down change the volume
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -568,6 +572,12 @@ static ProcessMemoryUsage GetProcessMemoryUsage(void) {
 	return(result);
 }
 
+// Changed by the keys on the main thread and used for every track the streaming thread starts, guarded by AudioDemo.trackLock
+typedef struct PlayerControls {
+	float volume;
+	bool isRepeat;
+} PlayerControls;
+
 typedef struct AudioDemo {
 	AudioVisualization visualization;
 	AudioTrackList trackList;
@@ -609,6 +619,8 @@ typedef struct AudioDemo {
 	volatile uint32_t trackChangeCount;
 	// Name of the current track, guarded by trackLock
 	char currentTrackName[256];
+	// Guarded by trackLock
+	PlayerControls controls;
 
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
@@ -1409,6 +1421,10 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 		StopCurrentTrack(demo);
 	}
 
+	fplMutexLock(&demo->trackLock);
+	PlayerControls controls = demo->controls;
+	fplMutexUnlock(&demo->trackLock);
+
 	AudioSource *source = fpl_null;
 	AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
 	if(state == AudioTrackState_Unloaded) {
@@ -1430,12 +1446,12 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 		return;
 	}
 
-	track->playID = AudioSystemPlaySource(&demo->audioSys, source, options->isRepeat, options->volume, options->pitch);
+	track->playID = AudioSystemPlaySource(&demo->audioSys, source, controls.isRepeat, controls.volume, options->pitch);
 	fplAtomicStoreU64(&demo->currentPlayItemId, track->playID.value);
 
 	AudioFrameIndex trackFrameCount = GetPlayedFrameCount(source, options->pitch, demo->targetAudioFormat.sampleRate);
 	fplAtomicStoreU32(&demo->currentTrackFrameCount, trackFrameCount);
-	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, options->isRepeat ? 1 : 0);
+	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, controls.isRepeat ? 1 : 0);
 
 	bool needsPreview = (demo->playbackMode == PlaybackMode_Thread) && !track->outputFullBuffer.isAllocated;
 
@@ -1859,6 +1875,83 @@ static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
 }
 
 //
+// Keys, the main thread only leaves requests or calls the thread-safe setters of the audio system, every action logs its new value
+//
+
+static void RequestTrackStep(AudioDemo *demo, const int32_t trackStep) {
+	if(demo->playbackMode == PlaybackMode_DeviceSine) {
+		FPL_LOG_INFO("Keys", "There are no tracks in device-sine mode");
+		return;
+	}
+	fplAtomicFetchAndAddS32(&demo->pendingTrackStep, trackStep);
+	FPL_LOG_INFO("Keys", "%s track", (trackStep > 0) ? "Next" : "Previous");
+}
+
+static AudioPlayItemID GetCurrentPlayItemId(AudioDemo *demo) {
+	AudioPlayItemID result = fplZeroInit;
+	result.value = fplAtomicLoadU64(&demo->currentPlayItemId);
+	return(result);
+}
+
+static void TogglePause(AudioDemo *demo, bool *isPaused) {
+	AudioPlayItemID playID = GetCurrentPlayItemId(demo);
+	bool newPaused = !*isPaused;
+	bool isApplied = (playID.value != 0) && AudioSystemSetPlayItemPaused(&demo->audioSys, playID, newPaused);
+	if(!isApplied) {
+		FPL_LOG_INFO("Keys", "Pause: no track plays");
+		return;
+	}
+	*isPaused = newPaused;
+	FPL_LOG_INFO("Keys", "Pause: %s", newPaused ? "on" : "off");
+}
+
+// For the current track and every track after it
+static void ToggleRepeat(AudioDemo *demo) {
+	fplMutexLock(&demo->trackLock);
+	demo->controls.isRepeat = !demo->controls.isRepeat;
+	bool isRepeat = demo->controls.isRepeat;
+	fplMutexUnlock(&demo->trackLock);
+
+	AudioPlayItemID playID = GetCurrentPlayItemId(demo);
+	bool isApplied = (playID.value != 0) && AudioSystemSetPlayItemRepeat(&demo->audioSys, playID, isRepeat);
+	if(isApplied) {
+		fplAtomicStoreU32(&demo->isCurrentTrackRepeating, isRepeat ? 1 : 0);
+	}
+	FPL_LOG_INFO("Keys", "Repeat: %s%s", isRepeat ? "on" : "off", isApplied ? "" : " (from the next track on)");
+}
+
+// For the current track and every track after it, in steps of 0.1 between 0 and 2
+static void ChangeVolume(AudioDemo *demo, const float volumeStep) {
+	const float maxVolume = 2.0f;
+	const float stepsPerVolume = 10.0f;
+
+	fplMutexLock(&demo->trackLock);
+	float changedVolume = demo->controls.volume + volumeStep;
+	float roundedVolume = roundf(changedVolume * stepsPerVolume) / stepsPerVolume;
+	float limitedVolume = fplMin(roundedVolume, maxVolume);
+	float volume = fplMax(0.0f, limitedVolume);
+	demo->controls.volume = volume;
+	fplMutexUnlock(&demo->trackLock);
+
+	AudioPlayItemID playID = GetCurrentPlayItemId(demo);
+	bool isApplied = (playID.value != 0) && AudioSystemSetPlayItemVolume(&demo->audioSys, playID, volume);
+	FPL_LOG_INFO("Keys", "Volume: %.1f%s", volume, isApplied ? "" : " (from the next track on)");
+}
+
+typedef struct PlayerKeyHelp {
+	const char *keys;
+	const char *description;
+} PlayerKeyHelp;
+
+static const PlayerKeyHelp PlayerKeyHelps[] = {
+	{ "N, P, media next/prev", "Next or previous track of the command line" },
+	{ "Space, media play/pause", "Pause and resume" },
+	{ "R", "Repeat on and off, for the next tracks too" },
+	{ "Up, Down", "Volume +0.1 and -0.1, for the next tracks too" },
+	{ "F, F1, F2", "Fullscreen, real-time visualization, spectrum mode" },
+};
+
+//
 // Command line
 //
 
@@ -2053,6 +2146,13 @@ static void PrintPlayerHelp(void) {
 		}
 	}
 	fplConsoleFormatOut("\nEvery other argument is a file to play, without one the built-in music plays.\n");
+
+	fplConsoleFormatOut("\nKeys in the window:\n");
+	for(size_t keyIndex = 0; keyIndex < fplArrayCount(PlayerKeyHelps); ++keyIndex) {
+		const PlayerKeyHelp *keyHelp = &PlayerKeyHelps[keyIndex];
+		fplConsoleFormatOut("  %-*s%s\n", descriptionColumn, keyHelp->keys, keyHelp->description);
+	}
+	fplConsoleFormatOut("In thread mode a key is heard only after the latency of the output ring, --mixer=callback or a small --ring-ms hear it at once.\n");
 }
 
 static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name, const size_t nameLength) {
@@ -2730,6 +2830,8 @@ int main(int argc, char **args) {
 		if(!fplMutexInit(&demo->trackLock)) {
 			goto done;
 		}
+		demo->controls.volume = options.volume;
+		demo->controls.isRepeat = options.isRepeat;
 
 #if 0
 		// Stream in initial frames
@@ -2759,6 +2861,9 @@ int main(int argc, char **args) {
 		// The streaming thread names the track it starts, the device sine plays none
 		char audioTrackName[256] = fplZeroInit;
 		uint32_t lastTrackChangeCount = 0;
+		// Of the current play item, a new track starts unpaused
+		bool isPaused = false;
+		const float volumeKeyStep = 0.1f;
         UpdateTitle(demo, audioTrackName, 0.0);
 
 		// Loop
@@ -2788,6 +2893,18 @@ int main(int argc, char **args) {
 									demo->useRealTimeSamples = !demo->useRealTimeSamples;
 								} else if(key == fplKey_F2) {
 									demo->spectrumMode = (SpectrumMode)((demo->spectrumMode + 1) % SpectrumMode_Count);
+								} else if(key == fplKey_N || key == fplKey_MediaNextTrack) {
+									RequestTrackStep(demo, 1);
+								} else if(key == fplKey_P || key == fplKey_MediaPrevTrack) {
+									RequestTrackStep(demo, -1);
+								} else if(key == fplKey_Space || key == fplKey_MediaPlayPause) {
+									TogglePause(demo, &isPaused);
+								} else if(key == fplKey_R) {
+									ToggleRepeat(demo);
+								} else if(key == fplKey_Up) {
+									ChangeVolume(demo, volumeKeyStep);
+								} else if(key == fplKey_Down) {
+									ChangeVolume(demo, -volumeKeyStep);
 								}
                                 UpdateTitle(demo, audioTrackName, currentFps);
 							}
@@ -2824,6 +2941,7 @@ int main(int argc, char **args) {
 				fplCopyString(demo->currentTrackName, audioTrackName, fplArrayCount(audioTrackName));
 				fplMutexUnlock(&demo->trackLock);
 				ClearVisualization(demo);
+				isPaused = false;
 				UpdateTitle(demo, audioTrackName, currentFps);
 			}
 
