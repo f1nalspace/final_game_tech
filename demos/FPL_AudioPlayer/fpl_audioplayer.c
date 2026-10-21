@@ -133,6 +133,7 @@ Changelog:
 	- Fixed: The track position ran on during a pause
 	- Fixed: Silence of up to a second after a track switch in thread mode
 	- Changed: --stats takes its values from AudioSystemGetStats() and shows the play items
+	- Changed: The end of a track is found by the id of its play item, other play items do not hold it up
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -1386,16 +1387,30 @@ static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const floa
 	return(result);
 }
 
-// Output frames left in the current pass of the play item of the current track, false when it is gone or repeats.
-// Only in thread mode, where the streaming thread is the only one that mixes and the only one that adds play items.
-static bool GetRemainingPlayItemFrameCount(AudioDemo *demo, AudioFrameIndex *outFrameCount) {
-	size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
-	if(playItemCount != 1) {
+// Copies the play item of the current track, false when it has ended or there is none. Other play items, like the tones of --stress, do not count
+static bool GetCurrentPlayItem(AudioDemo *demo, AudioPlayItem *outPlayItem) {
+	uint64_t currentPlayItemId = fplAtomicLoadU64(&demo->currentPlayItemId);
+	if(currentPlayItemId == 0) {
 		return(false);
 	}
+	// Room for the whole pool, so the copy never fails for lack of space
+	AudioPlayItem playItems[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
+	size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, playItems, FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT);
+	for(size_t itemIndex = 0; itemIndex < playItemCount; ++itemIndex) {
+		if(playItems[itemIndex].id.value == currentPlayItemId) {
+			*outPlayItem = playItems[itemIndex];
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// Output frames left in the current pass of the play item of the current track, false when it is gone or repeats.
+// Only in thread mode, where the streaming thread is the only one that mixes.
+static bool GetRemainingPlayItemFrameCount(AudioDemo *demo, AudioFrameIndex *outFrameCount) {
 	AudioPlayItem playItem = fplZeroInit;
-	size_t copiedCount = AudioSystemGetPlayItems(&demo->audioSys, &playItem, 1);
-	if(copiedCount != 1 || playItem.isRepeat || playItem.isFinished[0]) {
+	bool hasPlayItem = GetCurrentPlayItem(demo, &playItem);
+	if(!hasPlayItem || playItem.isRepeat || playItem.isFinished[0]) {
 		return(false);
 	}
 	AudioFrameIndex sourceFrameCount = playItem.source->buffer.frameCount;
@@ -1624,11 +1639,12 @@ static void AdvanceAtTrackEnd(AudioDemo *demo) {
 	}
 
 	if(demo->trackEndState == TrackEndState_Playing) {
-		// The mixer removes a play item at its end, a repeating one never ends. The player plays one item at a time, and a track that failed to load has none.
+		// The mixer ends a play item at its end, a repeating one never ends. A track that failed to load has none.
 		AudioTrack *currentTrack = &trackList->tracks[trackList->currentIndex];
 		AudioTrackState currentState = (AudioTrackState)fplAtomicLoadS32(&currentTrack->state);
-		size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, fpl_null, 0);
-		if(currentState != AudioTrackState_Failed && playItemCount > 0) {
+		AudioPlayItem currentPlayItem = fplZeroInit;
+		bool hasCurrentPlayItem = GetCurrentPlayItem(demo, &currentPlayItem);
+		if(currentState != AudioTrackState_Failed && hasCurrentPlayItem) {
 			return;
 		}
 		// In thread mode the end is still in the output ring, it is heard once the device callback has played the stream up to it. Without a known end, up to everything streamed so far.
