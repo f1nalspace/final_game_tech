@@ -54,6 +54,9 @@ static const AudioFrameIndex ChunkFrameCounts[] = { 1001 };
 static const bool RepeatModes[] = { true };
 
 static const AudioChannelIndex ChannelCount = 2;
+
+// Each case plays one item, the copies of AudioSystemGetPlayItems have room to spare
+#define PLAY_ITEM_COPY_CAPACITY 4
 static const uint32_t ValuePeriod = 8191;
 static const float ValueScale = 16384.0f;
 
@@ -150,7 +153,10 @@ static CaseResult RunCase(const RatePair *pair, const AudioFrameIndex sourceFram
 		memcpy(output + mixedFrameCount * ChannelCount, chunk, sizeof(float) * framesToMix * ChannelCount);
 		mixedFrameCount += framesToMix;
 
-		for(AudioPlayItem *item = audioSys->playItems.first; item != fpl_null; item = item->next) {
+		AudioPlayItem playItemCopies[PLAY_ITEM_COPY_CAPACITY];
+		size_t playItemCount = AudioSystemGetPlayItems(audioSys, playItemCopies, PLAY_ITEM_COPY_CAPACITY);
+		for(size_t itemIndex = 0; itemIndex < playItemCount; ++itemIndex) {
+			const AudioPlayItem *item = &playItemCopies[itemIndex];
 			if(item->framesPlayed[0] > sourceFrameCount) {
 				result.kind = FailureKind_PositionPastEnd;
 				result.firstBadOutputFrame = (AudioFrameIndex)mixedFrameCount;
@@ -187,7 +193,8 @@ static CaseResult RunCase(const RatePair *pair, const AudioFrameIndex sourceFram
 		}
 	}
 
-	if(result.kind == FailureKind_None && !repeat && audioSys->playItems.count > 0) {
+	size_t remainingPlayItemCount = AudioSystemGetPlayItems(audioSys, fpl_null, 0);
+	if(result.kind == FailureKind_None && !repeat && remainingPlayItemCount > 0) {
 		result.kind = FailureKind_NotFinished;
 	}
 
