@@ -143,6 +143,7 @@ License:
 Changelog:
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
+	- Fixed: Even upsampling left the end of every mix call silent when its frame count was no multiple of the factor
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -203,6 +204,7 @@ typedef struct AudioPlayItemID {
 typedef struct AudioPlayItem {
 	AudioFrameIndex framesPlayed[2];	//!< 0 = Current, 1 = Saved
 	fpl_b32 isFinished[2];				//!< 0 = Current, 1 = Saved
+	uint32_t copiesPlayed[2];			//!< Frame duplication (even upsampling): copies of the frame at framesPlayed that are mixed already, 0 = Current, 1 = Saved
 	const AudioSource *source;
 	struct AudioPlayItem *next;
 	struct AudioPlayItem *prev;
@@ -1257,6 +1259,7 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	playItem->next = playItem->prev = fpl_null;
 	playItem->framesPlayed[0] = playItem->framesPlayed[1] = 0;
 	playItem->isFinished[0] = playItem->isFinished[1] = false;
+	playItem->copiesPlayed[0] = playItem->copiesPlayed[1] = 0;
 	playItem->source = source;
 	playItem->isRepeat = repeat;
 	playItem->volume = volume;
@@ -1352,25 +1355,33 @@ fpl_extern void AudioGenerateSineWave(AudioSineWaveData *waveData, void *outSamp
 	waveData->frameIndex += frameCount;
 }
 
-static AudioResampleResult AudioSimpleUpSampling(const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const AudioHertz outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples) {
+// Fills up to minOutputFrameCount frames, also when that is no multiple of the factor.
+// copiesPlayed brings the copies of the first input frame that earlier calls mixed already and returns the copies of the frame the output stopped in.
+// inputCount counts only the input frames whose copies are all out.
+static AudioResampleResult AudioSimpleUpSampling(const AudioChannelIndex inChannelCount, const AudioHertz inSampleRate, const AudioHertz outSampleRate, const AudioFrameIndex minOutputFrameCount, const AudioFrameIndex maxInputFrameCount, const float *inSamples, float *outSamples, uint32_t *copiesPlayed) {
 	// Simple Upsampling (2x, 4x, 6x, 8x etc.) -> Duplicate frames
 	fplAssert(outSampleRate > inSampleRate);
 	fplAssert((outSampleRate % inSampleRate) == 0);
 	const uint32_t upsamplingFactor = outSampleRate / inSampleRate;
-	const AudioFrameIndex inFrameCount = fplMin(minOutputFrameCount / upsamplingFactor, maxInputFrameCount);
-	const float *inSamplesF32 = (const float *)inSamples;
-	const size_t inSampleStride = inChannelCount;
+	const float *inSamplesF32 = inSamples;
+	uint32_t copyIndex = *copiesPlayed;
 	AudioResampleResult result = fplZeroInit;
-	for(AudioFrameIndex i = 0; i < inFrameCount; ++i) {
-		for(uint32_t f = 0; f < upsamplingFactor; ++f) {
+	while(result.inputCount < maxInputFrameCount && result.outputCount < minOutputFrameCount) {
+		// A pitch change can lower the factor below the copies a frame has already
+		if(copyIndex < upsamplingFactor) {
 			for(AudioChannelIndex inChannelIndex = 0; inChannelIndex < inChannelCount; ++inChannelIndex) {
 				*outSamples++ = inSamplesF32[inChannelIndex];
 			}
 			++result.outputCount;
+			++copyIndex;
 		}
-		inSamplesF32 += inSampleStride;
-		++result.inputCount;
+		if(copyIndex >= upsamplingFactor) {
+			inSamplesF32 += inChannelCount;
+			++result.inputCount;
+			copyIndex = 0;
+		}
 	}
+	*copiesPlayed = copyIndex;
 	return(result);
 }
 
@@ -1405,6 +1416,7 @@ static void SavePlayStates(AudioSystem *audioSys) {
 	while(item != fpl_null) {
 		item->framesPlayed[1] = item->framesPlayed[0];
 		item->isFinished[1] = item->isFinished[0];
+		item->copiesPlayed[1] = item->copiesPlayed[0];
 		item = item->next;
 	}
 	fplMutexUnlock(&audioSys->playItems.lock);
@@ -1416,6 +1428,7 @@ static void RestorePlayStates(AudioSystem *audioSys) {
 	while(item != fpl_null) {
 		item->framesPlayed[0] = item->framesPlayed[1];
 		item->isFinished[0] = item->isFinished[1];
+		item->copiesPlayed[0] = item->copiesPlayed[1];
 		item = item->next;
 	}
 	fplMutexUnlock(&audioSys->playItems.lock);
@@ -1584,12 +1597,13 @@ static AudioFrameIndex ConvertSourceChunkToF32(AudioSampleConversionFunctions *c
 * @param[in] inputFrameCount Number of input frames available in dspIn.
 * @param[in] dspIn           Source interleaved F32 samples.
 * @param[out] dspOut         Destination interleaved F32 samples.
+* @param[in,out] copiesPlayed Copies of the first input frame that were mixed already (frame duplication only), set to 0 by every other path.
 *
 * @return Returns an AudioResampleResult with .inputCount (frames consumed) and .outputCount (frames produced).
 *         Both are zero if rates are invalid or no frames could be produced.
 *
 * @note Buffer safety:
-*       For upsampling, input frames are pre-clamped so that (input * factor) <= maxOutputFrames.
+*       For upsampling, the output stops at maxOutputFrames, inside an input frame when needed (copiesPlayed continues it).
 *       For downsampling and SinC, maxOutputFrames is passed as the output limit.
 *       Passthrough is clamped to min(inputFrameCount, maxOutputFrames).
 *
@@ -1597,12 +1611,16 @@ static AudioFrameIndex ConvertSourceChunkToF32(AudioSampleConversionFunctions *c
 *          For 44100 <-> 48000 the round-trip converges exactly, but for arbitrary non-even ratios the result may still exceed minOutputFrameCount by 1 frame.
 *          Callers MUST clamp the returned outputCount before using it to index into fixed-size buffers or subtract from unsigned frame counters.
 */
-static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const AudioHertz inRate, const AudioHertz outRate, const AudioFrameIndex maxOutputFrames, const AudioFrameIndex inputFrameCount, const float *dspIn, float *dspOut) {
+static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const AudioHertz inRate, const AudioHertz outRate, const AudioFrameIndex maxOutputFrames, const AudioFrameIndex inputFrameCount, const float *dspIn, float *dspOut, uint32_t *copiesPlayed) {
 	AudioResampleResult result = fplZeroInit;
 
 	if (channels == 0 || inRate == 0 || outRate == 0 || inputFrameCount == 0 || maxOutputFrames == 0) {
 		return result;
 	}
+
+	// Only frame duplication continues inside a frame, a pitch change to another path starts the frame again
+	const uint32_t copiesPlayedBefore = *copiesPlayed;
+	*copiesPlayed = 0;
 
 	if (inRate == outRate) {
 		// Passthrough — same sample rate, just copy
@@ -1617,8 +1635,8 @@ static AudioResampleResult ResampleChunk(const AudioChannelIndex channels, const
 		if (isEven) {
 			if (outRate > inRate) {
 				// Even upsampling (2x, 4x, etc.)
-				// Clamp input so that (input * factor) does not exceed maxOutputFrames
-				result = AudioSimpleUpSampling(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut);
+				*copiesPlayed = copiesPlayedBefore;
+				result = AudioSimpleUpSampling(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut, copiesPlayed);
 			} else {
 				// Even downsampling (1/2, 1/4, etc.)
 				result = AudioSimpleDownSampling(channels, inRate, outRate, maxOutputFrames, inputFrameCount, dspIn, dspOut);
@@ -1751,6 +1769,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		// Clamp output to both the remaining target frames and the DSP-out buffer capacity
 		const AudioFrameIndex maxOutputForThisChunk = fplMin(outRemainingFrameCount, dspOutMaxFrames);
 
+		const uint32_t copiesPlayedBefore = item->copiesPlayed[0];
 		const AudioResampleResult resampleResult = ResampleChunk(
 			inChannelCount,
 			inSampleRate,
@@ -1758,7 +1777,8 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 			maxOutputForThisChunk,
 			convertedFrameCount,
 			dspIn,
-			dspOut
+			dspOut,
+			&item->copiesPlayed[0]
 		);
 
 		// Frame skipping (AudioSimpleDownSampling) steps up to factor-1 frames past its input, which keeps the skipping grid across chunks, but never past the end of the source
@@ -1771,8 +1791,9 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		// to run far past the mixing buffer boundary.
 		const AudioFrameIndex outputFrameCount = fplMin(resampleResult.outputCount, outRemainingFrameCount);
 
-		// If resampling could not produce any frames (e.g. not enough input for SinC), stop
-		if (outputFrameCount == 0 || playedFrameCount == 0) {
+		// If resampling could not produce any frames (e.g. not enough input for SinC), stop. Frame duplication can output copies without finishing an input frame, which still moves on
+		const bool hasCopiesMoved = (item->copiesPlayed[0] != copiesPlayedBefore);
+		if (outputFrameCount == 0 || (playedFrameCount == 0 && !hasCopiesMoved)) {
 			break;
 		}
 
@@ -1794,6 +1815,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 			if (item->isRepeat) {
 				item->isFinished[0] = false;
 				item->framesPlayed[0] = 0; // Reset for next loop iteration
+				item->copiesPlayed[0] = 0;
 			} else {
 				item->isFinished[0] = true;
 			}
@@ -1878,6 +1900,7 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 
 		if (item->isFinished[0]) {
 			item->framesPlayed[0] = 0;
+			item->copiesPlayed[0] = 0;
 			if (advance) {
 				RemovePlayItem(&audioSys->memory, &audioSys->playItems, item);
 			}
