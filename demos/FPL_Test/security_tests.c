@@ -581,6 +581,34 @@ static void fsec__File_DirectoryListReleasesAtEnd(void) {
 	(void)fplDirectoryRemove(directoryPath);
 }
 
+// fplDirectoriesCreate makes every missing parent, and an existing directory counts as success
+static void fsec__File_DirectoriesCreateMakesParents(void) {
+	fsec__Banner("files", "fplDirectoriesCreate creates the parents");
+	char rootPath[FPL_MAX_PATH_LENGTH];
+	bool hasRootPath = fsec__GetTempPath(rootPath, sizeof(rootPath), "fsec_mkdirs");
+	FSEC_ASSERT_TRUE(hasRootPath);
+	char middlePath[FPL_MAX_PATH_LENGTH];
+	size_t middlePathLength = fplPathCombine(middlePath, sizeof(middlePath), 2, rootPath, "level1");
+	FSEC_ASSERT_TRUE(middlePathLength > 0);
+	char nestedPath[FPL_MAX_PATH_LENGTH];
+	size_t nestedPathLength = fplPathCombine(nestedPath, sizeof(nestedPath), 2, middlePath, "level2");
+	FSEC_ASSERT_TRUE(nestedPathLength > 0);
+	(void)fplDirectoryRemove(nestedPath);
+	(void)fplDirectoryRemove(middlePath);
+	(void)fplDirectoryRemove(rootPath);
+
+	bool isCreated = fplDirectoriesCreate(nestedPath);
+	FSEC_ASSERT_TRUE(isCreated);
+	bool hasNestedDirectory = fplDirectoryExists(nestedPath);
+	FSEC_ASSERT_TRUE(hasNestedDirectory);
+	bool isCreatedAgain = fplDirectoriesCreate(nestedPath);
+	FSEC_ASSERT_TRUE(isCreatedAgain);
+
+	(void)fplDirectoryRemove(nestedPath);
+	(void)fplDirectoryRemove(middlePath);
+	(void)fplDirectoryRemove(rootPath);
+}
+
 void FPLSecurityTests_Files(void) {
 	fsec__File_ReadBlock64Accumulates();
 	fsec__File_ReadBlock32RespectsMax();
@@ -589,6 +617,7 @@ void FPLSecurityTests_Files(void) {
 	fsec__File_MoveSwitchesPaths();
 	fsec__File_CloseZeroInitHandleIsSafe();
 	fsec__File_DirectoryListReleasesAtEnd();
+	fsec__File_DirectoriesCreateMakesParents();
 }
 
 /* ===========================================================================

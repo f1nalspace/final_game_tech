@@ -268,6 +268,7 @@ SOFTWARE.
 	- Fixed: fplDirectoryListBegin() left the entry uninitialized when the directory could not be opened, so a following fplDirectoryListEnd() closed a garbage handle - the entry is cleared first now
 	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
 	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
+	- Fixed[#184]: [Win32] fplDirectoriesCreate() does not create parent sub-directories, an existing directory counts as success like on POSIX
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -9432,7 +9433,7 @@ fpl_platform_api bool fplFileDelete(const char *filePath);
 /**
 * @brief Creates all the directories in the given path.
 * @param[in] path The path to the directory.
-* @return Returns true when at least one directory was created, false otherwise.
+* @return Returns true when the last directory was created or already exists, false otherwise.
 */
 fpl_platform_api bool fplDirectoriesCreate(const char *path);
 
@@ -23807,7 +23808,23 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	wchar_t pathWide[FPL_MAX_PATH_LENGTH];
 	fplUTF8StringToWideString(path, fplGetStringLength(path), pathWide, fplArrayCount(pathWide));
+	// Every parent from the front, '/' and '\\' both as separators like on POSIX.
+	// A parent that cannot be created (a drive root, a network share, an existing one) is fine, the last directory reports whether the path could be made.
+	size_t pathLength = (size_t)lstrlenW(pathWide);
+	for (size_t charIndex = 1; charIndex < pathLength; ++charIndex) {
+		wchar_t c = pathWide[charIndex];
+		if (c != L'/' && c != L'\\') {
+			continue;
+		}
+		pathWide[charIndex] = 0;
+		CreateDirectoryW(pathWide, fpl_null);
+		pathWide[charIndex] = L'\\';
+	}
 	bool result = CreateDirectoryW(pathWide, fpl_null) > 0;
+	if (!result) {
+		DWORD lastError = GetLastError();
+		result = (lastError == ERROR_ALREADY_EXISTS);
+	}
 	return(result);
 }
 
