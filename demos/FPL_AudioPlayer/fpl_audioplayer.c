@@ -67,6 +67,24 @@ How the demo works:
 
 	The ring-buffer is visualized as simple bars with a tail and head position.
 
+	# Command line
+
+	FPL_AudioPlayer [options] [file ...]
+
+	Every argument that starts with -- is an option, every other one is a file to play. --help prints all options.
+
+	--mixer chooses where the audio system mixes:
+	- thread (default): the streaming thread mixes into the output ring, the device callback only copies from it
+	- callback: the device callback mixes itself, like most programs do. There is no output ring and no full-track visualization buffer then, the visualization always uses the real-time samples
+	- device-sine: the device callback generates a sine wave, no audio system involved
+
+	--device=<name> plays on the audio device with exactly this name and stops with an error when there is none, it never falls back to another device.
+	Without it, no target device is given and the platform plays on the system default device.
+
+	--sine plays only the generated sine wave, --sine-seconds sets its length.
+	--volume, --pitch and --repeat apply to the play item of every loaded file.
+	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
+
 Known Issues / Limitations:
 	- Visualization of FFT is incorrect
 	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
@@ -84,6 +102,12 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-10-21
+	- New: Command line options for the audio device, the mixer mode, the output ring size, the sine track and the play item, see --help
+	- Changed: Without --device no target device is given, the platform plays on the system default device and follows it
+	- Fixed: The generated sine track was played twice when it was started
+	- Fixed: The temporary stream buffer was smaller than the output ring, which is rounded up to whole memory pages
+
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
 
@@ -209,13 +233,6 @@ Visualize the samples:
 
 #define APP_TITLE "FPL Demo | Audio Player"
 
-#define OPT_PLAYBACK_NONE 0
-#define OPT_PLAYBACK_SINEWAVE 1
-#define OPT_PLAYBACK_AUDIOSYSTEM 2
-#define OPT_PLAYBACK_STREAMBUFFER 3
-
-#define OPT_PLAYBACK OPT_PLAYBACK_STREAMBUFFER
-
 #ifndef FPL_LOGGING
 #	define FPL_LOGGING
 #endif
@@ -228,6 +245,8 @@ Visualize the samples:
 #define _USE_MATH_DEFINES
 #include <math.h> // sinf, M_PI
 #include <float.h>
+#include <stddef.h> // offsetof
+#include <stdlib.h> // strtod
 
 #ifndef FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #	define FINAL_AUDIOSYSTEM_IMPLEMENTATION
@@ -297,10 +316,39 @@ typedef struct AudioVisualization {
 	volatile uint32_t hasVideoAudioChunk;
 } AudioVisualization;
 
+// Where the audio system mixes, chosen with --mixer
+typedef enum PlaybackMode {
+	// The streaming thread mixes into the output ring, the device callback only copies from it
+	PlaybackMode_Thread = 0,
+	// The device callback mixes itself
+	PlaybackMode_Callback,
+	// The device callback generates a sine wave, no audio system involved
+	PlaybackMode_DeviceSine,
+
+	PlaybackMode_Count,
+} PlaybackMode;
+
+#define MAX_PLAYER_FILE_COUNT 8
+
+typedef struct PlayerOptions {
+	char deviceName[FPL_MAX_NAME_LENGTH];
+	const char *files[MAX_PLAYER_FILE_COUNT];
+	size_t fileCount;
+	int32_t mixerMode;
+	int32_t ringMilliseconds;
+	float sineSeconds;
+	float volume;
+	float pitch;
+	bool isSine;
+	bool isRepeat;
+	bool isHelp;
+} PlayerOptions;
+
 typedef struct AudioDemo {
 	AudioVisualization visualization;
 	AudioTrackList trackList;
 	AudioSystem audioSys;
+	PlayerOptions options;
 
 	LockFreeRingBuffer outputRingBuffer;	// The ring buffer for the audio output
 	AudioBuffer outputTempBuffer;			// Used for decoding the audio samples into, before its pushed to the output ring buffer
@@ -314,12 +362,36 @@ typedef struct AudioDemo {
 	volatile uint32_t numFramesStreamed;
 	volatile uint32_t maxPlaybackFrameLatency;
 
+	// Length of the current track in output frames, for the progress bar when there is no full-track buffer
+	volatile uint32_t currentTrackFrameCount;
+	// A repeating track starts over after currentTrackFrameCount, so its position wraps around
+	volatile uint32_t isCurrentTrackRepeating;
+
 	volatile fpl_b32 isStreamingThreadStopped;
 	fpl_b32 useRealTimeSamples;
 	SpectrumMode spectrumMode;
+	PlaybackMode playbackMode;
 } AudioDemo;
 
-static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const bool isRealTime, const double fps) {
+// Only thread mode has the full-track buffer, the other modes always visualize the samples that went to the device
+static bool IsRealTimeVisualization(const AudioDemo *demo) {
+	bool result = demo->useRealTimeSamples || (demo->playbackMode != PlaybackMode_Thread);
+	return(result);
+}
+
+// The position in the current track, a repeating track starts over after its length
+static AudioFrameIndex GetTrackPosition(AudioDemo *demo, const AudioFrameIndex framesPlayed) {
+	AudioFrameIndex trackFrameCount = fplAtomicLoadU32(&demo->currentTrackFrameCount);
+	uint32_t isTrackRepeating = fplAtomicLoadU32(&demo->isCurrentTrackRepeating);
+	AudioFrameIndex result = framesPlayed;
+	if(isTrackRepeating && trackFrameCount > 0) {
+		result = framesPlayed % trackFrameCount;
+	}
+	return(result);
+}
+
+static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const double fps) {
+	const bool isRealTime = IsRealTimeVisualization(demo);
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
 	const fplAudioBackendType backendType = fplGetAudioBackendType();
@@ -443,7 +515,6 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	RenderLine(w * 0.5f, 0, w * 0.5f, h, V4fInit(1.0f, 1.0f, 1.0f, 0.25f), 1.0f);
 #endif
 
-#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	LockFreeRingBuffer *streamRingBuffer = &demo->outputRingBuffer;
 
 	static AudioBuffer zeroFullAudioBufferStub = fplZeroInit;
@@ -482,7 +553,10 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	Vec2f progressDim = V2fInit(progressW, progressH);
 	Vec2f progressPos = V2fInit((w - progressDim.w) * 0.5f, marginH);
 
-	RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
+	// Only thread mode has an output ring
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		RenderRingBuffer(streamBufferPos, streamBufferDim, streamRingBuffer);
+	}
 
 	RenderPushRectangle(spectrumPos.x, spectrumPos.y, spectrumPos.x + spectrumDim.w, spectrumPos.y + spectrumDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
@@ -495,18 +569,22 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 
 	uint8_t *chunkSamples = chunk->samples;
 
+	const AudioFrameIndex trackFrameCount = fplAtomicLoadU32(&demo->currentTrackFrameCount);
+	const bool isRealTime = IsRealTimeVisualization(demo);
+
 	AudioFrameIndex framesPlayed;
-	if(demo->useRealTimeSamples) {
+	if(isRealTime) {
 		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
 			visualization->videoAudioChunks[0] = visualization->videoAudioChunks[1];
 			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 0);
 		}
 
-		framesPlayed = chunk->index;
+		framesPlayed = GetTrackPosition(demo, chunk->index);
 	} else {
 
 #if 1
-		framesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
+		AudioFrameIndex totalFramesPlayed = fplAtomicLoadU32(&demo->numFramesPlayed);
+		framesPlayed = GetTrackPosition(demo, totalFramesPlayed);
 #else
 		double renderMsecs = currentRenderTime * 1000.0;
 		framesPlayed = (AudioFrameIndex)(((double)demo->targetAudioFormat.sampleRate / 1000.0) * renderMsecs);
@@ -540,8 +618,9 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	RenderPushRectangle(progressPos.x, progressPos.y, progressPos.x + progressDim.w, progressPos.y + progressDim.h, (Vec4f) { 1, 1, 1, 0.5f }, 1.0f);
 
 	float progressBarScale = 0.0f;
-	if (fullAudioBuffer->frameCount > 0) {
-		progressBarScale = fplMax(0.0f, fplMin(1.0f, framesPlayed / (float)fullAudioBuffer->frameCount));
+	if (trackFrameCount > 0) {
+		float trackProgress = framesPlayed / (float)trackFrameCount;
+		progressBarScale = fplMax(0.0f, fplMin(1.0f, trackProgress));
 	}
 
 	float progressBarWidth = progressBarMaxWidth * progressBarScale;
@@ -795,7 +874,67 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	}  // chunkFrameCount > 0
 
 //fplDebugFormatOut("Current render/play time: [%f, %f], played/streamed frames: [%lu, %lu], chunks: %zu\n", currentRenderTime, currentPlayTime, playedFrames, streamedFrames, numChunks);
-#endif
+}
+
+/**
+* @brief Copies the first chunk of the samples just written to the device for the real-time visualization, about 60 times per second.
+* @param[in] demo The audio demo.
+* @param[in] outFormat The output audio format, @ref fplAudioFormat.
+* @param[in] outputSamples The samples just written to the device.
+* @param[in] writtenFrameCount The number of frames written to the device.
+* @param[in] firstFrameIndex The number of frames played before the written ones.
+*/
+static void CaptureRealTimeChunk(AudioDemo *demo, const fplAudioFormat *outFormat, const void *outputSamples, const AudioFrameIndex writtenFrameCount, const AudioFrameIndex firstFrameIndex) {
+	AudioVisualization *visualization = &demo->visualization;
+	size_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
+	const uint64_t updateInterval = 1000 / 60;
+	if((writtenFrameCount >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplMillisecondsQuery() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
+		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
+			visualization->videoAudioChunks[1].index = firstFrameIndex;
+			visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+			size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;
+			fplMemoryCopy(outputSamples, chunkSamplesSize, visualization->videoAudioChunks[1].samples);
+			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 2);
+		}
+		demo->lastVideoAudioChunkUpdateTime = fplMillisecondsQuery();
+	}
+}
+
+/**
+* @brief Copies up to N frames from the output ring that the streaming thread fills, used in thread mode.
+* @param[in] demo The audio demo.
+* @param[in] outFormat The output audio format, @ref fplAudioFormat.
+* @param[in] maxFrameCount The number of frames that needs to be played.
+* @param[out] outputSamples The reference to the output samples that is defined by the output format.
+* @return Returns the number of audio frames that was copied, less than requested when the ring runs empty.
+*/
+static AudioFrameIndex ReadAudioFromRingBuffer(AudioDemo *demo, const fplAudioFormat *outFormat, const uint32_t maxFrameCount, void *outputSamples) {
+	AudioFrameIndex result = 0;
+
+	uint32_t currentPlaybackLatency = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
+	fplAtomicExchangeU32(&demo->maxPlaybackFrameLatency, fplMax(currentPlaybackLatency, maxFrameCount));
+
+	size_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
+
+	LockFreeRingBuffer *ringBuffer = &demo->outputRingBuffer;
+
+	size_t availableBytes = 0;
+	bool hasData = LockFreeRingBufferCanRead(ringBuffer, &availableBytes);
+	if(hasData && (availableBytes % frameSize) == 0) {
+		AudioFrameIndex availableFrames = (AudioFrameIndex)fplMax(0, availableBytes / frameSize);
+
+		AudioFrameIndex framesToCopy = fplMin(maxFrameCount, availableFrames);
+
+		size_t totalCopySize = framesToCopy * frameSize;
+		fplAssert((totalCopySize % frameSize) == 0);
+
+		bool isRead = LockFreeRingBufferRead(ringBuffer, outputSamples, totalCopySize);
+		fplAssert(isRead);
+
+		result = framesToCopy;
+	}
+
+	return(result);
 }
 
 /**
@@ -812,61 +951,34 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 
 	AudioFrameIndex result = 0;
 
-#if OPT_PLAYBACK == OPT_PLAYBACK_SINEWAVE
-	result = maxFrameCount;
-	AudioGenerateSineWave(&demo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
-#elif OPT_PLAYBACK == OPT_PLAYBACK_AUDIOSYSTEM
-	// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
-	result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount, true);
-#elif OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
-	uint32_t currentPlaybackLatency = fplAtomicLoadU32(&demo->maxPlaybackFrameLatency);
-	fplAtomicExchangeU32(&demo->maxPlaybackFrameLatency, fplMax(currentPlaybackLatency, maxFrameCount));
+	switch(demo->playbackMode) {
+		case PlaybackMode_DeviceSine:
+		{
+			result = maxFrameCount;
+			AudioGenerateSineWave(&demo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
+		} break;
 
-	size_t frameSize = fplGetAudioFrameSizeInBytes(outFormat->type, outFormat->channels);
+		case PlaybackMode_Callback:
+		{
+			// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
+			result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount, true);
+		} break;
 
-	LockFreeRingBuffer *ringBuffer = &demo->outputRingBuffer;
+		case PlaybackMode_Thread:
+		{
+			result = ReadAudioFromRingBuffer(demo, outFormat, maxFrameCount, outputSamples);
+		} break;
 
-	static AudioTrack zeroTrack = fplZeroInit;
-	AudioTrack *track = &zeroTrack;
-
-	AudioVisualization *visualization = &demo->visualization;
-
-	if(HasAudioTrack(&demo->trackList)) {
-		track = demo->trackList.tracks + demo->trackList.currentIndex;
+		default:
+			break;
 	}
 
-	size_t availableBytes = 0;
-	bool hasData = LockFreeRingBufferCanRead(ringBuffer, &availableBytes);
-	if(hasData && (availableBytes % frameSize) == 0) {
-		AudioFrameIndex availableFrames = (AudioFrameIndex)fplMax(0, availableBytes / frameSize);
-
-		AudioFrameIndex framesToCopy = fplMin(maxFrameCount, availableFrames);
-
-		size_t totalCopySize = framesToCopy * frameSize;
-		fplAssert((totalCopySize % frameSize) == 0);
-
-		bool isRead = LockFreeRingBufferRead(ringBuffer, outputSamples, totalCopySize);
-		fplAssert(isRead);
-
-		result = framesToCopy;
+	if(result > 0) {
 		uint32_t numFramesPlayed = fplAtomicFetchAndAddU32(&demo->numFramesPlayed, result);
-
-		if(demo->useRealTimeSamples) {
-			const uint64_t updateInterval = 1000 / 60;
-			if((framesToCopy >= MAX_AUDIO_FRAMES_CHUNK_FRAMES) && ((fplMillisecondsQuery() - demo->lastVideoAudioChunkUpdateTime) >= updateInterval)) {
-				if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 0, 1)) {
-					visualization->videoAudioChunks[1].index = numFramesPlayed;
-					visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
-					size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;
-					fplMemoryCopy(outputSamples, chunkSamplesSize, visualization->videoAudioChunks[1].samples);
-					fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 2);
-				}
-				demo->lastVideoAudioChunkUpdateTime = fplMillisecondsQuery();
-			}
+		if(IsRealTimeVisualization(demo)) {
+			CaptureRealTimeChunk(demo, outFormat, outputSamples, result, numFramesPlayed);
 		}
 	}
-
-#endif // OPT_OUTPUT_SAMPLES_SINEWAVE_ONLY
 
 	return(result);
 }
@@ -918,6 +1030,57 @@ static bool WriteAudioToRingBuffer(const fplAudioFormat *format, const uint32_t 
 	}
 
 	return(false);
+}
+
+// Pitch is varispeed, the mixer plays a pitched source as if it had its sample rate times the pitch (without the neutral tolerance of the mixer)
+static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const float pitch, const AudioHertz targetSampleRate) {
+	const float roundingOffset = 0.5f;
+	float pitchedSampleRate = (float)source->format.sampleRate * pitch + roundingOffset;
+	AudioHertz playedSampleRate = (AudioHertz)pitchedSampleRate;
+	AudioFrameIndex result = fplGetTargetAudioFrameCount(source->buffer.frameCount, playedSampleRate, targetSampleRate);
+	return(result);
+}
+
+/**
+* @brief Plays a track the streaming thread has loaded, publishes its length and in thread mode renders it into the full-track buffer for the visualization.
+* @param[in] demo The audio demo.
+* @param[in] track The loaded track.
+* @param[in] source The audio source of the track.
+* @param[in] repeat Loop the track, ignored when the track plays already.
+* @param[in] volume The volume of the play item, ignored when the track plays already.
+* @param[in] pitch The pitch of the play item, the one it plays with when it plays already.
+* @note Rendering the whole track takes long and holds the mixer, which would block the device callback in callback mode, so the other modes visualize the real-time samples only.
+*/
+static void StartLoadedTrack(AudioDemo *demo, AudioTrack *track, const AudioSource *source, const bool repeat, const float volume, const float pitch) {
+	fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
+
+	// PlayAudioTrack starts an already loaded track itself, a second play item would play it twice
+	if(track->playID.value == 0) {
+		track->playID = AudioSystemPlaySource(&demo->audioSys, source, repeat, volume, pitch);
+	}
+
+	AudioFrameIndex targetFrameCount = GetPlayedFrameCount(source, pitch, demo->targetAudioFormat.sampleRate);
+	fplAtomicStoreU32(&demo->currentTrackFrameCount, targetFrameCount);
+	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, repeat ? 1 : 0);
+
+	if(demo->playbackMode != PlaybackMode_Thread) {
+		return;
+	}
+
+	// Allocate the full audio buffer for the whole track
+	AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
+	AudioFormat fullAudioBufferFormat = fplZeroInit;
+	fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
+	fullAudioBufferFormat.format = demo->targetAudioFormat.type;
+	fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
+	AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
+
+	// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
+	// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
+	if (fullAudioBuffer->bufferSize > 0) {
+		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
+		fplAssert(writtenFrames == targetFrameCount);
+	}
 }
 
 typedef struct {
@@ -1051,6 +1214,9 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
 	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
 
+	// How often the thread looks for a new track when it does not mix
+	const uint32_t trackLoadPollMilliseconds = 10;
+
 	// @TODO(final): Move the file stream loading code into the audio demo
 
 	bool ignoreWait = false;
@@ -1089,28 +1255,10 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				}
 
 				if (source != fpl_null) {
-					AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
-
 					// Mark as playing
 					track->sourceID = source->id;
-					fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-					track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
-
-					// Allocate full audio buffer and fully load the 
-					AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
-					AudioFrameIndex targetFrameCount = fplGetTargetAudioFrameCount(sourceFrameCount, source->format.sampleRate, demo->targetAudioFormat.sampleRate);
-					AudioFormat fullAudioBufferFormat = fplZeroInit;
-					fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
-					fullAudioBufferFormat.format = demo->targetAudioFormat.type;
-					fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-					AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
-
-					// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
-					// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
-					if (fullAudioBuffer->bufferSize > 0) {
-						AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
-						fplAssert(writtenFrames == targetFrameCount);
-					}
+					const PlayerOptions *options = &demo->options;
+					StartLoadedTrack(demo, track, source, options->isRepeat, options->volume, options->pitch);
 				} else {
 					fplAtomicStoreS32(&track->state, AudioTrackState_Failed);
 				}
@@ -1121,33 +1269,15 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				fplAssert(!track->outputFullBuffer.isAllocated);
 				fplAssert(track->sourceID.value > 0);
 
-				AudioBuffer *fullAudioBuffer = &track->outputFullBuffer;
-				
 				AudioSource *source = AudioSystemGetSourceByID(&demo->audioSys, track->sourceID);
 				if (source == fpl_null) {
 					fplAlwaysAssert(!"Audio Source not found!");
 					continue;
 				}
-			
-				fplAtomicStoreS32(&track->state, AudioTrackState_Ready);
-				track->playID = AudioSystemPlaySource(&demo->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
 
-				// Allocate full audio buffer
-				AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
-				AudioFrameIndex targetFrameCount = fplGetTargetAudioFrameCount(sourceFrameCount, source->format.sampleRate, demo->targetAudioFormat.sampleRate);
-				AudioFormat fullAudioBufferFormat = fplZeroInit;
-				fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
-				fullAudioBufferFormat.format = demo->targetAudioFormat.type;
-				fullAudioBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-				AllocateAudioBuffer(&demo->audioSys.memory, fullAudioBuffer, &fullAudioBufferFormat, targetFrameCount);
+				// The generated sine track, PlayAudioTrack started it with these fixed values already
+				StartLoadedTrack(demo, track, source, false, 1.0f, AudioSystemDefaultPitch);
 
-				// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
-				// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
-				if (fullAudioBuffer->bufferSize > 0) {
-					AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, fullAudioBuffer->samples, &demo->targetAudioFormat, targetFrameCount, false);
-					fplAssert(writtenFrames == targetFrameCount);
-				}
-				
 				demo->trackList.changedPending = false;
 				startTime = fplMillisecondsQuery();
 			} else {
@@ -1158,6 +1288,12 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 		// No audio track?
 		if (!HasAudioTrack(&demo->trackList)) {
 			fplThreadSleep(100);
+			continue;
+		}
+
+		// Outside thread mode the device callback mixes, this thread only loads the tracks
+		if (demo->playbackMode != PlaybackMode_Thread) {
+			fplThreadSleep(trackLoadPollMilliseconds);
 			continue;
 		}
 
@@ -1231,19 +1367,21 @@ static bool InitializeStreamBuffers(AudioDemo *demo, AudioFrameIndex *frameCount
 	bool bufferInitRes;
 
 	// Init streaming buffer and read some frames at the very start
-	AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, 10000);
+	AudioFrameIndex streamBufferFrames = fplGetAudioBufferSizeInFrames(demo->targetAudioFormat.sampleRate, demo->options.ringMilliseconds);
 	size_t streamBufferSize = fplGetAudioBufferSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels, streamBufferFrames);
 	bufferInitRes = LockFreeRingBufferInit(&demo->outputRingBuffer, streamBufferSize, true);
 	if(!bufferInitRes) {
 		return(false);
 	}
 
-	// Allocate temporary stream buffer
+	// Allocate temporary stream buffer, as large as the ring really is: the mirrored ring rounds its size up to whole memory pages and offers that much space
+	size_t frameSize = fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
+	AudioFrameIndex ringFrameCount = (AudioFrameIndex)(demo->outputRingBuffer.length / frameSize);
 	AudioFormat streamTempBufferFormat = fplZeroInit;
 	streamTempBufferFormat.channels = demo->targetAudioFormat.channels;
 	streamTempBufferFormat.format = demo->targetAudioFormat.type;
 	streamTempBufferFormat.sampleRate = demo->targetAudioFormat.sampleRate;
-	bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->outputTempBuffer, &streamTempBufferFormat, streamBufferFrames);
+	bufferInitRes = AllocateAudioBuffer(&demo->audioSys.memory, &demo->outputTempBuffer, &streamTempBufferFormat, ringFrameCount);
 	if(!bufferInitRes) {
 		return(false);
 	}
@@ -1354,11 +1492,391 @@ static void SetupAudioBackendAndFormat(fplAudioSettings *audio) {
 	//audio->backend = fplAudioBackendType_OSS;
 }
 
-int main(int argc, char **args) {
-	size_t fileCount = argc >= 2 ? argc - 1 : 0;
-	const char **files = (fileCount > 0) ? (const char **)args + 1 : fpl_null;
-	bool forceSineWave = false;
+//
+// Command line
+//
 
+typedef enum PlayerOptionType {
+	// No value, sets a bool
+	PlayerOptionType_Flag = 0,
+	// Copies the value into a char array
+	PlayerOptionType_String,
+	// Stores an int32_t
+	PlayerOptionType_Int,
+	// Stores a float
+	PlayerOptionType_Float,
+	// One name out of a list, stores its index as int32_t
+	PlayerOptionType_Choice,
+} PlayerOptionType;
+
+typedef struct PlayerOptionChoice {
+	const char *name;
+	const char *description;
+} PlayerOptionChoice;
+
+// Same order as PlaybackMode
+static const PlayerOptionChoice MixerModeChoices[] = {
+	{ "thread", "the streaming thread mixes into the output ring, the device callback only copies" },
+	{ "callback", "the device callback mixes itself" },
+	{ "device-sine", "the device callback generates a sine wave, no audio system involved" },
+};
+fplStaticAssert(fplArrayCount(MixerModeChoices) == PlaybackMode_Count);
+
+typedef struct PlayerOptionDefinition {
+	PlayerOptionType type;
+	const char *name;
+	// Shown in the help as --name=<valueName>, a choice shows its names instead
+	const char *valueName;
+	size_t fieldOffset;
+	size_t fieldSize;
+	const PlayerOptionChoice *choices;
+	size_t choiceCount;
+	const char *description;
+} PlayerOptionDefinition;
+
+#define PLAYER_OPTION_FIELD(field) offsetof(PlayerOptions, field), sizeof(((PlayerOptions *)0)->field)
+
+// A new option is one line here and a field in PlayerOptions, the help and the log are generated from this table
+static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
+	{ PlayerOptionType_Flag, "help", fpl_null, PLAYER_OPTION_FIELD(isHelp), fpl_null, 0, "Print this help and exit" },
+	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
+	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
+	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds" },
+	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
+	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
+	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
+	{ PlayerOptionType_Float, "pitch", "<p>", PLAYER_OPTION_FIELD(pitch), fpl_null, 0, "Pitch of the play item, 2 is an octave up and half as long" },
+	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
+};
+
+static const char PlayerOptionPrefix[] = "--";
+
+static PlayerOptions MakeDefaultPlayerOptions(void) {
+	const int32_t defaultRingMilliseconds = 10000;
+	const float defaultSineSeconds = 10.0f;
+	const float defaultVolume = 1.0f;
+	PlayerOptions result = fplZeroInit;
+	result.mixerMode = PlaybackMode_Thread;
+	result.ringMilliseconds = defaultRingMilliseconds;
+	result.sineSeconds = defaultSineSeconds;
+	result.volume = defaultVolume;
+	result.pitch = AudioSystemDefaultPitch;
+	return(result);
+}
+
+static void FormatPlayerOptionValue(const PlayerOptionDefinition *definition, const PlayerOptions *options, char *buffer, const size_t bufferSize) {
+	const uint8_t *field = (const uint8_t *)options + definition->fieldOffset;
+	switch(definition->type) {
+		case PlayerOptionType_Flag:
+		{
+			const bool *value = (const bool *)field;
+			fplCopyString(*value ? "on" : "off", buffer, bufferSize);
+		} break;
+
+		case PlayerOptionType_String:
+		{
+			fplCopyString((const char *)field, buffer, bufferSize);
+		} break;
+
+		case PlayerOptionType_Int:
+		{
+			const int32_t *value = (const int32_t *)field;
+			fplStringFormat(buffer, bufferSize, "%d", *value);
+		} break;
+
+		case PlayerOptionType_Float:
+		{
+			const float *value = (const float *)field;
+			fplStringFormat(buffer, bufferSize, "%g", (double)*value);
+		} break;
+
+		case PlayerOptionType_Choice:
+		{
+			const int32_t *choiceIndex = (const int32_t *)field;
+			fplAssert(*choiceIndex >= 0 && *choiceIndex < (int32_t)definition->choiceCount);
+			fplCopyString(definition->choices[*choiceIndex].name, buffer, bufferSize);
+		} break;
+
+		default:
+			FPL_NOT_IMPLEMENTED;
+			break;
+	}
+}
+
+// --name=<value>, or --name=a|b|c for a choice
+static void FormatPlayerOptionSyntax(const PlayerOptionDefinition *definition, char *buffer, const size_t bufferSize) {
+	size_t length = fplStringFormat(buffer, bufferSize, "%s%s", PlayerOptionPrefix, definition->name);
+	if(definition->valueName != fpl_null) {
+		fplStringFormat(buffer + length, bufferSize - length, "=%s", definition->valueName);
+	}
+	for(size_t choiceIndex = 0; choiceIndex < definition->choiceCount; ++choiceIndex) {
+		const char *separator = (choiceIndex == 0) ? "=" : "|";
+		length += fplStringFormat(buffer + length, bufferSize - length, "%s%s", separator, definition->choices[choiceIndex].name);
+	}
+}
+
+static void PrintPlayerHelp(void) {
+	const int descriptionColumn = 28;
+	const PlayerOptions defaults = MakeDefaultPlayerOptions();
+	fplConsoleFormatOut("FPL_AudioPlayer [options] [file ...]\n\n");
+	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
+		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
+
+		char syntax[128];
+		FormatPlayerOptionSyntax(definition, syntax, fplArrayCount(syntax));
+
+		// Numbers show their default, a choice marks its default line instead
+		char defaultText[64] = fplZeroInit;
+		if(definition->type == PlayerOptionType_Int || definition->type == PlayerOptionType_Float) {
+			char defaultValue[32];
+			FormatPlayerOptionValue(definition, &defaults, defaultValue, fplArrayCount(defaultValue));
+			fplStringFormat(defaultText, fplArrayCount(defaultText), " (default %s)", defaultValue);
+		}
+
+		// A long syntax gets a line of its own, the description starts below it
+		size_t syntaxLength = fplGetStringLength(syntax);
+		if(syntaxLength < (size_t)descriptionColumn) {
+			fplConsoleFormatOut("  %-*s%s%s\n", descriptionColumn, syntax, definition->description, defaultText);
+		} else {
+			fplConsoleFormatOut("  %s\n", syntax);
+			fplConsoleFormatOut("  %-*s%s%s\n", descriptionColumn, "", definition->description, defaultText);
+		}
+
+		int choiceNameWidth = 0;
+		for(size_t choiceIndex = 0; choiceIndex < definition->choiceCount; ++choiceIndex) {
+			size_t choiceNameLength = fplGetStringLength(definition->choices[choiceIndex].name);
+			choiceNameWidth = fplMax(choiceNameWidth, (int)choiceNameLength);
+		}
+		for(size_t choiceIndex = 0; choiceIndex < definition->choiceCount; ++choiceIndex) {
+			const PlayerOptionChoice *choice = &definition->choices[choiceIndex];
+			const int32_t *defaultChoiceIndex = (const int32_t *)((const uint8_t *)&defaults + definition->fieldOffset);
+			const char *defaultMark = (*defaultChoiceIndex == (int32_t)choiceIndex) ? " (default)" : "";
+			size_t choiceNameLength = fplGetStringLength(choice->name);
+			int choiceNamePadding = choiceNameWidth - (int)choiceNameLength;
+			fplConsoleFormatOut("  %-*s  %s:%-*s %s%s\n", descriptionColumn, "", choice->name, choiceNamePadding, "", choice->description, defaultMark);
+		}
+	}
+	fplConsoleFormatOut("\nEvery other argument is a file to play, without one the built-in music plays.\n");
+}
+
+static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name, const size_t nameLength) {
+	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
+		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
+		size_t definitionNameLength = fplGetStringLength(definition->name);
+		if(fplIsStringEqualLen(name, nameLength, definition->name, definitionNameLength)) {
+			return(definition);
+		}
+	}
+	return(fpl_null);
+}
+
+// The value is null when the argument has no =
+static bool SetPlayerOptionValue(const PlayerOptionDefinition *definition, const char *value, PlayerOptions *options) {
+	uint8_t *field = (uint8_t *)options + definition->fieldOffset;
+
+	if(definition->type == PlayerOptionType_Flag) {
+		if(value != fpl_null) {
+			fplConsoleFormatError("%s%s takes no value\n", PlayerOptionPrefix, definition->name);
+			return(false);
+		}
+		bool *flag = (bool *)field;
+		*flag = true;
+		return(true);
+	}
+
+	size_t valueLength = fplGetStringLength(value);
+	if(valueLength == 0) {
+		char syntax[128];
+		FormatPlayerOptionSyntax(definition, syntax, fplArrayCount(syntax));
+		fplConsoleFormatError("%s%s needs a value: %s\n", PlayerOptionPrefix, definition->name, syntax);
+		return(false);
+	}
+
+	switch(definition->type) {
+		case PlayerOptionType_String:
+		{
+			if(valueLength >= definition->fieldSize) {
+				fplConsoleFormatError("%s%s is longer than %zu characters\n", PlayerOptionPrefix, definition->name, definition->fieldSize - 1);
+				return(false);
+			}
+			fplCopyString(value, (char *)field, definition->fieldSize);
+		} break;
+
+		case PlayerOptionType_Int:
+		{
+			int32_t *number = (int32_t *)field;
+			if(!fplTryStringToS32(value, number)) {
+				fplConsoleFormatError("%s%s needs a whole number, not '%s'\n", PlayerOptionPrefix, definition->name, value);
+				return(false);
+			}
+		} break;
+
+		case PlayerOptionType_Float:
+		{
+			char *numberEnd = fpl_null;
+			double number = strtod(value, &numberEnd);
+			if(numberEnd == value || *numberEnd != 0 || !isfinite(number)) {
+				fplConsoleFormatError("%s%s needs a number, not '%s'\n", PlayerOptionPrefix, definition->name, value);
+				return(false);
+			}
+			float *floatField = (float *)field;
+			*floatField = (float)number;
+		} break;
+
+		case PlayerOptionType_Choice:
+		{
+			int32_t *choiceIndexField = (int32_t *)field;
+			for(size_t choiceIndex = 0; choiceIndex < definition->choiceCount; ++choiceIndex) {
+				if(fplIsStringEqual(value, definition->choices[choiceIndex].name)) {
+					*choiceIndexField = (int32_t)choiceIndex;
+					return(true);
+				}
+			}
+			char syntax[128];
+			FormatPlayerOptionSyntax(definition, syntax, fplArrayCount(syntax));
+			fplConsoleFormatError("%s%s does not know '%s': %s\n", PlayerOptionPrefix, definition->name, value, syntax);
+			return(false);
+		} break;
+
+		default:
+			FPL_NOT_IMPLEMENTED;
+			break;
+	}
+	return(true);
+}
+
+/**
+* @brief Parses the options and files from the command line.
+* @param[in] argc The argument count of main.
+* @param[in] args The arguments of main.
+* @param[in, out] options The options, filled with the defaults before.
+* @return Returns false when an argument is wrong, the error is printed already.
+*/
+static bool ParsePlayerOptions(const int argc, char **args, PlayerOptions *options) {
+	const size_t prefixLength = fplGetStringLength(PlayerOptionPrefix);
+	for(int argIndex = 1; argIndex < argc; ++argIndex) {
+		const char *argument = args[argIndex];
+		size_t argumentLength = fplGetStringLength(argument);
+
+		bool isOption = (argumentLength > prefixLength) && fplIsStringEqualLen(argument, prefixLength, PlayerOptionPrefix, prefixLength);
+		if(!isOption) {
+			if(options->fileCount < fplArrayCount(options->files)) {
+				options->files[options->fileCount++] = argument;
+			} else {
+				FPL_LOG_WARN("Options", "More than %zu files, '%s' is ignored", fplArrayCount(options->files), argument);
+			}
+			continue;
+		}
+
+		const char *name = argument + prefixLength;
+		size_t nameLength = 0;
+		while(name[nameLength] != 0 && name[nameLength] != '=') {
+			++nameLength;
+		}
+		const char *value = (name[nameLength] == '=') ? (name + nameLength + 1) : fpl_null;
+
+		const PlayerOptionDefinition *definition = FindPlayerOptionDefinition(name, nameLength);
+		if(definition == fpl_null) {
+			fplConsoleFormatError("Unknown option '%s'\n\n", argument);
+			PrintPlayerHelp();
+			return(false);
+		}
+		if(!SetPlayerOptionValue(definition, value, options)) {
+			fplConsoleFormatError("See %shelp for all options\n", PlayerOptionPrefix);
+			return(false);
+		}
+	}
+	return(true);
+}
+
+static bool ValidatePlayerOptions(const PlayerOptions *options) {
+	if(options->sineSeconds <= 0.0f) {
+		fplConsoleFormatError("--sine-seconds must be above 0, an endless sine wave (0) comes with the streaming source (--stream), which does not exist yet\n");
+		return(false);
+	}
+	if(options->ringMilliseconds <= 0) {
+		fplConsoleFormatError("--ring-ms must be above 0\n");
+		return(false);
+	}
+	if(options->volume < 0.0f) {
+		fplConsoleFormatError("--volume must not be negative\n");
+		return(false);
+	}
+	if(options->pitch <= 0.0f) {
+		fplConsoleFormatError("--pitch must be above 0\n");
+		return(false);
+	}
+	if(options->isSine && options->fileCount > 0) {
+		fplConsoleFormatError("--sine plays only the sine wave, it takes no files\n");
+		return(false);
+	}
+	return(true);
+}
+
+static void LogPlayerOptions(const PlayerOptions *options) {
+	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
+		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
+		if(definition->fieldOffset == offsetof(PlayerOptions, isHelp)) {
+			continue;
+		}
+		char value[FPL_MAX_NAME_LENGTH];
+		FormatPlayerOptionValue(definition, options, value, fplArrayCount(value));
+		FPL_LOG_INFO("Options", "%s%s=%s", PlayerOptionPrefix, definition->name, value);
+	}
+	for(size_t fileIndex = 0; fileIndex < options->fileCount; ++fileIndex) {
+		FPL_LOG_INFO("Options", "file[%zu]=%s", fileIndex, options->files[fileIndex]);
+	}
+}
+
+/**
+* @brief Sets the audio device with exactly the given name as target device.
+* @param[in] deviceName The device name from --device, empty for no target device: the platform then plays on the system default device.
+* @param[in, out] settings The settings, used for a short audio-only initialization that lists the devices.
+* @return Returns false when there is no device with this name, it never falls back to another device.
+*/
+static bool SelectAudioDevice(const char *deviceName, fplSettings *settings) {
+	size_t deviceNameLength = fplGetStringLength(deviceName);
+	if(deviceNameLength == 0) {
+		return(true);
+	}
+
+	if(!fplPlatformInit(fplInitFlags_Audio, settings)) {
+		FPL_LOG_ERROR("Audio", "Failed to initialize the audio to find the device '%s'", deviceName);
+		return(false);
+	}
+
+	bool isFound = false;
+	uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
+	if(deviceCount > 0) {
+		fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
+		uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
+		fplAssert(loadedDeviceCount == deviceCount);
+		for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+			const fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
+			if(fplIsStringEqual(audioDeviceInfo->name, deviceName)) {
+				FPL_LOG_INFO("Audio", "Using audio device[%u] %s", deviceIndex, audioDeviceInfo->name);
+				settings->audio.targetDevice = *audioDeviceInfo;
+				isFound = true;
+				break;
+			}
+		}
+		if(!isFound) {
+			FPL_LOG_ERROR("Audio", "There is no audio device '%s', the %u devices are:", deviceName, loadedDeviceCount);
+			for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
+				const fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
+				FPL_LOG_ERROR("Audio", "  [%u] %s", deviceIndex, audioDeviceInfo->name);
+			}
+		}
+		fplMemoryFree(audioDeviceInfos);
+	} else {
+		FPL_LOG_ERROR("Audio", "There is no audio device '%s', there are no audio devices at all", deviceName);
+	}
+
+	fplPlatformRelease();
+	return(isFound);
+}
+
+int main(int argc, char **args) {
     // Log everything into the standard console. Adding the error console would write every line a second
     // time, and the debug output is a real one on Windows only - anywhere else it is that same console again.
     fplLogSettings logSettings = fplZeroInit;
@@ -1370,14 +1888,27 @@ int main(int argc, char **args) {
 #endif
     fplSetLogSettings(&logSettings);
 
-	// Always sine-wave
-	//fileCount = 0;
-	//forceSineWave = true;
+	const int invalidArgumentsExitCode = 1;
+
+	PlayerOptions options = MakeDefaultPlayerOptions();
+	if(!ParsePlayerOptions(argc, args, &options)) {
+		return(invalidArgumentsExitCode);
+	}
+	if(options.isHelp) {
+		PrintPlayerHelp();
+		return(0);
+	}
+	if(!ValidatePlayerOptions(&options)) {
+		return(invalidArgumentsExitCode);
+	}
+	LogPlayerOptions(&options);
 
 	AudioDemo *demo = (AudioDemo *)fplMemoryAllocate(sizeof(AudioDemo));
+	demo->options = options;
+	demo->playbackMode = (PlaybackMode)options.mixerMode;
 	demo->sineWave.frequency = 440;
 	demo->sineWave.toneVolume = 0.25f;
-	demo->sineWave.duration = 10.0;
+	demo->sineWave.duration = options.sineSeconds;
 	demo->useRealTimeSamples = false;
 
 	int result = -1;
@@ -1400,27 +1931,11 @@ int main(int argc, char **args) {
 	settings.audio.stopAuto = false;
 
 	//
-    // Setup default audio device
+	// Audio device from --device, before anything plays
 	//
-	if(fplPlatformInit(fplInitFlags_Audio, &settings)) {
-        uint32_t deviceCount = fplGetAudioDevices(0, 0, fpl_null);
-        fplAudioDeviceInfo *audioDeviceInfos = fplMemoryAllocate(sizeof(fplAudioDeviceInfo) * deviceCount);
-        uint32_t loadedDeviceCount = fplGetAudioDevices(deviceCount, 0, audioDeviceInfos);
-        fplAssert(loadedDeviceCount == deviceCount);
-        if(loadedDeviceCount > 0) {
-            const fplAudioDeviceInfo *defaultDeviceInfo = fpl_null;
-            for(uint32_t deviceIndex = 0; deviceIndex < loadedDeviceCount; ++deviceIndex) {
-                fplAudioDeviceInfo *audioDeviceInfo = audioDeviceInfos + deviceIndex;
-                if (audioDeviceInfo->isDefault && defaultDeviceInfo == fpl_null) {
-                    FPL_LOG_INFO("Audio", "Found default audio device[%lu] %s\n", deviceIndex, audioDeviceInfo->name);
-                	defaultDeviceInfo = audioDeviceInfo;
-                }
-            }
-            if (defaultDeviceInfo != fpl_null)
-                settings.audio.targetDevice = *defaultDeviceInfo;
-        }
-        fplMemoryFree(audioDeviceInfos);
-		fplPlatformRelease();
+	if(!SelectAudioDevice(options.deviceName, &settings)) {
+		fplMemoryFree(demo);
+		return(invalidArgumentsExitCode);
 	}
 
     AudioTrackSource audioTracks[8] = fplZeroInit;
@@ -1449,17 +1964,17 @@ int main(int argc, char **args) {
 	// 
     // Only allow audio sources that have a sample rates that are even by the output sample rate!
     // Because we don't support non-even sample conversions, such as 48000 <-> 41000.
-    if (fileCount > 0) {
+    if (options.fileCount > 0) {
         size_t maxTrackCount = fplArrayCount(audioTracks);
-        for (size_t fileIndex = 0; fileIndex < fplMin(maxTrackCount, fileCount); ++fileIndex) {
-			const char *filePath = files[fileIndex];
+        for (size_t fileIndex = 0; fileIndex < fplMin(maxTrackCount, options.fileCount); ++fileIndex) {
+			const char *filePath = options.files[fileIndex];
 			AudioTrackSource *track = &audioTracks[audioTrackCount];
 			if (SetAudioTrackSourceFromFile(&demo->audioSys, track, filePath)) {
 				++audioTrackCount;
 			}
         }
-    } else if (IsAudioSampleRateSupported(&demo->audioSys, sampleRate_musicTavsControlArgofox)) {
-        // Load default music (44100 Hz)
+    } else if (!options.isSine && IsAudioSampleRateSupported(&demo->audioSys, sampleRate_musicTavsControlArgofox)) {
+        // Load default music (44100 Hz), --sine plays only the sine wave that LoadAudioTrackList adds
         AudioTrackSource *track = &audioTracks[audioTrackCount++];
         track->type = AudioTrackSourceType_Data;
         fplCopyString(name_musicTavsControlArgofox, track->name, fplArrayCount(track->name));
@@ -1481,36 +1996,40 @@ int main(int argc, char **args) {
 
 	const fplSettings *currentSettings = fplGetCurrentSettings();
 
-#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
+	// Only thread mode mixes into an output ring
 	AudioFrameIndex streamBufferFrames = 0;
-	if(!InitializeStreamBuffers(demo, &streamBufferFrames)) {
-		goto done;
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		if(!InitializeStreamBuffers(demo, &streamBufferFrames)) {
+			goto done;
+		}
 	}
 
 	if(!InitializeVisualization(demo)) {
 		goto done;
 	}
 
-	if(!LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
-		goto done;
-	}
+	// The device sine plays without the audio system, so it needs no tracks and no streaming thread
+	if(demo->playbackMode != PlaybackMode_DeviceSine) {
+		if(!LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+			goto done;
+		}
 
-	if(demo->trackList.count == 0) {
-		goto done;
-	}
+		if(demo->trackList.count == 0) {
+			goto done;
+		}
 
-	PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
+		PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
 
 #if 0
-	// Stream in initial frames
-	AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
-	fplAssert(streamBufferFrames >= initialFrameStreamCount);
-	WriteAudioToRingBuffer(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
+		// Stream in initial frames
+		AudioFrameIndex initialFrameStreamCount = streamBufferFrames / 4;
+		fplAssert(streamBufferFrames >= initialFrameStreamCount);
+		WriteAudioToRingBuffer(&demo->targetAudioFormat, initialFrameStreamCount, demo, fpl_null);
 #endif
 
-	// Start streaming thread
-	demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
-#endif
+		// Start streaming thread
+		demo->streamingThread = fplThreadCreate(AudioStreamingThread, demo);
+	}
 
 	// Start audio playback (This will start calling clientReadCallback regularly)
 	if(fplPlayAudio() == fplAudioResultType_Success) {
@@ -1526,8 +2045,10 @@ int main(int argc, char **args) {
 			outSampleRate,
 			outChannels);
 
-		const char *audioTrackName = audioTrackCount > 0 ? audioTracks[0].name : fpl_null;
-        UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, 0.0);
+		// The device sine plays none of the tracks
+		bool hasTrackName = (audioTrackCount > 0) && (demo->playbackMode != PlaybackMode_DeviceSine);
+		const char *audioTrackName = hasTrackName ? audioTracks[0].name : fpl_null;
+        UpdateTitle(demo, audioTrackName, 0.0);
 
 		// Loop
 		const double targetFrameFps = 1.0 / 60.0;
@@ -1556,7 +2077,7 @@ int main(int argc, char **args) {
 								} else if(key == fplKey_F2) {
 									demo->spectrumMode = (SpectrumMode)((demo->spectrumMode + 1) % SpectrumMode_Count);
 								}
-                                UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
+                                UpdateTitle(demo, audioTrackName, currentFps);
 							}
 						}
 					} break;
@@ -1564,7 +2085,8 @@ int main(int argc, char **args) {
 					case fplEventType_Window:
 					{
 						if (ev.window.type == fplWindowEventType_DroppedFiles) {
-							if (ev.window.dropFiles.fileCount > 0) {
+							// The device sine plays without the audio system, there is no track to swap
+							if (ev.window.dropFiles.fileCount > 0 && demo->playbackMode != PlaybackMode_DeviceSine) {
 								const char *newMediaTrack = ev.window.dropFiles.files[0];
 								AudioTrackSource newTrack = fplZeroInit;
 
@@ -1572,11 +2094,15 @@ int main(int argc, char **args) {
 
 								AudioSystemClearSources(&demo->audioSys);
 
-								LockFreeRingBufferClear(&demo->outputRingBuffer);
-								fplMemoryClear(demo->outputTempBuffer.samples, demo->outputTempBuffer.bufferSize);
+								if (demo->playbackMode == PlaybackMode_Thread) {
+									LockFreeRingBufferClear(&demo->outputRingBuffer);
+									fplMemoryClear(demo->outputTempBuffer.samples, demo->outputTempBuffer.bufferSize);
+								}
 
 								fplAtomicExchangeU32(&demo->numFramesPlayed, 0);
 								fplAtomicExchangeU32(&demo->numFramesStreamed, 0);
+								fplAtomicExchangeU32(&demo->currentTrackFrameCount, 0);
+								fplAtomicExchangeU32(&demo->isCurrentTrackRepeating, 0);
 
 								ClearVisualization(demo);
 
@@ -1584,8 +2110,8 @@ int main(int argc, char **args) {
 									audioTrackCount = 1;
 									audioTracks[0] = newTrack;
 									audioTrackName = audioTracks[0].name;
-                                    UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
-									if (LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, forceSineWave, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+                                    UpdateTitle(demo, audioTrackName, currentFps);
+									if (LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
 										PlayAudioTrack(&demo->audioSys, &demo->trackList, 0);
 									}
 								}
@@ -1626,7 +2152,7 @@ int main(int argc, char **args) {
             }
 
             if (fplMillisecondsQuery() - lastFpsTime >= 1000) {
-                UpdateTitle(demo, audioTrackName, demo->useRealTimeSamples, currentFps);
+                UpdateTitle(demo, audioTrackName, currentFps);
                 lastFpsTime = fplMillisecondsQuery();
             }
 
@@ -1640,15 +2166,17 @@ int main(int argc, char **args) {
 	result = 0;
 
 done:
-#if OPT_PLAYBACK == OPT_PLAYBACK_STREAMBUFFER
 	// Wait for decoding thread to stop
-	demo->isStreamingThreadStopped = 1;
-	fplThreadWaitForOne(demo->streamingThread, FPL_TIMEOUT_INFINITE);
-	fplThreadTerminate(demo->streamingThread);
+	if(demo->streamingThread != fpl_null) {
+		demo->isStreamingThreadStopped = 1;
+		fplThreadWaitForOne(demo->streamingThread, FPL_TIMEOUT_INFINITE);
+		fplThreadTerminate(demo->streamingThread);
+	}
 
 	// Free and streaming buffers
-	ReleaseStreamBuffers(demo);
-#endif
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		ReleaseStreamBuffers(demo);
+	}
 
     // Release visualization
 	ReleaseVisualization(demo);
