@@ -81,6 +81,11 @@ A sheet cut into cells and drawn with the linear filter can pick up the edge tex
 The colors of final_ui.h go into the framebuffer as they are and are blended there as they are, which is what the GL1 and GL3 backends do and how every other demo shows them.
 So the interface pass turns GL_FRAMEBUFFER_SRGB OFF for its draw calls and restores it afterwards, the same as the GL3 backend.
 
+--- Changelog ---
+
+## 2026-10-21
+- New: fuiGL46Settings, fuiGL46DefaultSettings and fuiGL46InitWithSettings: render without saving and restoring the GL state, with the clip origin given by the host
+
 --- License ---
 
 MIT License, Copyright (c) 2017-2026 Torsten Spaete
@@ -117,6 +122,30 @@ typedef struct fuiGL46StreamBuffer {
 } fuiGL46StreamBuffer;
 
 /**
+* @enum fuiGL46ClipOrigin
+* @brief Where clip space has its origin, which decides which way up the interface is drawn.
+*/
+typedef enum fuiGL46ClipOrigin {
+	//! Asked with glGetIntegerv every frame
+	fuiGL46ClipOrigin_Query = 0,
+	//! Lower left, the default of OpenGL
+	fuiGL46ClipOrigin_LowerLeft,
+	//! Upper left, as a host sets it with glClipControl
+	fuiGL46ClipOrigin_UpperLeft,
+} fuiGL46ClipOrigin;
+
+/**
+* @struct fuiGL46Settings
+* @brief How @ref fuiGL46Render treats the GL state of the host, given to @ref fuiGL46InitWithSettings.
+*/
+typedef struct fuiGL46Settings {
+	//! Where clip space has its origin, fuiGL46ClipOrigin_Query asks GL every frame
+	fuiGL46ClipOrigin clipOrigin;
+	//! For a host that keeps track of its own GL state: @ref fuiGL46Render then neither reads nor restores any state and leaves behind what its documentation lists
+	bool isStateRestoreDisabled;
+} fuiGL46Settings;
+
+/**
 * @struct fuiGL46Backend
 * @brief The OpenGL objects the backend draws with, created by @ref fuiGL46Init.
 * @note All fields are public for inspection, but only the backend writes them.
@@ -146,12 +175,20 @@ typedef struct fuiGL46Backend {
 	uint32_t lastDrawnCommandCount;
 	//! Why @ref fuiGL46Init failed or the last frame was not drawn: the context version, the compiler or linker log of a shader, or which object could not be created
 	char errorLog[FUI_GL46_ERROR_LOG_CAPACITY];
+	//! The settings it was initialized with
+	fuiGL46Settings settings;
 	//! True between a successful @ref fuiGL46Init and @ref fuiGL46Release
 	bool isInitialized;
 } fuiGL46Backend;
 
 /**
-* @brief Creates the program, the vertex array and the stream buffers.
+* @brief Fills the settings with the defaults: the state is saved and restored, and the clip origin is asked from GL.
+* @param[out] outSettings Reference to the settings @ref fuiGL46Settings to fill.
+*/
+fui_api void fuiGL46DefaultSettings(fuiGL46Settings *outSettings);
+
+/**
+* @brief Creates the program, the vertex array and the stream buffers, with the defaults of @ref fuiGL46DefaultSettings.
 * @param[out] backend Reference to the backend @ref fuiGL46Backend to initialize.
 * @return Returns true when everything was created, false with the reason in fuiGL46Backend::errorLog otherwise.
 * @note Needs a current OpenGL 4.6 core (or compatibility) context, an older one is refused before any 4.x function is called. Whatever was created before a failure is deleted again.
@@ -159,6 +196,14 @@ typedef struct fuiGL46Backend {
 * @note Binds nothing: every object is created and set up through direct state access.
 */
 fui_api bool fuiGL46Init(fuiGL46Backend *backend);
+
+/**
+* @brief Same as @ref fuiGL46Init, with settings.
+* @param[out] backend Reference to the backend @ref fuiGL46Backend to initialize.
+* @param[in] settings Reference to the settings @ref fuiGL46Settings, null for the defaults.
+* @return Returns true when everything was created, false with the reason in fuiGL46Backend::errorLog otherwise.
+*/
+fui_api bool fuiGL46InitWithSettings(fuiGL46Backend *backend, const fuiGL46Settings *settings);
 
 /**
 * @brief Deletes everything @ref fuiGL46Init created.
@@ -205,6 +250,8 @@ fui_api void fuiGL46DeleteTexture(const uint32_t texture);
 * @param[in,out] backend Reference to the backend @ref fuiGL46Backend, its stream buffers grow when a frame needs more.
 * @param[in] drawData The draw data from @ref fuiGetDrawData.
 * @note Everything it changes is restored afterwards: program, vertex array, draw indirect buffer, active texture unit, texture and sampler of unit 0, viewport 0, scissor test 0, blending of draw buffer 0, the color masks of all draw buffers, depth test, stencil test, face culling, polygon mode, both primitive restarts, rasterizer discard, logic op, clip distances, alpha to coverage, alpha to one, sample mask and GL_FRAMEBUFFER_SRGB.
+* @note With fuiGL46Settings::isStateRestoreDisabled nothing is read or restored. It leaves behind: its program, vertex array and record buffer as the draw indirect buffer bound, the texture of the last textured batch and no sampler on unit 0 (the active unit is not changed), viewport 0 over fuiDrawData::windowSize, scissor test 0 off, blending of draw buffer 0 on (add, source alpha and one minus source alpha for the color, one and one minus source alpha for the alpha), a full color mask on draw buffer 0 and none on every other one, clip distances, depth test, stencil test, face culling, both primitive restarts, rasterizer discard, logic op, alpha to coverage, alpha to one, sample mask and GL_FRAMEBUFFER_SRGB off, and polygon mode fill.
+* @note A frame without anything to draw, or one that is skipped, changes no state at all.
 * @note Draws nothing when a stream buffer cannot grow, or when the GPU has not released the segment of this frame within a second, fuiGL46Backend::errorLog says which.
 */
 fui_api void fuiGL46Render(fuiGL46Backend *backend, const fuiDrawData *drawData);
@@ -787,12 +834,25 @@ static void fui__GL46SetPassState(const fuiGL46Backend *backend, const GLsizei w
 	glBindBuffer(GL_DRAW_INDIRECT_BUFFER, backend->recordStream.buffer);
 }
 
+//! Whether clip space has its origin in the upper left: as the settings say, or asked from GL
+static bool fui__GL46IsClipOriginUpperLeft(const fuiGL46Backend *backend) {
+	switch(backend->settings.clipOrigin) {
+		case fuiGL46ClipOrigin_UpperLeft:
+			return(true);
+		case fuiGL46ClipOrigin_LowerLeft:
+			return(false);
+		default:
+			break;
+	}
+	GLint clipOrigin = GL_LOWER_LEFT;
+	glGetIntegerv(GL_CLIP_ORIGIN, &clipOrigin);
+	return(clipOrigin == GL_UPPER_LEFT);
+}
+
 //! y-down window pixels to clip space, the same matrix as in the GL3 backend, turned upside down for a clip origin in the upper left
 static void fui__GL46SetProjection(const fuiGL46Backend *backend, const GLsizei windowWidth, const GLsizei windowHeight) {
 	// glClipControl turns clip space upside down, the projection turns it back. Viewport, gl_FragCoord and so the clip boxes stay in window coordinates either way.
-	GLint clipOrigin = GL_LOWER_LEFT;
-	glGetIntegerv(GL_CLIP_ORIGIN, &clipOrigin);
-	bool isClipOriginUpperLeft = (clipOrigin == GL_UPPER_LEFT);
+	bool isClipOriginUpperLeft = fui__GL46IsClipOriginUpperLeft(backend);
 
 	// x' = x * 2 / width - 1 and y' = 1 - y * 2 / height, column major like glOrtho builds it
 	const double clipSpaceSize = 2.0;
@@ -831,11 +891,32 @@ static void fui__GL46DrawBatch(fuiGL46Backend *backend, const GLenum indexType, 
 	backend->lastDrawCallCount += 1u;
 }
 
+fui_api void fuiGL46DefaultSettings(fuiGL46Settings *outSettings) {
+	if(outSettings == fui_null) {
+		return;
+	}
+	memset(outSettings, 0, sizeof(*outSettings));
+	outSettings->clipOrigin = fuiGL46ClipOrigin_Query;
+	outSettings->isStateRestoreDisabled = false;
+}
+
 fui_api bool fuiGL46Init(fuiGL46Backend *backend) {
+	fuiGL46Settings defaultSettings;
+	fuiGL46DefaultSettings(&defaultSettings);
+	bool isInitialized = fuiGL46InitWithSettings(backend, &defaultSettings);
+	return(isInitialized);
+}
+
+fui_api bool fuiGL46InitWithSettings(fuiGL46Backend *backend, const fuiGL46Settings *settings) {
 	if(backend == fui_null) {
 		return(false);
 	}
 	memset(backend, 0, sizeof(*backend));
+	if(settings != fui_null) {
+		backend->settings = *settings;
+	} else {
+		fuiGL46DefaultSettings(&backend->settings);
+	}
 
 	// Asked first, so an older context fails here rather than in a 4.x entry point the loader never found
 	GLint majorVersion = 0;
@@ -1024,8 +1105,13 @@ fui_api void fuiGL46Render(fuiGL46Backend *backend, const fuiDrawData *drawData)
 	glVertexArrayElementBuffer(backend->vertexArray, backend->indexStream.buffer);
 	fui__GL46SetProjection(backend, windowWidth, windowHeight);
 
+	// A host that keeps its own state gets none of it read or restored, every glGet would be a round trip it pays for nothing
+	bool isStateRestored = !backend->settings.isStateRestoreDisabled;
 	fui__GL46SavedState saved;
-	fui__GL46SaveState(backend, &saved);
+	memset(&saved, 0, sizeof(saved));
+	if(isStateRestored) {
+		fui__GL46SaveState(backend, &saved);
+	}
 	fui__GL46SetPassState(backend, windowWidth, windowHeight);
 
 #if FUI_USE_16BIT_INDICES
@@ -1097,7 +1183,9 @@ fui_api void fuiGL46Render(fuiGL46Backend *backend, const fuiDrawData *drawData)
 	backend->frameFences[slot] = (void *)fence;
 	backend->frameSlot = (slot + 1u) % FUI_GL46_FRAMES_IN_FLIGHT;
 
-	fui__GL46RestoreState(backend, &saved);
+	if(isStateRestored) {
+		fui__GL46RestoreState(backend, &saved);
+	}
 }
 
 #endif // FUI_GL46_IMPLEMENTATION
