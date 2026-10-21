@@ -6,6 +6,9 @@ Description:
 	Sample format conversion, interleave/deinterleave, and SinC resampling.
 
 Changelog:
+	## 2026-10-21
+	- Fixed: AudioResampleInterleaved() and AudioResampleDeinterleaved() take at least one input frame and give at least one output frame, beyond 2x or below 0.5 a small request rounded to zero (a silent frame in many calls at 22.05 into 48 kHz, an item stuck at its end)
+
 	## 2026-08-07
 	- Fixed: Both SinC cores now band-limit to the OUTPUT Nyquist when DOWNSAMPLING - the kernel is stretched by the downsampling factor (and its tap count with it) instead of staying at the source-rate cutoff, which was aliasing every rate reduction, mildly at 48000->44100 and badly at the larger ratios pitched playback produces. Upsampling is unchanged, and so is the table's [-filterRadius, +filterRadius] domain
 
@@ -614,7 +617,15 @@ fpl_extern AudioResampleResult AudioResampleInterleaved(const AudioChannelIndex 
 	// Back-solve input frames needed for desired output frames, then forward-solve actual output frames.
 	// Uses fplGetTargetAudioFrameCount so callers and resampler agree on the rounding formula.
 	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
+	// Upsampling by more than 2 rounds a request below half a source frame to no input at all, which left the request silent
+	if (inFrameCount == 0) {
+		inFrameCount = 1;
+	}
 	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
+	// Downsampling below 0.5 rounds the last source frames to no output at all, a caller never got past them
+	if (outFrameCount == 0) {
+		outFrameCount = 1;
+	}
 
 	// Forward-solving can round up to minOutputFrameCount+1; clamp so the core never writes past a minOutputFrameCount-sized outSamples buffer
 	if (outFrameCount > minOutputFrameCount) {
@@ -641,7 +652,15 @@ fpl_extern AudioResampleResult AudioResampleDeinterleaved(const AudioChannelInde
 	}
 
 	AudioFrameIndex inFrameCount = fplMin(fplGetTargetAudioFrameCount(minOutputFrameCount, outSampleRate, inSampleRate), maxInputFrameCount);
+	// Upsampling by more than 2 rounds a request below half a source frame to no input at all, which left the request silent
+	if (inFrameCount == 0) {
+		inFrameCount = 1;
+	}
 	AudioFrameIndex outFrameCount = fplGetTargetAudioFrameCount(inFrameCount, inSampleRate, outSampleRate);
+	// Downsampling below 0.5 rounds the last source frames to no output at all, a caller never got past them
+	if (outFrameCount == 0) {
+		outFrameCount = 1;
+	}
 
 	// Forward-solving can round up to minOutputFrameCount+1; clamp so the core never writes past a minOutputFrameCount-sized outSamples buffer
 	if (outFrameCount > minOutputFrameCount) {
@@ -1199,12 +1218,30 @@ static void TestResampleInterleaved_44100_48000_Roundtrip() {
 	}
 }
 
+static void TestResampleInterleaved_SmallRequests() {
+	// Beyond 2x upsampling a request of one output frame rounds to no input, below 0.5 downsampling the last input frame rounds to no output: both still give one frame
+	const AudioChannelIndex channels = 2;
+	float inBuf[4 * 2] = fplZeroInit;
+	float outBuf[4 * 2] = fplZeroInit;
+	{
+		AudioResampleResult r = AudioResampleInterleaved(channels, 22050, 48000, 1, 4, inBuf, outBuf);
+		fplAlwaysAssert(r.inputCount == 1);
+		fplAlwaysAssert(r.outputCount == 1);
+	}
+	{
+		AudioResampleResult r = AudioResampleInterleaved(channels, 163200, 48000, 4, 1, inBuf, outBuf);
+		fplAlwaysAssert(r.inputCount == 1);
+		fplAlwaysAssert(r.outputCount == 1);
+	}
+}
+
 fpl_extern void TestAudioSamplesSuite() {
 	TestAudioSamplesConversion();
 	TestAudioSamplesDeinterleave();
 	TestAudioSamplesInterleave();
 	TestResampleFrameCount();
 	TestResampleInterleaved_44100_48000_Roundtrip();
+	TestResampleInterleaved_SmallRequests();
 }
 
 #endif // FINAL_AUDIO_CONVERSION_H
