@@ -146,6 +146,7 @@ Changelog:
 	- Fixed: Even upsampling left the end of every mix call silent when its frame count was no multiple of the factor
 	- Fixed: AudioSystemGetPlayItems() and AudioSystemGetSources() could write past the destination when an entry was added between the size check and the copy
 	- Changed: The mixer clears only the used part of the mixing buffer and no longer the DSP buffers
+	- New: AudioSystemGetStats() returns the sources, their PCM bytes and the playing items in one call
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -537,6 +538,26 @@ fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFor
 * @note The count on its own says nothing about the memory that actually matters - a fully decoded track is roughly 11x its size on disk.
 */
 fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount);
+
+/**
+* @brief Runtime values of the audio system for a diagnostic readout, see @ref AudioSystemGetStats.
+*/
+typedef struct AudioSystemStats {
+	//! Number of added sources
+	size_t sourceCount;
+	//! Size of the sample buffers of all added sources in bytes
+	size_t pcmByteCount;
+	//! Play items that are started and not finished, the same ones @ref AudioSystemGetPlayItems returns
+	uint32_t activePlayItemCount;
+} AudioSystemStats;
+
+/**
+* @brief Returns the runtime values of the audio system in one call.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem, may be null.
+* @param[out] outStats Reference to the stats @ref AudioSystemStats to fill, cleared when the call fails.
+* @return Returns true when the stats were written, false when an argument is null or the audio system is shut down.
+*/
+fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *outStats);
 
 // @TODO(final): Move to final_audiodemo.h, make a audio source more "Generative"
 /**
@@ -2183,6 +2204,23 @@ fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outBy
 	if(outByteCount != fpl_null)
 		*outByteCount = byteCount;
 	return(sourceCount);
+}
+
+fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *outStats) {
+	if(outStats == fpl_null) {
+		return(false);
+	}
+	fplClearStruct(outStats);
+	if(audioSys == fpl_null || audioSys->isShutdown) {
+		return(false);
+	}
+	size_t pcmByteCount = 0;
+	size_t sourceCount = AudioSystemGetSourceStats(audioSys, &pcmByteCount);
+	size_t playItemCount = AudioSystemGetPlayItems(audioSys, fpl_null, 0);
+	outStats->sourceCount = sourceCount;
+	outStats->pcmByteCount = pcmByteCount;
+	outStats->activePlayItemCount = (uint32_t)playItemCount;
+	return(true);
 }
 
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
