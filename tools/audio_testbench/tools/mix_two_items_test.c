@@ -9,10 +9,15 @@ Cases:
 - four-items: four items at once, the second one ends first. The other three must be mixed in the same order as before, a different order changes the float sums. Then a stale id, a new play and a stop from the middle.
 - stale-ids: 600 short tones one after another, a few at once, more than twice the default pool of play items. A setter and a stop on the id of the first tone must change nothing.
 
-Build against the additions to test, with assertions (the mixer checks its own invariants):
+--concurrent instead runs two threads that call AudioSystemWriteFrames with advance at the same time, which is a programming error the mixer must survive:
+the second one gets silence and is counted in concurrentWriteCount, so the item moves on by exactly the frames of the calls that got the mixer.
+A debug build asserts on it, so this mode is built without assertions.
+
+Build against the additions to test, with assertions (the mixer checks its own invariants), and once more with -DFPL_NO_ASSERTIONS for --concurrent:
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies mix_two_items_test.c -o mix_two_items_test -lm -ldl -lpthread
-Usage: mix_two_items_test [-v]   (-v prints every mix call)
+Usage: mix_two_items_test [-v | --concurrent]   (-v prints every mix call)
 Output: one line per case "<name>: calls=<n> frames=<n> items_left=<n> hash=<fnv1a64>", then "total: <n> cases, <n> failed checks, hash=<fnv1a64>".
+With --concurrent: "concurrent: calls=<n> rejected=<n> frames_played=<n> expected=<n> <ok|FAILED>".
 */
 
 #define FPL_IMPLEMENTATION
@@ -387,13 +392,122 @@ static uint64_t RunMixCase(const MixCase *mixCase, const bool isVerbose, uint32_
 	return(test.hash);
 }
 
+//
+// Two mixing threads at the same time (--concurrent)
+//
+
+#define CONCURRENT_MIXER_COUNT 2
+
+static const uint32_t ConcurrentCallCount = 2000;
+static const AudioFrameIndex ConcurrentCallFrameCount = 64;
+
+typedef struct ConcurrentMixer {
+	AudioSystem *audioSys;
+	const fplAudioFormat *targetFormat;
+	float *samples;
+	volatile uint32_t *readyCount;
+	volatile uint32_t *isStarted;
+} ConcurrentMixer;
+
+static void ConcurrentMixThread(const fplThreadHandle *thread, void *data) {
+	(void)thread;
+	ConcurrentMixer *mixer = (ConcurrentMixer *)data;
+	// Both threads start mixing at the same moment, so their calls overlap
+	fplAtomicIncrementU32(mixer->readyCount);
+	while(fplAtomicLoadU32(mixer->isStarted) == 0) {
+		fplThreadYield();
+	}
+	for(uint32_t callIndex = 0; callIndex < ConcurrentCallCount; ++callIndex) {
+		AudioSystemWriteFrames(mixer->audioSys, mixer->samples, mixer->targetFormat, ConcurrentCallFrameCount, true);
+	}
+}
+
+static int RunConcurrentMixers(void) {
+	const int failedExitCode = 1;
+	fplAudioFormat targetFormat = fplZeroInit;
+	targetFormat.type = fplAudioFormatType_F32;
+	targetFormat.sampleRate = OutputSampleRate;
+	targetFormat.channels = StereoChannelCount;
+
+	AudioSystem *audioSys = (AudioSystem *)fplMemoryAllocate(sizeof(AudioSystem));
+	bool isInitialized = false;
+	if(audioSys != fpl_null) {
+		isInitialized = AudioSystemInit(audioSys, &targetFormat);
+	}
+	if(!isInitialized) {
+		fprintf(stderr, "audio system init failed\n");
+		return(failedExitCode);
+	}
+
+	// Passthrough and longer than all calls together, so the position counts every mixed frame
+	const uint32_t totalCallCount = ConcurrentCallCount * CONCURRENT_MIXER_COUNT;
+	const AudioFrameIndex sourceFrameCount = totalCallCount * ConcurrentCallFrameCount + ConcurrentCallFrameCount;
+	AudioSource *source = AudioSystemAllocateSource(audioSys, StereoChannelCount, OutputSampleRate, fplAudioFormatType_S16, sourceFrameCount);
+	bool isAdded = false;
+	if(source != fpl_null) {
+		isAdded = AudioSystemAddSource(audioSys, source);
+	}
+	AudioPlayItemID playId = fplZeroInit;
+	if(isAdded) {
+		playId = AudioSystemPlaySource(audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+	}
+
+	volatile uint32_t readyCount = 0;
+	volatile uint32_t isStarted = 0;
+	ConcurrentMixer mixers[CONCURRENT_MIXER_COUNT];
+	fplThreadHandle *threads[CONCURRENT_MIXER_COUNT];
+	const size_t callSampleCount = (size_t)ConcurrentCallFrameCount * StereoChannelCount;
+	for(uint32_t mixerIndex = 0; mixerIndex < CONCURRENT_MIXER_COUNT; ++mixerIndex) {
+		ConcurrentMixer *mixer = &mixers[mixerIndex];
+		mixer->audioSys = audioSys;
+		mixer->targetFormat = &targetFormat;
+		mixer->samples = (float *)fplMemoryAllocate(callSampleCount * sizeof(float));
+		mixer->readyCount = &readyCount;
+		mixer->isStarted = &isStarted;
+		threads[mixerIndex] = fplThreadCreate(ConcurrentMixThread, mixer);
+	}
+	while(fplAtomicLoadU32(&readyCount) < CONCURRENT_MIXER_COUNT) {
+		fplThreadYield();
+	}
+	fplAtomicStoreU32(&isStarted, 1);
+	for(uint32_t mixerIndex = 0; mixerIndex < CONCURRENT_MIXER_COUNT; ++mixerIndex) {
+		fplThreadWaitForOne(threads[mixerIndex], FPL_TIMEOUT_INFINITE);
+		fplThreadTerminate(threads[mixerIndex]);
+		fplMemoryFree(mixers[mixerIndex].samples);
+	}
+
+	AudioSystemStats stats = fplZeroInit;
+	AudioSystemGetStats(audioSys, &stats);
+	AudioPlayItem playItem = fplZeroInit;
+	size_t playItemCount = AudioSystemGetPlayItems(audioSys, &playItem, 1);
+	const bool isPlaying = (playId.value != 0) && (playItemCount == 1) && (playItem.id.value == playId.value);
+	const uint32_t acceptedCallCount = totalCallCount - stats.concurrentWriteCount;
+	const AudioFrameIndex expectedFrameCount = acceptedCallCount * ConcurrentCallFrameCount;
+	const bool isExact = isPlaying && (playItem.framesPlayed[0] == expectedFrameCount);
+	printf("concurrent: calls=%u rejected=%u frames_played=%u expected=%u %s\n", totalCallCount, stats.concurrentWriteCount, playItem.framesPlayed[0], expectedFrameCount, isExact ? "ok" : "FAILED");
+	if(stats.concurrentWriteCount == 0) {
+		printf("concurrent: the calls never overlapped, the check above is weak\n");
+	}
+
+	AudioSystemShutdown(audioSys);
+	fplMemoryFree(audioSys);
+	return(isExact ? 0 : failedExitCode);
+}
+
 int main(int argc, char **argv) {
 	bool isVerbose = (argc > 1) && (strcmp(argv[1], "-v") == 0);
+	bool isConcurrent = (argc > 1) && (strcmp(argv[1], "--concurrent") == 0);
 
 	fplSettings settings = fplMakeDefaultSettings();
 	if(!fplPlatformInit(fplInitFlags_None, &settings)) {
 		fprintf(stderr, "platform init failed\n");
 		return(1);
+	}
+
+	if(isConcurrent) {
+		int concurrentResult = RunConcurrentMixers();
+		fplPlatformRelease();
+		return(concurrentResult);
 	}
 
 	// The total hash runs over the hashes of the cases, so one line tells whether anything changed
