@@ -83,14 +83,16 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
+	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave in render mode, --sine-seconds=0 makes it endless. A file still plays from memory.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
 	A track ends when it is heard to its end, in thread mode that is after the latency of the output ring. A repeating track never ends.
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
-	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n>
+	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n>
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
+	stream tells whether the track played as a stream, stream_bytes is the memory of its stream instance and pcm_bytes the decoded samples in memory.
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
@@ -119,6 +121,10 @@ Todo:
 	- Multiple audio tracks
 
 Changelog:
+	## 2026-10-22
+	- New: --stream plays the sine wave as a stream source in render mode, --sine-seconds=0 makes it endless
+	- New: The render line shows stream, stream_bytes and pcm_bytes
+
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
 	- New: Command line options for the audio device, the mixer mode, the output ring size, the sine track and the play item, see --help
@@ -435,6 +441,7 @@ typedef struct PlayerOptions {
 	float volume;
 	float pitch;
 	bool isSine;
+	bool isStream;
 	bool isRepeat;
 	bool isRender;
 	bool isStats;
@@ -2233,7 +2240,8 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Flag, "help", fpl_null, PLAYER_OPTION_FIELD(isHelp), fpl_null, 0, "Print this help and exit" },
 	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
 	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
-	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds" },
+	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds, 0 with --stream is an endless one" },
+	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far only the sine wave and only with --render" },
 	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
 	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
@@ -2515,8 +2523,17 @@ static bool ParsePlayerOptions(const int argc, char **args, PlayerOptions *optio
 }
 
 static bool ValidatePlayerOptions(const PlayerOptions *options) {
-	if(options->sineSeconds <= 0.0f) {
-		fplConsoleFormatError("--sine-seconds must be above 0, an endless sine wave (0) comes with the streaming source (--stream), which does not exist yet\n");
+	if(options->sineSeconds < 0.0f) {
+		fplConsoleFormatError("--sine-seconds must not be negative\n");
+		return(false);
+	}
+	const bool isEndlessSine = (options->sineSeconds == 0.0f);
+	if(isEndlessSine && !options->isStream) {
+		fplConsoleFormatError("--sine-seconds=0 is an endless sine wave, which only a stream can be, add --stream\n");
+		return(false);
+	}
+	if(options->isStream && !options->isRender) {
+		fplConsoleFormatError("--stream works only with --render so far\n");
 		return(false);
 	}
 	if(options->ringMilliseconds <= 0) {
@@ -2550,6 +2567,10 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 		}
 		if(options->renderSeconds < 0.0f) {
 			fplConsoleFormatError("--seconds must not be negative\n");
+			return(false);
+		}
+		if(options->isSine && isEndlessSine && options->renderSeconds == 0.0f) {
+			fplConsoleFormatError("An endless sine wave has no length, render it with --seconds\n");
 			return(false);
 		}
 	}
@@ -2976,7 +2997,11 @@ static int RenderOffline(const PlayerOptions *options) {
 	}
 
 	AudioSineWaveData sineWave = MakeSineWave(options->sineSeconds);
-	if(!LoadAudioTrackList(audioSys, &trackSource, trackSourceCount, options->isSine, &sineWave, LoadAudioTrackFlags_AutoLoad, trackList)) {
+	LoadAudioTrackFlags loadFlags = LoadAudioTrackFlags_AutoLoad;
+	if(options->isStream) {
+		loadFlags = (LoadAudioTrackFlags)(loadFlags | LoadAudioTrackFlags_Stream);
+	}
+	if(!LoadAudioTrackList(audioSys, &trackSource, trackSourceCount, options->isSine, &sineWave, loadFlags, trackList)) {
 		goto done;
 	}
 	AudioSource *source = fpl_null;
@@ -2986,6 +3011,10 @@ static int RenderOffline(const PlayerOptions *options) {
 	if(source == fpl_null) {
 		FPL_LOG_ERROR("Render", "Failed to load the track");
 		goto done;
+	}
+	const bool isStreamSource = (source->type == AudioSourceType_Stream);
+	if(options->isStream && !isStreamSource) {
+		FPL_LOG_INFO("Render", "The track plays from memory, only the sine wave can stream so far");
 	}
 
 	AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, options->isRepeat, options->volume, options->pitch);
@@ -3070,7 +3099,11 @@ static int RenderOffline(const PlayerOptions *options) {
 	double mixMeanMicroseconds = GetMixCostMean(histogram);
 	double mixPercentileMicroseconds = GetMixCostPercentile(histogram, percentileShare);
 	const char *formatName = RenderFormatChoices[options->renderFormat].name;
-	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes);
+	// The ended play item keeps its stream instance until a call frees it, so its bytes still count here
+	AudioSystemStats stats;
+	AudioSystemGetStats(audioSys, &stats);
+	const int streamValue = isStreamSource ? 1 : 0;
+	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu stream=%d stream_bytes=%llu pcm_bytes=%llu\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes, streamValue, (unsigned long long)stats.streamInstanceByteCount, (unsigned long long)stats.pcmByteCount);
 
 	result = 0;
 
