@@ -210,6 +210,7 @@ SOFTWARE.
 	- New: [Win32] fplMillisecondsQuery() handles the GetTickCount() wraparound on Windows XP
 	- New: [Win32] fplLocaleFormat_ISO639 works on Windows XP
 	- Fixed: [Win32] fplGetSystemLocale(), fplGetUserLocale() and fplGetInputLocale() read an uninitialized buffer on failure
+	- Fixed: [Win32] fplTimestampElapsed() returned the system uptime for timestamps taken before and after fplPlatformInit()
 	- Fixed: [MinGW] fpl_force_inline links with -O0, CPUID/XCR0/RDTSC work and the GCC warning pragmas apply
 	- Changed: [MinGW] fplAlignAs and fplMinAlignment take effect, aligned structs can change their layout
 
@@ -4983,8 +4984,6 @@ typedef union fplTimestamp {
 	struct {
 		//! Raw QueryPerformanceCounter tick count (frequency is platform-dependent, query via QueryPerformanceFrequency).
 		fpl__Win32LargeInteger qpc;
-		//! Tick count in milliseconds.
-		uint64_t ticks;
 	} win32;
 #elif defined(FPL_SUBPLATFORM_POSIX)
 	//! POSIX specifics.
@@ -5027,6 +5026,7 @@ typedef uint64_t fplMilliseconds;
 * @brief Gets the current @ref fplTimestamp with most precision, used for time delta measurements only.
 * @return Returns the resulting @ref fplTimestamp.
 * @note Use @ref fplTimestampElapsed() to get the elapsed time.
+* @note Works without @ref fplPlatformInit() too, so a timestamp taken before it can be compared with one taken after it.
 */
 fpl_platform_api fplTimestamp fplTimestampQuery(void);
 
@@ -23970,30 +23970,32 @@ fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath,
 //
 // Win32 Timings
 //
-fpl_platform_api fplTimestamp fplTimestampQuery(void) {
+// The frequency is fixed at boot: fplPlatformInit caches it, before that and after fplPlatformRelease it is queried directly
+fpl_internal LARGE_INTEGER fpl__Win32GetPerformanceFrequency(void) {
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	fplTimestamp result = fplZeroInit;
-	if (initState->qpf.QuadPart > 0) {
-		LARGE_INTEGER time;
-		QueryPerformanceCounter(&time);
-		result.win32.qpc.QuadPart = time.QuadPart;
-	} else {
-		result.win32.ticks = fpl__Win32GetTickCount64();
+	LARGE_INTEGER result = initState->qpf;
+	if (result.QuadPart == 0) {
+		QueryPerformanceFrequency(&result);
 	}
 	return(result);
 }
 
+// The performance counter needs no initialization and always succeeds since Windows XP, so every timestamp is a counter value, whether taken before or after fplPlatformInit
+fpl_platform_api fplTimestamp fplTimestampQuery(void) {
+	fplTimestamp result = fplZeroInit;
+	LARGE_INTEGER time;
+	QueryPerformanceCounter(&time);
+	result.win32.qpc.QuadPart = time.QuadPart;
+	return(result);
+}
+
 fpl_platform_api fplSeconds fplTimestampElapsed(const fplTimestamp start, const fplTimestamp finish) {
-	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
-	fplSeconds result;
-	LARGE_INTEGER freq = initState->qpf;
-	if (freq.QuadPart > 0) {
-		uint64_t delta = finish.win32.qpc.QuadPart - start.win32.qpc.QuadPart;
-		result = (fplSeconds)(delta / (double)freq.QuadPart);
-	} else {
-		uint64_t delta = finish.win32.ticks - start.win32.ticks;
-		result = (fplSeconds)(delta / 1000.0);
+	LARGE_INTEGER freq = fpl__Win32GetPerformanceFrequency();
+	if (freq.QuadPart <= 0) {
+		return(0.0);
 	}
+	uint64_t delta = finish.win32.qpc.QuadPart - start.win32.qpc.QuadPart;
+	fplSeconds result = (fplSeconds)(delta / (double)freq.QuadPart);
 	return(result);
 }
 
