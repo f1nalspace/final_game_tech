@@ -22,7 +22,7 @@ The entire pipeline system uses 4 scratch buffers to process samples:
 The conversion buffer is special, because it will always be consumed first, before more samples are produced by the FillConversionBuffer() function.
 
 There can be N audio sources, each audio source has a sample buffer that is based on either external or internal memory
-There can be N play items, each play item tracks the current state of a audio source.
+There can be up to FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items in a fixed pool, each play item tracks the current state of a audio source.
 
 There are several API functions for adding/loading audio sources, start playback by adding play-items, change-volume etc.
 
@@ -147,6 +147,9 @@ Changelog:
 	- Fixed: AudioSystemGetPlayItems() and AudioSystemGetSources() could write past the destination when an entry was added between the size check and the copy
 	- Changed: The mixer clears only the used part of the mixing buffer and no longer the DSP buffers
 	- New: AudioSystemGetStats() returns the sources, their PCM bytes and the playing items in one call
+	- Changed: Play items live in a fixed pool of FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT (256) slots, starting or ending one allocates and frees nothing
+	- Changed: AudioSystemGetPlayItems() reads without a lock and returns the items in slot order
+	- Changed (API BREAKING): AudioSystem.playItems has no list and no count anymore, use AudioSystemGetStats() or AudioSystemGetPlayItems()
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -181,6 +184,11 @@ Changelog:
 #include "final_audio.h"
 #include "final_audioconversion.h"
 
+#ifndef FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT
+//! Number of play items that can be started and not finished at the same time, the size of the fixed pool in @ref AudioSystem (at most 65535)
+#	define FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT 256
+#endif
+
 typedef struct AudioSourceID {
 	uint64_t value;
 } AudioSourceID;
@@ -209,7 +217,9 @@ typedef struct AudioPlayItem {
 	fpl_b32 isFinished[2];				//!< 0 = Current, 1 = Saved
 	uint32_t copiesPlayed[2];			//!< Frame duplication (even upsampling): copies of the frame at framesPlayed that are mixed already, 0 = Current, 1 = Saved
 	const AudioSource *source;
+	//! Unused, null in every copy
 	struct AudioPlayItem *next;
+	//! Unused, null in every copy
 	struct AudioPlayItem *prev;
 	AudioPlayItemID id;
 	float volume;
@@ -232,12 +242,66 @@ typedef struct AudioSources {
 	size_t count;
 } AudioSources;
 
+//! State of a slot in the play item pool, see @ref AudioPlayItemSlot
+typedef enum AudioPlayItemSlotState {
+	//! Never used
+	AudioPlayItemSlotState_Free = 0,
+	//! Taken by @ref AudioSystemPlaySource, which fills it and starts it
+	AudioPlayItemSlotState_Reserved,
+	//! Mixed by the mixer
+	AudioPlayItemSlotState_Playing,
+	//! Ended or stopped, the mixer reads it no more and it can be taken again
+	AudioPlayItemSlotState_Finished,
+} AudioPlayItemSlotState;
+
+//! Flags of @ref AudioPublishedPlayItem::flags
+typedef enum AudioPublishedPlayItemFlags {
+	AudioPublishedPlayItemFlags_None = 0,
+	//! Started and not finished, @ref AudioSystemGetPlayItems returns it
+	AudioPublishedPlayItemFlags_Live = 1 << 0,
+	AudioPublishedPlayItemFlags_Finished = 1 << 1,
+	AudioPublishedPlayItemFlags_Repeat = 1 << 2,
+	AudioPublishedPlayItemFlags_Paused = 1 << 3,
+} AudioPublishedPlayItemFlags;
+
+/**
+* @brief The state of a play item that @ref AudioSystemGetPlayItems reads without a lock.
+* @note One thread at a time writes it, between an odd and the next even sequence. A reader repeats its copy when the sequence was odd or has changed, so it never returns a torn copy and the writer never waits.
+* @note Every field is read and written atomically. The generation is part of it, so a copy never pairs the id of one item with the values of another.
+*/
+typedef struct AudioPublishedPlayItem {
+	volatile void *source;
+	volatile uint32_t sequence;
+	volatile uint32_t generation;
+	volatile uint32_t framesPlayed;
+	volatile uint32_t copiesPlayed;
+	volatile uint32_t volumeBits;
+	volatile uint32_t pitchBits;
+	//! @ref AudioPublishedPlayItemFlags
+	volatile uint32_t flags;
+} AudioPublishedPlayItem;
+
+//! One slot of the play item pool in @ref AudioPlayItems
+typedef struct AudioPlayItemSlot {
+	//! The item the mixer plays, read and written only under playItems.lock once the slot is playing
+	AudioPlayItem item;
+	//! What @ref AudioSystemGetPlayItems copies
+	AudioPublishedPlayItem published;
+	//! @ref AudioPlayItemSlotState, taken with a compare-and-swap
+	volatile uint32_t state;
+	//! Part of the id of the item in this slot, counted up when the item ends, so the id of an ended item matches nothing
+	volatile uint32_t generation;
+} AudioPlayItemSlot;
+
+//! The play item pool, starting or ending a play item allocates or frees nothing
 typedef struct AudioPlayItems {
+	AudioPlayItemSlot slots[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
+	//! The slots the mixer plays in the order they were started, which is the order they are mixed in
+	uint32_t activeSlotIndices[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
+	uint32_t activeCount;
+	//! Where the search for a free slot starts, so a finished slot is not taken again at once
+	volatile uint32_t nextSlotIndex;
 	fplMutexHandle lock;
-	AudioPlayItem *first;
-	AudioPlayItem *last;
-	volatile uint64_t idCounter;
-	size_t count;
 } AudioPlayItems;
 
 typedef struct AudioSineWaveData {
@@ -420,16 +484,17 @@ fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 * @param[in] repeat Pass true to loop the source until the play item is stopped.
 * @param[in] volume The volume of the play item, where 1.0 is unchanged.
 * @param[in] pitch The playback rate multiplier (see @ref AudioPlayItem::pitch), pass @ref AudioSystemDefaultPitch for the file as recorded, which costs nothing.
-* @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null or the memory could not be allocated.
+* @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null or all @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items are in use.
 * @note A pitch of zero or below is treated as 1 rather than refused: silence would be the one outcome nobody could debug.
+* @note Allocates nothing, the play item takes a slot of the fixed pool. The id is valid at once.
 */
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
 
 /**
-* @brief Stops one play item immediately and frees it.
+* @brief Stops one play item immediately and frees its slot.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
-* @return Returns true when the play item was stopped, false when it no longer exists.
+* @return Returns true when the play item was stopped, false when it no longer exists or an argument is null.
 * @note The play position is lost. Use @ref AudioSystemSetPlayItemPaused to pause, or @ref AudioSystemSetPlayItemRepeat to let a looping item finish its current pass.
 */
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId);
@@ -440,7 +505,7 @@ fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID 
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] volume The new volume of the play item, where 1.0 is unchanged.
 * @return Returns true when the volume was changed, false when the item no longer exists, which is not an error - it just finished.
-* @note Takes an id and not a pointer on purpose: the audio thread frees a finished play item, so an id is the only handle that cannot dangle.
+* @note Takes an id and not a pointer on purpose: the audio thread ends a finished play item and its slot is used again, the id of an ended item matches nothing.
 */
 fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioPlayItemID playId, const float volume);
 
@@ -493,11 +558,12 @@ fpl_extern void AudioSystemClearSources(AudioSystem *audioSys);
 
 /**
 * @brief Copies all current play items into an array.
-* @param[in] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] audioSys Reference to the audio system @ref AudioSystem, may be null.
 * @param[out] dest Destination array of @ref AudioPlayItem, pass null to query the count only.
 * @param[in] maxDestCount Number of elements the destination array can hold.
 * @return Returns the number of play items, or zero when the destination array is too small to hold all of them.
-* @note The copies are snapshots, their next and prev pointers must not be followed.
+* @note Reads without a lock and never holds up the mixer. Each copy is consistent in itself, a play item started by @ref AudioSystemPlaySource is included at once.
+* @note The copies come in the order of the pool slots, which is not always the order the items were started in. Their next and prev pointers are null.
 */
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount);
 
@@ -549,6 +615,8 @@ typedef struct AudioSystemStats {
 	size_t pcmByteCount;
 	//! Play items that are started and not finished, the same ones @ref AudioSystemGetPlayItems returns
 	uint32_t activePlayItemCount;
+	//! Size of the play item pool, @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT
+	uint32_t maxPlayItemCount;
 } AudioSystemStats;
 
 /**
@@ -1078,39 +1146,174 @@ fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const c
 	return(source);
 }
 
-static void RemovePlayItem(AudioMemory *memory, AudioPlayItems *playItems, AudioPlayItem *playItem) {
-	if(playItems->first == playItems->last) {
-		// Remove single item
-		playItems->first = playItems->last = fpl_null;
-	} else 	if(playItem == playItems->last) {
-		// Remove at end
-		if(playItems->first == playItems->last) {
-			playItems->first = playItems->last = fpl_null;
-		} else {
-			playItems->last = playItem->prev;
-			playItems->last->next = fpl_null;
-		}
-	} else if(playItem == playItems->first) {
-		// Remove at start
-		if(playItems->first == playItems->last) {
-			playItems->first = playItems->last = fpl_null;
-		} else {
-			playItems->first = playItem->next;
-			playItems->first->prev = fpl_null;
-		}
-	} else {
-		// Remove in the middle
-		AudioPlayItem *cur = playItems->first;
-		while(cur != playItem) {
-			cur = cur->next;
-		}
-		cur->prev->next = cur->next;
-		if(cur->next != fpl_null) {
-			cur->next->prev = cur->prev;
+// A play item id holds the slot index + 1 in its low bits and the generation of the slot above them, so 0 stays invalid
+static const uint32_t AudioPlayItemIDSlotBitCount = 16;
+static const uint64_t AudioPlayItemIDSlotMask = 0xFFFF;
+
+// The slot number has to fit into the low bits of an id
+fplStaticAssert(FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT > 0 && FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT <= 0xFFFF);
+
+static uint32_t AudioFloatToBits(const float value) {
+	uint32_t result;
+	fplMemoryCopy(&value, sizeof(result), &result);
+	return(result);
+}
+
+static float AudioBitsToFloat(const uint32_t bits) {
+	float result;
+	fplMemoryCopy(&bits, sizeof(result), &result);
+	return(result);
+}
+
+static AudioPlayItemID MakePlayItemID(const uint32_t slotIndex, const uint32_t generation) {
+	AudioPlayItemID result;
+	result.value = ((uint64_t)generation << AudioPlayItemIDSlotBitCount) | (uint64_t)(slotIndex + 1);
+	return(result);
+}
+
+// Returns the slot of an id while its item plays, null for the id of an ended item, whose slot may play another one by now. Only under playItems.lock
+static AudioPlayItemSlot *FindPlayingSlot(AudioPlayItems *playItems, const AudioPlayItemID playId, uint32_t *outSlotIndex) {
+	const uint64_t slotNumber = playId.value & AudioPlayItemIDSlotMask;
+	const uint64_t idGeneration = playId.value >> AudioPlayItemIDSlotBitCount;
+	if(slotNumber == 0 || slotNumber > FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT || idGeneration > UINT32_MAX) {
+		return(fpl_null);
+	}
+	const uint32_t slotIndex = (uint32_t)(slotNumber - 1);
+	AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+	const uint32_t state = fplAtomicLoadU32(&slot->state);
+	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
+	if(state != AudioPlayItemSlotState_Playing || generation != (uint32_t)idGeneration) {
+		return(fpl_null);
+	}
+	*outSlotIndex = slotIndex;
+	return(slot);
+}
+
+// Finds the position of a playing item in the active slots. Only under playItems.lock
+static bool FindActivePlayItem(AudioPlayItems *playItems, const AudioPlayItemID playId, uint32_t *outActiveIndex) {
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
+	if(slot == fpl_null) {
+		return(false);
+	}
+	for(uint32_t activeIndex = 0; activeIndex < playItems->activeCount; ++activeIndex) {
+		if(playItems->activeSlotIndices[activeIndex] == slotIndex) {
+			*outActiveIndex = activeIndex;
+			return(true);
 		}
 	}
-	FreeAudioMemory(memory, playItem);
-	--playItems->count;
+	return(false);
+}
+
+// Writes the item of a slot into its published state, see AudioPublishedPlayItem. One thread at a time: under playItems.lock, or the caller of AudioSystemPlaySource while the slot is reserved
+static void PublishPlayItem(AudioPlayItemSlot *slot, const bool isLive) {
+	const AudioPlayItem *item = &slot->item;
+	AudioPublishedPlayItem *published = &slot->published;
+	uint32_t flags = AudioPublishedPlayItemFlags_None;
+	if(isLive) {
+		flags |= AudioPublishedPlayItemFlags_Live;
+	}
+	if(item->isFinished[0]) {
+		flags |= AudioPublishedPlayItemFlags_Finished;
+	}
+	if(item->isRepeat) {
+		flags |= AudioPublishedPlayItemFlags_Repeat;
+	}
+	if(item->isPaused) {
+		flags |= AudioPublishedPlayItemFlags_Paused;
+	}
+	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
+	const uint32_t volumeBits = AudioFloatToBits(item->volume);
+	const uint32_t pitchBits = AudioFloatToBits(item->pitch);
+
+	// Odd while the fields are written, a reader that sees it or a change of it copies again
+	const uint32_t sequence = fplAtomicLoadU32(&published->sequence);
+	fplAtomicStoreU32(&published->sequence, sequence + 1);
+	fplAtomicStorePtr(&published->source, item->source);
+	fplAtomicStoreU32(&published->generation, generation);
+	fplAtomicStoreU32(&published->framesPlayed, item->framesPlayed[0]);
+	fplAtomicStoreU32(&published->copiesPlayed, item->copiesPlayed[0]);
+	fplAtomicStoreU32(&published->volumeBits, volumeBits);
+	fplAtomicStoreU32(&published->pitchBits, pitchBits);
+	fplAtomicStoreU32(&published->flags, flags);
+	fplAtomicStoreU32(&published->sequence, sequence + 2);
+}
+
+// Copies the published state of a slot, false when it holds no started and unfinished item. Never makes the writer wait, it repeats the copy instead
+static bool CopyPublishedPlayItem(AudioPlayItemSlot *slot, const uint32_t slotIndex, AudioPlayItem *outItem) {
+	AudioPublishedPlayItem *published = &slot->published;
+	for(;;) {
+		const uint32_t sequenceBefore = fplAtomicLoadU32(&published->sequence);
+		if((sequenceBefore & 1) != 0) {
+			// The writer is in the middle of it and done in a moment
+			fplThreadYield();
+			continue;
+		}
+		void *source = fplAtomicLoadPtr(&published->source);
+		const uint32_t generation = fplAtomicLoadU32(&published->generation);
+		const uint32_t framesPlayed = fplAtomicLoadU32(&published->framesPlayed);
+		const uint32_t copiesPlayed = fplAtomicLoadU32(&published->copiesPlayed);
+		const uint32_t volumeBits = fplAtomicLoadU32(&published->volumeBits);
+		const uint32_t pitchBits = fplAtomicLoadU32(&published->pitchBits);
+		const uint32_t flags = fplAtomicLoadU32(&published->flags);
+		const uint32_t sequenceAfter = fplAtomicLoadU32(&published->sequence);
+		if(sequenceAfter != sequenceBefore) {
+			continue;
+		}
+		if((flags & AudioPublishedPlayItemFlags_Live) == 0) {
+			return(false);
+		}
+		fplClearStruct(outItem);
+		outItem->id = MakePlayItemID(slotIndex, generation);
+		outItem->source = (const AudioSource *)source;
+		outItem->framesPlayed[0] = framesPlayed;
+		outItem->copiesPlayed[0] = copiesPlayed;
+		outItem->isFinished[0] = (flags & AudioPublishedPlayItemFlags_Finished) != 0;
+		outItem->volume = AudioBitsToFloat(volumeBits);
+		outItem->pitch = AudioBitsToFloat(pitchBits);
+		outItem->isRepeat = (flags & AudioPublishedPlayItemFlags_Repeat) != 0;
+		outItem->isPaused = (flags & AudioPublishedPlayItemFlags_Paused) != 0;
+		return(true);
+	}
+}
+
+// Takes a free or finished slot for a new item, null when every slot is in use
+static AudioPlayItemSlot *ReservePlayItemSlot(AudioPlayItems *playItems, uint32_t *outSlotIndex) {
+	const uint32_t slotCount = FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT;
+	const uint32_t startIndex = fplAtomicLoadU32(&playItems->nextSlotIndex);
+	for(uint32_t offset = 0; offset < slotCount; ++offset) {
+		const uint32_t slotIndex = (startIndex + offset) % slotCount;
+		AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+		const uint32_t state = fplAtomicLoadU32(&slot->state);
+		if(state != AudioPlayItemSlotState_Free && state != AudioPlayItemSlotState_Finished) {
+			continue;
+		}
+		// Another thread may take the same slot in between, only one compare-and-swap succeeds
+		const bool isReserved = fplAtomicIsCompareAndSwapU32(&slot->state, state, AudioPlayItemSlotState_Reserved);
+		if(isReserved) {
+			const uint32_t nextSlotIndex = (slotIndex + 1) % slotCount;
+			fplAtomicStoreU32(&playItems->nextSlotIndex, nextSlotIndex);
+			*outSlotIndex = slotIndex;
+			return(slot);
+		}
+	}
+	return(fpl_null);
+}
+
+// Ends the item of an active slot: AudioSystemGetPlayItems no longer returns it, its id matches nothing and the slot can be taken again. Only under playItems.lock
+static void FinishActivePlayItem(AudioPlayItems *playItems, const uint32_t activeIndex) {
+	fplAssert(activeIndex < playItems->activeCount);
+	const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
+	AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+	PublishPlayItem(slot, false);
+	fplAtomicIncrementU32(&slot->generation);
+	fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Finished);
+
+	// The others move up instead of the last one taking this place: the order is the mix order, and a different order changes the float sums
+	for(uint32_t moveIndex = activeIndex + 1; moveIndex < playItems->activeCount; ++moveIndex) {
+		playItems->activeSlotIndices[moveIndex - 1] = playItems->activeSlotIndices[moveIndex];
+	}
+	--playItems->activeCount;
 }
 
 fpl_extern AudioSource *AudioSystemGetSourceByID(AudioSystem *audioSys, const AudioSourceID id) {
@@ -1151,41 +1354,52 @@ fpl_extern size_t AudioSystemGetSources(AudioSystem *audioSys, AudioSource *dest
 }
 
 fpl_extern size_t AudioSystemGetPlayItems(AudioSystem *audioSys, AudioPlayItem *dest, const size_t maxDestCount) {
-	// Counted and copied under the same lock, the mixer removes finished items and another thread may add one in between
-	fplMutexLock(&audioSys->playItems.lock);
-	size_t count = audioSys->playItems.count;
-	size_t result = count;
-	if(dest != fpl_null) {
-		if(count > maxDestCount) {
-			result = 0; // Error, destination array to small
-		} else {
-			const AudioPlayItem *src = audioSys->playItems.first;
-			AudioPlayItem *dst = dest;
-			while(src != fpl_null) {
-				*dst = *src;
-				src = src->next;
-				++dst;
-			}
-		}
+	if(audioSys == fpl_null) {
+		return(0);
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	// No lock: the count and the copies come from one pass over the published states, which are written without waiting for a reader
+	AudioPlayItems *playItems = &audioSys->playItems;
+	size_t result = 0;
+	for(uint32_t slotIndex = 0; slotIndex < FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT; ++slotIndex) {
+		AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+		const uint32_t flags = fplAtomicLoadU32(&slot->published.flags);
+		if((flags & AudioPublishedPlayItemFlags_Live) == 0) {
+			continue;
+		}
+		if(dest == fpl_null) {
+			++result;
+			continue;
+		}
+		AudioPlayItem copy;
+		const bool isLive = CopyPublishedPlayItem(slot, slotIndex, &copy);
+		if(!isLive) {
+			// Ended between the two reads
+			continue;
+		}
+		if(result >= maxDestCount) {
+			return(0); // Error, destination array to small
+		}
+		dest[result] = copy;
+		++result;
+	}
 	return(result);
 }
 
 fpl_extern bool AudioSystemStopOne(AudioSystem *audioSys, const AudioPlayItemID playId) {
-	// The audio device callback can RemovePlayItem concurrently, so the whole find-and-remove must run under the lock
-	bool result = false;
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		if(playItem->id.value == playId.value) {
-			RemovePlayItem(&audioSys->memory, &audioSys->playItems, playItem);
-			result = true;
-			break;
-		}
-		playItem = playItem->next;
+	if(audioSys == fpl_null) {
+		return false;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	// The mixer ends items concurrently, so the whole find-and-end must run under the lock
+	AudioPlayItems *playItems = &audioSys->playItems;
+	bool result = false;
+	fplMutexLock(&playItems->lock);
+	uint32_t activeIndex = 0;
+	const bool isActive = FindActivePlayItem(playItems, playId, &activeIndex);
+	if(isActive) {
+		FinishActivePlayItem(playItems, activeIndex);
+		result = true;
+	}
+	fplMutexUnlock(&playItems->lock);
 	return(result);
 }
 
@@ -1193,20 +1407,18 @@ fpl_extern bool AudioSystemSetPlayItemVolume(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// The audio device callback reads item->volume under this same lock (ProcessSinglePlayItem) and can RemovePlayItem
-	// concurrently, so the whole find-and-write must run under it
+	// The mixer reads item->volume under this same lock (ProcessSinglePlayItem) and can end the item concurrently, so the whole find-and-write must run under it
+	AudioPlayItems *playItems = &audioSys->playItems;
 	bool result = false;
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		if(playItem->id.value == playId.value) {
-			playItem->volume = volume;
-			result = true;
-			break;
-		}
-		playItem = playItem->next;
+	fplMutexLock(&playItems->lock);
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
+	if(slot != fpl_null) {
+		slot->item.volume = volume;
+		PublishPlayItem(slot, true);
+		result = true;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 	return(result);
 }
 
@@ -1214,20 +1426,18 @@ fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPl
 	if(audioSys == fpl_null || pitch <= 0.0f) {
 		return false;
 	}
-	// Same find-and-write under the same lock as the volume setter, and for the same reason: the audio device
-	// callback reads item->pitch (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	// Same find-and-write under the same lock as the volume setter, and for the same reason
+	AudioPlayItems *playItems = &audioSys->playItems;
 	bool result = false;
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		if(playItem->id.value == playId.value) {
-			playItem->pitch = pitch;
-			result = true;
-			break;
-		}
-		playItem = playItem->next;
+	fplMutexLock(&playItems->lock);
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
+	if(slot != fpl_null) {
+		slot->item.pitch = pitch;
+		PublishPlayItem(slot, true);
+		result = true;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 	return(result);
 }
 
@@ -1235,20 +1445,18 @@ fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// Same find-and-write under the same lock as the volume and pitch setters, and for the same reason: the
-	// audio device callback reads item->isRepeat (ProcessSinglePlayItem) and can RemovePlayItem concurrently
+	// Same find-and-write under the same lock as the volume setter, and for the same reason
+	AudioPlayItems *playItems = &audioSys->playItems;
 	bool result = false;
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		if(playItem->id.value == playId.value) {
-			playItem->isRepeat = repeat;
-			result = true;
-			break;
-		}
-		playItem = playItem->next;
+	fplMutexLock(&playItems->lock);
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
+	if(slot != fpl_null) {
+		slot->item.isRepeat = repeat;
+		PublishPlayItem(slot, true);
+		result = true;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 	return(result);
 }
 
@@ -1256,19 +1464,18 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 	if(audioSys == fpl_null) {
 		return false;
 	}
-	// Same reasoning as the volume setter: the device callback reads this flag under this lock and can free the item concurrently
+	// Same find-and-write under the same lock as the volume setter, and for the same reason
+	AudioPlayItems *playItems = &audioSys->playItems;
 	bool result = false;
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		if(playItem->id.value == playId.value) {
-			playItem->isPaused = paused;
-			result = true;
-			break;
-		}
-		playItem = playItem->next;
+	fplMutexLock(&playItems->lock);
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = FindPlayingSlot(playItems, playId, &slotIndex);
+	if(slot != fpl_null) {
+		slot->item.isPaused = paused;
+		PublishPlayItem(slot, true);
+		result = true;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 	return(result);
 }
 
@@ -1278,17 +1485,20 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 		return(empty);
 	}
 
-	AudioPlayItem *playItem = (AudioPlayItem *)AllocateAudioMemory(&audioSys->memory, sizeof(AudioPlayItem));
-	if(playItem == fpl_null) {
+	AudioPlayItems *playItems = &audioSys->playItems;
+	uint32_t slotIndex = 0;
+	AudioPlayItemSlot *slot = ReservePlayItemSlot(playItems, &slotIndex);
+	if(slot == fpl_null) {
 		AudioPlayItemID empty = fplZeroInit;
 		return(empty);
 	}
 
-	playItem->id.value = fplAtomicIncrementU64(&audioSys->playItems.idCounter);
-	playItem->next = playItem->prev = fpl_null;
-	playItem->framesPlayed[0] = playItem->framesPlayed[1] = 0;
-	playItem->isFinished[0] = playItem->isFinished[1] = false;
-	playItem->copiesPlayed[0] = playItem->copiesPlayed[1] = 0;
+	// The slot is reserved, nobody else reads or writes its item until it is playing
+	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
+	const AudioPlayItemID result = MakePlayItemID(slotIndex, generation);
+	AudioPlayItem *playItem = &slot->item;
+	fplClearStruct(playItem);
+	playItem->id = result;
 	playItem->source = source;
 	playItem->isRepeat = repeat;
 	playItem->volume = volume;
@@ -1297,18 +1507,16 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	playItem->pitch = (pitch > 0.0f) ? pitch : 1.0f;
 	playItem->isPaused = false;
 
-	fplMutexLock(&audioSys->playItems.lock);
-	if(audioSys->playItems.last == fpl_null) {
-		audioSys->playItems.first = audioSys->playItems.last = playItem;
-	} else {
-		playItem->prev = audioSys->playItems.last;
-		audioSys->playItems.last->next = playItem;
-		audioSys->playItems.last = playItem;
-	}
-	++audioSys->playItems.count;
-	fplMutexUnlock(&audioSys->playItems.lock);
+	// AudioSystemGetPlayItems sees it from here on, before it is mixed
+	PublishPlayItem(slot, true);
 
-	return(playItem->id);
+	fplMutexLock(&playItems->lock);
+	playItems->activeSlotIndices[playItems->activeCount] = slotIndex;
+	++playItems->activeCount;
+	fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Playing);
+	fplMutexUnlock(&playItems->lock);
+
+	return(result);
 }
 
 fpl_force_inline float AudioClipF32(const float value) {
@@ -1440,27 +1648,29 @@ static void ApplyVolumeToSamples(const AudioChannelIndex inChannelCount, const A
 }
 
 static void SavePlayStates(AudioSystem *audioSys) {
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *item = audioSys->playItems.first;
-	while(item != fpl_null) {
+	AudioPlayItems *playItems = &audioSys->playItems;
+	fplMutexLock(&playItems->lock);
+	for(uint32_t activeIndex = 0; activeIndex < playItems->activeCount; ++activeIndex) {
+		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
+		AudioPlayItem *item = &playItems->slots[slotIndex].item;
 		item->framesPlayed[1] = item->framesPlayed[0];
 		item->isFinished[1] = item->isFinished[0];
 		item->copiesPlayed[1] = item->copiesPlayed[0];
-		item = item->next;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 }
 
 static void RestorePlayStates(AudioSystem *audioSys) {
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *item = audioSys->playItems.first;
-	while(item != fpl_null) {
+	AudioPlayItems *playItems = &audioSys->playItems;
+	fplMutexLock(&playItems->lock);
+	for(uint32_t activeIndex = 0; activeIndex < playItems->activeCount; ++activeIndex) {
+		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
+		AudioPlayItem *item = &playItems->slots[slotIndex].item;
 		item->framesPlayed[0] = item->framesPlayed[1];
 		item->isFinished[0] = item->isFinished[1];
 		item->copiesPlayed[0] = item->copiesPlayed[1];
-		item = item->next;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 }
 
 // ============================================================================
@@ -1876,7 +2086,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 *
 * @param[in,out] audioSys     Audio system state (buffers, format, play items list).
 * @param[in] targetFrameCount Number of output frames to produce. Must be <= mixingBuffer.maxFrameCount.
-* @param[in] advance          If true, finished (non-repeating) play items are removed from the list.
+* @param[in] advance          If true, finished (non-repeating) play items are ended and their slots freed.
 *                             If false, play items are left in place (preview mode).
 * @return Returns the maximum number of output frames produced by any single play item.
 *                         This represents the valid range of the mixing buffer — frames beyond this
@@ -1903,19 +2113,23 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	float *mixingBuffer = (float *)audioSys->mixingBuffer.samples;
 	AudioFrameIndex maxOutputFrameCount = 0;
 
-	fplMutexLock(&audioSys->playItems.lock);
+	AudioPlayItems *playItems = &audioSys->playItems;
+	fplMutexLock(&playItems->lock);
 
-	AudioPlayItem *item = audioSys->playItems.first;
-	while (item != fpl_null) {
+	uint32_t activeIndex = 0;
+	while (activeIndex < playItems->activeCount) {
+		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
+		AudioPlayItem *item = &playItems->slots[slotIndex].item;
+
 		// Skip items that were already finished (can happen in advance=false mode)
 		if (item->isFinished[0]) {
-			item = item->next;
+			++activeIndex;
 			continue;
 		}
 
-		// A PAUSED item is skipped the same way, but it is never removed and its framesPlayed is left alone, so unpausing continues from where it stopped
+		// A PAUSED item is skipped the same way, but it is never ended and its framesPlayed is left alone, so unpausing continues from where it stopped
 		if (item->isPaused) {
-			item = item->next;
+			++activeIndex;
 			continue;
 		}
 
@@ -1925,21 +2139,28 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 			maxOutputFrameCount = itemOutputFrames;
 		}
 
-		// Save next pointer before potential removal
-		AudioPlayItem *next = item->next;
-
 		if (item->isFinished[0]) {
 			item->framesPlayed[0] = 0;
 			item->copiesPlayed[0] = 0;
 			if (advance) {
-				RemovePlayItem(&audioSys->memory, &audioSys->playItems, item);
+				// The next item moves up to this index
+				FinishActivePlayItem(playItems, activeIndex);
+				continue;
 			}
 		}
 
-		item = next;
+		++activeIndex;
 	}
 
-	fplMutexUnlock(&audioSys->playItems.lock);
+	// The new positions become visible to AudioSystemGetPlayItems, a preview leaves everything as it was
+	if (advance) {
+		for (uint32_t publishIndex = 0; publishIndex < playItems->activeCount; ++publishIndex) {
+			const uint32_t slotIndex = playItems->activeSlotIndices[publishIndex];
+			PublishPlayItem(&playItems->slots[slotIndex], true);
+		}
+	}
+
+	fplMutexUnlock(&playItems->lock);
 
 	return maxOutputFrameCount;
 #endif
@@ -2074,18 +2295,13 @@ fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return;
 
-	AudioMemory *memory = &audioSys->memory;
 	AudioPlayItems *playItems = &audioSys->playItems;
 
 	fplMutexLock(&playItems->lock);
-	AudioPlayItem *item = playItems->first;
-	while(item != fpl_null) {
-		AudioPlayItem *next = item->next;
-		FreeAudioMemory(memory, item);
-		item = next;
+	// From the end, so nothing has to move up
+	while(playItems->activeCount > 0) {
+		FinishActivePlayItem(playItems, playItems->activeCount - 1);
 	}
-	playItems->first = playItems->last = fpl_null;
-	playItems->count = 0;
 	fplMutexUnlock(&playItems->lock);
 
 	fplMutexLock(&audioSys->writeFramesLock);
@@ -2106,16 +2322,20 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 
 	// Play items first: one still pointing at this source would read freed samples on the very next mix.
 	// Its own lock section - the audio thread only ever takes playItems.lock, so there is no lock order to invert here
-	fplMutexLock(&audioSys->playItems.lock);
-	AudioPlayItem *playItem = audioSys->playItems.first;
-	while(playItem != fpl_null) {
-		AudioPlayItem *nextPlayItem = playItem->next;
+	AudioPlayItems *playItems = &audioSys->playItems;
+	fplMutexLock(&playItems->lock);
+	uint32_t activeIndex = 0;
+	while(activeIndex < playItems->activeCount) {
+		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
+		const AudioPlayItem *playItem = &playItems->slots[slotIndex].item;
 		if(playItem->source == source) {
-			RemovePlayItem(memory, &audioSys->playItems, playItem);
+			// The next item moves up to this index
+			FinishActivePlayItem(playItems, activeIndex);
+			continue;
 		}
-		playItem = nextPlayItem;
+		++activeIndex;
 	}
-	fplMutexUnlock(&audioSys->playItems.lock);
+	fplMutexUnlock(&playItems->lock);
 
 	// Singly linked, so the predecessor is found by walking (AudioSource has no prev pointer)
 	bool result = false;
@@ -2220,6 +2440,7 @@ fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *out
 	outStats->sourceCount = sourceCount;
 	outStats->pcmByteCount = pcmByteCount;
 	outStats->activePlayItemCount = (uint32_t)playItemCount;
+	outStats->maxPlayItemCount = FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT;
 	return(true);
 }
 
