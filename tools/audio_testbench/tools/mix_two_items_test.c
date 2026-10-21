@@ -8,16 +8,18 @@ Cases:
 - down2-up2: frame skipping and frame duplication with 6 output channels, a repeating item that wraps inside calls, a pitch change that switches its path while it plays.
 - four-items: four items at once, the second one ends first. The other three must be mixed in the same order as before, a different order changes the float sums. Then a stale id, a new play and a stop from the middle.
 - stale-ids: 600 short tones one after another, a few at once, more than twice the default pool of play items. A setter and a stop on the id of the first tone must change nothing.
+- stream-cancel: a sine wave in memory and the same sine wave as a stream with the negated volume, so every mixed sample must be exactly 0 while both play: through pitch changes (SinC, frame skipping), a pause, previews (which leave the stream out) and repeats.
 
 --concurrent instead runs two threads that call AudioSystemWriteFrames with advance at the same time, which is a programming error the mixer must survive:
 the second one gets silence and is counted in concurrentWriteCount, so the item moves on by exactly the frames of the calls that got the mixer.
+It runs once with a source in memory and once with a sine wave stream, which only the thread that holds the mixer may move on.
 A debug build asserts on it, so this mode is built without assertions.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants), and once more with -DFPL_NO_ASSERTIONS for --concurrent:
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies mix_two_items_test.c -o mix_two_items_test -lm -ldl -lpthread
 Usage: mix_two_items_test [-v | --concurrent]   (-v prints every mix call)
 Output: one line per case "<name>: calls=<n> frames=<n> items_left=<n> hash=<fnv1a64>", then "total: <n> cases, <n> failed checks, hash=<fnv1a64>".
-With --concurrent: "concurrent: calls=<n> rejected=<n> frames_played=<n> expected=<n> <ok|FAILED>".
+With --concurrent: "concurrent: calls=<n> rejected=<n> frames_played=<n> expected=<n> <ok|FAILED>", then the same line for the stream as "concurrent-stream: ...".
 */
 
 #define FPL_IMPLEMENTATION
@@ -340,6 +342,114 @@ static void RunStaleIdsCase(MixTest *test) {
 	MixCalls(test, TailCallCount);
 }
 
+// One mix call with advance, every sample of it must be 0 because the two sine waves cancel each other
+static void MixCancellingCall(MixTest *test) {
+	const uint32_t cycleIndex = (uint32_t)(test->callCount % fplArrayCount(CallFrameCounts));
+	const AudioFrameIndex frameCount = CallFrameCounts[cycleIndex];
+	MixCall(test, frameCount, true);
+	const size_t sampleCount = (size_t)frameCount * test->targetFormat.channels;
+	bool isSilent = true;
+	for(size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+		if(test->callSamples[sampleIndex] != 0.0f) {
+			isSilent = false;
+			break;
+		}
+	}
+	CheckTrue(test, isSilent, "the stream cancels the sine wave in memory");
+}
+
+static void MixCancellingCalls(MixTest *test, const uint32_t count) {
+	for(uint32_t callIndex = 0; callIndex < count; ++callIndex) {
+		MixCancellingCall(test);
+	}
+}
+
+static void RunStreamCancelCase(MixTest *test) {
+	const AudioDuration sineSeconds = 1.5;
+	const AudioHertz sineFrequency = 997;
+	const double sineToneVolume = 0.5;
+	const float memoryVolume = 0.75f;
+	const float streamVolume = -0.75f;
+	// Through SinC, then frame skipping with factor 2, which steps past the end of the ring
+	const float sincPitch = 1.37f;
+	const float skippingPitch = 2.0f;
+	const AudioFrameIndex previewFrameCount = 1024;
+	const uint32_t callsPerStep = 9;
+
+	AudioSineWaveData sineWave = fplZeroInit;
+	sineWave.duration = sineSeconds;
+	sineWave.toneVolume = sineToneVolume;
+	sineWave.frequency = sineFrequency;
+
+	const double roundingOffset = 0.5;
+	const double frameCountValue = (double)OutputSampleRate * sineSeconds + roundingOffset;
+	const AudioFrameIndex frameCount = (AudioFrameIndex)frameCountValue;
+	AudioSource *memorySine = AudioSystemAllocateSource(test->audioSys, StereoChannelCount, OutputSampleRate, fplAudioFormatType_S16, frameCount);
+	AudioSource *streamSine = AudioSystemCreateSineStreamSource(test->audioSys, StereoChannelCount, OutputSampleRate, &sineWave);
+	CheckTrue(test, memorySine != fpl_null && streamSine != fpl_null, "create both sine waves");
+	if(memorySine == fpl_null || streamSine == fpl_null) {
+		return;
+	}
+	CheckTrue(test, streamSine->buffer.frameCount == frameCount, "the stream is as long as the sine wave in memory");
+	AudioSineWaveData memoryWave = sineWave;
+	AudioGenerateSineWave(&memoryWave, memorySine->buffer.samples, memorySine->format.format, memorySine->format.sampleRate, memorySine->format.channels, frameCount);
+	bool isMemoryAdded = AudioSystemAddSource(test->audioSys, memorySine);
+	bool isStreamAdded = AudioSystemAddSource(test->audioSys, streamSine);
+	CheckTrue(test, isMemoryAdded && isStreamAdded, "add both sine waves");
+
+	AudioPlayItemID memoryId = PlayNoiseSource(test, memorySine, true, memoryVolume, AudioSystemDefaultPitch);
+	AudioPlayItemID streamId = PlayNoiseSource(test, streamSine, true, streamVolume, AudioSystemDefaultPitch);
+	MixCancellingCalls(test, callsPerStep);
+
+	// A preview mixes the sine wave in memory only and moves nothing
+	MixPreview(test, previewFrameCount);
+	MixCancellingCalls(test, callsPerStep);
+
+	AudioSystemSetPlayItemPitch(test->audioSys, memoryId, sincPitch);
+	AudioSystemSetPlayItemPitch(test->audioSys, streamId, sincPitch);
+	MixCancellingCalls(test, callsPerStep);
+	MixPreview(test, previewFrameCount);
+
+	AudioSystemSetPlayItemPitch(test->audioSys, memoryId, skippingPitch);
+	AudioSystemSetPlayItemPitch(test->audioSys, streamId, skippingPitch);
+	MixCancellingCalls(test, callsPerStep);
+
+	AudioSystemSetPlayItemPaused(test->audioSys, memoryId, true);
+	AudioSystemSetPlayItemPaused(test->audioSys, streamId, true);
+	MixCancellingCalls(test, callsPerStep);
+	AudioSystemSetPlayItemPaused(test->audioSys, memoryId, false);
+	AudioSystemSetPlayItemPaused(test->audioSys, streamId, false);
+	MixCancellingCalls(test, callsPerStep);
+
+	// Both wrap around more than once at pitch 2, then they end in the same call
+	AudioSystemSetPlayItemRepeat(test->audioSys, memoryId, false);
+	AudioSystemSetPlayItemRepeat(test->audioSys, streamId, false);
+	uint32_t callIndex = 0;
+	size_t itemCount = GetPlayItemCount(test);
+	bool isOneItemLeft = false;
+	while(itemCount > 0 && callIndex < MaxCallCount) {
+		MixCancellingCall(test);
+		itemCount = GetPlayItemCount(test);
+		if(itemCount == 1) {
+			isOneItemLeft = true;
+		}
+		++callIndex;
+	}
+	CheckTrue(test, itemCount == 0, "both sine waves end");
+	CheckTrue(test, !isOneItemLeft, "both sine waves end in the same call");
+	MixCancellingCalls(test, TailCallCount);
+
+	// The ended stream keeps its instance until a caller side function frees it
+	AudioSystemStats stats = fplZeroInit;
+	AudioSystemGetStats(test->audioSys, &stats);
+	CheckTrue(test, stats.streamSourceCount == 1, "one stream source");
+	CheckTrue(test, stats.streamInstanceCount == 1, "the ended stream keeps its instance");
+	CheckTrue(test, stats.failedStreamCount == 0, "the stream never failed");
+	AudioSystemStopAll(test->audioSys);
+	AudioSystemGetStats(test->audioSys, &stats);
+	CheckTrue(test, stats.streamInstanceCount == 0 && stats.streamInstanceByteCount == 0, "AudioSystemStopAll frees the ended stream instance");
+}
+
 typedef void (MixCaseFunction)(MixTest *test);
 
 typedef struct MixCase {
@@ -353,6 +463,7 @@ static const MixCase MixCases[] = {
 	{ "down2-up2", MixOutputChannels_Surround, RunEvenRatiosCase },
 	{ "four-items", MixOutputChannels_Stereo, RunFourItemsCase },
 	{ "stale-ids", MixOutputChannels_Stereo, RunStaleIdsCase },
+	{ "stream-cancel", MixOutputChannels_Stereo, RunStreamCancelCase },
 };
 
 static uint64_t RunMixCase(const MixCase *mixCase, const bool isVerbose, uint32_t *outFailedCheckCount) {
@@ -422,8 +533,12 @@ static void ConcurrentMixThread(const fplThreadHandle *thread, void *data) {
 	}
 }
 
-static int RunConcurrentMixers(void) {
+// Two threads mix one item at the same time, a source in memory or a sine wave stream. Returns 0 when the item moved on by exactly the frames of the calls that got the mixer
+static int RunConcurrentMixers(const bool isStream) {
 	const int failedExitCode = 1;
+	const char *lineName = isStream ? "concurrent-stream" : "concurrent";
+	const double sineToneVolume = 0.5;
+	const AudioHertz sineFrequency = 440;
 	fplAudioFormat targetFormat = fplZeroInit;
 	targetFormat.type = fplAudioFormatType_F32;
 	targetFormat.sampleRate = OutputSampleRate;
@@ -442,7 +557,16 @@ static int RunConcurrentMixers(void) {
 	// Passthrough and longer than all calls together, so the position counts every mixed frame
 	const uint32_t totalCallCount = ConcurrentCallCount * CONCURRENT_MIXER_COUNT;
 	const AudioFrameIndex sourceFrameCount = totalCallCount * ConcurrentCallFrameCount + ConcurrentCallFrameCount;
-	AudioSource *source = AudioSystemAllocateSource(audioSys, StereoChannelCount, OutputSampleRate, fplAudioFormatType_S16, sourceFrameCount);
+	AudioSource *source;
+	if(isStream) {
+		AudioSineWaveData sineWave = fplZeroInit;
+		sineWave.duration = (AudioDuration)sourceFrameCount / (AudioDuration)OutputSampleRate;
+		sineWave.toneVolume = sineToneVolume;
+		sineWave.frequency = sineFrequency;
+		source = AudioSystemCreateSineStreamSource(audioSys, StereoChannelCount, OutputSampleRate, &sineWave);
+	} else {
+		source = AudioSystemAllocateSource(audioSys, StereoChannelCount, OutputSampleRate, fplAudioFormatType_S16, sourceFrameCount);
+	}
 	bool isAdded = false;
 	if(source != fpl_null) {
 		isAdded = AudioSystemAddSource(audioSys, source);
@@ -483,10 +607,10 @@ static int RunConcurrentMixers(void) {
 	const bool isPlaying = (playId.value != 0) && (playItemCount == 1) && (playItem.id.value == playId.value);
 	const uint32_t acceptedCallCount = totalCallCount - stats.concurrentWriteCount;
 	const AudioFrameIndex expectedFrameCount = acceptedCallCount * ConcurrentCallFrameCount;
-	const bool isExact = isPlaying && (playItem.framesPlayed[0] == expectedFrameCount);
-	printf("concurrent: calls=%u rejected=%u frames_played=%u expected=%u %s\n", totalCallCount, stats.concurrentWriteCount, playItem.framesPlayed[0], expectedFrameCount, isExact ? "ok" : "FAILED");
+	const bool isExact = isPlaying && (playItem.framesPlayed[0] == expectedFrameCount) && (stats.failedStreamCount == 0);
+	printf("%s: calls=%u rejected=%u frames_played=%u expected=%u %s\n", lineName, totalCallCount, stats.concurrentWriteCount, playItem.framesPlayed[0], expectedFrameCount, isExact ? "ok" : "FAILED");
 	if(stats.concurrentWriteCount == 0) {
-		printf("concurrent: the calls never overlapped, the check above is weak\n");
+		printf("%s: the calls never overlapped, the check above is weak\n", lineName);
 	}
 
 	AudioSystemShutdown(audioSys);
@@ -505,8 +629,10 @@ int main(int argc, char **argv) {
 	}
 
 	if(isConcurrent) {
-		int concurrentResult = RunConcurrentMixers();
+		int memoryResult = RunConcurrentMixers(false);
+		int streamResult = RunConcurrentMixers(true);
 		fplPlatformRelease();
+		int concurrentResult = (memoryResult != 0) ? memoryResult : streamResult;
 		return(concurrentResult);
 	}
 

@@ -2,7 +2,8 @@
 # Prints the render matrix of the test bench, one case per line: <case id><TAB><player arguments>.
 # Usage: matrix.sh full|short
 # full: every track in every format with pitch 0.5, 1 and 2 (passthrough, SinC and both even-ratio paths), plus a few single cases for chunk size, volume and repeat.
-# Kept small on purpose (60 cases), test runs must stay light. More values go into the arrays below later (for example "stream" to load_modes).
+# Every case of full runs once loaded fully and once as a stream (--stream), both must give the same hash. A track that cannot stream yet loads fully then, its stream case is the same render.
+# Kept small on purpose (120 cases), test runs must stay light. More values go into the arrays below later.
 
 media_dir="media"
 
@@ -31,7 +32,7 @@ set_full_matrix() {
 	volumes=(1.0)
 	pitches=(1.0 0.5 2.0)
 	repeats=(0)
-	load_modes=(full)
+	load_modes=(full stream)
 	# track rate format channels chunk volume pitch repeat
 	single_cases=(
 		"crackout_44k.ogg 48000 s16 2 256 1.0 1.0 0"

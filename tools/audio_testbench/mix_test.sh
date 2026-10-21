@@ -79,14 +79,16 @@ fi
 run_test "$executable" > "$results_file"
 test_exit=$?
 
-# The number of rejected calls differs from run to run, only the verdict counts
-concurrent_line=$(run_test "$concurrent_executable" --concurrent | grep "^concurrent: calls=")
-concurrent_exit=$?
-echo "$concurrent_line"
-if [[ "$concurrent_line" != *" ok" ]]; then
-	echo "$variant: concurrent mixers FAILED" >&2
-	test_exit=1
-fi
+# The number of rejected calls differs from run to run, only the verdicts count: one for the source in memory, one for the stream
+concurrent_output=$(run_test "$concurrent_executable" --concurrent)
+for concurrent_name in concurrent concurrent-stream; do
+	concurrent_line=$(echo "$concurrent_output" | grep "^$concurrent_name: calls=")
+	echo "$concurrent_line"
+	if [[ "$concurrent_line" != *" ok" ]]; then
+		echo "$variant: $concurrent_name mixers FAILED" >&2
+		test_exit=1
+	fi
+done
 
 if [ $update_baseline -eq 1 ]; then
 	cp "$results_file" "$baseline_file"
