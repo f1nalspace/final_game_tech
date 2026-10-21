@@ -7,6 +7,7 @@ Cases:
 - pass-sinc: 48 kHz stereo passes through, 44.1 kHz mono goes through SinC and ends inside a call while the other one goes on. Previews, a volume change and a pause in between.
 - down2-up2: frame skipping and frame duplication with 6 output channels, a repeating item that wraps inside calls, a pitch change that switches its path while it plays.
 - four-items: four items at once, the second one ends first. The other three must be mixed in the same order as before, a different order changes the float sums. Then a stale id, a new play and a stop from the middle.
+- stale-ids: 600 short tones one after another, a few at once, more than twice the default pool of play items. A setter and a stop on the id of the first tone must change nothing.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies mix_two_items_test.c -o mix_two_items_test -lm -ldl -lpthread
@@ -292,6 +293,48 @@ static void RunFourItemsCase(MixTest *test) {
 	MixCalls(test, TailCallCount);
 }
 
+// The stale-ids case plays a few tones at once, the copies have room to spare
+#define STALE_ID_COPY_CAPACITY 16
+
+static void RunStaleIdsCase(MixTest *test) {
+	// More than twice the default pool of 256 play items, so every slot plays several tones
+	const uint32_t toneCount = 600;
+	// Longer than most calls, so a few tones play at once and end inside calls
+	const AudioFrameIndex toneFrameCount = 1200;
+	const uint32_t toneSeed = 9;
+	const float toneVolume = 0.25f;
+	const float staleVolume = 0.95f;
+
+	AudioSource *tone = CreateNoiseSource(test, MonoChannelCount, OutputSampleRate, toneFrameCount, toneSeed);
+	if(tone == fpl_null) {
+		return;
+	}
+	AudioPlayItemID firstId = PlayNoiseSource(test, tone, false, toneVolume, AudioSystemDefaultPitch);
+	for(uint32_t toneIndex = 1; toneIndex < toneCount; ++toneIndex) {
+		MixCalls(test, 1);
+		PlayNoiseSource(test, tone, false, toneVolume, AudioSystemDefaultPitch);
+	}
+
+	// The first tone ended long ago, its slot has played other tones since
+	bool isStaleVolumeChanged = AudioSystemSetPlayItemVolume(test->audioSys, firstId, staleVolume);
+	CheckTrue(test, !isStaleVolumeChanged, "a setter on the id of a reused slot returns false");
+	size_t itemCountBeforeStop = GetPlayItemCount(test);
+	bool isStaleStopped = AudioSystemStopOne(test->audioSys, firstId);
+	CheckTrue(test, !isStaleStopped, "a stop on the id of a reused slot returns false");
+	size_t itemCountAfterStop = GetPlayItemCount(test);
+	CheckTrue(test, itemCountAfterStop == itemCountBeforeStop, "a stop on the id of a reused slot stops nothing");
+
+	AudioPlayItem playItemCopies[STALE_ID_COPY_CAPACITY];
+	size_t copyCount = AudioSystemGetPlayItems(test->audioSys, playItemCopies, STALE_ID_COPY_CAPACITY);
+	CheckTrue(test, copyCount == itemCountAfterStop, "copy the playing tones");
+	for(size_t copyIndex = 0; copyIndex < copyCount; ++copyIndex) {
+		CheckTrue(test, playItemCopies[copyIndex].volume == toneVolume, "a setter on the id of a reused slot changes no other tone");
+	}
+
+	MixUntilItemCount(test, 0);
+	MixCalls(test, TailCallCount);
+}
+
 typedef void (MixCaseFunction)(MixTest *test);
 
 typedef struct MixCase {
@@ -304,6 +347,7 @@ static const MixCase MixCases[] = {
 	{ "pass-sinc", MixOutputChannels_Stereo, RunPassthroughAndSincCase },
 	{ "down2-up2", MixOutputChannels_Surround, RunEvenRatiosCase },
 	{ "four-items", MixOutputChannels_Stereo, RunFourItemsCase },
+	{ "stale-ids", MixOutputChannels_Stereo, RunStaleIdsCase },
 };
 
 static uint64_t RunMixCase(const MixCase *mixCase, const bool isVerbose, uint32_t *outFailedCheckCount) {
