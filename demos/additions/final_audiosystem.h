@@ -141,6 +141,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
+
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
 	- Changed (API BREAKING): AudioSystemPlaySource() takes a fifth argument, `pitch`. Every existing call site must add it; pass AudioSystemDefaultPitch for the previous behaviour, which costs nothing (see AudioPitchNeutralTolerance). It is a parameter rather than a post-play setter because pitch is a property of THAT play - a setter would leave the first mixed buffer sounding at the wrong rate before it landed
@@ -1758,7 +1761,8 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 			dspOut
 		);
 
-		const AudioFrameIndex playedFrameCount = resampleResult.inputCount;
+		// Frame skipping (AudioSimpleDownSampling) steps up to factor-1 frames past its input, which keeps the skipping grid across chunks, but never past the end of the source
+		const AudioFrameIndex playedFrameCount = fplMin(resampleResult.inputCount, inRemainingFrameCount);
 
 		// Clamp output frame count to what we actually need. AudioResampleInterleaved
 		// can produce 1 extra frame due to rounding when computing outFrameCount from
