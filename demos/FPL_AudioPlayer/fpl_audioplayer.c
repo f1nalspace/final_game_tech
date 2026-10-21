@@ -139,6 +139,7 @@ Changelog:
 	- Changed: --stats takes its values from AudioSystemGetStats() and shows the play items
 	- Changed: The end of a track is found by the id of its play item, other play items do not hold it up
 	- New: --stress plays, changes and stops short sine tones from a second thread
+	- Fixed: Data races in the hand over of the real-time visualization, of the full-track buffer and in the stop of the streaming thread
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -669,6 +670,8 @@ typedef struct AudioDemo {
 	volatile uint32_t isPlaybackResetRequested;
 	// The play item of the current track
 	volatile uint64_t currentPlayItemId;
+	// 1 once the streaming thread has written the full-track buffer of a track, Render shows it only then. It is written outside trackLock
+	volatile uint32_t isTrackFullBufferReady[MAX_AUDIO_TRACK_LIST_COUNT];
 	// Counts the track starts, the main thread updates title and visualization when it changes
 	volatile uint32_t trackChangeCount;
 	// Name of the current track, guarded by trackLock
@@ -683,7 +686,7 @@ typedef struct AudioDemo {
 	// Only the streaming thread in thread mode: the numFramesStreamed at which the current track ends, UINT32_MAX while unknown (repeating)
 	uint32_t streamedTrackEndFrameCount;
 
-	volatile fpl_b32 isStreamingThreadStopped;
+	volatile uint32_t isStreamingThreadStopped;
 	volatile uint32_t isStressThreadStopped;
 	fpl_b32 useRealTimeSamples;
 	SpectrumMode spectrumMode;
@@ -801,8 +804,9 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 }
 
 static void ClearVisualization(AudioDemo *demo) {
-	fplAtomicExchangeU32(&demo->visualization.hasVideoAudioChunk, 0);
-	fplClearStruct(&demo->visualization.videoAudioChunks);
+	// The device callback may write the new chunk right now, so only a finished one is dropped and the new one is left alone
+	fplAtomicIsCompareAndSwapU32(&demo->visualization.hasVideoAudioChunk, 2, 0);
+	fplClearStruct(&demo->visualization.videoAudioChunks[0]);
 	fplClearStruct(&demo->visualization.currentMagnitudes);
 	fplClearStruct(&demo->visualization.rawSamples);
 	fplClearStruct(&demo->visualization.monoSamples);
@@ -852,7 +856,10 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	if(HasAudioTrack(trackList)) {
 		fplAssert(trackList->currentIndex < (int32_t)trackList->count);
 		AudioTrack *track = trackList->tracks + trackList->currentIndex;
-		fullAudioBuffer = &track->outputFullBuffer;
+		uint32_t isFullBufferReady = fplAtomicLoadU32(&demo->isTrackFullBufferReady[trackList->currentIndex]);
+		if(isFullBufferReady != 0) {
+			fullAudioBuffer = &track->outputFullBuffer;
+		}
 	}
 
 	AudioVisualization *visualization = &demo->visualization;
@@ -903,7 +910,7 @@ static void Render(AudioDemo *demo, const int screenW, const int screenH, const 
 	if(isRealTime) {
 		if(fplAtomicIsCompareAndSwapU32(&visualization->hasVideoAudioChunk, 2, 3)) {
 			visualization->videoAudioChunks[0] = visualization->videoAudioChunks[1];
-			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 0);
+			fplAtomicStoreU32(&visualization->hasVideoAudioChunk, 0);
 		}
 
 		framesPlayed = GetTrackPosition(demo, chunk->index);
@@ -1221,7 +1228,7 @@ static void CaptureRealTimeChunk(AudioDemo *demo, const fplAudioFormat *outForma
 			visualization->videoAudioChunks[1].count = MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 			size_t chunkSamplesSize = frameSize * MAX_AUDIO_FRAMES_CHUNK_FRAMES;
 			fplMemoryCopy(outputSamples, chunkSamplesSize, visualization->videoAudioChunks[1].samples);
-			fplAtomicExchangeU32(&visualization->hasVideoAudioChunk, 2);
+			fplAtomicStoreU32(&visualization->hasVideoAudioChunk, 2);
 		}
 		demo->lastVideoAudioChunkUpdateTime = fplMillisecondsQuery();
 	}
@@ -1566,6 +1573,7 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 
 	fplMutexLock(&demo->trackLock);
 	if(needsPreview) {
+		fplAtomicStoreU32(&demo->isTrackFullBufferReady[trackIndex], 0);
 		AudioFormat fullAudioBufferFormat = fplZeroInit;
 		fullAudioBufferFormat.channels = demo->targetAudioFormat.channels;
 		fullAudioBufferFormat.format = demo->targetAudioFormat.type;
@@ -1586,6 +1594,7 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 	if(needsPreview && track->outputFullBuffer.bufferSize > 0) {
 		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, track->outputFullBuffer.samples, &demo->targetAudioFormat, trackFrameCount, false);
 		fplAssert(writtenFrames == trackFrameCount);
+		fplAtomicStoreU32(&demo->isTrackFullBufferReady[trackIndex], 1);
 	}
 }
 
@@ -1604,6 +1613,7 @@ static void ReplaceTrackList(AudioDemo *demo, const char *filePath) {
 	fplMutexLock(&demo->trackLock);
 	for(uint32_t trackIndex = 0; trackIndex < fplArrayCount(demo->trackList.tracks); ++trackIndex) {
 		AudioTrack *track = &demo->trackList.tracks[trackIndex];
+		fplAtomicStoreU32(&demo->isTrackFullBufferReady[trackIndex], 0);
 		FreeAudioBuffer(&demo->audioSys.memory, &track->outputFullBuffer);
 		fplClearStruct(track);
 	}
@@ -1853,7 +1863,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 	bool ignoreWait = false;
 	uint64_t startTime = fplMillisecondsQuery();
-	while(!demo->isStreamingThreadStopped) {
+	while(fplAtomicLoadU32(&demo->isStreamingThreadStopped) == 0) {
 		uint32_t trackChangeCount = fplAtomicLoadU32(&demo->trackChangeCount);
 		ProcessTrackRequests(demo);
 		// The output ring is empty after a track switch, it fills from the first entry on without waiting
@@ -3422,7 +3432,7 @@ done:
 
 	// Wait for decoding thread to stop
 	if(demo->streamingThread != fpl_null) {
-		demo->isStreamingThreadStopped = 1;
+		fplAtomicStoreU32(&demo->isStreamingThreadStopped, 1);
 		fplThreadWaitForOne(demo->streamingThread, FPL_TIMEOUT_INFINITE);
 		fplThreadTerminate(demo->streamingThread);
 	}
