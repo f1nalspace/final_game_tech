@@ -120,6 +120,7 @@ Todo:
 
 Changelog:
 	## 2026-10-21
+	- Fixed: The ring display reads head and tail of the output ring atomically
 	- New: Command line options for the audio device, the mixer mode, the output ring size, the sine track and the play item, see --help
 	- Changed: Without --device no target device is given, the platform plays on the system default device and follows it
 	- Fixed: The generated sine track was played twice when it was started
@@ -780,8 +781,9 @@ static void RenderRingBuffer(const Vec2f pos, const Vec2f dim, LockFreeRingBuffe
 
 	uint64_t remaining = bufferLen - fillCount;
 
-	uint64_t tail = buffer->tail;
-	uint64_t head = buffer->head;
+	// The streaming thread and the device callback move them while this draws
+	uint64_t tail = fplAtomicLoadU64(&buffer->tail);
+	uint64_t head = fplAtomicLoadU64(&buffer->head);
 
 	float tailPos = pos.x + (float)tail * bufferScale;
 	float headPos = pos.x + (float)head * bufferScale;

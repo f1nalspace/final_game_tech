@@ -256,6 +256,7 @@ SOFTWARE.
 	- Fixed: A thread wait could wait for a later thread that got the same system identifier
 	- Changed: Stopped thread slots are handed out again as late as possible
 	- Changed: [POSIX] fplAtomicStore* are sequentially consistent stores (__atomic_store_n)
+	- Changed: [POSIX] fplAtomicExchange* are sequentially consistent exchanges (__atomic_exchange_n), ThreadSanitizer did not see the fence in front of them
 	- New: Added field generation to fplThreadHandle
 
 	#### IO
@@ -26454,24 +26455,27 @@ fpl_platform_api void fplAtomicReadWriteFence(void) {
 	__sync_synchronize();
 }
 
+// A sequentially consistent exchange is a release and an acquire, so it publishes the writes before it to a thread that sees the new value.
+// The fence in front of __sync_lock_test_and_set does the same on the hardware, but ThreadSanitizer does not see it, the exchange alone is only an acquire.
+#if defined(__ATOMIC_SEQ_CST)
+#	define FPL__POSIX_ATOMIC_EXCHANGE(target, value) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST)
+#else
+#	define FPL__POSIX_ATOMIC_EXCHANGE(target, value) (__sync_synchronize(), __sync_lock_test_and_set(target, value))
+#endif
 fpl_platform_api uint32_t fplAtomicExchangeU32(volatile uint32_t *target, const uint32_t value) {
-	__sync_synchronize();
-	uint32_t result = __sync_lock_test_and_set(target, value);
+	uint32_t result = FPL__POSIX_ATOMIC_EXCHANGE(target, value);
 	return(result);
 }
 fpl_platform_api uint64_t fplAtomicExchangeU64(volatile uint64_t *target, const uint64_t value) {
-	__sync_synchronize();
-	uint64_t result = __sync_lock_test_and_set(target, value);
+	uint64_t result = FPL__POSIX_ATOMIC_EXCHANGE(target, value);
 	return(result);
 }
 fpl_platform_api int32_t fplAtomicExchangeS32(volatile int32_t *target, const int32_t value) {
-	__sync_synchronize();
-	int32_t result = __sync_lock_test_and_set(target, value);
+	int32_t result = FPL__POSIX_ATOMIC_EXCHANGE(target, value);
 	return(result);
 }
 fpl_platform_api int64_t fplAtomicExchangeS64(volatile int64_t *target, const int64_t value) {
-	__sync_synchronize();
-	int64_t result = __sync_lock_test_and_set(target, value);
+	int64_t result = FPL__POSIX_ATOMIC_EXCHANGE(target, value);
 	return(result);
 }
 
