@@ -72,7 +72,7 @@ typedef struct AudioTrackList {
 	fpl_b32 changedPending;
 } AudioTrackList;
 
-static bool HasAudioTrack(AudioTrackList *tracklist) {
+static inline bool HasAudioTrack(AudioTrackList *tracklist) {
 	if(tracklist->changedPending)
 		return(false);
 	if (!(tracklist->currentIndex >= 0 && tracklist->currentIndex < (int32_t)tracklist->count))
@@ -82,14 +82,14 @@ static bool HasAudioTrack(AudioTrackList *tracklist) {
 	return(result);
 }
 
-static void StopAllAudioTracks(AudioSystem *audioSys, AudioTrackList *tracklist) {
+static inline void StopAllAudioTracks(AudioSystem *audioSys, AudioTrackList *tracklist) {
 	AudioSystemStopAll(audioSys);
 	tracklist->currentIndex = -1;
 	tracklist->lastIndex = -1;
 	tracklist->changedPending = false;
 }
 
-static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, const uint32_t index) {
+static inline bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, const uint32_t index) {
 	if(index < tracklist->count) {
 		AudioTrack *track = tracklist->tracks + index;
 		AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
@@ -136,7 +136,7 @@ typedef enum LoadAudioTrackFlags {
 	LoadAudioTrackFlags_AutoPlay = 1 << 1,
 } LoadAudioTrackFlags;
 
-static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *sources, const size_t sourceCount, const bool forceSineWave, const AudioSineWaveData *sineWave, const LoadAudioTrackFlags flags, AudioTrackList *tracklist) {
+static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *sources, const size_t sourceCount, const bool forceSineWave, const AudioSineWaveData *sineWave, const LoadAudioTrackFlags flags, AudioTrackList *tracklist) {
 	// Stop any audio tracks
 	StopAllAudioTracks(audioSys, tracklist);
 
@@ -224,7 +224,7 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 			AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
 			AudioChannelIndex channels = audioSys->targetFormat.channels;
 			AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
-			AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
+			AudioSource *source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, frameCount);
 			if(source != fpl_null) {
 				fplAssert(source->type == AudioSourceType_Allocated);
 
