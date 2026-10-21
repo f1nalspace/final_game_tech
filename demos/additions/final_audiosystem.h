@@ -145,6 +145,7 @@ Changelog:
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
 	- Fixed: Even upsampling left the end of every mix call silent when its frame count was no multiple of the factor
 	- Fixed: AudioSystemGetPlayItems() and AudioSystemGetSources() could write past the destination when an entry was added between the size check and the copy
+	- Changed: The mixer clears only the used part of the mixing buffer and no longer the DSP buffers
 
 	## 2026-08-07
 	- New: AudioSystemDefaultPitch - the file as recorded (1.0f), what every call site that does not care about pitch passes. A macro, so it is a constant expression in C99, C++ and MSVC alike
@@ -1865,10 +1866,11 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	// The requested frame count must fit in the mixing buffer
 	fplAssert(targetFrameCount <= audioSys->mixingBuffer.maxFrameCount);
 
-	// Clear all three static scratch buffers to zero
-	fplMemoryClear(audioSys->dspInBuffer.samples, fplArrayCount(audioSys->dspInBuffer.samples));
-	fplMemoryClear(audioSys->dspOutBuffer.samples, fplArrayCount(audioSys->dspOutBuffer.samples));
-	fplMemoryClear(audioSys->mixingBuffer.samples, fplArrayCount(audioSys->mixingBuffer.samples));
+	// Every item adds into the mixing buffer from its first frame on, so only the frames of this call need zeros.
+	// The DSP buffers need none: each step reads only what the step before wrote for the same item.
+	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
+	const size_t mixingByteCount = (size_t)targetFrameCount * outChannelCount * sizeof(float);
+	fplMemoryClear(audioSys->mixingBuffer.samples, mixingByteCount);
 
 #define GENSINEWAVE 0
 
