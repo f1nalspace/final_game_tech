@@ -85,6 +85,11 @@ How the demo works:
 	--volume, --pitch and --repeat apply to the play item of every loaded file.
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
+	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
+	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n>
+	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
+	In render mode --volume, --pitch and --repeat apply to the sine wave too.
+
 Known Issues / Limitations:
 	- Visualization of FFT is incorrect
 	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
@@ -107,6 +112,7 @@ Changelog:
 	- Changed: Without --device no target device is given, the platform plays on the system default device and follows it
 	- Fixed: The generated sine track was played twice when it was started
 	- Fixed: The temporary stream buffer was smaller than the output ring, which is rounded up to whole memory pages
+	- New: Offline render mode (--render, --render-wav) that prints a hash of the mixed samples
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -328,21 +334,181 @@ typedef enum PlaybackMode {
 	PlaybackMode_Count,
 } PlaybackMode;
 
+// Output sample format of the offline render, chosen with --format
+typedef enum RenderFormat {
+	RenderFormat_S16 = 0,
+	RenderFormat_F32,
+
+	RenderFormat_Count,
+} RenderFormat;
+
+// Same order as RenderFormat
+static const fplAudioFormatType RenderFormatTypes[] = {
+	fplAudioFormatType_S16,
+	fplAudioFormatType_F32,
+};
+
 #define MAX_PLAYER_FILE_COUNT 8
 
 typedef struct PlayerOptions {
 	char deviceName[FPL_MAX_NAME_LENGTH];
+	char renderWavePath[FPL_MAX_PATH_LENGTH];
 	const char *files[MAX_PLAYER_FILE_COUNT];
 	size_t fileCount;
 	int32_t mixerMode;
 	int32_t ringMilliseconds;
+	int32_t renderChunkFrameCount;
+	int32_t renderSampleRate;
+	int32_t renderFormat;
+	int32_t renderChannelCount;
+	float renderSeconds;
 	float sineSeconds;
 	float volume;
 	float pitch;
 	bool isSine;
 	bool isRepeat;
+	bool isRender;
 	bool isHelp;
 } PlayerOptions;
+
+// The sine wave of --sine and of the device sine
+static AudioSineWaveData MakeSineWave(const float seconds) {
+	const AudioHertz sineFrequency = 440;
+	const double sineToneVolume = 0.25;
+	AudioSineWaveData result = fplZeroInit;
+	result.frequency = sineFrequency;
+	result.toneVolume = sineToneVolume;
+	result.duration = seconds;
+	return(result);
+}
+
+// Cost of AudioSystemWriteFrames calls in 1 us steps up to 10 ms, the last bucket counts every call above
+#define MIX_COST_BUCKET_COUNT 10000
+
+typedef struct MixCostHistogram {
+	uint32_t buckets[MIX_COST_BUCKET_COUNT + 1];
+	uint64_t callCount;
+	double totalMicroseconds;
+	double maxMicroseconds;
+} MixCostHistogram;
+
+static const double MicrosecondsPerSecond = 1000000.0;
+
+static void RecordMixCost(MixCostHistogram *histogram, const double microseconds) {
+	size_t bucketIndex = MIX_COST_BUCKET_COUNT;
+	if(microseconds < (double)MIX_COST_BUCKET_COUNT) {
+		bucketIndex = (size_t)microseconds;
+	}
+	++histogram->buckets[bucketIndex];
+	++histogram->callCount;
+	histogram->totalMicroseconds += microseconds;
+	histogram->maxMicroseconds = fplMax(histogram->maxMicroseconds, microseconds);
+}
+
+static double GetMixCostMean(const MixCostHistogram *histogram) {
+	double result = 0.0;
+	if(histogram->callCount > 0) {
+		result = histogram->totalMicroseconds / (double)histogram->callCount;
+	}
+	return(result);
+}
+
+// Upper edge of the bucket that reaches the given share of all calls, never above the maximum
+static double GetMixCostPercentile(const MixCostHistogram *histogram, const double share) {
+	if(histogram->callCount == 0) {
+		return(0.0);
+	}
+	double neededShareCount = ceil(share * (double)histogram->callCount);
+	uint64_t neededCount = (uint64_t)neededShareCount;
+	uint64_t count = 0;
+	for(size_t bucketIndex = 0; bucketIndex < MIX_COST_BUCKET_COUNT; ++bucketIndex) {
+		count += histogram->buckets[bucketIndex];
+		if(count >= neededCount) {
+			double bucketUpperEdge = (double)(bucketIndex + 1);
+			return(fplMin(bucketUpperEdge, histogram->maxMicroseconds));
+		}
+	}
+	return(histogram->maxMicroseconds);
+}
+
+// FNV-1a 64-bit, the hash of the rendered samples
+static const uint64_t Fnv1a64OffsetBasis = 0xcbf29ce484222325ULL;
+static const uint64_t Fnv1a64Prime = 0x100000001b3ULL;
+
+static uint64_t HashFnv1a64(const uint64_t hash, const void *data, const size_t size) {
+	const uint8_t *bytes = (const uint8_t *)data;
+	uint64_t result = hash;
+	for(size_t byteIndex = 0; byteIndex < size; ++byteIndex) {
+		result ^= bytes[byteIndex];
+		result *= Fnv1a64Prime;
+	}
+	return(result);
+}
+
+typedef struct ProcessMemoryUsage {
+	// Peak of the resident memory (VmHWM)
+	uint64_t highWaterKilobytes;
+	// Resident memory now (VmRSS)
+	uint64_t residentKilobytes;
+} ProcessMemoryUsage;
+
+#if defined(FPL_PLATFORM_LINUX)
+// The number of a "<key>: <number> kB" line of /proc/self/status, 0 when the key is missing
+static uint64_t FindProcStatusKilobytes(const char *statusText, const char *key) {
+	size_t keyLength = fplGetStringLength(key);
+	const char *line = statusText;
+	while(*line != 0) {
+		size_t lineLength = 0;
+		while(line[lineLength] != 0 && line[lineLength] != '\n') {
+			++lineLength;
+		}
+		bool isKeyLine = (lineLength > keyLength) && fplIsStringEqualLen(line, keyLength, key, keyLength) && (line[keyLength] == ':');
+		if(isKeyLine) {
+			const char *digit = line + keyLength + 1;
+			while(*digit == ' ' || *digit == '\t') {
+				++digit;
+			}
+			const uint64_t decimalBase = 10;
+			uint64_t result = 0;
+			while(*digit >= '0' && *digit <= '9') {
+				result = result * decimalBase + (uint64_t)(*digit - '0');
+				++digit;
+			}
+			return(result);
+		}
+		line += lineLength;
+		if(*line == '\n') {
+			++line;
+		}
+	}
+	return(0);
+}
+#endif
+
+// Linux only, zero elsewhere
+static ProcessMemoryUsage GetProcessMemoryUsage(void) {
+	ProcessMemoryUsage result = fplZeroInit;
+#if defined(FPL_PLATFORM_LINUX)
+	fplFileHandle statusFile = fplZeroInit;
+	if(fplFileOpenBinary("/proc/self/status", &statusFile)) {
+		char statusText[8192];
+		uint32_t textLength = 0;
+		uint32_t maxTextLength = (uint32_t)fplArrayCount(statusText) - 1;
+		while(textLength < maxTextLength) {
+			uint32_t readLength = fplFileReadBlock32(&statusFile, maxTextLength - textLength, statusText + textLength, maxTextLength - textLength);
+			if(readLength == 0) {
+				break;
+			}
+			textLength += readLength;
+		}
+		statusText[textLength] = 0;
+		fplFileClose(&statusFile);
+		result.highWaterKilobytes = FindProcStatusKilobytes(statusText, "VmHWM");
+		result.residentKilobytes = FindProcStatusKilobytes(statusText, "VmRSS");
+	}
+#endif
+	return(result);
+}
 
 typedef struct AudioDemo {
 	AudioVisualization visualization;
@@ -1507,6 +1673,8 @@ typedef enum PlayerOptionType {
 	PlayerOptionType_Float,
 	// One name out of a list, stores its index as int32_t
 	PlayerOptionType_Choice,
+	// No option, a heading line in the help (the description)
+	PlayerOptionType_Heading,
 } PlayerOptionType;
 
 typedef struct PlayerOptionChoice {
@@ -1521,6 +1689,14 @@ static const PlayerOptionChoice MixerModeChoices[] = {
 	{ "device-sine", "the device callback generates a sine wave, no audio system involved" },
 };
 fplStaticAssert(fplArrayCount(MixerModeChoices) == PlaybackMode_Count);
+
+// Same order as RenderFormat
+static const PlayerOptionChoice RenderFormatChoices[] = {
+	{ "s16", "16-bit signed integer" },
+	{ "f32", "32-bit float" },
+};
+fplStaticAssert(fplArrayCount(RenderFormatChoices) == RenderFormat_Count);
+fplStaticAssert(fplArrayCount(RenderFormatTypes) == RenderFormat_Count);
 
 typedef struct PlayerOptionDefinition {
 	PlayerOptionType type;
@@ -1547,6 +1723,14 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
 	{ PlayerOptionType_Float, "pitch", "<p>", PLAYER_OPTION_FIELD(pitch), fpl_null, 0, "Pitch of the play item, 2 is an octave up and half as long" },
 	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
+	{ PlayerOptionType_Heading, fpl_null, fpl_null, 0, 0, fpl_null, 0, "Offline render (no window, no audio device):" },
+	{ PlayerOptionType_Flag, "render", fpl_null, PLAYER_OPTION_FIELD(isRender), fpl_null, 0, "Mix the first track in fixed chunks and print a hash of the samples" },
+	{ PlayerOptionType_String, "render-wav", "<file.wav>", PLAYER_OPTION_FIELD(renderWavePath), fpl_null, 0, "Like --render, and also write the samples into a wave file" },
+	{ PlayerOptionType_Int, "chunk", "<frames>", PLAYER_OPTION_FIELD(renderChunkFrameCount), fpl_null, 0, "Frames per AudioSystemWriteFrames call" },
+	{ PlayerOptionType_Int, "rate", "<hz>", PLAYER_OPTION_FIELD(renderSampleRate), fpl_null, 0, "Output sample rate" },
+	{ PlayerOptionType_Choice, "format", fpl_null, PLAYER_OPTION_FIELD(renderFormat), RenderFormatChoices, fplArrayCount(RenderFormatChoices), "Output sample format:" },
+	{ PlayerOptionType_Int, "channels", "<n>", PLAYER_OPTION_FIELD(renderChannelCount), fpl_null, 0, "Output channel count" },
+	{ PlayerOptionType_Float, "seconds", "<s>", PLAYER_OPTION_FIELD(renderSeconds), fpl_null, 0, "Length to render, 0 is the track length, with --repeat twice that" },
 };
 
 static const char PlayerOptionPrefix[] = "--";
@@ -1555,12 +1739,19 @@ static PlayerOptions MakeDefaultPlayerOptions(void) {
 	const int32_t defaultRingMilliseconds = 10000;
 	const float defaultSineSeconds = 10.0f;
 	const float defaultVolume = 1.0f;
+	const int32_t defaultRenderChunkFrameCount = 512;
+	const int32_t defaultRenderSampleRate = 48000;
+	const int32_t defaultRenderChannelCount = 2;
 	PlayerOptions result = fplZeroInit;
 	result.mixerMode = PlaybackMode_Thread;
 	result.ringMilliseconds = defaultRingMilliseconds;
 	result.sineSeconds = defaultSineSeconds;
 	result.volume = defaultVolume;
 	result.pitch = AudioSystemDefaultPitch;
+	result.renderChunkFrameCount = defaultRenderChunkFrameCount;
+	result.renderSampleRate = defaultRenderSampleRate;
+	result.renderFormat = RenderFormat_S16;
+	result.renderChannelCount = defaultRenderChannelCount;
 	return(result);
 }
 
@@ -1621,6 +1812,10 @@ static void PrintPlayerHelp(void) {
 	fplConsoleFormatOut("FPL_AudioPlayer [options] [file ...]\n\n");
 	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
 		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
+		if(definition->type == PlayerOptionType_Heading) {
+			fplConsoleFormatOut("\n%s\n", definition->description);
+			continue;
+		}
 
 		char syntax[128];
 		FormatPlayerOptionSyntax(definition, syntax, fplArrayCount(syntax));
@@ -1662,6 +1857,9 @@ static void PrintPlayerHelp(void) {
 static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name, const size_t nameLength) {
 	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
 		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
+		if(definition->type == PlayerOptionType_Heading) {
+			continue;
+		}
 		size_t definitionNameLength = fplGetStringLength(definition->name);
 		if(fplIsStringEqualLen(name, nameLength, definition->name, definitionNameLength)) {
 			return(definition);
@@ -1810,13 +2008,31 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 		fplConsoleFormatError("--sine plays only the sine wave, it takes no files\n");
 		return(false);
 	}
+	if(options->isRender) {
+		if(options->renderChunkFrameCount <= 0) {
+			fplConsoleFormatError("--chunk must be above 0\n");
+			return(false);
+		}
+		if(options->renderSampleRate <= 0) {
+			fplConsoleFormatError("--rate must be above 0\n");
+			return(false);
+		}
+		if(options->renderChannelCount <= 0 || options->renderChannelCount > (int32_t)MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT) {
+			fplConsoleFormatError("--channels must be between 1 and %d\n", (int)MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT);
+			return(false);
+		}
+		if(options->renderSeconds < 0.0f) {
+			fplConsoleFormatError("--seconds must not be negative\n");
+			return(false);
+		}
+	}
 	return(true);
 }
 
 static void LogPlayerOptions(const PlayerOptions *options) {
 	for(size_t definitionIndex = 0; definitionIndex < fplArrayCount(PlayerOptionDefinitions); ++definitionIndex) {
 		const PlayerOptionDefinition *definition = &PlayerOptionDefinitions[definitionIndex];
-		if(definition->fieldOffset == offsetof(PlayerOptions, isHelp)) {
+		if(definition->type == PlayerOptionType_Heading || definition->fieldOffset == offsetof(PlayerOptions, isHelp)) {
 			continue;
 		}
 		char value[FPL_MAX_NAME_LENGTH];
@@ -1876,6 +2092,224 @@ static bool SelectAudioDevice(const char *deviceName, fplSettings *settings) {
 	return(isFound);
 }
 
+//
+// Offline render
+//
+
+// RIFF header with one fmt chunk (without cbSize) and one data chunk, the samples follow it
+static bool WriteWaveFileHeader(const fplFileHandle *file, const fplAudioFormat *format, const AudioFrameIndex frameCount) {
+	const uint32_t formatChunkSize = (uint32_t)(sizeof(WaveFormatEx) - sizeof(uint16_t));
+	const uint32_t bitsPerByte = 8;
+	uint32_t frameSize = (uint32_t)fplGetAudioFrameSizeInBytes(format->type, format->channels);
+	uint32_t sampleSize = (uint32_t)fplGetAudioSampleSizeInBytes(format->type);
+	uint32_t dataSize = frameSize * frameCount;
+
+	WaveHeader header = fplZeroInit;
+	header.chunkId = WaveChunkId_RIFF;
+	header.chunkSize = (uint32_t)(sizeof(header.formatId) + sizeof(WaveChunk) + formatChunkSize + sizeof(WaveChunk)) + dataSize;
+	header.formatId = WaveChunkId_WAVE;
+
+	WaveChunk formatChunk = fplZeroInit;
+	formatChunk.id = WaveChunkId_Format;
+	formatChunk.size = formatChunkSize;
+
+	WaveFormatEx waveFormat = fplZeroInit;
+	waveFormat.formatTag = (format->type == fplAudioFormatType_F32) ? WaveFormatTags_IEEEFloat : WaveFormatTags_PCM;
+	waveFormat.numberOfChannels = format->channels;
+	waveFormat.samplesPerSecond = format->sampleRate;
+	waveFormat.avgBytesPerSample = format->sampleRate * frameSize;
+	waveFormat.blockAlign = (uint16_t)frameSize;
+	waveFormat.bitsPerSample = (uint16_t)(sampleSize * bitsPerByte);
+
+	WaveChunk dataChunk = fplZeroInit;
+	dataChunk.id = WaveChunkId_Data;
+	dataChunk.size = dataSize;
+
+	bool result = (fplFileWriteBlock32(file, &header, sizeof(header)) == sizeof(header));
+	result = result && (fplFileWriteBlock32(file, &formatChunk, sizeof(formatChunk)) == sizeof(formatChunk));
+	result = result && (fplFileWriteBlock32(file, &waveFormat, formatChunkSize) == formatChunkSize);
+	result = result && (fplFileWriteBlock32(file, &dataChunk, sizeof(dataChunk)) == sizeof(dataChunk));
+	return(result);
+}
+
+/**
+* @brief Mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints the result line with the hash of the samples.
+* @param[in] options The options, --volume, --pitch and --repeat apply to the sine wave too.
+* @return Returns the exit code of the player, 0 when the whole track was rendered.
+*/
+static int RenderOffline(const PlayerOptions *options) {
+	const int renderFailedExitCode = 1;
+	const double roundingOffset = 0.5;
+	const double percentileShare = 0.99;
+	const AudioFrameIndex repeatPassCount = 2;
+
+	int result = renderFailedExitCode;
+
+	fplSettings settings = fplMakeDefaultSettings();
+	if(!fplPlatformInit(fplInitFlags_None, &settings)) {
+		FPL_LOG_ERROR("Render", "Failed to initialize the platform");
+		return(renderFailedExitCode);
+	}
+
+	AudioSystem *audioSys = (AudioSystem *)fplMemoryAllocate(sizeof(AudioSystem));
+	AudioTrackList *trackList = (AudioTrackList *)fplMemoryAllocate(sizeof(AudioTrackList));
+	MixCostHistogram *histogram = (MixCostHistogram *)fplMemoryAllocate(sizeof(MixCostHistogram));
+	uint8_t *chunkSamples = fpl_null;
+	fplFileHandle waveFile = fplZeroInit;
+	bool isWaveFileOpen = false;
+	bool isAudioSystemInitialized = false;
+	if(audioSys == fpl_null || trackList == fpl_null || histogram == fpl_null) {
+		goto done;
+	}
+
+	fplAudioFormat targetFormat = fplZeroInit;
+	targetFormat.type = RenderFormatTypes[options->renderFormat];
+	targetFormat.sampleRate = (uint32_t)options->renderSampleRate;
+	targetFormat.channels = (uint16_t)options->renderChannelCount;
+	if(!AudioSystemInit(audioSys, &targetFormat)) {
+		FPL_LOG_ERROR("Render", "Failed to initialize the audio system");
+		goto done;
+	}
+	isAudioSystemInitialized = true;
+
+	// The track the player would play first: the sine wave, the first file or the built-in music
+	AudioTrackSource trackSource = fplZeroInit;
+	size_t trackSourceCount = 0;
+	if(options->fileCount > 0) {
+		if(!SetAudioTrackSourceFromFile(audioSys, &trackSource, options->files[0])) {
+			goto done;
+		}
+		trackSourceCount = 1;
+	} else if(!options->isSine) {
+		if(!IsAudioSampleRateSupported(audioSys, sampleRate_musicTavsControlArgofox)) {
+			FPL_LOG_ERROR("Render", "The built-in music cannot be converted to %u Hz", targetFormat.sampleRate);
+			goto done;
+		}
+		trackSource.type = AudioTrackSourceType_Data;
+		fplCopyString(name_musicTavsControlArgofox, trackSource.name, fplArrayCount(trackSource.name));
+		trackSource.data.size = sizeOf_musicTavsControlArgofox;
+		trackSource.data.data = ptr_musicTavsControlArgofox;
+		trackSourceCount = 1;
+	}
+
+	AudioSineWaveData sineWave = MakeSineWave(options->sineSeconds);
+	if(!LoadAudioTrackList(audioSys, &trackSource, trackSourceCount, options->isSine, &sineWave, LoadAudioTrackFlags_AutoLoad, trackList)) {
+		goto done;
+	}
+	AudioSource *source = fpl_null;
+	if(trackList->count > 0) {
+		source = AudioSystemGetSourceByID(audioSys, trackList->tracks[0].sourceID);
+	}
+	if(source == fpl_null) {
+		FPL_LOG_ERROR("Render", "Failed to load the track");
+		goto done;
+	}
+
+	AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, options->isRepeat, options->volume, options->pitch);
+	if(playID.value == 0) {
+		FPL_LOG_ERROR("Render", "Failed to play the track");
+		goto done;
+	}
+
+	AudioFrameIndex totalFrameCount;
+	if(options->renderSeconds > 0.0f) {
+		double requestedFrameCount = (double)options->renderSeconds * (double)targetFormat.sampleRate + roundingOffset;
+		totalFrameCount = (AudioFrameIndex)requestedFrameCount;
+	} else {
+		AudioFrameIndex trackFrameCount = GetPlayedFrameCount(source, options->pitch, targetFormat.sampleRate);
+		totalFrameCount = options->isRepeat ? trackFrameCount * repeatPassCount : trackFrameCount;
+	}
+
+	size_t frameSize = fplGetAudioFrameSizeInBytes(targetFormat.type, targetFormat.channels);
+	AudioFrameIndex chunkFrameCount = (AudioFrameIndex)options->renderChunkFrameCount;
+	chunkSamples = (uint8_t *)fplMemoryAllocate(frameSize * chunkFrameCount);
+	if(chunkSamples == fpl_null) {
+		goto done;
+	}
+
+	size_t wavePathLength = fplGetStringLength(options->renderWavePath);
+	if(wavePathLength > 0) {
+		if(!fplFileCreateBinary(options->renderWavePath, &waveFile)) {
+			FPL_LOG_ERROR("Render", "Failed to create the wave file '%s'", options->renderWavePath);
+			goto done;
+		}
+		isWaveFileOpen = true;
+		if(!WriteWaveFileHeader(&waveFile, &targetFormat, totalFrameCount)) {
+			FPL_LOG_ERROR("Render", "Failed to write the wave file '%s'", options->renderWavePath);
+			goto done;
+		}
+	}
+
+	uint64_t hash = Fnv1a64OffsetBasis;
+	AudioFrameIndex renderedFrameCount = 0;
+	while(renderedFrameCount < totalFrameCount) {
+		AudioFrameIndex remainingFrameCount = totalFrameCount - renderedFrameCount;
+		AudioFrameIndex framesToWrite = fplMin(chunkFrameCount, remainingFrameCount);
+
+		fplTimestamp mixStart = fplTimestampQuery();
+		AudioFrameIndex writtenFrameCount = AudioSystemWriteFrames(audioSys, chunkSamples, &targetFormat, framesToWrite, true);
+		fplTimestamp mixEnd = fplTimestampQuery();
+		fplSeconds mixSeconds = fplTimestampElapsed(mixStart, mixEnd);
+		RecordMixCost(histogram, mixSeconds * MicrosecondsPerSecond);
+
+		if(writtenFrameCount != framesToWrite) {
+			FPL_LOG_ERROR("Render", "The mixer wrote %u instead of %u frames", writtenFrameCount, framesToWrite);
+			goto done;
+		}
+
+		size_t chunkByteCount = writtenFrameCount * frameSize;
+		hash = HashFnv1a64(hash, chunkSamples, chunkByteCount);
+
+		if(isWaveFileOpen) {
+			uint32_t writtenByteCount = fplFileWriteBlock32(&waveFile, chunkSamples, (uint32_t)chunkByteCount);
+			if(writtenByteCount != chunkByteCount) {
+				FPL_LOG_ERROR("Render", "Failed to write the wave file '%s'", options->renderWavePath);
+				goto done;
+			}
+		}
+
+		renderedFrameCount += writtenFrameCount;
+	}
+
+	// One space separated name=value line, the scripts read the fields by name
+	char fileName[256];
+	fplCopyString(options->isSine ? "sine" : trackSource.name, fileName, fplArrayCount(fileName));
+	for(char *nameChar = fileName; *nameChar != 0; ++nameChar) {
+		if(*nameChar == ' ') {
+			*nameChar = '_';
+		}
+	}
+	ProcessMemoryUsage memoryUsage = GetProcessMemoryUsage();
+	double mixMeanMicroseconds = GetMixCostMean(histogram);
+	double mixPercentileMicroseconds = GetMixCostPercentile(histogram, percentileShare);
+	const char *formatName = RenderFormatChoices[options->renderFormat].name;
+	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes);
+
+	result = 0;
+
+done:
+	if(isWaveFileOpen) {
+		fplFileClose(&waveFile);
+	}
+	if(chunkSamples != fpl_null) {
+		fplMemoryFree(chunkSamples);
+	}
+	if(isAudioSystemInitialized) {
+		AudioSystemShutdown(audioSys);
+	}
+	if(histogram != fpl_null) {
+		fplMemoryFree(histogram);
+	}
+	if(trackList != fpl_null) {
+		fplMemoryFree(trackList);
+	}
+	if(audioSys != fpl_null) {
+		fplMemoryFree(audioSys);
+	}
+	fplPlatformRelease();
+	return(result);
+}
+
 int main(int argc, char **args) {
     // Log everything into the standard console. Adding the error console would write every line a second
     // time, and the debug output is a real one on Windows only - anywhere else it is that same console again.
@@ -1898,17 +2332,24 @@ int main(int argc, char **args) {
 		PrintPlayerHelp();
 		return(0);
 	}
+	// --render-wav renders as well
+	size_t renderWavePathLength = fplGetStringLength(options.renderWavePath);
+	if(renderWavePathLength > 0) {
+		options.isRender = true;
+	}
 	if(!ValidatePlayerOptions(&options)) {
 		return(invalidArgumentsExitCode);
 	}
 	LogPlayerOptions(&options);
 
+	if(options.isRender) {
+		return(RenderOffline(&options));
+	}
+
 	AudioDemo *demo = (AudioDemo *)fplMemoryAllocate(sizeof(AudioDemo));
 	demo->options = options;
 	demo->playbackMode = (PlaybackMode)options.mixerMode;
-	demo->sineWave.frequency = 440;
-	demo->sineWave.toneVolume = 0.25f;
-	demo->sineWave.duration = options.sineSeconds;
+	demo->sineWave = MakeSineWave(options.sineSeconds);
 	demo->useRealTimeSamples = false;
 
 	int result = -1;
