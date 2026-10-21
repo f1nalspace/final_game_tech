@@ -90,6 +90,9 @@ How the demo works:
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
 	In render mode --volume, --pitch and --repeat apply to the sine wave too.
 
+	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
+
 Known Issues / Limitations:
 	- Visualization of FFT is incorrect
 	- Displayed audio samples are not sync with actual samples that are output to the speaker, so its not syncronized
@@ -113,6 +116,7 @@ Changelog:
 	- Fixed: The generated sine track was played twice when it was started
 	- Fixed: The temporary stream buffer was smaller than the output ring, which is rounded up to whole memory pages
 	- New: Offline render mode (--render, --render-wav) that prints a hash of the mixed samples
+	- New: --stats logs memory and mixer cost every 5 seconds
 
 	## 2026-08-23
 	- Fixed: Every log line was written two or three times, because the log writer used the standard console, the error console and the debug output at the same time
@@ -253,6 +257,10 @@ Visualize the samples:
 #include <float.h>
 #include <stddef.h> // offsetof
 #include <stdlib.h> // strtod
+#if defined(FPL_PLATFORM_LINUX)
+#	include <unistd.h> // syscall
+#	include <sys/syscall.h> // SYS_gettid
+#endif
 
 #ifndef FINAL_AUDIOSYSTEM_IMPLEMENTATION
 #	define FINAL_AUDIOSYSTEM_IMPLEMENTATION
@@ -368,6 +376,7 @@ typedef struct PlayerOptions {
 	bool isSine;
 	bool isRepeat;
 	bool isRender;
+	bool isStats;
 	bool isHelp;
 } PlayerOptions;
 
@@ -445,6 +454,51 @@ static uint64_t HashFnv1a64(const uint64_t hash, const void *data, const size_t 
 	return(result);
 }
 
+#define MIX_COST_HISTOGRAM_COUNT 2
+
+typedef enum MixCostSwapState {
+	MixCostSwapState_Idle = 0,
+	// The main thread asks the mixing thread to swap the histograms
+	MixCostSwapState_Requested,
+	// The mixing thread swapped, the other histogram holds the calls since the swap before
+	MixCostSwapState_Done,
+} MixCostSwapState;
+
+// The mixing thread records into one histogram while the main thread reads the other, they swap when the main thread asks for it
+typedef struct MixCostStats {
+	MixCostHistogram histograms[MIX_COST_HISTOGRAM_COUNT];
+	volatile uint32_t writeIndex;
+	volatile uint32_t swapState;
+	// Kernel thread id of the mixing thread, set at every swap
+	volatile uint32_t mixThreadId;
+} MixCostStats;
+
+// The id that strace -p and /proc/<pid>/task show, pthread_self is a different number
+static uint32_t GetKernelThreadId(void) {
+#if defined(FPL_PLATFORM_LINUX)
+	long threadId = syscall(SYS_gettid);
+	return((uint32_t)threadId);
+#else
+	uint64_t threadId = fplGetCurrentThreadId();
+	return((uint32_t)threadId);
+#endif
+}
+
+// Called by the mixing thread after every call, without locks
+static void RecordMixCostStats(MixCostStats *stats, const double microseconds) {
+	uint32_t swapState = fplAtomicLoadU32(&stats->swapState);
+	if(swapState == MixCostSwapState_Requested) {
+		uint32_t previousIndex = fplAtomicLoadU32(&stats->writeIndex);
+		uint32_t nextIndex = (previousIndex + 1) % MIX_COST_HISTOGRAM_COUNT;
+		uint32_t mixThreadId = GetKernelThreadId();
+		fplAtomicStoreU32(&stats->writeIndex, nextIndex);
+		fplAtomicStoreU32(&stats->mixThreadId, mixThreadId);
+		fplAtomicStoreU32(&stats->swapState, MixCostSwapState_Done);
+	}
+	uint32_t writeIndex = fplAtomicLoadU32(&stats->writeIndex);
+	RecordMixCost(&stats->histograms[writeIndex], microseconds);
+}
+
 typedef struct ProcessMemoryUsage {
 	// Peak of the resident memory (VmHWM)
 	uint64_t highWaterKilobytes;
@@ -516,6 +570,8 @@ typedef struct AudioDemo {
 	AudioSystem audioSys;
 	PlayerOptions options;
 
+	MixCostStats mixCostStats;				// Cost of the mixer calls for --stats
+
 	LockFreeRingBuffer outputRingBuffer;	// The ring buffer for the audio output
 	AudioBuffer outputTempBuffer;			// Used for decoding the audio samples into, before its pushed to the output ring buffer
 
@@ -538,6 +594,16 @@ typedef struct AudioDemo {
 	SpectrumMode spectrumMode;
 	PlaybackMode playbackMode;
 } AudioDemo;
+
+// Adds the cost of the mixer call that started at mixStart, only with --stats
+static void RecordMixCostSince(AudioDemo *demo, const fplTimestamp mixStart) {
+	if(!demo->options.isStats) {
+		return;
+	}
+	fplTimestamp mixEnd = fplTimestampQuery();
+	fplSeconds mixSeconds = fplTimestampElapsed(mixStart, mixEnd);
+	RecordMixCostStats(&demo->mixCostStats, mixSeconds * MicrosecondsPerSecond);
+}
 
 // Only thread mode has the full-track buffer, the other modes always visualize the samples that went to the device
 static bool IsRealTimeVisualization(const AudioDemo *demo) {
@@ -1120,14 +1186,18 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 	switch(demo->playbackMode) {
 		case PlaybackMode_DeviceSine:
 		{
+			fplTimestamp mixStart = fplTimestampQuery();
 			result = maxFrameCount;
 			AudioGenerateSineWave(&demo->sineWave, outputSamples, outFormat->type, outFormat->sampleRate, outFormat->channels, maxFrameCount);
+			RecordMixCostSince(demo, mixStart);
 		} break;
 
 		case PlaybackMode_Callback:
 		{
 			// @FIXME(final): Fix hearable error, when the audio stream has finished playing and will repeat
+			fplTimestamp mixStart = fplTimestampQuery();
 			result = AudioSystemWriteFrames(&demo->audioSys, outputSamples, outFormat, maxFrameCount, true);
+			RecordMixCostSince(demo, mixStart);
 		} break;
 
 		case PlaybackMode_Thread:
@@ -1177,7 +1247,9 @@ static bool WriteAudioToRingBuffer(const fplAudioFormat *format, const uint32_t 
 		fplAssert(totalFrameBytes <= tmpBuffer->bufferSize);
 
 		// The amount of actual written frames may be less than the frames we want to get written
+		fplTimestamp mixStart = fplTimestampQuery();
 		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, tmpBuffer->samples, format, framesToWrite, true);
+		RecordMixCostSince(demo, mixStart);
 		fplAssert(writtenFrames == framesToWrite);
 		totalFrameBytes = writtenFrames * frameSize;
 
@@ -1723,6 +1795,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
 	{ PlayerOptionType_Float, "pitch", "<p>", PLAYER_OPTION_FIELD(pitch), fpl_null, 0, "Pitch of the play item, 2 is an octave up and half as long" },
 	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
+	{ PlayerOptionType_Flag, "stats", fpl_null, PLAYER_OPTION_FIELD(isStats), fpl_null, 0, "Log memory and mixer cost every 5 seconds" },
 	{ PlayerOptionType_Heading, fpl_null, fpl_null, 0, 0, fpl_null, 0, "Offline render (no window, no audio device):" },
 	{ PlayerOptionType_Flag, "render", fpl_null, PLAYER_OPTION_FIELD(isRender), fpl_null, 0, "Mix the first track in fixed chunks and print a hash of the samples" },
 	{ PlayerOptionType_String, "render-wav", "<file.wav>", PLAYER_OPTION_FIELD(renderWavePath), fpl_null, 0, "Like --render, and also write the samples into a wave file" },
@@ -2090,6 +2163,72 @@ static bool SelectAudioDevice(const char *deviceName, fplSettings *settings) {
 
 	fplPlatformRelease();
 	return(isFound);
+}
+
+//
+// Stats
+//
+
+// The histogram is null when the mixer did not run since the last line
+static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
+	const double percentileShare = 0.99;
+	const double percentScale = 100.0;
+
+	ProcessMemoryUsage memoryUsage = GetProcessMemoryUsage();
+
+	size_t sourceByteCount = 0;
+	size_t sourceCount = AudioSystemGetSourceStats(&demo->audioSys, &sourceByteCount);
+
+	// Only thread mode has an output ring
+	char ringFillText[32] = "-";
+	if(demo->playbackMode == PlaybackMode_Thread && demo->outputRingBuffer.length > 0) {
+		int64_t fillCount = fplAtomicLoadS64(&demo->outputRingBuffer.fillCount);
+		double ringFillPercent = (double)fillCount / (double)demo->outputRingBuffer.length * percentScale;
+		fplStringFormat(ringFillText, fplArrayCount(ringFillText), "%.1f", ringFillPercent);
+	}
+
+	uint64_t callCount = 0;
+	double meanMicroseconds = 0.0;
+	double percentileMicroseconds = 0.0;
+	double maxMicroseconds = 0.0;
+	if(histogram != fpl_null) {
+		callCount = histogram->callCount;
+		meanMicroseconds = GetMixCostMean(histogram);
+		percentileMicroseconds = GetMixCostPercentile(histogram, percentileShare);
+		maxMicroseconds = histogram->maxMicroseconds;
+	}
+	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
+
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, sourceCount, sourceByteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
+}
+
+// Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
+static void UpdateStats(AudioDemo *demo, fplMilliseconds *lastRequestTime) {
+	const fplMilliseconds statsIntervalMilliseconds = 5000;
+	MixCostStats *stats = &demo->mixCostStats;
+
+	uint32_t swapState = fplAtomicLoadU32(&stats->swapState);
+	if(swapState == MixCostSwapState_Done) {
+		uint32_t writeIndex = fplAtomicLoadU32(&stats->writeIndex);
+		uint32_t readIndex = (writeIndex + 1) % MIX_COST_HISTOGRAM_COUNT;
+		MixCostHistogram *histogram = &stats->histograms[readIndex];
+		LogStatsLine(demo, histogram);
+		fplClearStruct(histogram);
+		fplAtomicStoreU32(&stats->swapState, MixCostSwapState_Idle);
+		return;
+	}
+
+	fplMilliseconds now = fplMillisecondsQuery();
+	if(now - *lastRequestTime < statsIntervalMilliseconds) {
+		return;
+	}
+	*lastRequestTime = now;
+	if(swapState == MixCostSwapState_Requested) {
+		// The mixer did not run since the last request
+		LogStatsLine(demo, fpl_null);
+	} else {
+		fplAtomicStoreU32(&stats->swapState, MixCostSwapState_Requested);
+	}
 }
 
 //
@@ -2499,6 +2638,7 @@ int main(int argc, char **args) {
         double currentFrameTime = 0.0;
         double currentFps = 0.0;
         uint64_t frameCount = 0;
+		fplMilliseconds lastStatsRequestTime = fplMillisecondsQuery();
 		while(fplWindowUpdate()) {
 			fplEvent ev;
 			while(fplPollEvent(&ev)) {
@@ -2570,6 +2710,10 @@ int main(int argc, char **args) {
 
             Render(demo, winSize.width, winSize.height, totalTime);
 			fplVideoFlip();
+
+			if(demo->options.isStats) {
+				UpdateStats(demo, &lastStatsRequestTime);
+			}
 
 			fplTimestamp curTime = fplTimestampQuery();
             double frameTime = fplTimestampElapsed(lastTime, curTime);
