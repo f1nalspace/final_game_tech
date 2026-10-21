@@ -259,6 +259,7 @@ SOFTWARE.
 	- New: Added field generation to fplThreadHandle
 
 	#### IO
+	- Fixed: [POSIX] fplDirectoryRemove() was missing, its implementation was named fplRemoveDirectory()
 	- Fixed: [POSIX] fplDirectoryListBegin() with a filter like "*.txt" missed names with more than one dot
 	- Fixed: fplExtractFilePath() returned an empty path for a file in the root directory ("/file" or a drive root on Win32), the root separator is kept now
 	- Fixed: fplExtractFilePath() left the destination untouched for an empty source path, it writes an empty string now
@@ -27773,7 +27774,8 @@ fpl_platform_api bool fplDirectoriesCreate(const char *path) {
 
 	return true;
 }
-fpl_platform_api bool fplRemoveDirectory(const char *path) {
+
+fpl_platform_api bool fplDirectoryRemove(const char *path) {
 	FPL__CheckArgumentNull(path, false);
 	bool result = rmdir(path) == 0;
 	return(result);
