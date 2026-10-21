@@ -151,6 +151,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-22
+	- New: Stream sources, which generate or decode their frames while they are mixed, starting with a generated sine wave (AudioSystemCreateSineStreamSource())
+	- New: AudioSystemStats.streamSourceCount, streamInstanceCount, streamInstanceByteCount and failedStreamCount
+	- Changed: A preview (AudioSystemWriteFrames() without advance) leaves stream items out
+
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
 	- Fixed: Even upsampling left the end of every mix call silent when its frame count was no multiple of the factor
@@ -217,13 +222,43 @@ typedef struct AudioSourceID {
 typedef enum AudioSourceType {
 	AudioSourceType_None = 0,
 	AudioSourceType_Allocated,
+	//! A stream source, see @ref AudioSource::stream
 	AudioSourceType_Stream,
 	AudioSourceType_File,
 } AudioSourceType;
 
+typedef struct AudioSineWaveData {
+	AudioDuration duration;
+	double toneVolume;
+	AudioHertz frequency;
+	AudioFrameIndex frameIndex;
+} AudioSineWaveData;
+
+//! Kinds of stream sources, see @ref AudioSourceStream
+typedef enum AudioStreamKind {
+	//! Not a stream
+	AudioStreamKind_None = 0,
+	//! A generated sine wave, see @ref AudioSystemCreateSineStreamSource
+	AudioStreamKind_Sine,
+} AudioStreamKind;
+
+//! What a stream source generates or decodes while it is mixed, see @ref AudioSource::stream
+typedef struct AudioSourceStream {
+	//! The sine wave of @ref AudioStreamKind_Sine, its frameIndex is the frame the stream starts at
+	AudioSineWaveData sineWave;
+	//! @ref AudioStreamKind
+	AudioStreamKind kind;
+	//! The stream never ends, its @ref AudioSource::buffer has a frame count of 0
+	bool isEndless;
+} AudioSourceStream;
+
 typedef struct AudioSource {
+	//! The samples. A stream source has none, only its frame count is set: the length of the stream, 0 when it is endless
 	AudioBuffer buffer;
+	//! The format of the samples, for a stream source the format it generates or decodes into (S16)
 	AudioFormat format;
+	//! Set when the type is @ref AudioSourceType_Stream: every play of the source generates or decodes its frames while it is mixed
+	AudioSourceStream stream;
 	AudioSourceType type;
 	AudioSourceID id;
 	struct AudioSource *next;
@@ -312,6 +347,8 @@ typedef struct AudioPlayItemSlot {
 	volatile uint32_t state;
 	//! Part of the id of the item in this slot, counted up when the item ends, so the id of an ended item matches nothing
 	volatile uint32_t generation;
+	//! The ring and the state of a stream item, null for any other item. Read and written atomically, it belongs to whoever owns the slot: the caller of @ref AudioSystemPlaySource while it is reserved, the mixer while it plays. Once the item has ended, a caller side function frees it
+	volatile void *streamInstance;
 } AudioPlayItemSlot;
 
 //! The play item pool, starting or ending a play item allocates or frees nothing
@@ -383,13 +420,6 @@ typedef enum AudioMixerOwner {
 	AudioMixerOwner_Shutdown,
 } AudioMixerOwner;
 
-typedef struct AudioSineWaveData {
-	AudioDuration duration;
-	double toneVolume;
-	AudioHertz frequency;
-	AudioFrameIndex frameIndex;
-} AudioSineWaveData;
-
 typedef struct AudioMemory {
 	int dummy;
 } AudioMemory;
@@ -420,6 +450,12 @@ typedef struct AudioSystem {
 	volatile uint32_t masterVolumeBits;
 	//! While not 0, @ref AudioSystemWriteFrames hands the device SILENCE and advances nothing. Any thread stores it, the mixer loads it once per call
 	volatile uint32_t isSuspended;
+	//! Stream instances that are allocated and not freed yet, see @ref AudioSystemStats::streamInstanceCount
+	volatile uint32_t streamInstanceCount;
+	//! Their size in bytes
+	volatile uint32_t streamInstanceByteCount;
+	//! Stream items that ended because their stream failed, see @ref AudioSystemStats::failedStreamCount
+	volatile uint32_t failedStreamCount;
 	bool isInitialized;
 	bool isShutdown;
 } AudioSystem;
@@ -461,6 +497,21 @@ fpl_extern void AudioSystemSetMasterVolume(AudioSystem *audioSys, const float ne
 * @note The source and its samples live in one memory block. The source gets a unique id but is not added, call @ref AudioSystemAddSource for that.
 */
 fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const fplAudioFormatType type, const AudioFrameIndex frameCount);
+
+/**
+* @brief Creates a stream source that generates a sine wave while it is mixed, it has no sample buffer.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] channels Number of interleaved channels, all of them get the same sample.
+* @param[in] sampleRate Sample rate in Hz.
+* @param[in] sineWave Reference to the sine wave @ref AudioSineWaveData: frequency, volume and duration in seconds, its frameIndex is the frame the stream starts at (usually 0).
+* @return Returns the new source, or null when an argument is null or zero, the duration is shorter than one frame or longer than 2^32 frames, or the memory could not be allocated.
+* @note A duration above zero gives a stream of (sampleRate * duration + 0.5) frames, which ends or repeats like any other source.
+* @note A duration of zero or below gives an endless stream: its frame count is 0, it never ends and repeat does nothing. Its position wraps after 2^32 frames (at 48 kHz after 24.8 hours), the phase jumps once there.
+* @note The S16 frames are bit-identical to a sine wave that @ref AudioGenerateSineWave writes into a source of @ref AudioSystemAllocateSource, which holds every frame in memory.
+* @note The source is not added, call @ref AudioSystemAddSource for that.
+* @see @ref AudioSystemPlaySource
+*/
+fpl_extern AudioSource *AudioSystemCreateSineStreamSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const AudioSineWaveData *sineWave);
 
 /**
 * @brief Loads and fully decodes an audio file into a new source.
@@ -521,6 +572,7 @@ fpl_extern bool AudioSystemAddSource(AudioSystem *audioSys, AudioSource *source)
 * @param[in] source Reference to the source @ref AudioSource to remove, invalid after a successful call.
 * @return Returns true when the source was removed, false when it is not in the list (it is then not freed).
 * @note Any play item still referencing the source is stopped first, so the caller never has to.
+* @note The stream instances of ended stream items are freed as well, see @ref AudioSystemPlaySource.
 */
 fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source);
 
@@ -534,6 +586,7 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 * @return Returns the number of frames written, which is always frameCount.
 * @note This is the heart of the audio system, usually called from the audio device callback. Frames not covered by any play item are filled with silence.
 * @note It takes no lock and allocates nothing. It first applies the commands that other threads sent (play, stop, the play item setters).
+* @note With advance it generates or decodes the frames of the stream items. A preview leaves them out and does not move them, rewinding a stream would cost a seek.
 * @note Only one thread at a time may call it with advance. A second one at the same time gets silence, advances nothing and is counted in @ref AudioSystemStats::concurrentWriteCount, a debug build asserts. A call while a preview runs or a function applies the commands itself gets silence as well.
 * @note While the mixer is suspended this only writes silence, see @ref AudioSystemSetSuspended.
 */
@@ -580,7 +633,9 @@ fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 * @param[in] pitch The playback rate multiplier (see @ref AudioPlayItem::pitch), pass @ref AudioSystemDefaultPitch for the file as recorded, which costs nothing.
 * @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null, all @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items are in use or the command queue is full.
 * @note A pitch of zero or below is treated as 1 rather than refused: silence would be the one outcome nobody could debug.
-* @note Allocates nothing, the play item takes a slot of the fixed pool. The id is valid at once and @ref AudioSystemGetPlayItems returns the item at once, the mixer plays it from its next call.
+* @note The play item takes a slot of the fixed pool. The id is valid at once and @ref AudioSystemGetPlayItems returns the item at once, the mixer plays it from its next call.
+* @note For a source with samples it allocates nothing. For a stream source it allocates the stream instance of this play, a ring of 4096 frames and the state of the stream, which the mixer fills while it mixes.
+* @note The stream instance of an ended item is freed by the next call of this function, @ref AudioSystemStopAll, @ref AudioSystemRemoveSource, @ref AudioSystemClearSources or @ref AudioSystemShutdown, never by the mixer.
 */
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch);
 
@@ -641,7 +696,7 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 /**
 * @brief Stops and frees all play items.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
-* @note The sources stay loaded, use @ref AudioSystemClearSources to free them as well.
+* @note The sources stay loaded, use @ref AudioSystemClearSources to free them as well. The stream instances of the ended items are freed.
 * @note Returns once the mixer has ended them. When the calling thread is the one that mixes, or no mixer ran for two of its periods (at least 50 ms), it ends them itself at once, otherwise it waits at most that long for the mixer. The same holds for @ref AudioSystemRemoveSource, @ref AudioSystemClearSources and @ref AudioSystemShutdown.
 */
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
@@ -718,6 +773,14 @@ typedef struct AudioSystemStats {
 	uint32_t droppedCommandCount;
 	//! Calls of @ref AudioSystemWriteFrames with advance that found another thread mixing, a programming error
 	uint32_t concurrentWriteCount;
+	//! Number of added stream sources, they are part of sourceCount
+	size_t streamSourceCount;
+	//! Allocated stream instances, one per play of a stream source: the playing ones and the ended ones that are not freed yet (see @ref AudioSystemPlaySource)
+	size_t streamInstanceCount;
+	//! Size of the allocated stream instances in bytes
+	size_t streamInstanceByteCount;
+	//! Stream items that ended early because their stream could not deliver frames
+	uint32_t failedStreamCount;
 } AudioSystemStats;
 
 /**
@@ -948,6 +1011,48 @@ fpl_extern AudioSource *AudioSystemAllocateSource(AudioSystem *audioSys, const A
 	result->buffer.samples = (uint8_t *)mem + sizeof(AudioSource) + sizeof(size_t);
 	result->buffer.isAllocated = false;
 
+	return(result);
+}
+
+// Every stream generates or decodes into S16, a ring of this many frames per play, the size of one DSP chunk
+static const fplAudioFormatType AudioStreamRingFormat = fplAudioFormatType_S16;
+static const AudioFrameIndex AudioStreamRingFrameCount = MAX_AUDIO_STATIC_BUFFER_FRAME_COUNT;
+
+fpl_extern AudioSource *AudioSystemCreateSineStreamSource(AudioSystem *audioSys, const AudioChannelIndex channels, const AudioHertz sampleRate, const AudioSineWaveData *sineWave) {
+	if(audioSys == fpl_null || sineWave == fpl_null || channels == 0 || sampleRate == 0) {
+		return fpl_null;
+	}
+
+	// The same rounding as a sine wave that is generated into a source with samples
+	const double roundingOffset = 0.5;
+	const double maxFrameCount = (double)UINT32_MAX;
+	const bool isEndless = (sineWave->duration <= 0.0);
+	AudioFrameIndex frameCount = 0;
+	if(!isEndless) {
+		const double frameCountValue = (double)sampleRate * sineWave->duration + roundingOffset;
+		if(frameCountValue > maxFrameCount) {
+			return fpl_null;
+		}
+		frameCount = (AudioFrameIndex)frameCountValue;
+		if(frameCount == 0) {
+			return fpl_null;
+		}
+	}
+
+	AudioSource *result = (AudioSource *)AllocateAudioMemory(&audioSys->memory, sizeof(AudioSource));
+	if(result == fpl_null) {
+		return fpl_null;
+	}
+	fplClearStruct(result);
+	result->type = AudioSourceType_Stream;
+	result->id.value = fplAtomicIncrementU64(&audioSys->sources.idCounter);
+	result->format.channels = channels;
+	result->format.sampleRate = sampleRate;
+	result->format.format = AudioStreamRingFormat;
+	result->buffer.frameCount = frameCount;
+	result->stream.kind = AudioStreamKind_Sine;
+	result->stream.sineWave = *sineWave;
+	result->stream.isEndless = isEndless;
 	return(result);
 }
 
@@ -1435,6 +1540,93 @@ static void FinishActivePlayItem(AudioPlayItems *playItems, const uint32_t activ
 	--playItems->activeCount;
 }
 
+// The state of one play of a stream source, see AudioPlayItemSlot::streamInstance. One memory block: this struct, then the ring.
+// The ring holds ringFrameCount frames of the source from ringStartFrameIndex on, the stream delivers its next frame right after them.
+typedef struct AudioStreamInstance {
+	uint8_t *ringSamples;
+	// Size of the memory block in bytes
+	uint32_t memorySize;
+	AudioFrameIndex ringStartFrameIndex;
+	AudioFrameIndex ringFrameCount;
+	// The sine wave of AudioStreamKind_Sine, its frameIndex is the next frame it generates
+	AudioSineWaveData sineWave;
+	AudioStreamKind kind;
+} AudioStreamInstance;
+
+// Whether the mixer generates or decodes the frames of a source. A source that only carries the type, which an older final_audiodemo.h set for its sine wave, plays its samples
+static bool IsStreamSource(const AudioSource *source) {
+	const bool result = (source->type == AudioSourceType_Stream) && (source->stream.kind != AudioStreamKind_None);
+	return(result);
+}
+
+// Allocates the stream instance for one play of a stream source, null when the memory could not be allocated. Not by the mixer
+static AudioStreamInstance *CreateStreamInstance(AudioSystem *audioSys, const AudioSource *source) {
+	fplAssert(source->format.format == AudioStreamRingFormat);
+	const size_t ringSize = fplGetAudioBufferSizeInBytes(source->format.format, source->format.channels, AudioStreamRingFrameCount);
+	const size_t memorySize = sizeof(AudioStreamInstance) + ringSize;
+	void *memory = AllocateAudioMemory(&audioSys->memory, memorySize);
+	if(memory == fpl_null) {
+		return(fpl_null);
+	}
+	AudioStreamInstance *result = (AudioStreamInstance *)memory;
+	fplClearStruct(result);
+	result->ringSamples = (uint8_t *)memory + sizeof(AudioStreamInstance);
+	result->memorySize = (uint32_t)memorySize;
+	result->kind = source->stream.kind;
+	switch(result->kind) {
+		case AudioStreamKind_Sine:
+		{
+			result->sineWave = source->stream.sineWave;
+		} break;
+
+		default:
+		{
+			fplAssert(!"Unknown stream kind");
+		} break;
+	}
+	fplAtomicIncrementU32(&audioSys->streamInstanceCount);
+	fplAtomicFetchAndAddU32(&audioSys->streamInstanceByteCount, result->memorySize);
+	return(result);
+}
+
+// Closes the stream and frees its instance. Not by the mixer
+static void FreeStreamInstance(AudioSystem *audioSys, AudioStreamInstance *instance) {
+	// Added as unsigned values that wrap around, which subtracts them
+	const uint32_t countDecrement = UINT32_MAX;
+	const uint32_t byteCountDecrement = 0u - instance->memorySize;
+	fplAtomicFetchAndAddU32(&audioSys->streamInstanceCount, countDecrement);
+	fplAtomicFetchAndAddU32(&audioSys->streamInstanceByteCount, byteCountDecrement);
+	FreeAudioMemory(&audioSys->memory, instance);
+}
+
+// Frees the stream instances of all ended items. Never by the mixer, which leaves an ended instance at its slot: AudioSystemPlaySource, AudioSystemStopAll, AudioSystemRemoveSource, AudioSystemClearSources and AudioSystemShutdown call it
+static void ReclaimFinishedStreamInstances(AudioSystem *audioSys) {
+	AudioPlayItems *playItems = &audioSys->playItems;
+	for(uint32_t slotIndex = 0; slotIndex < FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT; ++slotIndex) {
+		AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+		const uint32_t state = fplAtomicLoadU32(&slot->state);
+		if(state != AudioPlayItemSlotState_Finished) {
+			continue;
+		}
+		void *finishedInstance = fplAtomicLoadPtr(&slot->streamInstance);
+		if(finishedInstance == fpl_null) {
+			continue;
+		}
+		// Reserved while it is freed, so no other thread takes the slot meanwhile. The generation stays, the id of the ended item still matches nothing
+		const bool isReserved = fplAtomicIsCompareAndSwapU32(&slot->state, AudioPlayItemSlotState_Finished, AudioPlayItemSlotState_Reserved);
+		if(!isReserved) {
+			continue;
+		}
+		// Loaded again, another thread may have freed it before the slot was reserved
+		AudioStreamInstance *instance = (AudioStreamInstance *)fplAtomicLoadPtr(&slot->streamInstance);
+		if(instance != fpl_null) {
+			fplAtomicStorePtr(&slot->streamInstance, fpl_null);
+			FreeStreamInstance(audioSys, instance);
+		}
+		fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Finished);
+	}
+}
+
 static const uint32_t AudioMillisecondsPerSecond = 1000;
 
 // A mixer that did not call AudioSystemWriteFrames for this many of its periods counts as stopped, but never before the minimum
@@ -1824,6 +2016,9 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 		return(empty);
 	}
 
+	// The streams that ended since the last call give their memory back first
+	ReclaimFinishedStreamInstances(audioSys);
+
 	AudioPlayItems *playItems = &audioSys->playItems;
 	uint32_t slotIndex = 0;
 	AudioPlayItemSlot *slot = ReservePlayItemSlot(playItems, &slotIndex);
@@ -1832,7 +2027,24 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 		return(empty);
 	}
 
-	// The slot is reserved, nobody else reads or writes its item until it is playing
+	// The slot is reserved, nobody else reads or writes its item until it is playing. A stream that ended in it after the reclaim above is freed now
+	AudioStreamInstance *previousInstance = (AudioStreamInstance *)fplAtomicLoadPtr(&slot->streamInstance);
+	if(previousInstance != fpl_null) {
+		fplAtomicStorePtr(&slot->streamInstance, fpl_null);
+		FreeStreamInstance(audioSys, previousInstance);
+	}
+	const bool isStream = IsStreamSource(source);
+	if(isStream) {
+		AudioStreamInstance *instance = CreateStreamInstance(audioSys, source);
+		if(instance == fpl_null) {
+			// Given back unused, its generation stays
+			fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Finished);
+			AudioPlayItemID empty = fplZeroInit;
+			return(empty);
+		}
+		fplAtomicStorePtr(&slot->streamInstance, instance);
+	}
+
 	const uint32_t generation = fplAtomicLoadU32(&slot->generation);
 	const AudioPlayItemID result = MakePlayItemID(slotIndex, generation);
 	AudioPlayItem *playItem = &slot->item;
@@ -1858,6 +2070,11 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 		// The queue is full, the slot is given back. Its id never left this function, so the generation stays
 		fplAtomicIncrementU32(&queue->droppedCount);
 		PublishPlayItem(slot, false);
+		AudioStreamInstance *unusedInstance = (AudioStreamInstance *)fplAtomicLoadPtr(&slot->streamInstance);
+		if(unusedInstance != fpl_null) {
+			fplAtomicStorePtr(&slot->streamInstance, fpl_null);
+			FreeStreamInstance(audioSys, unusedInstance);
+		}
 		fplAtomicStoreU32(&slot->state, AudioPlayItemSlotState_Finished);
 		AudioPlayItemID empty = fplZeroInit;
 		return(empty);
@@ -2259,6 +2476,103 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 	return (AudioHertz)pitchedRate;
 }
 
+// Lets the stream deliver its next frames, returns how many it delivered, 0 when it failed. Only by the owner of the mixer
+static AudioFrameIndex DeliverStreamFrames(AudioStreamInstance *instance, const AudioSource *source, uint8_t *outSamples, const AudioFrameIndex frameCount) {
+	AudioFrameIndex result = 0;
+	switch(instance->kind) {
+		case AudioStreamKind_Sine:
+		{
+			AudioGenerateSineWave(&instance->sineWave, outSamples, source->format.format, source->format.sampleRate, source->format.channels, frameCount);
+			result = frameCount;
+		} break;
+
+		default:
+			break;
+	}
+	return(result);
+}
+
+// Lets the stream deliver the given source frame next, false when it failed. Only by the owner of the mixer
+static bool SeekStream(AudioStreamInstance *instance, const AudioSource *source, const AudioFrameIndex frameIndex) {
+	bool result = false;
+	switch(instance->kind) {
+		case AudioStreamKind_Sine:
+		{
+			instance->sineWave.frameIndex = source->stream.sineWave.frameIndex + frameIndex;
+			result = true;
+		} break;
+
+		default:
+			break;
+	}
+	return(result);
+}
+
+// Moves samples to a lower address in the same ring, the ranges may overlap, which fplMemoryCopy does not allow
+static void MoveRingSamplesDown(int16_t *target, const int16_t *source, const size_t sampleCount) {
+	fplAssert(target <= source);
+	for(size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+		target[sampleIndex] = source[sampleIndex];
+	}
+}
+
+/**
+* @brief Makes the ring of a stream hold the source frames [startFrameIndex, startFrameIndex + frameCount), what a source with samples has in memory.
+* @param[in,out] instance The stream instance of the play item.
+* @param[in] source The stream source.
+* @param[in] startFrameIndex The source frame of the next chunk, the position of the play item.
+* @param[in] frameCount Number of frames the chunk needs, the rest of the source but at most the ring.
+* @return Returns the number of frames the ring holds from startFrameIndex on, frameCount or fewer when the stream failed.
+* @note Frames from startFrameIndex on that the ring holds already move to its front. A position behind the ring, where even downsampling steps up to factor - 1 frames past its input, lets the stream drop the frames in between. Any other position, a repeat for example, makes the stream seek.
+* @note Only by the owner of the mixer.
+*/
+static AudioFrameIndex FillStreamRing(AudioStreamInstance *instance, const AudioSource *source, const AudioFrameIndex startFrameIndex, const AudioFrameIndex frameCount) {
+	fplAssert(frameCount <= AudioStreamRingFrameCount);
+	const AudioChannelIndex channelCount = source->format.channels;
+	const size_t frameSize = fplGetAudioFrameSizeInBytes(source->format.format, channelCount);
+	const AudioFrameIndex ringEndFrameIndex = instance->ringStartFrameIndex + instance->ringFrameCount;
+	const bool isInRing = (startFrameIndex >= instance->ringStartFrameIndex) && (startFrameIndex <= ringEndFrameIndex);
+	const bool isBehindRing = (startFrameIndex > ringEndFrameIndex) && ((startFrameIndex - ringEndFrameIndex) < AudioStreamRingFrameCount);
+	if(isInRing) {
+		const AudioFrameIndex consumedFrameCount = startFrameIndex - instance->ringStartFrameIndex;
+		const AudioFrameIndex keptFrameCount = ringEndFrameIndex - startFrameIndex;
+		if(consumedFrameCount > 0 && keptFrameCount > 0) {
+			int16_t *ringStart = (int16_t *)instance->ringSamples;
+			const int16_t *keptStart = ringStart + (size_t)consumedFrameCount * channelCount;
+			const size_t keptSampleCount = (size_t)keptFrameCount * channelCount;
+			MoveRingSamplesDown(ringStart, keptStart, keptSampleCount);
+		}
+		instance->ringFrameCount = keptFrameCount;
+	} else if(isBehindRing) {
+		// Delivered into the ring and dropped
+		const AudioFrameIndex skipFrameCount = startFrameIndex - ringEndFrameIndex;
+		const AudioFrameIndex skippedFrameCount = DeliverStreamFrames(instance, source, instance->ringSamples, skipFrameCount);
+		instance->ringFrameCount = 0;
+		if(skippedFrameCount != skipFrameCount) {
+			return(0);
+		}
+	} else {
+		instance->ringFrameCount = 0;
+		const bool isSought = SeekStream(instance, source, startFrameIndex);
+		if(!isSought) {
+			return(0);
+		}
+	}
+	instance->ringStartFrameIndex = startFrameIndex;
+
+	while(instance->ringFrameCount < frameCount) {
+		uint8_t *deliverTarget = instance->ringSamples + (size_t)instance->ringFrameCount * frameSize;
+		const AudioFrameIndex missingFrameCount = frameCount - instance->ringFrameCount;
+		const AudioFrameIndex deliveredFrameCount = DeliverStreamFrames(instance, source, deliverTarget, missingFrameCount);
+		if(deliveredFrameCount == 0) {
+			break;
+		}
+		instance->ringFrameCount += deliveredFrameCount;
+	}
+	const AudioFrameIndex result = fplMin(instance->ringFrameCount, frameCount);
+	return(result);
+}
+
 /**
 * @brief Processes a single AudioPlayItem through the full mixing pipeline.
 *
@@ -2278,8 +2592,11 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 * reaches the end of its source and isRepeat is true, framesPlayed resets to zero so
 * the loop continues.
 *
+* A stream item reads its chunk from its ring instead of the samples of the source, FillStreamRing gives it the same frames.
+*
 * @param[in,out] audioSys     Audio system (provides target format, DSP buffers, conversion table).
 * @param[in,out] item         Play item to process. Modified in place (framesPlayed, isFinished).
+* @param[in,out] streamInstance The stream instance of a stream item, null for any other item.
 * @param[in] targetFrameCount Number of output frames to fill in the mixing buffer.
 * @param[in,out] mixingBuffer Pointer to the start of the F32 mixing buffer for this item.
 *                             Must have at least targetFrameCount * outChannels floats.
@@ -2293,13 +2610,18 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 *   - mixingBuffer: outRemainingFrameCount counts down from targetFrameCount, preventing overflow.
 *   - Source data:  Bounded by inTotalFrameCount - framesPlayed[0].
 */
-static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, const AudioFrameIndex targetFrameCount, float *mixingBuffer, const float masterVolume) {
+static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayItem *item, AudioStreamInstance *streamInstance, const AudioFrameIndex targetFrameCount, float *mixingBuffer, const float masterVolume) {
 	const AudioHertz outSampleRate = audioSys->targetFormat.sampleRate;
 	const AudioChannelIndex outChannelCount = audioSys->targetFormat.channels;
 
 	const AudioSource *source = item->source;
 	const AudioFormat *srcFormat = &source->format;
 	const AudioBuffer *srcBuffer = &source->buffer;
+
+	// An endless stream has no rest: every chunk can take the whole ring, nothing clamps its position and it never ends
+	const bool isStream = (streamInstance != fpl_null);
+	const bool isEndless = isStream && source->stream.isEndless;
+	const AudioFrameIndex endlessRemainingFrameCount = UINT32_MAX;
 
 	// The PITCHED rate, which is the source's own whenever the item is not pitched -- see ResolvePitchedSampleRate.
 	const AudioHertz inSampleRate = ResolvePitchedSampleRate(srcFormat->sampleRate, item->pitch);
@@ -2324,10 +2646,27 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		}
 
 		const AudioFrameIndex inStartFrameIndex = item->framesPlayed[0];
-		fplAssert(inStartFrameIndex < inTotalFrameCount);
+		fplAssert(isEndless || (inStartFrameIndex < inTotalFrameCount));
 
-		const AudioFrameIndex inRemainingFrameCount = inTotalFrameCount - inStartFrameIndex;
-		const uint8_t *inSourceData = srcBuffer->samples + (size_t)inStartFrameIndex * inBytesPerFrame;
+		const AudioFrameIndex inRemainingFrameCount = isEndless ? endlessRemainingFrameCount : (inTotalFrameCount - inStartFrameIndex);
+
+		// The frames from the position on: in memory, or in the ring of a stream
+		const uint8_t *inSourceData;
+		AudioFrameIndex inAvailableFrameCount;
+		if (isStream) {
+			const AudioFrameIndex chunkFrameCount = fplMin(inRemainingFrameCount, AudioStreamRingFrameCount);
+			inAvailableFrameCount = FillStreamRing(streamInstance, source, inStartFrameIndex, chunkFrameCount);
+			if (inAvailableFrameCount == 0) {
+				// The stream failed, the item ends as at the end of its source
+				fplAtomicIncrementU32(&audioSys->failedStreamCount);
+				item->isFinished[0] = true;
+				break;
+			}
+			inSourceData = streamInstance->ringSamples;
+		} else {
+			inAvailableFrameCount = inRemainingFrameCount;
+			inSourceData = srcBuffer->samples + (size_t)inStartFrameIndex * inBytesPerFrame;
+		}
 
 		// ---- Step 1: Convert source samples to interleaved F32 (DSP-In) ----
 		// Always write to the start of the DSP-in buffer (scratch space, reused each iteration)
@@ -2335,7 +2674,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		const AudioFrameIndex convertedFrameCount = ConvertSourceChunkToF32(
 			&audioSys->conversionFuncs,
 			inSourceData,
-			inRemainingFrameCount,
+			inAvailableFrameCount,
 			inChannelCount,
 			inFormat,
 			dspIn,
@@ -2392,10 +2731,11 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		MixSamplesIntoBuffer(outputFrameCount, inChannelCount, outChannelCount, dspOut, mixDest);
 
 		// ---- Update play position ----
+		// The position of an endless stream wraps around after 2^32 frames
 		item->framesPlayed[0] += playedFrameCount;
-		fplAssert(item->framesPlayed[0] <= inTotalFrameCount);
+		fplAssert(isEndless || (item->framesPlayed[0] <= inTotalFrameCount));
 
-		if (item->framesPlayed[0] == inTotalFrameCount) {
+		if (!isEndless && (item->framesPlayed[0] == inTotalFrameCount)) {
 			if (item->isRepeat) {
 				item->isFinished[0] = false;
 				item->framesPlayed[0] = 0; // Reset for next loop iteration
@@ -2467,7 +2807,9 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 	uint32_t activeIndex = 0;
 	while (activeIndex < playItems->activeCount) {
 		const uint32_t slotIndex = playItems->activeSlotIndices[activeIndex];
-		AudioPlayItem *item = &playItems->slots[slotIndex].item;
+		AudioPlayItemSlot *slot = &playItems->slots[slotIndex];
+		AudioPlayItem *item = &slot->item;
+		AudioStreamInstance *streamInstance = (AudioStreamInstance *)fplAtomicLoadPtr(&slot->streamInstance);
 
 		// Skip items that were already finished (can happen in advance=false mode)
 		if (item->isFinished[0]) {
@@ -2481,8 +2823,14 @@ static AudioFrameIndex WritePlayItemsToMixer2(AudioSystem *audioSys, const Audio
 			continue;
 		}
 
+		// A preview leaves a stream alone, rewinding it afterwards would cost a seek
+		if (!advance && (streamInstance != fpl_null)) {
+			++activeIndex;
+			continue;
+		}
+
 		// Process this play item through the full pipeline
-		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, targetFrameCount, mixingBuffer, masterVolume);
+		const AudioFrameIndex itemOutputFrames = ProcessSinglePlayItem(audioSys, item, streamInstance, targetFrameCount, mixingBuffer, masterVolume);
 		if (itemOutputFrames > maxOutputFrameCount) {
 			maxOutputFrameCount = itemOutputFrames;
 		}
@@ -2665,6 +3013,7 @@ fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	AudioCommand command = fplZeroInit;
 	command.kind = AudioCommandKind_StopAll;
 	SendAudioCommandAndWait(audioSys, &command);
+	ReclaimFinishedStreamInstances(audioSys);
 }
 
 fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source) {
@@ -2680,6 +3029,9 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 	command.kind = AudioCommandKind_StopSource;
 	command.value.source = source;
 	SendAudioCommandAndWait(audioSys, &command);
+
+	// The streams of the stopped items are freed before the source they play
+	ReclaimFinishedStreamInstances(audioSys);
 
 	// Singly linked, so the predecessor is found by walking (AudioSource has no prev pointer)
 	bool result = false;
@@ -2748,23 +3100,37 @@ fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFor
 	return(true);
 }
 
+// Counts the added sources, the bytes of their samples and the stream sources under sources.lock
+static size_t CountAudioSources(AudioSystem *audioSys, size_t *outByteCount, size_t *outStreamSourceCount) {
+	AudioSources *sources = &audioSys->sources;
+	fplMutexLock(&sources->lock);
+	size_t sourceCount = 0;
+	size_t byteCount = 0;
+	size_t streamSourceCount = 0;
+	AudioSource *source = sources->first;
+	while(source != fpl_null) {
+		++sourceCount;
+		byteCount += source->buffer.bufferSize;
+		if(IsStreamSource(source)) {
+			++streamSourceCount;
+		}
+		source = source->next;
+	}
+	fplMutexUnlock(&sources->lock);
+	*outByteCount = byteCount;
+	*outStreamSourceCount = streamSourceCount;
+	return(sourceCount);
+}
+
 fpl_extern size_t AudioSystemGetSourceStats(AudioSystem *audioSys, size_t *outByteCount) {
 	if(outByteCount != fpl_null)
 		*outByteCount = 0;
 	if(audioSys == fpl_null || audioSys->isShutdown)
 		return(0);
 
-	AudioSources *sources = &audioSys->sources;
-	fplMutexLock(&sources->lock);
-	size_t sourceCount = 0;
 	size_t byteCount = 0;
-	AudioSource *source = sources->first;
-	while(source != fpl_null) {
-		++sourceCount;
-		byteCount += source->buffer.bufferSize;
-		source = source->next;
-	}
-	fplMutexUnlock(&sources->lock);
+	size_t streamSourceCount = 0;
+	size_t sourceCount = CountAudioSources(audioSys, &byteCount, &streamSourceCount);
 
 	if(outByteCount != fpl_null)
 		*outByteCount = byteCount;
@@ -2780,7 +3146,8 @@ fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *out
 		return(false);
 	}
 	size_t pcmByteCount = 0;
-	size_t sourceCount = AudioSystemGetSourceStats(audioSys, &pcmByteCount);
+	size_t streamSourceCount = 0;
+	size_t sourceCount = CountAudioSources(audioSys, &pcmByteCount, &streamSourceCount);
 	size_t playItemCount = AudioSystemGetPlayItems(audioSys, fpl_null, 0);
 	outStats->sourceCount = sourceCount;
 	outStats->pcmByteCount = pcmByteCount;
@@ -2788,6 +3155,10 @@ fpl_extern bool AudioSystemGetStats(AudioSystem *audioSys, AudioSystemStats *out
 	outStats->maxPlayItemCount = FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT;
 	outStats->droppedCommandCount = fplAtomicLoadU32(&audioSys->commandQueue.droppedCount);
 	outStats->concurrentWriteCount = fplAtomicLoadU32(&audioSys->concurrentWriteCount);
+	outStats->streamSourceCount = streamSourceCount;
+	outStats->streamInstanceCount = fplAtomicLoadU32(&audioSys->streamInstanceCount);
+	outStats->streamInstanceByteCount = fplAtomicLoadU32(&audioSys->streamInstanceByteCount);
+	outStats->failedStreamCount = fplAtomicLoadU32(&audioSys->failedStreamCount);
 	return(true);
 }
 
