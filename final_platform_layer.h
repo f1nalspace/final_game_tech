@@ -189,6 +189,7 @@ SOFTWARE.
 	- Changed: Renamed fplGetClipboardText() to fplClipboardGetText() and fplSetClipboardText() to fplClipboardSetText(), so the clipboard comes first in the name and the verb after it
 	- Changed: fplClipboardGetText is now returning the total number of characters required or returns zero on errors and takes a size_t as the destination length
 	- Changed: [X11] Builds with FPL_NO_RUNTIME_LINKING need libXi now (-lXi) for the relative mouse mode and the media keys, define FPL_NO_X11_XINPUT2 to build without it
+	- Changed: [Vulkan] fplVideoSurfaceVulkan.surfaceKHR is a uint64_t instead of a pointer, because VkSurfaceKHR is 64-bit on every platform
 
 	### Details
 
@@ -11226,8 +11227,8 @@ typedef struct fplVideoBackBuffer {
 typedef struct fplVideoSurfaceVulkan {
 	//! The Vulkan Instance (VkInstance).
 	void *instance;
-	//! The Vulkan Surface KHR (VkSurfaceKHR).
-	void *surfaceKHR;
+	//! The Vulkan Surface KHR (VkSurfaceKHR), a 64-bit handle on every platform.
+	uint64_t surfaceKHR;
 } fplVideoSurfaceVulkan;
 #endif
 
@@ -37264,12 +37265,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 	nativeBackend->surfaceHandle = surfaceHandle;
 
 	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
-#if defined(FPL_CPU_32BIT)
-	// The public surface is a pointer, a 32-bit platform stores the 64-bit handle only when it fits
-	const uint64_t surfaceValue = (uint64_t)nativeBackend->surfaceHandle;
-	fplAssert(surfaceValue <= UINTPTR_MAX);
-#endif
-	backend->surface.vulkan.surfaceKHR = (void *)(uintptr_t)nativeBackend->surfaceHandle;
+	backend->surface.vulkan.surfaceKHR = (uint64_t)nativeBackend->surfaceHandle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;

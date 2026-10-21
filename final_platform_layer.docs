@@ -2272,7 +2272,7 @@
 		fplAssert(surface != fpl_null);
 		
 		// Get the VkInstance and VkSurfaceKHR
-		VkInstance instanceHandle = (VkInstance)surface->vulkan.instanceHandle;
+		VkInstance instanceHandle = (VkInstance)surface->vulkan.instance;
 		VkSurfaceKHR surfaceHandle = (VkSurfaceKHR)surface->vulkan.surfaceKHR;
 		fplAssert(instanceHandle != VK_NULL_HANDLE);
 		fplAssert(surfaceHandle != VK_NULL_HANDLE);
