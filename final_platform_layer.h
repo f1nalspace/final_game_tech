@@ -203,6 +203,9 @@ SOFTWARE.
 	- Fixed: Memory macros tripped a false -Wstringop-overflow by computing the byte tail from a mask instead of a running counter
 	- Fixed: FPL__MEM_MASK_16 was 0x0000000 (zero) instead of 0x1
 	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear read and wrote 16/32/64 bit words at unaligned addresses, because the word size was picked by the size alone and not by the alignment of the addresses - undefined behavior (reported by UBSan) that can fault on CPUs with strict alignment such as ARM32
+	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear produced wrong code with GCC -O3 (strict aliasing)
+	- Fixed: fplMemorySet and fplMemoryClear called memset with FPL_NO_CRT
+	- Changed: fplMemoryCopy, fplMemorySet and fplMemoryClear use memcpy/memset with the C-Runtime, the memory macros only with FPL_NO_CRT or FPL_FORCE_MEMORY_MACROS, FPL_NO_MEMORY_MACROS has no effect anymore
 	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
@@ -3419,7 +3422,9 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 * @{
 */
 
-#if !defined(FPL_NO_MEMORY_MACROS) || defined(FPL_FORCE_MEMORY_MACROS)
+// The memory macros are always used without the C-Runtime (FPL_NO_CRT) or when forced (FPL_FORCE_MEMORY_MACROS), otherwise memset/memcpy are used.
+// FPL_NO_MEMORY_MACROS has no effect anymore, because memset/memcpy are the default with the C-Runtime and must never be used without it.
+#if defined(FPL_NO_CRT) || defined(FPL_FORCE_MEMORY_MACROS)
 #	define FPL__ENABLE_MEMORY_MACROS
 #endif
 
@@ -3869,6 +3874,7 @@ struct IUnknown;
 #	 include <stdlib.h> // wcstombs, mbstowcs, getenv
 #	 include <wchar.h> // mbrtowc, wcsrtombs, mbsrtowcs
 #	 include <locale.h> // setlocale, struct lconv, localeconv
+#	 include <string.h> // memset, memcpy
 #endif
 
 // Always include sched.h and dirint.h
@@ -16279,6 +16285,30 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 #define FPL__MEM_SHIFT_16 1
 #define FPL__MEM_MASK_16 0x00000001
 
+// The memory macros access objects of any type through these words, so they must be allowed to alias - otherwise the type based alias analysis of GCC/Clang reorders the accesses
+#if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
+typedef uint64_t __attribute__((__may_alias__)) fpl__MemoryWord64;
+typedef uint32_t __attribute__((__may_alias__)) fpl__MemoryWord32;
+typedef uint16_t __attribute__((__may_alias__)) fpl__MemoryWord16;
+#else
+typedef uint64_t fpl__MemoryWord64;
+typedef uint32_t fpl__MemoryWord32;
+typedef uint16_t fpl__MemoryWord16;
+#endif
+
+// Keeps GCC/Clang from turning the loops of the memory macros back into memset/memcpy calls, which do not exist without the C-Runtime or would call fplMemorySet/fplMemoryCopy recursively
+#if defined(FPL__ENABLE_MEMORY_MACROS) && defined(FPL_COMPILER_CLANG)
+#	if __has_attribute(no_builtin)
+#		define fpl__NoMemoryLibraryCalls __attribute__((no_builtin("memset", "memcpy", "memmove")))
+#	else
+#		define fpl__NoMemoryLibraryCalls
+#	endif
+#elif defined(FPL__ENABLE_MEMORY_MACROS) && (defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_MINGW))
+#	define fpl__NoMemoryLibraryCalls __attribute__((__optimize__("-fno-tree-loop-distribute-patterns")))
+#else
+#	define fpl__NoMemoryLibraryCalls
+#endif
+
 // Clearing memory in chunks
 #define FPL__MEMORY_SET(T, memory, size, shift, mask, value) \
 	do { \
@@ -16335,18 +16365,18 @@ fpl_common_api void fplMemoryAlignedFree(void *ptr) {
 		} \
 	} while (0);
 
-fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
+fpl_common_api fpl__NoMemoryLibraryCalls void fplMemorySet(void *mem, const uint8_t value, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
 	// A word size is only used when the address is aligned to it as well, not just the size
 	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
 	if (alignmentBits % sizeof(uint64_t) == 0) {
-		FPL__MEMORY_SET(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
+		FPL__MEMORY_SET(fpl__MemoryWord64, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64, value);
 	} else if (alignmentBits % sizeof(uint32_t) == 0) {
-		FPL__MEMORY_SET(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, value);
+		FPL__MEMORY_SET(fpl__MemoryWord32, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32, value);
 	} else if (alignmentBits % sizeof(uint16_t) == 0) {
-		FPL__MEMORY_SET(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, value);
+		FPL__MEMORY_SET(fpl__MemoryWord16, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16, value);
 	} else {
 		FPL__MEMORY_SET(uint8_t, mem, size, 0, 0, value);
 	}
@@ -16357,18 +16387,18 @@ fpl_common_api void fplMemorySet(void *mem, const uint8_t value, const size_t si
 #endif
 }
 
-fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
+fpl_common_api fpl__NoMemoryLibraryCalls void fplMemoryClear(void *mem, const size_t size) {
 	FPL__CheckArgumentNullNoRet(mem);
 	FPL__CheckArgumentZeroNoRet(size);
 #if defined(FPL__ENABLE_MEMORY_MACROS)
 	// A word size is only used when the address is aligned to it as well, not just the size
 	const uintptr_t alignmentBits = (uintptr_t)mem | (uintptr_t)size;
 	if (alignmentBits % sizeof(uint64_t) == 0) {
-		FPL__MEMORY_CLEAR(uint64_t, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
+		FPL__MEMORY_CLEAR(fpl__MemoryWord64, mem, size, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (alignmentBits % sizeof(uint32_t) == 0) {
-		FPL__MEMORY_CLEAR(uint32_t, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
+		FPL__MEMORY_CLEAR(fpl__MemoryWord32, mem, size, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
 	} else if (alignmentBits % sizeof(uint16_t) == 0) {
-		FPL__MEMORY_CLEAR(uint16_t, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
+		FPL__MEMORY_CLEAR(fpl__MemoryWord16, mem, size, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_CLEAR(uint8_t, mem, size, 0, 0);
 	}
@@ -16379,7 +16409,7 @@ fpl_common_api void fplMemoryClear(void *mem, const size_t size) {
 #endif
 }
 
-fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem) {
+fpl_common_api fpl__NoMemoryLibraryCalls void fplMemoryCopy(const void *sourceMem, const size_t sourceSize, void *targetMem) {
 	FPL__CheckArgumentNullNoRet(sourceMem);
 	FPL__CheckArgumentZeroNoRet(sourceSize);
 	FPL__CheckArgumentNullNoRet(targetMem);
@@ -16387,11 +16417,11 @@ fpl_common_api void fplMemoryCopy(const void *sourceMem, const size_t sourceSize
 	// A word size is only used when both addresses are aligned to it as well, not just the size
 	const uintptr_t alignmentBits = (uintptr_t)sourceMem | (uintptr_t)targetMem | (uintptr_t)sourceSize;
 	if (alignmentBits % sizeof(uint64_t) == 0) {
-		FPL__MEMORY_COPY(uint64_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
+		FPL__MEMORY_COPY(fpl__MemoryWord64, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_64, FPL__MEM_MASK_64);
 	} else if (alignmentBits % sizeof(uint32_t) == 0) {
-		FPL__MEMORY_COPY(uint32_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
+		FPL__MEMORY_COPY(fpl__MemoryWord32, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_32, FPL__MEM_MASK_32);
 	} else if (alignmentBits % sizeof(uint16_t) == 0) {
-		FPL__MEMORY_COPY(uint16_t, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
+		FPL__MEMORY_COPY(fpl__MemoryWord16, sourceMem, sourceSize, targetMem, FPL__MEM_SHIFT_16, FPL__MEM_MASK_16);
 	} else {
 		FPL__MEMORY_COPY(uint8_t, sourceMem, sourceSize, targetMem, 0, 0);
 	}
