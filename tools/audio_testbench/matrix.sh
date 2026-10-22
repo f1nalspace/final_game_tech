@@ -5,7 +5,7 @@
 # Every case of full runs once loaded fully and once as a stream (--stream), both must give the same hash. A track that cannot stream yet loads fully then, its stream case is the same render.
 # A single case may seek (--seek=<at>:<to>), its id ends on _s<at>-<to>. The cases without a seek keep the ids they had.
 # A single case may have a loop region (--loop=<start>:<end>, seek - for none), its id ends on _l<start>-<end>.
-# Kept small on purpose (156 cases), test runs must stay light. More values go into the arrays below later.
+# Kept small on purpose (168 cases), test runs must stay light. More values go into the arrays below later.
 
 media_dir="media"
 
@@ -76,6 +76,13 @@ set_full_matrix() {
 		"long_44k.mp3 48000 s16 2 512 1.0 1.0 1 - 30:200"
 		"long_44k.mp3 44100 s16 2 512 1.0 2.0 1 - 30.00003:200.00007"
 		"bounce_44100hz.wav 44100 s16 2 512 1.0 1.0 1 - 0.02:0.09"
+		# Loop regions from the tags of the file: Vorbis LOOPSTART with LOOPLENGTH and with LOOPEND, wave smpl after and before the data, the tags without repeat, --loop over the tags
+		"crackout_44k_loop.ogg 48000 s16 2 512 1.0 1.0 1"
+		"crackout_44k_loopend.ogg 44100 s16 2 512 1.0 2.0 1"
+		"crackout_44k_loop.wav 48000 s16 2 512 1.0 1.0 1"
+		"crackout_44k_loop_smpl_first.wav 44100 s16 2 512 1.0 0.5 1"
+		"crackout_44k_loop.ogg 44100 s16 2 512 1.0 1.0 0"
+		"crackout_44k_loop.ogg 44100 f32 2 512 1.0 1.0 1 - 10:65"
 	)
 }
 
