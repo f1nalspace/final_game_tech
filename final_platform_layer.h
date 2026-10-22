@@ -272,6 +272,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
 	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
 	- Fixed[#184]: [Win32] fplDirectoriesCreate() does not create parent sub-directories, an existing directory counts as success like on POSIX
+	- Fixed: [POSIX] fplPathNormalize() overflowed the stack for resolved paths of 2048 characters or more
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -28051,20 +28052,36 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 	return(result);
 }
 
+// realpath() writes up to PATH_MAX bytes into its buffer, that is more than FPL_MAX_PATH_LENGTH
+#if defined(PATH_MAX)
+#	define FPL__POSIX_REALPATH_BUFFER_SIZE PATH_MAX
+#else
+#	define FPL__POSIX_REALPATH_BUFFER_SIZE 4096
+#endif
+
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
 	if (fplGetStringLength(sourcePath) == 0) {
 		return 0;
 	}
-	char resolvedPath[FPL_MAX_PATH_LENGTH];
-	if (realpath(sourcePath, resolvedPath) == fpl_null) {
+	char *resolvedPath = (char *)fpl__AllocateTemporaryMemory(FPL__POSIX_REALPATH_BUFFER_SIZE, fpl__MinAlignment);
+	if (resolvedPath == fpl_null) {
 		return 0;
 	}
-	size_t result = fplGetStringLength(resolvedPath);
-	if (destPath != fpl_null) {
-		size_t requiredLen = result + 1;
-		FPL__CheckArgumentMin(maxDestLen, requiredLen, 0);
-		fplCopyStringLen(resolvedPath, result, destPath, maxDestLen);
+	size_t result = 0;
+	const char *realPathResult = realpath(sourcePath, resolvedPath);
+	if (realPathResult != fpl_null) {
+		size_t resolvedLen = fplGetStringLength(resolvedPath);
+		size_t requiredLen = resolvedLen + 1;
+		if (destPath == fpl_null) {
+			result = resolvedLen;
+		} else if (maxDestLen < requiredLen) {
+			fpl__ArgumentMinError(FPL_FUNCTION_NAME, __LINE__, "maxDestLen", maxDestLen, requiredLen);
+		} else {
+			fplCopyStringLen(resolvedPath, resolvedLen, destPath, maxDestLen);
+			result = resolvedLen;
+		}
 	}
+	fpl__ReleaseTemporaryMemory(resolvedPath);
 	return result;
 }
 
