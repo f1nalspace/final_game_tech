@@ -440,6 +440,8 @@
 	@section section_category_initialization_release Releasing the Platform
 
 	Call @ref fplPlatformRelease() when you are done. This will release all internal resources.<br>
+	All threads you created with @ref fplThreadCreate() must have ended before, e.g. by @ref fplThreadWaitForAll().<br>
+	Threads that still run are waited for up to one second, after that their thread slots are kept and not freed, and a warning is logged.<br>
 	
 	@code{.c}
 	fplPlatformRelease();
