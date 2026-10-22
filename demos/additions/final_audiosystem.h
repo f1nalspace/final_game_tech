@@ -32,6 +32,21 @@ So a stream gives the same samples as the same file decoded in full, bit for bit
 An mp3 loop is not seamless (delay and padding of the encoder, about 42 ms), a Vorbis loop is.
 A 4:40 track at 44.1 kHz as a stream holds its compressed file (about 6 MB) plus about 30 KB per play for mp3 and about 220 KB for Vorbis, decoded in full it would be about 50 MB.
 
+Loop regions:
+
+A track can have an intro, a loop region from the loop start to the loop end and an outro up to its end, music of games often has them:
+
+|--- intro ---|=========== loop region ===========|--- outro ---|
+0          loop start                          loop end      end
+
+- A repeating play item plays the intro once and then only the region, without a gap. Without repeat it plays the whole track, the region changes nothing then.
+- Turning repeat off (AudioSystemSetPlayItemRepeat) is the release: the item plays the rest of the region and the outro, then it ends. Turned on again in the outro, it plays to the end and goes on at the loop start.
+- The loop start is the first frame of the region and the loop end the frame after its last one, in frames of the source like AudioSystemSetPlayItemPosition(). A seek past the end of a repeating item goes on at the loop start.
+- A play item gets the region of its source (AudioSource::loopStartFrame and loopEndFrame) when it starts, AudioSystemSetPlayItemLoop() gives it another one or clears it while it plays. A region that ends past the source is dropped, an endless stream has none.
+- A source of a file has the region from the tags of the file: the comments LOOPSTART with LOOPLENGTH or LOOPEND of Ogg Vorbis (LOOPSTART alone loops up to the end) and the first loop of the smpl chunk of a wave file when it loops forward.
+- mp3 has no tags. Its frames include the delay of the encoder (1411 frames on the test track at 44.1 kHz), so a region taken from the original audio comes that much later in the mp3.
+- While it loops the mixer never reads past the loop end, a stream jumps back with an ordinary seek of its decoder. A stream gives the same samples as the track in memory over any number of passes. At the jump the SinC resampler has the edge of a chunk border, like at the end of a track.
+
 There are several API functions for adding/loading audio sources, start playback by adding play-items, change-volume etc.
 
 How audio frame writing/generation works:
@@ -189,6 +204,7 @@ Changelog:
 	- New: Documentation of stream sources and where to mix
 	- New: Loop regions, a repeating play item plays its intro once and then loops between loop start and loop end (AudioSystemSetPlayItemLoop(), loopStartFrame and loopEndFrame in AudioSource and AudioPlayItem)
 	- New: Sources of Ogg Vorbis and wave files get the loop region from the tags of the file
+	- New: Documentation of loop regions
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
