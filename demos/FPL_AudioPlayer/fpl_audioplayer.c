@@ -83,10 +83,12 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
-	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. That is the sine wave (--sine-seconds=0 makes it endless), Vorbis and mp3 files and the built-in music, which stay compressed in memory. A wave file is decoded in full, the log says so.
+	The tracks play as stream sources by default (--stream), which the mixer generates or decodes while it mixes. That is the sine wave (--sine-seconds=0 makes it endless), Vorbis and mp3 files and the built-in music, which stay compressed in memory. A wave file is decoded in full, the log says so.
+	--stream=off decodes every track in full when it loads. A flag alone or with =on turns it on, =off turns it off.
 	A stream gives the same samples as the track decoded in full, bit for bit, also with --pitch, --repeat and --seek. The decoding runs where the mixing runs: in the streaming thread in thread mode, in the real-time device callback in callback mode.
 	An mp3 loop has a gap of about 42 ms (delay and padding of the encoder), a Vorbis loop has none.
-	In the window --stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. A track without a length (the endless sine wave) shows no progress.
+	In the window a stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. With --stream=off thread mode renders the full-track buffer of every track and F1 switches to it. A track without a length (the endless sine wave) shows no progress.
+	--mixer=device-sine plays without the audio system, streams do not apply there.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
 	A track ends when it is heard to its end, in thread mode that is after the latency of the output ring. A repeating track never ends.
@@ -160,6 +162,8 @@ Changelog:
 	- Changed: R is heard at once in thread mode, it empties the output ring like a seek
 	- New: The stats line shows the loop region
 	- Fixed: In thread mode R and the arrow keys did nothing in the last seconds of a track that does not repeat (up to the latency of the output ring)
+	- Changed: Tracks play as streams by default, --stream=off decodes them in full
+	- New: Flags take =on and =off
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -828,7 +832,9 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const doubl
 	const bool isRealTime = IsRealTimeVisualization(demo);
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
-	if(demo->options.isStream) {
+	// The device sine plays without the audio system, so nothing streams there
+	bool isStreaming = demo->options.isStream && (demo->playbackMode != PlaybackMode_DeviceSine);
+	if(isStreaming) {
 		rtString = "RT, STREAM";
 	}
 	const fplAudioBackendType backendType = fplGetAudioBackendType();
@@ -2566,7 +2572,7 @@ static void ToggleRealTimeVisualization(AudioDemo *demo) {
 		return;
 	}
 	if(demo->options.isStream) {
-		FPL_LOG_INFO("Keys", "Visualization: real-time only, --stream renders no full-track buffer");
+		FPL_LOG_INFO("Keys", "Visualization: real-time only, a stream renders no full-track buffer (--stream=off has one)");
 		return;
 	}
 	uint32_t useRealTimeSamples = fplAtomicLoadU32(&demo->useRealTimeSamples);
@@ -2651,7 +2657,7 @@ static const PlayerKeyHelp PlayerKeyHelps[] = {
 	{ "M", "Play mode off, list or loop, what follows a track that has played to its end" },
 	{ "Up, Down", "Volume +0.1 and -0.1, for the next tracks too" },
 	{ "Left, Right", "10 seconds back and ahead, heard at once also in thread mode" },
-	{ "F, F1, F2", "Fullscreen, real-time visualization (thread mode only), spectrum mode" },
+	{ "F, F1, F2", "Fullscreen, real-time visualization (thread mode with --stream=off only), spectrum mode" },
 };
 
 //
@@ -2709,7 +2715,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
 	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
 	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds, 0 with --stream is an endless one" },
-	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing): the sine wave, Vorbis and mp3 files. No full-track buffer then" },
+	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing): the sine wave, Vorbis and mp3 files. --stream=off decodes them in full, thread mode then has the full-track buffer (F1)" },
 	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
 	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
@@ -2742,6 +2748,8 @@ static PlayerOptions MakeDefaultPlayerOptions(void) {
 	PlayerOptions result = fplZeroInit;
 	result.mixerMode = PlaybackMode_Thread;
 	result.playMode = PlayMode_List;
+	// --stream=off decodes the tracks in full
+	result.isStream = true;
 	result.ringMilliseconds = defaultRingMilliseconds;
 	result.sineSeconds = defaultSineSeconds;
 	result.volume = defaultVolume;
@@ -2818,9 +2826,11 @@ static void PrintPlayerHelp(void) {
 		char syntax[128];
 		FormatPlayerOptionSyntax(definition, syntax, fplArrayCount(syntax));
 
-		// Numbers show their default, a choice marks its default line instead
+		// Numbers and the flags that are on by default show their default, a choice marks its default line instead
 		char defaultText[64] = fplZeroInit;
-		if(definition->type == PlayerOptionType_Int || definition->type == PlayerOptionType_Float) {
+		const bool *defaultFlag = (const bool *)((const uint8_t *)&defaults + definition->fieldOffset);
+		bool isFlagOnByDefault = (definition->type == PlayerOptionType_Flag) && *defaultFlag;
+		if(definition->type == PlayerOptionType_Int || definition->type == PlayerOptionType_Float || isFlagOnByDefault) {
 			char defaultValue[32];
 			FormatPlayerOptionValue(definition, &defaults, defaultValue, fplArrayCount(defaultValue));
 			fplStringFormat(defaultText, fplArrayCount(defaultText), " (default %s)", defaultValue);
@@ -2849,7 +2859,8 @@ static void PrintPlayerHelp(void) {
 			fplConsoleFormatOut("  %-*s  %s:%-*s %s%s\n", descriptionColumn, "", choice->name, choiceNamePadding, "", choice->description, defaultMark);
 		}
 	}
-	fplConsoleFormatOut("\nEvery other argument is a file to play, without one the built-in music plays.\n");
+	fplConsoleFormatOut("\nA flag alone or with =on turns it on, =off turns it off.\n");
+	fplConsoleFormatOut("Every other argument is a file to play, without one the built-in music plays.\n");
 
 	fplConsoleFormatOut("\nKeys in the window:\n");
 	for(size_t keyIndex = 0; keyIndex < fplArrayCount(PlayerKeyHelps); ++keyIndex) {
@@ -2877,13 +2888,17 @@ static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name
 static bool SetPlayerOptionValue(const PlayerOptionDefinition *definition, const char *value, PlayerOptions *options) {
 	uint8_t *field = (uint8_t *)options + definition->fieldOffset;
 
+	// A flag alone is on, =on and =off set it
 	if(definition->type == PlayerOptionType_Flag) {
-		if(value != fpl_null) {
-			fplConsoleFormatError("%s%s takes no value\n", PlayerOptionPrefix, definition->name);
+		bool *flag = (bool *)field;
+		if(value == fpl_null || fplIsStringEqual(value, "on")) {
+			*flag = true;
+		} else if(fplIsStringEqual(value, "off")) {
+			*flag = false;
+		} else {
+			fplConsoleFormatError("%s%s takes on or off, not '%s'\n", PlayerOptionPrefix, definition->name, value);
 			return(false);
 		}
-		bool *flag = (bool *)field;
-		*flag = true;
 		return(true);
 	}
 
@@ -2999,12 +3014,7 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 	}
 	const bool isEndlessSine = (options->sineSeconds == 0.0f);
 	if(isEndlessSine && !options->isStream) {
-		fplConsoleFormatError("--sine-seconds=0 is an endless sine wave, which only a stream can be, add --stream\n");
-		return(false);
-	}
-	const bool isDeviceSine = (options->mixerMode == PlaybackMode_DeviceSine);
-	if(options->isStream && isDeviceSine && !options->isRender) {
-		fplConsoleFormatError("--stream needs the audio system, the device sine of --mixer=device-sine plays without it\n");
+		fplConsoleFormatError("--sine-seconds=0 is an endless sine wave, which only a stream can be, it does not work with --stream=off\n");
 		return(false);
 	}
 	if(options->ringMilliseconds <= 0) {
