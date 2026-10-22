@@ -128,6 +128,7 @@ Changelog:
 	- New: The render line shows stream, stream_bytes and pcm_bytes
 	- New: --stream plays the sine wave as a stream in the window too, without a full-track buffer
 	- New: The stats line shows the stream sources and instances
+	- Fixed: Data race on the visualization switch of F1
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -700,7 +701,8 @@ typedef struct AudioDemo {
 
 	volatile uint32_t isStreamingThreadStopped;
 	volatile uint32_t isStressThreadStopped;
-	fpl_b32 useRealTimeSamples;
+	// 1 when F1 switched the visualization to the real-time samples, the device callback reads it
+	volatile uint32_t useRealTimeSamples;
 	SpectrumMode spectrumMode;
 	PlaybackMode playbackMode;
 } AudioDemo;
@@ -716,9 +718,10 @@ static void RecordMixCostSince(AudioDemo *demo, const fplTimestamp mixStart) {
 }
 
 // Only thread mode without --stream has the full-track buffer, everything else always visualizes the samples that went to the device
-static bool IsRealTimeVisualization(const AudioDemo *demo) {
+static bool IsRealTimeVisualization(AudioDemo *demo) {
 	bool hasFullTrackBuffer = (demo->playbackMode == PlaybackMode_Thread) && !demo->options.isStream;
-	bool result = demo->useRealTimeSamples || !hasFullTrackBuffer;
+	uint32_t useRealTimeSamples = fplAtomicLoadU32(&demo->useRealTimeSamples);
+	bool result = (useRealTimeSamples != 0) || !hasFullTrackBuffer;
 	return(result);
 }
 
@@ -2137,8 +2140,10 @@ static void ToggleRealTimeVisualization(AudioDemo *demo) {
 		FPL_LOG_INFO("Keys", "Visualization: real-time only, --stream renders no full-track buffer");
 		return;
 	}
-	demo->useRealTimeSamples = !demo->useRealTimeSamples;
-	FPL_LOG_INFO("Keys", "Visualization: %s", demo->useRealTimeSamples ? "real-time samples" : "full-track buffer");
+	uint32_t useRealTimeSamples = fplAtomicLoadU32(&demo->useRealTimeSamples);
+	uint32_t newUseRealTimeSamples = (useRealTimeSamples != 0) ? 0 : 1;
+	fplAtomicStoreU32(&demo->useRealTimeSamples, newUseRealTimeSamples);
+	FPL_LOG_INFO("Keys", "Visualization: %s", (newUseRealTimeSamples != 0) ? "real-time samples" : "full-track buffer");
 }
 
 static AudioPlayItemID GetCurrentPlayItemId(AudioDemo *demo) {
@@ -3201,7 +3206,7 @@ int main(int argc, char **args) {
 	demo->options = options;
 	demo->playbackMode = (PlaybackMode)options.mixerMode;
 	demo->sineWave = MakeSineWave(options.sineSeconds);
-	demo->useRealTimeSamples = false;
+	demo->useRealTimeSamples = 0;
 
 	int result = -1;
 
