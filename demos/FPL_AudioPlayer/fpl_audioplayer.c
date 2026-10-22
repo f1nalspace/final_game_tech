@@ -93,11 +93,13 @@ How the demo works:
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
-	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n> load_hwm_kb=<n> compressed_bytes=<n> failed_streams=<n>
+	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n> load_hwm_kb=<n> compressed_bytes=<n> failed_streams=<n> loop=<start>-<end>
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
 	stream tells whether the track played as a stream, stream_bytes is the memory of its stream instance and pcm_bytes the decoded samples in memory.
 	load_hwm_kb is the memory high water right after loading the track, before it plays. compressed_bytes is the compressed file a stream keeps, failed_streams counts streams that ended early (a damaged file).
 	--seek=<at>:<to> moves the play item to second <to> of the track once the output reaches second <at>. The chunk before ends exactly there, so the jump lands on the same output frame for every --chunk. A position past the end ends the track, a repeating one starts over.
+	--loop=<start>:<end> gives the play item a loop region in seconds of the track. With --repeat the part before <start> plays once, then the region loops, without --repeat the track plays to its end.
+	loop in the render line is the region the play item got, in frames of the track, - when it has none (the mixer drops a region that ends past the track).
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode R and Up/Down are heard only after the latency of the output ring.
@@ -148,6 +150,7 @@ Changelog:
 	- New: --stream plays mp3 files and the built-in music as streams
 	- Changed: The documentation tells where a stream is decoded and how it loops
 	- Changed: A pause in thread mode is heard at once, the output ring keeps its frames
+	- New: --loop=<start>:<end> sets the loop region of the play item in render mode, the render line shows it
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -452,6 +455,7 @@ typedef struct PlayerOptions {
 	char deviceName[FPL_MAX_NAME_LENGTH];
 	char renderWavePath[FPL_MAX_PATH_LENGTH];
 	char renderSeekText[FPL_MAX_NAME_LENGTH];
+	char loopText[FPL_MAX_NAME_LENGTH];
 	const char *files[MAX_PLAYER_FILE_COUNT];
 	size_t fileCount;
 	int32_t mixerMode;
@@ -1498,22 +1502,29 @@ static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const floa
 	return(result);
 }
 
-// Copies the play item of the current track, false when it has ended or there is none. Other play items, like the tones of --stress, do not count
-static bool GetCurrentPlayItem(AudioDemo *demo, AudioPlayItem *outPlayItem) {
-	uint64_t currentPlayItemId = fplAtomicLoadU64(&demo->currentPlayItemId);
-	if(currentPlayItemId == 0) {
-		return(false);
-	}
+// Copies the play item with the id, false when it has ended
+static bool FindPlayItem(AudioSystem *audioSys, const AudioPlayItemID playId, AudioPlayItem *outPlayItem) {
 	// Room for the whole pool, so the copy never fails for lack of space
 	AudioPlayItem playItems[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
-	size_t playItemCount = AudioSystemGetPlayItems(&demo->audioSys, playItems, FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT);
+	size_t playItemCount = AudioSystemGetPlayItems(audioSys, playItems, FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT);
 	for(size_t itemIndex = 0; itemIndex < playItemCount; ++itemIndex) {
-		if(playItems[itemIndex].id.value == currentPlayItemId) {
+		if(playItems[itemIndex].id.value == playId.value) {
 			*outPlayItem = playItems[itemIndex];
 			return(true);
 		}
 	}
 	return(false);
+}
+
+// Copies the play item of the current track, false when it has ended or there is none. Other play items, like the tones of --stress, do not count
+static bool GetCurrentPlayItem(AudioDemo *demo, AudioPlayItem *outPlayItem) {
+	AudioPlayItemID currentPlayItemId = fplZeroInit;
+	currentPlayItemId.value = fplAtomicLoadU64(&demo->currentPlayItemId);
+	if(currentPlayItemId.value == 0) {
+		return(false);
+	}
+	bool result = FindPlayItem(&demo->audioSys, currentPlayItemId, outPlayItem);
+	return(result);
 }
 
 // Output frames left in the current pass of the play item of the current track, false when it is gone, repeats or never ends (endless stream).
@@ -2486,6 +2497,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Int, "channels", "<n>", PLAYER_OPTION_FIELD(renderChannelCount), fpl_null, 0, "Output channel count" },
 	{ PlayerOptionType_Float, "seconds", "<s>", PLAYER_OPTION_FIELD(renderSeconds), fpl_null, 0, "Length to render, 0 is the track length, with --repeat twice that" },
 	{ PlayerOptionType_String, "seek", "<at>:<to>", PLAYER_OPTION_FIELD(renderSeekText), fpl_null, 0, "Move the play item to second <to> of the track once the output reaches second <at>" },
+	{ PlayerOptionType_String, "loop", "<start>:<end>", PLAYER_OPTION_FIELD(loopText), fpl_null, 0, "Loop region of the play item in seconds of the track, with --repeat the part before <start> plays once" },
 };
 
 static const char PlayerOptionPrefix[] = "--";
@@ -2750,26 +2762,26 @@ static bool ParsePlayerOptions(const int argc, char **args, PlayerOptions *optio
 	return(true);
 }
 
-// The two seconds of --seek=<at>:<to>, false when the text has another form or a value is negative
-static bool ParseRenderSeek(const char *text, float *outAtSeconds, float *outToSeconds) {
+// The two seconds of --seek=<at>:<to> or --loop=<start>:<end>, false when the text has another form or a value is negative
+static bool ParseSecondsPair(const char *text, float *outFirstSeconds, float *outSecondSeconds) {
 	const char separator = ':';
-	char *atEnd = fpl_null;
-	double atSeconds = strtod(text, &atEnd);
-	if(atEnd == text || *atEnd != separator) {
+	char *firstEnd = fpl_null;
+	double firstSeconds = strtod(text, &firstEnd);
+	if(firstEnd == text || *firstEnd != separator) {
 		return(false);
 	}
-	const char *toText = atEnd + 1;
-	char *toEnd = fpl_null;
-	double toSeconds = strtod(toText, &toEnd);
-	if(toEnd == toText || *toEnd != 0) {
+	const char *secondText = firstEnd + 1;
+	char *secondEnd = fpl_null;
+	double secondSeconds = strtod(secondText, &secondEnd);
+	if(secondEnd == secondText || *secondEnd != 0) {
 		return(false);
 	}
-	bool isFinite = isfinite(atSeconds) && isfinite(toSeconds);
-	if(!isFinite || atSeconds < 0.0 || toSeconds < 0.0) {
+	bool isFinite = isfinite(firstSeconds) && isfinite(secondSeconds);
+	if(!isFinite || firstSeconds < 0.0 || secondSeconds < 0.0) {
 		return(false);
 	}
-	*outAtSeconds = (float)atSeconds;
-	*outToSeconds = (float)toSeconds;
+	*outFirstSeconds = (float)firstSeconds;
+	*outSecondSeconds = (float)secondSeconds;
 	return(true);
 }
 
@@ -2834,8 +2846,22 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 		}
 		float seekAtSeconds = 0.0f;
 		float seekToSeconds = 0.0f;
-		if(!ParseRenderSeek(options->renderSeekText, &seekAtSeconds, &seekToSeconds)) {
+		if(!ParseSecondsPair(options->renderSeekText, &seekAtSeconds, &seekToSeconds)) {
 			fplConsoleFormatError("--seek needs two seconds that are not negative, <at>:<to>, not '%s'\n", options->renderSeekText);
+			return(false);
+		}
+	}
+	size_t loopTextLength = fplGetStringLength(options->loopText);
+	if(loopTextLength > 0) {
+		if(!options->isRender) {
+			fplConsoleFormatError("--loop works in render mode\n");
+			return(false);
+		}
+		float loopStartSeconds = 0.0f;
+		float loopEndSeconds = 0.0f;
+		bool isLoopParsed = ParseSecondsPair(options->loopText, &loopStartSeconds, &loopEndSeconds);
+		if(!isLoopParsed || loopStartSeconds >= loopEndSeconds) {
+			fplConsoleFormatError("--loop needs two seconds that are not negative and a start before the end, <start>:<end>, not '%s'\n", options->loopText);
 			return(false);
 		}
 	}
@@ -3204,6 +3230,16 @@ static bool WriteWaveFileHeader(const fplFileHandle *file, const fplAudioFormat 
 	return(result);
 }
 
+// Seconds as frames at the sample rate, rounded, at most the largest frame index
+static AudioFrameIndex SecondsToFrameIndex(const float seconds, const AudioHertz sampleRate) {
+	const double roundingOffset = 0.5;
+	const double maxFrameIndex = (double)UINT32_MAX;
+	double frames = (double)seconds * (double)sampleRate + roundingOffset;
+	double clampedFrames = fplMin(frames, maxFrameIndex);
+	AudioFrameIndex result = (AudioFrameIndex)clampedFrames;
+	return(result);
+}
+
 /**
 * @brief Mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints the result line with the hash of the samples.
 * @param[in] options The options, --volume, --pitch and --repeat apply to the sine wave too.
@@ -3293,6 +3329,21 @@ static int RenderOffline(const PlayerOptions *options) {
 		goto done;
 	}
 
+	// --loop overrides the region of the file, the mixer checks it against the source when it applies it
+	float loopStartSeconds = 0.0f;
+	float loopEndSeconds = 0.0f;
+	bool hasLoopOption = ParseSecondsPair(options->loopText, &loopStartSeconds, &loopEndSeconds);
+	if(hasLoopOption) {
+		AudioFrameIndex loopStartFrameIndex = SecondsToFrameIndex(loopStartSeconds, source->format.sampleRate);
+		AudioFrameIndex loopEndFrameIndex = SecondsToFrameIndex(loopEndSeconds, source->format.sampleRate);
+		if(!AudioSystemSetPlayItemLoop(audioSys, playID, loopStartFrameIndex, loopEndFrameIndex)) {
+			FPL_LOG_WARN("Render", "--loop=%s is shorter than one frame of the track", options->loopText);
+		}
+		if(!options->isRepeat) {
+			FPL_LOG_INFO("Render", "--loop without --repeat plays the track to its end");
+		}
+	}
+
 	if(options->isStress) {
 		RunRenderStressCheck(audioSys);
 	}
@@ -3329,11 +3380,14 @@ static int RenderOffline(const PlayerOptions *options) {
 	// --seek: the chunk before the output frame of <at> ends there, so the jump lands on the same frame for every --chunk. <to> counts in frames of the source, like the play item position
 	float seekAtSeconds = 0.0f;
 	float seekToSeconds = 0.0f;
-	bool isSeekPending = ParseRenderSeek(options->renderSeekText, &seekAtSeconds, &seekToSeconds);
-	double seekAtFrames = (double)seekAtSeconds * (double)targetFormat.sampleRate + roundingOffset;
-	AudioFrameIndex seekAtFrameIndex = (AudioFrameIndex)seekAtFrames;
-	double seekToFrames = (double)seekToSeconds * (double)source->format.sampleRate + roundingOffset;
-	AudioFrameIndex seekToFrameIndex = (AudioFrameIndex)seekToFrames;
+	bool isSeekPending = ParseSecondsPair(options->renderSeekText, &seekAtSeconds, &seekToSeconds);
+	AudioFrameIndex seekAtFrameIndex = SecondsToFrameIndex(seekAtSeconds, targetFormat.sampleRate);
+	AudioFrameIndex seekToFrameIndex = SecondsToFrameIndex(seekToSeconds, source->format.sampleRate);
+
+	// The region the play item has once the first mix applied the commands: the one of --loop or of the file, none when the mixer dropped it
+	AudioFrameIndex appliedLoopStartFrame = 0;
+	AudioFrameIndex appliedLoopEndFrame = 0;
+	bool isLoopRegionRead = false;
 
 	uint64_t hash = Fnv1a64OffsetBasis;
 	AudioFrameIndex renderedFrameCount = 0;
@@ -3360,6 +3414,15 @@ static int RenderOffline(const PlayerOptions *options) {
 		if(writtenFrameCount != framesToWrite) {
 			FPL_LOG_ERROR("Render", "The mixer wrote %u instead of %u frames", writtenFrameCount, framesToWrite);
 			goto done;
+		}
+
+		if(!isLoopRegionRead) {
+			isLoopRegionRead = true;
+			AudioPlayItem playItem = fplZeroInit;
+			if(FindPlayItem(audioSys, playID, &playItem)) {
+				appliedLoopStartFrame = playItem.loopStartFrame;
+				appliedLoopEndFrame = playItem.loopEndFrame;
+			}
 		}
 
 		size_t chunkByteCount = writtenFrameCount * frameSize;
@@ -3392,7 +3455,14 @@ static int RenderOffline(const PlayerOptions *options) {
 	AudioSystemStats stats;
 	AudioSystemGetStats(audioSys, &stats);
 	const int streamValue = isStreamSource ? 1 : 0;
-	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu stream=%d stream_bytes=%llu pcm_bytes=%llu load_hwm_kb=%llu compressed_bytes=%llu failed_streams=%u\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes, streamValue, (unsigned long long)stats.streamInstanceByteCount, (unsigned long long)stats.pcmByteCount, (unsigned long long)loadMemoryUsage.highWaterKilobytes, (unsigned long long)stats.compressedByteCount, stats.failedStreamCount);
+	// <start>-<end> in frames of the source, - without a region
+	char loopRegionText[FPL_MAX_NAME_LENGTH];
+	if(appliedLoopEndFrame > 0) {
+		fplStringFormat(loopRegionText, fplArrayCount(loopRegionText), "%u-%u", appliedLoopStartFrame, appliedLoopEndFrame);
+	} else {
+		fplCopyString("-", loopRegionText, fplArrayCount(loopRegionText));
+	}
+	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu stream=%d stream_bytes=%llu pcm_bytes=%llu load_hwm_kb=%llu compressed_bytes=%llu failed_streams=%u loop=%s\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes, streamValue, (unsigned long long)stats.streamInstanceByteCount, (unsigned long long)stats.pcmByteCount, (unsigned long long)loadMemoryUsage.highWaterKilobytes, (unsigned long long)stats.compressedByteCount, stats.failedStreamCount, loopRegionText);
 
 	result = 0;
 
