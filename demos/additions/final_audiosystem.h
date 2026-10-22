@@ -159,6 +159,7 @@ Changelog:
 	- New: Vorbis stream sources, decoded while they are mixed (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
 	- New: AudioSystemStats.compressedByteCount
 	- Fixed: AudioSystemShutdown() waited up to two mix periods for a mixer that no longer runs
+	- New: AudioSystemSetPlayItemPosition() seeks memory and stream items
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
@@ -388,6 +389,8 @@ typedef enum AudioCommandKind {
 	AudioCommandKind_SetPitch,
 	AudioCommandKind_SetRepeat,
 	AudioCommandKind_SetPaused,
+	//! Moves the item of playId to value.frameIndex
+	AudioCommandKind_SetPosition,
 } AudioCommandKind;
 
 //! A change of the play items, the mixer applies it at the start of its next @ref AudioSystemWriteFrames call
@@ -399,6 +402,7 @@ typedef struct AudioCommand {
 		float pitch;
 		bool isRepeat;
 		bool isPaused;
+		AudioFrameIndex frameIndex;
 	} value;
 	//! @ref AudioCommandKind
 	uint32_t kind;
@@ -731,6 +735,18 @@ fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioP
 * @note That is what separates this from @ref AudioSystemStopOne, which frees the item and forgets where it was.
 */
 fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioPlayItemID playId, const bool paused);
+
+/**
+* @brief Moves a play item that is already playing to another frame of its source (seeking), memory and stream items alike.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] frameIndex The source frame to play next, counted at the sample rate of the source like @ref AudioPlayItem::framesPlayed.
+* @return Returns true when the position was sent to a live play item, false when the item no longer exists or the command queue is full.
+* @note A position at or past the end of the source ends the item as its end would, a repeating item starts over from frame 0 instead. An endless stream takes any position.
+* @note A stream item seeks its decoder in the mixer at its next call, a thread that applies the commands itself only sets the position and never decodes. From there on the stream gives the same frames as the same source in memory.
+* @note Frames that were mixed already keep playing, the jump is heard from the next mixed chunk on.
+*/
+fpl_extern bool AudioSystemSetPlayItemPosition(AudioSystem *audioSys, const AudioPlayItemID playId, const AudioFrameIndex frameIndex);
 
 /**
 * @brief Stops and frees all play items.
@@ -1981,6 +1997,30 @@ static void ApplyAudioCommand(AudioPlayItems *playItems, const AudioCommand *com
 			}
 		} break;
 
+		case AudioCommandKind_SetPosition:
+		{
+			uint32_t activeIndex = 0;
+			const bool isActive = FindActivePlayItem(playItems, command->playId, &activeIndex);
+			if(!isActive) {
+				break;
+			}
+			const uint32_t activeSlotIndex = playItems->activeSlotIndices[activeIndex];
+			AudioPlayItemSlot *slot = &playItems->slots[activeSlotIndex];
+			AudioPlayItem *item = &slot->item;
+			const AudioSource *source = item->source;
+			const bool isEndless = IsStreamSource(source) && source->stream.isEndless;
+			const bool isPastEnd = !isEndless && (command->value.frameIndex >= source->buffer.frameCount);
+			if(isPastEnd && !item->isRepeat) {
+				// As at the end of the source
+				FinishActivePlayItem(playItems, activeIndex);
+				break;
+			}
+			// The ring of a stream no longer holds the position, so the stream seeks at the next mix. Whoever applies the queue only sets it
+			item->framesPlayed[0] = isPastEnd ? 0 : command->value.frameIndex;
+			item->copiesPlayed[0] = 0;
+			PublishPlayItem(slot, true);
+		} break;
+
 		default:
 		{
 			fplAssert(!"Unknown audio command");
@@ -2210,6 +2250,18 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 	command.kind = AudioCommandKind_SetPaused;
 	command.playId = playId;
 	command.value.isPaused = paused;
+	const bool result = SendPlayItemCommand(audioSys, &command);
+	return(result);
+}
+
+fpl_extern bool AudioSystemSetPlayItemPosition(AudioSystem *audioSys, const AudioPlayItemID playId, const AudioFrameIndex frameIndex) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetPosition;
+	command.playId = playId;
+	command.value.frameIndex = frameIndex;
 	const bool result = SendPlayItemCommand(audioSys, &command);
 	return(result);
 }
