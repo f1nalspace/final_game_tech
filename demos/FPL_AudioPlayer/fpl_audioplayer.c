@@ -103,7 +103,7 @@ How the demo works:
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n>
 	stream_instances and stream_bytes include the instances of ended play items that no call has freed yet.
 	The buffer and ring values exist in thread mode only, the other modes print -. buffer_entry is the row of the buffering table in AudioStreamingThread() with its frames per write and its delay: low rows write small chunks often, high rows large chunks rarely.
-	buffer_down counts the moves to a lower row (a write took longer than the delay, or the ring was below 25 %), buffer_up the moves to a higher row (the ring was above 75 %).
+	buffer_down counts the moves to a lower row (a write took longer than the delay, or the ring was below 25 % before the write), buffer_up the moves to a higher row (the ring was above 75 % before the write). No row waits longer than a quarter of the ring.
 	ring_gaps counts the device callbacks that found fewer frames in the output ring than they needed (underruns, heard as gaps), ring_gap_frames the frames they lacked. The empty ring at the start, after a track switch and while paused does not count.
 
 	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
@@ -136,6 +136,7 @@ Changelog:
 	- New: --stream plays Vorbis files as streams, in render mode and in the window
 	- New: The render line shows load_hwm_kb, compressed_bytes and failed_streams
 	- New: The stats line shows the buffering table entry and the gaps of the output ring
+	- Fixed: Gaps in thread mode with an output ring below about 1 second
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -1960,6 +1961,13 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	const float minBufferThreshold = 0.25f; // In percentage range of 0 to 1
 	const float maxBufferThreshold = 0.75f; // In percentage range of 0 to 1
 
+	// No entry may wait longer than a quarter of the ring, so a single wait never drains it
+	const uint32_t maxDelayRingDivisor = 4;
+	uint32_t ringFrameSize = fplGetAudioFrameSizeInBytes(demo->targetAudioFormat.type, demo->targetAudioFormat.channels);
+	uint32_t ringFrameCount = (uint32_t)(totalBufferLength / ringFrameSize);
+	uint32_t ringMilliseconds = fplGetAudioBufferSizeInMilliseconds(demo->targetAudioFormat.sampleRate, ringFrameCount);
+	const AudioMilliseconds maxDelay = ringMilliseconds / maxDelayRingDivisor;
+
 	// How often the thread looks for a new track when it does not mix
 	const uint32_t trackLoadPollMilliseconds = 10;
 
@@ -2025,6 +2033,10 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			demo->streamedTrackEndFrameCount = UINT32_MAX;
 		}
 
+		// The fill before the write is the lowest point between two writes, after the write the ring is nearly always full
+		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
+		float percentageFilled = (1.0f / (float)totalBufferLength) * (float)fillCount;
+
 		uint64_t streamDuration = 0;
 		if(WriteAudioToRingBuffer(&demo->targetAudioFormat, currentEntry.frames, demo, &streamDuration)) {
 			if(streamDuration > currentEntry.delay) {
@@ -2033,8 +2045,6 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			}
 		}
 
-		uint64_t fillCount = (uint64_t)fplAtomicLoadS64(&circularBuffer->fillCount);
-		float percentageFilled = (1.0f / (float)totalBufferLength) * (float)fillCount;
 		if(percentageFilled < minBufferThreshold) {
 			// We are not filling the buffer fast enough, maybe due to streaming slowness
 			tooSlow = true;
@@ -2056,8 +2066,9 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 				ignoreWait = true; // We are the worst entry, ignore any waiting
 			}
 		} else if(tooFast) {
-			// Go forward one characteristics entry
-			if(entryIndex < (fplArrayCount(entries) - 1)) {
+			// Go forward one characteristics entry, but not to a delay the ring cannot bridge
+			bool hasNextEntry = entryIndex < (fplArrayCount(entries) - 1);
+			if(hasNextEntry && entries[entryIndex + 1].delay <= maxDelay) {
 				currentEntry = entries[++entryIndex];
 				fplAtomicIncrementU32(&demo->bufferStepUpCount);
 				PublishBufferEntry(demo, entryIndex, &currentEntry);
@@ -2065,7 +2076,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 					ignoreWait = false;
 				}
 			} else {
-				ignoreWait = false; // We are the max entry, never ignore waiting
+				ignoreWait = false; // We are the max entry for this ring, never ignore waiting
 			}
 		}
 	}
