@@ -206,6 +206,8 @@ SOFTWARE.
 	- Fixed: fplMemoryCopy, fplMemorySet and fplMemoryClear produced wrong code with GCC -O3 (strict aliasing)
 	- Fixed: fplMemorySet and fplMemoryClear called memset with FPL_NO_CRT
 	- Changed: fplMemoryCopy, fplMemorySet and fplMemoryClear use memcpy/memset with the C-Runtime, the memory macros only with FPL_NO_CRT or FPL_FORCE_MEMORY_MACROS, FPL_NO_MEMORY_MACROS has no effect anymore
+	- Fixed: fplMemoryAlignedAllocate() rejected an alignment of 1, accepted alignments that are no power of two, overflowed for huge sizes and wrote into a failed allocation
+	- Fixed: [POSIX] fplMemoryAllocate() wrote into a failed allocation and overflowed for huge sizes
 	- Changed: [POSIX] A library candidate that cannot be loaded (e.g. libpthread.so before libpthread.so.0) is logged as info ("Unable to load library") instead of a warning, and no longer pushed as an error - only when no candidate at all can be loaded, the caller reports an error
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
@@ -12122,6 +12124,8 @@ fpl_internal void fpl__LogWriteVarArgs(const char *funcName, const int lineNumbe
 #define FPL__ARBITARY_PADDING 64
 // Small padding to split sections in memory blocks
 #define FPL__MEMORY_PADDING sizeof(uintptr_t)
+// Largest size_t value, SIZE_MAX is missing in older C++ compilers without __STDC_LIMIT_MACROS
+#define FPL__SIZE_MAX ((size_t)-1)
 
 fpl_globalvar struct fpl__PlatformAppState *fpl__global__AppState = fpl_null;
 
@@ -16250,13 +16254,28 @@ fpl_common_api void *fplMemoryAlignedAllocate(const size_t size, const size_t al
 	FPL__CheckArgumentZero(size, fpl_null);
 	FPL__CheckArgumentZero(alignment, fpl_null);
 	uintptr_t mask = alignment - 1;
-	if (fplIsMaskSet(alignment, mask)) {
+	bool isPowerOfTwo = (alignment & mask) == 0;
+	if (!isPowerOfTwo) {
 		FPL__ERROR(FPL__MODULE_MEMORY, "Alignment parameter '%zu' must be a power of two", alignment);
 		return fpl_null;
 	}
 	// Allocate empty memory to hold a size of a pointer + alignment padding + the actual data
-	size_t newSize = sizeof(void *) + (alignment << 1) + size;
+	const size_t alignmentPaddingFactor = 2;
+	const size_t maxAlignment = (FPL__SIZE_MAX - sizeof(void *)) / alignmentPaddingFactor;
+	if (alignment > maxAlignment) {
+		FPL__ERROR(FPL__MODULE_MEMORY, "Alignment parameter '%zu' is too large", alignment);
+		return fpl_null;
+	}
+	size_t overheadSize = sizeof(void *) + alignment * alignmentPaddingFactor;
+	if (size > FPL__SIZE_MAX - overheadSize) {
+		FPL__ERROR(FPL__MODULE_MEMORY, "Size parameter '%zu' is too large for the alignment '%zu'", size, alignment);
+		return fpl_null;
+	}
+	size_t newSize = overheadSize + size;
 	void *basePtr = fplMemoryAllocate(newSize);
+	if (basePtr == fpl_null) {
+		return fpl_null;
+	}
 	// The resulting address starts after the stored base pointer
 	void *alignedPtr = (void *)((uint8_t *)basePtr + sizeof(void *));
 	// Move the resulting address to a aligned one when not aligned
@@ -27318,12 +27337,21 @@ fpl_platform_api void *fplMemoryAllocate(const size_t size) {
 	FPL__CheckArgumentZero(size, fpl_null);
 	// @NOTE(final): FPL__MAP_ANONYMOUS ensures that the memory is cleared to zero.
 	// Allocate empty memory to hold the size + some arbitary padding + the actual data
-	size_t newSize = sizeof(size_t) + FPL__MEMORY_PADDING + size;
+	const size_t headerSize = sizeof(size_t) + FPL__MEMORY_PADDING;
+	if (size > FPL__SIZE_MAX - headerSize) {
+		FPL__ERROR(FPL__MODULE_MEMORY, "Size parameter '%zu' is too large", size);
+		return(fpl_null);
+	}
+	size_t newSize = headerSize + size;
 	void *basePtr = mmap(fpl_null, newSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | FPL__MAP_ANONYMOUS, -1, 0);
+	if (basePtr == MAP_FAILED) {
+		FPL__ERROR(FPL__MODULE_MEMORY, "Failed allocating memory of %zu bytes", size);
+		return(fpl_null);
+	}
 	// Write the size at the beginning
 	*(size_t *)basePtr = newSize;
 	// The resulting address starts after the arbitary padding
-	void *result = (uint8_t *)basePtr + sizeof(size_t) + FPL__MEMORY_PADDING;
+	void *result = (uint8_t *)basePtr + headerSize;
 	return(result);
 }
 
