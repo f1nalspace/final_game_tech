@@ -214,6 +214,7 @@ SOFTWARE.
 	- Fixed: [Win32] fplTimestampElapsed() returned the system uptime for timestamps taken before and after fplPlatformInit()
 	- Fixed: [MinGW] fpl_force_inline links with -O0, CPUID/XCR0/RDTSC work and the GCC warning pragmas apply
 	- Changed: [MinGW] fplAlignAs and fplMinAlignment take effect, aligned structs can change their layout
+	- Changed: Unused arguments and variables are marked with the internal macro FPL__UNUSED() instead of a (void) cast
 
 	#### Process
 	- New: Added function fplProcessStart() that starts a child process or a script, controlled by one fplProcessContext
@@ -11927,6 +11928,13 @@ fpl_common_api const char *fplGetVersion(void) {
 #define FPL__MODULE_GLX "GLX"
 
 //
+// Unused macros
+//
+
+// Marks a variable or an argument as intentionally unused
+#define FPL__UNUSED(x) (void)(x)
+
+//
 // Enum macros
 //
 
@@ -17600,9 +17608,9 @@ fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState
 	fpl__PushMouseMoveEvent(inputGrab->frozenX, inputGrab->frozenY, countX, countY);
 #else
 	// Without the input system no mouse event reaches the application at all
-	(void)appState;
-	(void)deltaX;
-	(void)deltaY;
+	FPL__UNUSED(appState);
+	FPL__UNUSED(deltaX);
+	FPL__UNUSED(deltaY);
 #endif
 }
 
@@ -19945,9 +19953,9 @@ fpl_internal void fpl__Win32ReportHookedKey(fpl__PlatformAppState *appState, con
 	fplButtonState buttonState = isUp ? fplButtonState_Release : fplButtonState_Press;
 	fpl__HandleKeyboardButtonEvent(&appState->window, (uint64_t)hookData->time, keySlot, (uint64_t)reportedKey, scanCode, modifiers, buttonState, false);
 #else
-	(void)appState;
-	(void)hookData;
-	(void)isUp;
+	FPL__UNUSED(appState);
+	FPL__UNUSED(hookData);
+	FPL__UNUSED(isUp);
 #endif
 }
 
@@ -21800,7 +21808,7 @@ fpl_internal bool fpl__InputBackendWin32_Init(fpl__InputBackendWin32 *backend, c
 		detached = true;
 	}
 #	else
-	(void)settings;
+	FPL__UNUSED(settings);
 	detached = true;
 #	endif
 	if (detached) {
@@ -24827,7 +24835,7 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 #	if defined(FPL__ENABLE_INPUT)
 	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
 #	else
-	(void)outState;
+	FPL__UNUSED(outState);
 	return false;
 #	endif
 }
@@ -29299,7 +29307,7 @@ fpl_platform_api bool fplProcessStart(const fplProcessContext *context, fplProce
 		}
 		// The exec has failed, so the parent is told why through the pipe that a successful exec would have closed
 		ssize_t writtenBytes = write(execErrorPipe[1], &childErrorCode, sizeof(childErrorCode));
-		(void)writtenBytes;
+		FPL__UNUSED(writtenBytes);
 		_exit(FPL__POSIX_PROCESS_EXEC_FAILED_EXIT_CODE);
 	}
 
@@ -30894,7 +30902,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend,
 		detached = true;
 	}
 #	else
-	(void)settings;
+	FPL__UNUSED(settings);
 	detached = true;
 #	endif
 	if (detached) {
@@ -30944,7 +30952,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *
 	fpl__X11_Display *display;
 	fpl__X11_Window window;
 	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
-	(void)window;
+	FPL__UNUSED(window);
 	char keysReturn[32] = fplZeroInit;
 	if (!x11Api->XQueryKeymap(display, keysReturn)) return false;
 	fplClearStruct(outState);
@@ -31027,8 +31035,8 @@ fpl_internal bool fpl__X11IsMediaKeyFromRawEvents(const fpl__PlatformAppState *a
 	bool result = fpl__IsMediaKey(mappedKey);
 	return(result);
 #else
-	(void)appState;
-	(void)keyCode;
+	FPL__UNUSED(appState);
+	FPL__UNUSED(keyCode);
 	return(false);
 #endif
 }
@@ -31221,8 +31229,8 @@ fpl_globalvar fpl__X11_XErrorHandler fpl__global__X11PreviousErrorHandler = fpl_
 fpl_globalvar bool fpl__global__X11ClipboardHadError = false;
 
 fpl_internal int fpl__X11ClipboardErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
-	(void)display;
-	(void)errorEvent;
+	FPL__UNUSED(display);
+	FPL__UNUSED(errorEvent);
 	fpl__global__X11ClipboardHadError = true;
 	return(0);
 }
@@ -32272,8 +32280,8 @@ fpl_internal void fpl__X11HandleGenericEvent(fpl__PlatformAppState *appState, fp
 	}
 	x11Api->XFreeEventData(windowState->display, cookie);
 #else
-	(void)appState;
-	(void)ev;
+	FPL__UNUSED(appState);
+	FPL__UNUSED(ev);
 #endif
 }
 
@@ -33110,7 +33118,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 		fplDisplayInfo info = fplZeroInit;
 		bool found = false;
 		size_t total = fplGetDisplays(&info, 1);
-		(void)total;
+		FPL__UNUSED(total);
 		if (backend == fpl__X11DisplayBackend_Xinerama) {
 			int count = 0;
 			fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
@@ -33633,7 +33641,7 @@ fpl_platform_api bool fplPollKeyboardState(fplKeyboardState *outState) {
 #	if defined(FPL__ENABLE_INPUT)
 	return fpl__InputSystem_PollKeyboard(&fpl__global__AppState->input, outState);
 #	else
-	(void)outState;
+	FPL__UNUSED(outState);
 	return false;
 #	endif
 }
@@ -33644,7 +33652,7 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	if defined(FPL__ENABLE_INPUT)
 	return fpl__InputSystem_PollMouse(&fpl__global__AppState->input, outState);
 #	else
-	(void)outState;
+	FPL__UNUSED(outState);
 	return false;
 #	endif
 }
@@ -33664,15 +33672,15 @@ fpl_platform_api bool fplPollMouseState(fplMouseState *outState) {
 #	include <linux/joystick.h> // js_event, axis_state, etc.
 
 fpl_internal void fpl__LinuxReleasePlatform(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	(void)initState;
-	(void)appState;
+	FPL__UNUSED(initState);
+	FPL__UNUSED(appState);
 }
 
 fpl_internal bool fpl__LinuxInitPlatform(const fplInitFlags initFlags, const fplSettings *initSettings, fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
-	(void)initFlags;
-	(void)initSettings;
-	(void)initState;
-	(void)appState;
+	FPL__UNUSED(initFlags);
+	FPL__UNUSED(initSettings);
+	FPL__UNUSED(initState);
+	FPL__UNUSED(appState);
 	return true;
 }
 
@@ -36033,8 +36041,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdo
 fpl_globalvar bool fpl__global__GLXContextCreationHadError = false;
 
 fpl_internal int fpl__GLXContextCreationErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
-	(void)display;
-	(void)errorEvent;
+	FPL__UNUSED(display);
+	FPL__UNUSED(errorEvent);
 	fpl__global__GLXContextCreationHadError = true;
 	return(0);
 }
@@ -38756,7 +38764,7 @@ typedef struct {
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendWasapiRelease) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl == fpl_null) {
 		return(true);
 	}
@@ -38775,7 +38783,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendWasapiRelease) {
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendWasapiInitialize) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 	fplClearStruct(impl);
 
 	if (!fpl__LoadWasapiApi(&impl->api)) {
@@ -38836,7 +38844,7 @@ fpl_internal bool fpl__WasapiCopyDeviceID(wchar_t *dst, size_t dstCap, const wch
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendWasapiGetAudioDevices) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 
 	if (impl->enumerator == fpl_null) {
 		FPL__WARNING(FPL__MODULE_AUDIO_WASAPI, "Device enumerator is not initialized!");
@@ -39019,7 +39027,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasap
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
-	(void)context;
+	FPL__UNUSED(context);
 	fplClearStruct(outDeviceInfo);
 
 	if (impl->enumerator == fpl_null) {
@@ -39088,7 +39096,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendWasap
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendWasapiReleaseDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl == fpl_null) {
 		return(true);
 	}
@@ -39131,7 +39139,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetFormat);
 	fplAssertPtr(targetDevice);
-	(void)context;
+	FPL__UNUSED(context);
 
 #define FPL__WASAPI_INIT_ERROR(ret, fmt, ...) do { \
 		FPL_LOG_INFO(FPL__MODULE_AUDIO_WASAPI, fmt, ## __VA_ARGS__); \
@@ -39421,7 +39429,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendWasapiIni
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendWasapiStartDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 
 	if (impl->audioClient == fpl_null || impl->renderClient == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "Audio device is not initialized!");
@@ -39437,7 +39445,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendWasapiStartDev
 	}
 	uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, impl->actualBufferSizeInFrames, dst);
 	fplAssert(framesRead == impl->actualBufferSizeInFrames);
-	(void)framesRead;
+	FPL__UNUSED(framesRead);
 	impl->renderClient->lpVtbl->ReleaseBuffer(impl->renderClient, impl->actualBufferSizeInFrames, 0);
 
 	ResetEvent(impl->stopEvent);
@@ -39453,7 +39461,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendWasapiStartDev
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendWasapiStopDevice) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl == fpl_null || impl->audioClient == fpl_null) {
 		return(true);
 	}
@@ -39465,7 +39473,7 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendWasapiStopDevic
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendWasapiMainLoop) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 
 	if (impl->audioClient == fpl_null || impl->renderClient == fpl_null || impl->bufferEvent == fpl_null || impl->stopEvent == fpl_null) {
 		FPL__ERROR(FPL__MODULE_AUDIO_WASAPI, "MainLoop entered with uninitialized device!");
@@ -39495,14 +39503,14 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendWasapiMainLoop) {
 		}
 		uint32_t framesRead = fpl__ReadAudioFramesFromClient(backend, framesAvailable, dst);
 		fplAssert(framesRead == framesAvailable);
-		(void)framesRead;
+		FPL__UNUSED(framesRead);
 		impl->renderClient->lpVtbl->ReleaseBuffer(impl->renderClient, framesAvailable, 0);
 	}
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendWasapiStopMainLoop) {
 	fpl__AudioBackendWasapi *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AudioBackendWasapi);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl == fpl_null) {
 		return;
 	}
@@ -40677,7 +40685,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendAlsaG
 	fpl__AlsaAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__AlsaAudioBackend);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
-	(void)context;
+	FPL__UNUSED(context);
 	fplClearStruct(outDeviceInfo);
 
 	fpl__AlsaAudioApi *alsaApi = &impl->api;
@@ -41023,7 +41031,7 @@ fpl_internal uint32_t fpl__OssLog2OfPowerOfTwo(uint32_t value) {
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendOssInitialize) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 	impl->fd = -1;
 	impl->intermediaryBuffer = fpl_null;
 	impl->intermediaryBufferSize = 0;
@@ -41034,7 +41042,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendOssInitialize) {
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendOssReleaseDevice) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl->fd >= 0) {
 		close(impl->fd);
 		impl->fd = -1;
@@ -41300,7 +41308,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendOssStartDevice
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendOssStopDevice) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 	if (impl->fd < 0) {
 		return true;
 	}
@@ -41327,7 +41335,7 @@ fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendOssMainLoop) {
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendOssStopMainLoop) {
 	fpl__OssAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__OssAudioBackend);
 	fplAssert(impl != fpl_null);
-	(void)context;
+	FPL__UNUSED(context);
 	impl->breakMainLoop = true;
 }
 
@@ -41468,8 +41476,8 @@ fpl_internal uint32_t fpl__OssProbeDspDevices(fpl__OssEnumeratedDevice *outDevic
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendOssGetAudioDevices) {
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 
 	fpl__OssEnumeratedDevice scratch[16];
 	uint32_t count = fpl__OssParseSndstat(scratch, fplArrayCount(scratch));
@@ -41498,8 +41506,8 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendOssGetAud
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendOssGetAudioDeviceInfo) {
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 	fplAssertPtr(targetDevice);
 	fplClearStruct(outDeviceInfo);
 
@@ -42165,8 +42173,8 @@ fpl_internal void fpl__PulseAudioStreamStateCallback(pa_stream *stream, void *us
 
 // Success callback used for operations that we want to wait on.
 fpl_internal void fpl__PulseAudioStreamSuccessCallback(pa_stream *stream, int success, void *userData) {
-	(void)stream;
-	(void)success;
+	FPL__UNUSED(stream);
+	FPL__UNUSED(success);
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -42215,7 +42223,7 @@ fpl_internal void fpl__PulseAudioStreamWriteCallback(pa_stream *stream, size_t r
 // Sink-info-list callback. Fires once per sink, then once more with eol > 0 as terminator.
 // Fills the iteration context in the backend with one fplAudioDeviceInfo record per sink.
 fpl_internal void fpl__PulseAudioSinkInfoListCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
-	(void)context;
+	FPL__UNUSED(context);
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -42248,7 +42256,7 @@ fpl_internal void fpl__PulseAudioSinkInfoListCallback(pa_context *context, const
 
 // Sink-info-by-index callback. Copies the sink name into resolvedSinkName so pa_stream_connect_playback can consume it.
 fpl_internal void fpl__PulseAudioSinkNameByIndexCallback(pa_context *context, const pa_sink_info *info, int eol, void *userData) {
-	(void)context;
+	FPL__UNUSED(context);
 	fplAudioBackend *backend = (fplAudioBackend *)userData;
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
@@ -42296,7 +42304,7 @@ fpl_internal FPL_AUDIO_BACKEND_RELEASE_FUNC(fpl__AudioBackendPulseAudioRelease) 
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPulseAudioGetAudioDevices) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
@@ -42337,7 +42345,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 	fpl__PulseAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
-	(void)context;
+	FPL__UNUSED(context);
 	fplClearStruct(outDeviceInfo);
 
 	const fpl__PulseAudioApi *api = &impl->api;
@@ -42378,7 +42386,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPulse
 }
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPulseAudioReleaseDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
@@ -42607,7 +42615,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPulseAudi
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStartDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
@@ -42624,7 +42632,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPulseAudioStar
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PulseAudioBackend *pulseAudioBackend = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PulseAudioBackend);
 	fplAssert(pulseAudioBackend != fpl_null);
 	const fpl__PulseAudioApi *pulseAudioApi = &pulseAudioBackend->api;
@@ -42642,14 +42650,14 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPulseAudioStopD
 
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioMainLoop) {
 	// @NOTE(final/PulseAudio): Async backend - the threaded mainloop runs inside libpulse, so there is no own loop to run here.
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPulseAudioStopMainLoop) {
 	// @NOTE(final/PulseAudio): Async backend - nothing to stop because there is no own mainloop.
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 }
 
 fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPulseAudioDescriptor = {
@@ -43546,8 +43554,8 @@ fpl_internal const char *fpl__PipeWireSpaDictLookup(const struct spa_dict *dict,
 // fpl__PipeWireAudioBackend state because the `data` pointer is a local
 // fpl__PipeWireEnumState allocated on the stack of GetAudioDevices.
 fpl_internal void fpl__PipeWireEnumCoreInfoCallback(void *data, const void *info) {
-	(void)data;
-	(void)info;
+	FPL__UNUSED(data);
+	FPL__UNUSED(info);
 }
 fpl_internal void fpl__PipeWireEnumCoreDoneCallback(void *data, uint32_t id, int seq) {
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
@@ -43562,8 +43570,8 @@ fpl_internal void fpl__PipeWireEnumCoreDoneCallback(void *data, uint32_t id, int
 	}
 }
 fpl_internal void fpl__PipeWireEnumCoreErrorCallback(void *data, uint32_t id, int seq, int res, const char *message) {
-	(void)seq;
-	(void)res;
+	FPL__UNUSED(seq);
+	FPL__UNUSED(res);
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
 	if (s == fpl_null) {
 		return;
@@ -43602,8 +43610,8 @@ fpl_internal uint32_t fpl__PipeWireGetObjectSerial(const uint32_t id, const stru
 
 // Registry listener callbacks, operating on a stack-local fpl__PipeWireEnumState.
 fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props) {
-	(void)permissions;
-	(void)version;
+	FPL__UNUSED(permissions);
+	FPL__UNUSED(version);
 	fpl__PipeWireEnumState *s = (fpl__PipeWireEnumState *)data;
 	if (s == fpl_null) {
 		return;
@@ -43646,8 +43654,8 @@ fpl_internal void fpl__PipeWireEnumRegistryGlobalCallback(void *data, uint32_t i
 	++s->resultCount;
 }
 fpl_internal void fpl__PipeWireEnumRegistryGlobalRemoveCallback(void *data, uint32_t id) {
-	(void)data;
-	(void)id;
+	FPL__UNUSED(data);
+	FPL__UNUSED(id);
 }
 
 fpl_globalvar struct pw_registry_events fpl__global_pipeWireEnumRegistryEvents = {
@@ -43657,18 +43665,18 @@ fpl_globalvar struct pw_registry_events fpl__global_pipeWireEnumRegistryEvents =
 };
 
 // Stream listener callbacks.
-fpl_internal void fpl__PipeWireStreamDestroyCallback(void *data) { (void)data; }
-fpl_internal void fpl__PipeWireStreamControlInfoCallback(void *data, uint32_t id, const void *control) { (void)data; (void)id; (void)control; }
-fpl_internal void fpl__PipeWireStreamIoChangedCallback(void *data, uint32_t id, void *area, uint32_t size) { (void)data; (void)id; (void)area; (void)size; }
-fpl_internal void fpl__PipeWireStreamParamChangedCallback(void *data, uint32_t id, const struct spa_pod *param) { (void)data; (void)id; (void)param; }
-fpl_internal void fpl__PipeWireStreamAddBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
-fpl_internal void fpl__PipeWireStreamRemoveBufferCallback(void *data, void *buffer) { (void)data; (void)buffer; }
-fpl_internal void fpl__PipeWireStreamDrainedCallback(void *data) { (void)data; }
-fpl_internal void fpl__PipeWireStreamCommandCallback(void *data, const struct spa_command *command) { (void)data; (void)command; }
-fpl_internal void fpl__PipeWireStreamTriggerDoneCallback(void *data) { (void)data; }
+fpl_internal void fpl__PipeWireStreamDestroyCallback(void *data) { FPL__UNUSED(data); }
+fpl_internal void fpl__PipeWireStreamControlInfoCallback(void *data, uint32_t id, const void *control) { FPL__UNUSED(data); FPL__UNUSED(id); FPL__UNUSED(control); }
+fpl_internal void fpl__PipeWireStreamIoChangedCallback(void *data, uint32_t id, void *area, uint32_t size) { FPL__UNUSED(data); FPL__UNUSED(id); FPL__UNUSED(area); FPL__UNUSED(size); }
+fpl_internal void fpl__PipeWireStreamParamChangedCallback(void *data, uint32_t id, const struct spa_pod *param) { FPL__UNUSED(data); FPL__UNUSED(id); FPL__UNUSED(param); }
+fpl_internal void fpl__PipeWireStreamAddBufferCallback(void *data, void *buffer) { FPL__UNUSED(data); FPL__UNUSED(buffer); }
+fpl_internal void fpl__PipeWireStreamRemoveBufferCallback(void *data, void *buffer) { FPL__UNUSED(data); FPL__UNUSED(buffer); }
+fpl_internal void fpl__PipeWireStreamDrainedCallback(void *data) { FPL__UNUSED(data); }
+fpl_internal void fpl__PipeWireStreamCommandCallback(void *data, const struct spa_command *command) { FPL__UNUSED(data); FPL__UNUSED(command); }
+fpl_internal void fpl__PipeWireStreamTriggerDoneCallback(void *data) { FPL__UNUSED(data); }
 
 fpl_internal void fpl__PipeWireStreamStateChangedCallback(void *data, enum pw_stream_state old, enum pw_stream_state state, const char *error) {
-	(void)old;
+	FPL__UNUSED(old);
 	fplAudioBackend *backend = (fplAudioBackend *)data;
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
@@ -43745,7 +43753,7 @@ fpl_globalvar struct pw_stream_events fpl__global_pipeWireStreamEvents = {
 };
 
 fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_FUNC(fpl__AudioBackendPipeWireInitialize) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
 	fpl__PipeWireApi *api = &pw->api;
@@ -43899,7 +43907,7 @@ fpl_internal bool fpl__PipeWireRunRegistryEnum(const fpl__PipeWireApi *api, fpl_
 }
 
 fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICES_FUNC(fpl__AudioBackendPipeWireGetAudioDevices) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
 	const fpl__PipeWireApi *api = &pw->api;
@@ -43925,7 +43933,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeW
 	fpl__PipeWireAudioBackend *impl = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(impl != fpl_null);
 	fplAssertPtr(targetDevice);
-	(void)context;
+	FPL__UNUSED(context);
 	fplClearStruct(outDeviceInfo);
 
 	const fpl__PipeWireApi *api = &impl->api;
@@ -43952,7 +43960,7 @@ fpl_internal FPL_AUDIO_BACKEND_GET_AUDIO_DEVICE_INFO_FUNC(fpl__AudioBackendPipeW
 }
 
 fpl_internal FPL_AUDIO_BACKEND_RELEASE_DEVICE_FUNC(fpl__AudioBackendPipeWireReleaseDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
 	const fpl__PipeWireApi *api = &pw->api;
@@ -44159,7 +44167,7 @@ fpl_internal FPL_AUDIO_BACKEND_INITIALIZE_DEVICE_FUNC(fpl__AudioBackendPipeWireI
 }
 
 fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
 	const fpl__PipeWireApi *api = &pw->api;
@@ -44173,7 +44181,7 @@ fpl_internal FPL_AUDIO_BACKEND_START_DEVICE_FUNC(fpl__AudioBackendPipeWireStartD
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDevice) {
-	(void)context;
+	FPL__UNUSED(context);
 	fpl__PipeWireAudioBackend *pw = FPL_GET_AUDIO_BACKEND_IMPL(backend, fpl__PipeWireAudioBackend);
 	fplAssert(pw != fpl_null);
 	const fpl__PipeWireApi *api = &pw->api;
@@ -44188,14 +44196,14 @@ fpl_internal FPL_AUDIO_BACKEND_STOP_DEVICE_FUNC(fpl__AudioBackendPipeWireStopDev
 
 fpl_internal FPL_AUDIO_BACKEND_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireMainLoop) {
 	// @NOTE(final/PipeWire): Async backend - the threaded loop runs inside libpipewire, so there is no own loop to run here.
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 }
 
 fpl_internal FPL_AUDIO_BACKEND_STOP_MAIN_LOOP_FUNC(fpl__AudioBackendPipeWireStopMainLoop) {
 	// @NOTE(final/PipeWire): Async backend - nothing to stop because there is no own mainloop.
-	(void)context;
-	(void)backend;
+	FPL__UNUSED(context);
+	FPL__UNUSED(backend);
 }
 
 fpl_globalvar fplAudioBackendDescriptor fpl__global_audioBackendPipeWireDescriptor = {
@@ -46185,7 +46193,7 @@ fpl_internal bool fpl__InputSystem_HandleNativeEvent(fpl__InputContext *ctx, con
 	}
 #		endif
 #	else
-	(void)ev;
+	FPL__UNUSED(ev);
 #	endif
 	return handled;
 }
