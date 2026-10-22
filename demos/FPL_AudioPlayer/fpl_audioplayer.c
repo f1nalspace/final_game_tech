@@ -100,8 +100,11 @@ How the demo works:
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n>
 	stream_instances and stream_bytes include the instances of ended play items that no call has freed yet.
+	The buffer and ring values exist in thread mode only, the other modes print -. buffer_entry is the row of the buffering table in AudioStreamingThread() with its frames per write and its delay: low rows write small chunks often, high rows large chunks rarely.
+	buffer_down counts the moves to a lower row (a write took longer than the delay, or the ring was below 25 %), buffer_up the moves to a higher row (the ring was above 75 %).
+	ring_gaps counts the device callbacks that found fewer frames in the output ring than they needed (underruns, heard as gaps), ring_gap_frames the frames they lacked. The empty ring at the start, after a track switch and while paused does not count.
 
 	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
 	It keeps 16 tones and removes the source of the oldest one before it plays the next, which waits for the mixer. The tones are play items of their own, the end of a track does not wait for them.
@@ -132,6 +135,7 @@ Changelog:
 	- Fixed: Data race on the visualization switch of F1
 	- New: --stream plays Vorbis files as streams, in render mode and in the window
 	- New: The render line shows load_hwm_kb, compressed_bytes and failed_streams
+	- New: The stats line shows the buffering table entry and the gaps of the output ring
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -701,6 +705,18 @@ typedef struct AudioDemo {
 	uint32_t trackEndFrameCount;
 	// Only the streaming thread in thread mode: the numFramesStreamed at which the current track ends, UINT32_MAX while unknown (repeating)
 	uint32_t streamedTrackEndFrameCount;
+
+	// Only thread mode, for --stats: the entry of the buffering table the streaming thread uses, its frames per write and its delay, and how often it moved down (too slow) and up (too fast)
+	volatile uint32_t bufferEntryIndex;
+	volatile uint32_t bufferFrameCount;
+	volatile uint32_t bufferDelayMilliseconds;
+	volatile uint32_t bufferStepDownCount;
+	volatile uint32_t bufferStepUpCount;
+	// Only thread mode, for --stats: device callbacks that found fewer frames in the output ring than they needed (underruns, heard as gaps), and the frames they lacked
+	volatile uint32_t ringGapCount;
+	volatile uint32_t ringGapFrameCount;
+	// Only the device callback: the output ring gave a call all its frames since the last start, track switch or pause, only then a short read counts as an underrun
+	bool isOutputRingPrimed;
 
 	volatile uint32_t isStreamingThreadStopped;
 	volatile uint32_t isStressThreadStopped;
@@ -1294,6 +1310,24 @@ static AudioFrameIndex ReadAudioFromRingBuffer(AudioDemo *demo, const fplAudioFo
 	return(result);
 }
 
+// Only the device callback in thread mode: a call that finds fewer frames in the output ring than it needs is heard as a gap. The ring is empty at the start, after a track switch and while paused, so only a call after a full one counts
+static void CountRingGap(AudioDemo *demo, const AudioFrameIndex readFrameCount, const AudioFrameIndex neededFrameCount) {
+	uint32_t isPaused = fplAtomicLoadU32(&demo->isPaused);
+	if(isPaused != 0) {
+		demo->isOutputRingPrimed = false;
+		return;
+	}
+	if(readFrameCount >= neededFrameCount) {
+		demo->isOutputRingPrimed = true;
+		return;
+	}
+	if(demo->isOutputRingPrimed) {
+		AudioFrameIndex missingFrameCount = neededFrameCount - readFrameCount;
+		fplAtomicIncrementU32(&demo->ringGapCount);
+		fplAtomicFetchAndAddU32(&demo->ringGapFrameCount, missingFrameCount);
+	}
+}
+
 /**
 * @brief Called by the sound device automatically, requesting N audio frames/samples to be written to the output.
 * This function has a very tight time-frame and will be called many thousand times per second, so keep implementation to be as small as possible.
@@ -1317,6 +1351,7 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 			}
 		}
 		fplAtomicStoreU32(&demo->numFramesPlayed, 0);
+		demo->isOutputRingPrimed = false;
 		fplAtomicStoreU32(&demo->isPlaybackResetRequested, 0);
 	}
 
@@ -1344,6 +1379,7 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 		case PlaybackMode_Thread:
 		{
 			result = ReadAudioFromRingBuffer(demo, outFormat, maxFrameCount, outputSamples);
+			CountRingGap(demo, result, maxFrameCount);
 		} break;
 
 		default:
@@ -1791,6 +1827,13 @@ typedef struct {
 	bool canIgnoreWait;
 } AudioFrameDelayEntry;
 
+// Shows the entry of the buffering table the streaming thread uses in --stats
+static void PublishBufferEntry(AudioDemo *demo, const uint32_t entryIndex, const AudioFrameDelayEntry *entry) {
+	fplAtomicStoreU32(&demo->bufferEntryIndex, entryIndex);
+	fplAtomicStoreU32(&demo->bufferFrameCount, entry->frames);
+	fplAtomicStoreU32(&demo->bufferDelayMilliseconds, entry->delay);
+}
+
 static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 	AudioDemo *demo = (AudioDemo *)rawData;
 
@@ -1906,6 +1949,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 
 	uint32_t entryIndex = intitialIndex;
 	AudioFrameDelayEntry currentEntry = entries[entryIndex];
+	PublishBufferEntry(demo, entryIndex, &currentEntry);
 
 	LockFreeRingBuffer *circularBuffer = &demo->outputRingBuffer;
 
@@ -1931,6 +1975,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			startTime = fplMillisecondsQuery();
 			entryIndex = intitialIndex;
 			currentEntry = entries[entryIndex];
+			PublishBufferEntry(demo, entryIndex, &currentEntry);
 			ignoreWait = true;
 		}
 
@@ -2002,6 +2047,8 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			// Go back one characteristics entry
 			if(entryIndex > 0) {
 				currentEntry = entries[--entryIndex];
+				fplAtomicIncrementU32(&demo->bufferStepDownCount);
+				PublishBufferEntry(demo, entryIndex, &currentEntry);
 				if(currentEntry.canIgnoreWait) {
 					ignoreWait = true;
 				}
@@ -2012,6 +2059,8 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			// Go forward one characteristics entry
 			if(entryIndex < (fplArrayCount(entries) - 1)) {
 				currentEntry = entries[++entryIndex];
+				fplAtomicIncrementU32(&demo->bufferStepUpCount);
+				PublishBufferEntry(demo, entryIndex, &currentEntry);
 				if(!currentEntry.canIgnoreWait) {
 					ignoreWait = false;
 				}
@@ -2732,7 +2781,20 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 	}
 	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu compressed_bytes=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.compressedByteCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount);
+	// Only thread mode has the buffering table and the output ring
+	char bufferText[256] = "buffer_entry=- buffer_frames=- buffer_delay_ms=- buffer_down=- buffer_up=- ring_gaps=- ring_gap_frames=-";
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		uint32_t bufferEntryIndex = fplAtomicLoadU32(&demo->bufferEntryIndex);
+		uint32_t bufferFrameCount = fplAtomicLoadU32(&demo->bufferFrameCount);
+		uint32_t bufferDelayMilliseconds = fplAtomicLoadU32(&demo->bufferDelayMilliseconds);
+		uint32_t bufferStepDownCount = fplAtomicLoadU32(&demo->bufferStepDownCount);
+		uint32_t bufferStepUpCount = fplAtomicLoadU32(&demo->bufferStepUpCount);
+		uint32_t ringGapCount = fplAtomicLoadU32(&demo->ringGapCount);
+		uint32_t ringGapFrameCount = fplAtomicLoadU32(&demo->ringGapFrameCount);
+		fplStringFormat(bufferText, fplArrayCount(bufferText), "buffer_entry=%u buffer_frames=%u buffer_delay_ms=%u buffer_down=%u buffer_up=%u ring_gaps=%u ring_gap_frames=%u", bufferEntryIndex, bufferFrameCount, bufferDelayMilliseconds, bufferStepDownCount, bufferStepUpCount, ringGapCount, ringGapFrameCount);
+	}
+
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu compressed_bytes=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u %s\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.compressedByteCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount, bufferText);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
