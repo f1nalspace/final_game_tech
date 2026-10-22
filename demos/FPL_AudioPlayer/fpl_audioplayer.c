@@ -90,7 +90,7 @@ How the demo works:
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
 	A track ends when it is heard to its end, in thread mode that is after the latency of the output ring. A repeating track never ends.
-	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
+	In thread mode a change of the volume is heard only after the latency of the output ring, --ring-ms makes the ring smaller. Seek, pause and repeat (R) are heard at once.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
 	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n> load_hwm_kb=<n> compressed_bytes=<n> failed_streams=<n> loop=<start>-<end>
@@ -98,20 +98,25 @@ How the demo works:
 	stream tells whether the track played as a stream, stream_bytes is the memory of its stream instance and pcm_bytes the decoded samples in memory.
 	load_hwm_kb is the memory high water right after loading the track, before it plays. compressed_bytes is the compressed file a stream keeps, failed_streams counts streams that ended early (a damaged file).
 	--seek=<at>:<to> moves the play item to second <to> of the track once the output reaches second <at>. The chunk before ends exactly there, so the jump lands on the same output frame for every --chunk. A position past the end ends the track, a repeating one starts over.
-	--loop=<start>:<end> gives the play item a loop region in seconds of the track. With --repeat the part before <start> plays once, then the region loops, without --repeat the track plays to its end.
+	--loop=<start>:<end> gives the play item of every track a loop region in seconds of the track, in the window too. Without it a track has the region from the tags of its file (Ogg Vorbis LOOPSTART with LOOPLENGTH or LOOPEND, the smpl chunk of a wave file).
+	With --repeat the part before <start> (the intro) plays once, then the region loops, without --repeat the track plays to its end. A --loop that does not fit in a track leaves it the region of its file.
 	loop in the render line is the region the play item got, in frames of the track, - when it has none (the mixer drops a region that ends past the track).
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
-	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode R and Up/Down are heard only after the latency of the output ring.
+	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode Up/Down are heard only after the latency of the output ring.
+	In a loop region R off is the release: the rest of the region and the outro play, then the track ends. R on in the outro loops again after the end of the track. R empties the output ring in thread mode like a seek, so it is heard at once.
+	In thread mode the mixer runs ahead by the output ring, so a play item that does not repeat ends there up to the latency of the ring before its end is heard. From then on R and the arrow keys find no play item, R applies from the next track on.
+	The position of a repeating track follows its loop region, after the loop end it goes on at the loop start.
 	Left/Right jump 10 seconds back or ahead from the position that is heard, a repeating track goes on in its next pass. In thread mode the output ring is emptied for it, so a jump is heard at once.
 	A pause is heard at once in thread mode too: the device callback reads nothing from the output ring meanwhile, resuming plays what it holds.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n> loop=<start>-<end>
 	stream_instances and stream_bytes include the instances of ended play items that no call has freed yet.
 	The buffer and ring values exist in thread mode only, the other modes print -. buffer_entry is the row of the buffering table in AudioStreamingThread() with its frames per write and its delay: low rows write small chunks often, high rows large chunks rarely.
 	buffer_down counts the moves to a lower row (a write took longer than the delay, or the ring was below 25 % before the write), buffer_up the moves to a higher row (the ring was above 75 % before the write). No row waits longer than a quarter of the ring.
 	ring_gaps counts the device callbacks that found fewer frames in the output ring than they needed (underruns, heard as gaps), ring_gap_frames the frames they lacked. The empty ring at the start, after a track switch and while paused does not count.
+	loop is the loop region of the play item of the current track in frames of the track, - when it has none.
 
 	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
 	It keeps 16 tones and removes the source of the oldest one before it plays the next, which waits for the mixer. The tones are play items of their own, the end of a track does not wait for them.
@@ -151,6 +156,9 @@ Changelog:
 	- Changed: The documentation tells where a stream is decoded and how it loops
 	- Changed: A pause in thread mode is heard at once, the output ring keeps its frames
 	- New: --loop=<start>:<end> sets the loop region of the play item in render mode, the render line shows it
+	- New: The window plays the loop region of --loop or of the file, R off is the release and the position follows the region
+	- Changed: R is heard at once in thread mode, it empties the output ring like a seek
+	- New: The stats line shows the loop region
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -694,6 +702,11 @@ typedef struct AudioDemo {
 	volatile uint32_t currentTrackFrameCount;
 	// A repeating track starts over after currentTrackFrameCount, so its position wraps around
 	volatile uint32_t isCurrentTrackRepeating;
+	// Loop region of the current track in output frames, 0 and 0 when it has none. A repeating track wraps around in it
+	volatile uint32_t currentTrackLoopStartFrame;
+	volatile uint32_t currentTrackLoopEndFrame;
+	// 1 when R changed controls.isRepeat, the streaming thread applies it to the current track at the position that is heard
+	volatile uint32_t isRepeatChangePending;
 
 	// Only the streaming thread changes the track list, the main thread leaves requests and draws under trackLock.
 	// The lock guards the track list against Render and the name of the current track, the device callback never takes it.
@@ -708,6 +721,9 @@ typedef struct AudioDemo {
 	uint32_t playbackResetCount;
 	// Only the streaming thread in thread mode: a seek was sent and no write applied it yet, the play item still shows its old position
 	bool isSeekUnapplied;
+	// Only the streaming thread: the loop region of the current track in frames of its source, 0 and 0 when it has none. The play item shows it only once a write applied it
+	AudioFrameIndex trackLoopStartSourceFrame;
+	AudioFrameIndex trackLoopEndSourceFrame;
 	// 1 while droppedFilePath waits for the streaming thread
 	volatile uint32_t hasDroppedFile;
 	char droppedFilePath[FPL_MAX_PATH_LENGTH];
@@ -769,15 +785,40 @@ static bool IsRealTimeVisualization(AudioDemo *demo) {
 	return(result);
 }
 
-// The position in the current track, a repeating track starts over after its length
+// Where a repeating play item is that started at startPosition and played on up to position, all in frames of one rate.
+// It goes on at the loop start after the loop end, or after the end of the track when it started in the outro (at or past the loop end). Without a region (loopEndFrame 0) the whole track loops.
+static AudioFrameIndex GetRepeatingPosition(const uint64_t position, const AudioFrameIndex startPosition, const AudioFrameIndex loopStartFrame, const AudioFrameIndex loopEndFrame, const AudioFrameIndex frameCount) {
+	const bool hasRegion = (loopEndFrame > 0);
+	const AudioFrameIndex regionStartFrame = hasRegion ? loopStartFrame : 0;
+	const AudioFrameIndex regionEndFrame = hasRegion ? loopEndFrame : frameCount;
+	const AudioFrameIndex jumpFrame = (startPosition < regionEndFrame) ? regionEndFrame : frameCount;
+	if(position < jumpFrame) {
+		AudioFrameIndex result = (AudioFrameIndex)position;
+		return(result);
+	}
+	// A region of one frame can round to no output frame at all
+	if(regionEndFrame <= regionStartFrame) {
+		return(regionStartFrame);
+	}
+	const uint64_t regionFrameCount = regionEndFrame - regionStartFrame;
+	const uint64_t framesPastJump = position - jumpFrame;
+	const uint64_t framesIntoRegion = framesPastJump % regionFrameCount;
+	AudioFrameIndex result = regionStartFrame + (AudioFrameIndex)framesIntoRegion;
+	return(result);
+}
+
+// The position in the current track, a repeating track starts over after its length or loops in its loop region
 static AudioFrameIndex GetTrackPosition(AudioDemo *demo, const AudioFrameIndex framesPlayed) {
 	AudioFrameIndex trackFrameCount = fplAtomicLoadU32(&demo->currentTrackFrameCount);
 	uint32_t isTrackRepeating = fplAtomicLoadU32(&demo->isCurrentTrackRepeating);
-	// A seek lets numFramesPlayed start again at another position of the track
+	// A seek and a change of repeat let numFramesPlayed start again at another position of the track
 	AudioFrameIndex positionOffset = fplAtomicLoadU32(&demo->trackPositionOffset);
-	AudioFrameIndex result = positionOffset + framesPlayed;
+	uint64_t position = (uint64_t)positionOffset + framesPlayed;
+	AudioFrameIndex result = (AudioFrameIndex)position;
 	if(isTrackRepeating && trackFrameCount > 0) {
-		result = result % trackFrameCount;
+		AudioFrameIndex loopStartFrame = fplAtomicLoadU32(&demo->currentTrackLoopStartFrame);
+		AudioFrameIndex loopEndFrame = fplAtomicLoadU32(&demo->currentTrackLoopEndFrame);
+		result = GetRepeatingPosition(position, positionOffset, loopStartFrame, loopEndFrame, trackFrameCount);
 	}
 	return(result);
 }
@@ -1502,6 +1543,61 @@ static AudioFrameIndex GetPlayedFrameCount(const AudioSource *source, const floa
 	return(result);
 }
 
+// The two seconds of --seek=<at>:<to> or --loop=<start>:<end>, false when the text has another form or a value is negative
+static bool ParseSecondsPair(const char *text, float *outFirstSeconds, float *outSecondSeconds) {
+	const char separator = ':';
+	char *firstEnd = fpl_null;
+	double firstSeconds = strtod(text, &firstEnd);
+	if(firstEnd == text || *firstEnd != separator) {
+		return(false);
+	}
+	const char *secondText = firstEnd + 1;
+	char *secondEnd = fpl_null;
+	double secondSeconds = strtod(secondText, &secondEnd);
+	if(secondEnd == secondText || *secondEnd != 0) {
+		return(false);
+	}
+	bool isFinite = isfinite(firstSeconds) && isfinite(secondSeconds);
+	if(!isFinite || firstSeconds < 0.0 || secondSeconds < 0.0) {
+		return(false);
+	}
+	*outFirstSeconds = (float)firstSeconds;
+	*outSecondSeconds = (float)secondSeconds;
+	return(true);
+}
+
+// Seconds as frames at the sample rate, rounded, at most the largest frame index
+static AudioFrameIndex SecondsToFrameIndex(const float seconds, const AudioHertz sampleRate) {
+	const double roundingOffset = 0.5;
+	const double maxFrameIndex = (double)UINT32_MAX;
+	double frames = (double)seconds * (double)sampleRate + roundingOffset;
+	double clampedFrames = fplMin(frames, maxFrameIndex);
+	AudioFrameIndex result = (AudioFrameIndex)clampedFrames;
+	return(result);
+}
+
+// The loop region a play item of the source gets in the window, in frames of the source: --loop when it fits in the track, otherwise the region of the source (from the tags of the file). 0 and 0 for none
+static void GetTrackLoopRegion(const PlayerOptions *options, const AudioSource *source, const char *trackName, AudioFrameIndex *outLoopStartFrame, AudioFrameIndex *outLoopEndFrame) {
+	*outLoopStartFrame = source->loopStartFrame;
+	*outLoopEndFrame = source->loopEndFrame;
+	float loopStartSeconds = 0.0f;
+	float loopEndSeconds = 0.0f;
+	bool hasLoopOption = ParseSecondsPair(options->loopText, &loopStartSeconds, &loopEndSeconds);
+	if(!hasLoopOption) {
+		return;
+	}
+	AudioFrameIndex loopStartFrame = SecondsToFrameIndex(loopStartSeconds, source->format.sampleRate);
+	AudioFrameIndex loopEndFrame = SecondsToFrameIndex(loopEndSeconds, source->format.sampleRate);
+	// An endless stream has no frame count, so no region fits
+	bool isInsideTrack = (loopStartFrame < loopEndFrame) && (loopEndFrame <= source->buffer.frameCount);
+	if(!isInsideTrack) {
+		FPL_LOG_WARN("Track", "--loop=%s does not fit in '%s', it keeps the region of its file", options->loopText, trackName);
+		return;
+	}
+	*outLoopStartFrame = loopStartFrame;
+	*outLoopEndFrame = loopEndFrame;
+}
+
 // Copies the play item with the id, false when it has ended
 static bool FindPlayItem(AudioSystem *audioSys, const AudioPlayItemID playId, AudioPlayItem *outPlayItem) {
 	// Room for the whole pool, so the copy never fails for lack of space
@@ -1597,6 +1693,10 @@ static void StopCurrentTrack(AudioDemo *demo) {
 	fplAtomicStoreU64(&demo->currentPlayItemId, 0);
 	fplAtomicStoreU32(&demo->currentTrackFrameCount, 0);
 	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, 0);
+	fplAtomicStoreU32(&demo->currentTrackLoopStartFrame, 0);
+	fplAtomicStoreU32(&demo->currentTrackLoopEndFrame, 0);
+	demo->trackLoopStartSourceFrame = 0;
+	demo->trackLoopEndSourceFrame = 0;
 	ResetPlayback(demo);
 }
 
@@ -1706,6 +1806,24 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 	fplAtomicStoreU32(&demo->currentTrackFrameCount, trackFrameCount);
 	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, controls.isRepeat ? 1 : 0);
 
+	// The play item got the region of its source, --loop replaces it (sent again after the preview below)
+	AudioFrameIndex loopStartFrame = 0;
+	AudioFrameIndex loopEndFrame = 0;
+	GetTrackLoopRegion(options, source, trackName, &loopStartFrame, &loopEndFrame);
+	if(loopEndFrame > 0) {
+		AudioSystemSetPlayItemLoop(&demo->audioSys, track->playID, loopStartFrame, loopEndFrame);
+		double sourceSampleRate = (double)source->format.sampleRate;
+		double loopStartSeconds = (double)loopStartFrame / sourceSampleRate;
+		double loopEndSeconds = (double)loopEndFrame / sourceSampleRate;
+		FPL_LOG_INFO("Track", "Loop region %.3f s to %.3f s (frames %u to %u)%s", loopStartSeconds, loopEndSeconds, loopStartFrame, loopEndFrame, controls.isRepeat ? "" : ", it loops with repeat (R)");
+	}
+	demo->trackLoopStartSourceFrame = loopStartFrame;
+	demo->trackLoopEndSourceFrame = loopEndFrame;
+	AudioFrameIndex playedLoopStartFrame = ConvertToPlayedFrameCount(source, loopStartFrame, options->pitch, demo->targetAudioFormat.sampleRate);
+	AudioFrameIndex playedLoopEndFrame = ConvertToPlayedFrameCount(source, loopEndFrame, options->pitch, demo->targetAudioFormat.sampleRate);
+	fplAtomicStoreU32(&demo->currentTrackLoopStartFrame, playedLoopStartFrame);
+	fplAtomicStoreU32(&demo->currentTrackLoopEndFrame, playedLoopEndFrame);
+
 	bool needsPreview = (demo->playbackMode == PlaybackMode_Thread) && !options->isStream && !track->outputFullBuffer.isAllocated;
 
 	fplMutexLock(&demo->trackLock);
@@ -1728,10 +1846,15 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 
 	// Write the entire audio track into the full audio buffer, that is used for rendering the audio samples.
 	// The actual playback uses the audio system again, but we can enable realtime (F1) to use the actual played back samples.
+	// The full-track buffer holds the track as it is in the file, so the preview plays it without the loop region and the region is sent again after it
 	if(needsPreview && track->outputFullBuffer.bufferSize > 0) {
+		AudioSystemSetPlayItemLoop(&demo->audioSys, track->playID, 0, 0);
 		AudioFrameIndex writtenFrames = AudioSystemWriteFrames(&demo->audioSys, track->outputFullBuffer.samples, &demo->targetAudioFormat, trackFrameCount, false);
 		fplAssert(writtenFrames == trackFrameCount);
 		fplAtomicStoreU32(&demo->isTrackFullBufferReady[trackIndex], 1);
+		if(loopEndFrame > 0) {
+			AudioSystemSetPlayItemLoop(&demo->audioSys, track->playID, loopStartFrame, loopEndFrame);
+		}
 	}
 }
 
@@ -1856,11 +1979,13 @@ static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 	int64_t seekFrameCount = (int64_t)seekSeconds * (int64_t)source->format.sampleRate;
 	int64_t targetFrameIndex = (int64_t)heardSourceFrameIndex + seekFrameCount;
 	AudioFrameIndex sourceFrameIndex = (AudioFrameIndex)fplMax((int64_t)0, targetFrameIndex);
-	// A repeating track goes on in its next pass, as if it had played there
+	// A repeating track goes on in its next pass or in its loop region, as if it had played there
+	// Repeat and loop region as the player set them, R may have changed repeat in this same round and no write applied that yet
+	bool isRepeating = fplAtomicLoadU32(&demo->isCurrentTrackRepeating) != 0;
 	bool isEndless = (source->type == AudioSourceType_Stream) && source->stream.isEndless;
 	AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
-	if(playItem.isRepeat && !isEndless && sourceFrameCount > 0) {
-		sourceFrameIndex = sourceFrameIndex % sourceFrameCount;
+	if(isRepeating && !isEndless && sourceFrameCount > 0) {
+		sourceFrameIndex = GetRepeatingPosition(sourceFrameIndex, heardSourceFrameIndex, demo->trackLoopStartSourceFrame, demo->trackLoopEndSourceFrame, sourceFrameCount);
 	}
 
 	if(!AudioSystemSetPlayItemPosition(&demo->audioSys, playItem.id, sourceFrameIndex)) {
@@ -1883,6 +2008,37 @@ static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 	FPL_LOG_INFO("Track", "Seek: %+d s to %.1f s%s", seekSeconds, positionSeconds, isPastEnd ? " (past the end)" : "");
 }
 
+// Turns repeat of the current track on or off at the position that is heard, only the streaming thread. With a loop region off is the release: the track plays the rest of the region and its outro, then it ends.
+// Like a seek without a jump: the position counts on from the one that is heard. In thread mode the output ring is emptied and the play item goes back to that position, so the change is heard at once
+static void ApplyRepeatToCurrentTrack(AudioDemo *demo, const bool isRepeat) {
+	AudioPlayItem playItem = fplZeroInit;
+	if(!GetCurrentPlayItem(demo, &playItem)) {
+		FPL_LOG_INFO("Track", "Repeat: %s (from the next track on)", isRepeat ? "on" : "off");
+		return;
+	}
+	const AudioHertz outputSampleRate = demo->targetAudioFormat.sampleRate;
+	uint32_t playedFrameCount = fplAtomicLoadU32(&demo->numFramesPlayed);
+	AudioFrameIndex heardFrameIndex = GetTrackPosition(demo, playedFrameCount);
+	if(!AudioSystemSetPlayItemRepeat(&demo->audioSys, playItem.id, isRepeat)) {
+		FPL_LOG_WARN("Track", "Repeat: the play item has ended or the command queue is full");
+		return;
+	}
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		AudioFrameIndex heardSourceFrameIndex = ConvertToSourceFrameCount(playItem.source, heardFrameIndex, playItem.pitch, outputSampleRate);
+		if(AudioSystemSetPlayItemPosition(&demo->audioSys, playItem.id, heardSourceFrameIndex)) {
+			demo->isSeekUnapplied = true;
+		}
+	}
+	ResetPlayback(demo);
+	fplAtomicStoreU32(&demo->trackPositionOffset, heardFrameIndex);
+	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, isRepeat ? 1 : 0);
+
+	double heardSeconds = (double)heardFrameIndex / (double)outputSampleRate;
+	bool hasLoopRegion = (demo->trackLoopEndSourceFrame > 0);
+	const char *releaseText = (hasLoopRegion && !isRepeat) ? ", the rest of the loop region and the outro play" : "";
+	FPL_LOG_INFO("Track", "Repeat: %s at %.1f s%s", isRepeat ? "on" : "off", heardSeconds, releaseText);
+}
+
 // Executes the requests of the main thread, called at the start of every loop of the streaming thread
 static void ProcessTrackRequests(AudioDemo *demo) {
 	if(fplAtomicLoadU32(&demo->hasDroppedFile) != 0) {
@@ -1893,8 +2049,9 @@ static void ProcessTrackRequests(AudioDemo *demo) {
 	}
 
 	int32_t trackStep = fplAtomicExchangeS32(&demo->pendingTrackStep, 0);
-	// A seek together with a track switch is dropped, the new track starts at its beginning
+	// A seek and a change of repeat together with a track switch are dropped, the new track starts at its beginning with the repeat of the controls
 	int32_t seekSeconds = fplAtomicExchangeS32(&demo->pendingSeekSeconds, 0);
+	uint32_t isRepeatChangePending = fplAtomicExchangeU32(&demo->isRepeatChangePending, 0);
 	int32_t trackCount = (int32_t)demo->trackList.count;
 	if(trackCount == 0) {
 		return;
@@ -1912,6 +2069,14 @@ static void ProcessTrackRequests(AudioDemo *demo) {
 		int32_t nextIndex = (steppedIndex + trackCount) % trackCount;
 		StartTrack(demo, nextIndex);
 		return;
+	}
+
+	// The repeat first, a seek in the same round goes on in the next pass by it
+	if(isRepeatChangePending != 0) {
+		fplMutexLock(&demo->trackLock);
+		bool isRepeat = demo->controls.isRepeat;
+		fplMutexUnlock(&demo->trackLock);
+		ApplyRepeatToCurrentTrack(demo, isRepeat);
 	}
 
 	if(seekSeconds != 0) {
@@ -2376,19 +2541,18 @@ static void CyclePlayMode(AudioDemo *demo) {
 	FPL_LOG_INFO("Keys", "Play mode: %s", PlayModeChoices[playMode].name);
 }
 
-// For the current track and every track after it
+// For the current track and every track after it, the streaming thread applies it to the current track at the position that is heard
 static void ToggleRepeat(AudioDemo *demo) {
+	if(demo->playbackMode == PlaybackMode_DeviceSine) {
+		FPL_LOG_INFO("Keys", "There are no tracks in device-sine mode");
+		return;
+	}
 	fplMutexLock(&demo->trackLock);
 	demo->controls.isRepeat = !demo->controls.isRepeat;
 	bool isRepeat = demo->controls.isRepeat;
 	fplMutexUnlock(&demo->trackLock);
-
-	AudioPlayItemID playID = GetCurrentPlayItemId(demo);
-	bool isApplied = (playID.value != 0) && AudioSystemSetPlayItemRepeat(&demo->audioSys, playID, isRepeat);
-	if(isApplied) {
-		fplAtomicStoreU32(&demo->isCurrentTrackRepeating, isRepeat ? 1 : 0);
-	}
-	FPL_LOG_INFO("Keys", "Repeat: %s%s", isRepeat ? "on" : "off", isApplied ? "" : " (from the next track on)");
+	fplAtomicStoreU32(&demo->isRepeatChangePending, 1);
+	FPL_LOG_INFO("Keys", "Repeat %s", isRepeat ? "on" : "off");
 }
 
 // For the current track and every track after it, in steps of 0.1 between 0 and 2
@@ -2417,7 +2581,7 @@ typedef struct PlayerKeyHelp {
 static const PlayerKeyHelp PlayerKeyHelps[] = {
 	{ "N, P, media next/prev", "Next or previous track of the command line" },
 	{ "Space, media play/pause", "Pause and resume" },
-	{ "R", "Repeat on and off, for the next tracks too" },
+	{ "R", "Repeat on and off, for the next tracks too. Off in a loop region is the release: the rest of it and the outro play" },
 	{ "M", "Play mode off, list or loop, what follows a track that has played to its end" },
 	{ "Up, Down", "Volume +0.1 and -0.1, for the next tracks too" },
 	{ "Left, Right", "10 seconds back and ahead, heard at once also in thread mode" },
@@ -2485,6 +2649,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
 	{ PlayerOptionType_Float, "pitch", "<p>", PLAYER_OPTION_FIELD(pitch), fpl_null, 0, "Pitch of the play item, 2 is an octave up and half as long" },
 	{ PlayerOptionType_Flag, "repeat", fpl_null, PLAYER_OPTION_FIELD(isRepeat), fpl_null, 0, "Loop the track" },
+	{ PlayerOptionType_String, "loop", "<start>:<end>", PLAYER_OPTION_FIELD(loopText), fpl_null, 0, "Loop region of every track in seconds, instead of the one of the file. With --repeat the part before <start> plays once" },
 	{ PlayerOptionType_Choice, "play-mode", fpl_null, PLAYER_OPTION_FIELD(playMode), PlayModeChoices, fplArrayCount(PlayModeChoices), "What follows a track that has played to its end, a repeating track never ends:" },
 	{ PlayerOptionType_Flag, "stats", fpl_null, PLAYER_OPTION_FIELD(isStats), fpl_null, 0, "Log memory and mixer cost every 5 seconds" },
 	{ PlayerOptionType_Flag, "stress", fpl_null, PLAYER_OPTION_FIELD(isStress), fpl_null, 0, "A second thread plays, changes and stops short sine tones every 1 to 20 ms" },
@@ -2497,7 +2662,6 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_Int, "channels", "<n>", PLAYER_OPTION_FIELD(renderChannelCount), fpl_null, 0, "Output channel count" },
 	{ PlayerOptionType_Float, "seconds", "<s>", PLAYER_OPTION_FIELD(renderSeconds), fpl_null, 0, "Length to render, 0 is the track length, with --repeat twice that" },
 	{ PlayerOptionType_String, "seek", "<at>:<to>", PLAYER_OPTION_FIELD(renderSeekText), fpl_null, 0, "Move the play item to second <to> of the track once the output reaches second <at>" },
-	{ PlayerOptionType_String, "loop", "<start>:<end>", PLAYER_OPTION_FIELD(loopText), fpl_null, 0, "Loop region of the play item in seconds of the track, with --repeat the part before <start> plays once" },
 };
 
 static const char PlayerOptionPrefix[] = "--";
@@ -2626,7 +2790,7 @@ static void PrintPlayerHelp(void) {
 		const PlayerKeyHelp *keyHelp = &PlayerKeyHelps[keyIndex];
 		fplConsoleFormatOut("  %-*s%s\n", descriptionColumn, keyHelp->keys, keyHelp->description);
 	}
-	fplConsoleFormatOut("In thread mode R and Up/Down are heard only after the latency of the output ring, --mixer=callback or a small --ring-ms hear them at once.\n");
+	fplConsoleFormatOut("In thread mode Up/Down are heard only after the latency of the output ring, --mixer=callback or a small --ring-ms hear them at once.\n");
 }
 
 static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name, const size_t nameLength) {
@@ -2762,29 +2926,6 @@ static bool ParsePlayerOptions(const int argc, char **args, PlayerOptions *optio
 	return(true);
 }
 
-// The two seconds of --seek=<at>:<to> or --loop=<start>:<end>, false when the text has another form or a value is negative
-static bool ParseSecondsPair(const char *text, float *outFirstSeconds, float *outSecondSeconds) {
-	const char separator = ':';
-	char *firstEnd = fpl_null;
-	double firstSeconds = strtod(text, &firstEnd);
-	if(firstEnd == text || *firstEnd != separator) {
-		return(false);
-	}
-	const char *secondText = firstEnd + 1;
-	char *secondEnd = fpl_null;
-	double secondSeconds = strtod(secondText, &secondEnd);
-	if(secondEnd == secondText || *secondEnd != 0) {
-		return(false);
-	}
-	bool isFinite = isfinite(firstSeconds) && isfinite(secondSeconds);
-	if(!isFinite || firstSeconds < 0.0 || secondSeconds < 0.0) {
-		return(false);
-	}
-	*outFirstSeconds = (float)firstSeconds;
-	*outSecondSeconds = (float)secondSeconds;
-	return(true);
-}
-
 static bool ValidatePlayerOptions(const PlayerOptions *options) {
 	if(options->sineSeconds < 0.0f) {
 		fplConsoleFormatError("--sine-seconds must not be negative\n");
@@ -2853,10 +2994,6 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 	}
 	size_t loopTextLength = fplGetStringLength(options->loopText);
 	if(loopTextLength > 0) {
-		if(!options->isRender) {
-			fplConsoleFormatError("--loop works in render mode\n");
-			return(false);
-		}
 		float loopStartSeconds = 0.0f;
 		float loopEndSeconds = 0.0f;
 		bool isLoopParsed = ParseSecondsPair(options->loopText, &loopStartSeconds, &loopEndSeconds);
@@ -2978,7 +3115,15 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 		fplStringFormat(bufferText, fplArrayCount(bufferText), "buffer_entry=%u buffer_frames=%u buffer_delay_ms=%u buffer_down=%u buffer_up=%u ring_gaps=%u ring_gap_frames=%u", bufferEntryIndex, bufferFrameCount, bufferDelayMilliseconds, bufferStepDownCount, bufferStepUpCount, ringGapCount, ringGapFrameCount);
 	}
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu compressed_bytes=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u %s\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.compressedByteCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount, bufferText);
+	// The loop region of the play item of the current track, in frames of the track
+	char loopText[32] = "-";
+	AudioPlayItem currentPlayItem = fplZeroInit;
+	bool hasCurrentPlayItem = GetCurrentPlayItem(demo, &currentPlayItem);
+	if(hasCurrentPlayItem && currentPlayItem.loopEndFrame > 0) {
+		fplStringFormat(loopText, fplArrayCount(loopText), "%u-%u", currentPlayItem.loopStartFrame, currentPlayItem.loopEndFrame);
+	}
+
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu compressed_bytes=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u %s loop=%s\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.compressedByteCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount, bufferText, loopText);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
@@ -3227,16 +3372,6 @@ static bool WriteWaveFileHeader(const fplFileHandle *file, const fplAudioFormat 
 	result = result && (fplFileWriteBlock32(file, &formatChunk, sizeof(formatChunk)) == sizeof(formatChunk));
 	result = result && (fplFileWriteBlock32(file, &waveFormat, formatChunkSize) == formatChunkSize);
 	result = result && (fplFileWriteBlock32(file, &dataChunk, sizeof(dataChunk)) == sizeof(dataChunk));
-	return(result);
-}
-
-// Seconds as frames at the sample rate, rounded, at most the largest frame index
-static AudioFrameIndex SecondsToFrameIndex(const float seconds, const AudioHertz sampleRate) {
-	const double roundingOffset = 0.5;
-	const double maxFrameIndex = (double)UINT32_MAX;
-	double frames = (double)seconds * (double)sampleRate + roundingOffset;
-	double clampedFrames = fplMin(frames, maxFrameIndex);
-	AudioFrameIndex result = (AudioFrameIndex)clampedFrames;
 	return(result);
 }
 
