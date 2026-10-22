@@ -195,6 +195,8 @@ SOFTWARE.
 
 	#### Core
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
+	- Fixed: fplAlwaysAssert(), FPL_NOT_IMPLEMENTED and the assertions without the C assert were removed by Clang, they trap now
+	- Fixed: FPL_CRASH_ON_ERROR crashed on warnings and infos, but never on critical errors
 	- Fixed: [POSIX] Every log line was written twice, because the default log writers use the debug output in addition to the console and fplDebugOut() writes into the console on every platform but Windows - the default writers only use the debug output on Windows now
 	- Fixed: FPL_LOG_MULTIPLE_WRITERS did not compile anymore, the default settings still wrote the field logToError that was removed from fplLogWriterConsole (the error console is selected by fplLogWriterFlags_ErrorConsole)
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
@@ -3328,7 +3330,7 @@ typedef enum fplX86InstructionSetLevel {
 #			define fpl__m_StaticAssert(exp) static_assert(exp, "fpl_static_assert")
 #		endif
 #	else
-#		define fpl__m_Assert(exp) if(!(exp)) {*(int *)0 = 0;}
+#		define fpl__m_Assert(exp) do { if (!(exp)) { fpl__m_Crash(); } } while (0)
 #	endif // FPL__ENABLE_C_ASSERT
 #	if !defined(fpl__m_StaticAssert)
 #		define FPL__M_STATICASSERT_0(exp, line, counter) \
@@ -3357,10 +3359,10 @@ typedef enum fplX86InstructionSetLevel {
 
 /**
 * @def fplAlwaysAssert
-* @brief Always crashes the application with a null-pointer assignment when the specified expression evaluates to false.
+* @brief Always stops the debugger and crashes the application when the specified expression evaluates to false, in release builds as well.
 * @param[in] exp Expression to evaluate.
 */
-#define fplAlwaysAssert(exp) if(!(exp)) {*(int *)0 = 0;}
+#define fplAlwaysAssert(exp) do { if (!(exp)) { fpl__m_Crash(); } } while (0)
 
 /**
 * @def fplAssertPtr
@@ -3410,6 +3412,22 @@ fpl_internal fpl_force_inline void fpl__m_DebugBreak(void) { __asm__ __volatile_
 * @brief Stops the debugger on this line always.
 */
 #define fplDebugBreak() fpl__m_DebugBreak()
+
+/// @cond FPL_INTERNALS
+// Ends the application for sure. A null pointer store is undefined behavior, Clang removes it together with its condition.
+#if defined(FPL_COMPILER_GCC) || defined(FPL_COMPILER_CLANG) || defined(FPL_COMPILER_MINGW)
+#	define fpl__m_Trap() __builtin_trap()
+#elif defined(FPL_COMPILER_MSVC)
+	// FAST_FAIL_FATAL_APP_EXIT from winnt.h
+#	define FPL__FAST_FAIL_FATAL_APP_EXIT 7
+#	define fpl__m_Trap() __fastfail(FPL__FAST_FAIL_FATAL_APP_EXIT)
+#else
+#	define fpl__m_Trap() (*(volatile int *)0 = 0)
+#endif
+
+// Stops the debugger and ends the application afterwards
+#define fpl__m_Crash() do { fplDebugBreak(); fpl__m_Trap(); } while (0)
+/// @endcond
 
 /** @} */
 
@@ -3516,9 +3534,9 @@ fplStaticAssert(sizeof(size_t) == sizeof(uint32_t));
 
 /**
 * @def FPL_NOT_IMPLEMENTED
-* @brief Crashes the application via a null-pointer write. Marks code paths that are not implemented.
+* @brief Stops the debugger and crashes the application. Marks code paths that are not implemented.
 */
-#define FPL_NOT_IMPLEMENTED {*(int *)0 = 0xBAD;}
+#define FPL_NOT_IMPLEMENTED { fpl__m_Crash(); }
 
 #if defined(FPL_IS_C99)
 #	define fpl__m_ZeroInit {0}
@@ -15541,9 +15559,9 @@ fpl_internal void fpl__HandleError(const char *funcName, const int lineNumber, c
 #	if defined(FPL_CRASH_ON_WARNING)
 	minErrorLevel = fplLogLevel_Warning;
 #	endif
-	if (level >= minErrorLevel) {
-		// @NOTE(final): Force a null pointer assignment crash here
-		*(int *)0 = 0;
+	// Lower levels are more severe (Critical is 0)
+	if (level <= minErrorLevel) {
+		fpl__m_Crash();
 	}
 #endif
 }
