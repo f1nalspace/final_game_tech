@@ -83,7 +83,7 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
-	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave, --sine-seconds=0 makes it endless. A file still plays from memory.
+	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave (--sine-seconds=0 makes it endless) and Vorbis files, which stay compressed in memory. A wave or mp3 file is decoded in full, the log says so.
 	In the window --stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. A track without a length (the endless sine wave) shows no progress.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
@@ -91,15 +91,16 @@ How the demo works:
 	In thread mode every change is heard only after the latency of the output ring, --ring-ms makes the ring smaller.
 
 	--render mixes the first track on the main thread without window and audio device, always --chunk frames per AudioSystemWriteFrames call, and prints one result line:
-	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n>
+	render: file=<name> rate=<hz> format=<fmt> channels=<n> chunk=<n> frames=<n> hash=<fnv1a64> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> vm_hwm_kb=<n> stream=<0|1> stream_bytes=<n> pcm_bytes=<n> load_hwm_kb=<n> compressed_bytes=<n> failed_streams=<n>
 	The hash is FNV-1a 64 over the PCM bytes, the same options give the same hash on the same build. --render-wav=<file> writes the samples into a wave file as well.
 	stream tells whether the track played as a stream, stream_bytes is the memory of its stream instance and pcm_bytes the decoded samples in memory.
+	load_hwm_kb is the memory high water right after loading the track, before it plays. compressed_bytes is the compressed file a stream keeps, failed_streams counts streams that ended early (a damaged file).
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n>
 	stream_instances and stream_bytes include the instances of ended play items that no call has freed yet.
 
 	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
@@ -129,6 +130,8 @@ Changelog:
 	- New: --stream plays the sine wave as a stream in the window too, without a full-track buffer
 	- New: The stats line shows the stream sources and instances
 	- Fixed: Data race on the visualization switch of F1
+	- New: --stream plays Vorbis files as streams, in render mode and in the window
+	- New: The render line shows load_hwm_kb, compressed_bytes and failed_streams
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -1512,28 +1515,47 @@ static void StopCurrentTrack(AudioDemo *demo) {
 	ResetPlayback(demo);
 }
 
-// Loads the samples of a file or data track and adds them to the audio system, which counts and frees them from then on
+// Loads a file or data track and adds it to the audio system, which counts and frees it from then on. With --stream a file that can stream stays compressed in memory, any other one is decoded in full
 static AudioSource *LoadTrackSource(AudioDemo *demo, const AudioTrack *track) {
 	AudioSource *source = fpl_null;
-	switch(track->source.type) {
-		case AudioTrackSourceType_URL:
-		{
-			source = AudioSystemLoadFileSource(&demo->audioSys, track->source.url.urlOrFilePath);
-		} break;
+	if(demo->options.isStream) {
+		switch(track->source.type) {
+			case AudioTrackSourceType_URL:
+			{
+				source = AudioSystemLoadFileStreamSource(&demo->audioSys, track->source.url.urlOrFilePath);
+			} break;
 
-		case AudioTrackSourceType_Data:
-		{
-			source = AudioSystemLoadDataSource(&demo->audioSys, track->source.data.size, track->source.data.data);
-		} break;
+			case AudioTrackSourceType_Data:
+			{
+				// The built-in music is static, the source keeps the pointer
+				source = AudioSystemLoadDataStreamSource(&demo->audioSys, track->source.data.size, track->source.data.data, false);
+			} break;
 
-		default:
-			break;
+			default:
+				break;
+		}
+		if(source == fpl_null) {
+			FPL_LOG_INFO("Track", "'%s' plays from memory, it cannot stream (so far only Vorbis can)", track->name);
+		}
+	}
+	if(source == fpl_null) {
+		switch(track->source.type) {
+			case AudioTrackSourceType_URL:
+			{
+				source = AudioSystemLoadFileSource(&demo->audioSys, track->source.url.urlOrFilePath);
+			} break;
+
+			case AudioTrackSourceType_Data:
+			{
+				source = AudioSystemLoadDataSource(&demo->audioSys, track->source.data.size, track->source.data.data);
+			} break;
+
+			default:
+				break;
+		}
 	}
 	if(source == fpl_null) {
 		return(fpl_null);
-	}
-	if(demo->options.isStream) {
-		FPL_LOG_INFO("Track", "'%s' plays from memory, only the sine wave can stream so far", track->name);
 	}
 	if(!AudioSystemAddSource(&demo->audioSys, source)) {
 		FPL_LOG_ERROR("Track", "Failed to add the source of '%s'", track->name);
@@ -2276,7 +2298,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
 	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
 	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds, 0 with --stream is an endless one" },
-	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far only the sine wave. No full-track buffer then" },
+	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far the sine wave and Vorbis files. No full-track buffer then" },
 	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
 	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
@@ -2710,7 +2732,7 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 	}
 	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount);
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu compressed_bytes=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.compressedByteCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
@@ -3048,9 +3070,11 @@ static int RenderOffline(const PlayerOptions *options) {
 		FPL_LOG_ERROR("Render", "Failed to load the track");
 		goto done;
 	}
+	// What the process holds once the track is loaded, before its play allocates anything
+	ProcessMemoryUsage loadMemoryUsage = GetProcessMemoryUsage();
 	const bool isStreamSource = (source->type == AudioSourceType_Stream);
 	if(options->isStream && !isStreamSource) {
-		FPL_LOG_INFO("Render", "The track plays from memory, only the sine wave can stream so far");
+		FPL_LOG_INFO("Render", "The track plays from memory, its format cannot stream (so far only Vorbis and the sine wave can)");
 	}
 
 	AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, options->isRepeat, options->volume, options->pitch);
@@ -3139,7 +3163,7 @@ static int RenderOffline(const PlayerOptions *options) {
 	AudioSystemStats stats;
 	AudioSystemGetStats(audioSys, &stats);
 	const int streamValue = isStreamSource ? 1 : 0;
-	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu stream=%d stream_bytes=%llu pcm_bytes=%llu\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes, streamValue, (unsigned long long)stats.streamInstanceByteCount, (unsigned long long)stats.pcmByteCount);
+	fplConsoleFormatOut("render: file=%s rate=%u format=%s channels=%u chunk=%u frames=%u hash=%016llx mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f vm_hwm_kb=%llu stream=%d stream_bytes=%llu pcm_bytes=%llu load_hwm_kb=%llu compressed_bytes=%llu failed_streams=%u\n", fileName, targetFormat.sampleRate, formatName, (uint32_t)targetFormat.channels, chunkFrameCount, renderedFrameCount, (unsigned long long)hash, mixMeanMicroseconds, mixPercentileMicroseconds, histogram->maxMicroseconds, (unsigned long long)memoryUsage.highWaterKilobytes, streamValue, (unsigned long long)stats.streamInstanceByteCount, (unsigned long long)stats.pcmByteCount, (unsigned long long)loadMemoryUsage.highWaterKilobytes, (unsigned long long)stats.compressedByteCount, stats.failedStreamCount);
 
 	result = 0;
 
