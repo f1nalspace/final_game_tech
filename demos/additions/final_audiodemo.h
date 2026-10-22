@@ -134,7 +134,7 @@ typedef enum LoadAudioTrackFlags {
 	LoadAudioTrackFlags_None = 0,
 	LoadAudioTrackFlags_AutoLoad = 1 << 0,
 	LoadAudioTrackFlags_AutoPlay = 1 << 1,
-	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed
+	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed. With LoadAudioTrackFlags_AutoLoad a file that can stream (Vorbis) is a stream source too, any other file loads in full
 	LoadAudioTrackFlags_Stream = 1 << 2,
 } LoadAudioTrackFlags;
 
@@ -182,17 +182,34 @@ static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSou
 				if(autoLoad) {
 					fplConsoleFormatOut("Loading audio track '%s\n", trackSource->name);
 
-					AudioSource *source = fpl_null;				
-					
-					switch (trackSource->type) {
-						case AudioTrackSourceType_URL:
-							source = AudioSystemLoadFileSource(audioSys, trackSource->url.urlOrFilePath);
-							break;
-						case AudioTrackSourceType_Data:
-							source = AudioSystemLoadDataSource(audioSys, trackSource->data.size, trackSource->data.data);
-							break;
-						default:
-							FPL_NOT_IMPLEMENTED;
+					AudioSource *source = fpl_null;
+
+					// Data is copied as with a full load, the caller may release it afterwards
+					if(isStream) {
+						switch (trackSource->type) {
+							case AudioTrackSourceType_URL:
+								source = AudioSystemLoadFileStreamSource(audioSys, trackSource->url.urlOrFilePath);
+								break;
+							case AudioTrackSourceType_Data:
+								source = AudioSystemLoadDataStreamSource(audioSys, trackSource->data.size, trackSource->data.data, true);
+								break;
+							default:
+								break;
+						}
+					}
+
+					// Not streamed: the format cannot stream or no stream was asked for
+					if(source == fpl_null) {
+						switch (trackSource->type) {
+							case AudioTrackSourceType_URL:
+								source = AudioSystemLoadFileSource(audioSys, trackSource->url.urlOrFilePath);
+								break;
+							case AudioTrackSourceType_Data:
+								source = AudioSystemLoadDataSource(audioSys, trackSource->data.size, trackSource->data.data);
+								break;
+							default:
+								FPL_NOT_IMPLEMENTED;
+						}
 					}
 
 					if (source == fpl_null) {
