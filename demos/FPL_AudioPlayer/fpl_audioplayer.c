@@ -100,8 +100,9 @@ How the demo works:
 	--seek=<at>:<to> moves the play item to second <to> of the track once the output reaches second <at>. The chunk before ends exactly there, so the jump lands on the same output frame for every --chunk. A position past the end ends the track, a repeating one starts over.
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
-	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
+	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode R and Up/Down are heard only after the latency of the output ring.
 	Left/Right jump 10 seconds back or ahead from the position that is heard, a repeating track goes on in its next pass. In thread mode the output ring is emptied for it, so a jump is heard at once.
+	A pause is heard at once in thread mode too: the device callback reads nothing from the output ring meanwhile, resuming plays what it holds.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n>
@@ -146,6 +147,7 @@ Changelog:
 	- New: Left and right arrow keys jump 10 seconds back and ahead
 	- New: --stream plays mp3 files and the built-in music as streams
 	- Changed: The documentation tells where a stream is decoded and how it loops
+	- Changed: A pause in thread mode is heard at once, the output ring keeps its frames
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -717,7 +719,7 @@ typedef struct AudioDemo {
 	char currentTrackName[256];
 	// Guarded by trackLock
 	PlayerControls controls;
-	// 1 while paused, every track start clears it. Nothing is mixed then (by the device callback in callback mode, by the streaming thread in thread mode), so numFramesPlayed counts only what is heard.
+	// 1 while paused, every track start clears it. Nothing is mixed then (by the device callback in callback mode, by the streaming thread in thread mode) and nothing is read from the output ring, so numFramesPlayed counts only what is heard.
 	volatile uint32_t isPaused;
 	// Only the streaming thread: how far the current track is from its end, and the numFramesPlayed at which its end is heard
 	TrackEndState trackEndState;
@@ -1399,6 +1401,11 @@ static uint32_t AudioPlayback(const fplAudioFormat *outFormat, const uint32_t ma
 
 		case PlaybackMode_Thread:
 		{
+			// Nothing while paused: the output ring keeps what is mixed, so the pause is heard at once and resuming goes on from there
+			if(fplAtomicLoadU32(&demo->isPaused) != 0) {
+				demo->isOutputRingPrimed = false;
+				break;
+			}
 			result = ReadAudioFromRingBuffer(demo, outFormat, maxFrameCount, outputSamples);
 			CountRingGap(demo, result, maxFrameCount);
 		} break;
@@ -2083,7 +2090,7 @@ static void AudioStreamingThread(const fplThreadHandle *thread, void *rawData) {
 			continue;
 		}
 
-		// Nothing is mixed while paused, the output ring runs empty and the device callback counts no frames
+		// Nothing is mixed while paused, the output ring keeps its frames and the device callback reads none of them
 		if (fplAtomicLoadU32(&demo->isPaused) != 0) {
 			fplThreadSleep(trackLoadPollMilliseconds);
 			continue;
@@ -2342,7 +2349,11 @@ static void TogglePause(AudioDemo *demo) {
 	uint32_t isPaused = fplAtomicLoadU32(&demo->isPaused);
 	uint32_t newPaused = (isPaused != 0) ? 0 : 1;
 	fplAtomicStoreU32(&demo->isPaused, newPaused);
-	FPL_LOG_INFO("Keys", "Pause: %s", (newPaused != 0) ? "on" : "off");
+	uint32_t playedFrameCount = fplAtomicLoadU32(&demo->numFramesPlayed);
+	AudioFrameIndex heardFrameIndex = GetTrackPosition(demo, playedFrameCount);
+	double outputSampleRate = (double)demo->targetAudioFormat.sampleRate;
+	double heardSeconds = (double)heardFrameIndex / outputSampleRate;
+	FPL_LOG_INFO("Keys", "Pause: %s at %.1f s", (newPaused != 0) ? "on" : "off", heardSeconds);
 }
 
 // For the current track and every track after it
@@ -2603,7 +2614,7 @@ static void PrintPlayerHelp(void) {
 		const PlayerKeyHelp *keyHelp = &PlayerKeyHelps[keyIndex];
 		fplConsoleFormatOut("  %-*s%s\n", descriptionColumn, keyHelp->keys, keyHelp->description);
 	}
-	fplConsoleFormatOut("In thread mode a key is heard only after the latency of the output ring, --mixer=callback or a small --ring-ms hear it at once.\n");
+	fplConsoleFormatOut("In thread mode R and Up/Down are heard only after the latency of the output ring, --mixer=callback or a small --ring-ms hear them at once.\n");
 }
 
 static const PlayerOptionDefinition *FindPlayerOptionDefinition(const char *name, const size_t nameLength) {
