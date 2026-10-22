@@ -14,6 +14,7 @@ License:
 Changelog:
 	## 2026-10-22
 	- Fixed: Chunks after a chunk of odd size were not found (pad byte)
+	- Fixed: A huge chunk size could loop forever on 32-bit
 
 	## 2026-07-19
 	- Fixed: Malformed WAV chunk sizes now bounds-checked (no more heap over-read / div-by-zero); allocation is null-checked
@@ -156,7 +157,9 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 		uint32_t chunkId = chunk->id;
 		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		if(bufferPosition + chunkSize > bufferSize) {
+		// Compared with what is left of the buffer, a sum of position and size overflows on 32-bit
+		const size_t remainingBufferSize = bufferSize - bufferPosition;
+		if(chunkSize > remainingBufferSize) {
 			// Chunk body exceeds the buffer, malformed
 			return false;
 		}
@@ -226,7 +229,9 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 		uint32_t chunkId = chunk->id;
 		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		if(bufferPosition + chunkSize > bufferSize) {
+		// Compared with what is left of the buffer, a sum of position and size overflows on 32-bit
+		const size_t remainingBufferSize = bufferSize - bufferPosition;
+		if(chunkSize > remainingBufferSize) {
 			// Chunk body exceeds the buffer, malformed
 			PushWaveError(outWave, "Chunk body of size '%lu' exceeds the buffer!", (unsigned long)chunkSize);
 			return false;
