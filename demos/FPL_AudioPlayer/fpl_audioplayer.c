@@ -83,7 +83,8 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
-	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave in render mode, --sine-seconds=0 makes it endless. A file still plays from memory.
+	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave, --sine-seconds=0 makes it endless. A file still plays from memory.
+	In the window --stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. A track without a length (the endless sine wave) shows no progress.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
 	A track ends when it is heard to its end, in thread mode that is after the latency of the output ring. A repeating track never ends.
@@ -98,7 +99,8 @@ How the demo works:
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
-	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n>
+	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n>
+	stream_instances and stream_bytes include the instances of ended play items that no call has freed yet.
 
 	--stress starts a second thread that does a random action every 1 to 20 ms: it plays a short sine tone (50 to 300 ms, 48, 44.1 or 96 kHz, random volume, pitch 0.5 to 2), changes volume, pitch or pause of a tone, or stops one.
 	It keeps 16 tones and removes the source of the oldest one before it plays the next, which waits for the mixer. The tones are play items of their own, the end of a track does not wait for them.
@@ -124,6 +126,8 @@ Changelog:
 	## 2026-10-22
 	- New: --stream plays the sine wave as a stream source in render mode, --sine-seconds=0 makes it endless
 	- New: The render line shows stream, stream_bytes and pcm_bytes
+	- New: --stream plays the sine wave as a stream in the window too, without a full-track buffer
+	- New: The stats line shows the stream sources and instances
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -711,9 +715,10 @@ static void RecordMixCostSince(AudioDemo *demo, const fplTimestamp mixStart) {
 	RecordMixCostStats(&demo->mixCostStats, mixSeconds * MicrosecondsPerSecond);
 }
 
-// Only thread mode has the full-track buffer, the other modes always visualize the samples that went to the device
+// Only thread mode without --stream has the full-track buffer, everything else always visualizes the samples that went to the device
 static bool IsRealTimeVisualization(const AudioDemo *demo) {
-	bool result = demo->useRealTimeSamples || (demo->playbackMode != PlaybackMode_Thread);
+	bool hasFullTrackBuffer = (demo->playbackMode == PlaybackMode_Thread) && !demo->options.isStream;
+	bool result = demo->useRealTimeSamples || !hasFullTrackBuffer;
 	return(result);
 }
 
@@ -732,6 +737,9 @@ static void UpdateTitle(AudioDemo *demo, const char *audioTrackName, const doubl
 	const bool isRealTime = IsRealTimeVisualization(demo);
 	char titleBuffer[256];
 	const char *rtString = (isRealTime ? "RT" : "BUF");
+	if(demo->options.isStream) {
+		rtString = "RT, STREAM";
+	}
 	const fplAudioBackendType backendType = fplGetAudioBackendType();
 	const char *audioBackendName = fplGetAudioBackendName(backendType);
 	const fplSettings *settings = fplGetCurrentSettings();
@@ -1429,12 +1437,16 @@ static bool GetCurrentPlayItem(AudioDemo *demo, AudioPlayItem *outPlayItem) {
 	return(false);
 }
 
-// Output frames left in the current pass of the play item of the current track, false when it is gone or repeats.
+// Output frames left in the current pass of the play item of the current track, false when it is gone, repeats or never ends (endless stream).
 // Only in thread mode, where the streaming thread is the only one that mixes.
 static bool GetRemainingPlayItemFrameCount(AudioDemo *demo, AudioFrameIndex *outFrameCount) {
 	AudioPlayItem playItem = fplZeroInit;
 	bool hasPlayItem = GetCurrentPlayItem(demo, &playItem);
 	if(!hasPlayItem || playItem.isRepeat || playItem.isFinished[0]) {
+		return(false);
+	}
+	bool isEndless = (playItem.source->type == AudioSourceType_Stream) && playItem.source->stream.isEndless;
+	if(isEndless) {
 		return(false);
 	}
 	AudioFrameIndex sourceFrameCount = playItem.source->buffer.frameCount;
@@ -1517,6 +1529,9 @@ static AudioSource *LoadTrackSource(AudioDemo *demo, const AudioTrack *track) {
 	if(source == fpl_null) {
 		return(fpl_null);
 	}
+	if(demo->options.isStream) {
+		FPL_LOG_INFO("Track", "'%s' plays from memory, only the sine wave can stream so far", track->name);
+	}
 	if(!AudioSystemAddSource(&demo->audioSys, source)) {
 		FPL_LOG_ERROR("Track", "Failed to add the source of '%s'", track->name);
 		return(fpl_null);
@@ -1530,6 +1545,7 @@ static AudioSource *LoadTrackSource(AudioDemo *demo, const AudioTrack *track) {
 * @param[in] trackIndex Index into the track list.
 * @note A track loads on its first start and keeps its source and its full-track buffer while the track list lives.
 * @note Only thread mode renders the whole track for the visualization: it takes long and holds the mixer, which would block the device callback in callback mode.
+* @note With --stream no track is rendered in full, the full-track buffer would hold what streaming saves (and the preview skips stream items anyway).
 */
 static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 	AudioTrackList *trackList = &demo->trackList;
@@ -1578,7 +1594,7 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 	fplAtomicStoreU32(&demo->currentTrackFrameCount, trackFrameCount);
 	fplAtomicStoreU32(&demo->isCurrentTrackRepeating, controls.isRepeat ? 1 : 0);
 
-	bool needsPreview = (demo->playbackMode == PlaybackMode_Thread) && !track->outputFullBuffer.isAllocated;
+	bool needsPreview = (demo->playbackMode == PlaybackMode_Thread) && !options->isStream && !track->outputFullBuffer.isAllocated;
 
 	fplMutexLock(&demo->trackLock);
 	if(needsPreview) {
@@ -1607,6 +1623,15 @@ static void StartTrack(AudioDemo *demo, const int32_t trackIndex) {
 	}
 }
 
+// The window loads every file on its first start (StartTrack), with --stream the sine wave is a stream source
+static LoadAudioTrackFlags GetWindowTrackLoadFlags(const PlayerOptions *options) {
+	LoadAudioTrackFlags result = LoadAudioTrackFlags_None;
+	if(options->isStream) {
+		result = LoadAudioTrackFlags_Stream;
+	}
+	return(result);
+}
+
 // Replaces the track list with the dropped file (and the sine wave with --sine), the streaming thread starts its first track next
 static void ReplaceTrackList(AudioDemo *demo, const char *filePath) {
 	AudioTrackSource trackSource = fplZeroInit;
@@ -1630,7 +1655,8 @@ static void ReplaceTrackList(AudioDemo *demo, const char *filePath) {
 	demo->trackList.currentIndex = -1;
 	// No play item is left after StopCurrentTrack, so the sources can go
 	AudioSystemClearSources(&demo->audioSys);
-	bool isLoaded = LoadAudioTrackList(&demo->audioSys, &trackSource, 1, demo->options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList);
+	LoadAudioTrackFlags loadFlags = GetWindowTrackLoadFlags(&demo->options);
+	bool isLoaded = LoadAudioTrackList(&demo->audioSys, &trackSource, 1, demo->options.isSine, &demo->sineWave, loadFlags, &demo->trackList);
 	fplMutexUnlock(&demo->trackLock);
 
 	if(!isLoaded) {
@@ -2107,6 +2133,10 @@ static void ToggleRealTimeVisualization(AudioDemo *demo) {
 		FPL_LOG_INFO("Keys", "Visualization: real-time only, the full-track buffer exists in thread mode only");
 		return;
 	}
+	if(demo->options.isStream) {
+		FPL_LOG_INFO("Keys", "Visualization: real-time only, --stream renders no full-track buffer");
+		return;
+	}
 	demo->useRealTimeSamples = !demo->useRealTimeSamples;
 	FPL_LOG_INFO("Keys", "Visualization: %s", demo->useRealTimeSamples ? "real-time samples" : "full-track buffer");
 }
@@ -2241,7 +2271,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
 	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
 	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds, 0 with --stream is an endless one" },
-	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far only the sine wave and only with --render" },
+	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far only the sine wave. No full-track buffer then" },
 	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
 	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
@@ -2532,8 +2562,9 @@ static bool ValidatePlayerOptions(const PlayerOptions *options) {
 		fplConsoleFormatError("--sine-seconds=0 is an endless sine wave, which only a stream can be, add --stream\n");
 		return(false);
 	}
-	if(options->isStream && !options->isRender) {
-		fplConsoleFormatError("--stream works only with --render so far\n");
+	const bool isDeviceSine = (options->mixerMode == PlaybackMode_DeviceSine);
+	if(options->isStream && isDeviceSine && !options->isRender) {
+		fplConsoleFormatError("--stream needs the audio system, the device sine of --mixer=device-sine plays without it\n");
 		return(false);
 	}
 	if(options->ringMilliseconds <= 0) {
@@ -2674,7 +2705,7 @@ static void LogStatsLine(AudioDemo *demo, const MixCostHistogram *histogram) {
 	}
 	uint32_t mixThreadId = fplAtomicLoadU32(&demo->mixCostStats.mixThreadId);
 
-	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId);
+	fplConsoleFormatOut("stats: vm_hwm_kb=%llu vm_rss_kb=%llu sources=%zu source_bytes=%zu play_items=%u dropped_commands=%u concurrent_writes=%u ring_fill_pct=%s mix_calls=%llu mix_mean_us=%.3f mix_p99_us=%.3f mix_max_us=%.3f mix_tid=%u stream_sources=%zu stream_instances=%zu stream_bytes=%zu failed_streams=%u\n", (unsigned long long)memoryUsage.highWaterKilobytes, (unsigned long long)memoryUsage.residentKilobytes, audioStats.sourceCount, audioStats.pcmByteCount, audioStats.activePlayItemCount, audioStats.droppedCommandCount, audioStats.concurrentWriteCount, ringFillText, (unsigned long long)callCount, meanMicroseconds, percentileMicroseconds, maxMicroseconds, mixThreadId, audioStats.streamSourceCount, audioStats.streamInstanceCount, audioStats.streamInstanceByteCount, audioStats.failedStreamCount);
 }
 
 // Called every frame with --stats: asks the mixing thread for its histogram every 5 seconds and logs it as soon as the mixing thread swapped
@@ -3271,7 +3302,8 @@ int main(int argc, char **args) {
 
 	// The device sine plays without the audio system, so it needs no tracks and no streaming thread
 	if(demo->playbackMode != PlaybackMode_DeviceSine) {
-		if(!LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, options.isSine, &demo->sineWave, LoadAudioTrackFlags_None, &demo->trackList)) {
+		LoadAudioTrackFlags loadFlags = GetWindowTrackLoadFlags(&options);
+		if(!LoadAudioTrackList(&demo->audioSys, audioTracks, audioTrackCount, options.isSine, &demo->sineWave, loadFlags, &demo->trackList)) {
 			goto done;
 		}
 
