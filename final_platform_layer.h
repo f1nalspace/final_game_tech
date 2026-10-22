@@ -197,6 +197,7 @@ SOFTWARE.
 	- New: Added define FPL_MULTI_TRANSLATION_UNIT to switches fpl_extern_inline from "extern inline" to "static inline"
 	- Fixed: [POSIX] Every log line was written twice, because the default log writers use the debug output in addition to the console and fplDebugOut() writes into the console on every platform but Windows - the default writers only use the debug output on Windows now
 	- Fixed: FPL_LOG_MULTIPLE_WRITERS did not compile anymore, the default settings still wrote the field logToError that was removed from fplLogWriterConsole (the error console is selected by fplLogWriterFlags_ErrorConsole)
+	- Fixed: FPL_LOG_MULTIPLE_WRITERS read past the writers for trace messages, added field traceWriter to fplLogSettings
 	- New[#192]: Added struct fplLocaleSettings that controls how strings are formatted based on user locales
 	- Fixed[#192]: fplStringFormat* is not invariant, resulting in 1,54 vs 1.54
 	- Fixed: fplIsStringMatchWildcard() did not backtrack ("a.b.txt" missed "*.txt") and matched prefixes ("abc" matched "a")
@@ -7536,7 +7537,7 @@ typedef struct fplLogSettings {
 #if defined(FPL__ENABLE_LOG_MULTIPLE_WRITERS)
 	union {
 		//! All writers.
-		fplLogWriter writers[6];
+		fplLogWriter writers[fplLogLevel_Last + 1];
 		struct {
 			//! Critical writer.
 			fplLogWriter criticalWriter;
@@ -7550,6 +7551,8 @@ typedef struct fplLogSettings {
 			fplLogWriter verboseWriter;
 			//! Debug writer.
 			fplLogWriter debugWriter;
+			//! Trace writer.
+			fplLogWriter traceWriter;
 		};
 	};
 #else
@@ -12022,6 +12025,7 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 		settings->infoWriter.flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 		settings->verboseWriter = settings->infoWriter;
 		settings->debugWriter.flags = FPL__LOG_DEFAULT_DEBUG_FLAGS;
+		settings->traceWriter = settings->debugWriter;
 #else
 		settings->writers[0].flags = fplLogWriterFlags_StandardConsole | FPL__LOG_DEFAULT_ADDITIONAL_FLAGS;
 #endif
@@ -12031,7 +12035,11 @@ fpl_internal void fpl__LogWrite(const char *funcName, const int lineNumber, cons
 
 	if ((settings->maxLevel == -1) || (level <= settings->maxLevel)) {
 #if defined(FPL_LOG_MULTIPLE_WRITERS)
-		fplAssert(level < fplArrayCount(settings->writers));
+		// Only real message levels have a writer, fplLogLevel_All is no level of a message
+		const int writerCount = (int)fplArrayCount(settings->writers);
+		if ((int)level < 0 || (int)level >= writerCount) {
+			return;
+		}
 		const fplLogWriter *writer = &settings->writers[(int)level];
 #else
 		const fplLogWriter *writer = &settings->writers[0];
