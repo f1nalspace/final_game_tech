@@ -83,7 +83,7 @@ How the demo works:
 	Without it, no target device is given and the platform plays on the system default device.
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
-	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. So far that is the sine wave (--sine-seconds=0 makes it endless) and Vorbis files, which stay compressed in memory. A wave or mp3 file is decoded in full, the log says so.
+	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. That is the sine wave (--sine-seconds=0 makes it endless), Vorbis and mp3 files and the built-in music, which stay compressed in memory. A wave file is decoded in full, the log says so.
 	In the window --stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. A track without a length (the endless sine wave) shows no progress.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
@@ -142,6 +142,7 @@ Changelog:
 	- Fixed: Slow shutdown in thread mode
 	- New: --seek=<at>:<to> seeks the play item in render mode
 	- New: Left and right arrow keys jump 10 seconds back and ahead
+	- New: --stream plays mp3 files and the built-in music as streams
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -1598,7 +1599,7 @@ static AudioSource *LoadTrackSource(AudioDemo *demo, const AudioTrack *track) {
 				break;
 		}
 		if(source == fpl_null) {
-			FPL_LOG_INFO("Track", "'%s' plays from memory, it cannot stream (so far only Vorbis can)", track->name);
+			FPL_LOG_INFO("Track", "'%s' plays from memory, it cannot stream (only Vorbis and mp3 can)", track->name);
 		}
 	}
 	if(source == fpl_null) {
@@ -2448,7 +2449,7 @@ static const PlayerOptionDefinition PlayerOptionDefinitions[] = {
 	{ PlayerOptionType_String, "device", "<name>", PLAYER_OPTION_FIELD(deviceName), fpl_null, 0, "Play on the audio device with exactly this name, stop with an error when there is none" },
 	{ PlayerOptionType_Flag, "sine", fpl_null, PLAYER_OPTION_FIELD(isSine), fpl_null, 0, "Play only the generated sine wave, no files and no built-in music" },
 	{ PlayerOptionType_Float, "sine-seconds", "<s>", PLAYER_OPTION_FIELD(sineSeconds), fpl_null, 0, "Length of the sine wave in seconds, 0 with --stream is an endless one" },
-	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing), so far the sine wave and Vorbis files. No full-track buffer then" },
+	{ PlayerOptionType_Flag, "stream", fpl_null, PLAYER_OPTION_FIELD(isStream), fpl_null, 0, "Play the tracks as streams (generated or decoded while mixing): the sine wave, Vorbis and mp3 files. No full-track buffer then" },
 	{ PlayerOptionType_Choice, "mixer", fpl_null, PLAYER_OPTION_FIELD(mixerMode), MixerModeChoices, fplArrayCount(MixerModeChoices), "Where the audio system mixes:" },
 	{ PlayerOptionType_Int, "ring-ms", "<ms>", PLAYER_OPTION_FIELD(ringMilliseconds), fpl_null, 0, "Size of the output ring in thread mode, every change is heard only after its latency" },
 	{ PlayerOptionType_Float, "volume", "<v>", PLAYER_OPTION_FIELD(volume), fpl_null, 0, "Volume of the play item" },
@@ -3264,7 +3265,7 @@ static int RenderOffline(const PlayerOptions *options) {
 	ProcessMemoryUsage loadMemoryUsage = GetProcessMemoryUsage();
 	const bool isStreamSource = (source->type == AudioSourceType_Stream);
 	if(options->isStream && !isStreamSource) {
-		FPL_LOG_INFO("Render", "The track plays from memory, its format cannot stream (so far only Vorbis and the sine wave can)");
+		FPL_LOG_INFO("Render", "The track plays from memory, its format cannot stream (only the sine wave, Vorbis and mp3 can)");
 	}
 
 	AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, options->isRepeat, options->volume, options->pitch);
