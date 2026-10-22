@@ -134,7 +134,7 @@ typedef enum LoadAudioTrackFlags {
 	LoadAudioTrackFlags_None = 0,
 	LoadAudioTrackFlags_AutoLoad = 1 << 0,
 	LoadAudioTrackFlags_AutoPlay = 1 << 1,
-	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed. With LoadAudioTrackFlags_AutoLoad a file that can stream (Vorbis) is a stream source too, any other file loads in full
+	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed. With LoadAudioTrackFlags_AutoLoad a file that can stream (Vorbis, mp3) is a stream source too, any other file loads in full
 	LoadAudioTrackFlags_Stream = 1 << 2,
 } LoadAudioTrackFlags;
 
