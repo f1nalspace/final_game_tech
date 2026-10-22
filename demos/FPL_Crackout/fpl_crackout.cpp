@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-22
+	- Changed: The music plays as a stream, decoded while it plays
+
 	## 2026-10-20
 	- Changed: Switched to PNG textures instead, due to invalid BMP loading of stb_image 2.30 vs v2.19
 
@@ -712,6 +715,21 @@ static bool LoadSound(AudioSystem *audio, const char *dataPath, const char *file
 	return(result);
 }
 
+// Music stays compressed in memory and is decoded while it plays, a file that cannot stream (wave) loads in full
+static bool LoadMusic(AudioSystem *audio, const char *dataPath, const char *filename, AudioSource *&outSource) {
+	char filePath[1024];
+	fplPathCombine(filePath, fplArrayCount(filePath), 2, dataPath, filename);
+	AudioSource *source = AudioSystemLoadFileStreamSource(audio, filePath);
+	if(source == fpl_null) {
+		source = AudioSystemLoadFileSource(audio, filePath);
+	}
+	bool result = source != fpl_null;
+	if(result) {
+		outSource = source;
+	}
+	return(result);
+}
+
 static bool LoadAssets(GameState &state) {
 	// TODO(final): Proper memory allocator
 	MemoryAllocator *allocator = fpl_null;
@@ -754,9 +772,9 @@ static bool LoadAssets(GameState &state) {
 
 	LoadSound(state.audioSys, state.dataPath, "bounce_44100hz.wav", state.assets.ballHitSound);
 
-	LoadSound(state.audioSys, state.dataPath, "music_44100hz.ogg", state.assets.gameMusic);
+	LoadMusic(state.audioSys, state.dataPath, "music_44100hz.ogg", state.assets.gameMusic);
 
-	LoadSound(state.audioSys, state.dataPath, "menu_44100hz.wav", state.assets.menuMusic);
+	LoadMusic(state.audioSys, state.dataPath, "menu_44100hz.wav", state.assets.menuMusic);
 
 	return true;
 }
