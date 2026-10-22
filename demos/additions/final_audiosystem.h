@@ -187,6 +187,7 @@ Changelog:
 	- New: AudioSystemSetPlayItemPosition() seeks memory and stream items
 	- New: MP3 stream sources (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
 	- New: Documentation of stream sources and where to mix
+	- New: Loop regions, a repeating play item plays its intro once and then loops between loop start and loop end (AudioSystemSetPlayItemLoop(), loopStartFrame and loopEndFrame in AudioSource and AudioPlayItem)
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
@@ -307,6 +308,10 @@ typedef struct AudioSource {
 	AudioFormat format;
 	//! Set when the type is @ref AudioSourceType_Stream: every play of the source generates or decodes its frames while it is mixed
 	AudioSourceStream stream;
+	//! First frame of the loop region, the default of every play (see @ref AudioPlayItem::loopStartFrame). The program may change it while no item of the source plays
+	AudioFrameIndex loopStartFrame;
+	//! Frame after the last one of the loop region, 0 when the source has none
+	AudioFrameIndex loopEndFrame;
 	AudioSourceType type;
 	AudioSourceID id;
 	struct AudioSource *next;
@@ -332,6 +337,10 @@ typedef struct AudioPlayItem {
 	//! Applied by telling the resampler the source has a different sample rate than it really has, which is all a rate conversion ever needed: it is decided by the RATIO alone.
 	//! 1 (or anything within @ref AudioPitchNeutralTolerance of it) is the file as recorded and costs nothing.
 	float pitch;
+	//! First frame of the loop region in frames of the source. While isRepeat is set, the item plays up to loopEndFrame and goes on here, so the frames before it (the intro) play once
+	AudioFrameIndex loopStartFrame;
+	//! Frame after the last one of the loop region, 0 when the item has none and repeats the whole source. From a position at or past it (the outro) the item plays to the end of the source, then it goes on at loopStartFrame
+	AudioFrameIndex loopEndFrame;
 	bool isRepeat;
 	//! Skipped by the mixer while set, WITHOUT touching framesPlayed - so resuming carries on from the exact frame it stopped on.
 	//! That is the whole difference between this and @ref AudioSystemStopOne, which frees the item and forgets where it was.
@@ -381,6 +390,8 @@ typedef struct AudioPublishedPlayItem {
 	volatile uint32_t copiesPlayed;
 	volatile uint32_t volumeBits;
 	volatile uint32_t pitchBits;
+	volatile uint32_t loopStartFrame;
+	volatile uint32_t loopEndFrame;
 	//! @ref AudioPublishedPlayItemFlags
 	volatile uint32_t flags;
 } AudioPublishedPlayItem;
@@ -426,7 +437,15 @@ typedef enum AudioCommandKind {
 	AudioCommandKind_SetPaused,
 	//! Moves the item of playId to value.frameIndex
 	AudioCommandKind_SetPosition,
+	//! Sets the loop region of the item of playId to value.loop
+	AudioCommandKind_SetLoop,
 } AudioCommandKind;
+
+//! The loop region of @ref AudioCommandKind_SetLoop
+typedef struct AudioCommandLoop {
+	AudioFrameIndex startFrame;
+	AudioFrameIndex endFrame;
+} AudioCommandLoop;
 
 //! A change of the play items, the mixer applies it at the start of its next @ref AudioSystemWriteFrames call
 typedef struct AudioCommand {
@@ -438,6 +457,7 @@ typedef struct AudioCommand {
 		bool isRepeat;
 		bool isPaused;
 		AudioFrameIndex frameIndex;
+		AudioCommandLoop loop;
 	} value;
 	//! @ref AudioCommandKind
 	uint32_t kind;
@@ -713,6 +733,7 @@ fpl_extern bool AudioSystemIsSuspended(const AudioSystem *audioSys);
 * @param[in] pitch The playback rate multiplier (see @ref AudioPlayItem::pitch), pass @ref AudioSystemDefaultPitch for the file as recorded, which costs nothing.
 * @return Returns the id @ref AudioPlayItemID of the new play item, or an id with a value of zero when an argument is null, all @ref FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items are in use or the command queue is full.
 * @note A pitch of zero or below is treated as 1 rather than refused: silence would be the one outcome nobody could debug.
+* @note The play item gets the loop region of the source (@ref AudioSource::loopStartFrame), unless it ends past the source or the source is an endless stream.
 * @note The play item takes a slot of the fixed pool. The id is valid at once and @ref AudioSystemGetPlayItems returns the item at once, the mixer plays it from its next call.
 * @note For a source with samples it allocates nothing. For a stream source it allocates the stream instance of this play, a ring of 4096 frames and the state of the stream, which the mixer fills while it mixes. A Vorbis stream gets the memory of its decoder in the same block (about 200 KB) and opens its decoder here.
 * @note The stream instance of an ended item is freed by the next call of this function, @ref AudioSystemStopAll, @ref AudioSystemRemoveSource, @ref AudioSystemClearSources or @ref AudioSystemShutdown, never by the mixer.
@@ -758,6 +779,7 @@ fpl_extern bool AudioSystemSetPlayItemPitch(AudioSystem *audioSys, const AudioPl
 * @param[in] repeat Pass true to keep looping, false to let the current pass finish.
 * @return Returns true when the repeat state was sent to a live play item, false when the item no longer exists, which is not an error - it just ended, or the command queue is full.
 * @note Clearing it lets the current pass finish and the item free itself normally, which is what "stop looping" should mean - @ref AudioSystemStopOne would cut it off mid-sound instead.
+* @note With a loop region (@ref AudioSystemSetPlayItemLoop) clearing it is the release: the item plays the rest of the region and the frames after it to the end of the source.
 * @note Setting it makes an item that has not ended yet carry on.
 */
 fpl_extern bool AudioSystemSetPlayItemRepeat(AudioSystem *audioSys, const AudioPlayItemID playId, const bool repeat);
@@ -779,11 +801,24 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 * @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
 * @param[in] frameIndex The source frame to play next, counted at the sample rate of the source like @ref AudioPlayItem::framesPlayed.
 * @return Returns true when the position was sent to a live play item, false when the item no longer exists or the command queue is full.
-* @note A position at or past the end of the source ends the item as its end would, a repeating item starts over from frame 0 instead. An endless stream takes any position.
+* @note A position at or past the end of the source ends the item as its end would, a repeating item goes on at its loop start instead (frame 0 without a loop region). An endless stream takes any position.
 * @note A stream item seeks its decoder in the mixer at its next call, a thread that applies the commands itself only sets the position and never decodes. From there on the stream gives the same frames as the same source in memory.
 * @note Frames that were mixed already keep playing, the jump is heard from the next mixed chunk on.
 */
 fpl_extern bool AudioSystemSetPlayItemPosition(AudioSystem *audioSys, const AudioPlayItemID playId, const AudioFrameIndex frameIndex);
+
+/**
+* @brief Sets the loop region of a play item that is already playing, see @ref AudioPlayItem::loopStartFrame.
+* @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
+* @param[in] playId The id @ref AudioPlayItemID returned by @ref AudioSystemPlaySource.
+* @param[in] loopStartFrame First frame of the loop region, counted at the sample rate of the source like @ref AudioPlayItem::framesPlayed.
+* @param[in] loopEndFrame Frame after the last one of the loop region, at most the frame count of the source. 0 clears the region, the item repeats the whole source again.
+* @return Returns true when the region was sent to a live play item, false when loopStartFrame is not below loopEndFrame (and loopEndFrame is not 0), the item no longer exists or the command queue is full.
+* @note The region counts only while the item repeats: it plays the frames before the loop start once, then the region again and again. @ref AudioSystemSetPlayItemRepeat with false releases it, the item then plays the rest of the region and the frames after it, and ends at the end of the source.
+* @note The mixer checks the region against the source when it applies it: a region that ends past the source, or any region of an endless stream, is dropped and the item keeps the one it had.
+* @note A stream item seeks its decoder at every jump to the loop start, the frames stay the same as the same source in memory.
+*/
+fpl_extern bool AudioSystemSetPlayItemLoop(AudioSystem *audioSys, const AudioPlayItemID playId, const AudioFrameIndex loopStartFrame, const AudioFrameIndex loopEndFrame);
 
 /**
 * @brief Stops and frees all play items.
@@ -1789,6 +1824,8 @@ static void PublishPlayItem(AudioPlayItemSlot *slot, const bool isLive) {
 	fplAtomicStoreU32(&published->copiesPlayed, item->copiesPlayed[0]);
 	fplAtomicStoreU32(&published->volumeBits, volumeBits);
 	fplAtomicStoreU32(&published->pitchBits, pitchBits);
+	fplAtomicStoreU32(&published->loopStartFrame, item->loopStartFrame);
+	fplAtomicStoreU32(&published->loopEndFrame, item->loopEndFrame);
 	fplAtomicStoreU32(&published->flags, flags);
 	fplAtomicStoreU32(&published->sequence, sequence + 2);
 }
@@ -1809,6 +1846,8 @@ static bool CopyPublishedPlayItem(AudioPlayItemSlot *slot, const uint32_t slotIn
 		const uint32_t copiesPlayed = fplAtomicLoadU32(&published->copiesPlayed);
 		const uint32_t volumeBits = fplAtomicLoadU32(&published->volumeBits);
 		const uint32_t pitchBits = fplAtomicLoadU32(&published->pitchBits);
+		const uint32_t loopStartFrame = fplAtomicLoadU32(&published->loopStartFrame);
+		const uint32_t loopEndFrame = fplAtomicLoadU32(&published->loopEndFrame);
 		const uint32_t flags = fplAtomicLoadU32(&published->flags);
 		const uint32_t sequenceAfter = fplAtomicLoadU32(&published->sequence);
 		if(sequenceAfter != sequenceBefore) {
@@ -1825,6 +1864,8 @@ static bool CopyPublishedPlayItem(AudioPlayItemSlot *slot, const uint32_t slotIn
 		outItem->isFinished[0] = (flags & AudioPublishedPlayItemFlags_Finished) != 0;
 		outItem->volume = AudioBitsToFloat(volumeBits);
 		outItem->pitch = AudioBitsToFloat(pitchBits);
+		outItem->loopStartFrame = loopStartFrame;
+		outItem->loopEndFrame = loopEndFrame;
 		outItem->isRepeat = (flags & AudioPublishedPlayItemFlags_Repeat) != 0;
 		outItem->isPaused = (flags & AudioPublishedPlayItemFlags_Paused) != 0;
 		return(true);
@@ -1890,6 +1931,12 @@ typedef struct AudioStreamInstance {
 // Whether the mixer generates or decodes the frames of a source. A source that only carries the type, which an older final_audiodemo.h set for its sine wave, plays its samples
 static bool IsStreamSource(const AudioSource *source) {
 	const bool result = (source->type == AudioSourceType_Stream) && (source->stream.kind != AudioStreamKind_None);
+	return(result);
+}
+
+// Whether a loop region fits the source: its start before its end, its end at most the frame count. An endless stream has a frame count of 0 and takes none
+static bool IsLoopRegionValid(const AudioSource *source, const AudioFrameIndex loopStartFrame, const AudioFrameIndex loopEndFrame) {
+	const bool result = (loopStartFrame < loopEndFrame) && (loopEndFrame <= source->buffer.frameCount);
 	return(result);
 }
 
@@ -2165,9 +2212,31 @@ static void ApplyAudioCommand(AudioPlayItems *playItems, const AudioCommand *com
 				FinishActivePlayItem(playItems, activeIndex);
 				break;
 			}
-			// The ring of a stream no longer holds the position, so the stream seeks at the next mix. Whoever applies the queue only sets it
-			item->framesPlayed[0] = isPastEnd ? 0 : command->value.frameIndex;
+			// The ring of a stream no longer holds the position, so the stream seeks at the next mix. Whoever applies the queue only sets it.
+			// Past the end a repeating item goes on as at the end, at its loop start, which is 0 without a loop region
+			item->framesPlayed[0] = isPastEnd ? item->loopStartFrame : command->value.frameIndex;
 			item->copiesPlayed[0] = 0;
+			PublishPlayItem(slot, true);
+		} break;
+
+		case AudioCommandKind_SetLoop:
+		{
+			AudioPlayItemSlot *slot = FindPlayingSlot(playItems, command->playId, &slotIndex);
+			if(slot == fpl_null) {
+				break;
+			}
+			AudioPlayItem *item = &slot->item;
+			const AudioFrameIndex loopStartFrame = command->value.loop.startFrame;
+			const AudioFrameIndex loopEndFrame = command->value.loop.endFrame;
+			const bool isCleared = (loopEndFrame == 0);
+			const bool isValid = IsLoopRegionValid(item->source, loopStartFrame, loopEndFrame);
+			if(!isCleared && !isValid) {
+				// Ends past the source, or the source is an endless stream: the item keeps the region it had
+				break;
+			}
+			// Without a region the loop start stays 0, where a repeat goes on
+			item->loopStartFrame = isCleared ? 0 : loopStartFrame;
+			item->loopEndFrame = loopEndFrame;
 			PublishPlayItem(slot, true);
 		} break;
 
@@ -2416,6 +2485,24 @@ fpl_extern bool AudioSystemSetPlayItemPosition(AudioSystem *audioSys, const Audi
 	return(result);
 }
 
+fpl_extern bool AudioSystemSetPlayItemLoop(AudioSystem *audioSys, const AudioPlayItemID playId, const AudioFrameIndex loopStartFrame, const AudioFrameIndex loopEndFrame) {
+	if(audioSys == fpl_null) {
+		return false;
+	}
+	// The frame count of the source is checked by the mixer
+	const bool isCleared = (loopEndFrame == 0);
+	if(!isCleared && loopStartFrame >= loopEndFrame) {
+		return false;
+	}
+	AudioCommand command = fplZeroInit;
+	command.kind = AudioCommandKind_SetLoop;
+	command.playId = playId;
+	command.value.loop.startFrame = loopStartFrame;
+	command.value.loop.endFrame = loopEndFrame;
+	const bool result = SendPlayItemCommand(audioSys, &command);
+	return(result);
+}
+
 fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const AudioSource *source, const bool repeat, const float volume, const float pitch) {
 	if((audioSys == fpl_null) || (source == fpl_null)) {
 		AudioPlayItemID empty = fplZeroInit;
@@ -2463,6 +2550,12 @@ fpl_extern AudioPlayItemID AudioSystemPlaySource(AudioSystem *audioSys, const Au
 	// could debug from the outside. Treat it as the file as recorded.
 	playItem->pitch = (pitch > 0.0f) ? pitch : 1.0f;
 	playItem->isPaused = false;
+	// The loop region of the source is the default of every play, one that does not fit the source is left out
+	const bool hasLoopRegion = IsLoopRegionValid(source, source->loopStartFrame, source->loopEndFrame);
+	if(hasLoopRegion) {
+		playItem->loopStartFrame = source->loopStartFrame;
+		playItem->loopEndFrame = source->loopEndFrame;
+	}
 
 	// AudioSystemGetPlayItems sees it from here on, before it is mixed
 	PublishPlayItem(slot, true);
@@ -3138,7 +3231,8 @@ static AudioFrameIndex FillStreamRing(AudioStreamInstance *instance, const Audio
 *
 * The function updates item->framesPlayed[0] and item->isFinished[0]. When the item
 * reaches the end of its source and isRepeat is true, framesPlayed resets to zero so
-* the loop continues.
+* the loop continues. With a loop region a repeating item ends each chunk at the loop end
+* at the latest and goes on at the loop start, after the frames past the loop end it does so at the end of the source.
 *
 * A stream item reads its chunk from its ring instead of the samples of the source, FillStreamRing gives it the same frames.
 *
@@ -3195,8 +3289,13 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 
 		const AudioFrameIndex inStartFrameIndex = item->framesPlayed[0];
 		fplAssert(isEndless || (inStartFrameIndex < inTotalFrameCount));
+		fplAssert(!isEndless || (item->loopEndFrame == 0));
 
-		const AudioFrameIndex inRemainingFrameCount = isEndless ? endlessRemainingFrameCount : (inTotalFrameCount - inStartFrameIndex);
+		// A repeating item inside its loop region plays up to the loop end, never into the frames after it. From the loop end on it plays to the end of the source
+		const bool isInsideLoopRegion = item->isRepeat && (item->loopEndFrame > 0) && (inStartFrameIndex < item->loopEndFrame);
+		const AudioFrameIndex inEndFrameIndex = isInsideLoopRegion ? item->loopEndFrame : inTotalFrameCount;
+
+		const AudioFrameIndex inRemainingFrameCount = isEndless ? endlessRemainingFrameCount : (inEndFrameIndex - inStartFrameIndex);
 
 		// The frames from the position on: in memory, or in the ring of a stream
 		const uint8_t *inSourceData;
@@ -3252,7 +3351,7 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 			&item->copiesPlayed[0]
 		);
 
-		// Frame skipping (AudioSimpleDownSampling) steps up to factor-1 frames past its input, which keeps the skipping grid across chunks, but never past the end of the source
+		// Frame skipping (AudioSimpleDownSampling) steps up to factor-1 frames past its input, which keeps the skipping grid across chunks, but never past the end of the source or the loop end
 		const AudioFrameIndex playedFrameCount = fplMin(resampleResult.inputCount, inRemainingFrameCount);
 
 		// Clamp output frame count to what we actually need. AudioResampleInterleaved
@@ -3281,12 +3380,13 @@ static AudioFrameIndex ProcessSinglePlayItem(AudioSystem *audioSys, AudioPlayIte
 		// ---- Update play position ----
 		// The position of an endless stream wraps around after 2^32 frames
 		item->framesPlayed[0] += playedFrameCount;
-		fplAssert(isEndless || (item->framesPlayed[0] <= inTotalFrameCount));
+		fplAssert(isEndless || (item->framesPlayed[0] <= inEndFrameIndex));
 
-		if (!isEndless && (item->framesPlayed[0] == inTotalFrameCount)) {
+		if (!isEndless && (item->framesPlayed[0] == inEndFrameIndex)) {
 			if (item->isRepeat) {
 				item->isFinished[0] = false;
-				item->framesPlayed[0] = 0; // Reset for next loop iteration
+				// The next pass starts at the loop start, which is 0 without a loop region
+				item->framesPlayed[0] = item->loopStartFrame;
 				item->copiesPlayed[0] = 0;
 			} else {
 				item->isFinished[0] = true;
