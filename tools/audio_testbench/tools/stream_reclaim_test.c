@@ -5,10 +5,11 @@ Cases:
 - sequential: 1000 short streams one after another on one thread, a few at once, about four times the pool of play items. After every play the allocated instances are exactly the playing items.
 - remove-source: streams of one source end and no call frees them, then AudioSystemRemoveSource frees them before the source. A source that still plays is removed as well.
 - threads: a mixing thread mixes all the time while two threads play 500 short streams each and stop some of them, so instances are freed while the mixer ends other items. Meant for ASan and TSan.
+- vorbis (only with a file): 200 plays of a Vorbis stream that are stopped after two calls, then stopped streams that no call freed and a source whose data the caller keeps are removed. Each instance holds its own decoder.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies stream_reclaim_test.c -o stream_reclaim_test -lm -ldl -lpthread
-Usage: stream_reclaim_test
+Usage: stream_reclaim_test [<ogg file>]
 Output: one line per case "<name>: plays=<n> max_playing=<n> max_instances=<n> instances_left=<n> <ok|FAILED>", then "total: <n> failed checks".
 */
 
@@ -29,6 +30,9 @@ static const AudioHertz SineFrequency = 440;
 
 // Stops a loop that waits for items that never end
 static const uint32_t MaxCallCount = 100000;
+
+// The Ogg Vorbis file of the vorbis case, from the command line
+static const char *VorbisFilePath = fpl_null;
 
 typedef struct ReclaimTest {
 	AudioSystem *audioSys;
@@ -275,6 +279,90 @@ static void RunThreadsCase(ReclaimTest *test) {
 	CheckTrue(test, test->maxInstanceCount <= test->maxPlayingCount + PLAYER_THREAD_COUNT, "the instances do not pile up");
 }
 
+//
+// Vorbis
+//
+
+#define VORBIS_STOPPED_STREAM_COUNT 3
+
+static void RunVorbisCase(ReclaimTest *test) {
+	const uint32_t streamCount = 200;
+	const uint32_t callsPerStream = 2;
+	const uint32_t stoppedStreamCount = VORBIS_STOPPED_STREAM_COUNT;
+	AudioPlayItemID stoppedPlayIds[VORBIS_STOPPED_STREAM_COUNT];
+	AudioSource *fileSource = AudioSystemLoadFileStreamSource(test->audioSys, VorbisFilePath);
+	CheckTrue(test, fileSource != fpl_null, "load the Vorbis file as a stream");
+	if(fileSource == fpl_null) {
+		return;
+	}
+	bool isAdded = AudioSystemAddSource(test->audioSys, fileSource);
+	CheckTrue(test, isAdded, "add the Vorbis stream");
+
+	// Stopped after two calls: the next play frees the instance, so the instances are exactly the playing items
+	for(uint32_t streamIndex = 0; streamIndex < streamCount; ++streamIndex) {
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, fileSource, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play the Vorbis stream");
+		++test->playCount;
+		AudioSystemStats stats = GetStats(test);
+		CheckTrue(test, stats.streamInstanceCount == stats.activePlayItemCount, "the instances are the playing streams");
+		test->maxPlayingCount = fplMax(test->maxPlayingCount, stats.activePlayItemCount);
+		test->maxInstanceCount = fplMax(test->maxInstanceCount, (uint32_t)stats.streamInstanceCount);
+		for(uint32_t callIndex = 0; callIndex < callsPerStream; ++callIndex) {
+			MixCall(test);
+		}
+		AudioSystemStopOne(test->audioSys, playId);
+	}
+	// The mixer applies the last stop, the next play frees its instance
+	MixCall(test);
+
+	// Stopped and not freed by any call yet, AudioSystemRemoveSource frees them before the source and its data. A play would free them, so all of them start first
+	for(uint32_t streamIndex = 0; streamIndex < stoppedStreamCount; ++streamIndex) {
+		stoppedPlayIds[streamIndex] = AudioSystemPlaySource(test->audioSys, fileSource, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, stoppedPlayIds[streamIndex].value != 0, "play the Vorbis stream again");
+		++test->playCount;
+	}
+	MixCall(test);
+	for(uint32_t streamIndex = 0; streamIndex < stoppedStreamCount; ++streamIndex) {
+		AudioSystemStopOne(test->audioSys, stoppedPlayIds[streamIndex]);
+	}
+	MixCall(test);
+	AudioSystemStats stats = GetStats(test);
+	CheckTrue(test, stats.activePlayItemCount == 0 && stats.streamInstanceCount == stoppedStreamCount, "the stopped streams keep their instances");
+	CheckTrue(test, stats.compressedByteCount == fileSource->stream.dataSize, "the compressed file counts");
+	bool isRemoved = AudioSystemRemoveSource(test->audioSys, fileSource);
+	CheckTrue(test, isRemoved, "remove the Vorbis file source");
+	stats = GetStats(test);
+	CheckTrue(test, stats.streamInstanceCount == 0 && stats.compressedByteCount == 0, "AudioSystemRemoveSource frees the stopped streams and the compressed file");
+
+	// The data stays with the caller, the source only points at it. It is removed while it plays and the data is freed afterwards
+	fplFileHandle file;
+	bool isOpen = fplFileOpenBinary(VorbisFilePath, &file);
+	CheckTrue(test, isOpen, "open the Vorbis file");
+	if(!isOpen) {
+		return;
+	}
+	uint32_t fileSize = fplFileGetSizeFromHandle32(&file);
+	uint8_t *fileData = (uint8_t *)fplMemoryAllocate(fileSize);
+	uint32_t readSize = fplFileReadBlock32(&file, fileSize, fileData, fileSize);
+	fplFileClose(&file);
+	CheckTrue(test, readSize == fileSize, "read the Vorbis file");
+	AudioSource *dataSource = AudioSystemLoadDataStreamSource(test->audioSys, fileSize, fileData, false);
+	CheckTrue(test, dataSource != fpl_null && dataSource->stream.data == fileData, "a data stream without copy keeps the pointer");
+	if(dataSource != fpl_null) {
+		isAdded = AudioSystemAddSource(test->audioSys, dataSource);
+		CheckTrue(test, isAdded, "add the Vorbis data stream");
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, dataSource, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play the Vorbis data stream");
+		++test->playCount;
+		MixCall(test);
+		isRemoved = AudioSystemRemoveSource(test->audioSys, dataSource);
+		CheckTrue(test, isRemoved, "remove the playing Vorbis data stream");
+	}
+	fplMemoryFree(fileData);
+	stats = GetStats(test);
+	CheckTrue(test, stats.activePlayItemCount == 0 && stats.streamInstanceCount == 0 && stats.sourceCount == 0, "nothing is left of the Vorbis streams");
+}
+
 typedef void (ReclaimCaseFunction)(ReclaimTest *test);
 
 typedef struct ReclaimCase {
@@ -286,9 +374,16 @@ static const ReclaimCase ReclaimCases[] = {
 	{ "sequential", RunSequentialCase },
 	{ "remove-source", RunRemoveSourceCase },
 	{ "threads", RunThreadsCase },
+	{ "vorbis", RunVorbisCase },
 };
 
 static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
+	// The vorbis case needs a file
+	const bool isVorbisCase = (reclaimCase->run == RunVorbisCase);
+	if(isVorbisCase && VorbisFilePath == fpl_null) {
+		printf("%s: skipped, no ogg file given\n", reclaimCase->name);
+		return(0);
+	}
 	ReclaimTest test = fplZeroInit;
 	test.targetFormat.type = fplAudioFormatType_S16;
 	test.targetFormat.sampleRate = OutputSampleRate;
@@ -323,8 +418,9 @@ static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
 }
 
 int main(int argc, char **argv) {
-	(void)argc;
-	(void)argv;
+	if(argc > 1) {
+		VorbisFilePath = argv[1];
+	}
 	fplSettings settings = fplMakeDefaultSettings();
 	if(!fplPlatformInit(fplInitFlags_None, &settings)) {
 		fprintf(stderr, "platform init failed\n");
