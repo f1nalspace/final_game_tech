@@ -1,11 +1,12 @@
 /*
-Plays many short sine wave streams with final_audiosystem.h and checks that the stream instances of ended items are freed on the caller side (AudioSystemPlaySource, AudioSystemStopAll, AudioSystemRemoveSource), never pile up and never leak.
+Plays many short sine wave streams with final_audiosystem.h and checks that the stream instances of ended items are freed on the caller side (AudioSystemPlaySource, AudioSystemStopAll, AudioSystemRemoveSource, AudioSystemShutdown), never pile up and never leak.
 
 Cases:
 - sequential: 1000 short streams one after another on one thread, a few at once, about four times the pool of play items. After every play the allocated instances are exactly the playing items.
 - remove-source: streams of one source end and no call frees them, then AudioSystemRemoveSource frees them before the source. A source that still plays is removed as well.
 - threads: a mixing thread mixes all the time while two threads play 500 short streams each and stop some of them, so instances are freed while the mixer ends other items. Meant for ASan and TSan.
 - vorbis (only with a file): 200 plays of a Vorbis stream that are stopped after two calls, then stopped streams that no call freed and a source whose data the caller keeps are removed. Each instance holds its own decoder.
+- shutdown: a thread mixes once and ends, as a streaming thread does, then AudioSystemShutdown runs while streams play and one more play is still queued. It must not wait for the mixer, frees every instance, and a mix call afterwards writes silence.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies stream_reclaim_test.c -o stream_reclaim_test -lm -ldl -lpthread
@@ -363,6 +364,69 @@ static void RunVorbisCase(ReclaimTest *test) {
 	CheckTrue(test, stats.activePlayItemCount == 0 && stats.streamInstanceCount == 0 && stats.sourceCount == 0, "nothing is left of the Vorbis streams");
 }
 
+// One mix call, then the thread ends like a streaming thread at the shutdown of an application
+static void MixOnceThread(const fplThreadHandle *thread, void *data) {
+	(void)thread;
+	ReclaimTest *test = (ReclaimTest *)data;
+	MixCall(test);
+}
+
+static void RunShutdownCase(ReclaimTest *test) {
+	const uint32_t playingStreamCount = 3;
+	const AudioDuration streamSeconds = 10.0;
+	// The mixer counts as stopped only after 50 ms at least, a shutdown that waits for it takes longer than this
+	const fplMilliseconds maxShutdownMilliseconds = 25;
+	const int16_t leftoverSampleValue = 1234;
+	AudioSource *source = CreateSineStream(test, streamSeconds);
+	if(source == fpl_null) {
+		return;
+	}
+	for(uint32_t streamIndex = 0; streamIndex < playingStreamCount; ++streamIndex) {
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play a stream");
+		++test->playCount;
+	}
+	// The thread that mixed last is gone, so the shutdown cannot ask it to apply anything
+	fplThreadHandle *mixerThread = fplThreadCreate(MixOnceThread, test);
+	CheckTrue(test, mixerThread != fpl_null, "start the mixing thread");
+	if(mixerThread == fpl_null) {
+		return;
+	}
+	fplThreadWaitForOne(mixerThread, FPL_TIMEOUT_INFINITE);
+	fplThreadTerminate(mixerThread);
+	// Queued only, the mixer never takes it
+	AudioPlayItemID queuedPlayId = AudioSystemPlaySource(test->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+	CheckTrue(test, queuedPlayId.value != 0, "play a stream that stays queued");
+	++test->playCount;
+	AudioSystemStats stats = GetStats(test);
+	CheckTrue(test, stats.streamInstanceCount == playingStreamCount + 1, "every play has its instance");
+	test->maxPlayingCount = stats.activePlayItemCount;
+	test->maxInstanceCount = (uint32_t)stats.streamInstanceCount;
+
+	fplMilliseconds shutdownStart = fplMillisecondsQuery();
+	AudioSystemShutdown(test->audioSys);
+	fplMilliseconds shutdownMilliseconds = fplMillisecondsQuery() - shutdownStart;
+	CheckTrue(test, shutdownMilliseconds < maxShutdownMilliseconds, "AudioSystemShutdown does not wait for the mixer");
+	// AudioSystemGetStats answers no more after the shutdown
+	uint32_t instanceCount = fplAtomicLoadU32(&test->audioSys->streamInstanceCount);
+	uint32_t instanceByteCount = fplAtomicLoadU32(&test->audioSys->streamInstanceByteCount);
+	CheckTrue(test, instanceCount == 0 && instanceByteCount == 0, "AudioSystemShutdown frees every stream instance, also of the queued play");
+
+	const size_t callSampleCount = (size_t)CallFrameCount * StereoChannelCount;
+	for(size_t sampleIndex = 0; sampleIndex < callSampleCount; ++sampleIndex) {
+		test->callSamples[sampleIndex] = leftoverSampleValue;
+	}
+	MixCall(test);
+	bool isSilent = true;
+	for(size_t sampleIndex = 0; sampleIndex < callSampleCount; ++sampleIndex) {
+		if(test->callSamples[sampleIndex] != 0) {
+			isSilent = false;
+			break;
+		}
+	}
+	CheckTrue(test, isSilent, "a mix call after the shutdown writes silence");
+}
+
 typedef void (ReclaimCaseFunction)(ReclaimTest *test);
 
 typedef struct ReclaimCase {
@@ -375,6 +439,7 @@ static const ReclaimCase ReclaimCases[] = {
 	{ "remove-source", RunRemoveSourceCase },
 	{ "threads", RunThreadsCase },
 	{ "vorbis", RunVorbisCase },
+	{ "shutdown", RunShutdownCase },
 };
 
 static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
