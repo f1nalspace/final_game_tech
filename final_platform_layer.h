@@ -280,6 +280,7 @@ SOFTWARE.
 	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
 	- Fixed[#184]: [Win32] fplDirectoriesCreate() does not create parent sub-directories, an existing directory counts as success like on POSIX
 	- Fixed: [POSIX] fplPathNormalize() overflowed the stack for resolved paths of 2048 characters or more
+	- Fixed: [Win32] fplPathNormalize() read past its buffer for long paths, it has no length limit now
 
 	#### Audio
 	- Fixed: Releasing audio with an async backend (e.g. PipeWire) logged an argument error, because it waited on and terminated a worker thread that async backends never create
@@ -9554,6 +9555,7 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen);
  * @param[out] destPath The destination buffer.
  * @param[in] maxDestLen The total number of characters available in the destination buffer.
  * @return Returns the number of required/written characters, excluding the null-terminator.
+ * @note [Win32] The path has no length limit. [POSIX] The resolved path is limited to PATH_MAX, like every path the system accepts.
  */
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen);
 
@@ -24075,21 +24077,46 @@ fpl_platform_api size_t fplGetHomePath(char *destPath, const size_t maxDestLen) 
 }
 
 fpl_platform_api size_t fplPathNormalize(const char *sourcePath, char *destPath, const size_t maxDestLen) {
-	size_t sourceLen;
-	if ((sourceLen = fplGetStringLength(sourcePath)) == 0) {
+	size_t sourceLen = fplGetStringLength(sourcePath);
+	if (sourceLen == 0) {
 		return 0;
 	}
-	wchar_t sourcePathWide[FPL_MAX_PATH_LENGTH];
-	size_t wideLen = fplUTF8StringToWideString(sourcePath, sourceLen, sourcePathWide, fplArrayCount(sourcePathWide));
-	if (wideLen == 0) {
+	// The source and the full path live in temporary memory, so there is no length limit
+	size_t wideSourceLen = fplUTF8StringToWideString(sourcePath, sourceLen, fpl_null, 0);
+	if (wideSourceLen == 0) {
 		return 0;
 	}
-	wchar_t targetPath[FPL_MAX_PATH_LENGTH];
-	DWORD targetLen = GetFullPathNameW(sourcePathWide, fplArrayCount(targetPath), targetPath, NULL);
-	if (targetLen == 0) {
+	size_t wideSourceCapacity = wideSourceLen + 1;
+	wchar_t *sourcePathWide = (wchar_t *)fpl__AllocateTemporaryMemory(sizeof(wchar_t) * wideSourceCapacity, fpl__MinAlignment);
+	if (sourcePathWide == fpl_null) {
 		return 0;
 	}
-	size_t result = fplWideStringToUTF8String(targetPath, targetLen, destPath, maxDestLen);
+	size_t result = 0;
+	size_t convertedLen = fplUTF8StringToWideString(sourcePath, sourceLen, sourcePathWide, wideSourceCapacity);
+	// Without a buffer GetFullPathNameW returns the required number of characters including the null-terminator
+	DWORD requiredCapacity = 0;
+	if (convertedLen > 0) {
+		requiredCapacity = GetFullPathNameW(sourcePathWide, 0, fpl_null, fpl_null);
+	}
+	if (requiredCapacity > 0) {
+		// A relative path depends on the current directory, which can change between the two calls, so the buffer is a bit larger.
+		// GetFullPathNameW is called only once more, a path that still does not fit is an error.
+		const DWORD reserveForChangedDirectory = 64;
+		DWORD fullPathCapacity = requiredCapacity + reserveForChangedDirectory;
+		wchar_t *fullPath = (wchar_t *)fpl__AllocateTemporaryMemory(sizeof(wchar_t) * fullPathCapacity, fpl__MinAlignment);
+		if (fullPath != fpl_null) {
+			DWORD fullPathLen = GetFullPathNameW(sourcePathWide, fullPathCapacity, fullPath, fpl_null);
+			bool isFitting = fullPathLen > 0 && fullPathLen < fullPathCapacity;
+			if (isFitting) {
+				result = fplWideStringToUTF8String(fullPath, fullPathLen, destPath, maxDestLen);
+			} else {
+				DWORD lastError = GetLastError();
+				FPL__ERROR(FPL__MODULE_PATHS, "Full path of '%s' could not be resolved (last error %lu)", sourcePath, lastError);
+			}
+			fpl__ReleaseTemporaryMemory(fullPath);
+		}
+	}
+	fpl__ReleaseTemporaryMemory(sourcePathWide);
 	return(result);
 }
 
