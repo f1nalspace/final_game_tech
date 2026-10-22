@@ -137,6 +137,7 @@ Changelog:
 	- New: The render line shows load_hwm_kb, compressed_bytes and failed_streams
 	- New: The stats line shows the buffering table entry and the gaps of the output ring
 	- Fixed: Gaps in thread mode with an output ring below about 1 second
+	- Fixed: Slow shutdown in thread mode
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -2982,16 +2983,6 @@ static void RunStressAction(AudioSystem *audioSys, StressState *state) {
 	}
 }
 
-static void ReleaseStressTones(AudioSystem *audioSys, StressState *state) {
-	for(uint32_t toneIndex = 0; toneIndex < STRESS_TONE_COUNT; ++toneIndex) {
-		StressTone *tone = &state->tones[toneIndex];
-		if(tone->source != fpl_null) {
-			AudioSystemRemoveSource(audioSys, tone->source);
-			tone->source = fpl_null;
-		}
-	}
-}
-
 // --stress: a random action on short sine tones every 1 to 20 ms, from its own thread while the tracks play
 static void AudioStressThread(const fplThreadHandle *thread, void *rawData) {
 	const uint32_t minDelayMilliseconds = 1;
@@ -3005,7 +2996,7 @@ static void AudioStressThread(const fplThreadHandle *thread, void *rawData) {
 		fplThreadSleep(delayMilliseconds);
 		RunStressAction(&demo->audioSys, &state);
 	}
-	ReleaseStressTones(&demo->audioSys, &state);
+	// The sources of the tones stay, AudioSystemShutdown frees them without waiting for the mixer
 }
 
 // --stress with --render: plays a tone and removes its source before the first mix, no mixer ever ran, so the remove must not wait for one
@@ -3592,7 +3583,7 @@ int main(int argc, char **args) {
 	result = 0;
 
 done:
-	// The stress thread removes its sources, before the audio system goes away
+	// The stress thread ends before the audio system goes away
 	if(demo->stressThread != fpl_null) {
 		fplAtomicStoreU32(&demo->isStressThreadStopped, 1);
 		fplThreadWaitForOne(demo->stressThread, FPL_TIMEOUT_INFINITE);
@@ -3614,8 +3605,7 @@ done:
     // Release visualization
 	ReleaseVisualization(demo);
 
-    // Release audio system
-    StopAllAudioTracks(&demo->audioSys, &demo->trackList);
+    // Release audio system, the shutdown stops every play item itself without waiting for the mixer
 	for(uint32_t trackIndex = 0; trackIndex < fplArrayCount(demo->trackList.tracks); ++trackIndex) {
 		FreeAudioBuffer(&demo->audioSys.memory, &demo->trackList.tracks[trackIndex].outputFullBuffer);
 	}
