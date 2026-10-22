@@ -105,7 +105,7 @@ How the demo works:
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode Up/Down are heard only after the latency of the output ring.
 	In a loop region R off is the release: the rest of the region and the outro play, then the track ends. R on in the outro loops again after the end of the track. R empties the output ring in thread mode like a seek, so it is heard at once.
-	In thread mode the mixer runs ahead by the output ring, so a play item that does not repeat ends there up to the latency of the ring before its end is heard. From then on R and the arrow keys find no play item, R applies from the next track on.
+	In thread mode the mixer runs ahead by the output ring, so a play item that does not repeat ends there up to the latency of the ring before its end is heard. R (on) and the arrow keys then start a new play item of the track at the position that is heard.
 	The position of a repeating track follows its loop region, after the loop end it goes on at the loop start.
 	Left/Right jump 10 seconds back or ahead from the position that is heard, a repeating track goes on in its next pass. In thread mode the output ring is emptied for it, so a jump is heard at once.
 	A pause is heard at once in thread mode too: the device callback reads nothing from the output ring meanwhile, resuming plays what it holds.
@@ -159,6 +159,7 @@ Changelog:
 	- New: The window plays the loop region of --loop or of the file, R off is the release and the position follows the region
 	- Changed: R is heard at once in thread mode, it empties the output ring like a seek
 	- New: The stats line shows the loop region
+	- Fixed: In thread mode R and the arrow keys did nothing in the last seconds of a track that does not repeat (up to the latency of the output ring)
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
@@ -1963,11 +1964,74 @@ static void AdvanceAtTrackEnd(AudioDemo *demo) {
 	StartTrack(demo, nextIndex);
 }
 
+// Starts a new play item of the current track at the position that is heard, only the streaming thread. False when the track was heard to its end, failed or its play item could not start.
+// In thread mode the mixer runs ahead by the output ring, so a play item that does not repeat ends there up to the latency of the ring before its end is heard. Seek and repeat need a play item, the end in the ring is dropped by their playback reset.
+static bool RestartEndedTrackItem(AudioDemo *demo) {
+	if(demo->trackEndState == TrackEndState_Stopped) {
+		return(false);
+	}
+	uint32_t playedFrameCount = fplAtomicLoadU32(&demo->numFramesPlayed);
+	bool isEndHeard = (demo->trackEndState == TrackEndState_Mixed) && (playedFrameCount >= demo->trackEndFrameCount);
+	AudioTrackList *trackList = &demo->trackList;
+	if(isEndHeard || trackList->currentIndex < 0) {
+		return(false);
+	}
+	AudioTrack *track = &trackList->tracks[trackList->currentIndex];
+	AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
+	if(state != AudioTrackState_Ready && state != AudioTrackState_Full) {
+		return(false);
+	}
+	AudioSource *source = AudioSystemGetSourceByID(&demo->audioSys, track->sourceID);
+	if(source == fpl_null) {
+		return(false);
+	}
+
+	fplMutexLock(&demo->trackLock);
+	float volume = demo->controls.volume;
+	fplMutexUnlock(&demo->trackLock);
+	const PlayerOptions *options = &demo->options;
+	const AudioHertz outputSampleRate = demo->targetAudioFormat.sampleRate;
+	bool isRepeat = fplAtomicLoadU32(&demo->isCurrentTrackRepeating) != 0;
+	AudioFrameIndex heardFrameIndex = GetTrackPosition(demo, playedFrameCount);
+	AudioFrameIndex heardSourceFrameIndex = ConvertToSourceFrameCount(source, heardFrameIndex, options->pitch, outputSampleRate);
+	AudioPlayItemID playID = AudioSystemPlaySource(&demo->audioSys, source, isRepeat, volume, options->pitch);
+	if(playID.value == 0) {
+		return(false);
+	}
+	if(demo->trackLoopEndSourceFrame > 0) {
+		AudioSystemSetPlayItemLoop(&demo->audioSys, playID, demo->trackLoopStartSourceFrame, demo->trackLoopEndSourceFrame);
+	}
+	AudioSystemSetPlayItemPosition(&demo->audioSys, playID, heardSourceFrameIndex);
+	track->playID = playID;
+	fplAtomicStoreU64(&demo->currentPlayItemId, playID.value);
+	demo->trackEndState = TrackEndState_Playing;
+	demo->streamedTrackEndFrameCount = UINT32_MAX;
+	if(demo->playbackMode == PlaybackMode_Thread) {
+		demo->isSeekUnapplied = true;
+	}
+
+	double heardSeconds = (double)heardFrameIndex / (double)outputSampleRate;
+	FPL_LOG_INFO("Track", "The play item had ended in the mixer before its end was heard, a new one plays from %.1f s", heardSeconds);
+	return(true);
+}
+
+// The play item of the current track, a new one when it ended in the mixer before its end was heard (see RestartEndedTrackItem). False when there is none.
+static bool GetOrRestartCurrentPlayItem(AudioDemo *demo, AudioPlayItem *outPlayItem) {
+	if(GetCurrentPlayItem(demo, outPlayItem)) {
+		return(true);
+	}
+	if(!RestartEndedTrackItem(demo)) {
+		return(false);
+	}
+	bool result = GetCurrentPlayItem(demo, outPlayItem);
+	return(result);
+}
+
 // Moves the current track by the given seconds from the position that is heard, then counts the position from there. Only the streaming thread.
 // The playback reset empties the output ring in thread mode, so the jump is heard at once, and lets numFramesPlayed start again at 0
 static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 	AudioPlayItem playItem = fplZeroInit;
-	if(!GetCurrentPlayItem(demo, &playItem)) {
+	if(!GetOrRestartCurrentPlayItem(demo, &playItem)) {
 		FPL_LOG_INFO("Track", "Seek: no track plays");
 		return;
 	}
@@ -2012,7 +2076,9 @@ static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 // Like a seek without a jump: the position counts on from the one that is heard. In thread mode the output ring is emptied and the play item goes back to that position, so the change is heard at once
 static void ApplyRepeatToCurrentTrack(AudioDemo *demo, const bool isRepeat) {
 	AudioPlayItem playItem = fplZeroInit;
-	if(!GetCurrentPlayItem(demo, &playItem)) {
+	// Without repeat an ended play item stays ended, the end that is still heard plays out
+	bool hasPlayItem = isRepeat ? GetOrRestartCurrentPlayItem(demo, &playItem) : GetCurrentPlayItem(demo, &playItem);
+	if(!hasPlayItem) {
 		FPL_LOG_INFO("Track", "Repeat: %s (from the next track on)", isRepeat ? "on" : "off");
 		return;
 	}
