@@ -279,6 +279,8 @@ SOFTWARE.
 	- Fixed: [PipeWire] Audio initialization could hang forever when no PipeWire server was reachable, because stopping a thread loop right after starting it deadlocks inside libpipewire - the thread loop now waits until its thread has entered the loop (PipeWire 0.3.80 or newer)
 	- Fixed: [PipeWire] The target device was ignored, the stream always played on the default device
 	- Fixed: The memory of the audio backend did not include its fplAudioBackend header, the backend wrote past the platform memory (a crash in fplPlatformInit on 32-bit Windows)
+	- Fixed: [ALSA] snd_pcm_uframes_t and snd_pcm_sframes_t were 8 bytes instead of 4 on 32-bit platforms
+	- Fixed: [ALSA] An unrecovered error counted as a full period on 32-bit platforms
 
 	#### Console
 	- Fixed: [Win32] fplConsoleOut/fplConsoleError wrote nothing at all when the stream was redirected into a pipe or a file, because WriteConsoleW only works on a real console screen buffer - the raw UTF-8 bytes now go out through WriteFile in that case
@@ -39567,8 +39569,9 @@ typedef void snd_pcm_hw_params_t;
 typedef void snd_pcm_sw_params_t;
 typedef void snd_pcm_info_t;
 
-typedef uint64_t snd_pcm_uframes_t;
-typedef int64_t snd_pcm_sframes_t;
+// Same types as in alsa-lib, so they are 4 bytes on 32-bit platforms
+typedef unsigned long snd_pcm_uframes_t;
+typedef long snd_pcm_sframes_t;
 
 typedef struct snd_pcm_chmap_t {
 	unsigned int channels;
@@ -40016,11 +40019,13 @@ fpl_internal uint32_t fpl__AudioWaitForFramesAlsa(const fplAudioFormat *deviceFo
 		}
 
 		// Keep the returned number of samples consistent and based on the period size.
-		if (framesAvailable >= periodSizeInFrames) {
+		// An error must not reach the comparison, on 32-bit it would be compared as a huge unsigned number.
+		bool isPeriodAvailable = framesAvailable >= 0 && (snd_pcm_uframes_t)framesAvailable >= periodSizeInFrames;
+		if (isPeriodAvailable) {
 			return periodSizeInFrames;
 		}
 
-		if (framesAvailable < periodSizeInFrames) {
+		if (!isPeriodAvailable) {
 			// Less than a whole period is available so keep waiting.
 			int waitResult = alsaApi->snd_pcm_wait(backend->pcmDevice, -1);
 			if (waitResult < 0) {
