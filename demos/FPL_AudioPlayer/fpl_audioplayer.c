@@ -101,7 +101,7 @@ How the demo works:
 
 	Keys in the window: N and P (and the media keys next/previous) switch to the next or previous track of the command line, Space (and media play/pause) pauses,
 	R turns repeat on and off and Up/Down change the volume by 0.1, both also for the next tracks. M switches the play mode. In thread mode a key is heard only after the latency of the output ring.
-	Left/Right jump 10 seconds back or ahead from the position that is heard. In thread mode the output ring is emptied for it, so a jump is heard at once.
+	Left/Right jump 10 seconds back or ahead from the position that is heard, a repeating track goes on in its next pass. In thread mode the output ring is emptied for it, so a jump is heard at once.
 
 	--stats prints a line every 5 seconds, the mixer values cover the calls since the line before and mix_tid is the kernel thread id of the mixing thread (for strace -p):
 	stats: vm_hwm_kb=<n> vm_rss_kb=<n> sources=<n> source_bytes=<n> play_items=<n> dropped_commands=<n> concurrent_writes=<n> ring_fill_pct=<f> mix_calls=<n> mix_mean_us=<f> mix_p99_us=<f> mix_max_us=<f> mix_tid=<n> stream_sources=<n> compressed_bytes=<n> stream_instances=<n> stream_bytes=<n> failed_streams=<n> buffer_entry=<n> buffer_frames=<n> buffer_delay_ms=<n> buffer_down=<n> buffer_up=<n> ring_gaps=<n> ring_gap_frames=<n>
@@ -771,7 +771,7 @@ static AudioFrameIndex GetTrackPosition(AudioDemo *demo, const AudioFrameIndex f
 	AudioFrameIndex positionOffset = fplAtomicLoadU32(&demo->trackPositionOffset);
 	AudioFrameIndex result = positionOffset + framesPlayed;
 	if(isTrackRepeating && trackFrameCount > 0) {
-		result = framesPlayed % trackFrameCount;
+		result = result % trackFrameCount;
 	}
 	return(result);
 }
@@ -1838,6 +1838,12 @@ static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 	int64_t seekFrameCount = (int64_t)seekSeconds * (int64_t)source->format.sampleRate;
 	int64_t targetFrameIndex = (int64_t)heardSourceFrameIndex + seekFrameCount;
 	AudioFrameIndex sourceFrameIndex = (AudioFrameIndex)fplMax((int64_t)0, targetFrameIndex);
+	// A repeating track goes on in its next pass, as if it had played there
+	bool isEndless = (source->type == AudioSourceType_Stream) && source->stream.isEndless;
+	AudioFrameIndex sourceFrameCount = source->buffer.frameCount;
+	if(playItem.isRepeat && !isEndless && sourceFrameCount > 0) {
+		sourceFrameIndex = sourceFrameIndex % sourceFrameCount;
+	}
 
 	if(!AudioSystemSetPlayItemPosition(&demo->audioSys, playItem.id, sourceFrameIndex)) {
 		FPL_LOG_WARN("Track", "Seek: the play item has ended or the command queue is full");
@@ -1847,9 +1853,8 @@ static void SeekCurrentTrack(AudioDemo *demo, const int32_t seekSeconds) {
 		demo->isSeekUnapplied = true;
 	}
 
-	// Past the end a repeating track starts over and any other one ends, the audio system does that
-	bool isEndless = (source->type == AudioSourceType_Stream) && source->stream.isEndless;
-	bool isPastEnd = !isEndless && (sourceFrameIndex >= source->buffer.frameCount);
+	// Past the end any other track ends, the audio system does that
+	bool isPastEnd = !isEndless && (sourceFrameIndex >= sourceFrameCount);
 	AudioFrameIndex positionSourceFrameIndex = isPastEnd ? 0 : sourceFrameIndex;
 	AudioFrameIndex positionFrameCount = ConvertToPlayedFrameCount(source, positionSourceFrameIndex, playItem.pitch, outputSampleRate);
 	ResetPlayback(demo);
