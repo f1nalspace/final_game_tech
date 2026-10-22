@@ -127,7 +127,8 @@ Threading:
 - Any number of other threads may play, stop and change play items. AudioSystemPlaySource() takes a slot of the fixed pool, each of these calls sends a command, and the mixer applies the commands at the start of its next call in the order they were sent.
 - A play item id is valid as soon as AudioSystemPlaySource() returns. The id of an ended item matches nothing, the setters then return false.
 - AudioSystemGetPlayItems() reads without a lock and never holds up the mixer. It returns every item that is started and not finished, also one the mixer has not taken yet. A change by a command shows up after the next mix call.
-- AudioSystemRemoveSource(), AudioSystemClearSources(), AudioSystemStopAll() and AudioSystemShutdown() free what the mixer reads, so they return only after their command is applied. When the caller is the mixing thread, or no mixer ran for two periods (at least 50 ms, a stopped device for example), they apply the queue themselves and return at once.
+- AudioSystemRemoveSource(), AudioSystemClearSources() and AudioSystemStopAll() free what the mixer reads, so they return only after their command is applied. When the caller is the mixing thread, or no mixer ran for two periods (at least 50 ms, a stopped device for example), they apply the queue themselves and return at once.
+- AudioSystemShutdown() does not wait for the mixer: it takes it at once (only a mix call that runs right then is waited for) and applies the queue itself.
 - While one of these functions or a preview (advance = false) holds the mixer, a mixing call writes silence and advances nothing. A second thread that mixes at the same time gets silence as well, it is counted in AudioSystemStats::concurrentWriteCount and a debug build asserts.
 - Playing, stopping one item and the setters never block. With a full pool AudioSystemPlaySource() returns the id 0, with a full command queue (FINAL_AUDIOSYSTEM_COMMAND_CAPACITY) they return false or the id 0 and count AudioSystemStats::droppedCommandCount.
 - The master volume and the suspend flag are atomic, the mixer reads them once per call.
@@ -157,6 +158,7 @@ Changelog:
 	- Changed: A preview (AudioSystemWriteFrames() without advance) leaves stream items out
 	- New: Vorbis stream sources, decoded while they are mixed (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
 	- New: AudioSystemStats.compressedByteCount
+	- Fixed: AudioSystemShutdown() waited up to two mix periods for a mixer that no longer runs
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
@@ -484,6 +486,7 @@ fpl_extern bool AudioSystemInit(AudioSystem *audioSys, const fplAudioFormat *tar
 * @brief Stops all play items, frees all sources and releases every resource the audio system owns.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
 * @note The audio system is marked as shut down and has to be initialized again with @ref AudioSystemInit before it can be used.
+* @note Does not wait for the mixer to apply a command: it takes the mixer at once, waiting only for a mix call that runs right then, and holds it until @ref AudioSystemInit. A mix call after that writes silence.
 * @see @ref AudioSystemInit
 */
 fpl_extern void AudioSystemShutdown(AudioSystem *audioSys);
@@ -733,7 +736,7 @@ fpl_extern bool AudioSystemSetPlayItemPaused(AudioSystem *audioSys, const AudioP
 * @brief Stops and frees all play items.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem, may be null or never initialized.
 * @note The sources stay loaded, use @ref AudioSystemClearSources to free them as well. The stream instances of the ended items are freed.
-* @note Returns once the mixer has ended them. When the calling thread is the one that mixes, or no mixer ran for two of its periods (at least 50 ms), it ends them itself at once, otherwise it waits at most that long for the mixer. The same holds for @ref AudioSystemRemoveSource, @ref AudioSystemClearSources and @ref AudioSystemShutdown.
+* @note Returns once the mixer has ended them. When the calling thread is the one that mixes, or no mixer ran for two of its periods (at least 50 ms), it ends them itself at once, otherwise it waits at most that long for the mixer. The same holds for @ref AudioSystemRemoveSource and @ref AudioSystemClearSources.
 */
 fpl_extern void AudioSystemStopAll(AudioSystem *audioSys);
 
@@ -3289,15 +3292,8 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 	return(result);
 }
 
-fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
-	if(audioSys == fpl_null || !audioSys->isInitialized) {
-		return;
-	}
-
-	// A play item outliving the source it points at would read freed samples on the next mix, so nothing is left playing.
-	// AudioSystemShutdown already did this before calling here; a second pass over an empty list costs nothing
-	AudioSystemStopAll(audioSys);
-
+// Frees every source, only once no play item is left that could read one
+static void FreeAllAudioSources(AudioSystem *audioSys) {
 	AudioMemory *memory = &audioSys->memory;
 	AudioSources *sources = &audioSys->sources;
 
@@ -3313,6 +3309,16 @@ fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
 	// The count was left standing here, so every source query after a clear reported the sources that were just freed
 	sources->count = 0;
 	fplMutexUnlock(&sources->lock);
+}
+
+fpl_extern void AudioSystemClearSources(AudioSystem *audioSys) {
+	if(audioSys == fpl_null || !audioSys->isInitialized) {
+		return;
+	}
+
+	// A play item outliving the source it points at would read freed samples on the next mix, so nothing is left playing
+	AudioSystemStopAll(audioSys);
+	FreeAllAudioSources(audioSys);
 }
 
 fpl_extern bool AudioSystemGetTargetFormat(const AudioSystem *audioSys, AudioFormat *outFormat) {
@@ -3394,10 +3400,7 @@ fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
 	if(audioSys == fpl_null || !audioSys->isInitialized) {
 		return;
 	}
-	AudioSystemStopAll(audioSys);
-	AudioSystemClearSources(audioSys);
-
-	// Held until the next AudioSystemInit: a mixer that still runs gets silence and touches nothing that is freed here
+	// Taken first and held until the next AudioSystemInit: a mixer that still runs gets silence and touches nothing that is freed here, so no command has to wait for it
 	for(uint32_t attemptIndex = 0;; ++attemptIndex) {
 		const uint32_t previousOwner = TryAcquireMixerOwner(audioSys, AudioMixerOwner_Shutdown);
 		if(previousOwner == AudioMixerOwner_None) {
@@ -3405,6 +3408,14 @@ fpl_extern void AudioSystemShutdown(AudioSystem *audioSys) {
 		}
 		WaitForAudioCommandStep(attemptIndex);
 	}
+
+	// The commands sent before come first, so an item that was just started ends as well. AudioSystemStopAll and AudioSystemClearSources would wait for the mixer that is held here
+	DrainAudioCommands(audioSys);
+	AudioCommand stopAllCommand = fplZeroInit;
+	stopAllCommand.kind = AudioCommandKind_StopAll;
+	ApplyAudioCommand(&audioSys->playItems, &stopAllCommand);
+	ReclaimFinishedStreamInstances(audioSys);
+	FreeAllAudioSources(audioSys);
 
 	FreeAudioStream(&audioSys->memory, &audioSys->conversionBuffer);
 
