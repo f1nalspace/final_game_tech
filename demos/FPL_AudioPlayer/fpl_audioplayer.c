@@ -84,6 +84,8 @@ How the demo works:
 
 	--sine plays only the generated sine wave, --sine-seconds sets its length.
 	--stream plays the tracks as stream sources, which the mixer generates or decodes while it mixes. That is the sine wave (--sine-seconds=0 makes it endless), Vorbis and mp3 files and the built-in music, which stay compressed in memory. A wave file is decoded in full, the log says so.
+	A stream gives the same samples as the track decoded in full, bit for bit, also with --pitch, --repeat and --seek. The decoding runs where the mixing runs: in the streaming thread in thread mode, in the real-time device callback in callback mode.
+	An mp3 loop has a gap of about 42 ms (delay and padding of the encoder), a Vorbis loop has none.
 	In the window --stream renders no full-track buffer, also not in thread mode: the visualization always uses the real-time samples, F1 does nothing and the title shows STREAM. A track without a length (the endless sine wave) shows no progress.
 	--volume, --pitch and --repeat apply to the play item of every track, the sine wave included.
 	--play-mode chooses what follows a track that has played to its end: off (silence), list (the next track, silence after the last one, the default) or loop (after the last one the first again).
@@ -143,6 +145,7 @@ Changelog:
 	- New: --seek=<at>:<to> seeks the play item in render mode
 	- New: Left and right arrow keys jump 10 seconds back and ahead
 	- New: --stream plays mp3 files and the built-in music as streams
+	- Changed: The documentation tells where a stream is decoded and how it loops
 
 	## 2026-10-21
 	- Fixed: The ring display reads head and tail of the output ring atomically
