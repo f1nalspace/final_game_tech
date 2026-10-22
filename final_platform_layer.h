@@ -210,6 +210,7 @@ SOFTWARE.
 	- Fixed: [GLX] The success log line after loading the GLX api was empty, because of a stray comma in the log call
 	- New: Added fields hasAVX512BW, hasAVX512VL and hasAVX512VBMI to fplX86CPUCapabilities, detected from CPUID leaf 7 behind the same XCR0 check as hasAVX512
 	- Fixed: fplX86CPUCapabilities.hasEM64T read bit 29 of CPUID leaf 1 (thermal monitor) instead of the long mode bit of the extended leaf 0x80000001, so it was always false on AMD CPUs
+	- Fixed: fplCPUID(), fplCPUGetCapabilities() and fplSetDefaultGamepadSettings() crashed on a null pointer
 	- Changed: [Win32] Windows XP is the minimum now, functions of Windows Vista or higher are loaded at runtime
 	- New: [Win32] fplMillisecondsQuery() handles the GetTickCount() wraparound on Windows XP
 	- New: [Win32] fplLocaleFormat_ISO639 works on Windows XP
@@ -16580,6 +16581,7 @@ fpl_force_inline uint64_t fpl__m_RDTSC_Impl(void) {
 #	endif
 
 fpl_common_api bool fplCPUID(const uint32_t functionId, fplCPUIDLeaf *outLeaf) {
+	FPL__CheckArgumentNull(outLeaf, false);
 #if defined(fpl__m_CPUID)
 	fpl__m_CPUID(outLeaf, functionId);
 	return true;
@@ -16606,6 +16608,7 @@ fpl_common_api uint64_t fplCPURDTSC(void) {
 }
 
 fpl_common_api bool fplCPUGetCapabilities(fplCPUCapabilities *outCaps) {
+	FPL__CheckArgumentNull(outCaps, false);
 	fplClearStruct(outCaps);
 	outCaps->type = fplCPUCapabilitiesType_X86;
 
@@ -18243,6 +18246,7 @@ fpl_common_api void fplSetDefaultConsoleSettings(fplConsoleSettings *console) {
 }
 
 fpl_common_api void fplSetDefaultGamepadSettings(fplGamepadSettings *gamepadSettings) {
+	FPL__CheckArgumentNullNoRet(gamepadSettings);
 	gamepadSettings->detectionFrequency = 1000;
 	gamepadSettings->updateFrequency = 0;
 	gamepadSettings->mappingResolver = fpl_null;
