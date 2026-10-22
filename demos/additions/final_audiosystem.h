@@ -188,6 +188,7 @@ Changelog:
 	- New: MP3 stream sources (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
 	- New: Documentation of stream sources and where to mix
 	- New: Loop regions, a repeating play item plays its intro once and then loops between loop start and loop end (AudioSystemSetPlayItemLoop(), loopStartFrame and loopEndFrame in AudioSource and AudioPlayItem)
+	- New: Sources of Ogg Vorbis and wave files get the loop region from the tags of the file
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
@@ -308,7 +309,7 @@ typedef struct AudioSource {
 	AudioFormat format;
 	//! Set when the type is @ref AudioSourceType_Stream: every play of the source generates or decodes its frames while it is mixed
 	AudioSourceStream stream;
-	//! First frame of the loop region, the default of every play (see @ref AudioPlayItem::loopStartFrame). The program may change it while no item of the source plays
+	//! First frame of the loop region, the default of every play (see @ref AudioPlayItem::loopStartFrame). A source of a file has the region from the tags of the file. The program may change it while no item of the source plays
 	AudioFrameIndex loopStartFrame;
 	//! Frame after the last one of the loop region, 0 when the source has none
 	AudioFrameIndex loopEndFrame;
@@ -597,6 +598,7 @@ fpl_extern AudioSource *AudioSystemCreateSineStreamSource(AudioSystem *audioSys,
 * @note mp3: a walk over the frame headers reads format and length without decoding and writes the offset of every frame into a frame index (4 bytes per frame), which the source allocates. Every frame must decode to the same number of samples. A seek decodes a few frames before its target and drops them, so the decoder has its bit reservoir again.
 * @note mp3: a loop is not seamless. minimp3 plays the delay and the padding of the encoder and an Info or Xing frame as silence, on the test track (44.1 kHz) 1411 frames at the start and 448 at the end, 42 ms in all. A loop that must have no gap needs Vorbis.
 * @note The frames are bit-identical to the source that @ref AudioSystemLoadDataSource decodes in full, as long as the file is intact, also after a seek.
+* @note The source gets the loop region from the tags of the file (@ref AudioSource::loopStartFrame): the comments LOOPSTART with LOOPLENGTH or LOOPEND of Ogg Vorbis, LOOPSTART alone loops up to the end, and the first loop of the smpl chunk of a wave file when it loops forward. mp3 has no tags. A region that does not fit in the length is left out.
 * @note The source is not added, call @ref AudioSystemAddSource for that.
 * @see @ref AudioSystemPlaySource
 */
@@ -618,6 +620,7 @@ fpl_extern AudioSource *AudioSystemLoadFileStreamSource(AudioSystem *audioSys, c
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] filePath Path to a wave, vorbis or mp3 file.
 * @return Returns the new source, or null when the file could not be opened, detected or decoded.
+* @note The source gets the loop region from the tags of the file (@ref AudioSource::loopStartFrame): the comments LOOPSTART with LOOPLENGTH or LOOPEND of Ogg Vorbis, LOOPSTART alone loops up to the end, and the first loop of the smpl chunk of a wave file when it loops forward. mp3 has no tags. A region that does not fit in the length is left out.
 * @note The source is not added, call @ref AudioSystemAddSource for that.
 * @see @ref AudioSystemLoadFileFormat
 */
@@ -631,6 +634,7 @@ fpl_extern AudioSource *AudioSystemLoadFileSource(AudioSystem *audioSys, const c
 * @return Returns true when the format was read, false when the file could not be opened or detected or its headers are invalid.
 * @note Headers only, in every supported format (wav: the header; vorbis: the seek table; mp3: a walk over the per-frame headers).
 * @note A track's duration is outFormat->frameCount / outFormat->samplesPerSecond.
+* @note outFormat->loopStartFrame and loopEndFrame are the loop region from the tags of the file, which a source of the file gets (see @ref AudioSystemLoadFileSource).
 * @see @ref AudioSystemLoadFileSource
 */
 fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *filePath, PCMWaveFormat *outFormat);
@@ -642,6 +646,7 @@ fpl_extern bool AudioSystemLoadFileFormat(AudioSystem *audioSys, const char *fil
 * @param[in] data The complete contents of a wave, vorbis or mp3 file.
 * @return Returns the new source, or null when the data could not be detected or decoded.
 * @note The samples are copied, so the data can be released after this call. The source is not added, call @ref AudioSystemAddSource for that.
+* @note The source gets the loop region from the tags of the file (@ref AudioSource::loopStartFrame): the comments LOOPSTART with LOOPLENGTH or LOOPEND of Ogg Vorbis, LOOPSTART alone loops up to the end, and the first loop of the smpl chunk of a wave file when it loops forward. mp3 has no tags. A region that does not fit in the length is left out.
 * @see @ref AudioSystemLoadDataFormat
 */
 fpl_extern AudioSource *AudioSystemLoadDataSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data);
@@ -1270,6 +1275,8 @@ static AudioSource *CreateAudioSourceFromPCM(AudioSystem *audioSys, const PCMWav
 	}
 
 	source->type = type;
+	source->loopStartFrame = pcm->format.loopStartFrame;
+	source->loopEndFrame = pcm->format.loopEndFrame;
 
 	// Copy samples to source
 	fplAssert(source->buffer.bufferSize >= pcm->samplesSize);
@@ -1505,8 +1512,8 @@ static const size_t AudioStreamDecoderAlignment = 16;
 // The decoder takes the size of the file and of its memory block as an int
 static const size_t AudioStreamMaxDataSize = (size_t)INT32_MAX;
 
-// Reads format, length and the decoder memory of every play from an Ogg Vorbis file in memory. The decoder is opened once and allocates for itself here, which is never in the mixer
-static bool ProbeVorbisStream(const uint8_t *data, const size_t dataSize, AudioFormat *outFormat, AudioFrameIndex *outFrameCount, size_t *outDecoderMemorySize) {
+// Reads format, length, loop region and the decoder memory of every play from an Ogg Vorbis file in memory. The decoder is opened once and allocates for itself here, which is never in the mixer
+static bool ProbeVorbisStream(const uint8_t *data, const size_t dataSize, AudioFormat *outFormat, AudioFrameIndex *outFrameCount, AudioFrameIndex *outLoopStartFrame, AudioFrameIndex *outLoopEndFrame, size_t *outDecoderMemorySize) {
 	if(dataSize > AudioStreamMaxDataSize) {
 		return(false);
 	}
@@ -1518,6 +1525,9 @@ static bool ProbeVorbisStream(const uint8_t *data, const size_t dataSize, AudioF
 	const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
 	// Read from the last page, 0 when it has no position
 	const unsigned int frameCount = stb_vorbis_stream_length_in_samples(vorbis);
+	AudioFrameIndex loopStartFrame = 0;
+	AudioFrameIndex loopEndFrame = 0;
+	GetVorbisLoopFromDecoder(vorbis, frameCount, &loopStartFrame, &loopEndFrame);
 	stb_vorbis_close(vorbis);
 
 	// The setup memory grows from the start of the block, the temporary memory of the setup and of every packet from its end
@@ -1531,6 +1541,8 @@ static bool ProbeVorbisStream(const uint8_t *data, const size_t dataSize, AudioF
 	outFormat->sampleRate = info.sample_rate;
 	outFormat->format = AudioStreamRingFormat;
 	*outFrameCount = frameCount;
+	*outLoopStartFrame = loopStartFrame;
+	*outLoopEndFrame = loopEndFrame;
 	*outDecoderMemorySize = decoderMemorySize;
 	return(true);
 }
@@ -1555,13 +1567,17 @@ static AudioSource *AllocateStreamSourceBlock(AudioSystem *audioSys, const size_
 static bool SetupVorbisStreamSource(AudioSource *source, const uint8_t *data, const size_t dataSize) {
 	AudioFormat format = fplZeroInit;
 	AudioFrameIndex frameCount = 0;
+	AudioFrameIndex loopStartFrame = 0;
+	AudioFrameIndex loopEndFrame = 0;
 	size_t decoderMemorySize = 0;
-	const bool isProbed = ProbeVorbisStream(data, dataSize, &format, &frameCount, &decoderMemorySize);
+	const bool isProbed = ProbeVorbisStream(data, dataSize, &format, &frameCount, &loopStartFrame, &loopEndFrame, &decoderMemorySize);
 	if(!isProbed) {
 		return(false);
 	}
 	source->format = format;
 	source->buffer.frameCount = frameCount;
+	source->loopStartFrame = loopStartFrame;
+	source->loopEndFrame = loopEndFrame;
 	source->stream.kind = AudioStreamKind_Vorbis;
 	source->stream.data = data;
 	source->stream.dataSize = dataSize;
