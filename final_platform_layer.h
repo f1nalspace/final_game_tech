@@ -263,6 +263,7 @@ SOFTWARE.
 	- Changed: [POSIX] fplAtomicStore* are sequentially consistent stores (__atomic_store_n)
 	- Changed: [POSIX] fplAtomicExchange* are sequentially consistent exchanges (__atomic_exchange_n), ThreadSanitizer did not see the fence in front of them
 	- New: Added field generation to fplThreadHandle
+	- Fixed: fplPlatformRelease() freed the slots of threads that still ran, it waits up to one second for them and keeps their slots after that
 
 	#### IO
 	- Fixed: [POSIX] fplDirectoryRemove() was missing, its implementation was named fplRemoveDirectory()
@@ -7418,6 +7419,7 @@ fpl_common_api fplPlatformResultType fplGetPlatformResult(void);
 /**
 * @brief Releases the resources allocated by the platform layer.
 * @note Can only be called when @ref fplPlatformInit() was successful.
+* @note All threads created by @ref fplThreadCreate() must have ended before. Threads that still run are waited for up to one second, after that their thread slots are kept and not freed, and a warning is logged.
 * @see @ref section_category_initialization_release
 */
 fpl_common_api void fplPlatformRelease(void);
@@ -15747,6 +15749,14 @@ fpl_internal void fpl__FreeThreadStateBuckets(fpl__ThreadState *state) {
 		fpl__ReleaseDynamicMemory(bucket);
 		bucket = next;
 	}
+	state->buckets = fpl_null;
+	state->nextSlotNumber = 0;
+	fpl__UnlockThreadState(state);
+}
+
+// Forgets all thread buckets without freeing them, because threads that still run write into their slots when they end.
+fpl_internal void fpl__DetachThreadStateBuckets(fpl__ThreadState *state) {
+	fpl__LockThreadState(state);
 	state->buckets = fpl_null;
 	state->nextSlotNumber = 0;
 	fpl__UnlockThreadState(state);
@@ -46342,6 +46352,32 @@ fpl_internal bool fpl__InputSystem_PollGamepad(fpl__InputContext *ctx, fplGamepa
 #if !defined(FPL__SYSTEM_INIT_DEFINED)
 #define FPL__SYSTEM_INIT_DEFINED
 
+// Milliseconds the platform release waits for threads that still run
+#define FPL__RELEASE_THREADS_TIMEOUT_MILLISECONDS 1000
+// Milliseconds between two checks while the platform release waits for the threads
+#define FPL__RELEASE_THREADS_CHECK_INTERVAL_MILLISECONDS 1
+
+// Waits until no thread runs anymore or the timeout is over, returns the number of threads that still run
+fpl_internal size_t fpl__WaitForRunningThreads(const uint32_t timeoutMilliseconds) {
+	size_t runningCount = fplGetUsedThreadCount();
+	if (runningCount == 0) {
+		return(0);
+	}
+	const fplSeconds millisecondsPerSecond = 1000.0;
+	const fplSeconds timeoutSeconds = (fplSeconds)timeoutMilliseconds / millisecondsPerSecond;
+	fplTimestamp startTime = fplTimestampQuery();
+	while (runningCount > 0) {
+		fplTimestamp currentTime = fplTimestampQuery();
+		fplSeconds elapsedSeconds = fplTimestampElapsed(startTime, currentTime);
+		if (elapsedSeconds >= timeoutSeconds) {
+			break;
+		}
+		fplThreadSleep(FPL__RELEASE_THREADS_CHECK_INTERVAL_MILLISECONDS);
+		runningCount = fplGetUsedThreadCount();
+	}
+	return(runningCount);
+}
+
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
 
@@ -46412,6 +46448,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 #	endif
 
+	// The own threads have ended by now, the ones of the application are waited for while the platform still works.
+	// Threads that still run after the timeout keep their slots, so they never write into freed memory when they end.
+	size_t runningThreadCount = fpl__WaitForRunningThreads(FPL__RELEASE_THREADS_TIMEOUT_MILLISECONDS);
+	if (runningThreadCount > 0) {
+		FPL__WARNING(FPL__MODULE_CORE, "%zu thread(s) still running after %u ms, their thread slots are kept and not freed", runningThreadCount, (unsigned int)FPL__RELEASE_THREADS_TIMEOUT_MILLISECONDS);
+	}
+
 	if (appState != fpl_null) {
 		// Release actual platform (There can only be one platform!)
 		{
@@ -46446,8 +46489,13 @@ fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, 
 	}
 
 	// Free the dynamic thread buckets while the dynamic memory settings in initState are still valid.
-	FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Thread State Buckets");
-	fpl__FreeThreadStateBuckets(&fpl__global__ThreadState);
+	if (runningThreadCount == 0) {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release Thread State Buckets");
+		fpl__FreeThreadStateBuckets(&fpl__global__ThreadState);
+	} else {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Keep Thread State Buckets of running threads");
+		fpl__DetachThreadStateBuckets(&fpl__global__ThreadState);
+	}
 
 	fplClearStruct(initState);
 }
