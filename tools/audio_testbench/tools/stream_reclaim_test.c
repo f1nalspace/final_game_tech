@@ -7,11 +7,12 @@ Cases:
 - threads: a mixing thread mixes all the time while two threads play 500 short streams each and stop some of them, so instances are freed while the mixer ends other items. Meant for ASan and TSan.
 - vorbis (only with a file): 200 plays of a Vorbis stream that are stopped after two calls, then stopped streams that no call freed and a source whose data the caller keeps are removed. Each instance holds its own decoder.
 - shutdown: a thread mixes once and ends, as a streaming thread does, then AudioSystemShutdown runs while streams play and one more play is still queued. It must not wait for the mixer, frees every instance, and a mix call afterwards writes silence.
-- seek-drain: a sine wave stream (and the Vorbis stream with a file) is sought while no mixer runs, a waiting AudioSystemRemoveSource applies the queue. That only sets the position, the ring and the decoder stay untouched, the next mix call seeks the stream.
+- seek-drain: a sine wave stream (and the Vorbis and mp3 streams with their files) is sought while no mixer runs, a waiting AudioSystemRemoveSource applies the queue. That only sets the position, the ring and the decoder stay untouched, the next mix call seeks the stream.
+- mp3 (only with an mp3 file): 100 plays of an mp3 stream that are stopped after two calls, two at once, a playing source is removed, and one more source stays for AudioSystemShutdown. Every source frees its frame index, which LeakSanitizer checks.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies stream_reclaim_test.c -o stream_reclaim_test -lm -ldl -lpthread
-Usage: stream_reclaim_test [<ogg file>]
+Usage: stream_reclaim_test [<ogg file> [<mp3 file>]]
 Output: one line per case "<name>: plays=<n> max_playing=<n> max_instances=<n> instances_left=<n> <ok|FAILED>", then "total: <n> failed checks".
 */
 
@@ -35,6 +36,8 @@ static const uint32_t MaxCallCount = 100000;
 
 // The Ogg Vorbis file of the vorbis case, from the command line
 static const char *VorbisFilePath = fpl_null;
+// The mp3 file of the mp3 case, from the command line
+static const char *MP3FilePath = fpl_null;
 
 typedef struct ReclaimTest {
 	AudioSystem *audioSys;
@@ -484,6 +487,7 @@ static void CheckSeekWithoutMixer(ReclaimTest *test, AudioSource *source) {
 	const AudioFrameIndex ringStartBefore = instance->ringStartFrameIndex;
 	const AudioFrameIndex ringFrameCountBefore = instance->ringFrameCount;
 	const int decoderOffsetBefore = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
+	const size_t mp3PositionBefore = (instance->mp3 != fpl_null) ? instance->mp3->bytePosition : 0;
 
 	bool isSent = AudioSystemSetPlayItemPosition(test->audioSys, playId, targetFrameIndex);
 	CheckTrue(test, isSent, "send the seek");
@@ -499,7 +503,9 @@ static void CheckSeekWithoutMixer(ReclaimTest *test, AudioSource *source) {
 	bool hasItem = FindPlayItem(test, playId, &item);
 	CheckTrue(test, hasItem && item.framesPlayed[0] == targetFrameIndex, "the seek is applied without a mixer");
 	const int decoderOffsetAfter = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
-	bool isRingUntouched = (instance->ringStartFrameIndex == ringStartBefore) && (instance->ringFrameCount == ringFrameCountBefore) && (decoderOffsetAfter == decoderOffsetBefore);
+	const size_t mp3PositionAfter = (instance->mp3 != fpl_null) ? instance->mp3->bytePosition : 0;
+	bool isDecoderUntouched = (decoderOffsetAfter == decoderOffsetBefore) && (mp3PositionAfter == mp3PositionBefore);
+	bool isRingUntouched = (instance->ringStartFrameIndex == ringStartBefore) && (instance->ringFrameCount == ringFrameCountBefore) && isDecoderUntouched;
 	CheckTrue(test, isRingUntouched, "applying the seek decodes nothing");
 
 	// The mixer seeks the stream before its first chunk, the ring starts at the target then
@@ -526,8 +532,82 @@ static void RunSeekDrainCase(ReclaimTest *test) {
 			CheckSeekWithoutMixer(test, fileSource);
 		}
 	}
+	if(MP3FilePath != fpl_null) {
+		AudioSource *mp3Source = AudioSystemLoadFileStreamSource(test->audioSys, MP3FilePath);
+		CheckTrue(test, mp3Source != fpl_null && mp3Source->stream.kind == AudioStreamKind_MP3, "load the mp3 file as a stream");
+		if(mp3Source != fpl_null) {
+			bool isAdded = AudioSystemAddSource(test->audioSys, mp3Source);
+			CheckTrue(test, isAdded, "add the mp3 stream");
+			CheckSeekWithoutMixer(test, mp3Source);
+		}
+	}
 	AudioSystemStats stats = GetStats(test);
 	CheckTrue(test, stats.failedStreamCount == 0, "no stream failed");
+}
+
+static AudioSource *LoadMP3Stream(ReclaimTest *test) {
+	AudioSource *source = AudioSystemLoadFileStreamSource(test->audioSys, MP3FilePath);
+	CheckTrue(test, source != fpl_null && source->stream.kind == AudioStreamKind_MP3, "load the mp3 file as a stream");
+	if(source == fpl_null) {
+		return(fpl_null);
+	}
+	bool isAdded = AudioSystemAddSource(test->audioSys, source);
+	CheckTrue(test, isAdded, "add the mp3 stream");
+	CheckTrue(test, source->stream.frameOffsets != fpl_null && source->stream.frameOffsetCount > 0, "the mp3 stream has its frame index");
+	return(source);
+}
+
+static void RunMP3Case(ReclaimTest *test) {
+	const uint32_t streamCount = 100;
+	const uint32_t callsPerStream = 2;
+	const uint32_t playingStreamCount = 2;
+	AudioSource *source = LoadMP3Stream(test);
+	if(source == fpl_null) {
+		return;
+	}
+
+	// Stopped after two calls: the next play frees the instance, so the instances are exactly the playing items
+	for(uint32_t streamIndex = 0; streamIndex < streamCount; ++streamIndex) {
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play the mp3 stream");
+		++test->playCount;
+		AudioSystemStats stats = GetStats(test);
+		CheckTrue(test, stats.streamInstanceCount == stats.activePlayItemCount, "the instances are the playing streams");
+		test->maxPlayingCount = fplMax(test->maxPlayingCount, stats.activePlayItemCount);
+		test->maxInstanceCount = fplMax(test->maxInstanceCount, (uint32_t)stats.streamInstanceCount);
+		for(uint32_t callIndex = 0; callIndex < callsPerStream; ++callIndex) {
+			MixCall(test);
+		}
+		AudioSystemStopOne(test->audioSys, playId);
+	}
+	MixCall(test);
+
+	// Two at once, each with its own decoder, removed while they play: the frame index goes with the source
+	for(uint32_t streamIndex = 0; streamIndex < playingStreamCount; ++streamIndex) {
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play the mp3 stream twice");
+		++test->playCount;
+	}
+	MixCall(test);
+	AudioSystemStats stats = GetStats(test);
+	test->maxPlayingCount = fplMax(test->maxPlayingCount, stats.activePlayItemCount);
+	test->maxInstanceCount = fplMax(test->maxInstanceCount, (uint32_t)stats.streamInstanceCount);
+	CheckTrue(test, stats.activePlayItemCount == playingStreamCount && stats.compressedByteCount == source->stream.dataSize, "two mp3 streams play from one compressed file");
+	bool isRemoved = AudioSystemRemoveSource(test->audioSys, source);
+	CheckTrue(test, isRemoved, "remove the playing mp3 source");
+	stats = GetStats(test);
+	CheckTrue(test, stats.activePlayItemCount == 0 && stats.streamInstanceCount == 0 && stats.sourceCount == 0, "nothing is left of the mp3 streams");
+
+	// Left playing for AudioSystemShutdown, which frees it with its frame index
+	AudioSource *keptSource = LoadMP3Stream(test);
+	if(keptSource != fpl_null) {
+		AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, keptSource, false, 1.0f, AudioSystemDefaultPitch);
+		CheckTrue(test, playId.value != 0, "play the mp3 stream that the shutdown frees");
+		++test->playCount;
+		MixCall(test);
+	}
+	stats = GetStats(test);
+	CheckTrue(test, stats.failedStreamCount == 0, "no mp3 stream failed");
 }
 
 typedef void (ReclaimCaseFunction)(ReclaimTest *test);
@@ -544,6 +624,7 @@ static const ReclaimCase ReclaimCases[] = {
 	{ "vorbis", RunVorbisCase },
 	{ "shutdown", RunShutdownCase },
 	{ "seek-drain", RunSeekDrainCase },
+	{ "mp3", RunMP3Case },
 };
 
 static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
@@ -551,6 +632,11 @@ static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
 	const bool isVorbisCase = (reclaimCase->run == RunVorbisCase);
 	if(isVorbisCase && VorbisFilePath == fpl_null) {
 		printf("%s: skipped, no ogg file given\n", reclaimCase->name);
+		return(0);
+	}
+	const bool isMP3Case = (reclaimCase->run == RunMP3Case);
+	if(isMP3Case && MP3FilePath == fpl_null) {
+		printf("%s: skipped, no mp3 file given\n", reclaimCase->name);
 		return(0);
 	}
 	ReclaimTest test = fplZeroInit;
@@ -589,6 +675,9 @@ static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
 int main(int argc, char **argv) {
 	if(argc > 1) {
 		VorbisFilePath = argv[1];
+	}
+	if(argc > 2) {
+		MP3FilePath = argv[2];
 	}
 	fplSettings settings = fplMakeDefaultSettings();
 	if(!fplPlatformInit(fplInitFlags_None, &settings)) {
