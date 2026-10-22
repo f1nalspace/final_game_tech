@@ -12,6 +12,9 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-22
+	- Fixed: Chunks after a chunk of odd size were not found (pad byte)
+
 	## 2026-07-19
 	- Fixed: Malformed WAV chunk sizes now bounds-checked (no more heap over-read / div-by-zero); allocation is null-checked
 */
@@ -121,6 +124,14 @@ static bool ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat,
 	return true;
 }
 
+// Where the chunk after a chunk body ends: every chunk of odd size is followed by a pad byte, which the last chunk of a file may lack
+static size_t GetNextWaveChunkPosition(const size_t bodyPosition, const uint32_t chunkSize) {
+	const uint32_t chunkAlignment = 2;
+	const size_t padByteCount = chunkSize % chunkAlignment;
+	const size_t result = bodyPosition + chunkSize + padByteCount;
+	return(result);
+}
+
 extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
 	if((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
 		return false;
@@ -182,7 +193,7 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 				}
 			} break;
 		}
-		bufferPosition += chunkSize;
+		bufferPosition = GetNextWaveChunkPosition(bufferPosition, chunkSize);
 	}
 	return(result);
 }
@@ -268,7 +279,7 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 				}
 			} break;
 		}
-		bufferPosition += chunkSize;
+		bufferPosition = GetNextWaveChunkPosition(bufferPosition, chunkSize);
 	}
 	return(result);
 }
