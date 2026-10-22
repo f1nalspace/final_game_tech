@@ -7,6 +7,7 @@ Cases:
 - threads: a mixing thread mixes all the time while two threads play 500 short streams each and stop some of them, so instances are freed while the mixer ends other items. Meant for ASan and TSan.
 - vorbis (only with a file): 200 plays of a Vorbis stream that are stopped after two calls, then stopped streams that no call freed and a source whose data the caller keeps are removed. Each instance holds its own decoder.
 - shutdown: a thread mixes once and ends, as a streaming thread does, then AudioSystemShutdown runs while streams play and one more play is still queued. It must not wait for the mixer, frees every instance, and a mix call afterwards writes silence.
+- seek-drain: a sine wave stream (and the Vorbis stream with a file) is sought while no mixer runs, a waiting AudioSystemRemoveSource applies the queue. That only sets the position, the ring and the decoder stay untouched, the next mix call seeks the stream.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
 gcc -std=c99 -O2 -DFPL_FORCE_ASSERTIONS -I <repo> -I <additions> -I <repo>/demos/dependencies stream_reclaim_test.c -o stream_reclaim_test -lm -ldl -lpthread
@@ -427,6 +428,108 @@ static void RunShutdownCase(ReclaimTest *test) {
 	CheckTrue(test, isSilent, "a mix call after the shutdown writes silence");
 }
 
+// The play item of an id as AudioSystemGetPlayItems returns it, false when it is not there
+static bool FindPlayItem(ReclaimTest *test, const AudioPlayItemID playId, AudioPlayItem *outItem) {
+	AudioPlayItem items[FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT];
+	size_t itemCount = AudioSystemGetPlayItems(test->audioSys, items, FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT);
+	for(size_t itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+		if(items[itemIndex].id.value == playId.value) {
+			*outItem = items[itemIndex];
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// The stream instance of a play item, read from its slot
+static AudioStreamInstance *GetStreamInstance(ReclaimTest *test, const AudioPlayItemID playId) {
+	uint32_t slotIndex = 0;
+	uint32_t generation = 0;
+	if(!DecodePlayItemID(playId, &slotIndex, &generation)) {
+		return(fpl_null);
+	}
+	AudioPlayItemSlot *slot = &test->audioSys->playItems.slots[slotIndex];
+	AudioStreamInstance *result = (AudioStreamInstance *)fplAtomicLoadPtr(&slot->streamInstance);
+	return(result);
+}
+
+// Seeks a stream while no mixer runs: the thread that applies the queue only sets the position, the next mix seeks the stream
+static void CheckSeekWithoutMixer(ReclaimTest *test, AudioSource *source) {
+	const AudioDuration targetSeconds = 3.0;
+	const AudioDuration otherSourceSeconds = 1.0;
+	const AudioFrameIndex targetFrameIndex = (AudioFrameIndex)(targetSeconds * (AudioDuration)source->format.sampleRate);
+	AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, source, false, 1.0f, AudioSystemDefaultPitch);
+	CheckTrue(test, playId.value != 0, "play the stream to seek");
+	if(playId.value == 0) {
+		return;
+	}
+	++test->playCount;
+	test->maxPlayingCount = fplMax(test->maxPlayingCount, 1);
+	test->maxInstanceCount = fplMax(test->maxInstanceCount, 1);
+
+	// The thread that mixed last is gone, so the next waiting function applies the queue itself
+	fplThreadHandle *mixerThread = fplThreadCreate(MixOnceThread, test);
+	CheckTrue(test, mixerThread != fpl_null, "start the mixing thread");
+	if(mixerThread == fpl_null) {
+		return;
+	}
+	fplThreadWaitForOne(mixerThread, FPL_TIMEOUT_INFINITE);
+	fplThreadTerminate(mixerThread);
+
+	AudioStreamInstance *instance = GetStreamInstance(test, playId);
+	CheckTrue(test, instance != fpl_null, "the stream has its instance");
+	if(instance == fpl_null) {
+		return;
+	}
+	const AudioFrameIndex ringStartBefore = instance->ringStartFrameIndex;
+	const AudioFrameIndex ringFrameCountBefore = instance->ringFrameCount;
+	const int decoderOffsetBefore = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
+
+	bool isSent = AudioSystemSetPlayItemPosition(test->audioSys, playId, targetFrameIndex);
+	CheckTrue(test, isSent, "send the seek");
+	// Removing a source waits for its command, with no mixer this thread applies the queue and the seek with it
+	AudioSource *otherSource = CreateSineStream(test, otherSourceSeconds);
+	if(otherSource == fpl_null) {
+		return;
+	}
+	bool isRemoved = AudioSystemRemoveSource(test->audioSys, otherSource);
+	CheckTrue(test, isRemoved, "remove a source while no mixer runs");
+
+	AudioPlayItem item = fplZeroInit;
+	bool hasItem = FindPlayItem(test, playId, &item);
+	CheckTrue(test, hasItem && item.framesPlayed[0] == targetFrameIndex, "the seek is applied without a mixer");
+	const int decoderOffsetAfter = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
+	bool isRingUntouched = (instance->ringStartFrameIndex == ringStartBefore) && (instance->ringFrameCount == ringFrameCountBefore) && (decoderOffsetAfter == decoderOffsetBefore);
+	CheckTrue(test, isRingUntouched, "applying the seek decodes nothing");
+
+	// The mixer seeks the stream before its first chunk, the ring starts at the target then
+	MixCall(test);
+	hasItem = FindPlayItem(test, playId, &item);
+	CheckTrue(test, hasItem && item.framesPlayed[0] > targetFrameIndex, "the stream plays on from the target");
+	CheckTrue(test, instance->ringStartFrameIndex == targetFrameIndex, "the mixer seeks the stream to the target");
+	AudioSystemStopOne(test->audioSys, playId);
+	MixCall(test);
+}
+
+static void RunSeekDrainCase(ReclaimTest *test) {
+	const AudioDuration sineSeconds = 10.0;
+	AudioSource *sineSource = CreateSineStream(test, sineSeconds);
+	if(sineSource != fpl_null) {
+		CheckSeekWithoutMixer(test, sineSource);
+	}
+	if(VorbisFilePath != fpl_null) {
+		AudioSource *fileSource = AudioSystemLoadFileStreamSource(test->audioSys, VorbisFilePath);
+		CheckTrue(test, fileSource != fpl_null, "load the Vorbis file as a stream");
+		if(fileSource != fpl_null) {
+			bool isAdded = AudioSystemAddSource(test->audioSys, fileSource);
+			CheckTrue(test, isAdded, "add the Vorbis stream");
+			CheckSeekWithoutMixer(test, fileSource);
+		}
+	}
+	AudioSystemStats stats = GetStats(test);
+	CheckTrue(test, stats.failedStreamCount == 0, "no stream failed");
+}
+
 typedef void (ReclaimCaseFunction)(ReclaimTest *test);
 
 typedef struct ReclaimCase {
@@ -440,6 +543,7 @@ static const ReclaimCase ReclaimCases[] = {
 	{ "threads", RunThreadsCase },
 	{ "vorbis", RunVorbisCase },
 	{ "shutdown", RunShutdownCase },
+	{ "seek-drain", RunSeekDrainCase },
 };
 
 static uint32_t RunReclaimCase(const ReclaimCase *reclaimCase) {
