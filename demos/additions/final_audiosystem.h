@@ -24,6 +24,14 @@ The conversion buffer is special, because it will always be consumed first, befo
 There can be N audio sources, each audio source has a sample buffer that is based on either external or internal memory
 There can be up to FINAL_AUDIOSYSTEM_MAX_PLAY_ITEM_COUNT play items in a fixed pool, each play item tracks the current state of a audio source.
 
+A stream source (AudioSourceType_Stream) has no samples in memory, the mixer generates or decodes them while it mixes:
+a generated sine wave (AudioSystemCreateSineStreamSource), or an Ogg Vorbis or mp3 file that stays compressed in memory (AudioSystemLoadDataStreamSource, AudioSystemLoadFileStreamSource).
+Every play of a stream source gets its own stream instance: a ring of 4096 frames (S16) and its own decoder, allocated by AudioSystemPlaySource, never by the mixer.
+Right before the mixer needs the frames from a position on, it lets the decoder fill the ring with exactly them, then reads the ring like samples in memory.
+So a stream gives the same samples as the same file decoded in full, bit for bit, also with pitch, after a seek and across a repeat.
+An mp3 loop is not seamless (delay and padding of the encoder, about 42 ms), a Vorbis loop is.
+A 4:40 track at 44.1 kHz as a stream holds its compressed file (about 6 MB) plus about 30 KB per play for mp3 and about 220 KB for Vorbis, decoded in full it would be about 50 MB.
+
 There are several API functions for adding/loading audio sources, start playback by adding play-items, change-volume etc.
 
 How audio frame writing/generation works:
@@ -31,6 +39,7 @@ How audio frame writing/generation works:
 - The samples that are left in the conversion buffer are written first
 - If the conversion buffer is empty, new samples are produced
 - Samples are produced by looping over all play items and:
+	- A stream item lets its decoder fill its ring with the frames from its position on, the steps below read the ring
 	- Convert them to float into the DSP-In buffer
 	- Resample them to the target sample rate from the DSP-In buffer into the DSP-Out buffer
 	- Apply the volume to each sample
@@ -53,6 +62,11 @@ Diagram of audio frame generation:
 │  2. PROCESS EACH PLAYING SOUND                                          │
 │     ┌─────────────────────────────────────────────────────────────────┐ │
 │     │ For each AudioPlayItem (sound)                                  │ │
+│     │ ┌─────────────────────────────────────────────────────────────┐ │ │
+│     │ │ STREAM FILL (stream items only)                             │ │ │
+│     │ │ Generator / decoder of the play  →  ring (4096 frames, S16) │ │ │
+│     │ └─────────────────────────────────────────────────────────────┘ │ │
+│     │                                                                 │ │
 │     │ ┌─────────────────────────────────────────────────────────────┐ │ │
 │     │ │ SAMPLE RATE CONVERSION                                      │ │ │
 │     │ │ Source Rate    →  Output Rate                               │ │ │
@@ -89,6 +103,10 @@ Data flow diagram:
 ┌──────────────┐
 │ AudioSource  │ ───► Sample Buffer ───► Float Conversion ───►
 └──────────────┘                                       Sample Stream
+┌──────────────┐
+│ AudioSource  │ ───► Decoder of the play ───► Ring ───► Float Conversion
+│   (stream)   │      (in the mixer)          (4096 frames)
+└──────────────┘
 														│
 														▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
@@ -133,6 +151,13 @@ Threading:
 - Playing, stopping one item and the setters never block. With a full pool AudioSystemPlaySource() returns the id 0, with a full command queue (FINAL_AUDIOSYSTEM_COMMAND_CAPACITY) they return false or the id 0 and count AudioSystemStats::droppedCommandCount.
 - The master volume and the suspend flag are atomic, the mixer reads them once per call.
 - The source list has its own lock (sources.lock), the mixer never touches it.
+- A stream item is generated or decoded by the mixer in its own call, again with no lock, no allocation and no file IO: the compressed file is in memory, and every play has its decoder memory in its stream instance. A preview (advance = false) leaves stream items out.
+- The mixer frees nothing. The stream instance of an ended item stays at its slot until a function on the caller side frees it: AudioSystemPlaySource, AudioSystemStopAll, AudioSystemRemoveSource, AudioSystemClearSources or AudioSystemShutdown. AudioSystemStats::streamInstanceCount includes such instances.
+- AudioSystemSetPlayItemPosition() only moves the position when a thread other than the mixer applies the queue, the mixer seeks the decoder at its next call.
+
+Where to mix, the two usual places:
+- In the device callback: the lowest latency, every change is heard with the next callback and nothing needs a buffer of its own. The decoding runs in the real-time thread of the device, a Vorbis or mp3 stream adds about 0.1 to 0.2 % of a core to it (48 kHz, measured on x64 and on a Windows XP build).
+- In a thread of its own that mixes ahead into a ring, which the device callback only copies (FPL_AudioPlayer --mixer=thread): the work leaves the real-time thread, but every change is heard only after the latency of the ring. That thread has a normal priority, on one busy core it can starve and the ring runs dry (Windows XP lifts a starving thread only after about 4 seconds), a larger ring bridges more.
 
 Todo:
 	- Performance
@@ -161,6 +186,7 @@ Changelog:
 	- Fixed: AudioSystemShutdown() waited up to two mix periods for a mixer that no longer runs
 	- New: AudioSystemSetPlayItemPosition() seeks memory and stream items
 	- New: MP3 stream sources (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
+	- New: Documentation of stream sources and where to mix
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
