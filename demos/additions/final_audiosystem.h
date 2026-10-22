@@ -160,6 +160,7 @@ Changelog:
 	- New: AudioSystemStats.compressedByteCount
 	- Fixed: AudioSystemShutdown() waited up to two mix periods for a mixer that no longer runs
 	- New: AudioSystemSetPlayItemPosition() seeks memory and stream items
+	- New: MP3 stream sources (AudioSystemLoadDataStreamSource(), AudioSystemLoadFileStreamSource())
 
 	## 2026-10-21
 	- Fixed: Even downsampling played past the end of a source whose frame count is not a multiple of the factor
@@ -247,18 +248,26 @@ typedef enum AudioStreamKind {
 	AudioStreamKind_Sine,
 	//! An Ogg Vorbis file in memory, decoded while it is mixed, see @ref AudioSystemLoadDataStreamSource
 	AudioStreamKind_Vorbis,
+	//! An mp3 file in memory, decoded while it is mixed, see @ref AudioSystemLoadDataStreamSource
+	AudioStreamKind_MP3,
 } AudioStreamKind;
 
 //! What a stream source generates or decodes while it is mixed, see @ref AudioSource::stream
 typedef struct AudioSourceStream {
 	//! The sine wave of @ref AudioStreamKind_Sine, its frameIndex is the frame the stream starts at
 	AudioSineWaveData sineWave;
-	//! The compressed file of @ref AudioStreamKind_Vorbis. It lies in the memory block of the source when the source copied it or read it from a file, otherwise it belongs to the caller
+	//! The compressed file of @ref AudioStreamKind_Vorbis and @ref AudioStreamKind_MP3. It lies in the memory block of the source when the source copied it or read it from a file, otherwise it belongs to the caller
 	const uint8_t *data;
 	//! Size of data in bytes
 	size_t dataSize;
 	//! Size of the memory block every play gives its decoder, so the decoder never allocates while it is mixed
 	size_t decoderMemorySize;
+	//! @ref AudioStreamKind_MP3 only: the byte offset of every frame in data, so a seek finds its frame at once. The source owns it
+	const uint32_t *frameOffsets;
+	//! Number of frameOffsets
+	uint32_t frameOffsetCount;
+	//! @ref AudioStreamKind_MP3 only: the samples per channel every frame decodes to
+	uint32_t frameSampleCount;
 	//! @ref AudioStreamKind
 	AudioStreamKind kind;
 	//! The stream never ends, its @ref AudioSource::buffer has a frame count of 0
@@ -534,22 +543,24 @@ fpl_extern AudioSource *AudioSystemCreateSineStreamSource(AudioSystem *audioSys,
 * @brief Creates a stream source for an Ogg Vorbis file that is already in memory, every play decodes it while it is mixed.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
 * @param[in] dataSize Size of the data in bytes.
-* @param[in] data The complete contents of an Ogg Vorbis file.
+* @param[in] data The complete contents of an Ogg Vorbis or mp3 file.
 * @param[in] copyData True copies the data into the memory block of the source. False keeps the pointer, the data must then stay valid and unchanged until the source is freed.
-* @return Returns the new source, or null when the data is no Vorbis file (wave and mp3 cannot stream yet), its headers are invalid, it has no length or the memory could not be allocated.
-* @note The decoder is opened once here, it reads channels, sample rate, length and the size of the memory block it needs. Every play allocates such a block with its stream instance and opens its own decoder in it, so the decoder never allocates while it is mixed.
-* @note The length comes from the last page of the file (stb_vorbis_stream_length_in_samples). A damaged file can decode fewer frames, its play item then ends early and counts in @ref AudioSystemStats::failedStreamCount. Frames past the length are left out.
-* @note The frames are bit-identical to the source that @ref AudioSystemLoadDataSource decodes in full, as long as the file is intact.
+* @return Returns the new source, or null when the data is no Vorbis or mp3 file (a wave file cannot stream), its headers are invalid, it has no length or the memory could not be allocated.
+* @note Vorbis: the decoder is opened once here, it reads channels, sample rate, length and the size of the memory block it needs. Every play allocates such a block with its stream instance and opens its own decoder in it, so the decoder never allocates while it is mixed.
+* @note Vorbis: the length comes from the last page of the file (stb_vorbis_stream_length_in_samples). A damaged file can decode fewer frames, its play item then ends early and counts in @ref AudioSystemStats::failedStreamCount. Frames past the length are left out.
+* @note mp3: a walk over the frame headers reads format and length without decoding and writes the offset of every frame into a frame index (4 bytes per frame), which the source allocates. Every frame must decode to the same number of samples. A seek decodes a few frames before its target and drops them, so the decoder has its bit reservoir again.
+* @note mp3: a loop is not seamless. minimp3 plays the delay and the padding of the encoder and an Info or Xing frame as silence, on the test track (44.1 kHz) 1411 frames at the start and 448 at the end, 42 ms in all. A loop that must have no gap needs Vorbis.
+* @note The frames are bit-identical to the source that @ref AudioSystemLoadDataSource decodes in full, as long as the file is intact, also after a seek.
 * @note The source is not added, call @ref AudioSystemAddSource for that.
 * @see @ref AudioSystemPlaySource
 */
 fpl_extern AudioSource *AudioSystemLoadDataStreamSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, const bool copyData);
 
 /**
-* @brief Reads an Ogg Vorbis file into memory, still compressed, and creates a stream source for it like @ref AudioSystemLoadDataStreamSource.
+* @brief Reads an Ogg Vorbis or mp3 file into memory, still compressed, and creates a stream source for it like @ref AudioSystemLoadDataStreamSource.
 * @param[in,out] audioSys Reference to the audio system @ref AudioSystem.
-* @param[in] filePath Path to an Ogg Vorbis file.
-* @return Returns the new source, or null when the file could not be read, is no Vorbis file (wave and mp3 cannot stream yet) or @ref AudioSystemLoadDataStreamSource fails for its contents.
+* @param[in] filePath Path to an Ogg Vorbis or mp3 file.
+* @return Returns the new source, or null when the file could not be read, is no Vorbis or mp3 file (a wave file cannot stream) or @ref AudioSystemLoadDataStreamSource fails for its contents.
 * @note The file is read once and closed again, the source holds its compressed contents in its memory block.
 * @note The source is not added, call @ref AudioSystemAddSource for that.
 * @see @ref AudioSystemLoadFileSource
@@ -1497,6 +1508,106 @@ static bool SetupVorbisStreamSource(AudioSource *source, const uint8_t *data, co
 	return(true);
 }
 
+// The ring of a stream holds S16, which minimp3 decodes to unless MINIMP3_FLOAT_OUTPUT is set
+fplStaticAssert(sizeof(mp3d_sample_t) == sizeof(int16_t));
+
+// The decoder of one play of an mp3 stream and the frame it decoded last, in the memory block of its stream instance
+typedef struct AudioStreamMP3 {
+	mp3dec_t decoder;
+	// The samples of the frame decoded last, frameReadIndex of its frameSampleCount frames are delivered already
+	mp3d_sample_t frameSamples[MINIMP3_MAX_SAMPLES_PER_FRAME];
+	// Where the decoder reads its next frame in the data of the source
+	size_t bytePosition;
+	AudioFrameIndex frameSampleCount;
+	AudioFrameIndex frameReadIndex;
+} AudioStreamMP3;
+
+// Reads format, length and the number of frames from an mp3 in memory with walks over its frame headers, no decoding. A stream needs the same number of samples in every frame to find a frame by its position
+static bool ProbeMP3Stream(const uint8_t *data, const size_t dataSize, AudioFormat *outFormat, AudioFrameIndex *outFrameCount, uint32_t *outFrameOffsetCount, uint32_t *outFrameSampleCount) {
+	if(dataSize > AudioStreamMaxDataSize) {
+		return(false);
+	}
+	PCMWaveFormat fileFormat = fplZeroInit;
+	if(!LoadMP3FormatFromBuffer(data, dataSize, &fileFormat)) {
+		return(false);
+	}
+	const uint32_t frameOffsetCount = LoadMP3FrameOffsetsFromBuffer(data, dataSize, fpl_null, 0);
+	const bool hasChannels = (fileFormat.channelCount > 0) && (fileFormat.channelCount <= MAX_AUDIO_STATIC_BUFFER_CHANNEL_COUNT);
+	if(!hasChannels || fileFormat.samplesPerSecond == 0 || frameOffsetCount == 0) {
+		return(false);
+	}
+	const uint32_t frameSampleCount = fileFormat.frameCount / frameOffsetCount;
+	const bool isEveryFrameSameLength = (frameSampleCount * frameOffsetCount == fileFormat.frameCount);
+	const bool fitsFrameSamples = ((size_t)frameSampleCount * fileFormat.channelCount <= MINIMP3_MAX_SAMPLES_PER_FRAME);
+	if(!isEveryFrameSameLength || !fitsFrameSamples) {
+		return(false);
+	}
+	outFormat->channels = (AudioChannelIndex)fileFormat.channelCount;
+	outFormat->sampleRate = fileFormat.samplesPerSecond;
+	outFormat->format = AudioStreamRingFormat;
+	*outFrameCount = fileFormat.frameCount;
+	*outFrameOffsetCount = frameOffsetCount;
+	*outFrameSampleCount = frameSampleCount;
+	return(true);
+}
+
+// Makes a source of AllocateStreamSourceBlock an mp3 stream over the data and allocates its frame index, false when the data is no mp3 that can stream or the index could not be allocated
+static bool SetupMP3StreamSource(AudioSystem *audioSys, AudioSource *source, const uint8_t *data, const size_t dataSize) {
+	AudioFormat format = fplZeroInit;
+	AudioFrameIndex frameCount = 0;
+	uint32_t frameOffsetCount = 0;
+	uint32_t frameSampleCount = 0;
+	const bool isProbed = ProbeMP3Stream(data, dataSize, &format, &frameCount, &frameOffsetCount, &frameSampleCount);
+	if(!isProbed) {
+		return(false);
+	}
+	const size_t frameOffsetsSize = sizeof(uint32_t) * frameOffsetCount;
+	uint32_t *frameOffsets = (uint32_t *)AllocateAudioMemory(&audioSys->memory, frameOffsetsSize);
+	if(frameOffsets == fpl_null) {
+		return(false);
+	}
+	const uint32_t writtenOffsetCount = LoadMP3FrameOffsetsFromBuffer(data, dataSize, frameOffsets, frameOffsetCount);
+	if(writtenOffsetCount != frameOffsetCount) {
+		FreeAudioMemory(&audioSys->memory, frameOffsets);
+		return(false);
+	}
+	source->format = format;
+	source->buffer.frameCount = frameCount;
+	source->stream.kind = AudioStreamKind_MP3;
+	source->stream.data = data;
+	source->stream.dataSize = dataSize;
+	source->stream.decoderMemorySize = sizeof(AudioStreamMP3);
+	source->stream.frameOffsets = frameOffsets;
+	source->stream.frameOffsetCount = frameOffsetCount;
+	source->stream.frameSampleCount = frameSampleCount;
+	return(true);
+}
+
+static bool IsStreamFileFormat(const AudioFileFormat fileFormat) {
+	const bool result = (fileFormat == AudioFileFormat_Vorbis) || (fileFormat == AudioFileFormat_MP3);
+	return(result);
+}
+
+// Makes a source of AllocateStreamSourceBlock a stream of the file format over the data, false when the data is no valid file of a format that can stream
+static bool SetupFileStreamSource(AudioSystem *audioSys, AudioSource *source, const AudioFileFormat fileFormat, const uint8_t *data, const size_t dataSize) {
+	bool result = false;
+	switch(fileFormat) {
+		case AudioFileFormat_Vorbis:
+		{
+			result = SetupVorbisStreamSource(source, data, dataSize);
+		} break;
+
+		case AudioFileFormat_MP3:
+		{
+			result = SetupMP3StreamSource(audioSys, source, data, dataSize);
+		} break;
+
+		default:
+			break;
+	}
+	return(result);
+}
+
 fpl_extern AudioSource *AudioSystemLoadDataStreamSource(AudioSystem *audioSys, const size_t dataSize, const uint8_t *data, const bool copyData) {
 	if(audioSys == fpl_null || dataSize == 0 || data == fpl_null || dataSize > AudioStreamMaxDataSize) {
 		return fpl_null;
@@ -1504,7 +1615,7 @@ fpl_extern AudioSource *AudioSystemLoadDataStreamSource(AudioSystem *audioSys, c
 
 	AudioSystemStream stream = AudioStreamCreateFromData(dataSize, data);
 	const AudioFileFormat fileFormat = PropeAudioFileFormat(&stream);
-	if(fileFormat != AudioFileFormat_Vorbis) {
+	if(!IsStreamFileFormat(fileFormat)) {
 		return fpl_null;
 	}
 
@@ -1519,7 +1630,7 @@ fpl_extern AudioSource *AudioSystemLoadDataStreamSource(AudioSystem *audioSys, c
 		fplMemoryCopy(data, dataSize, copiedData);
 		streamData = copiedData;
 	}
-	const bool isSetUp = SetupVorbisStreamSource(source, streamData, dataSize);
+	const bool isSetUp = SetupFileStreamSource(audioSys, source, fileFormat, streamData, dataSize);
 	if(!isSetUp) {
 		FreeAudioMemory(&audioSys->memory, source);
 		return fpl_null;
@@ -1542,7 +1653,7 @@ fpl_extern AudioSource *AudioSystemLoadFileStreamSource(AudioSystem *audioSys, c
 	if(fileSize > 0 && fileSize <= AudioStreamMaxDataSize) {
 		AudioSystemStream stream = AudioStreamCreateFromFileHandle(&file, fileSize);
 		const AudioFileFormat fileFormat = PropeAudioFileFormat(&stream);
-		if(fileFormat == AudioFileFormat_Vorbis) {
+		if(IsStreamFileFormat(fileFormat)) {
 			// Read straight into the memory block of the source, the file is never in memory twice
 			uint8_t *data = fpl_null;
 			AudioSource *source = AllocateStreamSourceBlock(audioSys, fileSize, &data);
@@ -1550,7 +1661,7 @@ fpl_extern AudioSource *AudioSystemLoadFileStreamSource(AudioSystem *audioSys, c
 				AudioSystemStreamSeek(&stream, 0);
 				const size_t readSize = AudioSystemStreamRead(&stream, fileSize, data, fileSize);
 				const bool isRead = (readSize == fileSize);
-				if(isRead && SetupVorbisStreamSource(source, data, fileSize)) {
+				if(isRead && SetupFileStreamSource(audioSys, source, fileFormat, data, fileSize)) {
 					result = source;
 				} else {
 					FreeAudioMemory(&audioSys->memory, source);
@@ -1739,6 +1850,8 @@ typedef struct AudioStreamInstance {
 	uint8_t *ringSamples;
 	// The decoder of AudioStreamKind_Vorbis, opened in the memory block after the ring
 	stb_vorbis *vorbis;
+	// The decoder of AudioStreamKind_MP3, in the memory block after the ring
+	AudioStreamMP3 *mp3;
 	// Size of the memory block in bytes
 	uint32_t memorySize;
 	AudioFrameIndex ringStartFrameIndex;
@@ -1760,8 +1873,8 @@ static AudioStreamInstance *CreateStreamInstance(AudioSystem *audioSys, const Au
 	const size_t ringSize = fplGetAudioBufferSizeInBytes(source->format.format, source->format.channels, AudioStreamRingFrameCount);
 	const size_t ringEndOffset = sizeof(AudioStreamInstance) + ringSize;
 	// The decoder gets the end of the block, with room to align its start
-	const bool isVorbis = (source->stream.kind == AudioStreamKind_Vorbis);
-	const size_t decoderBlockSize = isVorbis ? (source->stream.decoderMemorySize + AudioStreamDecoderAlignment) : 0;
+	const bool hasDecoder = (source->stream.kind == AudioStreamKind_Vorbis) || (source->stream.kind == AudioStreamKind_MP3);
+	const size_t decoderBlockSize = hasDecoder ? (source->stream.decoderMemorySize + AudioStreamDecoderAlignment) : 0;
 	const size_t memorySize = ringEndOffset + decoderBlockSize;
 	void *memory = AllocateAudioMemory(&audioSys->memory, memorySize);
 	if(memory == fpl_null) {
@@ -1772,6 +1885,9 @@ static AudioStreamInstance *CreateStreamInstance(AudioSystem *audioSys, const Au
 	result->ringSamples = (uint8_t *)memory + sizeof(AudioStreamInstance);
 	result->memorySize = (uint32_t)memorySize;
 	result->kind = source->stream.kind;
+	const uintptr_t ringEndAddress = (uintptr_t)memory + ringEndOffset;
+	const uintptr_t alignmentOffset = fplGetAlignmentOffset(ringEndAddress, (uintptr_t)AudioStreamDecoderAlignment);
+	void *decoderMemoryStart = (void *)(ringEndAddress + alignmentOffset);
 	switch(result->kind) {
 		case AudioStreamKind_Sine:
 		{
@@ -1781,10 +1897,8 @@ static AudioStreamInstance *CreateStreamInstance(AudioSystem *audioSys, const Au
 		case AudioStreamKind_Vorbis:
 		{
 			// Its own decoder in its own memory, opened from the compressed file of the source. It never allocates, also not later in the mixer
-			const uintptr_t ringEndAddress = (uintptr_t)memory + ringEndOffset;
-			const uintptr_t alignmentOffset = fplGetAlignmentOffset(ringEndAddress, (uintptr_t)AudioStreamDecoderAlignment);
 			stb_vorbis_alloc decoderMemory = fplZeroInit;
-			decoderMemory.alloc_buffer = (char *)(ringEndAddress + alignmentOffset);
+			decoderMemory.alloc_buffer = (char *)decoderMemoryStart;
 			decoderMemory.alloc_buffer_length_in_bytes = (int)source->stream.decoderMemorySize;
 			int openError = 0;
 			result->vorbis = stb_vorbis_open_memory(source->stream.data, (int)source->stream.dataSize, &openError, &decoderMemory);
@@ -1792,6 +1906,16 @@ static AudioStreamInstance *CreateStreamInstance(AudioSystem *audioSys, const Au
 				FreeAudioMemory(&audioSys->memory, memory);
 				return(fpl_null);
 			}
+		} break;
+
+		case AudioStreamKind_MP3:
+		{
+			// Its own decoder, which starts at the first frame like LoadMP3FromBuffer
+			AudioStreamMP3 *mp3 = (AudioStreamMP3 *)decoderMemoryStart;
+			fplClearStruct(mp3);
+			mp3dec_init(&mp3->decoder);
+			mp3->bytePosition = source->stream.frameOffsets[0];
+			result->mp3 = mp3;
 		} break;
 
 		default:
@@ -2732,6 +2856,117 @@ static AudioHertz ResolvePitchedSampleRate(const AudioHertz sourceSampleRate, co
 	return (AudioHertz)pitchedRate;
 }
 
+// A seek of an mp3 stream lets the decoder start again this many bytes of main data before the frame in front of its target: the bit reservoir of MPEG 1 Layer III, up to 511 bytes back
+static const size_t AudioStreamMP3PreRollMainDataSize = MAX_BITRESERVOIR_BYTES;
+// What a frame has besides its main data at most: 4 bytes header, 32 bytes side information and 2 bytes CRC
+static const size_t AudioStreamMP3FrameOverheadSize = 38;
+
+// Decodes the next frame that has samples, like LoadMP3FromBuffer that skips a frame without samples and ends at a frame in another format. False at the end of the data. Only by the owner of the mixer
+static bool DecodeNextMP3Frame(AudioStreamMP3 *mp3, const AudioSource *source) {
+	const uint8_t *data = source->stream.data;
+	const size_t dataSize = source->stream.dataSize;
+	while(mp3->bytePosition < dataSize) {
+		mp3dec_frame_info_t frameInfo;
+		fplClearStruct(&frameInfo);
+		const uint8_t *frameStart = data + mp3->bytePosition;
+		const int remainingSize = (int)(dataSize - mp3->bytePosition);
+		const int sampleCount = mp3dec_decode_frame(&mp3->decoder, frameStart, remainingSize, mp3->frameSamples, &frameInfo);
+		if(frameInfo.frame_bytes == 0) {
+			break;
+		}
+		mp3->bytePosition += (size_t)frameInfo.frame_bytes;
+		if(sampleCount == 0) {
+			continue;
+		}
+		const bool isSameFormat = (frameInfo.hz == (int)source->format.sampleRate) && (frameInfo.channels == (int)source->format.channels);
+		if(!isSameFormat) {
+			// The file ends here, as for LoadMP3FromBuffer
+			mp3->bytePosition = dataSize;
+			break;
+		}
+		mp3->frameSampleCount = (AudioFrameIndex)sampleCount;
+		mp3->frameReadIndex = 0;
+		return(true);
+	}
+	mp3->frameSampleCount = 0;
+	mp3->frameReadIndex = 0;
+	return(false);
+}
+
+// Copies the frames the decoder has decoded and decodes the next one whenever they are used up, fewer only at the end of the data. Only by the owner of the mixer
+static AudioFrameIndex DeliverMP3Frames(AudioStreamMP3 *mp3, const AudioSource *source, int16_t *outSamples, const AudioFrameIndex frameCount) {
+	const AudioChannelIndex channelCount = source->format.channels;
+	AudioFrameIndex result = 0;
+	while(result < frameCount) {
+		if(mp3->frameReadIndex == mp3->frameSampleCount) {
+			const bool isDecoded = DecodeNextMP3Frame(mp3, source);
+			if(!isDecoded) {
+				break;
+			}
+		}
+		const AudioFrameIndex availableFrameCount = mp3->frameSampleCount - mp3->frameReadIndex;
+		const AudioFrameIndex missingFrameCount = frameCount - result;
+		const AudioFrameIndex copyFrameCount = fplMin(missingFrameCount, availableFrameCount);
+		const mp3d_sample_t *copyStart = mp3->frameSamples + (size_t)mp3->frameReadIndex * channelCount;
+		int16_t *copyTarget = outSamples + (size_t)result * channelCount;
+		const size_t copySize = (size_t)copyFrameCount * channelCount * sizeof(int16_t);
+		fplMemoryCopy(copyStart, copySize, copyTarget);
+		mp3->frameReadIndex += copyFrameCount;
+		result += copyFrameCount;
+	}
+	return(result);
+}
+
+/**
+* @brief Lets an mp3 stream deliver the given source frame next.
+* @return Returns false when the frame lies past the frames of the file or the decoder failed.
+* @note A fresh decoder at a frame lacks the bit reservoir of the frames before and the overlap of the frame before. So it starts at frames before the target that hold the reservoir, decodes them and the frame in front of the target and drops them. From the target on it decodes as a decoder from the start of the file, bit for bit.
+* @note Frame 0, a repeat, needs nothing before it: the decoder starts there as after its creation.
+* @note Only by the owner of the mixer.
+*/
+static bool SeekMP3Stream(AudioStreamMP3 *mp3, const AudioSource *source, const AudioFrameIndex frameIndex) {
+	const AudioSourceStream *stream = &source->stream;
+	const uint32_t targetFrame = frameIndex / stream->frameSampleCount;
+	if(targetFrame >= stream->frameOffsetCount) {
+		return(false);
+	}
+	uint32_t startFrame = targetFrame;
+	if(startFrame > 0) {
+		--startFrame;
+	}
+	size_t preRollMainDataSize = 0;
+	while(startFrame > 0 && preRollMainDataSize < AudioStreamMP3PreRollMainDataSize) {
+		--startFrame;
+		const size_t frameSize = stream->frameOffsets[startFrame + 1] - stream->frameOffsets[startFrame];
+		preRollMainDataSize += (frameSize > AudioStreamMP3FrameOverheadSize) ? (frameSize - AudioStreamMP3FrameOverheadSize) : 0;
+	}
+
+	mp3dec_init(&mp3->decoder);
+	mp3->bytePosition = stream->frameOffsets[startFrame];
+	mp3->frameSampleCount = 0;
+	mp3->frameReadIndex = 0;
+	// One frame per decode, a frame that fails for its missing reservoir still keeps its main data for the next one
+	for(uint32_t preRollFrame = startFrame; preRollFrame < targetFrame; ++preRollFrame) {
+		mp3dec_frame_info_t frameInfo;
+		fplClearStruct(&frameInfo);
+		const uint8_t *frameStart = stream->data + mp3->bytePosition;
+		const int remainingSize = (int)(stream->dataSize - mp3->bytePosition);
+		mp3dec_decode_frame(&mp3->decoder, frameStart, remainingSize, mp3->frameSamples, &frameInfo);
+		if(frameInfo.frame_bytes == 0) {
+			return(false);
+		}
+		mp3->bytePosition += (size_t)frameInfo.frame_bytes;
+	}
+
+	const bool isDecoded = DecodeNextMP3Frame(mp3, source);
+	const AudioFrameIndex skipFrameCount = frameIndex - targetFrame * stream->frameSampleCount;
+	if(!isDecoded || skipFrameCount >= mp3->frameSampleCount) {
+		return(false);
+	}
+	mp3->frameReadIndex = skipFrameCount;
+	return(true);
+}
+
 // Lets the stream deliver its next frames, returns how many it delivered, 0 when it failed. Only by the owner of the mixer
 static AudioFrameIndex DeliverStreamFrames(AudioStreamInstance *instance, const AudioSource *source, uint8_t *outSamples, const AudioFrameIndex frameCount) {
 	AudioFrameIndex result = 0;
@@ -2749,6 +2984,11 @@ static AudioFrameIndex DeliverStreamFrames(AudioStreamInstance *instance, const 
 			const int sampleCount = (int)frameCount * channelCount;
 			const int decodedFrameCount = stb_vorbis_get_samples_short_interleaved(instance->vorbis, channelCount, (short *)outSamples, sampleCount);
 			result = (AudioFrameIndex)fplMax(0, decodedFrameCount);
+		} break;
+
+		case AudioStreamKind_MP3:
+		{
+			result = DeliverMP3Frames(instance->mp3, source, (int16_t *)outSamples, frameCount);
 		} break;
 
 		default:
@@ -2777,6 +3017,11 @@ static bool SeekStream(AudioStreamInstance *instance, const AudioSource *source,
 				isSought = stb_vorbis_seek(instance->vorbis, frameIndex);
 			}
 			result = (isSought != 0);
+		} break;
+
+		case AudioStreamKind_MP3:
+		{
+			result = SeekMP3Stream(instance->mp3, source, frameIndex);
 		} break;
 
 		default:
@@ -3293,6 +3538,16 @@ fpl_extern void AudioSystemStopAll(AudioSystem *audioSys) {
 	ReclaimFinishedStreamInstances(audioSys);
 }
 
+// Frees a source with its samples, and with the frame index of an mp3 stream
+static void FreeAudioSourceMemory(AudioMemory *memory, AudioSource *source) {
+	FreeAudioBuffer(memory, &source->buffer);
+	if(source->stream.frameOffsets != fpl_null) {
+		FreeAudioMemory(memory, (void *)source->stream.frameOffsets);
+		source->stream.frameOffsets = fpl_null;
+	}
+	FreeAudioMemory(memory, source);
+}
+
 fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *source) {
 	if(audioSys == fpl_null || source == fpl_null || !audioSys->isInitialized) {
 		return false;
@@ -3337,8 +3592,7 @@ fpl_extern bool AudioSystemRemoveSource(AudioSystem *audioSys, AudioSource *sour
 	// Freed outside the lock: it is unreachable now, and nothing else in here allocates
 	if(result) {
 		source->next = fpl_null;
-		FreeAudioBuffer(memory, &source->buffer);
-		FreeAudioMemory(memory, source);
+		FreeAudioSourceMemory(memory, source);
 	}
 
 	return(result);
@@ -3353,8 +3607,7 @@ static void FreeAllAudioSources(AudioSystem *audioSys) {
 	AudioSource *source = sources->first;
 	while(source != fpl_null) {
 		AudioSource *next = source->next;
-		FreeAudioBuffer(memory, &source->buffer);
-		FreeAudioMemory(memory, source);
+		FreeAudioSourceMemory(memory, source);
 		source = next;
 	}
 	sources->first = sources->last = fpl_null;
