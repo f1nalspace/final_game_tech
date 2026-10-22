@@ -8,6 +8,7 @@ Cases:
 - vorbis (only with a file): 200 plays of a Vorbis stream that are stopped after two calls, then stopped streams that no call freed and a source whose data the caller keeps are removed. Each instance holds its own decoder.
 - shutdown: a thread mixes once and ends, as a streaming thread does, then AudioSystemShutdown runs while streams play and one more play is still queued. It must not wait for the mixer, frees every instance, and a mix call afterwards writes silence.
 - seek-drain: a sine wave stream (and the Vorbis and mp3 streams with their files) is sought while no mixer runs, a waiting AudioSystemRemoveSource applies the queue. That only sets the position, the ring and the decoder stay untouched, the next mix call seeks the stream.
+- loop-drain: a loop region is set on a sine wave stream (and the Vorbis and mp3 streams with their files) while no mixer runs, a waiting AudioSystemRemoveSource applies the queue. That only sets the region, the ring and the decoder stay untouched. An endless sine wave stream drops it.
 - mp3 (only with an mp3 file): 100 plays of an mp3 stream that are stopped after two calls, two at once, a playing source is removed, and one more source stays for AudioSystemShutdown. Every source frees its frame index, which LeakSanitizer checks.
 
 Build against the additions to test, with assertions (the mixer checks its own invariants):
@@ -545,6 +546,107 @@ static void RunSeekDrainCase(ReclaimTest *test) {
 	CheckTrue(test, stats.failedStreamCount == 0, "no stream failed");
 }
 
+// Sets the loop region of a stream while no mixer runs: the thread that applies the queue only sets the region, the ring and the decoder stay untouched. An endless stream drops it
+static void CheckLoopWithoutMixer(ReclaimTest *test, AudioSource *source) {
+	const AudioDuration loopStartSeconds = 1.0;
+	const AudioDuration loopEndSeconds = 2.0;
+	const AudioDuration otherSourceSeconds = 1.0;
+	const AudioFrameIndex loopStartFrame = (AudioFrameIndex)(loopStartSeconds * (AudioDuration)source->format.sampleRate);
+	const AudioFrameIndex loopEndFrame = (AudioFrameIndex)(loopEndSeconds * (AudioDuration)source->format.sampleRate);
+	const bool isEndless = source->stream.isEndless;
+	AudioPlayItemID playId = AudioSystemPlaySource(test->audioSys, source, true, 1.0f, AudioSystemDefaultPitch);
+	CheckTrue(test, playId.value != 0, "play the stream to loop");
+	if(playId.value == 0) {
+		return;
+	}
+	++test->playCount;
+	test->maxPlayingCount = fplMax(test->maxPlayingCount, 1);
+	test->maxInstanceCount = fplMax(test->maxInstanceCount, 1);
+
+	// The thread that mixed last is gone, so the next waiting function applies the queue itself
+	fplThreadHandle *mixerThread = fplThreadCreate(MixOnceThread, test);
+	CheckTrue(test, mixerThread != fpl_null, "start the mixing thread");
+	if(mixerThread == fpl_null) {
+		return;
+	}
+	fplThreadWaitForOne(mixerThread, FPL_TIMEOUT_INFINITE);
+	fplThreadTerminate(mixerThread);
+
+	AudioStreamInstance *instance = GetStreamInstance(test, playId);
+	CheckTrue(test, instance != fpl_null, "the stream has its instance");
+	if(instance == fpl_null) {
+		return;
+	}
+	AudioPlayItem item = fplZeroInit;
+	bool hasItem = FindPlayItem(test, playId, &item);
+	const AudioFrameIndex positionBefore = hasItem ? item.framesPlayed[0] : 0;
+	const AudioFrameIndex ringStartBefore = instance->ringStartFrameIndex;
+	const AudioFrameIndex ringFrameCountBefore = instance->ringFrameCount;
+	const int decoderOffsetBefore = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
+	const size_t mp3PositionBefore = (instance->mp3 != fpl_null) ? instance->mp3->bytePosition : 0;
+
+	bool isSent = AudioSystemSetPlayItemLoop(test->audioSys, playId, loopStartFrame, loopEndFrame);
+	CheckTrue(test, isSent, "send the loop region");
+	// Removing a source waits for its command, with no mixer this thread applies the queue and the region with it
+	AudioSource *otherSource = CreateSineStream(test, otherSourceSeconds);
+	if(otherSource == fpl_null) {
+		return;
+	}
+	bool isRemoved = AudioSystemRemoveSource(test->audioSys, otherSource);
+	CheckTrue(test, isRemoved, "remove a source while no mixer runs");
+
+	const AudioFrameIndex expectedLoopStartFrame = isEndless ? 0 : loopStartFrame;
+	const AudioFrameIndex expectedLoopEndFrame = isEndless ? 0 : loopEndFrame;
+	hasItem = FindPlayItem(test, playId, &item);
+	CheckTrue(test, hasItem && item.loopStartFrame == expectedLoopStartFrame && item.loopEndFrame == expectedLoopEndFrame, "the region is applied without a mixer, an endless stream drops it");
+	CheckTrue(test, hasItem && item.framesPlayed[0] == positionBefore, "applying the region moves nothing");
+	const int decoderOffsetAfter = (instance->vorbis != fpl_null) ? stb_vorbis_get_sample_offset(instance->vorbis) : 0;
+	const size_t mp3PositionAfter = (instance->mp3 != fpl_null) ? instance->mp3->bytePosition : 0;
+	bool isDecoderUntouched = (decoderOffsetAfter == decoderOffsetBefore) && (mp3PositionAfter == mp3PositionBefore);
+	bool isRingUntouched = (instance->ringStartFrameIndex == ringStartBefore) && (instance->ringFrameCount == ringFrameCountBefore) && isDecoderUntouched;
+	CheckTrue(test, isRingUntouched, "applying the region decodes nothing");
+
+	// The mixer plays on from where it was, with the region
+	MixCall(test);
+	hasItem = FindPlayItem(test, playId, &item);
+	CheckTrue(test, hasItem && item.framesPlayed[0] > positionBefore && item.loopEndFrame == expectedLoopEndFrame, "the stream plays on with its region");
+	AudioSystemStopOne(test->audioSys, playId);
+	MixCall(test);
+}
+
+static void RunLoopDrainCase(ReclaimTest *test) {
+	const AudioDuration sineSeconds = 10.0;
+	const AudioDuration endlessSineSeconds = 0.0;
+	AudioSource *sineSource = CreateSineStream(test, sineSeconds);
+	if(sineSource != fpl_null) {
+		CheckLoopWithoutMixer(test, sineSource);
+	}
+	AudioSource *endlessSource = CreateSineStream(test, endlessSineSeconds);
+	if(endlessSource != fpl_null) {
+		CheckLoopWithoutMixer(test, endlessSource);
+	}
+	if(VorbisFilePath != fpl_null) {
+		AudioSource *fileSource = AudioSystemLoadFileStreamSource(test->audioSys, VorbisFilePath);
+		CheckTrue(test, fileSource != fpl_null, "load the Vorbis file as a stream");
+		if(fileSource != fpl_null) {
+			bool isAdded = AudioSystemAddSource(test->audioSys, fileSource);
+			CheckTrue(test, isAdded, "add the Vorbis stream");
+			CheckLoopWithoutMixer(test, fileSource);
+		}
+	}
+	if(MP3FilePath != fpl_null) {
+		AudioSource *mp3Source = AudioSystemLoadFileStreamSource(test->audioSys, MP3FilePath);
+		CheckTrue(test, mp3Source != fpl_null && mp3Source->stream.kind == AudioStreamKind_MP3, "load the mp3 file as a stream");
+		if(mp3Source != fpl_null) {
+			bool isAdded = AudioSystemAddSource(test->audioSys, mp3Source);
+			CheckTrue(test, isAdded, "add the mp3 stream");
+			CheckLoopWithoutMixer(test, mp3Source);
+		}
+	}
+	AudioSystemStats stats = GetStats(test);
+	CheckTrue(test, stats.failedStreamCount == 0, "no stream failed");
+}
+
 static AudioSource *LoadMP3Stream(ReclaimTest *test) {
 	AudioSource *source = AudioSystemLoadFileStreamSource(test->audioSys, MP3FilePath);
 	CheckTrue(test, source != fpl_null && source->stream.kind == AudioStreamKind_MP3, "load the mp3 file as a stream");
@@ -624,6 +726,7 @@ static const ReclaimCase ReclaimCases[] = {
 	{ "vorbis", RunVorbisCase },
 	{ "shutdown", RunShutdownCase },
 	{ "seek-drain", RunSeekDrainCase },
+	{ "loop-drain", RunLoopDrainCase },
 	{ "mp3", RunMP3Case },
 };
 
