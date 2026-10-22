@@ -1,5 +1,5 @@
 #!/bin/bash
-# Measures the cost of AudioSystemWriteFrames with FPL_AudioPlayer --render on one core: the empty mixer, one item at 48 kHz (passthrough), one item at 44.1 kHz (SinC).
+# Measures the cost of AudioSystemWriteFrames with FPL_AudioPlayer --render on one core: the empty mixer, one item at 48 kHz (passthrough), one item at 44.1 kHz (SinC), all decoded in full (--stream=off).
 # Usage: measure_mixer.sh <variant> [runs]   (default 3 runs per case, run build.sh <variant> first)
 # Prints every run and per case the median of mix_mean_us over the runs, 48 kHz stereo S16 output with 512 frames per call (the player defaults).
 # The empty mixer is the short bounce sound followed by silence up to 10 seconds, its few SinC calls add about half a microsecond to the mean.
@@ -29,9 +29,9 @@ fi
 
 # <case name>|<player arguments>
 cases=(
-	"empty|--seconds=10 media/bounce_44100hz.wav"
-	"48k|media/long_48k.ogg"
-	"44k|media/crackout_44k.ogg"
+	"empty|--seconds=10 --stream=off media/bounce_44100hz.wav"
+	"48k|--stream=off media/long_48k.ogg"
+	"44k|--stream=off media/crackout_44k.ogg"
 )
 
 cd "$testbench_dir" || exit 1

@@ -2,7 +2,7 @@
 # Prints the render matrix of the test bench, one case per line: <case id><TAB><player arguments>.
 # Usage: matrix.sh full|short
 # full: every track in every format with pitch 0.5, 1 and 2 (passthrough, SinC and both even-ratio paths), plus a few single cases for chunk size, volume and repeat.
-# Every case of full runs once loaded fully and once as a stream (--stream), both must give the same hash. A track that cannot stream yet loads fully then, its stream case is the same render.
+# Every case of full runs once loaded fully (--stream=off, the player streams by default) and once as a stream (--stream), both must give the same hash. A track that cannot stream loads fully then, its stream case is the same render.
 # A single case may seek (--seek=<at>:<to>), its id ends on _s<at>-<to>. The cases without a seek keep the ids they had.
 # A single case may have a loop region (--loop=<start>:<end>, seek - for none), its id ends on _l<start>-<end>.
 # Kept small on purpose (168 cases), test runs must stay light. More values go into the arrays below later.
@@ -32,6 +32,8 @@ print_case() {
 	fi
 	if [ "$load_mode" == "stream" ]; then
 		arguments="$arguments --stream"
+	else
+		arguments="$arguments --stream=off"
 	fi
 	if [ "$track" == "sine" ]; then
 		arguments="$arguments --sine"
