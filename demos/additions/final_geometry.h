@@ -12,6 +12,10 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-20
+	- New: Frustum3f type with planes from a matrix, sphere and AABB tests
+	- New: Plane3fInitFromEquation() and Plane3fSignedDistance()
+
 	## 2026-10-06
 	- New: Ray intersections for Plane3f, Sphere3f, AABB3f, Quad3f and OrientedBox3f
 	- New: AABB3f empty, grow and half surface area functions
@@ -86,6 +90,29 @@ fpl_extern_inline Plane3f Plane3fInitFromPoint(const Vec3f normal, const Vec3f p
 	Plane3f result;
 	result.normal = normal;
 	result.distance = V3fDot(normal, point);
+	return result;
+}
+
+// From the plane equation a*x + b*y + c*z + d = 0 in (x, y, z, w), normalized so the normal is unit length; a zero normal gives a zero plane
+fpl_extern_inline Plane3f Plane3fInitFromEquation(const Vec4f equation) {
+	Vec3f normal = equation.xyz;
+	float normalLength = V3fLength(normal);
+	Plane3f result;
+	if (normalLength == 0.0f) {
+		result.normal = V3fZero();
+		result.distance = 0.0f;
+		return result;
+	}
+	float inverseLength = 1.0f / normalLength;
+	result.normal = V3fMultScalar(normal, inverseLength);
+	result.distance = -equation.w * inverseLength;
+	return result;
+}
+
+// Positive on the side the normal points to, negative behind, in units of the normal length
+fpl_extern_inline float Plane3fSignedDistance(const Plane3f *plane, const Vec3f point) {
+	float pointDot = V3fDot(plane->normal, point);
+	float result = pointDot - plane->distance;
 	return result;
 }
 
@@ -544,6 +571,103 @@ fpl_extern_inline AABB3f OrientedBox3fGetBounds(const OrientedBox3f *box) {
 		extent.m[axis] = extentFromX + extentFromY + extentFromZ;
 	}
 	AABB3f result = AABB3fInitFromCenter(box->center, extent);
+	return result;
+}
+
+//
+// Frustum3f
+//
+typedef enum Frustum3fPlane {
+	Frustum3fPlane_Left = 0,
+	Frustum3fPlane_Right,
+	Frustum3fPlane_Bottom,
+	Frustum3fPlane_Top,
+	Frustum3fPlane_Near,
+	Frustum3fPlane_Far,
+	Frustum3fPlane_Count,
+} Frustum3fPlane;
+
+// Six planes indexed by Frustum3fPlane, every normal points into the frustum
+typedef struct Frustum3f {
+	Plane3f planes[Frustum3fPlane_Count];
+} Frustum3f;
+
+typedef enum Frustum3fContainment {
+	Frustum3fContainment_Outside = 0,
+	Frustum3fContainment_Intersecting,
+	Frustum3fContainment_Inside,
+} Frustum3fContainment;
+
+// Gribb/Hartmann extraction from a column-major projection * view (* model) matrix with OpenGL clip depth -w..w; the planes live in the space the matrix maps from (world space for projection * view)
+fpl_extern_inline Frustum3f Frustum3fInitFromMatrix(const Mat4f matrix) {
+	Vec4f rowX = V4fInit(matrix.r[0][0], matrix.r[1][0], matrix.r[2][0], matrix.r[3][0]);
+	Vec4f rowY = V4fInit(matrix.r[0][1], matrix.r[1][1], matrix.r[2][1], matrix.r[3][1]);
+	Vec4f rowZ = V4fInit(matrix.r[0][2], matrix.r[1][2], matrix.r[2][2], matrix.r[3][2]);
+	Vec4f rowW = V4fInit(matrix.r[0][3], matrix.r[1][3], matrix.r[2][3], matrix.r[3][3]);
+	// x, y, z and w of every plane equation
+	const uint32_t equationComponentCount = 4;
+	Vec4f equations[Frustum3fPlane_Count];
+	for (uint32_t component = 0; component < equationComponentCount; ++component) {
+		equations[Frustum3fPlane_Left].m[component] = rowW.m[component] + rowX.m[component];
+		equations[Frustum3fPlane_Right].m[component] = rowW.m[component] - rowX.m[component];
+		equations[Frustum3fPlane_Bottom].m[component] = rowW.m[component] + rowY.m[component];
+		equations[Frustum3fPlane_Top].m[component] = rowW.m[component] - rowY.m[component];
+		equations[Frustum3fPlane_Near].m[component] = rowW.m[component] + rowZ.m[component];
+		equations[Frustum3fPlane_Far].m[component] = rowW.m[component] - rowZ.m[component];
+	}
+	Frustum3f result;
+	for (uint32_t planeIndex = 0; planeIndex < Frustum3fPlane_Count; ++planeIndex) {
+		result.planes[planeIndex] = Plane3fInitFromEquation(equations[planeIndex]);
+	}
+	return result;
+}
+
+// Inside when the sphere lies completely in front of every plane, outside when it lies completely behind one
+fpl_extern_inline Frustum3fContainment Frustum3fClassifySphere(const Frustum3f *frustum, const Sphere3f *sphere) {
+	Frustum3fContainment result = Frustum3fContainment_Inside;
+	for (uint32_t planeIndex = 0; planeIndex < Frustum3fPlane_Count; ++planeIndex) {
+		float centerDistance = Plane3fSignedDistance(&frustum->planes[planeIndex], sphere->origin);
+		if (centerDistance < -sphere->radius) {
+			return Frustum3fContainment_Outside;
+		}
+		if (centerDistance < sphere->radius) {
+			result = Frustum3fContainment_Intersecting;
+		}
+	}
+	return result;
+}
+
+// Plane-by-plane test with the box extent projected onto each normal; conservative, a box outside next to a frustum corner can come back as intersecting
+fpl_extern_inline Frustum3fContainment Frustum3fClassifyAABB(const Frustum3f *frustum, const AABB3f *aabb) {
+	Vec3f center, radius;
+	AABB3fExtract(aabb, &center, &radius);
+	Frustum3fContainment result = Frustum3fContainment_Inside;
+	for (uint32_t planeIndex = 0; planeIndex < Frustum3fPlane_Count; ++planeIndex) {
+		const Plane3f *plane = &frustum->planes[planeIndex];
+		Vec3f absoluteNormal = V3fAbs(plane->normal);
+		float projectedRadius = V3fDot(absoluteNormal, radius);
+		float centerDistance = Plane3fSignedDistance(plane, center);
+		if (centerDistance < -projectedRadius) {
+			return Frustum3fContainment_Outside;
+		}
+		if (centerDistance < projectedRadius) {
+			result = Frustum3fContainment_Intersecting;
+		}
+	}
+	return result;
+}
+
+// True when the sphere is at least partly inside, for culling
+fpl_extern_inline bool Frustum3fIntersectsSphere(const Frustum3f *frustum, const Sphere3f *sphere) {
+	Frustum3fContainment containment = Frustum3fClassifySphere(frustum, sphere);
+	bool result = containment != Frustum3fContainment_Outside;
+	return result;
+}
+
+// True when the box may be partly inside, for culling (conservative like Frustum3fClassifyAABB)
+fpl_extern_inline bool Frustum3fIntersectsAABB(const Frustum3f *frustum, const AABB3f *aabb) {
+	Frustum3fContainment containment = Frustum3fClassifyAABB(frustum, aabb);
+	bool result = containment != Frustum3fContainment_Outside;
 	return result;
 }
 

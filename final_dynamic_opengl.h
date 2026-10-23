@@ -132,6 +132,9 @@ SOFTWARE.
 
 	# v1.0.1:
 	- New: Added function fglGetVersion() and the defines FGL_VERSION_MAJOR/MINOR/PATCH/STRING
+	- New: fglLoadOpenGLFunctions() sets the isGL_VERSION_x_y flags up to the context version, when every function of that version is loaded
+	- New: Added function fglGetOpenGLContextVersion() and struct fglOpenGLContextVersion
+	- Fixed: The isGL_VERSION_x_y flags were not defined without FGL_AS_PRIVATE
 	- Fixed[Win32]: Included <Windows.h> instead of <windows.h>, which broke cross-compiling with MinGW on case-sensitive file systems
 
 	# v1.0.0:
@@ -589,6 +592,20 @@ extern "C" {
 		bool forwardCompability;
 	} fglOpenGLContextCreationParameters;
 
+	//! Version and profile of an OpenGL context
+	typedef struct fglOpenGLContextVersion {
+		//! Major version, read from the GL_VERSION string
+		uint32_t majorVersion;
+		//! Minor version, read from the GL_VERSION string
+		uint32_t minorVersion;
+		//! Profile type, always fglOpenGLProfileType_LegacyProfile before OpenGL 3.2 and for OpenGL ES
+		fglOpenGLProfileType profile;
+		//! Is it a forward compatible context, without the deprecated functions (OpenGL 3.0 or higher)
+		bool isForwardCompatible;
+		//! Is it an OpenGL ES context (GL_VERSION starts with "OpenGL ES"), the isGL_VERSION_x_y flags are never set for it
+		bool isEmbedded;
+	} fglOpenGLContextVersion;
+
 	//! Sets the context parameters to default values
 	fgl_api void fglSetDefaultOpenGLContextCreationParameters(fglOpenGLContextCreationParameters *outParams);
 
@@ -598,14 +615,17 @@ extern "C" {
 	//! Destroy the given OpenGL context
 	fgl_api void fglDestroyOpenGLContext(fglOpenGLContext *context);
 
-	//! Does all the things to get OpenGL up and running
+	//! Does all the things to get OpenGL up and running, loads the OpenGL functions like fglLoadOpenGLFunctions() when loadFunctions is set
 	fgl_api bool fglLoadOpenGL(const bool loadFunctions);
 
 	//! Releases all resources allocated for OpenGL
 	fgl_api void fglUnloadOpenGL();
 
-	//! Load all OpenGL functions
+	//! Loads all OpenGL functions for the current context and sets each isGL_VERSION_x_y flag up to the context version, when every function of that version is loaded - a core profile or forward compatible context does not need the compatibility-only functions, the first missing function goes into fglGetLastError()
 	fgl_api void fglLoadOpenGLFunctions();
+
+	//! Queries the version and profile of the current OpenGL context, the version comes from the GL_VERSION string - requires loaded OpenGL functions
+	fgl_api bool fglGetOpenGLContextVersion(fglOpenGLContextVersion *outVersion);
 
 	//! Presents the current frame for the given OpenGL context
 	fgl_api void fglPresentOpenGL(const fglOpenGLContext *context);
@@ -622,6 +642,7 @@ extern "C" {
 	// *******************************************************************************
 #	ifndef GL_VERSION_1_1
 #		define GL_VERSION_1_1 1
+		//! Is OpenGL 1.1 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_1_1;
 
 		typedef unsigned int GLenum;
@@ -2243,6 +2264,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_1_2
 #		define GL_VERSION_1_2 1
+		//! Is OpenGL 1.2 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_1_2;
 
 #		define GL_UNSIGNED_BYTE_3_3_2 0x8032
@@ -2303,6 +2325,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_1_3
 #		define GL_VERSION_1_3 1
+		//! Is OpenGL 1.3 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_1_3;
 
 #		define GL_TEXTURE0 0x84C0
@@ -2544,6 +2567,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_1_4
 #		define GL_VERSION_1_4 1
+		//! Is OpenGL 1.4 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_1_4;
 
 #		define GL_BLEND_DST_RGB 0x80C8
@@ -2742,6 +2766,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_1_5
 #		define GL_VERSION_1_5 1
+		//! Is OpenGL 1.5 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_1_5;
 
 		typedef ptrdiff_t GLsizeiptr;
@@ -2859,6 +2884,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_2_0
 #		define GL_VERSION_2_0 1
+		//! Is OpenGL 2.0 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_2_0;
 
 		typedef char GLchar;
@@ -3231,6 +3257,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_2_1
 #		define GL_VERSION_2_1 1
+		//! Is OpenGL 2.1 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_2_1;
 
 #		define GL_PIXEL_PACK_BUFFER 0x88EB
@@ -3279,6 +3306,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_3_0
 #		define GL_VERSION_3_0 1
+		//! Is OpenGL 3.0 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_3_0;
 
 #		define GL_COMPARE_REF_TO_TEXTURE 0x884E
@@ -3775,6 +3803,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_3_1
 #		define GL_VERSION_3_1 1
+		//! Is OpenGL 3.1 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_3_1;
 
 #		define GL_SAMPLER_2D_RECT 0x8B63
@@ -3879,6 +3908,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_3_2
 #		define GL_VERSION_3_2 1
+		//! Is OpenGL 3.2 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_3_2;
 
 		typedef struct __GLsync *GLsync;
@@ -4011,6 +4041,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_3_3
 #		define GL_VERSION_3_3 1
+		//! Is OpenGL 3.3 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_3_3;
 
 #		define GL_VERTEX_ATTRIB_ARRAY_DIVISOR 0x88FE
@@ -4208,6 +4239,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_0
 #		define GL_VERSION_4_0 1
+		//! Is OpenGL 4.0 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_0;
 
 #		define GL_SAMPLE_SHADING 0x8C36
@@ -4430,6 +4462,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_1
 #		define GL_VERSION_4_1 1
+		//! Is OpenGL 4.1 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_1;
 
 #		define GL_FIXED 0x140C
@@ -4736,6 +4769,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_2
 #		define GL_VERSION_4_2 1
+		//! Is OpenGL 4.2 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_2;
 
 #		define GL_COPY_READ_BUFFER_BINDING 0x8F36
@@ -4891,6 +4925,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_3
 #		define GL_VERSION_4_3 1
+		//! Is OpenGL 4.3 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_3;
 
 		typedef void (FGL_APIENTRY *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);
@@ -5288,6 +5323,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_4
 #		define GL_VERSION_4_4 1
+		//! Is OpenGL 4.4 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_4;
 
 #		define GL_MAX_VERTEX_ATTRIB_STRIDE 0x82E5
@@ -5341,6 +5377,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_5
 #		define GL_VERSION_4_5 1
+		//! Is OpenGL 4.5 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_5;
 
 #		define GL_CONTEXT_LOST 0x0507
@@ -5736,6 +5773,7 @@ extern "C" {
 
 #	ifndef GL_VERSION_4_6
 #		define GL_VERSION_4_6 1
+		//! Is OpenGL 4.6 available, see fglLoadOpenGLFunctions()
 		fgl_api bool isGL_VERSION_4_6;
 
 #		define GL_SHADER_BINARY_FORMAT_SPIR_V 0x9551
@@ -5802,6 +5840,7 @@ fgl_api const char *fglGetVersion(void) {
 		//
 		// *******************************************************************************
 #		if GL_VERSION_1_1
+			bool isGL_VERSION_1_1 = false;
 			fgl_func_glAccum* fgl_glAccum = fgl_null;
 			fgl_func_glAlphaFunc* fgl_glAlphaFunc = fgl_null;
 			fgl_func_glAreTexturesResident* fgl_glAreTexturesResident = fgl_null;
@@ -6141,6 +6180,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_1_1
 
 #		if GL_VERSION_1_2
+			bool isGL_VERSION_1_2 = false;
 			fgl_func_glDrawRangeElements* fgl_glDrawRangeElements = fgl_null;
 			fgl_func_glTexImage3D* fgl_glTexImage3D = fgl_null;
 			fgl_func_glTexSubImage3D* fgl_glTexSubImage3D = fgl_null;
@@ -6148,6 +6188,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_1_2
 
 #		if GL_VERSION_1_3
+			bool isGL_VERSION_1_3 = false;
 			fgl_func_glActiveTexture* fgl_glActiveTexture = fgl_null;
 			fgl_func_glSampleCoverage* fgl_glSampleCoverage = fgl_null;
 			fgl_func_glCompressedTexImage3D* fgl_glCompressedTexImage3D = fgl_null;
@@ -6197,6 +6238,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_1_3
 
 #		if GL_VERSION_1_4
+			bool isGL_VERSION_1_4 = false;
 			fgl_func_glBlendFuncSeparate* fgl_glBlendFuncSeparate = fgl_null;
 			fgl_func_glMultiDrawArrays* fgl_glMultiDrawArrays = fgl_null;
 			fgl_func_glMultiDrawElements* fgl_glMultiDrawElements = fgl_null;
@@ -6247,6 +6289,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_1_4
 
 #		if GL_VERSION_1_5
+			bool isGL_VERSION_1_5 = false;
 			fgl_func_glGenQueries* fgl_glGenQueries = fgl_null;
 			fgl_func_glDeleteQueries* fgl_glDeleteQueries = fgl_null;
 			fgl_func_glIsQuery* fgl_glIsQuery = fgl_null;
@@ -6269,6 +6312,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_1_5
 
 #		if GL_VERSION_2_0
+			bool isGL_VERSION_2_0 = false;
 			fgl_func_glBlendEquationSeparate* fgl_glBlendEquationSeparate = fgl_null;
 			fgl_func_glDrawBuffers* fgl_glDrawBuffers = fgl_null;
 			fgl_func_glStencilOpSeparate* fgl_glStencilOpSeparate = fgl_null;
@@ -6365,6 +6409,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_2_0
 
 #		if GL_VERSION_2_1
+			bool isGL_VERSION_2_1 = false;
 			fgl_func_glUniformMatrix2x3fv* fgl_glUniformMatrix2x3fv = fgl_null;
 			fgl_func_glUniformMatrix3x2fv* fgl_glUniformMatrix3x2fv = fgl_null;
 			fgl_func_glUniformMatrix2x4fv* fgl_glUniformMatrix2x4fv = fgl_null;
@@ -6374,6 +6419,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_2_1
 
 #		if GL_VERSION_3_0
+			bool isGL_VERSION_3_0 = false;
 			fgl_func_glColorMaski* fgl_glColorMaski = fgl_null;
 			fgl_func_glGetBooleani_v* fgl_glGetBooleani_v = fgl_null;
 			fgl_func_glGetIntegeri_v* fgl_glGetIntegeri_v = fgl_null;
@@ -6461,6 +6507,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_3_0
 
 #		if GL_VERSION_3_1
+			bool isGL_VERSION_3_1 = false;
 			fgl_func_glDrawArraysInstanced* fgl_glDrawArraysInstanced = fgl_null;
 			fgl_func_glDrawElementsInstanced* fgl_glDrawElementsInstanced = fgl_null;
 			fgl_func_glTexBuffer* fgl_glTexBuffer = fgl_null;
@@ -6476,6 +6523,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_3_1
 
 #		if GL_VERSION_3_2
+			bool isGL_VERSION_3_2 = false;
 			fgl_func_glDrawElementsBaseVertex* fgl_glDrawElementsBaseVertex = fgl_null;
 			fgl_func_glDrawRangeElementsBaseVertex* fgl_glDrawRangeElementsBaseVertex = fgl_null;
 			fgl_func_glDrawElementsInstancedBaseVertex* fgl_glDrawElementsInstancedBaseVertex = fgl_null;
@@ -6498,6 +6546,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_3_2
 
 #		if GL_VERSION_3_3
+			bool isGL_VERSION_3_3 = false;
 			fgl_func_glBindFragDataLocationIndexed* fgl_glBindFragDataLocationIndexed = fgl_null;
 			fgl_func_glGetFragDataIndex* fgl_glGetFragDataIndex = fgl_null;
 			fgl_func_glGenSamplers* fgl_glGenSamplers = fgl_null;
@@ -6559,6 +6608,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_3_3
 
 #		if GL_VERSION_4_0
+			bool isGL_VERSION_4_0 = false;
 			fgl_func_glMinSampleShading* fgl_glMinSampleShading = fgl_null;
 			fgl_func_glBlendEquationi* fgl_glBlendEquationi = fgl_null;
 			fgl_func_glBlendEquationSeparatei* fgl_glBlendEquationSeparatei = fgl_null;
@@ -6608,6 +6658,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_0
 
 #		if GL_VERSION_4_1
+			bool isGL_VERSION_4_1 = false;
 			fgl_func_glReleaseShaderCompiler* fgl_glReleaseShaderCompiler = fgl_null;
 			fgl_func_glShaderBinary* fgl_glShaderBinary = fgl_null;
 			fgl_func_glGetShaderPrecisionFormat* fgl_glGetShaderPrecisionFormat = fgl_null;
@@ -6699,6 +6750,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_1
 
 #		if GL_VERSION_4_2
+			bool isGL_VERSION_4_2 = false;
 			fgl_func_glDrawArraysInstancedBaseInstance* fgl_glDrawArraysInstancedBaseInstance = fgl_null;
 			fgl_func_glDrawElementsInstancedBaseInstance* fgl_glDrawElementsInstancedBaseInstance = fgl_null;
 			fgl_func_glDrawElementsInstancedBaseVertexBaseInstance* fgl_glDrawElementsInstancedBaseVertexBaseInstance = fgl_null;
@@ -6714,6 +6766,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_2
 
 #		if GL_VERSION_4_3
+			bool isGL_VERSION_4_3 = false;
 			fgl_func_glClearBufferData* fgl_glClearBufferData = fgl_null;
 			fgl_func_glClearBufferSubData* fgl_glClearBufferSubData = fgl_null;
 			fgl_func_glDispatchCompute* fgl_glDispatchCompute = fgl_null;
@@ -6760,6 +6813,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_3
 
 #		if GL_VERSION_4_4
+			bool isGL_VERSION_4_4 = false;
 			fgl_func_glBufferStorage* fgl_glBufferStorage = fgl_null;
 			fgl_func_glClearTexImage* fgl_glClearTexImage = fgl_null;
 			fgl_func_glClearTexSubImage* fgl_glClearTexSubImage = fgl_null;
@@ -6772,6 +6826,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_4
 
 #		if GL_VERSION_4_5
+			bool isGL_VERSION_4_5 = false;
 			fgl_func_glClipControl* fgl_glClipControl = fgl_null;
 			fgl_func_glCreateTransformFeedbacks* fgl_glCreateTransformFeedbacks = fgl_null;
 			fgl_func_glTransformFeedbackBufferBase* fgl_glTransformFeedbackBufferBase = fgl_null;
@@ -6897,6 +6952,7 @@ fgl_api const char *fglGetVersion(void) {
 #		endif //GL_VERSION_4_5
 
 #		if GL_VERSION_4_6
+			bool isGL_VERSION_4_6 = false;
 			fgl_func_glSpecializeShader* fgl_glSpecializeShader = fgl_null;
 			fgl_func_glMultiDrawArraysIndirectCount* fgl_glMultiDrawArraysIndirectCount = fgl_null;
 			fgl_func_glMultiDrawElementsIndirectCount* fgl_glMultiDrawElementsIndirectCount = fgl_null;
@@ -7583,8 +7639,195 @@ static void *fgl__GetOpenGLProcAddress(const fglOpenGLState *state, const char *
 	return(result);
 }
 
+static bool fgl__IsDigit(const char c) {
+	bool result = (c >= '0') && (c <= '9');
+	return(result);
+}
+
+static bool fgl__IsStringPrefix(const char *str, const char *prefix) {
+	while(*prefix != 0) {
+		if(*str != *prefix) {
+			return false;
+		}
+		++str;
+		++prefix;
+	}
+	return true;
+}
+
+// Reads the decimal number at the cursor and moves the cursor behind it, false when no digit is there
+static bool fgl__ParseUnsignedNumber(const char **cursor, uint32_t *outValue) {
+	const uint32_t decimalBase = 10;
+	const char *p = *cursor;
+	if(!fgl__IsDigit(*p)) {
+		return false;
+	}
+	uint32_t value = 0;
+	while(fgl__IsDigit(*p)) {
+		uint32_t digit = (uint32_t)(*p - '0');
+		value = value * decimalBase + digit;
+		++p;
+	}
+	*cursor = p;
+	*outValue = value;
+	return true;
+}
+
+// Parses "<major>.<minor>[.<release>][ <vendor information>]", OpenGL ES puts "OpenGL ES " (or "OpenGL ES-CM " for 1.x) in front of it
+static bool fgl__ParseOpenGLVersionString(const char *versionString, fglOpenGLContextVersion *outVersion) {
+	const char *embeddedPrefix = "OpenGL ES";
+	outVersion->isEmbedded = fgl__IsStringPrefix(versionString, embeddedPrefix);
+	const char *cursor = versionString;
+	while(*cursor != 0 && !fgl__IsDigit(*cursor)) {
+		++cursor;
+	}
+	uint32_t majorVersion = 0;
+	uint32_t minorVersion = 0;
+	if(!fgl__ParseUnsignedNumber(&cursor, &majorVersion)) {
+		return false;
+	}
+	if(*cursor != '.') {
+		return false;
+	}
+	++cursor;
+	if(!fgl__ParseUnsignedNumber(&cursor, &minorVersion)) {
+		return false;
+	}
+	outVersion->majorVersion = majorVersion;
+	outVersion->minorVersion = minorVersion;
+	return true;
+}
+
+static bool fgl__IsOpenGLVersionAtLeast(const fglOpenGLContextVersion *version, const uint32_t majorVersion, const uint32_t minorVersion) {
+	bool isMajorHigher = version->majorVersion > majorVersion;
+	bool isMinorReached = (version->majorVersion == majorVersion) && (version->minorVersion >= minorVersion);
+	bool result = isMajorHigher || isMinorReached;
+	return(result);
+}
+
+static bool fgl__QueryOpenGLContextVersion(fgl_func_glGetString *getString, fgl_func_glGetIntegerv *getIntegerv, fglOpenGLContextVersion *outVersion) {
+	fgl__ClearMemory(outVersion, sizeof(*outVersion));
+	outVersion->profile = fglOpenGLProfileType_LegacyProfile;
+	if(getString == fgl_null || getIntegerv == fgl_null) {
+		fgl__SetLastError("Failed querying the OpenGL context version, glGetString or glGetIntegerv is not loaded!");
+		return false;
+	}
+
+	// The text is the only source that every version has, GL_MAJOR_VERSION/GL_MINOR_VERSION only exist since OpenGL 3.0 and a virtual GPU (fvm3dx) answered them with the version of its host in a 2.1 context
+	const char *versionString = (const char *)getString(GL_VERSION);
+	if(versionString == fgl_null) {
+		fgl__SetLastError("Failed reading GL_VERSION, no OpenGL context is current!");
+		return false;
+	}
+	if(!fgl__ParseOpenGLVersionString(versionString, outVersion)) {
+		fgl__SetLastError("Failed parsing the OpenGL version string '%s'!", versionString);
+		return false;
+	}
+	if(outVersion->isEmbedded) {
+		return true;
+	}
+
+	// Older versions do not know these queries, so they are only made when the version string allows them
+	const uint32_t contextFlagsMajorVersion = 3;
+	const uint32_t contextFlagsMinorVersion = 0;
+	const uint32_t profileMaskMajorVersion = 3;
+	const uint32_t profileMaskMinorVersion = 2;
+	bool hasContextFlags = fgl__IsOpenGLVersionAtLeast(outVersion, contextFlagsMajorVersion, contextFlagsMinorVersion);
+	if(hasContextFlags) {
+		GLint contextFlags = 0;
+		getIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+		outVersion->isForwardCompatible = (contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) != 0;
+	}
+	bool hasProfileMask = fgl__IsOpenGLVersionAtLeast(outVersion, profileMaskMajorVersion, profileMaskMinorVersion);
+	if(hasProfileMask) {
+		GLint profileMask = 0;
+		getIntegerv(GL_CONTEXT_PROFILE_MASK, &profileMask);
+		if((profileMask & GL_CONTEXT_CORE_PROFILE_BIT) != 0) {
+			outVersion->profile = fglOpenGLProfileType_CoreProfile;
+		} else if((profileMask & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) != 0) {
+			outVersion->profile = fglOpenGLProfileType_CompabilityProfile;
+		}
+	}
+	return true;
+}
+
+// Loads one version block after the other and decides at the end of each block, whether its isGL_VERSION_x_y flag is set
+typedef struct fgl__OpenGLFunctionLoader {
+	const fglOpenGLState *state;
+	fglOpenGLContextVersion contextVersion;
+	// Name of the version block that is loaded right now, e.g. "GL_VERSION_3_3"
+	const char *blockName;
+	// First function of the current block that is required but could not be loaded
+	const char *firstMissingName;
+	uint32_t blockMajorVersion;
+	uint32_t blockMinorVersion;
+	bool isContextVersionValid;
+	// A core profile or a forward compatible context does not need to have the compatibility-only functions
+	bool isCompatibilityOptional;
+	// Only the first incomplete block goes into the last error, it is the cause for the ones after it
+	bool isMissingReported;
+} fgl__OpenGLFunctionLoader;
+
+static void fgl__BeginOpenGLFunctionBlock(fgl__OpenGLFunctionLoader *loader, const char *blockName, const uint32_t majorVersion, const uint32_t minorVersion) {
+	loader->blockName = blockName;
+	loader->firstMissingName = fgl_null;
+	loader->blockMajorVersion = majorVersion;
+	loader->blockMinorVersion = minorVersion;
+}
+
+static void fgl__RememberMissingOpenGLFunction(fgl__OpenGLFunctionLoader *loader, const char *name) {
+	if(loader->firstMissingName == fgl_null) {
+		loader->firstMissingName = name;
+	}
+}
+
+static void *fgl__LoadOpenGLCoreFunction(fgl__OpenGLFunctionLoader *loader, const char *name) {
+	void *result = fgl__GetOpenGLProcAddress(loader->state, name);
+	if(result == fgl_null) {
+		fgl__RememberMissingOpenGLFunction(loader, name);
+	}
+	return(result);
+}
+
+static void *fgl__LoadOpenGLCompatibilityFunction(fgl__OpenGLFunctionLoader *loader, const char *name) {
+	void *result = fgl__GetOpenGLProcAddress(loader->state, name);
+	if(result == fgl_null && !loader->isCompatibilityOptional) {
+		fgl__RememberMissingOpenGLFunction(loader, name);
+	}
+	return(result);
+}
+
+// Returns the value for the isGL_VERSION_x_y flag of the current block
+static bool fgl__EndOpenGLFunctionBlock(fgl__OpenGLFunctionLoader *loader) {
+	const fglOpenGLContextVersion *contextVersion = &loader->contextVersion;
+	if(!loader->isContextVersionValid || contextVersion->isEmbedded) {
+		return false;
+	}
+	bool isVersionSupported = fgl__IsOpenGLVersionAtLeast(contextVersion, loader->blockMajorVersion, loader->blockMinorVersion);
+	if(!isVersionSupported) {
+		return false;
+	}
+	if(loader->firstMissingName != fgl_null) {
+		if(!loader->isMissingReported) {
+			fgl__SetLastError("Missing OpenGL function '%s' of %s, although the context has version %u.%u!", loader->firstMissingName, loader->blockName, contextVersion->majorVersion, contextVersion->minorVersion);
+			loader->isMissingReported = true;
+		}
+		return false;
+	}
+	return true;
+}
+
 static void fgl__LoadOpenGLExtensions(const fglOpenGLState *state) {
 	assert(state != fgl_null);
+
+	// The version of the context decides which blocks must be complete, so it is read before any block is loaded
+	fgl_func_glGetString *getString = (fgl_func_glGetString *)fgl__GetOpenGLProcAddress(state, "glGetString");
+	fgl_func_glGetIntegerv *getIntegerv = (fgl_func_glGetIntegerv *)fgl__GetOpenGLProcAddress(state, "glGetIntegerv");
+	fgl__OpenGLFunctionLoader loader = FGL_ZERO_INIT;
+	loader.state = state;
+	loader.isContextVersionValid = fgl__QueryOpenGLContextVersion(getString, getIntegerv, &loader.contextVersion);
+	bool isCoreProfile = loader.contextVersion.profile == fglOpenGLProfileType_CoreProfile;
+	loader.isCompatibilityOptional = isCoreProfile || loader.contextVersion.isForwardCompatible;
 
 	// *******************************************************************************
 	//
@@ -7594,1105 +7837,1141 @@ static void fgl__LoadOpenGLExtensions(const fglOpenGLState *state) {
 	//
 	// *******************************************************************************
 #	if GL_VERSION_1_1
-		fgl_glAccum = (fgl_func_glAccum *)fgl__GetOpenGLProcAddress(state, "glAccum");
-		fgl_glAlphaFunc = (fgl_func_glAlphaFunc *)fgl__GetOpenGLProcAddress(state, "glAlphaFunc");
-		fgl_glAreTexturesResident = (fgl_func_glAreTexturesResident *)fgl__GetOpenGLProcAddress(state, "glAreTexturesResident");
-		fgl_glArrayElement = (fgl_func_glArrayElement *)fgl__GetOpenGLProcAddress(state, "glArrayElement");
-		fgl_glBegin = (fgl_func_glBegin *)fgl__GetOpenGLProcAddress(state, "glBegin");
-		fgl_glBindTexture = (fgl_func_glBindTexture *)fgl__GetOpenGLProcAddress(state, "glBindTexture");
-		fgl_glBitmap = (fgl_func_glBitmap *)fgl__GetOpenGLProcAddress(state, "glBitmap");
-		fgl_glBlendFunc = (fgl_func_glBlendFunc *)fgl__GetOpenGLProcAddress(state, "glBlendFunc");
-		fgl_glCallList = (fgl_func_glCallList *)fgl__GetOpenGLProcAddress(state, "glCallList");
-		fgl_glCallLists = (fgl_func_glCallLists *)fgl__GetOpenGLProcAddress(state, "glCallLists");
-		fgl_glClear = (fgl_func_glClear *)fgl__GetOpenGLProcAddress(state, "glClear");
-		fgl_glClearAccum = (fgl_func_glClearAccum *)fgl__GetOpenGLProcAddress(state, "glClearAccum");
-		fgl_glClearColor = (fgl_func_glClearColor *)fgl__GetOpenGLProcAddress(state, "glClearColor");
-		fgl_glClearDepth = (fgl_func_glClearDepth *)fgl__GetOpenGLProcAddress(state, "glClearDepth");
-		fgl_glClearIndex = (fgl_func_glClearIndex *)fgl__GetOpenGLProcAddress(state, "glClearIndex");
-		fgl_glClearStencil = (fgl_func_glClearStencil *)fgl__GetOpenGLProcAddress(state, "glClearStencil");
-		fgl_glClipPlane = (fgl_func_glClipPlane *)fgl__GetOpenGLProcAddress(state, "glClipPlane");
-		fgl_glColor3b = (fgl_func_glColor3b *)fgl__GetOpenGLProcAddress(state, "glColor3b");
-		fgl_glColor3bv = (fgl_func_glColor3bv *)fgl__GetOpenGLProcAddress(state, "glColor3bv");
-		fgl_glColor3d = (fgl_func_glColor3d *)fgl__GetOpenGLProcAddress(state, "glColor3d");
-		fgl_glColor3dv = (fgl_func_glColor3dv *)fgl__GetOpenGLProcAddress(state, "glColor3dv");
-		fgl_glColor3f = (fgl_func_glColor3f *)fgl__GetOpenGLProcAddress(state, "glColor3f");
-		fgl_glColor3fv = (fgl_func_glColor3fv *)fgl__GetOpenGLProcAddress(state, "glColor3fv");
-		fgl_glColor3i = (fgl_func_glColor3i *)fgl__GetOpenGLProcAddress(state, "glColor3i");
-		fgl_glColor3iv = (fgl_func_glColor3iv *)fgl__GetOpenGLProcAddress(state, "glColor3iv");
-		fgl_glColor3s = (fgl_func_glColor3s *)fgl__GetOpenGLProcAddress(state, "glColor3s");
-		fgl_glColor3sv = (fgl_func_glColor3sv *)fgl__GetOpenGLProcAddress(state, "glColor3sv");
-		fgl_glColor3ub = (fgl_func_glColor3ub *)fgl__GetOpenGLProcAddress(state, "glColor3ub");
-		fgl_glColor3ubv = (fgl_func_glColor3ubv *)fgl__GetOpenGLProcAddress(state, "glColor3ubv");
-		fgl_glColor3ui = (fgl_func_glColor3ui *)fgl__GetOpenGLProcAddress(state, "glColor3ui");
-		fgl_glColor3uiv = (fgl_func_glColor3uiv *)fgl__GetOpenGLProcAddress(state, "glColor3uiv");
-		fgl_glColor3us = (fgl_func_glColor3us *)fgl__GetOpenGLProcAddress(state, "glColor3us");
-		fgl_glColor3usv = (fgl_func_glColor3usv *)fgl__GetOpenGLProcAddress(state, "glColor3usv");
-		fgl_glColor4b = (fgl_func_glColor4b *)fgl__GetOpenGLProcAddress(state, "glColor4b");
-		fgl_glColor4bv = (fgl_func_glColor4bv *)fgl__GetOpenGLProcAddress(state, "glColor4bv");
-		fgl_glColor4d = (fgl_func_glColor4d *)fgl__GetOpenGLProcAddress(state, "glColor4d");
-		fgl_glColor4dv = (fgl_func_glColor4dv *)fgl__GetOpenGLProcAddress(state, "glColor4dv");
-		fgl_glColor4f = (fgl_func_glColor4f *)fgl__GetOpenGLProcAddress(state, "glColor4f");
-		fgl_glColor4fv = (fgl_func_glColor4fv *)fgl__GetOpenGLProcAddress(state, "glColor4fv");
-		fgl_glColor4i = (fgl_func_glColor4i *)fgl__GetOpenGLProcAddress(state, "glColor4i");
-		fgl_glColor4iv = (fgl_func_glColor4iv *)fgl__GetOpenGLProcAddress(state, "glColor4iv");
-		fgl_glColor4s = (fgl_func_glColor4s *)fgl__GetOpenGLProcAddress(state, "glColor4s");
-		fgl_glColor4sv = (fgl_func_glColor4sv *)fgl__GetOpenGLProcAddress(state, "glColor4sv");
-		fgl_glColor4ub = (fgl_func_glColor4ub *)fgl__GetOpenGLProcAddress(state, "glColor4ub");
-		fgl_glColor4ubv = (fgl_func_glColor4ubv *)fgl__GetOpenGLProcAddress(state, "glColor4ubv");
-		fgl_glColor4ui = (fgl_func_glColor4ui *)fgl__GetOpenGLProcAddress(state, "glColor4ui");
-		fgl_glColor4uiv = (fgl_func_glColor4uiv *)fgl__GetOpenGLProcAddress(state, "glColor4uiv");
-		fgl_glColor4us = (fgl_func_glColor4us *)fgl__GetOpenGLProcAddress(state, "glColor4us");
-		fgl_glColor4usv = (fgl_func_glColor4usv *)fgl__GetOpenGLProcAddress(state, "glColor4usv");
-		fgl_glColorMask = (fgl_func_glColorMask *)fgl__GetOpenGLProcAddress(state, "glColorMask");
-		fgl_glColorMaterial = (fgl_func_glColorMaterial *)fgl__GetOpenGLProcAddress(state, "glColorMaterial");
-		fgl_glColorPointer = (fgl_func_glColorPointer *)fgl__GetOpenGLProcAddress(state, "glColorPointer");
-		fgl_glCopyPixels = (fgl_func_glCopyPixels *)fgl__GetOpenGLProcAddress(state, "glCopyPixels");
-		fgl_glCopyTexImage1D = (fgl_func_glCopyTexImage1D *)fgl__GetOpenGLProcAddress(state, "glCopyTexImage1D");
-		fgl_glCopyTexImage2D = (fgl_func_glCopyTexImage2D *)fgl__GetOpenGLProcAddress(state, "glCopyTexImage2D");
-		fgl_glCopyTexSubImage1D = (fgl_func_glCopyTexSubImage1D *)fgl__GetOpenGLProcAddress(state, "glCopyTexSubImage1D");
-		fgl_glCopyTexSubImage2D = (fgl_func_glCopyTexSubImage2D *)fgl__GetOpenGLProcAddress(state, "glCopyTexSubImage2D");
-		fgl_glCullFace = (fgl_func_glCullFace *)fgl__GetOpenGLProcAddress(state, "glCullFace");
-		fgl_glDeleteLists = (fgl_func_glDeleteLists *)fgl__GetOpenGLProcAddress(state, "glDeleteLists");
-		fgl_glDeleteTextures = (fgl_func_glDeleteTextures *)fgl__GetOpenGLProcAddress(state, "glDeleteTextures");
-		fgl_glDepthFunc = (fgl_func_glDepthFunc *)fgl__GetOpenGLProcAddress(state, "glDepthFunc");
-		fgl_glDepthMask = (fgl_func_glDepthMask *)fgl__GetOpenGLProcAddress(state, "glDepthMask");
-		fgl_glDepthRange = (fgl_func_glDepthRange *)fgl__GetOpenGLProcAddress(state, "glDepthRange");
-		fgl_glDisable = (fgl_func_glDisable *)fgl__GetOpenGLProcAddress(state, "glDisable");
-		fgl_glDisableClientState = (fgl_func_glDisableClientState *)fgl__GetOpenGLProcAddress(state, "glDisableClientState");
-		fgl_glDrawArrays = (fgl_func_glDrawArrays *)fgl__GetOpenGLProcAddress(state, "glDrawArrays");
-		fgl_glDrawBuffer = (fgl_func_glDrawBuffer *)fgl__GetOpenGLProcAddress(state, "glDrawBuffer");
-		fgl_glDrawElements = (fgl_func_glDrawElements *)fgl__GetOpenGLProcAddress(state, "glDrawElements");
-		fgl_glDrawPixels = (fgl_func_glDrawPixels *)fgl__GetOpenGLProcAddress(state, "glDrawPixels");
-		fgl_glEdgeFlag = (fgl_func_glEdgeFlag *)fgl__GetOpenGLProcAddress(state, "glEdgeFlag");
-		fgl_glEdgeFlagPointer = (fgl_func_glEdgeFlagPointer *)fgl__GetOpenGLProcAddress(state, "glEdgeFlagPointer");
-		fgl_glEdgeFlagv = (fgl_func_glEdgeFlagv *)fgl__GetOpenGLProcAddress(state, "glEdgeFlagv");
-		fgl_glEnable = (fgl_func_glEnable *)fgl__GetOpenGLProcAddress(state, "glEnable");
-		fgl_glEnableClientState = (fgl_func_glEnableClientState *)fgl__GetOpenGLProcAddress(state, "glEnableClientState");
-		fgl_glEnd = (fgl_func_glEnd *)fgl__GetOpenGLProcAddress(state, "glEnd");
-		fgl_glEndList = (fgl_func_glEndList *)fgl__GetOpenGLProcAddress(state, "glEndList");
-		fgl_glEvalCoord1d = (fgl_func_glEvalCoord1d *)fgl__GetOpenGLProcAddress(state, "glEvalCoord1d");
-		fgl_glEvalCoord1dv = (fgl_func_glEvalCoord1dv *)fgl__GetOpenGLProcAddress(state, "glEvalCoord1dv");
-		fgl_glEvalCoord1f = (fgl_func_glEvalCoord1f *)fgl__GetOpenGLProcAddress(state, "glEvalCoord1f");
-		fgl_glEvalCoord1fv = (fgl_func_glEvalCoord1fv *)fgl__GetOpenGLProcAddress(state, "glEvalCoord1fv");
-		fgl_glEvalCoord2d = (fgl_func_glEvalCoord2d *)fgl__GetOpenGLProcAddress(state, "glEvalCoord2d");
-		fgl_glEvalCoord2dv = (fgl_func_glEvalCoord2dv *)fgl__GetOpenGLProcAddress(state, "glEvalCoord2dv");
-		fgl_glEvalCoord2f = (fgl_func_glEvalCoord2f *)fgl__GetOpenGLProcAddress(state, "glEvalCoord2f");
-		fgl_glEvalCoord2fv = (fgl_func_glEvalCoord2fv *)fgl__GetOpenGLProcAddress(state, "glEvalCoord2fv");
-		fgl_glEvalMesh1 = (fgl_func_glEvalMesh1 *)fgl__GetOpenGLProcAddress(state, "glEvalMesh1");
-		fgl_glEvalMesh2 = (fgl_func_glEvalMesh2 *)fgl__GetOpenGLProcAddress(state, "glEvalMesh2");
-		fgl_glEvalPoint1 = (fgl_func_glEvalPoint1 *)fgl__GetOpenGLProcAddress(state, "glEvalPoint1");
-		fgl_glEvalPoint2 = (fgl_func_glEvalPoint2 *)fgl__GetOpenGLProcAddress(state, "glEvalPoint2");
-		fgl_glFeedbackBuffer = (fgl_func_glFeedbackBuffer *)fgl__GetOpenGLProcAddress(state, "glFeedbackBuffer");
-		fgl_glFinish = (fgl_func_glFinish *)fgl__GetOpenGLProcAddress(state, "glFinish");
-		fgl_glFlush = (fgl_func_glFlush *)fgl__GetOpenGLProcAddress(state, "glFlush");
-		fgl_glFogf = (fgl_func_glFogf *)fgl__GetOpenGLProcAddress(state, "glFogf");
-		fgl_glFogfv = (fgl_func_glFogfv *)fgl__GetOpenGLProcAddress(state, "glFogfv");
-		fgl_glFogi = (fgl_func_glFogi *)fgl__GetOpenGLProcAddress(state, "glFogi");
-		fgl_glFogiv = (fgl_func_glFogiv *)fgl__GetOpenGLProcAddress(state, "glFogiv");
-		fgl_glFrontFace = (fgl_func_glFrontFace *)fgl__GetOpenGLProcAddress(state, "glFrontFace");
-		fgl_glFrustum = (fgl_func_glFrustum *)fgl__GetOpenGLProcAddress(state, "glFrustum");
-		fgl_glGenLists = (fgl_func_glGenLists *)fgl__GetOpenGLProcAddress(state, "glGenLists");
-		fgl_glGenTextures = (fgl_func_glGenTextures *)fgl__GetOpenGLProcAddress(state, "glGenTextures");
-		fgl_glGetBooleanv = (fgl_func_glGetBooleanv *)fgl__GetOpenGLProcAddress(state, "glGetBooleanv");
-		fgl_glGetClipPlane = (fgl_func_glGetClipPlane *)fgl__GetOpenGLProcAddress(state, "glGetClipPlane");
-		fgl_glGetDoublev = (fgl_func_glGetDoublev *)fgl__GetOpenGLProcAddress(state, "glGetDoublev");
-		fgl_glGetError = (fgl_func_glGetError *)fgl__GetOpenGLProcAddress(state, "glGetError");
-		fgl_glGetFloatv = (fgl_func_glGetFloatv *)fgl__GetOpenGLProcAddress(state, "glGetFloatv");
-		fgl_glGetIntegerv = (fgl_func_glGetIntegerv *)fgl__GetOpenGLProcAddress(state, "glGetIntegerv");
-		fgl_glGetLightfv = (fgl_func_glGetLightfv *)fgl__GetOpenGLProcAddress(state, "glGetLightfv");
-		fgl_glGetLightiv = (fgl_func_glGetLightiv *)fgl__GetOpenGLProcAddress(state, "glGetLightiv");
-		fgl_glGetMapdv = (fgl_func_glGetMapdv *)fgl__GetOpenGLProcAddress(state, "glGetMapdv");
-		fgl_glGetMapfv = (fgl_func_glGetMapfv *)fgl__GetOpenGLProcAddress(state, "glGetMapfv");
-		fgl_glGetMapiv = (fgl_func_glGetMapiv *)fgl__GetOpenGLProcAddress(state, "glGetMapiv");
-		fgl_glGetMaterialfv = (fgl_func_glGetMaterialfv *)fgl__GetOpenGLProcAddress(state, "glGetMaterialfv");
-		fgl_glGetMaterialiv = (fgl_func_glGetMaterialiv *)fgl__GetOpenGLProcAddress(state, "glGetMaterialiv");
-		fgl_glGetPixelMapfv = (fgl_func_glGetPixelMapfv *)fgl__GetOpenGLProcAddress(state, "glGetPixelMapfv");
-		fgl_glGetPixelMapuiv = (fgl_func_glGetPixelMapuiv *)fgl__GetOpenGLProcAddress(state, "glGetPixelMapuiv");
-		fgl_glGetPixelMapusv = (fgl_func_glGetPixelMapusv *)fgl__GetOpenGLProcAddress(state, "glGetPixelMapusv");
-		fgl_glGetPointerv = (fgl_func_glGetPointerv *)fgl__GetOpenGLProcAddress(state, "glGetPointerv");
-		fgl_glGetPolygonStipple = (fgl_func_glGetPolygonStipple *)fgl__GetOpenGLProcAddress(state, "glGetPolygonStipple");
-		fgl_glGetString = (fgl_func_glGetString *)fgl__GetOpenGLProcAddress(state, "glGetString");
-		fgl_glGetTexEnvfv = (fgl_func_glGetTexEnvfv *)fgl__GetOpenGLProcAddress(state, "glGetTexEnvfv");
-		fgl_glGetTexEnviv = (fgl_func_glGetTexEnviv *)fgl__GetOpenGLProcAddress(state, "glGetTexEnviv");
-		fgl_glGetTexGendv = (fgl_func_glGetTexGendv *)fgl__GetOpenGLProcAddress(state, "glGetTexGendv");
-		fgl_glGetTexGenfv = (fgl_func_glGetTexGenfv *)fgl__GetOpenGLProcAddress(state, "glGetTexGenfv");
-		fgl_glGetTexGeniv = (fgl_func_glGetTexGeniv *)fgl__GetOpenGLProcAddress(state, "glGetTexGeniv");
-		fgl_glGetTexImage = (fgl_func_glGetTexImage *)fgl__GetOpenGLProcAddress(state, "glGetTexImage");
-		fgl_glGetTexLevelParameterfv = (fgl_func_glGetTexLevelParameterfv *)fgl__GetOpenGLProcAddress(state, "glGetTexLevelParameterfv");
-		fgl_glGetTexLevelParameteriv = (fgl_func_glGetTexLevelParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetTexLevelParameteriv");
-		fgl_glGetTexParameterfv = (fgl_func_glGetTexParameterfv *)fgl__GetOpenGLProcAddress(state, "glGetTexParameterfv");
-		fgl_glGetTexParameteriv = (fgl_func_glGetTexParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetTexParameteriv");
-		fgl_glHint = (fgl_func_glHint *)fgl__GetOpenGLProcAddress(state, "glHint");
-		fgl_glIndexMask = (fgl_func_glIndexMask *)fgl__GetOpenGLProcAddress(state, "glIndexMask");
-		fgl_glIndexPointer = (fgl_func_glIndexPointer *)fgl__GetOpenGLProcAddress(state, "glIndexPointer");
-		fgl_glIndexd = (fgl_func_glIndexd *)fgl__GetOpenGLProcAddress(state, "glIndexd");
-		fgl_glIndexdv = (fgl_func_glIndexdv *)fgl__GetOpenGLProcAddress(state, "glIndexdv");
-		fgl_glIndexf = (fgl_func_glIndexf *)fgl__GetOpenGLProcAddress(state, "glIndexf");
-		fgl_glIndexfv = (fgl_func_glIndexfv *)fgl__GetOpenGLProcAddress(state, "glIndexfv");
-		fgl_glIndexi = (fgl_func_glIndexi *)fgl__GetOpenGLProcAddress(state, "glIndexi");
-		fgl_glIndexiv = (fgl_func_glIndexiv *)fgl__GetOpenGLProcAddress(state, "glIndexiv");
-		fgl_glIndexs = (fgl_func_glIndexs *)fgl__GetOpenGLProcAddress(state, "glIndexs");
-		fgl_glIndexsv = (fgl_func_glIndexsv *)fgl__GetOpenGLProcAddress(state, "glIndexsv");
-		fgl_glIndexub = (fgl_func_glIndexub *)fgl__GetOpenGLProcAddress(state, "glIndexub");
-		fgl_glIndexubv = (fgl_func_glIndexubv *)fgl__GetOpenGLProcAddress(state, "glIndexubv");
-		fgl_glInitNames = (fgl_func_glInitNames *)fgl__GetOpenGLProcAddress(state, "glInitNames");
-		fgl_glInterleavedArrays = (fgl_func_glInterleavedArrays *)fgl__GetOpenGLProcAddress(state, "glInterleavedArrays");
-		fgl_glIsEnabled = (fgl_func_glIsEnabled *)fgl__GetOpenGLProcAddress(state, "glIsEnabled");
-		fgl_glIsList = (fgl_func_glIsList *)fgl__GetOpenGLProcAddress(state, "glIsList");
-		fgl_glIsTexture = (fgl_func_glIsTexture *)fgl__GetOpenGLProcAddress(state, "glIsTexture");
-		fgl_glLightModelf = (fgl_func_glLightModelf *)fgl__GetOpenGLProcAddress(state, "glLightModelf");
-		fgl_glLightModelfv = (fgl_func_glLightModelfv *)fgl__GetOpenGLProcAddress(state, "glLightModelfv");
-		fgl_glLightModeli = (fgl_func_glLightModeli *)fgl__GetOpenGLProcAddress(state, "glLightModeli");
-		fgl_glLightModeliv = (fgl_func_glLightModeliv *)fgl__GetOpenGLProcAddress(state, "glLightModeliv");
-		fgl_glLightf = (fgl_func_glLightf *)fgl__GetOpenGLProcAddress(state, "glLightf");
-		fgl_glLightfv = (fgl_func_glLightfv *)fgl__GetOpenGLProcAddress(state, "glLightfv");
-		fgl_glLighti = (fgl_func_glLighti *)fgl__GetOpenGLProcAddress(state, "glLighti");
-		fgl_glLightiv = (fgl_func_glLightiv *)fgl__GetOpenGLProcAddress(state, "glLightiv");
-		fgl_glLineStipple = (fgl_func_glLineStipple *)fgl__GetOpenGLProcAddress(state, "glLineStipple");
-		fgl_glLineWidth = (fgl_func_glLineWidth *)fgl__GetOpenGLProcAddress(state, "glLineWidth");
-		fgl_glListBase = (fgl_func_glListBase *)fgl__GetOpenGLProcAddress(state, "glListBase");
-		fgl_glLoadIdentity = (fgl_func_glLoadIdentity *)fgl__GetOpenGLProcAddress(state, "glLoadIdentity");
-		fgl_glLoadMatrixd = (fgl_func_glLoadMatrixd *)fgl__GetOpenGLProcAddress(state, "glLoadMatrixd");
-		fgl_glLoadMatrixf = (fgl_func_glLoadMatrixf *)fgl__GetOpenGLProcAddress(state, "glLoadMatrixf");
-		fgl_glLoadName = (fgl_func_glLoadName *)fgl__GetOpenGLProcAddress(state, "glLoadName");
-		fgl_glLogicOp = (fgl_func_glLogicOp *)fgl__GetOpenGLProcAddress(state, "glLogicOp");
-		fgl_glMap1d = (fgl_func_glMap1d *)fgl__GetOpenGLProcAddress(state, "glMap1d");
-		fgl_glMap1f = (fgl_func_glMap1f *)fgl__GetOpenGLProcAddress(state, "glMap1f");
-		fgl_glMap2d = (fgl_func_glMap2d *)fgl__GetOpenGLProcAddress(state, "glMap2d");
-		fgl_glMap2f = (fgl_func_glMap2f *)fgl__GetOpenGLProcAddress(state, "glMap2f");
-		fgl_glMapGrid1d = (fgl_func_glMapGrid1d *)fgl__GetOpenGLProcAddress(state, "glMapGrid1d");
-		fgl_glMapGrid1f = (fgl_func_glMapGrid1f *)fgl__GetOpenGLProcAddress(state, "glMapGrid1f");
-		fgl_glMapGrid2d = (fgl_func_glMapGrid2d *)fgl__GetOpenGLProcAddress(state, "glMapGrid2d");
-		fgl_glMapGrid2f = (fgl_func_glMapGrid2f *)fgl__GetOpenGLProcAddress(state, "glMapGrid2f");
-		fgl_glMaterialf = (fgl_func_glMaterialf *)fgl__GetOpenGLProcAddress(state, "glMaterialf");
-		fgl_glMaterialfv = (fgl_func_glMaterialfv *)fgl__GetOpenGLProcAddress(state, "glMaterialfv");
-		fgl_glMateriali = (fgl_func_glMateriali *)fgl__GetOpenGLProcAddress(state, "glMateriali");
-		fgl_glMaterialiv = (fgl_func_glMaterialiv *)fgl__GetOpenGLProcAddress(state, "glMaterialiv");
-		fgl_glMatrixMode = (fgl_func_glMatrixMode *)fgl__GetOpenGLProcAddress(state, "glMatrixMode");
-		fgl_glMultMatrixd = (fgl_func_glMultMatrixd *)fgl__GetOpenGLProcAddress(state, "glMultMatrixd");
-		fgl_glMultMatrixf = (fgl_func_glMultMatrixf *)fgl__GetOpenGLProcAddress(state, "glMultMatrixf");
-		fgl_glNewList = (fgl_func_glNewList *)fgl__GetOpenGLProcAddress(state, "glNewList");
-		fgl_glNormal3b = (fgl_func_glNormal3b *)fgl__GetOpenGLProcAddress(state, "glNormal3b");
-		fgl_glNormal3bv = (fgl_func_glNormal3bv *)fgl__GetOpenGLProcAddress(state, "glNormal3bv");
-		fgl_glNormal3d = (fgl_func_glNormal3d *)fgl__GetOpenGLProcAddress(state, "glNormal3d");
-		fgl_glNormal3dv = (fgl_func_glNormal3dv *)fgl__GetOpenGLProcAddress(state, "glNormal3dv");
-		fgl_glNormal3f = (fgl_func_glNormal3f *)fgl__GetOpenGLProcAddress(state, "glNormal3f");
-		fgl_glNormal3fv = (fgl_func_glNormal3fv *)fgl__GetOpenGLProcAddress(state, "glNormal3fv");
-		fgl_glNormal3i = (fgl_func_glNormal3i *)fgl__GetOpenGLProcAddress(state, "glNormal3i");
-		fgl_glNormal3iv = (fgl_func_glNormal3iv *)fgl__GetOpenGLProcAddress(state, "glNormal3iv");
-		fgl_glNormal3s = (fgl_func_glNormal3s *)fgl__GetOpenGLProcAddress(state, "glNormal3s");
-		fgl_glNormal3sv = (fgl_func_glNormal3sv *)fgl__GetOpenGLProcAddress(state, "glNormal3sv");
-		fgl_glNormalPointer = (fgl_func_glNormalPointer *)fgl__GetOpenGLProcAddress(state, "glNormalPointer");
-		fgl_glOrtho = (fgl_func_glOrtho *)fgl__GetOpenGLProcAddress(state, "glOrtho");
-		fgl_glPassThrough = (fgl_func_glPassThrough *)fgl__GetOpenGLProcAddress(state, "glPassThrough");
-		fgl_glPixelMapfv = (fgl_func_glPixelMapfv *)fgl__GetOpenGLProcAddress(state, "glPixelMapfv");
-		fgl_glPixelMapuiv = (fgl_func_glPixelMapuiv *)fgl__GetOpenGLProcAddress(state, "glPixelMapuiv");
-		fgl_glPixelMapusv = (fgl_func_glPixelMapusv *)fgl__GetOpenGLProcAddress(state, "glPixelMapusv");
-		fgl_glPixelStoref = (fgl_func_glPixelStoref *)fgl__GetOpenGLProcAddress(state, "glPixelStoref");
-		fgl_glPixelStorei = (fgl_func_glPixelStorei *)fgl__GetOpenGLProcAddress(state, "glPixelStorei");
-		fgl_glPixelTransferf = (fgl_func_glPixelTransferf *)fgl__GetOpenGLProcAddress(state, "glPixelTransferf");
-		fgl_glPixelTransferi = (fgl_func_glPixelTransferi *)fgl__GetOpenGLProcAddress(state, "glPixelTransferi");
-		fgl_glPixelZoom = (fgl_func_glPixelZoom *)fgl__GetOpenGLProcAddress(state, "glPixelZoom");
-		fgl_glPointSize = (fgl_func_glPointSize *)fgl__GetOpenGLProcAddress(state, "glPointSize");
-		fgl_glPolygonMode = (fgl_func_glPolygonMode *)fgl__GetOpenGLProcAddress(state, "glPolygonMode");
-		fgl_glPolygonOffset = (fgl_func_glPolygonOffset *)fgl__GetOpenGLProcAddress(state, "glPolygonOffset");
-		fgl_glPolygonStipple = (fgl_func_glPolygonStipple *)fgl__GetOpenGLProcAddress(state, "glPolygonStipple");
-		fgl_glPopAttrib = (fgl_func_glPopAttrib *)fgl__GetOpenGLProcAddress(state, "glPopAttrib");
-		fgl_glPopClientAttrib = (fgl_func_glPopClientAttrib *)fgl__GetOpenGLProcAddress(state, "glPopClientAttrib");
-		fgl_glPopMatrix = (fgl_func_glPopMatrix *)fgl__GetOpenGLProcAddress(state, "glPopMatrix");
-		fgl_glPopName = (fgl_func_glPopName *)fgl__GetOpenGLProcAddress(state, "glPopName");
-		fgl_glPrioritizeTextures = (fgl_func_glPrioritizeTextures *)fgl__GetOpenGLProcAddress(state, "glPrioritizeTextures");
-		fgl_glPushAttrib = (fgl_func_glPushAttrib *)fgl__GetOpenGLProcAddress(state, "glPushAttrib");
-		fgl_glPushClientAttrib = (fgl_func_glPushClientAttrib *)fgl__GetOpenGLProcAddress(state, "glPushClientAttrib");
-		fgl_glPushMatrix = (fgl_func_glPushMatrix *)fgl__GetOpenGLProcAddress(state, "glPushMatrix");
-		fgl_glPushName = (fgl_func_glPushName *)fgl__GetOpenGLProcAddress(state, "glPushName");
-		fgl_glRasterPos2d = (fgl_func_glRasterPos2d *)fgl__GetOpenGLProcAddress(state, "glRasterPos2d");
-		fgl_glRasterPos2dv = (fgl_func_glRasterPos2dv *)fgl__GetOpenGLProcAddress(state, "glRasterPos2dv");
-		fgl_glRasterPos2f = (fgl_func_glRasterPos2f *)fgl__GetOpenGLProcAddress(state, "glRasterPos2f");
-		fgl_glRasterPos2fv = (fgl_func_glRasterPos2fv *)fgl__GetOpenGLProcAddress(state, "glRasterPos2fv");
-		fgl_glRasterPos2i = (fgl_func_glRasterPos2i *)fgl__GetOpenGLProcAddress(state, "glRasterPos2i");
-		fgl_glRasterPos2iv = (fgl_func_glRasterPos2iv *)fgl__GetOpenGLProcAddress(state, "glRasterPos2iv");
-		fgl_glRasterPos2s = (fgl_func_glRasterPos2s *)fgl__GetOpenGLProcAddress(state, "glRasterPos2s");
-		fgl_glRasterPos2sv = (fgl_func_glRasterPos2sv *)fgl__GetOpenGLProcAddress(state, "glRasterPos2sv");
-		fgl_glRasterPos3d = (fgl_func_glRasterPos3d *)fgl__GetOpenGLProcAddress(state, "glRasterPos3d");
-		fgl_glRasterPos3dv = (fgl_func_glRasterPos3dv *)fgl__GetOpenGLProcAddress(state, "glRasterPos3dv");
-		fgl_glRasterPos3f = (fgl_func_glRasterPos3f *)fgl__GetOpenGLProcAddress(state, "glRasterPos3f");
-		fgl_glRasterPos3fv = (fgl_func_glRasterPos3fv *)fgl__GetOpenGLProcAddress(state, "glRasterPos3fv");
-		fgl_glRasterPos3i = (fgl_func_glRasterPos3i *)fgl__GetOpenGLProcAddress(state, "glRasterPos3i");
-		fgl_glRasterPos3iv = (fgl_func_glRasterPos3iv *)fgl__GetOpenGLProcAddress(state, "glRasterPos3iv");
-		fgl_glRasterPos3s = (fgl_func_glRasterPos3s *)fgl__GetOpenGLProcAddress(state, "glRasterPos3s");
-		fgl_glRasterPos3sv = (fgl_func_glRasterPos3sv *)fgl__GetOpenGLProcAddress(state, "glRasterPos3sv");
-		fgl_glRasterPos4d = (fgl_func_glRasterPos4d *)fgl__GetOpenGLProcAddress(state, "glRasterPos4d");
-		fgl_glRasterPos4dv = (fgl_func_glRasterPos4dv *)fgl__GetOpenGLProcAddress(state, "glRasterPos4dv");
-		fgl_glRasterPos4f = (fgl_func_glRasterPos4f *)fgl__GetOpenGLProcAddress(state, "glRasterPos4f");
-		fgl_glRasterPos4fv = (fgl_func_glRasterPos4fv *)fgl__GetOpenGLProcAddress(state, "glRasterPos4fv");
-		fgl_glRasterPos4i = (fgl_func_glRasterPos4i *)fgl__GetOpenGLProcAddress(state, "glRasterPos4i");
-		fgl_glRasterPos4iv = (fgl_func_glRasterPos4iv *)fgl__GetOpenGLProcAddress(state, "glRasterPos4iv");
-		fgl_glRasterPos4s = (fgl_func_glRasterPos4s *)fgl__GetOpenGLProcAddress(state, "glRasterPos4s");
-		fgl_glRasterPos4sv = (fgl_func_glRasterPos4sv *)fgl__GetOpenGLProcAddress(state, "glRasterPos4sv");
-		fgl_glReadBuffer = (fgl_func_glReadBuffer *)fgl__GetOpenGLProcAddress(state, "glReadBuffer");
-		fgl_glReadPixels = (fgl_func_glReadPixels *)fgl__GetOpenGLProcAddress(state, "glReadPixels");
-		fgl_glRectd = (fgl_func_glRectd *)fgl__GetOpenGLProcAddress(state, "glRectd");
-		fgl_glRectdv = (fgl_func_glRectdv *)fgl__GetOpenGLProcAddress(state, "glRectdv");
-		fgl_glRectf = (fgl_func_glRectf *)fgl__GetOpenGLProcAddress(state, "glRectf");
-		fgl_glRectfv = (fgl_func_glRectfv *)fgl__GetOpenGLProcAddress(state, "glRectfv");
-		fgl_glRecti = (fgl_func_glRecti *)fgl__GetOpenGLProcAddress(state, "glRecti");
-		fgl_glRectiv = (fgl_func_glRectiv *)fgl__GetOpenGLProcAddress(state, "glRectiv");
-		fgl_glRects = (fgl_func_glRects *)fgl__GetOpenGLProcAddress(state, "glRects");
-		fgl_glRectsv = (fgl_func_glRectsv *)fgl__GetOpenGLProcAddress(state, "glRectsv");
-		fgl_glRenderMode = (fgl_func_glRenderMode *)fgl__GetOpenGLProcAddress(state, "glRenderMode");
-		fgl_glRotated = (fgl_func_glRotated *)fgl__GetOpenGLProcAddress(state, "glRotated");
-		fgl_glRotatef = (fgl_func_glRotatef *)fgl__GetOpenGLProcAddress(state, "glRotatef");
-		fgl_glScaled = (fgl_func_glScaled *)fgl__GetOpenGLProcAddress(state, "glScaled");
-		fgl_glScalef = (fgl_func_glScalef *)fgl__GetOpenGLProcAddress(state, "glScalef");
-		fgl_glScissor = (fgl_func_glScissor *)fgl__GetOpenGLProcAddress(state, "glScissor");
-		fgl_glSelectBuffer = (fgl_func_glSelectBuffer *)fgl__GetOpenGLProcAddress(state, "glSelectBuffer");
-		fgl_glShadeModel = (fgl_func_glShadeModel *)fgl__GetOpenGLProcAddress(state, "glShadeModel");
-		fgl_glStencilFunc = (fgl_func_glStencilFunc *)fgl__GetOpenGLProcAddress(state, "glStencilFunc");
-		fgl_glStencilMask = (fgl_func_glStencilMask *)fgl__GetOpenGLProcAddress(state, "glStencilMask");
-		fgl_glStencilOp = (fgl_func_glStencilOp *)fgl__GetOpenGLProcAddress(state, "glStencilOp");
-		fgl_glTexCoord1d = (fgl_func_glTexCoord1d *)fgl__GetOpenGLProcAddress(state, "glTexCoord1d");
-		fgl_glTexCoord1dv = (fgl_func_glTexCoord1dv *)fgl__GetOpenGLProcAddress(state, "glTexCoord1dv");
-		fgl_glTexCoord1f = (fgl_func_glTexCoord1f *)fgl__GetOpenGLProcAddress(state, "glTexCoord1f");
-		fgl_glTexCoord1fv = (fgl_func_glTexCoord1fv *)fgl__GetOpenGLProcAddress(state, "glTexCoord1fv");
-		fgl_glTexCoord1i = (fgl_func_glTexCoord1i *)fgl__GetOpenGLProcAddress(state, "glTexCoord1i");
-		fgl_glTexCoord1iv = (fgl_func_glTexCoord1iv *)fgl__GetOpenGLProcAddress(state, "glTexCoord1iv");
-		fgl_glTexCoord1s = (fgl_func_glTexCoord1s *)fgl__GetOpenGLProcAddress(state, "glTexCoord1s");
-		fgl_glTexCoord1sv = (fgl_func_glTexCoord1sv *)fgl__GetOpenGLProcAddress(state, "glTexCoord1sv");
-		fgl_glTexCoord2d = (fgl_func_glTexCoord2d *)fgl__GetOpenGLProcAddress(state, "glTexCoord2d");
-		fgl_glTexCoord2dv = (fgl_func_glTexCoord2dv *)fgl__GetOpenGLProcAddress(state, "glTexCoord2dv");
-		fgl_glTexCoord2f = (fgl_func_glTexCoord2f *)fgl__GetOpenGLProcAddress(state, "glTexCoord2f");
-		fgl_glTexCoord2fv = (fgl_func_glTexCoord2fv *)fgl__GetOpenGLProcAddress(state, "glTexCoord2fv");
-		fgl_glTexCoord2i = (fgl_func_glTexCoord2i *)fgl__GetOpenGLProcAddress(state, "glTexCoord2i");
-		fgl_glTexCoord2iv = (fgl_func_glTexCoord2iv *)fgl__GetOpenGLProcAddress(state, "glTexCoord2iv");
-		fgl_glTexCoord2s = (fgl_func_glTexCoord2s *)fgl__GetOpenGLProcAddress(state, "glTexCoord2s");
-		fgl_glTexCoord2sv = (fgl_func_glTexCoord2sv *)fgl__GetOpenGLProcAddress(state, "glTexCoord2sv");
-		fgl_glTexCoord3d = (fgl_func_glTexCoord3d *)fgl__GetOpenGLProcAddress(state, "glTexCoord3d");
-		fgl_glTexCoord3dv = (fgl_func_glTexCoord3dv *)fgl__GetOpenGLProcAddress(state, "glTexCoord3dv");
-		fgl_glTexCoord3f = (fgl_func_glTexCoord3f *)fgl__GetOpenGLProcAddress(state, "glTexCoord3f");
-		fgl_glTexCoord3fv = (fgl_func_glTexCoord3fv *)fgl__GetOpenGLProcAddress(state, "glTexCoord3fv");
-		fgl_glTexCoord3i = (fgl_func_glTexCoord3i *)fgl__GetOpenGLProcAddress(state, "glTexCoord3i");
-		fgl_glTexCoord3iv = (fgl_func_glTexCoord3iv *)fgl__GetOpenGLProcAddress(state, "glTexCoord3iv");
-		fgl_glTexCoord3s = (fgl_func_glTexCoord3s *)fgl__GetOpenGLProcAddress(state, "glTexCoord3s");
-		fgl_glTexCoord3sv = (fgl_func_glTexCoord3sv *)fgl__GetOpenGLProcAddress(state, "glTexCoord3sv");
-		fgl_glTexCoord4d = (fgl_func_glTexCoord4d *)fgl__GetOpenGLProcAddress(state, "glTexCoord4d");
-		fgl_glTexCoord4dv = (fgl_func_glTexCoord4dv *)fgl__GetOpenGLProcAddress(state, "glTexCoord4dv");
-		fgl_glTexCoord4f = (fgl_func_glTexCoord4f *)fgl__GetOpenGLProcAddress(state, "glTexCoord4f");
-		fgl_glTexCoord4fv = (fgl_func_glTexCoord4fv *)fgl__GetOpenGLProcAddress(state, "glTexCoord4fv");
-		fgl_glTexCoord4i = (fgl_func_glTexCoord4i *)fgl__GetOpenGLProcAddress(state, "glTexCoord4i");
-		fgl_glTexCoord4iv = (fgl_func_glTexCoord4iv *)fgl__GetOpenGLProcAddress(state, "glTexCoord4iv");
-		fgl_glTexCoord4s = (fgl_func_glTexCoord4s *)fgl__GetOpenGLProcAddress(state, "glTexCoord4s");
-		fgl_glTexCoord4sv = (fgl_func_glTexCoord4sv *)fgl__GetOpenGLProcAddress(state, "glTexCoord4sv");
-		fgl_glTexCoordPointer = (fgl_func_glTexCoordPointer *)fgl__GetOpenGLProcAddress(state, "glTexCoordPointer");
-		fgl_glTexEnvf = (fgl_func_glTexEnvf *)fgl__GetOpenGLProcAddress(state, "glTexEnvf");
-		fgl_glTexEnvfv = (fgl_func_glTexEnvfv *)fgl__GetOpenGLProcAddress(state, "glTexEnvfv");
-		fgl_glTexEnvi = (fgl_func_glTexEnvi *)fgl__GetOpenGLProcAddress(state, "glTexEnvi");
-		fgl_glTexEnviv = (fgl_func_glTexEnviv *)fgl__GetOpenGLProcAddress(state, "glTexEnviv");
-		fgl_glTexGend = (fgl_func_glTexGend *)fgl__GetOpenGLProcAddress(state, "glTexGend");
-		fgl_glTexGendv = (fgl_func_glTexGendv *)fgl__GetOpenGLProcAddress(state, "glTexGendv");
-		fgl_glTexGenf = (fgl_func_glTexGenf *)fgl__GetOpenGLProcAddress(state, "glTexGenf");
-		fgl_glTexGenfv = (fgl_func_glTexGenfv *)fgl__GetOpenGLProcAddress(state, "glTexGenfv");
-		fgl_glTexGeni = (fgl_func_glTexGeni *)fgl__GetOpenGLProcAddress(state, "glTexGeni");
-		fgl_glTexGeniv = (fgl_func_glTexGeniv *)fgl__GetOpenGLProcAddress(state, "glTexGeniv");
-		fgl_glTexImage1D = (fgl_func_glTexImage1D *)fgl__GetOpenGLProcAddress(state, "glTexImage1D");
-		fgl_glTexImage2D = (fgl_func_glTexImage2D *)fgl__GetOpenGLProcAddress(state, "glTexImage2D");
-		fgl_glTexParameterf = (fgl_func_glTexParameterf *)fgl__GetOpenGLProcAddress(state, "glTexParameterf");
-		fgl_glTexParameterfv = (fgl_func_glTexParameterfv *)fgl__GetOpenGLProcAddress(state, "glTexParameterfv");
-		fgl_glTexParameteri = (fgl_func_glTexParameteri *)fgl__GetOpenGLProcAddress(state, "glTexParameteri");
-		fgl_glTexParameteriv = (fgl_func_glTexParameteriv *)fgl__GetOpenGLProcAddress(state, "glTexParameteriv");
-		fgl_glTexSubImage1D = (fgl_func_glTexSubImage1D *)fgl__GetOpenGLProcAddress(state, "glTexSubImage1D");
-		fgl_glTexSubImage2D = (fgl_func_glTexSubImage2D *)fgl__GetOpenGLProcAddress(state, "glTexSubImage2D");
-		fgl_glTranslated = (fgl_func_glTranslated *)fgl__GetOpenGLProcAddress(state, "glTranslated");
-		fgl_glTranslatef = (fgl_func_glTranslatef *)fgl__GetOpenGLProcAddress(state, "glTranslatef");
-		fgl_glVertex2d = (fgl_func_glVertex2d *)fgl__GetOpenGLProcAddress(state, "glVertex2d");
-		fgl_glVertex2dv = (fgl_func_glVertex2dv *)fgl__GetOpenGLProcAddress(state, "glVertex2dv");
-		fgl_glVertex2f = (fgl_func_glVertex2f *)fgl__GetOpenGLProcAddress(state, "glVertex2f");
-		fgl_glVertex2fv = (fgl_func_glVertex2fv *)fgl__GetOpenGLProcAddress(state, "glVertex2fv");
-		fgl_glVertex2i = (fgl_func_glVertex2i *)fgl__GetOpenGLProcAddress(state, "glVertex2i");
-		fgl_glVertex2iv = (fgl_func_glVertex2iv *)fgl__GetOpenGLProcAddress(state, "glVertex2iv");
-		fgl_glVertex2s = (fgl_func_glVertex2s *)fgl__GetOpenGLProcAddress(state, "glVertex2s");
-		fgl_glVertex2sv = (fgl_func_glVertex2sv *)fgl__GetOpenGLProcAddress(state, "glVertex2sv");
-		fgl_glVertex3d = (fgl_func_glVertex3d *)fgl__GetOpenGLProcAddress(state, "glVertex3d");
-		fgl_glVertex3dv = (fgl_func_glVertex3dv *)fgl__GetOpenGLProcAddress(state, "glVertex3dv");
-		fgl_glVertex3f = (fgl_func_glVertex3f *)fgl__GetOpenGLProcAddress(state, "glVertex3f");
-		fgl_glVertex3fv = (fgl_func_glVertex3fv *)fgl__GetOpenGLProcAddress(state, "glVertex3fv");
-		fgl_glVertex3i = (fgl_func_glVertex3i *)fgl__GetOpenGLProcAddress(state, "glVertex3i");
-		fgl_glVertex3iv = (fgl_func_glVertex3iv *)fgl__GetOpenGLProcAddress(state, "glVertex3iv");
-		fgl_glVertex3s = (fgl_func_glVertex3s *)fgl__GetOpenGLProcAddress(state, "glVertex3s");
-		fgl_glVertex3sv = (fgl_func_glVertex3sv *)fgl__GetOpenGLProcAddress(state, "glVertex3sv");
-		fgl_glVertex4d = (fgl_func_glVertex4d *)fgl__GetOpenGLProcAddress(state, "glVertex4d");
-		fgl_glVertex4dv = (fgl_func_glVertex4dv *)fgl__GetOpenGLProcAddress(state, "glVertex4dv");
-		fgl_glVertex4f = (fgl_func_glVertex4f *)fgl__GetOpenGLProcAddress(state, "glVertex4f");
-		fgl_glVertex4fv = (fgl_func_glVertex4fv *)fgl__GetOpenGLProcAddress(state, "glVertex4fv");
-		fgl_glVertex4i = (fgl_func_glVertex4i *)fgl__GetOpenGLProcAddress(state, "glVertex4i");
-		fgl_glVertex4iv = (fgl_func_glVertex4iv *)fgl__GetOpenGLProcAddress(state, "glVertex4iv");
-		fgl_glVertex4s = (fgl_func_glVertex4s *)fgl__GetOpenGLProcAddress(state, "glVertex4s");
-		fgl_glVertex4sv = (fgl_func_glVertex4sv *)fgl__GetOpenGLProcAddress(state, "glVertex4sv");
-		fgl_glVertexPointer = (fgl_func_glVertexPointer *)fgl__GetOpenGLProcAddress(state, "glVertexPointer");
-		fgl_glViewport = (fgl_func_glViewport *)fgl__GetOpenGLProcAddress(state, "glViewport");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_1_1", 1, 1);
+		fgl_glAccum = (fgl_func_glAccum *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glAccum");
+		fgl_glAlphaFunc = (fgl_func_glAlphaFunc *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glAlphaFunc");
+		fgl_glAreTexturesResident = (fgl_func_glAreTexturesResident *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glAreTexturesResident");
+		fgl_glArrayElement = (fgl_func_glArrayElement *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glArrayElement");
+		fgl_glBegin = (fgl_func_glBegin *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glBegin");
+		fgl_glBindTexture = (fgl_func_glBindTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glBindTexture");
+		fgl_glBitmap = (fgl_func_glBitmap *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glBitmap");
+		fgl_glBlendFunc = (fgl_func_glBlendFunc *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendFunc");
+		fgl_glCallList = (fgl_func_glCallList *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glCallList");
+		fgl_glCallLists = (fgl_func_glCallLists *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glCallLists");
+		fgl_glClear = (fgl_func_glClear *)fgl__LoadOpenGLCoreFunction(&loader, "glClear");
+		fgl_glClearAccum = (fgl_func_glClearAccum *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glClearAccum");
+		fgl_glClearColor = (fgl_func_glClearColor *)fgl__LoadOpenGLCoreFunction(&loader, "glClearColor");
+		fgl_glClearDepth = (fgl_func_glClearDepth *)fgl__LoadOpenGLCoreFunction(&loader, "glClearDepth");
+		fgl_glClearIndex = (fgl_func_glClearIndex *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glClearIndex");
+		fgl_glClearStencil = (fgl_func_glClearStencil *)fgl__LoadOpenGLCoreFunction(&loader, "glClearStencil");
+		fgl_glClipPlane = (fgl_func_glClipPlane *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glClipPlane");
+		fgl_glColor3b = (fgl_func_glColor3b *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3b");
+		fgl_glColor3bv = (fgl_func_glColor3bv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3bv");
+		fgl_glColor3d = (fgl_func_glColor3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3d");
+		fgl_glColor3dv = (fgl_func_glColor3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3dv");
+		fgl_glColor3f = (fgl_func_glColor3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3f");
+		fgl_glColor3fv = (fgl_func_glColor3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3fv");
+		fgl_glColor3i = (fgl_func_glColor3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3i");
+		fgl_glColor3iv = (fgl_func_glColor3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3iv");
+		fgl_glColor3s = (fgl_func_glColor3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3s");
+		fgl_glColor3sv = (fgl_func_glColor3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3sv");
+		fgl_glColor3ub = (fgl_func_glColor3ub *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3ub");
+		fgl_glColor3ubv = (fgl_func_glColor3ubv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3ubv");
+		fgl_glColor3ui = (fgl_func_glColor3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3ui");
+		fgl_glColor3uiv = (fgl_func_glColor3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3uiv");
+		fgl_glColor3us = (fgl_func_glColor3us *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3us");
+		fgl_glColor3usv = (fgl_func_glColor3usv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor3usv");
+		fgl_glColor4b = (fgl_func_glColor4b *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4b");
+		fgl_glColor4bv = (fgl_func_glColor4bv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4bv");
+		fgl_glColor4d = (fgl_func_glColor4d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4d");
+		fgl_glColor4dv = (fgl_func_glColor4dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4dv");
+		fgl_glColor4f = (fgl_func_glColor4f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4f");
+		fgl_glColor4fv = (fgl_func_glColor4fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4fv");
+		fgl_glColor4i = (fgl_func_glColor4i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4i");
+		fgl_glColor4iv = (fgl_func_glColor4iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4iv");
+		fgl_glColor4s = (fgl_func_glColor4s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4s");
+		fgl_glColor4sv = (fgl_func_glColor4sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4sv");
+		fgl_glColor4ub = (fgl_func_glColor4ub *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4ub");
+		fgl_glColor4ubv = (fgl_func_glColor4ubv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4ubv");
+		fgl_glColor4ui = (fgl_func_glColor4ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4ui");
+		fgl_glColor4uiv = (fgl_func_glColor4uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4uiv");
+		fgl_glColor4us = (fgl_func_glColor4us *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4us");
+		fgl_glColor4usv = (fgl_func_glColor4usv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColor4usv");
+		fgl_glColorMask = (fgl_func_glColorMask *)fgl__LoadOpenGLCoreFunction(&loader, "glColorMask");
+		fgl_glColorMaterial = (fgl_func_glColorMaterial *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorMaterial");
+		fgl_glColorPointer = (fgl_func_glColorPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorPointer");
+		fgl_glCopyPixels = (fgl_func_glCopyPixels *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glCopyPixels");
+		fgl_glCopyTexImage1D = (fgl_func_glCopyTexImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTexImage1D");
+		fgl_glCopyTexImage2D = (fgl_func_glCopyTexImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTexImage2D");
+		fgl_glCopyTexSubImage1D = (fgl_func_glCopyTexSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTexSubImage1D");
+		fgl_glCopyTexSubImage2D = (fgl_func_glCopyTexSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTexSubImage2D");
+		fgl_glCullFace = (fgl_func_glCullFace *)fgl__LoadOpenGLCoreFunction(&loader, "glCullFace");
+		fgl_glDeleteLists = (fgl_func_glDeleteLists *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glDeleteLists");
+		fgl_glDeleteTextures = (fgl_func_glDeleteTextures *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteTextures");
+		fgl_glDepthFunc = (fgl_func_glDepthFunc *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthFunc");
+		fgl_glDepthMask = (fgl_func_glDepthMask *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthMask");
+		fgl_glDepthRange = (fgl_func_glDepthRange *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthRange");
+		fgl_glDisable = (fgl_func_glDisable *)fgl__LoadOpenGLCoreFunction(&loader, "glDisable");
+		fgl_glDisableClientState = (fgl_func_glDisableClientState *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glDisableClientState");
+		fgl_glDrawArrays = (fgl_func_glDrawArrays *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawArrays");
+		fgl_glDrawBuffer = (fgl_func_glDrawBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawBuffer");
+		fgl_glDrawElements = (fgl_func_glDrawElements *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElements");
+		fgl_glDrawPixels = (fgl_func_glDrawPixels *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glDrawPixels");
+		fgl_glEdgeFlag = (fgl_func_glEdgeFlag *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEdgeFlag");
+		fgl_glEdgeFlagPointer = (fgl_func_glEdgeFlagPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEdgeFlagPointer");
+		fgl_glEdgeFlagv = (fgl_func_glEdgeFlagv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEdgeFlagv");
+		fgl_glEnable = (fgl_func_glEnable *)fgl__LoadOpenGLCoreFunction(&loader, "glEnable");
+		fgl_glEnableClientState = (fgl_func_glEnableClientState *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEnableClientState");
+		fgl_glEnd = (fgl_func_glEnd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEnd");
+		fgl_glEndList = (fgl_func_glEndList *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEndList");
+		fgl_glEvalCoord1d = (fgl_func_glEvalCoord1d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord1d");
+		fgl_glEvalCoord1dv = (fgl_func_glEvalCoord1dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord1dv");
+		fgl_glEvalCoord1f = (fgl_func_glEvalCoord1f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord1f");
+		fgl_glEvalCoord1fv = (fgl_func_glEvalCoord1fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord1fv");
+		fgl_glEvalCoord2d = (fgl_func_glEvalCoord2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord2d");
+		fgl_glEvalCoord2dv = (fgl_func_glEvalCoord2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord2dv");
+		fgl_glEvalCoord2f = (fgl_func_glEvalCoord2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord2f");
+		fgl_glEvalCoord2fv = (fgl_func_glEvalCoord2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalCoord2fv");
+		fgl_glEvalMesh1 = (fgl_func_glEvalMesh1 *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalMesh1");
+		fgl_glEvalMesh2 = (fgl_func_glEvalMesh2 *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalMesh2");
+		fgl_glEvalPoint1 = (fgl_func_glEvalPoint1 *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalPoint1");
+		fgl_glEvalPoint2 = (fgl_func_glEvalPoint2 *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glEvalPoint2");
+		fgl_glFeedbackBuffer = (fgl_func_glFeedbackBuffer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFeedbackBuffer");
+		fgl_glFinish = (fgl_func_glFinish *)fgl__LoadOpenGLCoreFunction(&loader, "glFinish");
+		fgl_glFlush = (fgl_func_glFlush *)fgl__LoadOpenGLCoreFunction(&loader, "glFlush");
+		fgl_glFogf = (fgl_func_glFogf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogf");
+		fgl_glFogfv = (fgl_func_glFogfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogfv");
+		fgl_glFogi = (fgl_func_glFogi *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogi");
+		fgl_glFogiv = (fgl_func_glFogiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogiv");
+		fgl_glFrontFace = (fgl_func_glFrontFace *)fgl__LoadOpenGLCoreFunction(&loader, "glFrontFace");
+		fgl_glFrustum = (fgl_func_glFrustum *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFrustum");
+		fgl_glGenLists = (fgl_func_glGenLists *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGenLists");
+		fgl_glGenTextures = (fgl_func_glGenTextures *)fgl__LoadOpenGLCoreFunction(&loader, "glGenTextures");
+		fgl_glGetBooleanv = (fgl_func_glGetBooleanv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBooleanv");
+		fgl_glGetClipPlane = (fgl_func_glGetClipPlane *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetClipPlane");
+		fgl_glGetDoublev = (fgl_func_glGetDoublev *)fgl__LoadOpenGLCoreFunction(&loader, "glGetDoublev");
+		fgl_glGetError = (fgl_func_glGetError *)fgl__LoadOpenGLCoreFunction(&loader, "glGetError");
+		fgl_glGetFloatv = (fgl_func_glGetFloatv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFloatv");
+		fgl_glGetIntegerv = (fgl_func_glGetIntegerv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetIntegerv");
+		fgl_glGetLightfv = (fgl_func_glGetLightfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetLightfv");
+		fgl_glGetLightiv = (fgl_func_glGetLightiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetLightiv");
+		fgl_glGetMapdv = (fgl_func_glGetMapdv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetMapdv");
+		fgl_glGetMapfv = (fgl_func_glGetMapfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetMapfv");
+		fgl_glGetMapiv = (fgl_func_glGetMapiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetMapiv");
+		fgl_glGetMaterialfv = (fgl_func_glGetMaterialfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetMaterialfv");
+		fgl_glGetMaterialiv = (fgl_func_glGetMaterialiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetMaterialiv");
+		fgl_glGetPixelMapfv = (fgl_func_glGetPixelMapfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetPixelMapfv");
+		fgl_glGetPixelMapuiv = (fgl_func_glGetPixelMapuiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetPixelMapuiv");
+		fgl_glGetPixelMapusv = (fgl_func_glGetPixelMapusv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetPixelMapusv");
+		fgl_glGetPointerv = (fgl_func_glGetPointerv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetPointerv");
+		fgl_glGetPolygonStipple = (fgl_func_glGetPolygonStipple *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetPolygonStipple");
+		fgl_glGetString = (fgl_func_glGetString *)fgl__LoadOpenGLCoreFunction(&loader, "glGetString");
+		fgl_glGetTexEnvfv = (fgl_func_glGetTexEnvfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetTexEnvfv");
+		fgl_glGetTexEnviv = (fgl_func_glGetTexEnviv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetTexEnviv");
+		fgl_glGetTexGendv = (fgl_func_glGetTexGendv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetTexGendv");
+		fgl_glGetTexGenfv = (fgl_func_glGetTexGenfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetTexGenfv");
+		fgl_glGetTexGeniv = (fgl_func_glGetTexGeniv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetTexGeniv");
+		fgl_glGetTexImage = (fgl_func_glGetTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexImage");
+		fgl_glGetTexLevelParameterfv = (fgl_func_glGetTexLevelParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexLevelParameterfv");
+		fgl_glGetTexLevelParameteriv = (fgl_func_glGetTexLevelParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexLevelParameteriv");
+		fgl_glGetTexParameterfv = (fgl_func_glGetTexParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexParameterfv");
+		fgl_glGetTexParameteriv = (fgl_func_glGetTexParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexParameteriv");
+		fgl_glHint = (fgl_func_glHint *)fgl__LoadOpenGLCoreFunction(&loader, "glHint");
+		fgl_glIndexMask = (fgl_func_glIndexMask *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexMask");
+		fgl_glIndexPointer = (fgl_func_glIndexPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexPointer");
+		fgl_glIndexd = (fgl_func_glIndexd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexd");
+		fgl_glIndexdv = (fgl_func_glIndexdv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexdv");
+		fgl_glIndexf = (fgl_func_glIndexf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexf");
+		fgl_glIndexfv = (fgl_func_glIndexfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexfv");
+		fgl_glIndexi = (fgl_func_glIndexi *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexi");
+		fgl_glIndexiv = (fgl_func_glIndexiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexiv");
+		fgl_glIndexs = (fgl_func_glIndexs *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexs");
+		fgl_glIndexsv = (fgl_func_glIndexsv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexsv");
+		fgl_glIndexub = (fgl_func_glIndexub *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexub");
+		fgl_glIndexubv = (fgl_func_glIndexubv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIndexubv");
+		fgl_glInitNames = (fgl_func_glInitNames *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glInitNames");
+		fgl_glInterleavedArrays = (fgl_func_glInterleavedArrays *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glInterleavedArrays");
+		fgl_glIsEnabled = (fgl_func_glIsEnabled *)fgl__LoadOpenGLCoreFunction(&loader, "glIsEnabled");
+		fgl_glIsList = (fgl_func_glIsList *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glIsList");
+		fgl_glIsTexture = (fgl_func_glIsTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glIsTexture");
+		fgl_glLightModelf = (fgl_func_glLightModelf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightModelf");
+		fgl_glLightModelfv = (fgl_func_glLightModelfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightModelfv");
+		fgl_glLightModeli = (fgl_func_glLightModeli *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightModeli");
+		fgl_glLightModeliv = (fgl_func_glLightModeliv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightModeliv");
+		fgl_glLightf = (fgl_func_glLightf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightf");
+		fgl_glLightfv = (fgl_func_glLightfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightfv");
+		fgl_glLighti = (fgl_func_glLighti *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLighti");
+		fgl_glLightiv = (fgl_func_glLightiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLightiv");
+		fgl_glLineStipple = (fgl_func_glLineStipple *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLineStipple");
+		fgl_glLineWidth = (fgl_func_glLineWidth *)fgl__LoadOpenGLCoreFunction(&loader, "glLineWidth");
+		fgl_glListBase = (fgl_func_glListBase *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glListBase");
+		fgl_glLoadIdentity = (fgl_func_glLoadIdentity *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadIdentity");
+		fgl_glLoadMatrixd = (fgl_func_glLoadMatrixd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadMatrixd");
+		fgl_glLoadMatrixf = (fgl_func_glLoadMatrixf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadMatrixf");
+		fgl_glLoadName = (fgl_func_glLoadName *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadName");
+		fgl_glLogicOp = (fgl_func_glLogicOp *)fgl__LoadOpenGLCoreFunction(&loader, "glLogicOp");
+		fgl_glMap1d = (fgl_func_glMap1d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMap1d");
+		fgl_glMap1f = (fgl_func_glMap1f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMap1f");
+		fgl_glMap2d = (fgl_func_glMap2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMap2d");
+		fgl_glMap2f = (fgl_func_glMap2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMap2f");
+		fgl_glMapGrid1d = (fgl_func_glMapGrid1d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMapGrid1d");
+		fgl_glMapGrid1f = (fgl_func_glMapGrid1f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMapGrid1f");
+		fgl_glMapGrid2d = (fgl_func_glMapGrid2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMapGrid2d");
+		fgl_glMapGrid2f = (fgl_func_glMapGrid2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMapGrid2f");
+		fgl_glMaterialf = (fgl_func_glMaterialf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMaterialf");
+		fgl_glMaterialfv = (fgl_func_glMaterialfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMaterialfv");
+		fgl_glMateriali = (fgl_func_glMateriali *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMateriali");
+		fgl_glMaterialiv = (fgl_func_glMaterialiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMaterialiv");
+		fgl_glMatrixMode = (fgl_func_glMatrixMode *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMatrixMode");
+		fgl_glMultMatrixd = (fgl_func_glMultMatrixd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultMatrixd");
+		fgl_glMultMatrixf = (fgl_func_glMultMatrixf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultMatrixf");
+		fgl_glNewList = (fgl_func_glNewList *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNewList");
+		fgl_glNormal3b = (fgl_func_glNormal3b *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3b");
+		fgl_glNormal3bv = (fgl_func_glNormal3bv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3bv");
+		fgl_glNormal3d = (fgl_func_glNormal3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3d");
+		fgl_glNormal3dv = (fgl_func_glNormal3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3dv");
+		fgl_glNormal3f = (fgl_func_glNormal3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3f");
+		fgl_glNormal3fv = (fgl_func_glNormal3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3fv");
+		fgl_glNormal3i = (fgl_func_glNormal3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3i");
+		fgl_glNormal3iv = (fgl_func_glNormal3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3iv");
+		fgl_glNormal3s = (fgl_func_glNormal3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3s");
+		fgl_glNormal3sv = (fgl_func_glNormal3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormal3sv");
+		fgl_glNormalPointer = (fgl_func_glNormalPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormalPointer");
+		fgl_glOrtho = (fgl_func_glOrtho *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glOrtho");
+		fgl_glPassThrough = (fgl_func_glPassThrough *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPassThrough");
+		fgl_glPixelMapfv = (fgl_func_glPixelMapfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelMapfv");
+		fgl_glPixelMapuiv = (fgl_func_glPixelMapuiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelMapuiv");
+		fgl_glPixelMapusv = (fgl_func_glPixelMapusv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelMapusv");
+		fgl_glPixelStoref = (fgl_func_glPixelStoref *)fgl__LoadOpenGLCoreFunction(&loader, "glPixelStoref");
+		fgl_glPixelStorei = (fgl_func_glPixelStorei *)fgl__LoadOpenGLCoreFunction(&loader, "glPixelStorei");
+		fgl_glPixelTransferf = (fgl_func_glPixelTransferf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelTransferf");
+		fgl_glPixelTransferi = (fgl_func_glPixelTransferi *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelTransferi");
+		fgl_glPixelZoom = (fgl_func_glPixelZoom *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPixelZoom");
+		fgl_glPointSize = (fgl_func_glPointSize *)fgl__LoadOpenGLCoreFunction(&loader, "glPointSize");
+		fgl_glPolygonMode = (fgl_func_glPolygonMode *)fgl__LoadOpenGLCoreFunction(&loader, "glPolygonMode");
+		fgl_glPolygonOffset = (fgl_func_glPolygonOffset *)fgl__LoadOpenGLCoreFunction(&loader, "glPolygonOffset");
+		fgl_glPolygonStipple = (fgl_func_glPolygonStipple *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPolygonStipple");
+		fgl_glPopAttrib = (fgl_func_glPopAttrib *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPopAttrib");
+		fgl_glPopClientAttrib = (fgl_func_glPopClientAttrib *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPopClientAttrib");
+		fgl_glPopMatrix = (fgl_func_glPopMatrix *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPopMatrix");
+		fgl_glPopName = (fgl_func_glPopName *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPopName");
+		fgl_glPrioritizeTextures = (fgl_func_glPrioritizeTextures *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPrioritizeTextures");
+		fgl_glPushAttrib = (fgl_func_glPushAttrib *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPushAttrib");
+		fgl_glPushClientAttrib = (fgl_func_glPushClientAttrib *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPushClientAttrib");
+		fgl_glPushMatrix = (fgl_func_glPushMatrix *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPushMatrix");
+		fgl_glPushName = (fgl_func_glPushName *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glPushName");
+		fgl_glRasterPos2d = (fgl_func_glRasterPos2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2d");
+		fgl_glRasterPos2dv = (fgl_func_glRasterPos2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2dv");
+		fgl_glRasterPos2f = (fgl_func_glRasterPos2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2f");
+		fgl_glRasterPos2fv = (fgl_func_glRasterPos2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2fv");
+		fgl_glRasterPos2i = (fgl_func_glRasterPos2i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2i");
+		fgl_glRasterPos2iv = (fgl_func_glRasterPos2iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2iv");
+		fgl_glRasterPos2s = (fgl_func_glRasterPos2s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2s");
+		fgl_glRasterPos2sv = (fgl_func_glRasterPos2sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos2sv");
+		fgl_glRasterPos3d = (fgl_func_glRasterPos3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3d");
+		fgl_glRasterPos3dv = (fgl_func_glRasterPos3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3dv");
+		fgl_glRasterPos3f = (fgl_func_glRasterPos3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3f");
+		fgl_glRasterPos3fv = (fgl_func_glRasterPos3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3fv");
+		fgl_glRasterPos3i = (fgl_func_glRasterPos3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3i");
+		fgl_glRasterPos3iv = (fgl_func_glRasterPos3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3iv");
+		fgl_glRasterPos3s = (fgl_func_glRasterPos3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3s");
+		fgl_glRasterPos3sv = (fgl_func_glRasterPos3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos3sv");
+		fgl_glRasterPos4d = (fgl_func_glRasterPos4d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4d");
+		fgl_glRasterPos4dv = (fgl_func_glRasterPos4dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4dv");
+		fgl_glRasterPos4f = (fgl_func_glRasterPos4f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4f");
+		fgl_glRasterPos4fv = (fgl_func_glRasterPos4fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4fv");
+		fgl_glRasterPos4i = (fgl_func_glRasterPos4i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4i");
+		fgl_glRasterPos4iv = (fgl_func_glRasterPos4iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4iv");
+		fgl_glRasterPos4s = (fgl_func_glRasterPos4s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4s");
+		fgl_glRasterPos4sv = (fgl_func_glRasterPos4sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRasterPos4sv");
+		fgl_glReadBuffer = (fgl_func_glReadBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glReadBuffer");
+		fgl_glReadPixels = (fgl_func_glReadPixels *)fgl__LoadOpenGLCoreFunction(&loader, "glReadPixels");
+		fgl_glRectd = (fgl_func_glRectd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectd");
+		fgl_glRectdv = (fgl_func_glRectdv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectdv");
+		fgl_glRectf = (fgl_func_glRectf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectf");
+		fgl_glRectfv = (fgl_func_glRectfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectfv");
+		fgl_glRecti = (fgl_func_glRecti *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRecti");
+		fgl_glRectiv = (fgl_func_glRectiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectiv");
+		fgl_glRects = (fgl_func_glRects *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRects");
+		fgl_glRectsv = (fgl_func_glRectsv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRectsv");
+		fgl_glRenderMode = (fgl_func_glRenderMode *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRenderMode");
+		fgl_glRotated = (fgl_func_glRotated *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRotated");
+		fgl_glRotatef = (fgl_func_glRotatef *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glRotatef");
+		fgl_glScaled = (fgl_func_glScaled *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glScaled");
+		fgl_glScalef = (fgl_func_glScalef *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glScalef");
+		fgl_glScissor = (fgl_func_glScissor *)fgl__LoadOpenGLCoreFunction(&loader, "glScissor");
+		fgl_glSelectBuffer = (fgl_func_glSelectBuffer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSelectBuffer");
+		fgl_glShadeModel = (fgl_func_glShadeModel *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glShadeModel");
+		fgl_glStencilFunc = (fgl_func_glStencilFunc *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilFunc");
+		fgl_glStencilMask = (fgl_func_glStencilMask *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilMask");
+		fgl_glStencilOp = (fgl_func_glStencilOp *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilOp");
+		fgl_glTexCoord1d = (fgl_func_glTexCoord1d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1d");
+		fgl_glTexCoord1dv = (fgl_func_glTexCoord1dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1dv");
+		fgl_glTexCoord1f = (fgl_func_glTexCoord1f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1f");
+		fgl_glTexCoord1fv = (fgl_func_glTexCoord1fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1fv");
+		fgl_glTexCoord1i = (fgl_func_glTexCoord1i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1i");
+		fgl_glTexCoord1iv = (fgl_func_glTexCoord1iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1iv");
+		fgl_glTexCoord1s = (fgl_func_glTexCoord1s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1s");
+		fgl_glTexCoord1sv = (fgl_func_glTexCoord1sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord1sv");
+		fgl_glTexCoord2d = (fgl_func_glTexCoord2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2d");
+		fgl_glTexCoord2dv = (fgl_func_glTexCoord2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2dv");
+		fgl_glTexCoord2f = (fgl_func_glTexCoord2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2f");
+		fgl_glTexCoord2fv = (fgl_func_glTexCoord2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2fv");
+		fgl_glTexCoord2i = (fgl_func_glTexCoord2i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2i");
+		fgl_glTexCoord2iv = (fgl_func_glTexCoord2iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2iv");
+		fgl_glTexCoord2s = (fgl_func_glTexCoord2s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2s");
+		fgl_glTexCoord2sv = (fgl_func_glTexCoord2sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord2sv");
+		fgl_glTexCoord3d = (fgl_func_glTexCoord3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3d");
+		fgl_glTexCoord3dv = (fgl_func_glTexCoord3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3dv");
+		fgl_glTexCoord3f = (fgl_func_glTexCoord3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3f");
+		fgl_glTexCoord3fv = (fgl_func_glTexCoord3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3fv");
+		fgl_glTexCoord3i = (fgl_func_glTexCoord3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3i");
+		fgl_glTexCoord3iv = (fgl_func_glTexCoord3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3iv");
+		fgl_glTexCoord3s = (fgl_func_glTexCoord3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3s");
+		fgl_glTexCoord3sv = (fgl_func_glTexCoord3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord3sv");
+		fgl_glTexCoord4d = (fgl_func_glTexCoord4d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4d");
+		fgl_glTexCoord4dv = (fgl_func_glTexCoord4dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4dv");
+		fgl_glTexCoord4f = (fgl_func_glTexCoord4f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4f");
+		fgl_glTexCoord4fv = (fgl_func_glTexCoord4fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4fv");
+		fgl_glTexCoord4i = (fgl_func_glTexCoord4i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4i");
+		fgl_glTexCoord4iv = (fgl_func_glTexCoord4iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4iv");
+		fgl_glTexCoord4s = (fgl_func_glTexCoord4s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4s");
+		fgl_glTexCoord4sv = (fgl_func_glTexCoord4sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoord4sv");
+		fgl_glTexCoordPointer = (fgl_func_glTexCoordPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordPointer");
+		fgl_glTexEnvf = (fgl_func_glTexEnvf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexEnvf");
+		fgl_glTexEnvfv = (fgl_func_glTexEnvfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexEnvfv");
+		fgl_glTexEnvi = (fgl_func_glTexEnvi *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexEnvi");
+		fgl_glTexEnviv = (fgl_func_glTexEnviv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexEnviv");
+		fgl_glTexGend = (fgl_func_glTexGend *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGend");
+		fgl_glTexGendv = (fgl_func_glTexGendv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGendv");
+		fgl_glTexGenf = (fgl_func_glTexGenf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGenf");
+		fgl_glTexGenfv = (fgl_func_glTexGenfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGenfv");
+		fgl_glTexGeni = (fgl_func_glTexGeni *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGeni");
+		fgl_glTexGeniv = (fgl_func_glTexGeniv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexGeniv");
+		fgl_glTexImage1D = (fgl_func_glTexImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexImage1D");
+		fgl_glTexImage2D = (fgl_func_glTexImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexImage2D");
+		fgl_glTexParameterf = (fgl_func_glTexParameterf *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameterf");
+		fgl_glTexParameterfv = (fgl_func_glTexParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameterfv");
+		fgl_glTexParameteri = (fgl_func_glTexParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameteri");
+		fgl_glTexParameteriv = (fgl_func_glTexParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameteriv");
+		fgl_glTexSubImage1D = (fgl_func_glTexSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexSubImage1D");
+		fgl_glTexSubImage2D = (fgl_func_glTexSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexSubImage2D");
+		fgl_glTranslated = (fgl_func_glTranslated *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTranslated");
+		fgl_glTranslatef = (fgl_func_glTranslatef *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTranslatef");
+		fgl_glVertex2d = (fgl_func_glVertex2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2d");
+		fgl_glVertex2dv = (fgl_func_glVertex2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2dv");
+		fgl_glVertex2f = (fgl_func_glVertex2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2f");
+		fgl_glVertex2fv = (fgl_func_glVertex2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2fv");
+		fgl_glVertex2i = (fgl_func_glVertex2i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2i");
+		fgl_glVertex2iv = (fgl_func_glVertex2iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2iv");
+		fgl_glVertex2s = (fgl_func_glVertex2s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2s");
+		fgl_glVertex2sv = (fgl_func_glVertex2sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex2sv");
+		fgl_glVertex3d = (fgl_func_glVertex3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3d");
+		fgl_glVertex3dv = (fgl_func_glVertex3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3dv");
+		fgl_glVertex3f = (fgl_func_glVertex3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3f");
+		fgl_glVertex3fv = (fgl_func_glVertex3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3fv");
+		fgl_glVertex3i = (fgl_func_glVertex3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3i");
+		fgl_glVertex3iv = (fgl_func_glVertex3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3iv");
+		fgl_glVertex3s = (fgl_func_glVertex3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3s");
+		fgl_glVertex3sv = (fgl_func_glVertex3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex3sv");
+		fgl_glVertex4d = (fgl_func_glVertex4d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4d");
+		fgl_glVertex4dv = (fgl_func_glVertex4dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4dv");
+		fgl_glVertex4f = (fgl_func_glVertex4f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4f");
+		fgl_glVertex4fv = (fgl_func_glVertex4fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4fv");
+		fgl_glVertex4i = (fgl_func_glVertex4i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4i");
+		fgl_glVertex4iv = (fgl_func_glVertex4iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4iv");
+		fgl_glVertex4s = (fgl_func_glVertex4s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4s");
+		fgl_glVertex4sv = (fgl_func_glVertex4sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertex4sv");
+		fgl_glVertexPointer = (fgl_func_glVertexPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexPointer");
+		fgl_glViewport = (fgl_func_glViewport *)fgl__LoadOpenGLCoreFunction(&loader, "glViewport");
+		isGL_VERSION_1_1 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_1_1
 
 #	if GL_VERSION_1_2
-		fgl_glDrawRangeElements = (fgl_func_glDrawRangeElements *)fgl__GetOpenGLProcAddress(state, "glDrawRangeElements");
-		fgl_glTexImage3D = (fgl_func_glTexImage3D *)fgl__GetOpenGLProcAddress(state, "glTexImage3D");
-		fgl_glTexSubImage3D = (fgl_func_glTexSubImage3D *)fgl__GetOpenGLProcAddress(state, "glTexSubImage3D");
-		fgl_glCopyTexSubImage3D = (fgl_func_glCopyTexSubImage3D *)fgl__GetOpenGLProcAddress(state, "glCopyTexSubImage3D");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_1_2", 1, 2);
+		fgl_glDrawRangeElements = (fgl_func_glDrawRangeElements *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawRangeElements");
+		fgl_glTexImage3D = (fgl_func_glTexImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexImage3D");
+		fgl_glTexSubImage3D = (fgl_func_glTexSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexSubImage3D");
+		fgl_glCopyTexSubImage3D = (fgl_func_glCopyTexSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTexSubImage3D");
+		isGL_VERSION_1_2 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_1_2
 
 #	if GL_VERSION_1_3
-		fgl_glActiveTexture = (fgl_func_glActiveTexture *)fgl__GetOpenGLProcAddress(state, "glActiveTexture");
-		fgl_glSampleCoverage = (fgl_func_glSampleCoverage *)fgl__GetOpenGLProcAddress(state, "glSampleCoverage");
-		fgl_glCompressedTexImage3D = (fgl_func_glCompressedTexImage3D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexImage3D");
-		fgl_glCompressedTexImage2D = (fgl_func_glCompressedTexImage2D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexImage2D");
-		fgl_glCompressedTexImage1D = (fgl_func_glCompressedTexImage1D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexImage1D");
-		fgl_glCompressedTexSubImage3D = (fgl_func_glCompressedTexSubImage3D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexSubImage3D");
-		fgl_glCompressedTexSubImage2D = (fgl_func_glCompressedTexSubImage2D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexSubImage2D");
-		fgl_glCompressedTexSubImage1D = (fgl_func_glCompressedTexSubImage1D *)fgl__GetOpenGLProcAddress(state, "glCompressedTexSubImage1D");
-		fgl_glGetCompressedTexImage = (fgl_func_glGetCompressedTexImage *)fgl__GetOpenGLProcAddress(state, "glGetCompressedTexImage");
-		fgl_glClientActiveTexture = (fgl_func_glClientActiveTexture *)fgl__GetOpenGLProcAddress(state, "glClientActiveTexture");
-		fgl_glMultiTexCoord1d = (fgl_func_glMultiTexCoord1d *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1d");
-		fgl_glMultiTexCoord1dv = (fgl_func_glMultiTexCoord1dv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1dv");
-		fgl_glMultiTexCoord1f = (fgl_func_glMultiTexCoord1f *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1f");
-		fgl_glMultiTexCoord1fv = (fgl_func_glMultiTexCoord1fv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1fv");
-		fgl_glMultiTexCoord1i = (fgl_func_glMultiTexCoord1i *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1i");
-		fgl_glMultiTexCoord1iv = (fgl_func_glMultiTexCoord1iv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1iv");
-		fgl_glMultiTexCoord1s = (fgl_func_glMultiTexCoord1s *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1s");
-		fgl_glMultiTexCoord1sv = (fgl_func_glMultiTexCoord1sv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord1sv");
-		fgl_glMultiTexCoord2d = (fgl_func_glMultiTexCoord2d *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2d");
-		fgl_glMultiTexCoord2dv = (fgl_func_glMultiTexCoord2dv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2dv");
-		fgl_glMultiTexCoord2f = (fgl_func_glMultiTexCoord2f *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2f");
-		fgl_glMultiTexCoord2fv = (fgl_func_glMultiTexCoord2fv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2fv");
-		fgl_glMultiTexCoord2i = (fgl_func_glMultiTexCoord2i *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2i");
-		fgl_glMultiTexCoord2iv = (fgl_func_glMultiTexCoord2iv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2iv");
-		fgl_glMultiTexCoord2s = (fgl_func_glMultiTexCoord2s *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2s");
-		fgl_glMultiTexCoord2sv = (fgl_func_glMultiTexCoord2sv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord2sv");
-		fgl_glMultiTexCoord3d = (fgl_func_glMultiTexCoord3d *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3d");
-		fgl_glMultiTexCoord3dv = (fgl_func_glMultiTexCoord3dv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3dv");
-		fgl_glMultiTexCoord3f = (fgl_func_glMultiTexCoord3f *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3f");
-		fgl_glMultiTexCoord3fv = (fgl_func_glMultiTexCoord3fv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3fv");
-		fgl_glMultiTexCoord3i = (fgl_func_glMultiTexCoord3i *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3i");
-		fgl_glMultiTexCoord3iv = (fgl_func_glMultiTexCoord3iv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3iv");
-		fgl_glMultiTexCoord3s = (fgl_func_glMultiTexCoord3s *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3s");
-		fgl_glMultiTexCoord3sv = (fgl_func_glMultiTexCoord3sv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord3sv");
-		fgl_glMultiTexCoord4d = (fgl_func_glMultiTexCoord4d *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4d");
-		fgl_glMultiTexCoord4dv = (fgl_func_glMultiTexCoord4dv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4dv");
-		fgl_glMultiTexCoord4f = (fgl_func_glMultiTexCoord4f *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4f");
-		fgl_glMultiTexCoord4fv = (fgl_func_glMultiTexCoord4fv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4fv");
-		fgl_glMultiTexCoord4i = (fgl_func_glMultiTexCoord4i *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4i");
-		fgl_glMultiTexCoord4iv = (fgl_func_glMultiTexCoord4iv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4iv");
-		fgl_glMultiTexCoord4s = (fgl_func_glMultiTexCoord4s *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4s");
-		fgl_glMultiTexCoord4sv = (fgl_func_glMultiTexCoord4sv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoord4sv");
-		fgl_glLoadTransposeMatrixf = (fgl_func_glLoadTransposeMatrixf *)fgl__GetOpenGLProcAddress(state, "glLoadTransposeMatrixf");
-		fgl_glLoadTransposeMatrixd = (fgl_func_glLoadTransposeMatrixd *)fgl__GetOpenGLProcAddress(state, "glLoadTransposeMatrixd");
-		fgl_glMultTransposeMatrixf = (fgl_func_glMultTransposeMatrixf *)fgl__GetOpenGLProcAddress(state, "glMultTransposeMatrixf");
-		fgl_glMultTransposeMatrixd = (fgl_func_glMultTransposeMatrixd *)fgl__GetOpenGLProcAddress(state, "glMultTransposeMatrixd");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_1_3", 1, 3);
+		fgl_glActiveTexture = (fgl_func_glActiveTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glActiveTexture");
+		fgl_glSampleCoverage = (fgl_func_glSampleCoverage *)fgl__LoadOpenGLCoreFunction(&loader, "glSampleCoverage");
+		fgl_glCompressedTexImage3D = (fgl_func_glCompressedTexImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexImage3D");
+		fgl_glCompressedTexImage2D = (fgl_func_glCompressedTexImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexImage2D");
+		fgl_glCompressedTexImage1D = (fgl_func_glCompressedTexImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexImage1D");
+		fgl_glCompressedTexSubImage3D = (fgl_func_glCompressedTexSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexSubImage3D");
+		fgl_glCompressedTexSubImage2D = (fgl_func_glCompressedTexSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexSubImage2D");
+		fgl_glCompressedTexSubImage1D = (fgl_func_glCompressedTexSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTexSubImage1D");
+		fgl_glGetCompressedTexImage = (fgl_func_glGetCompressedTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetCompressedTexImage");
+		fgl_glClientActiveTexture = (fgl_func_glClientActiveTexture *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glClientActiveTexture");
+		fgl_glMultiTexCoord1d = (fgl_func_glMultiTexCoord1d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1d");
+		fgl_glMultiTexCoord1dv = (fgl_func_glMultiTexCoord1dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1dv");
+		fgl_glMultiTexCoord1f = (fgl_func_glMultiTexCoord1f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1f");
+		fgl_glMultiTexCoord1fv = (fgl_func_glMultiTexCoord1fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1fv");
+		fgl_glMultiTexCoord1i = (fgl_func_glMultiTexCoord1i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1i");
+		fgl_glMultiTexCoord1iv = (fgl_func_glMultiTexCoord1iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1iv");
+		fgl_glMultiTexCoord1s = (fgl_func_glMultiTexCoord1s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1s");
+		fgl_glMultiTexCoord1sv = (fgl_func_glMultiTexCoord1sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord1sv");
+		fgl_glMultiTexCoord2d = (fgl_func_glMultiTexCoord2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2d");
+		fgl_glMultiTexCoord2dv = (fgl_func_glMultiTexCoord2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2dv");
+		fgl_glMultiTexCoord2f = (fgl_func_glMultiTexCoord2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2f");
+		fgl_glMultiTexCoord2fv = (fgl_func_glMultiTexCoord2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2fv");
+		fgl_glMultiTexCoord2i = (fgl_func_glMultiTexCoord2i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2i");
+		fgl_glMultiTexCoord2iv = (fgl_func_glMultiTexCoord2iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2iv");
+		fgl_glMultiTexCoord2s = (fgl_func_glMultiTexCoord2s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2s");
+		fgl_glMultiTexCoord2sv = (fgl_func_glMultiTexCoord2sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord2sv");
+		fgl_glMultiTexCoord3d = (fgl_func_glMultiTexCoord3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3d");
+		fgl_glMultiTexCoord3dv = (fgl_func_glMultiTexCoord3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3dv");
+		fgl_glMultiTexCoord3f = (fgl_func_glMultiTexCoord3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3f");
+		fgl_glMultiTexCoord3fv = (fgl_func_glMultiTexCoord3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3fv");
+		fgl_glMultiTexCoord3i = (fgl_func_glMultiTexCoord3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3i");
+		fgl_glMultiTexCoord3iv = (fgl_func_glMultiTexCoord3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3iv");
+		fgl_glMultiTexCoord3s = (fgl_func_glMultiTexCoord3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3s");
+		fgl_glMultiTexCoord3sv = (fgl_func_glMultiTexCoord3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord3sv");
+		fgl_glMultiTexCoord4d = (fgl_func_glMultiTexCoord4d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4d");
+		fgl_glMultiTexCoord4dv = (fgl_func_glMultiTexCoord4dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4dv");
+		fgl_glMultiTexCoord4f = (fgl_func_glMultiTexCoord4f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4f");
+		fgl_glMultiTexCoord4fv = (fgl_func_glMultiTexCoord4fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4fv");
+		fgl_glMultiTexCoord4i = (fgl_func_glMultiTexCoord4i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4i");
+		fgl_glMultiTexCoord4iv = (fgl_func_glMultiTexCoord4iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4iv");
+		fgl_glMultiTexCoord4s = (fgl_func_glMultiTexCoord4s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4s");
+		fgl_glMultiTexCoord4sv = (fgl_func_glMultiTexCoord4sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoord4sv");
+		fgl_glLoadTransposeMatrixf = (fgl_func_glLoadTransposeMatrixf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadTransposeMatrixf");
+		fgl_glLoadTransposeMatrixd = (fgl_func_glLoadTransposeMatrixd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glLoadTransposeMatrixd");
+		fgl_glMultTransposeMatrixf = (fgl_func_glMultTransposeMatrixf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultTransposeMatrixf");
+		fgl_glMultTransposeMatrixd = (fgl_func_glMultTransposeMatrixd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultTransposeMatrixd");
+		isGL_VERSION_1_3 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_1_3
 
 #	if GL_VERSION_1_4
-		fgl_glBlendFuncSeparate = (fgl_func_glBlendFuncSeparate *)fgl__GetOpenGLProcAddress(state, "glBlendFuncSeparate");
-		fgl_glMultiDrawArrays = (fgl_func_glMultiDrawArrays *)fgl__GetOpenGLProcAddress(state, "glMultiDrawArrays");
-		fgl_glMultiDrawElements = (fgl_func_glMultiDrawElements *)fgl__GetOpenGLProcAddress(state, "glMultiDrawElements");
-		fgl_glPointParameterf = (fgl_func_glPointParameterf *)fgl__GetOpenGLProcAddress(state, "glPointParameterf");
-		fgl_glPointParameterfv = (fgl_func_glPointParameterfv *)fgl__GetOpenGLProcAddress(state, "glPointParameterfv");
-		fgl_glPointParameteri = (fgl_func_glPointParameteri *)fgl__GetOpenGLProcAddress(state, "glPointParameteri");
-		fgl_glPointParameteriv = (fgl_func_glPointParameteriv *)fgl__GetOpenGLProcAddress(state, "glPointParameteriv");
-		fgl_glFogCoordf = (fgl_func_glFogCoordf *)fgl__GetOpenGLProcAddress(state, "glFogCoordf");
-		fgl_glFogCoordfv = (fgl_func_glFogCoordfv *)fgl__GetOpenGLProcAddress(state, "glFogCoordfv");
-		fgl_glFogCoordd = (fgl_func_glFogCoordd *)fgl__GetOpenGLProcAddress(state, "glFogCoordd");
-		fgl_glFogCoorddv = (fgl_func_glFogCoorddv *)fgl__GetOpenGLProcAddress(state, "glFogCoorddv");
-		fgl_glFogCoordPointer = (fgl_func_glFogCoordPointer *)fgl__GetOpenGLProcAddress(state, "glFogCoordPointer");
-		fgl_glSecondaryColor3b = (fgl_func_glSecondaryColor3b *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3b");
-		fgl_glSecondaryColor3bv = (fgl_func_glSecondaryColor3bv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3bv");
-		fgl_glSecondaryColor3d = (fgl_func_glSecondaryColor3d *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3d");
-		fgl_glSecondaryColor3dv = (fgl_func_glSecondaryColor3dv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3dv");
-		fgl_glSecondaryColor3f = (fgl_func_glSecondaryColor3f *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3f");
-		fgl_glSecondaryColor3fv = (fgl_func_glSecondaryColor3fv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3fv");
-		fgl_glSecondaryColor3i = (fgl_func_glSecondaryColor3i *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3i");
-		fgl_glSecondaryColor3iv = (fgl_func_glSecondaryColor3iv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3iv");
-		fgl_glSecondaryColor3s = (fgl_func_glSecondaryColor3s *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3s");
-		fgl_glSecondaryColor3sv = (fgl_func_glSecondaryColor3sv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3sv");
-		fgl_glSecondaryColor3ub = (fgl_func_glSecondaryColor3ub *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3ub");
-		fgl_glSecondaryColor3ubv = (fgl_func_glSecondaryColor3ubv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3ubv");
-		fgl_glSecondaryColor3ui = (fgl_func_glSecondaryColor3ui *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3ui");
-		fgl_glSecondaryColor3uiv = (fgl_func_glSecondaryColor3uiv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3uiv");
-		fgl_glSecondaryColor3us = (fgl_func_glSecondaryColor3us *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3us");
-		fgl_glSecondaryColor3usv = (fgl_func_glSecondaryColor3usv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColor3usv");
-		fgl_glSecondaryColorPointer = (fgl_func_glSecondaryColorPointer *)fgl__GetOpenGLProcAddress(state, "glSecondaryColorPointer");
-		fgl_glWindowPos2d = (fgl_func_glWindowPos2d *)fgl__GetOpenGLProcAddress(state, "glWindowPos2d");
-		fgl_glWindowPos2dv = (fgl_func_glWindowPos2dv *)fgl__GetOpenGLProcAddress(state, "glWindowPos2dv");
-		fgl_glWindowPos2f = (fgl_func_glWindowPos2f *)fgl__GetOpenGLProcAddress(state, "glWindowPos2f");
-		fgl_glWindowPos2fv = (fgl_func_glWindowPos2fv *)fgl__GetOpenGLProcAddress(state, "glWindowPos2fv");
-		fgl_glWindowPos2i = (fgl_func_glWindowPos2i *)fgl__GetOpenGLProcAddress(state, "glWindowPos2i");
-		fgl_glWindowPos2iv = (fgl_func_glWindowPos2iv *)fgl__GetOpenGLProcAddress(state, "glWindowPos2iv");
-		fgl_glWindowPos2s = (fgl_func_glWindowPos2s *)fgl__GetOpenGLProcAddress(state, "glWindowPos2s");
-		fgl_glWindowPos2sv = (fgl_func_glWindowPos2sv *)fgl__GetOpenGLProcAddress(state, "glWindowPos2sv");
-		fgl_glWindowPos3d = (fgl_func_glWindowPos3d *)fgl__GetOpenGLProcAddress(state, "glWindowPos3d");
-		fgl_glWindowPos3dv = (fgl_func_glWindowPos3dv *)fgl__GetOpenGLProcAddress(state, "glWindowPos3dv");
-		fgl_glWindowPos3f = (fgl_func_glWindowPos3f *)fgl__GetOpenGLProcAddress(state, "glWindowPos3f");
-		fgl_glWindowPos3fv = (fgl_func_glWindowPos3fv *)fgl__GetOpenGLProcAddress(state, "glWindowPos3fv");
-		fgl_glWindowPos3i = (fgl_func_glWindowPos3i *)fgl__GetOpenGLProcAddress(state, "glWindowPos3i");
-		fgl_glWindowPos3iv = (fgl_func_glWindowPos3iv *)fgl__GetOpenGLProcAddress(state, "glWindowPos3iv");
-		fgl_glWindowPos3s = (fgl_func_glWindowPos3s *)fgl__GetOpenGLProcAddress(state, "glWindowPos3s");
-		fgl_glWindowPos3sv = (fgl_func_glWindowPos3sv *)fgl__GetOpenGLProcAddress(state, "glWindowPos3sv");
-		fgl_glBlendColor = (fgl_func_glBlendColor *)fgl__GetOpenGLProcAddress(state, "glBlendColor");
-		fgl_glBlendEquation = (fgl_func_glBlendEquation *)fgl__GetOpenGLProcAddress(state, "glBlendEquation");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_1_4", 1, 4);
+		fgl_glBlendFuncSeparate = (fgl_func_glBlendFuncSeparate *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendFuncSeparate");
+		fgl_glMultiDrawArrays = (fgl_func_glMultiDrawArrays *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawArrays");
+		fgl_glMultiDrawElements = (fgl_func_glMultiDrawElements *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawElements");
+		fgl_glPointParameterf = (fgl_func_glPointParameterf *)fgl__LoadOpenGLCoreFunction(&loader, "glPointParameterf");
+		fgl_glPointParameterfv = (fgl_func_glPointParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glPointParameterfv");
+		fgl_glPointParameteri = (fgl_func_glPointParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glPointParameteri");
+		fgl_glPointParameteriv = (fgl_func_glPointParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glPointParameteriv");
+		fgl_glFogCoordf = (fgl_func_glFogCoordf *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogCoordf");
+		fgl_glFogCoordfv = (fgl_func_glFogCoordfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogCoordfv");
+		fgl_glFogCoordd = (fgl_func_glFogCoordd *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogCoordd");
+		fgl_glFogCoorddv = (fgl_func_glFogCoorddv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogCoorddv");
+		fgl_glFogCoordPointer = (fgl_func_glFogCoordPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glFogCoordPointer");
+		fgl_glSecondaryColor3b = (fgl_func_glSecondaryColor3b *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3b");
+		fgl_glSecondaryColor3bv = (fgl_func_glSecondaryColor3bv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3bv");
+		fgl_glSecondaryColor3d = (fgl_func_glSecondaryColor3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3d");
+		fgl_glSecondaryColor3dv = (fgl_func_glSecondaryColor3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3dv");
+		fgl_glSecondaryColor3f = (fgl_func_glSecondaryColor3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3f");
+		fgl_glSecondaryColor3fv = (fgl_func_glSecondaryColor3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3fv");
+		fgl_glSecondaryColor3i = (fgl_func_glSecondaryColor3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3i");
+		fgl_glSecondaryColor3iv = (fgl_func_glSecondaryColor3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3iv");
+		fgl_glSecondaryColor3s = (fgl_func_glSecondaryColor3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3s");
+		fgl_glSecondaryColor3sv = (fgl_func_glSecondaryColor3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3sv");
+		fgl_glSecondaryColor3ub = (fgl_func_glSecondaryColor3ub *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3ub");
+		fgl_glSecondaryColor3ubv = (fgl_func_glSecondaryColor3ubv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3ubv");
+		fgl_glSecondaryColor3ui = (fgl_func_glSecondaryColor3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3ui");
+		fgl_glSecondaryColor3uiv = (fgl_func_glSecondaryColor3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3uiv");
+		fgl_glSecondaryColor3us = (fgl_func_glSecondaryColor3us *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3us");
+		fgl_glSecondaryColor3usv = (fgl_func_glSecondaryColor3usv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColor3usv");
+		fgl_glSecondaryColorPointer = (fgl_func_glSecondaryColorPointer *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColorPointer");
+		fgl_glWindowPos2d = (fgl_func_glWindowPos2d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2d");
+		fgl_glWindowPos2dv = (fgl_func_glWindowPos2dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2dv");
+		fgl_glWindowPos2f = (fgl_func_glWindowPos2f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2f");
+		fgl_glWindowPos2fv = (fgl_func_glWindowPos2fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2fv");
+		fgl_glWindowPos2i = (fgl_func_glWindowPos2i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2i");
+		fgl_glWindowPos2iv = (fgl_func_glWindowPos2iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2iv");
+		fgl_glWindowPos2s = (fgl_func_glWindowPos2s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2s");
+		fgl_glWindowPos2sv = (fgl_func_glWindowPos2sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos2sv");
+		fgl_glWindowPos3d = (fgl_func_glWindowPos3d *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3d");
+		fgl_glWindowPos3dv = (fgl_func_glWindowPos3dv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3dv");
+		fgl_glWindowPos3f = (fgl_func_glWindowPos3f *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3f");
+		fgl_glWindowPos3fv = (fgl_func_glWindowPos3fv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3fv");
+		fgl_glWindowPos3i = (fgl_func_glWindowPos3i *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3i");
+		fgl_glWindowPos3iv = (fgl_func_glWindowPos3iv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3iv");
+		fgl_glWindowPos3s = (fgl_func_glWindowPos3s *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3s");
+		fgl_glWindowPos3sv = (fgl_func_glWindowPos3sv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glWindowPos3sv");
+		fgl_glBlendColor = (fgl_func_glBlendColor *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendColor");
+		fgl_glBlendEquation = (fgl_func_glBlendEquation *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendEquation");
+		isGL_VERSION_1_4 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_1_4
 
 #	if GL_VERSION_1_5
-		fgl_glGenQueries = (fgl_func_glGenQueries *)fgl__GetOpenGLProcAddress(state, "glGenQueries");
-		fgl_glDeleteQueries = (fgl_func_glDeleteQueries *)fgl__GetOpenGLProcAddress(state, "glDeleteQueries");
-		fgl_glIsQuery = (fgl_func_glIsQuery *)fgl__GetOpenGLProcAddress(state, "glIsQuery");
-		fgl_glBeginQuery = (fgl_func_glBeginQuery *)fgl__GetOpenGLProcAddress(state, "glBeginQuery");
-		fgl_glEndQuery = (fgl_func_glEndQuery *)fgl__GetOpenGLProcAddress(state, "glEndQuery");
-		fgl_glGetQueryiv = (fgl_func_glGetQueryiv *)fgl__GetOpenGLProcAddress(state, "glGetQueryiv");
-		fgl_glGetQueryObjectiv = (fgl_func_glGetQueryObjectiv *)fgl__GetOpenGLProcAddress(state, "glGetQueryObjectiv");
-		fgl_glGetQueryObjectuiv = (fgl_func_glGetQueryObjectuiv *)fgl__GetOpenGLProcAddress(state, "glGetQueryObjectuiv");
-		fgl_glBindBuffer = (fgl_func_glBindBuffer *)fgl__GetOpenGLProcAddress(state, "glBindBuffer");
-		fgl_glDeleteBuffers = (fgl_func_glDeleteBuffers *)fgl__GetOpenGLProcAddress(state, "glDeleteBuffers");
-		fgl_glGenBuffers = (fgl_func_glGenBuffers *)fgl__GetOpenGLProcAddress(state, "glGenBuffers");
-		fgl_glIsBuffer = (fgl_func_glIsBuffer *)fgl__GetOpenGLProcAddress(state, "glIsBuffer");
-		fgl_glBufferData = (fgl_func_glBufferData *)fgl__GetOpenGLProcAddress(state, "glBufferData");
-		fgl_glBufferSubData = (fgl_func_glBufferSubData *)fgl__GetOpenGLProcAddress(state, "glBufferSubData");
-		fgl_glGetBufferSubData = (fgl_func_glGetBufferSubData *)fgl__GetOpenGLProcAddress(state, "glGetBufferSubData");
-		fgl_glMapBuffer = (fgl_func_glMapBuffer *)fgl__GetOpenGLProcAddress(state, "glMapBuffer");
-		fgl_glUnmapBuffer = (fgl_func_glUnmapBuffer *)fgl__GetOpenGLProcAddress(state, "glUnmapBuffer");
-		fgl_glGetBufferParameteriv = (fgl_func_glGetBufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetBufferParameteriv");
-		fgl_glGetBufferPointerv = (fgl_func_glGetBufferPointerv *)fgl__GetOpenGLProcAddress(state, "glGetBufferPointerv");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_1_5", 1, 5);
+		fgl_glGenQueries = (fgl_func_glGenQueries *)fgl__LoadOpenGLCoreFunction(&loader, "glGenQueries");
+		fgl_glDeleteQueries = (fgl_func_glDeleteQueries *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteQueries");
+		fgl_glIsQuery = (fgl_func_glIsQuery *)fgl__LoadOpenGLCoreFunction(&loader, "glIsQuery");
+		fgl_glBeginQuery = (fgl_func_glBeginQuery *)fgl__LoadOpenGLCoreFunction(&loader, "glBeginQuery");
+		fgl_glEndQuery = (fgl_func_glEndQuery *)fgl__LoadOpenGLCoreFunction(&loader, "glEndQuery");
+		fgl_glGetQueryiv = (fgl_func_glGetQueryiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryiv");
+		fgl_glGetQueryObjectiv = (fgl_func_glGetQueryObjectiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryObjectiv");
+		fgl_glGetQueryObjectuiv = (fgl_func_glGetQueryObjectuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryObjectuiv");
+		fgl_glBindBuffer = (fgl_func_glBindBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBindBuffer");
+		fgl_glDeleteBuffers = (fgl_func_glDeleteBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteBuffers");
+		fgl_glGenBuffers = (fgl_func_glGenBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glGenBuffers");
+		fgl_glIsBuffer = (fgl_func_glIsBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glIsBuffer");
+		fgl_glBufferData = (fgl_func_glBufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glBufferData");
+		fgl_glBufferSubData = (fgl_func_glBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glBufferSubData");
+		fgl_glGetBufferSubData = (fgl_func_glGetBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBufferSubData");
+		fgl_glMapBuffer = (fgl_func_glMapBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glMapBuffer");
+		fgl_glUnmapBuffer = (fgl_func_glUnmapBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glUnmapBuffer");
+		fgl_glGetBufferParameteriv = (fgl_func_glGetBufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBufferParameteriv");
+		fgl_glGetBufferPointerv = (fgl_func_glGetBufferPointerv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBufferPointerv");
+		isGL_VERSION_1_5 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_1_5
 
 #	if GL_VERSION_2_0
-		fgl_glBlendEquationSeparate = (fgl_func_glBlendEquationSeparate *)fgl__GetOpenGLProcAddress(state, "glBlendEquationSeparate");
-		fgl_glDrawBuffers = (fgl_func_glDrawBuffers *)fgl__GetOpenGLProcAddress(state, "glDrawBuffers");
-		fgl_glStencilOpSeparate = (fgl_func_glStencilOpSeparate *)fgl__GetOpenGLProcAddress(state, "glStencilOpSeparate");
-		fgl_glStencilFuncSeparate = (fgl_func_glStencilFuncSeparate *)fgl__GetOpenGLProcAddress(state, "glStencilFuncSeparate");
-		fgl_glStencilMaskSeparate = (fgl_func_glStencilMaskSeparate *)fgl__GetOpenGLProcAddress(state, "glStencilMaskSeparate");
-		fgl_glAttachShader = (fgl_func_glAttachShader *)fgl__GetOpenGLProcAddress(state, "glAttachShader");
-		fgl_glBindAttribLocation = (fgl_func_glBindAttribLocation *)fgl__GetOpenGLProcAddress(state, "glBindAttribLocation");
-		fgl_glCompileShader = (fgl_func_glCompileShader *)fgl__GetOpenGLProcAddress(state, "glCompileShader");
-		fgl_glCreateProgram = (fgl_func_glCreateProgram *)fgl__GetOpenGLProcAddress(state, "glCreateProgram");
-		fgl_glCreateShader = (fgl_func_glCreateShader *)fgl__GetOpenGLProcAddress(state, "glCreateShader");
-		fgl_glDeleteProgram = (fgl_func_glDeleteProgram *)fgl__GetOpenGLProcAddress(state, "glDeleteProgram");
-		fgl_glDeleteShader = (fgl_func_glDeleteShader *)fgl__GetOpenGLProcAddress(state, "glDeleteShader");
-		fgl_glDetachShader = (fgl_func_glDetachShader *)fgl__GetOpenGLProcAddress(state, "glDetachShader");
-		fgl_glDisableVertexAttribArray = (fgl_func_glDisableVertexAttribArray *)fgl__GetOpenGLProcAddress(state, "glDisableVertexAttribArray");
-		fgl_glEnableVertexAttribArray = (fgl_func_glEnableVertexAttribArray *)fgl__GetOpenGLProcAddress(state, "glEnableVertexAttribArray");
-		fgl_glGetActiveAttrib = (fgl_func_glGetActiveAttrib *)fgl__GetOpenGLProcAddress(state, "glGetActiveAttrib");
-		fgl_glGetActiveUniform = (fgl_func_glGetActiveUniform *)fgl__GetOpenGLProcAddress(state, "glGetActiveUniform");
-		fgl_glGetAttachedShaders = (fgl_func_glGetAttachedShaders *)fgl__GetOpenGLProcAddress(state, "glGetAttachedShaders");
-		fgl_glGetAttribLocation = (fgl_func_glGetAttribLocation *)fgl__GetOpenGLProcAddress(state, "glGetAttribLocation");
-		fgl_glGetProgramiv = (fgl_func_glGetProgramiv *)fgl__GetOpenGLProcAddress(state, "glGetProgramiv");
-		fgl_glGetProgramInfoLog = (fgl_func_glGetProgramInfoLog *)fgl__GetOpenGLProcAddress(state, "glGetProgramInfoLog");
-		fgl_glGetShaderiv = (fgl_func_glGetShaderiv *)fgl__GetOpenGLProcAddress(state, "glGetShaderiv");
-		fgl_glGetShaderInfoLog = (fgl_func_glGetShaderInfoLog *)fgl__GetOpenGLProcAddress(state, "glGetShaderInfoLog");
-		fgl_glGetShaderSource = (fgl_func_glGetShaderSource *)fgl__GetOpenGLProcAddress(state, "glGetShaderSource");
-		fgl_glGetUniformLocation = (fgl_func_glGetUniformLocation *)fgl__GetOpenGLProcAddress(state, "glGetUniformLocation");
-		fgl_glGetUniformfv = (fgl_func_glGetUniformfv *)fgl__GetOpenGLProcAddress(state, "glGetUniformfv");
-		fgl_glGetUniformiv = (fgl_func_glGetUniformiv *)fgl__GetOpenGLProcAddress(state, "glGetUniformiv");
-		fgl_glGetVertexAttribdv = (fgl_func_glGetVertexAttribdv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribdv");
-		fgl_glGetVertexAttribfv = (fgl_func_glGetVertexAttribfv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribfv");
-		fgl_glGetVertexAttribiv = (fgl_func_glGetVertexAttribiv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribiv");
-		fgl_glGetVertexAttribPointerv = (fgl_func_glGetVertexAttribPointerv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribPointerv");
-		fgl_glIsProgram = (fgl_func_glIsProgram *)fgl__GetOpenGLProcAddress(state, "glIsProgram");
-		fgl_glIsShader = (fgl_func_glIsShader *)fgl__GetOpenGLProcAddress(state, "glIsShader");
-		fgl_glLinkProgram = (fgl_func_glLinkProgram *)fgl__GetOpenGLProcAddress(state, "glLinkProgram");
-		fgl_glShaderSource = (fgl_func_glShaderSource *)fgl__GetOpenGLProcAddress(state, "glShaderSource");
-		fgl_glUseProgram = (fgl_func_glUseProgram *)fgl__GetOpenGLProcAddress(state, "glUseProgram");
-		fgl_glUniform1f = (fgl_func_glUniform1f *)fgl__GetOpenGLProcAddress(state, "glUniform1f");
-		fgl_glUniform2f = (fgl_func_glUniform2f *)fgl__GetOpenGLProcAddress(state, "glUniform2f");
-		fgl_glUniform3f = (fgl_func_glUniform3f *)fgl__GetOpenGLProcAddress(state, "glUniform3f");
-		fgl_glUniform4f = (fgl_func_glUniform4f *)fgl__GetOpenGLProcAddress(state, "glUniform4f");
-		fgl_glUniform1i = (fgl_func_glUniform1i *)fgl__GetOpenGLProcAddress(state, "glUniform1i");
-		fgl_glUniform2i = (fgl_func_glUniform2i *)fgl__GetOpenGLProcAddress(state, "glUniform2i");
-		fgl_glUniform3i = (fgl_func_glUniform3i *)fgl__GetOpenGLProcAddress(state, "glUniform3i");
-		fgl_glUniform4i = (fgl_func_glUniform4i *)fgl__GetOpenGLProcAddress(state, "glUniform4i");
-		fgl_glUniform1fv = (fgl_func_glUniform1fv *)fgl__GetOpenGLProcAddress(state, "glUniform1fv");
-		fgl_glUniform2fv = (fgl_func_glUniform2fv *)fgl__GetOpenGLProcAddress(state, "glUniform2fv");
-		fgl_glUniform3fv = (fgl_func_glUniform3fv *)fgl__GetOpenGLProcAddress(state, "glUniform3fv");
-		fgl_glUniform4fv = (fgl_func_glUniform4fv *)fgl__GetOpenGLProcAddress(state, "glUniform4fv");
-		fgl_glUniform1iv = (fgl_func_glUniform1iv *)fgl__GetOpenGLProcAddress(state, "glUniform1iv");
-		fgl_glUniform2iv = (fgl_func_glUniform2iv *)fgl__GetOpenGLProcAddress(state, "glUniform2iv");
-		fgl_glUniform3iv = (fgl_func_glUniform3iv *)fgl__GetOpenGLProcAddress(state, "glUniform3iv");
-		fgl_glUniform4iv = (fgl_func_glUniform4iv *)fgl__GetOpenGLProcAddress(state, "glUniform4iv");
-		fgl_glUniformMatrix2fv = (fgl_func_glUniformMatrix2fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2fv");
-		fgl_glUniformMatrix3fv = (fgl_func_glUniformMatrix3fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3fv");
-		fgl_glUniformMatrix4fv = (fgl_func_glUniformMatrix4fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4fv");
-		fgl_glValidateProgram = (fgl_func_glValidateProgram *)fgl__GetOpenGLProcAddress(state, "glValidateProgram");
-		fgl_glVertexAttrib1d = (fgl_func_glVertexAttrib1d *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1d");
-		fgl_glVertexAttrib1dv = (fgl_func_glVertexAttrib1dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1dv");
-		fgl_glVertexAttrib1f = (fgl_func_glVertexAttrib1f *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1f");
-		fgl_glVertexAttrib1fv = (fgl_func_glVertexAttrib1fv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1fv");
-		fgl_glVertexAttrib1s = (fgl_func_glVertexAttrib1s *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1s");
-		fgl_glVertexAttrib1sv = (fgl_func_glVertexAttrib1sv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib1sv");
-		fgl_glVertexAttrib2d = (fgl_func_glVertexAttrib2d *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2d");
-		fgl_glVertexAttrib2dv = (fgl_func_glVertexAttrib2dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2dv");
-		fgl_glVertexAttrib2f = (fgl_func_glVertexAttrib2f *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2f");
-		fgl_glVertexAttrib2fv = (fgl_func_glVertexAttrib2fv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2fv");
-		fgl_glVertexAttrib2s = (fgl_func_glVertexAttrib2s *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2s");
-		fgl_glVertexAttrib2sv = (fgl_func_glVertexAttrib2sv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib2sv");
-		fgl_glVertexAttrib3d = (fgl_func_glVertexAttrib3d *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3d");
-		fgl_glVertexAttrib3dv = (fgl_func_glVertexAttrib3dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3dv");
-		fgl_glVertexAttrib3f = (fgl_func_glVertexAttrib3f *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3f");
-		fgl_glVertexAttrib3fv = (fgl_func_glVertexAttrib3fv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3fv");
-		fgl_glVertexAttrib3s = (fgl_func_glVertexAttrib3s *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3s");
-		fgl_glVertexAttrib3sv = (fgl_func_glVertexAttrib3sv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib3sv");
-		fgl_glVertexAttrib4Nbv = (fgl_func_glVertexAttrib4Nbv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nbv");
-		fgl_glVertexAttrib4Niv = (fgl_func_glVertexAttrib4Niv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Niv");
-		fgl_glVertexAttrib4Nsv = (fgl_func_glVertexAttrib4Nsv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nsv");
-		fgl_glVertexAttrib4Nub = (fgl_func_glVertexAttrib4Nub *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nub");
-		fgl_glVertexAttrib4Nubv = (fgl_func_glVertexAttrib4Nubv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nubv");
-		fgl_glVertexAttrib4Nuiv = (fgl_func_glVertexAttrib4Nuiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nuiv");
-		fgl_glVertexAttrib4Nusv = (fgl_func_glVertexAttrib4Nusv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4Nusv");
-		fgl_glVertexAttrib4bv = (fgl_func_glVertexAttrib4bv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4bv");
-		fgl_glVertexAttrib4d = (fgl_func_glVertexAttrib4d *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4d");
-		fgl_glVertexAttrib4dv = (fgl_func_glVertexAttrib4dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4dv");
-		fgl_glVertexAttrib4f = (fgl_func_glVertexAttrib4f *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4f");
-		fgl_glVertexAttrib4fv = (fgl_func_glVertexAttrib4fv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4fv");
-		fgl_glVertexAttrib4iv = (fgl_func_glVertexAttrib4iv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4iv");
-		fgl_glVertexAttrib4s = (fgl_func_glVertexAttrib4s *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4s");
-		fgl_glVertexAttrib4sv = (fgl_func_glVertexAttrib4sv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4sv");
-		fgl_glVertexAttrib4ubv = (fgl_func_glVertexAttrib4ubv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4ubv");
-		fgl_glVertexAttrib4uiv = (fgl_func_glVertexAttrib4uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4uiv");
-		fgl_glVertexAttrib4usv = (fgl_func_glVertexAttrib4usv *)fgl__GetOpenGLProcAddress(state, "glVertexAttrib4usv");
-		fgl_glVertexAttribPointer = (fgl_func_glVertexAttribPointer *)fgl__GetOpenGLProcAddress(state, "glVertexAttribPointer");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_2_0", 2, 0);
+		fgl_glBlendEquationSeparate = (fgl_func_glBlendEquationSeparate *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendEquationSeparate");
+		fgl_glDrawBuffers = (fgl_func_glDrawBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawBuffers");
+		fgl_glStencilOpSeparate = (fgl_func_glStencilOpSeparate *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilOpSeparate");
+		fgl_glStencilFuncSeparate = (fgl_func_glStencilFuncSeparate *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilFuncSeparate");
+		fgl_glStencilMaskSeparate = (fgl_func_glStencilMaskSeparate *)fgl__LoadOpenGLCoreFunction(&loader, "glStencilMaskSeparate");
+		fgl_glAttachShader = (fgl_func_glAttachShader *)fgl__LoadOpenGLCoreFunction(&loader, "glAttachShader");
+		fgl_glBindAttribLocation = (fgl_func_glBindAttribLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glBindAttribLocation");
+		fgl_glCompileShader = (fgl_func_glCompileShader *)fgl__LoadOpenGLCoreFunction(&loader, "glCompileShader");
+		fgl_glCreateProgram = (fgl_func_glCreateProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateProgram");
+		fgl_glCreateShader = (fgl_func_glCreateShader *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateShader");
+		fgl_glDeleteProgram = (fgl_func_glDeleteProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteProgram");
+		fgl_glDeleteShader = (fgl_func_glDeleteShader *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteShader");
+		fgl_glDetachShader = (fgl_func_glDetachShader *)fgl__LoadOpenGLCoreFunction(&loader, "glDetachShader");
+		fgl_glDisableVertexAttribArray = (fgl_func_glDisableVertexAttribArray *)fgl__LoadOpenGLCoreFunction(&loader, "glDisableVertexAttribArray");
+		fgl_glEnableVertexAttribArray = (fgl_func_glEnableVertexAttribArray *)fgl__LoadOpenGLCoreFunction(&loader, "glEnableVertexAttribArray");
+		fgl_glGetActiveAttrib = (fgl_func_glGetActiveAttrib *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveAttrib");
+		fgl_glGetActiveUniform = (fgl_func_glGetActiveUniform *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveUniform");
+		fgl_glGetAttachedShaders = (fgl_func_glGetAttachedShaders *)fgl__LoadOpenGLCoreFunction(&loader, "glGetAttachedShaders");
+		fgl_glGetAttribLocation = (fgl_func_glGetAttribLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glGetAttribLocation");
+		fgl_glGetProgramiv = (fgl_func_glGetProgramiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramiv");
+		fgl_glGetProgramInfoLog = (fgl_func_glGetProgramInfoLog *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramInfoLog");
+		fgl_glGetShaderiv = (fgl_func_glGetShaderiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetShaderiv");
+		fgl_glGetShaderInfoLog = (fgl_func_glGetShaderInfoLog *)fgl__LoadOpenGLCoreFunction(&loader, "glGetShaderInfoLog");
+		fgl_glGetShaderSource = (fgl_func_glGetShaderSource *)fgl__LoadOpenGLCoreFunction(&loader, "glGetShaderSource");
+		fgl_glGetUniformLocation = (fgl_func_glGetUniformLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformLocation");
+		fgl_glGetUniformfv = (fgl_func_glGetUniformfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformfv");
+		fgl_glGetUniformiv = (fgl_func_glGetUniformiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformiv");
+		fgl_glGetVertexAttribdv = (fgl_func_glGetVertexAttribdv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribdv");
+		fgl_glGetVertexAttribfv = (fgl_func_glGetVertexAttribfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribfv");
+		fgl_glGetVertexAttribiv = (fgl_func_glGetVertexAttribiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribiv");
+		fgl_glGetVertexAttribPointerv = (fgl_func_glGetVertexAttribPointerv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribPointerv");
+		fgl_glIsProgram = (fgl_func_glIsProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glIsProgram");
+		fgl_glIsShader = (fgl_func_glIsShader *)fgl__LoadOpenGLCoreFunction(&loader, "glIsShader");
+		fgl_glLinkProgram = (fgl_func_glLinkProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glLinkProgram");
+		fgl_glShaderSource = (fgl_func_glShaderSource *)fgl__LoadOpenGLCoreFunction(&loader, "glShaderSource");
+		fgl_glUseProgram = (fgl_func_glUseProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glUseProgram");
+		fgl_glUniform1f = (fgl_func_glUniform1f *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1f");
+		fgl_glUniform2f = (fgl_func_glUniform2f *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2f");
+		fgl_glUniform3f = (fgl_func_glUniform3f *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3f");
+		fgl_glUniform4f = (fgl_func_glUniform4f *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4f");
+		fgl_glUniform1i = (fgl_func_glUniform1i *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1i");
+		fgl_glUniform2i = (fgl_func_glUniform2i *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2i");
+		fgl_glUniform3i = (fgl_func_glUniform3i *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3i");
+		fgl_glUniform4i = (fgl_func_glUniform4i *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4i");
+		fgl_glUniform1fv = (fgl_func_glUniform1fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1fv");
+		fgl_glUniform2fv = (fgl_func_glUniform2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2fv");
+		fgl_glUniform3fv = (fgl_func_glUniform3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3fv");
+		fgl_glUniform4fv = (fgl_func_glUniform4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4fv");
+		fgl_glUniform1iv = (fgl_func_glUniform1iv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1iv");
+		fgl_glUniform2iv = (fgl_func_glUniform2iv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2iv");
+		fgl_glUniform3iv = (fgl_func_glUniform3iv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3iv");
+		fgl_glUniform4iv = (fgl_func_glUniform4iv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4iv");
+		fgl_glUniformMatrix2fv = (fgl_func_glUniformMatrix2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2fv");
+		fgl_glUniformMatrix3fv = (fgl_func_glUniformMatrix3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3fv");
+		fgl_glUniformMatrix4fv = (fgl_func_glUniformMatrix4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4fv");
+		fgl_glValidateProgram = (fgl_func_glValidateProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glValidateProgram");
+		fgl_glVertexAttrib1d = (fgl_func_glVertexAttrib1d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1d");
+		fgl_glVertexAttrib1dv = (fgl_func_glVertexAttrib1dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1dv");
+		fgl_glVertexAttrib1f = (fgl_func_glVertexAttrib1f *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1f");
+		fgl_glVertexAttrib1fv = (fgl_func_glVertexAttrib1fv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1fv");
+		fgl_glVertexAttrib1s = (fgl_func_glVertexAttrib1s *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1s");
+		fgl_glVertexAttrib1sv = (fgl_func_glVertexAttrib1sv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib1sv");
+		fgl_glVertexAttrib2d = (fgl_func_glVertexAttrib2d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2d");
+		fgl_glVertexAttrib2dv = (fgl_func_glVertexAttrib2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2dv");
+		fgl_glVertexAttrib2f = (fgl_func_glVertexAttrib2f *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2f");
+		fgl_glVertexAttrib2fv = (fgl_func_glVertexAttrib2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2fv");
+		fgl_glVertexAttrib2s = (fgl_func_glVertexAttrib2s *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2s");
+		fgl_glVertexAttrib2sv = (fgl_func_glVertexAttrib2sv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib2sv");
+		fgl_glVertexAttrib3d = (fgl_func_glVertexAttrib3d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3d");
+		fgl_glVertexAttrib3dv = (fgl_func_glVertexAttrib3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3dv");
+		fgl_glVertexAttrib3f = (fgl_func_glVertexAttrib3f *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3f");
+		fgl_glVertexAttrib3fv = (fgl_func_glVertexAttrib3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3fv");
+		fgl_glVertexAttrib3s = (fgl_func_glVertexAttrib3s *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3s");
+		fgl_glVertexAttrib3sv = (fgl_func_glVertexAttrib3sv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib3sv");
+		fgl_glVertexAttrib4Nbv = (fgl_func_glVertexAttrib4Nbv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nbv");
+		fgl_glVertexAttrib4Niv = (fgl_func_glVertexAttrib4Niv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Niv");
+		fgl_glVertexAttrib4Nsv = (fgl_func_glVertexAttrib4Nsv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nsv");
+		fgl_glVertexAttrib4Nub = (fgl_func_glVertexAttrib4Nub *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nub");
+		fgl_glVertexAttrib4Nubv = (fgl_func_glVertexAttrib4Nubv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nubv");
+		fgl_glVertexAttrib4Nuiv = (fgl_func_glVertexAttrib4Nuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nuiv");
+		fgl_glVertexAttrib4Nusv = (fgl_func_glVertexAttrib4Nusv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4Nusv");
+		fgl_glVertexAttrib4bv = (fgl_func_glVertexAttrib4bv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4bv");
+		fgl_glVertexAttrib4d = (fgl_func_glVertexAttrib4d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4d");
+		fgl_glVertexAttrib4dv = (fgl_func_glVertexAttrib4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4dv");
+		fgl_glVertexAttrib4f = (fgl_func_glVertexAttrib4f *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4f");
+		fgl_glVertexAttrib4fv = (fgl_func_glVertexAttrib4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4fv");
+		fgl_glVertexAttrib4iv = (fgl_func_glVertexAttrib4iv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4iv");
+		fgl_glVertexAttrib4s = (fgl_func_glVertexAttrib4s *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4s");
+		fgl_glVertexAttrib4sv = (fgl_func_glVertexAttrib4sv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4sv");
+		fgl_glVertexAttrib4ubv = (fgl_func_glVertexAttrib4ubv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4ubv");
+		fgl_glVertexAttrib4uiv = (fgl_func_glVertexAttrib4uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4uiv");
+		fgl_glVertexAttrib4usv = (fgl_func_glVertexAttrib4usv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttrib4usv");
+		fgl_glVertexAttribPointer = (fgl_func_glVertexAttribPointer *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribPointer");
+		isGL_VERSION_2_0 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_2_0
 
 #	if GL_VERSION_2_1
-		fgl_glUniformMatrix2x3fv = (fgl_func_glUniformMatrix2x3fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2x3fv");
-		fgl_glUniformMatrix3x2fv = (fgl_func_glUniformMatrix3x2fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3x2fv");
-		fgl_glUniformMatrix2x4fv = (fgl_func_glUniformMatrix2x4fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2x4fv");
-		fgl_glUniformMatrix4x2fv = (fgl_func_glUniformMatrix4x2fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4x2fv");
-		fgl_glUniformMatrix3x4fv = (fgl_func_glUniformMatrix3x4fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3x4fv");
-		fgl_glUniformMatrix4x3fv = (fgl_func_glUniformMatrix4x3fv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4x3fv");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_2_1", 2, 1);
+		fgl_glUniformMatrix2x3fv = (fgl_func_glUniformMatrix2x3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2x3fv");
+		fgl_glUniformMatrix3x2fv = (fgl_func_glUniformMatrix3x2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3x2fv");
+		fgl_glUniformMatrix2x4fv = (fgl_func_glUniformMatrix2x4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2x4fv");
+		fgl_glUniformMatrix4x2fv = (fgl_func_glUniformMatrix4x2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4x2fv");
+		fgl_glUniformMatrix3x4fv = (fgl_func_glUniformMatrix3x4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3x4fv");
+		fgl_glUniformMatrix4x3fv = (fgl_func_glUniformMatrix4x3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4x3fv");
+		isGL_VERSION_2_1 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_2_1
 
 #	if GL_VERSION_3_0
-		fgl_glColorMaski = (fgl_func_glColorMaski *)fgl__GetOpenGLProcAddress(state, "glColorMaski");
-		fgl_glGetBooleani_v = (fgl_func_glGetBooleani_v *)fgl__GetOpenGLProcAddress(state, "glGetBooleani_v");
-		fgl_glGetIntegeri_v = (fgl_func_glGetIntegeri_v *)fgl__GetOpenGLProcAddress(state, "glGetIntegeri_v");
-		fgl_glEnablei = (fgl_func_glEnablei *)fgl__GetOpenGLProcAddress(state, "glEnablei");
-		fgl_glDisablei = (fgl_func_glDisablei *)fgl__GetOpenGLProcAddress(state, "glDisablei");
-		fgl_glIsEnabledi = (fgl_func_glIsEnabledi *)fgl__GetOpenGLProcAddress(state, "glIsEnabledi");
-		fgl_glBeginTransformFeedback = (fgl_func_glBeginTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glBeginTransformFeedback");
-		fgl_glEndTransformFeedback = (fgl_func_glEndTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glEndTransformFeedback");
-		fgl_glBindBufferRange = (fgl_func_glBindBufferRange *)fgl__GetOpenGLProcAddress(state, "glBindBufferRange");
-		fgl_glBindBufferBase = (fgl_func_glBindBufferBase *)fgl__GetOpenGLProcAddress(state, "glBindBufferBase");
-		fgl_glTransformFeedbackVaryings = (fgl_func_glTransformFeedbackVaryings *)fgl__GetOpenGLProcAddress(state, "glTransformFeedbackVaryings");
-		fgl_glGetTransformFeedbackVarying = (fgl_func_glGetTransformFeedbackVarying *)fgl__GetOpenGLProcAddress(state, "glGetTransformFeedbackVarying");
-		fgl_glClampColor = (fgl_func_glClampColor *)fgl__GetOpenGLProcAddress(state, "glClampColor");
-		fgl_glBeginConditionalRender = (fgl_func_glBeginConditionalRender *)fgl__GetOpenGLProcAddress(state, "glBeginConditionalRender");
-		fgl_glEndConditionalRender = (fgl_func_glEndConditionalRender *)fgl__GetOpenGLProcAddress(state, "glEndConditionalRender");
-		fgl_glVertexAttribIPointer = (fgl_func_glVertexAttribIPointer *)fgl__GetOpenGLProcAddress(state, "glVertexAttribIPointer");
-		fgl_glGetVertexAttribIiv = (fgl_func_glGetVertexAttribIiv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribIiv");
-		fgl_glGetVertexAttribIuiv = (fgl_func_glGetVertexAttribIuiv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribIuiv");
-		fgl_glVertexAttribI1i = (fgl_func_glVertexAttribI1i *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI1i");
-		fgl_glVertexAttribI2i = (fgl_func_glVertexAttribI2i *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI2i");
-		fgl_glVertexAttribI3i = (fgl_func_glVertexAttribI3i *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI3i");
-		fgl_glVertexAttribI4i = (fgl_func_glVertexAttribI4i *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4i");
-		fgl_glVertexAttribI1ui = (fgl_func_glVertexAttribI1ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI1ui");
-		fgl_glVertexAttribI2ui = (fgl_func_glVertexAttribI2ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI2ui");
-		fgl_glVertexAttribI3ui = (fgl_func_glVertexAttribI3ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI3ui");
-		fgl_glVertexAttribI4ui = (fgl_func_glVertexAttribI4ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4ui");
-		fgl_glVertexAttribI1iv = (fgl_func_glVertexAttribI1iv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI1iv");
-		fgl_glVertexAttribI2iv = (fgl_func_glVertexAttribI2iv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI2iv");
-		fgl_glVertexAttribI3iv = (fgl_func_glVertexAttribI3iv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI3iv");
-		fgl_glVertexAttribI4iv = (fgl_func_glVertexAttribI4iv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4iv");
-		fgl_glVertexAttribI1uiv = (fgl_func_glVertexAttribI1uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI1uiv");
-		fgl_glVertexAttribI2uiv = (fgl_func_glVertexAttribI2uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI2uiv");
-		fgl_glVertexAttribI3uiv = (fgl_func_glVertexAttribI3uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI3uiv");
-		fgl_glVertexAttribI4uiv = (fgl_func_glVertexAttribI4uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4uiv");
-		fgl_glVertexAttribI4bv = (fgl_func_glVertexAttribI4bv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4bv");
-		fgl_glVertexAttribI4sv = (fgl_func_glVertexAttribI4sv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4sv");
-		fgl_glVertexAttribI4ubv = (fgl_func_glVertexAttribI4ubv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4ubv");
-		fgl_glVertexAttribI4usv = (fgl_func_glVertexAttribI4usv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribI4usv");
-		fgl_glGetUniformuiv = (fgl_func_glGetUniformuiv *)fgl__GetOpenGLProcAddress(state, "glGetUniformuiv");
-		fgl_glBindFragDataLocation = (fgl_func_glBindFragDataLocation *)fgl__GetOpenGLProcAddress(state, "glBindFragDataLocation");
-		fgl_glGetFragDataLocation = (fgl_func_glGetFragDataLocation *)fgl__GetOpenGLProcAddress(state, "glGetFragDataLocation");
-		fgl_glUniform1ui = (fgl_func_glUniform1ui *)fgl__GetOpenGLProcAddress(state, "glUniform1ui");
-		fgl_glUniform2ui = (fgl_func_glUniform2ui *)fgl__GetOpenGLProcAddress(state, "glUniform2ui");
-		fgl_glUniform3ui = (fgl_func_glUniform3ui *)fgl__GetOpenGLProcAddress(state, "glUniform3ui");
-		fgl_glUniform4ui = (fgl_func_glUniform4ui *)fgl__GetOpenGLProcAddress(state, "glUniform4ui");
-		fgl_glUniform1uiv = (fgl_func_glUniform1uiv *)fgl__GetOpenGLProcAddress(state, "glUniform1uiv");
-		fgl_glUniform2uiv = (fgl_func_glUniform2uiv *)fgl__GetOpenGLProcAddress(state, "glUniform2uiv");
-		fgl_glUniform3uiv = (fgl_func_glUniform3uiv *)fgl__GetOpenGLProcAddress(state, "glUniform3uiv");
-		fgl_glUniform4uiv = (fgl_func_glUniform4uiv *)fgl__GetOpenGLProcAddress(state, "glUniform4uiv");
-		fgl_glTexParameterIiv = (fgl_func_glTexParameterIiv *)fgl__GetOpenGLProcAddress(state, "glTexParameterIiv");
-		fgl_glTexParameterIuiv = (fgl_func_glTexParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glTexParameterIuiv");
-		fgl_glGetTexParameterIiv = (fgl_func_glGetTexParameterIiv *)fgl__GetOpenGLProcAddress(state, "glGetTexParameterIiv");
-		fgl_glGetTexParameterIuiv = (fgl_func_glGetTexParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glGetTexParameterIuiv");
-		fgl_glClearBufferiv = (fgl_func_glClearBufferiv *)fgl__GetOpenGLProcAddress(state, "glClearBufferiv");
-		fgl_glClearBufferuiv = (fgl_func_glClearBufferuiv *)fgl__GetOpenGLProcAddress(state, "glClearBufferuiv");
-		fgl_glClearBufferfv = (fgl_func_glClearBufferfv *)fgl__GetOpenGLProcAddress(state, "glClearBufferfv");
-		fgl_glClearBufferfi = (fgl_func_glClearBufferfi *)fgl__GetOpenGLProcAddress(state, "glClearBufferfi");
-		fgl_glGetStringi = (fgl_func_glGetStringi *)fgl__GetOpenGLProcAddress(state, "glGetStringi");
-		fgl_glIsRenderbuffer = (fgl_func_glIsRenderbuffer *)fgl__GetOpenGLProcAddress(state, "glIsRenderbuffer");
-		fgl_glBindRenderbuffer = (fgl_func_glBindRenderbuffer *)fgl__GetOpenGLProcAddress(state, "glBindRenderbuffer");
-		fgl_glDeleteRenderbuffers = (fgl_func_glDeleteRenderbuffers *)fgl__GetOpenGLProcAddress(state, "glDeleteRenderbuffers");
-		fgl_glGenRenderbuffers = (fgl_func_glGenRenderbuffers *)fgl__GetOpenGLProcAddress(state, "glGenRenderbuffers");
-		fgl_glRenderbufferStorage = (fgl_func_glRenderbufferStorage *)fgl__GetOpenGLProcAddress(state, "glRenderbufferStorage");
-		fgl_glGetRenderbufferParameteriv = (fgl_func_glGetRenderbufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetRenderbufferParameteriv");
-		fgl_glIsFramebuffer = (fgl_func_glIsFramebuffer *)fgl__GetOpenGLProcAddress(state, "glIsFramebuffer");
-		fgl_glBindFramebuffer = (fgl_func_glBindFramebuffer *)fgl__GetOpenGLProcAddress(state, "glBindFramebuffer");
-		fgl_glDeleteFramebuffers = (fgl_func_glDeleteFramebuffers *)fgl__GetOpenGLProcAddress(state, "glDeleteFramebuffers");
-		fgl_glGenFramebuffers = (fgl_func_glGenFramebuffers *)fgl__GetOpenGLProcAddress(state, "glGenFramebuffers");
-		fgl_glCheckFramebufferStatus = (fgl_func_glCheckFramebufferStatus *)fgl__GetOpenGLProcAddress(state, "glCheckFramebufferStatus");
-		fgl_glFramebufferTexture1D = (fgl_func_glFramebufferTexture1D *)fgl__GetOpenGLProcAddress(state, "glFramebufferTexture1D");
-		fgl_glFramebufferTexture2D = (fgl_func_glFramebufferTexture2D *)fgl__GetOpenGLProcAddress(state, "glFramebufferTexture2D");
-		fgl_glFramebufferTexture3D = (fgl_func_glFramebufferTexture3D *)fgl__GetOpenGLProcAddress(state, "glFramebufferTexture3D");
-		fgl_glFramebufferRenderbuffer = (fgl_func_glFramebufferRenderbuffer *)fgl__GetOpenGLProcAddress(state, "glFramebufferRenderbuffer");
-		fgl_glGetFramebufferAttachmentParameteriv = (fgl_func_glGetFramebufferAttachmentParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetFramebufferAttachmentParameteriv");
-		fgl_glGenerateMipmap = (fgl_func_glGenerateMipmap *)fgl__GetOpenGLProcAddress(state, "glGenerateMipmap");
-		fgl_glBlitFramebuffer = (fgl_func_glBlitFramebuffer *)fgl__GetOpenGLProcAddress(state, "glBlitFramebuffer");
-		fgl_glRenderbufferStorageMultisample = (fgl_func_glRenderbufferStorageMultisample *)fgl__GetOpenGLProcAddress(state, "glRenderbufferStorageMultisample");
-		fgl_glFramebufferTextureLayer = (fgl_func_glFramebufferTextureLayer *)fgl__GetOpenGLProcAddress(state, "glFramebufferTextureLayer");
-		fgl_glMapBufferRange = (fgl_func_glMapBufferRange *)fgl__GetOpenGLProcAddress(state, "glMapBufferRange");
-		fgl_glFlushMappedBufferRange = (fgl_func_glFlushMappedBufferRange *)fgl__GetOpenGLProcAddress(state, "glFlushMappedBufferRange");
-		fgl_glBindVertexArray = (fgl_func_glBindVertexArray *)fgl__GetOpenGLProcAddress(state, "glBindVertexArray");
-		fgl_glDeleteVertexArrays = (fgl_func_glDeleteVertexArrays *)fgl__GetOpenGLProcAddress(state, "glDeleteVertexArrays");
-		fgl_glGenVertexArrays = (fgl_func_glGenVertexArrays *)fgl__GetOpenGLProcAddress(state, "glGenVertexArrays");
-		fgl_glIsVertexArray = (fgl_func_glIsVertexArray *)fgl__GetOpenGLProcAddress(state, "glIsVertexArray");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_3_0", 3, 0);
+		fgl_glColorMaski = (fgl_func_glColorMaski *)fgl__LoadOpenGLCoreFunction(&loader, "glColorMaski");
+		fgl_glGetBooleani_v = (fgl_func_glGetBooleani_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBooleani_v");
+		fgl_glGetIntegeri_v = (fgl_func_glGetIntegeri_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetIntegeri_v");
+		fgl_glEnablei = (fgl_func_glEnablei *)fgl__LoadOpenGLCoreFunction(&loader, "glEnablei");
+		fgl_glDisablei = (fgl_func_glDisablei *)fgl__LoadOpenGLCoreFunction(&loader, "glDisablei");
+		fgl_glIsEnabledi = (fgl_func_glIsEnabledi *)fgl__LoadOpenGLCoreFunction(&loader, "glIsEnabledi");
+		fgl_glBeginTransformFeedback = (fgl_func_glBeginTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glBeginTransformFeedback");
+		fgl_glEndTransformFeedback = (fgl_func_glEndTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glEndTransformFeedback");
+		fgl_glBindBufferRange = (fgl_func_glBindBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glBindBufferRange");
+		fgl_glBindBufferBase = (fgl_func_glBindBufferBase *)fgl__LoadOpenGLCoreFunction(&loader, "glBindBufferBase");
+		fgl_glTransformFeedbackVaryings = (fgl_func_glTransformFeedbackVaryings *)fgl__LoadOpenGLCoreFunction(&loader, "glTransformFeedbackVaryings");
+		fgl_glGetTransformFeedbackVarying = (fgl_func_glGetTransformFeedbackVarying *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTransformFeedbackVarying");
+		fgl_glClampColor = (fgl_func_glClampColor *)fgl__LoadOpenGLCoreFunction(&loader, "glClampColor");
+		fgl_glBeginConditionalRender = (fgl_func_glBeginConditionalRender *)fgl__LoadOpenGLCoreFunction(&loader, "glBeginConditionalRender");
+		fgl_glEndConditionalRender = (fgl_func_glEndConditionalRender *)fgl__LoadOpenGLCoreFunction(&loader, "glEndConditionalRender");
+		fgl_glVertexAttribIPointer = (fgl_func_glVertexAttribIPointer *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribIPointer");
+		fgl_glGetVertexAttribIiv = (fgl_func_glGetVertexAttribIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribIiv");
+		fgl_glGetVertexAttribIuiv = (fgl_func_glGetVertexAttribIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribIuiv");
+		fgl_glVertexAttribI1i = (fgl_func_glVertexAttribI1i *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI1i");
+		fgl_glVertexAttribI2i = (fgl_func_glVertexAttribI2i *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI2i");
+		fgl_glVertexAttribI3i = (fgl_func_glVertexAttribI3i *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI3i");
+		fgl_glVertexAttribI4i = (fgl_func_glVertexAttribI4i *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4i");
+		fgl_glVertexAttribI1ui = (fgl_func_glVertexAttribI1ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI1ui");
+		fgl_glVertexAttribI2ui = (fgl_func_glVertexAttribI2ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI2ui");
+		fgl_glVertexAttribI3ui = (fgl_func_glVertexAttribI3ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI3ui");
+		fgl_glVertexAttribI4ui = (fgl_func_glVertexAttribI4ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4ui");
+		fgl_glVertexAttribI1iv = (fgl_func_glVertexAttribI1iv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI1iv");
+		fgl_glVertexAttribI2iv = (fgl_func_glVertexAttribI2iv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI2iv");
+		fgl_glVertexAttribI3iv = (fgl_func_glVertexAttribI3iv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI3iv");
+		fgl_glVertexAttribI4iv = (fgl_func_glVertexAttribI4iv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4iv");
+		fgl_glVertexAttribI1uiv = (fgl_func_glVertexAttribI1uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI1uiv");
+		fgl_glVertexAttribI2uiv = (fgl_func_glVertexAttribI2uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI2uiv");
+		fgl_glVertexAttribI3uiv = (fgl_func_glVertexAttribI3uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI3uiv");
+		fgl_glVertexAttribI4uiv = (fgl_func_glVertexAttribI4uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4uiv");
+		fgl_glVertexAttribI4bv = (fgl_func_glVertexAttribI4bv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4bv");
+		fgl_glVertexAttribI4sv = (fgl_func_glVertexAttribI4sv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4sv");
+		fgl_glVertexAttribI4ubv = (fgl_func_glVertexAttribI4ubv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4ubv");
+		fgl_glVertexAttribI4usv = (fgl_func_glVertexAttribI4usv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribI4usv");
+		fgl_glGetUniformuiv = (fgl_func_glGetUniformuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformuiv");
+		fgl_glBindFragDataLocation = (fgl_func_glBindFragDataLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glBindFragDataLocation");
+		fgl_glGetFragDataLocation = (fgl_func_glGetFragDataLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFragDataLocation");
+		fgl_glUniform1ui = (fgl_func_glUniform1ui *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1ui");
+		fgl_glUniform2ui = (fgl_func_glUniform2ui *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2ui");
+		fgl_glUniform3ui = (fgl_func_glUniform3ui *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3ui");
+		fgl_glUniform4ui = (fgl_func_glUniform4ui *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4ui");
+		fgl_glUniform1uiv = (fgl_func_glUniform1uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1uiv");
+		fgl_glUniform2uiv = (fgl_func_glUniform2uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2uiv");
+		fgl_glUniform3uiv = (fgl_func_glUniform3uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3uiv");
+		fgl_glUniform4uiv = (fgl_func_glUniform4uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4uiv");
+		fgl_glTexParameterIiv = (fgl_func_glTexParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameterIiv");
+		fgl_glTexParameterIuiv = (fgl_func_glTexParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glTexParameterIuiv");
+		fgl_glGetTexParameterIiv = (fgl_func_glGetTexParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexParameterIiv");
+		fgl_glGetTexParameterIuiv = (fgl_func_glGetTexParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTexParameterIuiv");
+		fgl_glClearBufferiv = (fgl_func_glClearBufferiv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferiv");
+		fgl_glClearBufferuiv = (fgl_func_glClearBufferuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferuiv");
+		fgl_glClearBufferfv = (fgl_func_glClearBufferfv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferfv");
+		fgl_glClearBufferfi = (fgl_func_glClearBufferfi *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferfi");
+		fgl_glGetStringi = (fgl_func_glGetStringi *)fgl__LoadOpenGLCoreFunction(&loader, "glGetStringi");
+		fgl_glIsRenderbuffer = (fgl_func_glIsRenderbuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glIsRenderbuffer");
+		fgl_glBindRenderbuffer = (fgl_func_glBindRenderbuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBindRenderbuffer");
+		fgl_glDeleteRenderbuffers = (fgl_func_glDeleteRenderbuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteRenderbuffers");
+		fgl_glGenRenderbuffers = (fgl_func_glGenRenderbuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glGenRenderbuffers");
+		fgl_glRenderbufferStorage = (fgl_func_glRenderbufferStorage *)fgl__LoadOpenGLCoreFunction(&loader, "glRenderbufferStorage");
+		fgl_glGetRenderbufferParameteriv = (fgl_func_glGetRenderbufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetRenderbufferParameteriv");
+		fgl_glIsFramebuffer = (fgl_func_glIsFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glIsFramebuffer");
+		fgl_glBindFramebuffer = (fgl_func_glBindFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBindFramebuffer");
+		fgl_glDeleteFramebuffers = (fgl_func_glDeleteFramebuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteFramebuffers");
+		fgl_glGenFramebuffers = (fgl_func_glGenFramebuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glGenFramebuffers");
+		fgl_glCheckFramebufferStatus = (fgl_func_glCheckFramebufferStatus *)fgl__LoadOpenGLCoreFunction(&loader, "glCheckFramebufferStatus");
+		fgl_glFramebufferTexture1D = (fgl_func_glFramebufferTexture1D *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferTexture1D");
+		fgl_glFramebufferTexture2D = (fgl_func_glFramebufferTexture2D *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferTexture2D");
+		fgl_glFramebufferTexture3D = (fgl_func_glFramebufferTexture3D *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferTexture3D");
+		fgl_glFramebufferRenderbuffer = (fgl_func_glFramebufferRenderbuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferRenderbuffer");
+		fgl_glGetFramebufferAttachmentParameteriv = (fgl_func_glGetFramebufferAttachmentParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFramebufferAttachmentParameteriv");
+		fgl_glGenerateMipmap = (fgl_func_glGenerateMipmap *)fgl__LoadOpenGLCoreFunction(&loader, "glGenerateMipmap");
+		fgl_glBlitFramebuffer = (fgl_func_glBlitFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBlitFramebuffer");
+		fgl_glRenderbufferStorageMultisample = (fgl_func_glRenderbufferStorageMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glRenderbufferStorageMultisample");
+		fgl_glFramebufferTextureLayer = (fgl_func_glFramebufferTextureLayer *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferTextureLayer");
+		fgl_glMapBufferRange = (fgl_func_glMapBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glMapBufferRange");
+		fgl_glFlushMappedBufferRange = (fgl_func_glFlushMappedBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glFlushMappedBufferRange");
+		fgl_glBindVertexArray = (fgl_func_glBindVertexArray *)fgl__LoadOpenGLCoreFunction(&loader, "glBindVertexArray");
+		fgl_glDeleteVertexArrays = (fgl_func_glDeleteVertexArrays *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteVertexArrays");
+		fgl_glGenVertexArrays = (fgl_func_glGenVertexArrays *)fgl__LoadOpenGLCoreFunction(&loader, "glGenVertexArrays");
+		fgl_glIsVertexArray = (fgl_func_glIsVertexArray *)fgl__LoadOpenGLCoreFunction(&loader, "glIsVertexArray");
+		isGL_VERSION_3_0 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_3_0
 
 #	if GL_VERSION_3_1
-		fgl_glDrawArraysInstanced = (fgl_func_glDrawArraysInstanced *)fgl__GetOpenGLProcAddress(state, "glDrawArraysInstanced");
-		fgl_glDrawElementsInstanced = (fgl_func_glDrawElementsInstanced *)fgl__GetOpenGLProcAddress(state, "glDrawElementsInstanced");
-		fgl_glTexBuffer = (fgl_func_glTexBuffer *)fgl__GetOpenGLProcAddress(state, "glTexBuffer");
-		fgl_glPrimitiveRestartIndex = (fgl_func_glPrimitiveRestartIndex *)fgl__GetOpenGLProcAddress(state, "glPrimitiveRestartIndex");
-		fgl_glCopyBufferSubData = (fgl_func_glCopyBufferSubData *)fgl__GetOpenGLProcAddress(state, "glCopyBufferSubData");
-		fgl_glGetUniformIndices = (fgl_func_glGetUniformIndices *)fgl__GetOpenGLProcAddress(state, "glGetUniformIndices");
-		fgl_glGetActiveUniformsiv = (fgl_func_glGetActiveUniformsiv *)fgl__GetOpenGLProcAddress(state, "glGetActiveUniformsiv");
-		fgl_glGetActiveUniformName = (fgl_func_glGetActiveUniformName *)fgl__GetOpenGLProcAddress(state, "glGetActiveUniformName");
-		fgl_glGetUniformBlockIndex = (fgl_func_glGetUniformBlockIndex *)fgl__GetOpenGLProcAddress(state, "glGetUniformBlockIndex");
-		fgl_glGetActiveUniformBlockiv = (fgl_func_glGetActiveUniformBlockiv *)fgl__GetOpenGLProcAddress(state, "glGetActiveUniformBlockiv");
-		fgl_glGetActiveUniformBlockName = (fgl_func_glGetActiveUniformBlockName *)fgl__GetOpenGLProcAddress(state, "glGetActiveUniformBlockName");
-		fgl_glUniformBlockBinding = (fgl_func_glUniformBlockBinding *)fgl__GetOpenGLProcAddress(state, "glUniformBlockBinding");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_3_1", 3, 1);
+		fgl_glDrawArraysInstanced = (fgl_func_glDrawArraysInstanced *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawArraysInstanced");
+		fgl_glDrawElementsInstanced = (fgl_func_glDrawElementsInstanced *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsInstanced");
+		fgl_glTexBuffer = (fgl_func_glTexBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glTexBuffer");
+		fgl_glPrimitiveRestartIndex = (fgl_func_glPrimitiveRestartIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glPrimitiveRestartIndex");
+		fgl_glCopyBufferSubData = (fgl_func_glCopyBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyBufferSubData");
+		fgl_glGetUniformIndices = (fgl_func_glGetUniformIndices *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformIndices");
+		fgl_glGetActiveUniformsiv = (fgl_func_glGetActiveUniformsiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveUniformsiv");
+		fgl_glGetActiveUniformName = (fgl_func_glGetActiveUniformName *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveUniformName");
+		fgl_glGetUniformBlockIndex = (fgl_func_glGetUniformBlockIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformBlockIndex");
+		fgl_glGetActiveUniformBlockiv = (fgl_func_glGetActiveUniformBlockiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveUniformBlockiv");
+		fgl_glGetActiveUniformBlockName = (fgl_func_glGetActiveUniformBlockName *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveUniformBlockName");
+		fgl_glUniformBlockBinding = (fgl_func_glUniformBlockBinding *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformBlockBinding");
+		isGL_VERSION_3_1 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_3_1
 
 #	if GL_VERSION_3_2
-		fgl_glDrawElementsBaseVertex = (fgl_func_glDrawElementsBaseVertex *)fgl__GetOpenGLProcAddress(state, "glDrawElementsBaseVertex");
-		fgl_glDrawRangeElementsBaseVertex = (fgl_func_glDrawRangeElementsBaseVertex *)fgl__GetOpenGLProcAddress(state, "glDrawRangeElementsBaseVertex");
-		fgl_glDrawElementsInstancedBaseVertex = (fgl_func_glDrawElementsInstancedBaseVertex *)fgl__GetOpenGLProcAddress(state, "glDrawElementsInstancedBaseVertex");
-		fgl_glMultiDrawElementsBaseVertex = (fgl_func_glMultiDrawElementsBaseVertex *)fgl__GetOpenGLProcAddress(state, "glMultiDrawElementsBaseVertex");
-		fgl_glProvokingVertex = (fgl_func_glProvokingVertex *)fgl__GetOpenGLProcAddress(state, "glProvokingVertex");
-		fgl_glFenceSync = (fgl_func_glFenceSync *)fgl__GetOpenGLProcAddress(state, "glFenceSync");
-		fgl_glIsSync = (fgl_func_glIsSync *)fgl__GetOpenGLProcAddress(state, "glIsSync");
-		fgl_glDeleteSync = (fgl_func_glDeleteSync *)fgl__GetOpenGLProcAddress(state, "glDeleteSync");
-		fgl_glClientWaitSync = (fgl_func_glClientWaitSync *)fgl__GetOpenGLProcAddress(state, "glClientWaitSync");
-		fgl_glWaitSync = (fgl_func_glWaitSync *)fgl__GetOpenGLProcAddress(state, "glWaitSync");
-		fgl_glGetInteger64v = (fgl_func_glGetInteger64v *)fgl__GetOpenGLProcAddress(state, "glGetInteger64v");
-		fgl_glGetSynciv = (fgl_func_glGetSynciv *)fgl__GetOpenGLProcAddress(state, "glGetSynciv");
-		fgl_glGetInteger64i_v = (fgl_func_glGetInteger64i_v *)fgl__GetOpenGLProcAddress(state, "glGetInteger64i_v");
-		fgl_glGetBufferParameteri64v = (fgl_func_glGetBufferParameteri64v *)fgl__GetOpenGLProcAddress(state, "glGetBufferParameteri64v");
-		fgl_glFramebufferTexture = (fgl_func_glFramebufferTexture *)fgl__GetOpenGLProcAddress(state, "glFramebufferTexture");
-		fgl_glTexImage2DMultisample = (fgl_func_glTexImage2DMultisample *)fgl__GetOpenGLProcAddress(state, "glTexImage2DMultisample");
-		fgl_glTexImage3DMultisample = (fgl_func_glTexImage3DMultisample *)fgl__GetOpenGLProcAddress(state, "glTexImage3DMultisample");
-		fgl_glGetMultisamplefv = (fgl_func_glGetMultisamplefv *)fgl__GetOpenGLProcAddress(state, "glGetMultisamplefv");
-		fgl_glSampleMaski = (fgl_func_glSampleMaski *)fgl__GetOpenGLProcAddress(state, "glSampleMaski");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_3_2", 3, 2);
+		fgl_glDrawElementsBaseVertex = (fgl_func_glDrawElementsBaseVertex *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsBaseVertex");
+		fgl_glDrawRangeElementsBaseVertex = (fgl_func_glDrawRangeElementsBaseVertex *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawRangeElementsBaseVertex");
+		fgl_glDrawElementsInstancedBaseVertex = (fgl_func_glDrawElementsInstancedBaseVertex *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsInstancedBaseVertex");
+		fgl_glMultiDrawElementsBaseVertex = (fgl_func_glMultiDrawElementsBaseVertex *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawElementsBaseVertex");
+		fgl_glProvokingVertex = (fgl_func_glProvokingVertex *)fgl__LoadOpenGLCoreFunction(&loader, "glProvokingVertex");
+		fgl_glFenceSync = (fgl_func_glFenceSync *)fgl__LoadOpenGLCoreFunction(&loader, "glFenceSync");
+		fgl_glIsSync = (fgl_func_glIsSync *)fgl__LoadOpenGLCoreFunction(&loader, "glIsSync");
+		fgl_glDeleteSync = (fgl_func_glDeleteSync *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteSync");
+		fgl_glClientWaitSync = (fgl_func_glClientWaitSync *)fgl__LoadOpenGLCoreFunction(&loader, "glClientWaitSync");
+		fgl_glWaitSync = (fgl_func_glWaitSync *)fgl__LoadOpenGLCoreFunction(&loader, "glWaitSync");
+		fgl_glGetInteger64v = (fgl_func_glGetInteger64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetInteger64v");
+		fgl_glGetSynciv = (fgl_func_glGetSynciv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSynciv");
+		fgl_glGetInteger64i_v = (fgl_func_glGetInteger64i_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetInteger64i_v");
+		fgl_glGetBufferParameteri64v = (fgl_func_glGetBufferParameteri64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetBufferParameteri64v");
+		fgl_glFramebufferTexture = (fgl_func_glFramebufferTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferTexture");
+		fgl_glTexImage2DMultisample = (fgl_func_glTexImage2DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTexImage2DMultisample");
+		fgl_glTexImage3DMultisample = (fgl_func_glTexImage3DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTexImage3DMultisample");
+		fgl_glGetMultisamplefv = (fgl_func_glGetMultisamplefv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetMultisamplefv");
+		fgl_glSampleMaski = (fgl_func_glSampleMaski *)fgl__LoadOpenGLCoreFunction(&loader, "glSampleMaski");
+		isGL_VERSION_3_2 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_3_2
 
 #	if GL_VERSION_3_3
-		fgl_glBindFragDataLocationIndexed = (fgl_func_glBindFragDataLocationIndexed *)fgl__GetOpenGLProcAddress(state, "glBindFragDataLocationIndexed");
-		fgl_glGetFragDataIndex = (fgl_func_glGetFragDataIndex *)fgl__GetOpenGLProcAddress(state, "glGetFragDataIndex");
-		fgl_glGenSamplers = (fgl_func_glGenSamplers *)fgl__GetOpenGLProcAddress(state, "glGenSamplers");
-		fgl_glDeleteSamplers = (fgl_func_glDeleteSamplers *)fgl__GetOpenGLProcAddress(state, "glDeleteSamplers");
-		fgl_glIsSampler = (fgl_func_glIsSampler *)fgl__GetOpenGLProcAddress(state, "glIsSampler");
-		fgl_glBindSampler = (fgl_func_glBindSampler *)fgl__GetOpenGLProcAddress(state, "glBindSampler");
-		fgl_glSamplerParameteri = (fgl_func_glSamplerParameteri *)fgl__GetOpenGLProcAddress(state, "glSamplerParameteri");
-		fgl_glSamplerParameteriv = (fgl_func_glSamplerParameteriv *)fgl__GetOpenGLProcAddress(state, "glSamplerParameteriv");
-		fgl_glSamplerParameterf = (fgl_func_glSamplerParameterf *)fgl__GetOpenGLProcAddress(state, "glSamplerParameterf");
-		fgl_glSamplerParameterfv = (fgl_func_glSamplerParameterfv *)fgl__GetOpenGLProcAddress(state, "glSamplerParameterfv");
-		fgl_glSamplerParameterIiv = (fgl_func_glSamplerParameterIiv *)fgl__GetOpenGLProcAddress(state, "glSamplerParameterIiv");
-		fgl_glSamplerParameterIuiv = (fgl_func_glSamplerParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glSamplerParameterIuiv");
-		fgl_glGetSamplerParameteriv = (fgl_func_glGetSamplerParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetSamplerParameteriv");
-		fgl_glGetSamplerParameterIiv = (fgl_func_glGetSamplerParameterIiv *)fgl__GetOpenGLProcAddress(state, "glGetSamplerParameterIiv");
-		fgl_glGetSamplerParameterfv = (fgl_func_glGetSamplerParameterfv *)fgl__GetOpenGLProcAddress(state, "glGetSamplerParameterfv");
-		fgl_glGetSamplerParameterIuiv = (fgl_func_glGetSamplerParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glGetSamplerParameterIuiv");
-		fgl_glQueryCounter = (fgl_func_glQueryCounter *)fgl__GetOpenGLProcAddress(state, "glQueryCounter");
-		fgl_glGetQueryObjecti64v = (fgl_func_glGetQueryObjecti64v *)fgl__GetOpenGLProcAddress(state, "glGetQueryObjecti64v");
-		fgl_glGetQueryObjectui64v = (fgl_func_glGetQueryObjectui64v *)fgl__GetOpenGLProcAddress(state, "glGetQueryObjectui64v");
-		fgl_glVertexAttribDivisor = (fgl_func_glVertexAttribDivisor *)fgl__GetOpenGLProcAddress(state, "glVertexAttribDivisor");
-		fgl_glVertexAttribP1ui = (fgl_func_glVertexAttribP1ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP1ui");
-		fgl_glVertexAttribP1uiv = (fgl_func_glVertexAttribP1uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP1uiv");
-		fgl_glVertexAttribP2ui = (fgl_func_glVertexAttribP2ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP2ui");
-		fgl_glVertexAttribP2uiv = (fgl_func_glVertexAttribP2uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP2uiv");
-		fgl_glVertexAttribP3ui = (fgl_func_glVertexAttribP3ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP3ui");
-		fgl_glVertexAttribP3uiv = (fgl_func_glVertexAttribP3uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP3uiv");
-		fgl_glVertexAttribP4ui = (fgl_func_glVertexAttribP4ui *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP4ui");
-		fgl_glVertexAttribP4uiv = (fgl_func_glVertexAttribP4uiv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribP4uiv");
-		fgl_glVertexP2ui = (fgl_func_glVertexP2ui *)fgl__GetOpenGLProcAddress(state, "glVertexP2ui");
-		fgl_glVertexP2uiv = (fgl_func_glVertexP2uiv *)fgl__GetOpenGLProcAddress(state, "glVertexP2uiv");
-		fgl_glVertexP3ui = (fgl_func_glVertexP3ui *)fgl__GetOpenGLProcAddress(state, "glVertexP3ui");
-		fgl_glVertexP3uiv = (fgl_func_glVertexP3uiv *)fgl__GetOpenGLProcAddress(state, "glVertexP3uiv");
-		fgl_glVertexP4ui = (fgl_func_glVertexP4ui *)fgl__GetOpenGLProcAddress(state, "glVertexP4ui");
-		fgl_glVertexP4uiv = (fgl_func_glVertexP4uiv *)fgl__GetOpenGLProcAddress(state, "glVertexP4uiv");
-		fgl_glTexCoordP1ui = (fgl_func_glTexCoordP1ui *)fgl__GetOpenGLProcAddress(state, "glTexCoordP1ui");
-		fgl_glTexCoordP1uiv = (fgl_func_glTexCoordP1uiv *)fgl__GetOpenGLProcAddress(state, "glTexCoordP1uiv");
-		fgl_glTexCoordP2ui = (fgl_func_glTexCoordP2ui *)fgl__GetOpenGLProcAddress(state, "glTexCoordP2ui");
-		fgl_glTexCoordP2uiv = (fgl_func_glTexCoordP2uiv *)fgl__GetOpenGLProcAddress(state, "glTexCoordP2uiv");
-		fgl_glTexCoordP3ui = (fgl_func_glTexCoordP3ui *)fgl__GetOpenGLProcAddress(state, "glTexCoordP3ui");
-		fgl_glTexCoordP3uiv = (fgl_func_glTexCoordP3uiv *)fgl__GetOpenGLProcAddress(state, "glTexCoordP3uiv");
-		fgl_glTexCoordP4ui = (fgl_func_glTexCoordP4ui *)fgl__GetOpenGLProcAddress(state, "glTexCoordP4ui");
-		fgl_glTexCoordP4uiv = (fgl_func_glTexCoordP4uiv *)fgl__GetOpenGLProcAddress(state, "glTexCoordP4uiv");
-		fgl_glMultiTexCoordP1ui = (fgl_func_glMultiTexCoordP1ui *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP1ui");
-		fgl_glMultiTexCoordP1uiv = (fgl_func_glMultiTexCoordP1uiv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP1uiv");
-		fgl_glMultiTexCoordP2ui = (fgl_func_glMultiTexCoordP2ui *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP2ui");
-		fgl_glMultiTexCoordP2uiv = (fgl_func_glMultiTexCoordP2uiv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP2uiv");
-		fgl_glMultiTexCoordP3ui = (fgl_func_glMultiTexCoordP3ui *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP3ui");
-		fgl_glMultiTexCoordP3uiv = (fgl_func_glMultiTexCoordP3uiv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP3uiv");
-		fgl_glMultiTexCoordP4ui = (fgl_func_glMultiTexCoordP4ui *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP4ui");
-		fgl_glMultiTexCoordP4uiv = (fgl_func_glMultiTexCoordP4uiv *)fgl__GetOpenGLProcAddress(state, "glMultiTexCoordP4uiv");
-		fgl_glNormalP3ui = (fgl_func_glNormalP3ui *)fgl__GetOpenGLProcAddress(state, "glNormalP3ui");
-		fgl_glNormalP3uiv = (fgl_func_glNormalP3uiv *)fgl__GetOpenGLProcAddress(state, "glNormalP3uiv");
-		fgl_glColorP3ui = (fgl_func_glColorP3ui *)fgl__GetOpenGLProcAddress(state, "glColorP3ui");
-		fgl_glColorP3uiv = (fgl_func_glColorP3uiv *)fgl__GetOpenGLProcAddress(state, "glColorP3uiv");
-		fgl_glColorP4ui = (fgl_func_glColorP4ui *)fgl__GetOpenGLProcAddress(state, "glColorP4ui");
-		fgl_glColorP4uiv = (fgl_func_glColorP4uiv *)fgl__GetOpenGLProcAddress(state, "glColorP4uiv");
-		fgl_glSecondaryColorP3ui = (fgl_func_glSecondaryColorP3ui *)fgl__GetOpenGLProcAddress(state, "glSecondaryColorP3ui");
-		fgl_glSecondaryColorP3uiv = (fgl_func_glSecondaryColorP3uiv *)fgl__GetOpenGLProcAddress(state, "glSecondaryColorP3uiv");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_3_3", 3, 3);
+		fgl_glBindFragDataLocationIndexed = (fgl_func_glBindFragDataLocationIndexed *)fgl__LoadOpenGLCoreFunction(&loader, "glBindFragDataLocationIndexed");
+		fgl_glGetFragDataIndex = (fgl_func_glGetFragDataIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFragDataIndex");
+		fgl_glGenSamplers = (fgl_func_glGenSamplers *)fgl__LoadOpenGLCoreFunction(&loader, "glGenSamplers");
+		fgl_glDeleteSamplers = (fgl_func_glDeleteSamplers *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteSamplers");
+		fgl_glIsSampler = (fgl_func_glIsSampler *)fgl__LoadOpenGLCoreFunction(&loader, "glIsSampler");
+		fgl_glBindSampler = (fgl_func_glBindSampler *)fgl__LoadOpenGLCoreFunction(&loader, "glBindSampler");
+		fgl_glSamplerParameteri = (fgl_func_glSamplerParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameteri");
+		fgl_glSamplerParameteriv = (fgl_func_glSamplerParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameteriv");
+		fgl_glSamplerParameterf = (fgl_func_glSamplerParameterf *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameterf");
+		fgl_glSamplerParameterfv = (fgl_func_glSamplerParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameterfv");
+		fgl_glSamplerParameterIiv = (fgl_func_glSamplerParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameterIiv");
+		fgl_glSamplerParameterIuiv = (fgl_func_glSamplerParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glSamplerParameterIuiv");
+		fgl_glGetSamplerParameteriv = (fgl_func_glGetSamplerParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSamplerParameteriv");
+		fgl_glGetSamplerParameterIiv = (fgl_func_glGetSamplerParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSamplerParameterIiv");
+		fgl_glGetSamplerParameterfv = (fgl_func_glGetSamplerParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSamplerParameterfv");
+		fgl_glGetSamplerParameterIuiv = (fgl_func_glGetSamplerParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSamplerParameterIuiv");
+		fgl_glQueryCounter = (fgl_func_glQueryCounter *)fgl__LoadOpenGLCoreFunction(&loader, "glQueryCounter");
+		fgl_glGetQueryObjecti64v = (fgl_func_glGetQueryObjecti64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryObjecti64v");
+		fgl_glGetQueryObjectui64v = (fgl_func_glGetQueryObjectui64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryObjectui64v");
+		fgl_glVertexAttribDivisor = (fgl_func_glVertexAttribDivisor *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribDivisor");
+		fgl_glVertexAttribP1ui = (fgl_func_glVertexAttribP1ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP1ui");
+		fgl_glVertexAttribP1uiv = (fgl_func_glVertexAttribP1uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP1uiv");
+		fgl_glVertexAttribP2ui = (fgl_func_glVertexAttribP2ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP2ui");
+		fgl_glVertexAttribP2uiv = (fgl_func_glVertexAttribP2uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP2uiv");
+		fgl_glVertexAttribP3ui = (fgl_func_glVertexAttribP3ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP3ui");
+		fgl_glVertexAttribP3uiv = (fgl_func_glVertexAttribP3uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP3uiv");
+		fgl_glVertexAttribP4ui = (fgl_func_glVertexAttribP4ui *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP4ui");
+		fgl_glVertexAttribP4uiv = (fgl_func_glVertexAttribP4uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribP4uiv");
+		fgl_glVertexP2ui = (fgl_func_glVertexP2ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP2ui");
+		fgl_glVertexP2uiv = (fgl_func_glVertexP2uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP2uiv");
+		fgl_glVertexP3ui = (fgl_func_glVertexP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP3ui");
+		fgl_glVertexP3uiv = (fgl_func_glVertexP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP3uiv");
+		fgl_glVertexP4ui = (fgl_func_glVertexP4ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP4ui");
+		fgl_glVertexP4uiv = (fgl_func_glVertexP4uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glVertexP4uiv");
+		fgl_glTexCoordP1ui = (fgl_func_glTexCoordP1ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP1ui");
+		fgl_glTexCoordP1uiv = (fgl_func_glTexCoordP1uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP1uiv");
+		fgl_glTexCoordP2ui = (fgl_func_glTexCoordP2ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP2ui");
+		fgl_glTexCoordP2uiv = (fgl_func_glTexCoordP2uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP2uiv");
+		fgl_glTexCoordP3ui = (fgl_func_glTexCoordP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP3ui");
+		fgl_glTexCoordP3uiv = (fgl_func_glTexCoordP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP3uiv");
+		fgl_glTexCoordP4ui = (fgl_func_glTexCoordP4ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP4ui");
+		fgl_glTexCoordP4uiv = (fgl_func_glTexCoordP4uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glTexCoordP4uiv");
+		fgl_glMultiTexCoordP1ui = (fgl_func_glMultiTexCoordP1ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP1ui");
+		fgl_glMultiTexCoordP1uiv = (fgl_func_glMultiTexCoordP1uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP1uiv");
+		fgl_glMultiTexCoordP2ui = (fgl_func_glMultiTexCoordP2ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP2ui");
+		fgl_glMultiTexCoordP2uiv = (fgl_func_glMultiTexCoordP2uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP2uiv");
+		fgl_glMultiTexCoordP3ui = (fgl_func_glMultiTexCoordP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP3ui");
+		fgl_glMultiTexCoordP3uiv = (fgl_func_glMultiTexCoordP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP3uiv");
+		fgl_glMultiTexCoordP4ui = (fgl_func_glMultiTexCoordP4ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP4ui");
+		fgl_glMultiTexCoordP4uiv = (fgl_func_glMultiTexCoordP4uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glMultiTexCoordP4uiv");
+		fgl_glNormalP3ui = (fgl_func_glNormalP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormalP3ui");
+		fgl_glNormalP3uiv = (fgl_func_glNormalP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glNormalP3uiv");
+		fgl_glColorP3ui = (fgl_func_glColorP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorP3ui");
+		fgl_glColorP3uiv = (fgl_func_glColorP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorP3uiv");
+		fgl_glColorP4ui = (fgl_func_glColorP4ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorP4ui");
+		fgl_glColorP4uiv = (fgl_func_glColorP4uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glColorP4uiv");
+		fgl_glSecondaryColorP3ui = (fgl_func_glSecondaryColorP3ui *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColorP3ui");
+		fgl_glSecondaryColorP3uiv = (fgl_func_glSecondaryColorP3uiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glSecondaryColorP3uiv");
+		isGL_VERSION_3_3 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_3_3
 
 #	if GL_VERSION_4_0
-		fgl_glMinSampleShading = (fgl_func_glMinSampleShading *)fgl__GetOpenGLProcAddress(state, "glMinSampleShading");
-		fgl_glBlendEquationi = (fgl_func_glBlendEquationi *)fgl__GetOpenGLProcAddress(state, "glBlendEquationi");
-		fgl_glBlendEquationSeparatei = (fgl_func_glBlendEquationSeparatei *)fgl__GetOpenGLProcAddress(state, "glBlendEquationSeparatei");
-		fgl_glBlendFunci = (fgl_func_glBlendFunci *)fgl__GetOpenGLProcAddress(state, "glBlendFunci");
-		fgl_glBlendFuncSeparatei = (fgl_func_glBlendFuncSeparatei *)fgl__GetOpenGLProcAddress(state, "glBlendFuncSeparatei");
-		fgl_glDrawArraysIndirect = (fgl_func_glDrawArraysIndirect *)fgl__GetOpenGLProcAddress(state, "glDrawArraysIndirect");
-		fgl_glDrawElementsIndirect = (fgl_func_glDrawElementsIndirect *)fgl__GetOpenGLProcAddress(state, "glDrawElementsIndirect");
-		fgl_glUniform1d = (fgl_func_glUniform1d *)fgl__GetOpenGLProcAddress(state, "glUniform1d");
-		fgl_glUniform2d = (fgl_func_glUniform2d *)fgl__GetOpenGLProcAddress(state, "glUniform2d");
-		fgl_glUniform3d = (fgl_func_glUniform3d *)fgl__GetOpenGLProcAddress(state, "glUniform3d");
-		fgl_glUniform4d = (fgl_func_glUniform4d *)fgl__GetOpenGLProcAddress(state, "glUniform4d");
-		fgl_glUniform1dv = (fgl_func_glUniform1dv *)fgl__GetOpenGLProcAddress(state, "glUniform1dv");
-		fgl_glUniform2dv = (fgl_func_glUniform2dv *)fgl__GetOpenGLProcAddress(state, "glUniform2dv");
-		fgl_glUniform3dv = (fgl_func_glUniform3dv *)fgl__GetOpenGLProcAddress(state, "glUniform3dv");
-		fgl_glUniform4dv = (fgl_func_glUniform4dv *)fgl__GetOpenGLProcAddress(state, "glUniform4dv");
-		fgl_glUniformMatrix2dv = (fgl_func_glUniformMatrix2dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2dv");
-		fgl_glUniformMatrix3dv = (fgl_func_glUniformMatrix3dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3dv");
-		fgl_glUniformMatrix4dv = (fgl_func_glUniformMatrix4dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4dv");
-		fgl_glUniformMatrix2x3dv = (fgl_func_glUniformMatrix2x3dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2x3dv");
-		fgl_glUniformMatrix2x4dv = (fgl_func_glUniformMatrix2x4dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix2x4dv");
-		fgl_glUniformMatrix3x2dv = (fgl_func_glUniformMatrix3x2dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3x2dv");
-		fgl_glUniformMatrix3x4dv = (fgl_func_glUniformMatrix3x4dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix3x4dv");
-		fgl_glUniformMatrix4x2dv = (fgl_func_glUniformMatrix4x2dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4x2dv");
-		fgl_glUniformMatrix4x3dv = (fgl_func_glUniformMatrix4x3dv *)fgl__GetOpenGLProcAddress(state, "glUniformMatrix4x3dv");
-		fgl_glGetUniformdv = (fgl_func_glGetUniformdv *)fgl__GetOpenGLProcAddress(state, "glGetUniformdv");
-		fgl_glGetSubroutineUniformLocation = (fgl_func_glGetSubroutineUniformLocation *)fgl__GetOpenGLProcAddress(state, "glGetSubroutineUniformLocation");
-		fgl_glGetSubroutineIndex = (fgl_func_glGetSubroutineIndex *)fgl__GetOpenGLProcAddress(state, "glGetSubroutineIndex");
-		fgl_glGetActiveSubroutineUniformiv = (fgl_func_glGetActiveSubroutineUniformiv *)fgl__GetOpenGLProcAddress(state, "glGetActiveSubroutineUniformiv");
-		fgl_glGetActiveSubroutineUniformName = (fgl_func_glGetActiveSubroutineUniformName *)fgl__GetOpenGLProcAddress(state, "glGetActiveSubroutineUniformName");
-		fgl_glGetActiveSubroutineName = (fgl_func_glGetActiveSubroutineName *)fgl__GetOpenGLProcAddress(state, "glGetActiveSubroutineName");
-		fgl_glUniformSubroutinesuiv = (fgl_func_glUniformSubroutinesuiv *)fgl__GetOpenGLProcAddress(state, "glUniformSubroutinesuiv");
-		fgl_glGetUniformSubroutineuiv = (fgl_func_glGetUniformSubroutineuiv *)fgl__GetOpenGLProcAddress(state, "glGetUniformSubroutineuiv");
-		fgl_glGetProgramStageiv = (fgl_func_glGetProgramStageiv *)fgl__GetOpenGLProcAddress(state, "glGetProgramStageiv");
-		fgl_glPatchParameteri = (fgl_func_glPatchParameteri *)fgl__GetOpenGLProcAddress(state, "glPatchParameteri");
-		fgl_glPatchParameterfv = (fgl_func_glPatchParameterfv *)fgl__GetOpenGLProcAddress(state, "glPatchParameterfv");
-		fgl_glBindTransformFeedback = (fgl_func_glBindTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glBindTransformFeedback");
-		fgl_glDeleteTransformFeedbacks = (fgl_func_glDeleteTransformFeedbacks *)fgl__GetOpenGLProcAddress(state, "glDeleteTransformFeedbacks");
-		fgl_glGenTransformFeedbacks = (fgl_func_glGenTransformFeedbacks *)fgl__GetOpenGLProcAddress(state, "glGenTransformFeedbacks");
-		fgl_glIsTransformFeedback = (fgl_func_glIsTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glIsTransformFeedback");
-		fgl_glPauseTransformFeedback = (fgl_func_glPauseTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glPauseTransformFeedback");
-		fgl_glResumeTransformFeedback = (fgl_func_glResumeTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glResumeTransformFeedback");
-		fgl_glDrawTransformFeedback = (fgl_func_glDrawTransformFeedback *)fgl__GetOpenGLProcAddress(state, "glDrawTransformFeedback");
-		fgl_glDrawTransformFeedbackStream = (fgl_func_glDrawTransformFeedbackStream *)fgl__GetOpenGLProcAddress(state, "glDrawTransformFeedbackStream");
-		fgl_glBeginQueryIndexed = (fgl_func_glBeginQueryIndexed *)fgl__GetOpenGLProcAddress(state, "glBeginQueryIndexed");
-		fgl_glEndQueryIndexed = (fgl_func_glEndQueryIndexed *)fgl__GetOpenGLProcAddress(state, "glEndQueryIndexed");
-		fgl_glGetQueryIndexediv = (fgl_func_glGetQueryIndexediv *)fgl__GetOpenGLProcAddress(state, "glGetQueryIndexediv");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_0", 4, 0);
+		fgl_glMinSampleShading = (fgl_func_glMinSampleShading *)fgl__LoadOpenGLCoreFunction(&loader, "glMinSampleShading");
+		fgl_glBlendEquationi = (fgl_func_glBlendEquationi *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendEquationi");
+		fgl_glBlendEquationSeparatei = (fgl_func_glBlendEquationSeparatei *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendEquationSeparatei");
+		fgl_glBlendFunci = (fgl_func_glBlendFunci *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendFunci");
+		fgl_glBlendFuncSeparatei = (fgl_func_glBlendFuncSeparatei *)fgl__LoadOpenGLCoreFunction(&loader, "glBlendFuncSeparatei");
+		fgl_glDrawArraysIndirect = (fgl_func_glDrawArraysIndirect *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawArraysIndirect");
+		fgl_glDrawElementsIndirect = (fgl_func_glDrawElementsIndirect *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsIndirect");
+		fgl_glUniform1d = (fgl_func_glUniform1d *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1d");
+		fgl_glUniform2d = (fgl_func_glUniform2d *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2d");
+		fgl_glUniform3d = (fgl_func_glUniform3d *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3d");
+		fgl_glUniform4d = (fgl_func_glUniform4d *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4d");
+		fgl_glUniform1dv = (fgl_func_glUniform1dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform1dv");
+		fgl_glUniform2dv = (fgl_func_glUniform2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform2dv");
+		fgl_glUniform3dv = (fgl_func_glUniform3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform3dv");
+		fgl_glUniform4dv = (fgl_func_glUniform4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniform4dv");
+		fgl_glUniformMatrix2dv = (fgl_func_glUniformMatrix2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2dv");
+		fgl_glUniformMatrix3dv = (fgl_func_glUniformMatrix3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3dv");
+		fgl_glUniformMatrix4dv = (fgl_func_glUniformMatrix4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4dv");
+		fgl_glUniformMatrix2x3dv = (fgl_func_glUniformMatrix2x3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2x3dv");
+		fgl_glUniformMatrix2x4dv = (fgl_func_glUniformMatrix2x4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix2x4dv");
+		fgl_glUniformMatrix3x2dv = (fgl_func_glUniformMatrix3x2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3x2dv");
+		fgl_glUniformMatrix3x4dv = (fgl_func_glUniformMatrix3x4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix3x4dv");
+		fgl_glUniformMatrix4x2dv = (fgl_func_glUniformMatrix4x2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4x2dv");
+		fgl_glUniformMatrix4x3dv = (fgl_func_glUniformMatrix4x3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformMatrix4x3dv");
+		fgl_glGetUniformdv = (fgl_func_glGetUniformdv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformdv");
+		fgl_glGetSubroutineUniformLocation = (fgl_func_glGetSubroutineUniformLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSubroutineUniformLocation");
+		fgl_glGetSubroutineIndex = (fgl_func_glGetSubroutineIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glGetSubroutineIndex");
+		fgl_glGetActiveSubroutineUniformiv = (fgl_func_glGetActiveSubroutineUniformiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveSubroutineUniformiv");
+		fgl_glGetActiveSubroutineUniformName = (fgl_func_glGetActiveSubroutineUniformName *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveSubroutineUniformName");
+		fgl_glGetActiveSubroutineName = (fgl_func_glGetActiveSubroutineName *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveSubroutineName");
+		fgl_glUniformSubroutinesuiv = (fgl_func_glUniformSubroutinesuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glUniformSubroutinesuiv");
+		fgl_glGetUniformSubroutineuiv = (fgl_func_glGetUniformSubroutineuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetUniformSubroutineuiv");
+		fgl_glGetProgramStageiv = (fgl_func_glGetProgramStageiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramStageiv");
+		fgl_glPatchParameteri = (fgl_func_glPatchParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glPatchParameteri");
+		fgl_glPatchParameterfv = (fgl_func_glPatchParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glPatchParameterfv");
+		fgl_glBindTransformFeedback = (fgl_func_glBindTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glBindTransformFeedback");
+		fgl_glDeleteTransformFeedbacks = (fgl_func_glDeleteTransformFeedbacks *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteTransformFeedbacks");
+		fgl_glGenTransformFeedbacks = (fgl_func_glGenTransformFeedbacks *)fgl__LoadOpenGLCoreFunction(&loader, "glGenTransformFeedbacks");
+		fgl_glIsTransformFeedback = (fgl_func_glIsTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glIsTransformFeedback");
+		fgl_glPauseTransformFeedback = (fgl_func_glPauseTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glPauseTransformFeedback");
+		fgl_glResumeTransformFeedback = (fgl_func_glResumeTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glResumeTransformFeedback");
+		fgl_glDrawTransformFeedback = (fgl_func_glDrawTransformFeedback *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawTransformFeedback");
+		fgl_glDrawTransformFeedbackStream = (fgl_func_glDrawTransformFeedbackStream *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawTransformFeedbackStream");
+		fgl_glBeginQueryIndexed = (fgl_func_glBeginQueryIndexed *)fgl__LoadOpenGLCoreFunction(&loader, "glBeginQueryIndexed");
+		fgl_glEndQueryIndexed = (fgl_func_glEndQueryIndexed *)fgl__LoadOpenGLCoreFunction(&loader, "glEndQueryIndexed");
+		fgl_glGetQueryIndexediv = (fgl_func_glGetQueryIndexediv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryIndexediv");
+		isGL_VERSION_4_0 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_0
 
 #	if GL_VERSION_4_1
-		fgl_glReleaseShaderCompiler = (fgl_func_glReleaseShaderCompiler *)fgl__GetOpenGLProcAddress(state, "glReleaseShaderCompiler");
-		fgl_glShaderBinary = (fgl_func_glShaderBinary *)fgl__GetOpenGLProcAddress(state, "glShaderBinary");
-		fgl_glGetShaderPrecisionFormat = (fgl_func_glGetShaderPrecisionFormat *)fgl__GetOpenGLProcAddress(state, "glGetShaderPrecisionFormat");
-		fgl_glDepthRangef = (fgl_func_glDepthRangef *)fgl__GetOpenGLProcAddress(state, "glDepthRangef");
-		fgl_glClearDepthf = (fgl_func_glClearDepthf *)fgl__GetOpenGLProcAddress(state, "glClearDepthf");
-		fgl_glGetProgramBinary = (fgl_func_glGetProgramBinary *)fgl__GetOpenGLProcAddress(state, "glGetProgramBinary");
-		fgl_glProgramBinary = (fgl_func_glProgramBinary *)fgl__GetOpenGLProcAddress(state, "glProgramBinary");
-		fgl_glProgramParameteri = (fgl_func_glProgramParameteri *)fgl__GetOpenGLProcAddress(state, "glProgramParameteri");
-		fgl_glUseProgramStages = (fgl_func_glUseProgramStages *)fgl__GetOpenGLProcAddress(state, "glUseProgramStages");
-		fgl_glActiveShaderProgram = (fgl_func_glActiveShaderProgram *)fgl__GetOpenGLProcAddress(state, "glActiveShaderProgram");
-		fgl_glCreateShaderProgramv = (fgl_func_glCreateShaderProgramv *)fgl__GetOpenGLProcAddress(state, "glCreateShaderProgramv");
-		fgl_glBindProgramPipeline = (fgl_func_glBindProgramPipeline *)fgl__GetOpenGLProcAddress(state, "glBindProgramPipeline");
-		fgl_glDeleteProgramPipelines = (fgl_func_glDeleteProgramPipelines *)fgl__GetOpenGLProcAddress(state, "glDeleteProgramPipelines");
-		fgl_glGenProgramPipelines = (fgl_func_glGenProgramPipelines *)fgl__GetOpenGLProcAddress(state, "glGenProgramPipelines");
-		fgl_glIsProgramPipeline = (fgl_func_glIsProgramPipeline *)fgl__GetOpenGLProcAddress(state, "glIsProgramPipeline");
-		fgl_glGetProgramPipelineiv = (fgl_func_glGetProgramPipelineiv *)fgl__GetOpenGLProcAddress(state, "glGetProgramPipelineiv");
-		fgl_glProgramUniform1i = (fgl_func_glProgramUniform1i *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1i");
-		fgl_glProgramUniform1iv = (fgl_func_glProgramUniform1iv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1iv");
-		fgl_glProgramUniform1f = (fgl_func_glProgramUniform1f *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1f");
-		fgl_glProgramUniform1fv = (fgl_func_glProgramUniform1fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1fv");
-		fgl_glProgramUniform1d = (fgl_func_glProgramUniform1d *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1d");
-		fgl_glProgramUniform1dv = (fgl_func_glProgramUniform1dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1dv");
-		fgl_glProgramUniform1ui = (fgl_func_glProgramUniform1ui *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1ui");
-		fgl_glProgramUniform1uiv = (fgl_func_glProgramUniform1uiv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform1uiv");
-		fgl_glProgramUniform2i = (fgl_func_glProgramUniform2i *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2i");
-		fgl_glProgramUniform2iv = (fgl_func_glProgramUniform2iv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2iv");
-		fgl_glProgramUniform2f = (fgl_func_glProgramUniform2f *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2f");
-		fgl_glProgramUniform2fv = (fgl_func_glProgramUniform2fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2fv");
-		fgl_glProgramUniform2d = (fgl_func_glProgramUniform2d *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2d");
-		fgl_glProgramUniform2dv = (fgl_func_glProgramUniform2dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2dv");
-		fgl_glProgramUniform2ui = (fgl_func_glProgramUniform2ui *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2ui");
-		fgl_glProgramUniform2uiv = (fgl_func_glProgramUniform2uiv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform2uiv");
-		fgl_glProgramUniform3i = (fgl_func_glProgramUniform3i *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3i");
-		fgl_glProgramUniform3iv = (fgl_func_glProgramUniform3iv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3iv");
-		fgl_glProgramUniform3f = (fgl_func_glProgramUniform3f *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3f");
-		fgl_glProgramUniform3fv = (fgl_func_glProgramUniform3fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3fv");
-		fgl_glProgramUniform3d = (fgl_func_glProgramUniform3d *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3d");
-		fgl_glProgramUniform3dv = (fgl_func_glProgramUniform3dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3dv");
-		fgl_glProgramUniform3ui = (fgl_func_glProgramUniform3ui *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3ui");
-		fgl_glProgramUniform3uiv = (fgl_func_glProgramUniform3uiv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform3uiv");
-		fgl_glProgramUniform4i = (fgl_func_glProgramUniform4i *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4i");
-		fgl_glProgramUniform4iv = (fgl_func_glProgramUniform4iv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4iv");
-		fgl_glProgramUniform4f = (fgl_func_glProgramUniform4f *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4f");
-		fgl_glProgramUniform4fv = (fgl_func_glProgramUniform4fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4fv");
-		fgl_glProgramUniform4d = (fgl_func_glProgramUniform4d *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4d");
-		fgl_glProgramUniform4dv = (fgl_func_glProgramUniform4dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4dv");
-		fgl_glProgramUniform4ui = (fgl_func_glProgramUniform4ui *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4ui");
-		fgl_glProgramUniform4uiv = (fgl_func_glProgramUniform4uiv *)fgl__GetOpenGLProcAddress(state, "glProgramUniform4uiv");
-		fgl_glProgramUniformMatrix2fv = (fgl_func_glProgramUniformMatrix2fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2fv");
-		fgl_glProgramUniformMatrix3fv = (fgl_func_glProgramUniformMatrix3fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3fv");
-		fgl_glProgramUniformMatrix4fv = (fgl_func_glProgramUniformMatrix4fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4fv");
-		fgl_glProgramUniformMatrix2dv = (fgl_func_glProgramUniformMatrix2dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2dv");
-		fgl_glProgramUniformMatrix3dv = (fgl_func_glProgramUniformMatrix3dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3dv");
-		fgl_glProgramUniformMatrix4dv = (fgl_func_glProgramUniformMatrix4dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4dv");
-		fgl_glProgramUniformMatrix2x3fv = (fgl_func_glProgramUniformMatrix2x3fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2x3fv");
-		fgl_glProgramUniformMatrix3x2fv = (fgl_func_glProgramUniformMatrix3x2fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3x2fv");
-		fgl_glProgramUniformMatrix2x4fv = (fgl_func_glProgramUniformMatrix2x4fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2x4fv");
-		fgl_glProgramUniformMatrix4x2fv = (fgl_func_glProgramUniformMatrix4x2fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4x2fv");
-		fgl_glProgramUniformMatrix3x4fv = (fgl_func_glProgramUniformMatrix3x4fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3x4fv");
-		fgl_glProgramUniformMatrix4x3fv = (fgl_func_glProgramUniformMatrix4x3fv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4x3fv");
-		fgl_glProgramUniformMatrix2x3dv = (fgl_func_glProgramUniformMatrix2x3dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2x3dv");
-		fgl_glProgramUniformMatrix3x2dv = (fgl_func_glProgramUniformMatrix3x2dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3x2dv");
-		fgl_glProgramUniformMatrix2x4dv = (fgl_func_glProgramUniformMatrix2x4dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix2x4dv");
-		fgl_glProgramUniformMatrix4x2dv = (fgl_func_glProgramUniformMatrix4x2dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4x2dv");
-		fgl_glProgramUniformMatrix3x4dv = (fgl_func_glProgramUniformMatrix3x4dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix3x4dv");
-		fgl_glProgramUniformMatrix4x3dv = (fgl_func_glProgramUniformMatrix4x3dv *)fgl__GetOpenGLProcAddress(state, "glProgramUniformMatrix4x3dv");
-		fgl_glValidateProgramPipeline = (fgl_func_glValidateProgramPipeline *)fgl__GetOpenGLProcAddress(state, "glValidateProgramPipeline");
-		fgl_glGetProgramPipelineInfoLog = (fgl_func_glGetProgramPipelineInfoLog *)fgl__GetOpenGLProcAddress(state, "glGetProgramPipelineInfoLog");
-		fgl_glVertexAttribL1d = (fgl_func_glVertexAttribL1d *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL1d");
-		fgl_glVertexAttribL2d = (fgl_func_glVertexAttribL2d *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL2d");
-		fgl_glVertexAttribL3d = (fgl_func_glVertexAttribL3d *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL3d");
-		fgl_glVertexAttribL4d = (fgl_func_glVertexAttribL4d *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL4d");
-		fgl_glVertexAttribL1dv = (fgl_func_glVertexAttribL1dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL1dv");
-		fgl_glVertexAttribL2dv = (fgl_func_glVertexAttribL2dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL2dv");
-		fgl_glVertexAttribL3dv = (fgl_func_glVertexAttribL3dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL3dv");
-		fgl_glVertexAttribL4dv = (fgl_func_glVertexAttribL4dv *)fgl__GetOpenGLProcAddress(state, "glVertexAttribL4dv");
-		fgl_glVertexAttribLPointer = (fgl_func_glVertexAttribLPointer *)fgl__GetOpenGLProcAddress(state, "glVertexAttribLPointer");
-		fgl_glGetVertexAttribLdv = (fgl_func_glGetVertexAttribLdv *)fgl__GetOpenGLProcAddress(state, "glGetVertexAttribLdv");
-		fgl_glViewportArrayv = (fgl_func_glViewportArrayv *)fgl__GetOpenGLProcAddress(state, "glViewportArrayv");
-		fgl_glViewportIndexedf = (fgl_func_glViewportIndexedf *)fgl__GetOpenGLProcAddress(state, "glViewportIndexedf");
-		fgl_glViewportIndexedfv = (fgl_func_glViewportIndexedfv *)fgl__GetOpenGLProcAddress(state, "glViewportIndexedfv");
-		fgl_glScissorArrayv = (fgl_func_glScissorArrayv *)fgl__GetOpenGLProcAddress(state, "glScissorArrayv");
-		fgl_glScissorIndexed = (fgl_func_glScissorIndexed *)fgl__GetOpenGLProcAddress(state, "glScissorIndexed");
-		fgl_glScissorIndexedv = (fgl_func_glScissorIndexedv *)fgl__GetOpenGLProcAddress(state, "glScissorIndexedv");
-		fgl_glDepthRangeArrayv = (fgl_func_glDepthRangeArrayv *)fgl__GetOpenGLProcAddress(state, "glDepthRangeArrayv");
-		fgl_glDepthRangeIndexed = (fgl_func_glDepthRangeIndexed *)fgl__GetOpenGLProcAddress(state, "glDepthRangeIndexed");
-		fgl_glGetFloati_v = (fgl_func_glGetFloati_v *)fgl__GetOpenGLProcAddress(state, "glGetFloati_v");
-		fgl_glGetDoublei_v = (fgl_func_glGetDoublei_v *)fgl__GetOpenGLProcAddress(state, "glGetDoublei_v");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_1", 4, 1);
+		fgl_glReleaseShaderCompiler = (fgl_func_glReleaseShaderCompiler *)fgl__LoadOpenGLCoreFunction(&loader, "glReleaseShaderCompiler");
+		fgl_glShaderBinary = (fgl_func_glShaderBinary *)fgl__LoadOpenGLCoreFunction(&loader, "glShaderBinary");
+		fgl_glGetShaderPrecisionFormat = (fgl_func_glGetShaderPrecisionFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glGetShaderPrecisionFormat");
+		fgl_glDepthRangef = (fgl_func_glDepthRangef *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthRangef");
+		fgl_glClearDepthf = (fgl_func_glClearDepthf *)fgl__LoadOpenGLCoreFunction(&loader, "glClearDepthf");
+		fgl_glGetProgramBinary = (fgl_func_glGetProgramBinary *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramBinary");
+		fgl_glProgramBinary = (fgl_func_glProgramBinary *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramBinary");
+		fgl_glProgramParameteri = (fgl_func_glProgramParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramParameteri");
+		fgl_glUseProgramStages = (fgl_func_glUseProgramStages *)fgl__LoadOpenGLCoreFunction(&loader, "glUseProgramStages");
+		fgl_glActiveShaderProgram = (fgl_func_glActiveShaderProgram *)fgl__LoadOpenGLCoreFunction(&loader, "glActiveShaderProgram");
+		fgl_glCreateShaderProgramv = (fgl_func_glCreateShaderProgramv *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateShaderProgramv");
+		fgl_glBindProgramPipeline = (fgl_func_glBindProgramPipeline *)fgl__LoadOpenGLCoreFunction(&loader, "glBindProgramPipeline");
+		fgl_glDeleteProgramPipelines = (fgl_func_glDeleteProgramPipelines *)fgl__LoadOpenGLCoreFunction(&loader, "glDeleteProgramPipelines");
+		fgl_glGenProgramPipelines = (fgl_func_glGenProgramPipelines *)fgl__LoadOpenGLCoreFunction(&loader, "glGenProgramPipelines");
+		fgl_glIsProgramPipeline = (fgl_func_glIsProgramPipeline *)fgl__LoadOpenGLCoreFunction(&loader, "glIsProgramPipeline");
+		fgl_glGetProgramPipelineiv = (fgl_func_glGetProgramPipelineiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramPipelineiv");
+		fgl_glProgramUniform1i = (fgl_func_glProgramUniform1i *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1i");
+		fgl_glProgramUniform1iv = (fgl_func_glProgramUniform1iv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1iv");
+		fgl_glProgramUniform1f = (fgl_func_glProgramUniform1f *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1f");
+		fgl_glProgramUniform1fv = (fgl_func_glProgramUniform1fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1fv");
+		fgl_glProgramUniform1d = (fgl_func_glProgramUniform1d *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1d");
+		fgl_glProgramUniform1dv = (fgl_func_glProgramUniform1dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1dv");
+		fgl_glProgramUniform1ui = (fgl_func_glProgramUniform1ui *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1ui");
+		fgl_glProgramUniform1uiv = (fgl_func_glProgramUniform1uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform1uiv");
+		fgl_glProgramUniform2i = (fgl_func_glProgramUniform2i *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2i");
+		fgl_glProgramUniform2iv = (fgl_func_glProgramUniform2iv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2iv");
+		fgl_glProgramUniform2f = (fgl_func_glProgramUniform2f *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2f");
+		fgl_glProgramUniform2fv = (fgl_func_glProgramUniform2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2fv");
+		fgl_glProgramUniform2d = (fgl_func_glProgramUniform2d *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2d");
+		fgl_glProgramUniform2dv = (fgl_func_glProgramUniform2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2dv");
+		fgl_glProgramUniform2ui = (fgl_func_glProgramUniform2ui *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2ui");
+		fgl_glProgramUniform2uiv = (fgl_func_glProgramUniform2uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform2uiv");
+		fgl_glProgramUniform3i = (fgl_func_glProgramUniform3i *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3i");
+		fgl_glProgramUniform3iv = (fgl_func_glProgramUniform3iv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3iv");
+		fgl_glProgramUniform3f = (fgl_func_glProgramUniform3f *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3f");
+		fgl_glProgramUniform3fv = (fgl_func_glProgramUniform3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3fv");
+		fgl_glProgramUniform3d = (fgl_func_glProgramUniform3d *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3d");
+		fgl_glProgramUniform3dv = (fgl_func_glProgramUniform3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3dv");
+		fgl_glProgramUniform3ui = (fgl_func_glProgramUniform3ui *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3ui");
+		fgl_glProgramUniform3uiv = (fgl_func_glProgramUniform3uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform3uiv");
+		fgl_glProgramUniform4i = (fgl_func_glProgramUniform4i *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4i");
+		fgl_glProgramUniform4iv = (fgl_func_glProgramUniform4iv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4iv");
+		fgl_glProgramUniform4f = (fgl_func_glProgramUniform4f *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4f");
+		fgl_glProgramUniform4fv = (fgl_func_glProgramUniform4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4fv");
+		fgl_glProgramUniform4d = (fgl_func_glProgramUniform4d *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4d");
+		fgl_glProgramUniform4dv = (fgl_func_glProgramUniform4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4dv");
+		fgl_glProgramUniform4ui = (fgl_func_glProgramUniform4ui *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4ui");
+		fgl_glProgramUniform4uiv = (fgl_func_glProgramUniform4uiv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniform4uiv");
+		fgl_glProgramUniformMatrix2fv = (fgl_func_glProgramUniformMatrix2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2fv");
+		fgl_glProgramUniformMatrix3fv = (fgl_func_glProgramUniformMatrix3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3fv");
+		fgl_glProgramUniformMatrix4fv = (fgl_func_glProgramUniformMatrix4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4fv");
+		fgl_glProgramUniformMatrix2dv = (fgl_func_glProgramUniformMatrix2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2dv");
+		fgl_glProgramUniformMatrix3dv = (fgl_func_glProgramUniformMatrix3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3dv");
+		fgl_glProgramUniformMatrix4dv = (fgl_func_glProgramUniformMatrix4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4dv");
+		fgl_glProgramUniformMatrix2x3fv = (fgl_func_glProgramUniformMatrix2x3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2x3fv");
+		fgl_glProgramUniformMatrix3x2fv = (fgl_func_glProgramUniformMatrix3x2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3x2fv");
+		fgl_glProgramUniformMatrix2x4fv = (fgl_func_glProgramUniformMatrix2x4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2x4fv");
+		fgl_glProgramUniformMatrix4x2fv = (fgl_func_glProgramUniformMatrix4x2fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4x2fv");
+		fgl_glProgramUniformMatrix3x4fv = (fgl_func_glProgramUniformMatrix3x4fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3x4fv");
+		fgl_glProgramUniformMatrix4x3fv = (fgl_func_glProgramUniformMatrix4x3fv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4x3fv");
+		fgl_glProgramUniformMatrix2x3dv = (fgl_func_glProgramUniformMatrix2x3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2x3dv");
+		fgl_glProgramUniformMatrix3x2dv = (fgl_func_glProgramUniformMatrix3x2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3x2dv");
+		fgl_glProgramUniformMatrix2x4dv = (fgl_func_glProgramUniformMatrix2x4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix2x4dv");
+		fgl_glProgramUniformMatrix4x2dv = (fgl_func_glProgramUniformMatrix4x2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4x2dv");
+		fgl_glProgramUniformMatrix3x4dv = (fgl_func_glProgramUniformMatrix3x4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix3x4dv");
+		fgl_glProgramUniformMatrix4x3dv = (fgl_func_glProgramUniformMatrix4x3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glProgramUniformMatrix4x3dv");
+		fgl_glValidateProgramPipeline = (fgl_func_glValidateProgramPipeline *)fgl__LoadOpenGLCoreFunction(&loader, "glValidateProgramPipeline");
+		fgl_glGetProgramPipelineInfoLog = (fgl_func_glGetProgramPipelineInfoLog *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramPipelineInfoLog");
+		fgl_glVertexAttribL1d = (fgl_func_glVertexAttribL1d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL1d");
+		fgl_glVertexAttribL2d = (fgl_func_glVertexAttribL2d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL2d");
+		fgl_glVertexAttribL3d = (fgl_func_glVertexAttribL3d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL3d");
+		fgl_glVertexAttribL4d = (fgl_func_glVertexAttribL4d *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL4d");
+		fgl_glVertexAttribL1dv = (fgl_func_glVertexAttribL1dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL1dv");
+		fgl_glVertexAttribL2dv = (fgl_func_glVertexAttribL2dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL2dv");
+		fgl_glVertexAttribL3dv = (fgl_func_glVertexAttribL3dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL3dv");
+		fgl_glVertexAttribL4dv = (fgl_func_glVertexAttribL4dv *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribL4dv");
+		fgl_glVertexAttribLPointer = (fgl_func_glVertexAttribLPointer *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribLPointer");
+		fgl_glGetVertexAttribLdv = (fgl_func_glGetVertexAttribLdv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexAttribLdv");
+		fgl_glViewportArrayv = (fgl_func_glViewportArrayv *)fgl__LoadOpenGLCoreFunction(&loader, "glViewportArrayv");
+		fgl_glViewportIndexedf = (fgl_func_glViewportIndexedf *)fgl__LoadOpenGLCoreFunction(&loader, "glViewportIndexedf");
+		fgl_glViewportIndexedfv = (fgl_func_glViewportIndexedfv *)fgl__LoadOpenGLCoreFunction(&loader, "glViewportIndexedfv");
+		fgl_glScissorArrayv = (fgl_func_glScissorArrayv *)fgl__LoadOpenGLCoreFunction(&loader, "glScissorArrayv");
+		fgl_glScissorIndexed = (fgl_func_glScissorIndexed *)fgl__LoadOpenGLCoreFunction(&loader, "glScissorIndexed");
+		fgl_glScissorIndexedv = (fgl_func_glScissorIndexedv *)fgl__LoadOpenGLCoreFunction(&loader, "glScissorIndexedv");
+		fgl_glDepthRangeArrayv = (fgl_func_glDepthRangeArrayv *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthRangeArrayv");
+		fgl_glDepthRangeIndexed = (fgl_func_glDepthRangeIndexed *)fgl__LoadOpenGLCoreFunction(&loader, "glDepthRangeIndexed");
+		fgl_glGetFloati_v = (fgl_func_glGetFloati_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFloati_v");
+		fgl_glGetDoublei_v = (fgl_func_glGetDoublei_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetDoublei_v");
+		isGL_VERSION_4_1 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_1
 
 #	if GL_VERSION_4_2
-		fgl_glDrawArraysInstancedBaseInstance = (fgl_func_glDrawArraysInstancedBaseInstance *)fgl__GetOpenGLProcAddress(state, "glDrawArraysInstancedBaseInstance");
-		fgl_glDrawElementsInstancedBaseInstance = (fgl_func_glDrawElementsInstancedBaseInstance *)fgl__GetOpenGLProcAddress(state, "glDrawElementsInstancedBaseInstance");
-		fgl_glDrawElementsInstancedBaseVertexBaseInstance = (fgl_func_glDrawElementsInstancedBaseVertexBaseInstance *)fgl__GetOpenGLProcAddress(state, "glDrawElementsInstancedBaseVertexBaseInstance");
-		fgl_glGetInternalformativ = (fgl_func_glGetInternalformativ *)fgl__GetOpenGLProcAddress(state, "glGetInternalformativ");
-		fgl_glGetActiveAtomicCounterBufferiv = (fgl_func_glGetActiveAtomicCounterBufferiv *)fgl__GetOpenGLProcAddress(state, "glGetActiveAtomicCounterBufferiv");
-		fgl_glBindImageTexture = (fgl_func_glBindImageTexture *)fgl__GetOpenGLProcAddress(state, "glBindImageTexture");
-		fgl_glMemoryBarrier = (fgl_func_glMemoryBarrier *)fgl__GetOpenGLProcAddress(state, "glMemoryBarrier");
-		fgl_glTexStorage1D = (fgl_func_glTexStorage1D *)fgl__GetOpenGLProcAddress(state, "glTexStorage1D");
-		fgl_glTexStorage2D = (fgl_func_glTexStorage2D *)fgl__GetOpenGLProcAddress(state, "glTexStorage2D");
-		fgl_glTexStorage3D = (fgl_func_glTexStorage3D *)fgl__GetOpenGLProcAddress(state, "glTexStorage3D");
-		fgl_glDrawTransformFeedbackInstanced = (fgl_func_glDrawTransformFeedbackInstanced *)fgl__GetOpenGLProcAddress(state, "glDrawTransformFeedbackInstanced");
-		fgl_glDrawTransformFeedbackStreamInstanced = (fgl_func_glDrawTransformFeedbackStreamInstanced *)fgl__GetOpenGLProcAddress(state, "glDrawTransformFeedbackStreamInstanced");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_2", 4, 2);
+		fgl_glDrawArraysInstancedBaseInstance = (fgl_func_glDrawArraysInstancedBaseInstance *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawArraysInstancedBaseInstance");
+		fgl_glDrawElementsInstancedBaseInstance = (fgl_func_glDrawElementsInstancedBaseInstance *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsInstancedBaseInstance");
+		fgl_glDrawElementsInstancedBaseVertexBaseInstance = (fgl_func_glDrawElementsInstancedBaseVertexBaseInstance *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawElementsInstancedBaseVertexBaseInstance");
+		fgl_glGetInternalformativ = (fgl_func_glGetInternalformativ *)fgl__LoadOpenGLCoreFunction(&loader, "glGetInternalformativ");
+		fgl_glGetActiveAtomicCounterBufferiv = (fgl_func_glGetActiveAtomicCounterBufferiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetActiveAtomicCounterBufferiv");
+		fgl_glBindImageTexture = (fgl_func_glBindImageTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glBindImageTexture");
+		fgl_glMemoryBarrier = (fgl_func_glMemoryBarrier *)fgl__LoadOpenGLCoreFunction(&loader, "glMemoryBarrier");
+		fgl_glTexStorage1D = (fgl_func_glTexStorage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexStorage1D");
+		fgl_glTexStorage2D = (fgl_func_glTexStorage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexStorage2D");
+		fgl_glTexStorage3D = (fgl_func_glTexStorage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glTexStorage3D");
+		fgl_glDrawTransformFeedbackInstanced = (fgl_func_glDrawTransformFeedbackInstanced *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawTransformFeedbackInstanced");
+		fgl_glDrawTransformFeedbackStreamInstanced = (fgl_func_glDrawTransformFeedbackStreamInstanced *)fgl__LoadOpenGLCoreFunction(&loader, "glDrawTransformFeedbackStreamInstanced");
+		isGL_VERSION_4_2 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_2
 
 #	if GL_VERSION_4_3
-		fgl_glClearBufferData = (fgl_func_glClearBufferData *)fgl__GetOpenGLProcAddress(state, "glClearBufferData");
-		fgl_glClearBufferSubData = (fgl_func_glClearBufferSubData *)fgl__GetOpenGLProcAddress(state, "glClearBufferSubData");
-		fgl_glDispatchCompute = (fgl_func_glDispatchCompute *)fgl__GetOpenGLProcAddress(state, "glDispatchCompute");
-		fgl_glDispatchComputeIndirect = (fgl_func_glDispatchComputeIndirect *)fgl__GetOpenGLProcAddress(state, "glDispatchComputeIndirect");
-		fgl_glCopyImageSubData = (fgl_func_glCopyImageSubData *)fgl__GetOpenGLProcAddress(state, "glCopyImageSubData");
-		fgl_glFramebufferParameteri = (fgl_func_glFramebufferParameteri *)fgl__GetOpenGLProcAddress(state, "glFramebufferParameteri");
-		fgl_glGetFramebufferParameteriv = (fgl_func_glGetFramebufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetFramebufferParameteriv");
-		fgl_glGetInternalformati64v = (fgl_func_glGetInternalformati64v *)fgl__GetOpenGLProcAddress(state, "glGetInternalformati64v");
-		fgl_glInvalidateTexSubImage = (fgl_func_glInvalidateTexSubImage *)fgl__GetOpenGLProcAddress(state, "glInvalidateTexSubImage");
-		fgl_glInvalidateTexImage = (fgl_func_glInvalidateTexImage *)fgl__GetOpenGLProcAddress(state, "glInvalidateTexImage");
-		fgl_glInvalidateBufferSubData = (fgl_func_glInvalidateBufferSubData *)fgl__GetOpenGLProcAddress(state, "glInvalidateBufferSubData");
-		fgl_glInvalidateBufferData = (fgl_func_glInvalidateBufferData *)fgl__GetOpenGLProcAddress(state, "glInvalidateBufferData");
-		fgl_glInvalidateFramebuffer = (fgl_func_glInvalidateFramebuffer *)fgl__GetOpenGLProcAddress(state, "glInvalidateFramebuffer");
-		fgl_glInvalidateSubFramebuffer = (fgl_func_glInvalidateSubFramebuffer *)fgl__GetOpenGLProcAddress(state, "glInvalidateSubFramebuffer");
-		fgl_glMultiDrawArraysIndirect = (fgl_func_glMultiDrawArraysIndirect *)fgl__GetOpenGLProcAddress(state, "glMultiDrawArraysIndirect");
-		fgl_glMultiDrawElementsIndirect = (fgl_func_glMultiDrawElementsIndirect *)fgl__GetOpenGLProcAddress(state, "glMultiDrawElementsIndirect");
-		fgl_glGetProgramInterfaceiv = (fgl_func_glGetProgramInterfaceiv *)fgl__GetOpenGLProcAddress(state, "glGetProgramInterfaceiv");
-		fgl_glGetProgramResourceIndex = (fgl_func_glGetProgramResourceIndex *)fgl__GetOpenGLProcAddress(state, "glGetProgramResourceIndex");
-		fgl_glGetProgramResourceName = (fgl_func_glGetProgramResourceName *)fgl__GetOpenGLProcAddress(state, "glGetProgramResourceName");
-		fgl_glGetProgramResourceiv = (fgl_func_glGetProgramResourceiv *)fgl__GetOpenGLProcAddress(state, "glGetProgramResourceiv");
-		fgl_glGetProgramResourceLocation = (fgl_func_glGetProgramResourceLocation *)fgl__GetOpenGLProcAddress(state, "glGetProgramResourceLocation");
-		fgl_glGetProgramResourceLocationIndex = (fgl_func_glGetProgramResourceLocationIndex *)fgl__GetOpenGLProcAddress(state, "glGetProgramResourceLocationIndex");
-		fgl_glShaderStorageBlockBinding = (fgl_func_glShaderStorageBlockBinding *)fgl__GetOpenGLProcAddress(state, "glShaderStorageBlockBinding");
-		fgl_glTexBufferRange = (fgl_func_glTexBufferRange *)fgl__GetOpenGLProcAddress(state, "glTexBufferRange");
-		fgl_glTexStorage2DMultisample = (fgl_func_glTexStorage2DMultisample *)fgl__GetOpenGLProcAddress(state, "glTexStorage2DMultisample");
-		fgl_glTexStorage3DMultisample = (fgl_func_glTexStorage3DMultisample *)fgl__GetOpenGLProcAddress(state, "glTexStorage3DMultisample");
-		fgl_glTextureView = (fgl_func_glTextureView *)fgl__GetOpenGLProcAddress(state, "glTextureView");
-		fgl_glBindVertexBuffer = (fgl_func_glBindVertexBuffer *)fgl__GetOpenGLProcAddress(state, "glBindVertexBuffer");
-		fgl_glVertexAttribFormat = (fgl_func_glVertexAttribFormat *)fgl__GetOpenGLProcAddress(state, "glVertexAttribFormat");
-		fgl_glVertexAttribIFormat = (fgl_func_glVertexAttribIFormat *)fgl__GetOpenGLProcAddress(state, "glVertexAttribIFormat");
-		fgl_glVertexAttribLFormat = (fgl_func_glVertexAttribLFormat *)fgl__GetOpenGLProcAddress(state, "glVertexAttribLFormat");
-		fgl_glVertexAttribBinding = (fgl_func_glVertexAttribBinding *)fgl__GetOpenGLProcAddress(state, "glVertexAttribBinding");
-		fgl_glVertexBindingDivisor = (fgl_func_glVertexBindingDivisor *)fgl__GetOpenGLProcAddress(state, "glVertexBindingDivisor");
-		fgl_glDebugMessageControl = (fgl_func_glDebugMessageControl *)fgl__GetOpenGLProcAddress(state, "glDebugMessageControl");
-		fgl_glDebugMessageInsert = (fgl_func_glDebugMessageInsert *)fgl__GetOpenGLProcAddress(state, "glDebugMessageInsert");
-		fgl_glDebugMessageCallback = (fgl_func_glDebugMessageCallback *)fgl__GetOpenGLProcAddress(state, "glDebugMessageCallback");
-		fgl_glGetDebugMessageLog = (fgl_func_glGetDebugMessageLog *)fgl__GetOpenGLProcAddress(state, "glGetDebugMessageLog");
-		fgl_glPushDebugGroup = (fgl_func_glPushDebugGroup *)fgl__GetOpenGLProcAddress(state, "glPushDebugGroup");
-		fgl_glPopDebugGroup = (fgl_func_glPopDebugGroup *)fgl__GetOpenGLProcAddress(state, "glPopDebugGroup");
-		fgl_glObjectLabel = (fgl_func_glObjectLabel *)fgl__GetOpenGLProcAddress(state, "glObjectLabel");
-		fgl_glGetObjectLabel = (fgl_func_glGetObjectLabel *)fgl__GetOpenGLProcAddress(state, "glGetObjectLabel");
-		fgl_glObjectPtrLabel = (fgl_func_glObjectPtrLabel *)fgl__GetOpenGLProcAddress(state, "glObjectPtrLabel");
-		fgl_glGetObjectPtrLabel = (fgl_func_glGetObjectPtrLabel *)fgl__GetOpenGLProcAddress(state, "glGetObjectPtrLabel");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_3", 4, 3);
+		fgl_glClearBufferData = (fgl_func_glClearBufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferData");
+		fgl_glClearBufferSubData = (fgl_func_glClearBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glClearBufferSubData");
+		fgl_glDispatchCompute = (fgl_func_glDispatchCompute *)fgl__LoadOpenGLCoreFunction(&loader, "glDispatchCompute");
+		fgl_glDispatchComputeIndirect = (fgl_func_glDispatchComputeIndirect *)fgl__LoadOpenGLCoreFunction(&loader, "glDispatchComputeIndirect");
+		fgl_glCopyImageSubData = (fgl_func_glCopyImageSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyImageSubData");
+		fgl_glFramebufferParameteri = (fgl_func_glFramebufferParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glFramebufferParameteri");
+		fgl_glGetFramebufferParameteriv = (fgl_func_glGetFramebufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetFramebufferParameteriv");
+		fgl_glGetInternalformati64v = (fgl_func_glGetInternalformati64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetInternalformati64v");
+		fgl_glInvalidateTexSubImage = (fgl_func_glInvalidateTexSubImage *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateTexSubImage");
+		fgl_glInvalidateTexImage = (fgl_func_glInvalidateTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateTexImage");
+		fgl_glInvalidateBufferSubData = (fgl_func_glInvalidateBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateBufferSubData");
+		fgl_glInvalidateBufferData = (fgl_func_glInvalidateBufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateBufferData");
+		fgl_glInvalidateFramebuffer = (fgl_func_glInvalidateFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateFramebuffer");
+		fgl_glInvalidateSubFramebuffer = (fgl_func_glInvalidateSubFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateSubFramebuffer");
+		fgl_glMultiDrawArraysIndirect = (fgl_func_glMultiDrawArraysIndirect *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawArraysIndirect");
+		fgl_glMultiDrawElementsIndirect = (fgl_func_glMultiDrawElementsIndirect *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawElementsIndirect");
+		fgl_glGetProgramInterfaceiv = (fgl_func_glGetProgramInterfaceiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramInterfaceiv");
+		fgl_glGetProgramResourceIndex = (fgl_func_glGetProgramResourceIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramResourceIndex");
+		fgl_glGetProgramResourceName = (fgl_func_glGetProgramResourceName *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramResourceName");
+		fgl_glGetProgramResourceiv = (fgl_func_glGetProgramResourceiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramResourceiv");
+		fgl_glGetProgramResourceLocation = (fgl_func_glGetProgramResourceLocation *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramResourceLocation");
+		fgl_glGetProgramResourceLocationIndex = (fgl_func_glGetProgramResourceLocationIndex *)fgl__LoadOpenGLCoreFunction(&loader, "glGetProgramResourceLocationIndex");
+		fgl_glShaderStorageBlockBinding = (fgl_func_glShaderStorageBlockBinding *)fgl__LoadOpenGLCoreFunction(&loader, "glShaderStorageBlockBinding");
+		fgl_glTexBufferRange = (fgl_func_glTexBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glTexBufferRange");
+		fgl_glTexStorage2DMultisample = (fgl_func_glTexStorage2DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTexStorage2DMultisample");
+		fgl_glTexStorage3DMultisample = (fgl_func_glTexStorage3DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTexStorage3DMultisample");
+		fgl_glTextureView = (fgl_func_glTextureView *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureView");
+		fgl_glBindVertexBuffer = (fgl_func_glBindVertexBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBindVertexBuffer");
+		fgl_glVertexAttribFormat = (fgl_func_glVertexAttribFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribFormat");
+		fgl_glVertexAttribIFormat = (fgl_func_glVertexAttribIFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribIFormat");
+		fgl_glVertexAttribLFormat = (fgl_func_glVertexAttribLFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribLFormat");
+		fgl_glVertexAttribBinding = (fgl_func_glVertexAttribBinding *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexAttribBinding");
+		fgl_glVertexBindingDivisor = (fgl_func_glVertexBindingDivisor *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexBindingDivisor");
+		fgl_glDebugMessageControl = (fgl_func_glDebugMessageControl *)fgl__LoadOpenGLCoreFunction(&loader, "glDebugMessageControl");
+		fgl_glDebugMessageInsert = (fgl_func_glDebugMessageInsert *)fgl__LoadOpenGLCoreFunction(&loader, "glDebugMessageInsert");
+		fgl_glDebugMessageCallback = (fgl_func_glDebugMessageCallback *)fgl__LoadOpenGLCoreFunction(&loader, "glDebugMessageCallback");
+		fgl_glGetDebugMessageLog = (fgl_func_glGetDebugMessageLog *)fgl__LoadOpenGLCoreFunction(&loader, "glGetDebugMessageLog");
+		fgl_glPushDebugGroup = (fgl_func_glPushDebugGroup *)fgl__LoadOpenGLCoreFunction(&loader, "glPushDebugGroup");
+		fgl_glPopDebugGroup = (fgl_func_glPopDebugGroup *)fgl__LoadOpenGLCoreFunction(&loader, "glPopDebugGroup");
+		fgl_glObjectLabel = (fgl_func_glObjectLabel *)fgl__LoadOpenGLCoreFunction(&loader, "glObjectLabel");
+		fgl_glGetObjectLabel = (fgl_func_glGetObjectLabel *)fgl__LoadOpenGLCoreFunction(&loader, "glGetObjectLabel");
+		fgl_glObjectPtrLabel = (fgl_func_glObjectPtrLabel *)fgl__LoadOpenGLCoreFunction(&loader, "glObjectPtrLabel");
+		fgl_glGetObjectPtrLabel = (fgl_func_glGetObjectPtrLabel *)fgl__LoadOpenGLCoreFunction(&loader, "glGetObjectPtrLabel");
+		isGL_VERSION_4_3 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_3
 
 #	if GL_VERSION_4_4
-		fgl_glBufferStorage = (fgl_func_glBufferStorage *)fgl__GetOpenGLProcAddress(state, "glBufferStorage");
-		fgl_glClearTexImage = (fgl_func_glClearTexImage *)fgl__GetOpenGLProcAddress(state, "glClearTexImage");
-		fgl_glClearTexSubImage = (fgl_func_glClearTexSubImage *)fgl__GetOpenGLProcAddress(state, "glClearTexSubImage");
-		fgl_glBindBuffersBase = (fgl_func_glBindBuffersBase *)fgl__GetOpenGLProcAddress(state, "glBindBuffersBase");
-		fgl_glBindBuffersRange = (fgl_func_glBindBuffersRange *)fgl__GetOpenGLProcAddress(state, "glBindBuffersRange");
-		fgl_glBindTextures = (fgl_func_glBindTextures *)fgl__GetOpenGLProcAddress(state, "glBindTextures");
-		fgl_glBindSamplers = (fgl_func_glBindSamplers *)fgl__GetOpenGLProcAddress(state, "glBindSamplers");
-		fgl_glBindImageTextures = (fgl_func_glBindImageTextures *)fgl__GetOpenGLProcAddress(state, "glBindImageTextures");
-		fgl_glBindVertexBuffers = (fgl_func_glBindVertexBuffers *)fgl__GetOpenGLProcAddress(state, "glBindVertexBuffers");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_4", 4, 4);
+		fgl_glBufferStorage = (fgl_func_glBufferStorage *)fgl__LoadOpenGLCoreFunction(&loader, "glBufferStorage");
+		fgl_glClearTexImage = (fgl_func_glClearTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glClearTexImage");
+		fgl_glClearTexSubImage = (fgl_func_glClearTexSubImage *)fgl__LoadOpenGLCoreFunction(&loader, "glClearTexSubImage");
+		fgl_glBindBuffersBase = (fgl_func_glBindBuffersBase *)fgl__LoadOpenGLCoreFunction(&loader, "glBindBuffersBase");
+		fgl_glBindBuffersRange = (fgl_func_glBindBuffersRange *)fgl__LoadOpenGLCoreFunction(&loader, "glBindBuffersRange");
+		fgl_glBindTextures = (fgl_func_glBindTextures *)fgl__LoadOpenGLCoreFunction(&loader, "glBindTextures");
+		fgl_glBindSamplers = (fgl_func_glBindSamplers *)fgl__LoadOpenGLCoreFunction(&loader, "glBindSamplers");
+		fgl_glBindImageTextures = (fgl_func_glBindImageTextures *)fgl__LoadOpenGLCoreFunction(&loader, "glBindImageTextures");
+		fgl_glBindVertexBuffers = (fgl_func_glBindVertexBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glBindVertexBuffers");
+		isGL_VERSION_4_4 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_4
 
 #	if GL_VERSION_4_5
-		fgl_glClipControl = (fgl_func_glClipControl *)fgl__GetOpenGLProcAddress(state, "glClipControl");
-		fgl_glCreateTransformFeedbacks = (fgl_func_glCreateTransformFeedbacks *)fgl__GetOpenGLProcAddress(state, "glCreateTransformFeedbacks");
-		fgl_glTransformFeedbackBufferBase = (fgl_func_glTransformFeedbackBufferBase *)fgl__GetOpenGLProcAddress(state, "glTransformFeedbackBufferBase");
-		fgl_glTransformFeedbackBufferRange = (fgl_func_glTransformFeedbackBufferRange *)fgl__GetOpenGLProcAddress(state, "glTransformFeedbackBufferRange");
-		fgl_glGetTransformFeedbackiv = (fgl_func_glGetTransformFeedbackiv *)fgl__GetOpenGLProcAddress(state, "glGetTransformFeedbackiv");
-		fgl_glGetTransformFeedbacki_v = (fgl_func_glGetTransformFeedbacki_v *)fgl__GetOpenGLProcAddress(state, "glGetTransformFeedbacki_v");
-		fgl_glGetTransformFeedbacki64_v = (fgl_func_glGetTransformFeedbacki64_v *)fgl__GetOpenGLProcAddress(state, "glGetTransformFeedbacki64_v");
-		fgl_glCreateBuffers = (fgl_func_glCreateBuffers *)fgl__GetOpenGLProcAddress(state, "glCreateBuffers");
-		fgl_glNamedBufferStorage = (fgl_func_glNamedBufferStorage *)fgl__GetOpenGLProcAddress(state, "glNamedBufferStorage");
-		fgl_glNamedBufferData = (fgl_func_glNamedBufferData *)fgl__GetOpenGLProcAddress(state, "glNamedBufferData");
-		fgl_glNamedBufferSubData = (fgl_func_glNamedBufferSubData *)fgl__GetOpenGLProcAddress(state, "glNamedBufferSubData");
-		fgl_glCopyNamedBufferSubData = (fgl_func_glCopyNamedBufferSubData *)fgl__GetOpenGLProcAddress(state, "glCopyNamedBufferSubData");
-		fgl_glClearNamedBufferData = (fgl_func_glClearNamedBufferData *)fgl__GetOpenGLProcAddress(state, "glClearNamedBufferData");
-		fgl_glClearNamedBufferSubData = (fgl_func_glClearNamedBufferSubData *)fgl__GetOpenGLProcAddress(state, "glClearNamedBufferSubData");
-		fgl_glMapNamedBuffer = (fgl_func_glMapNamedBuffer *)fgl__GetOpenGLProcAddress(state, "glMapNamedBuffer");
-		fgl_glMapNamedBufferRange = (fgl_func_glMapNamedBufferRange *)fgl__GetOpenGLProcAddress(state, "glMapNamedBufferRange");
-		fgl_glUnmapNamedBuffer = (fgl_func_glUnmapNamedBuffer *)fgl__GetOpenGLProcAddress(state, "glUnmapNamedBuffer");
-		fgl_glFlushMappedNamedBufferRange = (fgl_func_glFlushMappedNamedBufferRange *)fgl__GetOpenGLProcAddress(state, "glFlushMappedNamedBufferRange");
-		fgl_glGetNamedBufferParameteriv = (fgl_func_glGetNamedBufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetNamedBufferParameteriv");
-		fgl_glGetNamedBufferParameteri64v = (fgl_func_glGetNamedBufferParameteri64v *)fgl__GetOpenGLProcAddress(state, "glGetNamedBufferParameteri64v");
-		fgl_glGetNamedBufferPointerv = (fgl_func_glGetNamedBufferPointerv *)fgl__GetOpenGLProcAddress(state, "glGetNamedBufferPointerv");
-		fgl_glGetNamedBufferSubData = (fgl_func_glGetNamedBufferSubData *)fgl__GetOpenGLProcAddress(state, "glGetNamedBufferSubData");
-		fgl_glCreateFramebuffers = (fgl_func_glCreateFramebuffers *)fgl__GetOpenGLProcAddress(state, "glCreateFramebuffers");
-		fgl_glNamedFramebufferRenderbuffer = (fgl_func_glNamedFramebufferRenderbuffer *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferRenderbuffer");
-		fgl_glNamedFramebufferParameteri = (fgl_func_glNamedFramebufferParameteri *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferParameteri");
-		fgl_glNamedFramebufferTexture = (fgl_func_glNamedFramebufferTexture *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferTexture");
-		fgl_glNamedFramebufferTextureLayer = (fgl_func_glNamedFramebufferTextureLayer *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferTextureLayer");
-		fgl_glNamedFramebufferDrawBuffer = (fgl_func_glNamedFramebufferDrawBuffer *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferDrawBuffer");
-		fgl_glNamedFramebufferDrawBuffers = (fgl_func_glNamedFramebufferDrawBuffers *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferDrawBuffers");
-		fgl_glNamedFramebufferReadBuffer = (fgl_func_glNamedFramebufferReadBuffer *)fgl__GetOpenGLProcAddress(state, "glNamedFramebufferReadBuffer");
-		fgl_glInvalidateNamedFramebufferData = (fgl_func_glInvalidateNamedFramebufferData *)fgl__GetOpenGLProcAddress(state, "glInvalidateNamedFramebufferData");
-		fgl_glInvalidateNamedFramebufferSubData = (fgl_func_glInvalidateNamedFramebufferSubData *)fgl__GetOpenGLProcAddress(state, "glInvalidateNamedFramebufferSubData");
-		fgl_glClearNamedFramebufferiv = (fgl_func_glClearNamedFramebufferiv *)fgl__GetOpenGLProcAddress(state, "glClearNamedFramebufferiv");
-		fgl_glClearNamedFramebufferuiv = (fgl_func_glClearNamedFramebufferuiv *)fgl__GetOpenGLProcAddress(state, "glClearNamedFramebufferuiv");
-		fgl_glClearNamedFramebufferfv = (fgl_func_glClearNamedFramebufferfv *)fgl__GetOpenGLProcAddress(state, "glClearNamedFramebufferfv");
-		fgl_glClearNamedFramebufferfi = (fgl_func_glClearNamedFramebufferfi *)fgl__GetOpenGLProcAddress(state, "glClearNamedFramebufferfi");
-		fgl_glBlitNamedFramebuffer = (fgl_func_glBlitNamedFramebuffer *)fgl__GetOpenGLProcAddress(state, "glBlitNamedFramebuffer");
-		fgl_glCheckNamedFramebufferStatus = (fgl_func_glCheckNamedFramebufferStatus *)fgl__GetOpenGLProcAddress(state, "glCheckNamedFramebufferStatus");
-		fgl_glGetNamedFramebufferParameteriv = (fgl_func_glGetNamedFramebufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetNamedFramebufferParameteriv");
-		fgl_glGetNamedFramebufferAttachmentParameteriv = (fgl_func_glGetNamedFramebufferAttachmentParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetNamedFramebufferAttachmentParameteriv");
-		fgl_glCreateRenderbuffers = (fgl_func_glCreateRenderbuffers *)fgl__GetOpenGLProcAddress(state, "glCreateRenderbuffers");
-		fgl_glNamedRenderbufferStorage = (fgl_func_glNamedRenderbufferStorage *)fgl__GetOpenGLProcAddress(state, "glNamedRenderbufferStorage");
-		fgl_glNamedRenderbufferStorageMultisample = (fgl_func_glNamedRenderbufferStorageMultisample *)fgl__GetOpenGLProcAddress(state, "glNamedRenderbufferStorageMultisample");
-		fgl_glGetNamedRenderbufferParameteriv = (fgl_func_glGetNamedRenderbufferParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetNamedRenderbufferParameteriv");
-		fgl_glCreateTextures = (fgl_func_glCreateTextures *)fgl__GetOpenGLProcAddress(state, "glCreateTextures");
-		fgl_glTextureBuffer = (fgl_func_glTextureBuffer *)fgl__GetOpenGLProcAddress(state, "glTextureBuffer");
-		fgl_glTextureBufferRange = (fgl_func_glTextureBufferRange *)fgl__GetOpenGLProcAddress(state, "glTextureBufferRange");
-		fgl_glTextureStorage1D = (fgl_func_glTextureStorage1D *)fgl__GetOpenGLProcAddress(state, "glTextureStorage1D");
-		fgl_glTextureStorage2D = (fgl_func_glTextureStorage2D *)fgl__GetOpenGLProcAddress(state, "glTextureStorage2D");
-		fgl_glTextureStorage3D = (fgl_func_glTextureStorage3D *)fgl__GetOpenGLProcAddress(state, "glTextureStorage3D");
-		fgl_glTextureStorage2DMultisample = (fgl_func_glTextureStorage2DMultisample *)fgl__GetOpenGLProcAddress(state, "glTextureStorage2DMultisample");
-		fgl_glTextureStorage3DMultisample = (fgl_func_glTextureStorage3DMultisample *)fgl__GetOpenGLProcAddress(state, "glTextureStorage3DMultisample");
-		fgl_glTextureSubImage1D = (fgl_func_glTextureSubImage1D *)fgl__GetOpenGLProcAddress(state, "glTextureSubImage1D");
-		fgl_glTextureSubImage2D = (fgl_func_glTextureSubImage2D *)fgl__GetOpenGLProcAddress(state, "glTextureSubImage2D");
-		fgl_glTextureSubImage3D = (fgl_func_glTextureSubImage3D *)fgl__GetOpenGLProcAddress(state, "glTextureSubImage3D");
-		fgl_glCompressedTextureSubImage1D = (fgl_func_glCompressedTextureSubImage1D *)fgl__GetOpenGLProcAddress(state, "glCompressedTextureSubImage1D");
-		fgl_glCompressedTextureSubImage2D = (fgl_func_glCompressedTextureSubImage2D *)fgl__GetOpenGLProcAddress(state, "glCompressedTextureSubImage2D");
-		fgl_glCompressedTextureSubImage3D = (fgl_func_glCompressedTextureSubImage3D *)fgl__GetOpenGLProcAddress(state, "glCompressedTextureSubImage3D");
-		fgl_glCopyTextureSubImage1D = (fgl_func_glCopyTextureSubImage1D *)fgl__GetOpenGLProcAddress(state, "glCopyTextureSubImage1D");
-		fgl_glCopyTextureSubImage2D = (fgl_func_glCopyTextureSubImage2D *)fgl__GetOpenGLProcAddress(state, "glCopyTextureSubImage2D");
-		fgl_glCopyTextureSubImage3D = (fgl_func_glCopyTextureSubImage3D *)fgl__GetOpenGLProcAddress(state, "glCopyTextureSubImage3D");
-		fgl_glTextureParameterf = (fgl_func_glTextureParameterf *)fgl__GetOpenGLProcAddress(state, "glTextureParameterf");
-		fgl_glTextureParameterfv = (fgl_func_glTextureParameterfv *)fgl__GetOpenGLProcAddress(state, "glTextureParameterfv");
-		fgl_glTextureParameteri = (fgl_func_glTextureParameteri *)fgl__GetOpenGLProcAddress(state, "glTextureParameteri");
-		fgl_glTextureParameterIiv = (fgl_func_glTextureParameterIiv *)fgl__GetOpenGLProcAddress(state, "glTextureParameterIiv");
-		fgl_glTextureParameterIuiv = (fgl_func_glTextureParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glTextureParameterIuiv");
-		fgl_glTextureParameteriv = (fgl_func_glTextureParameteriv *)fgl__GetOpenGLProcAddress(state, "glTextureParameteriv");
-		fgl_glGenerateTextureMipmap = (fgl_func_glGenerateTextureMipmap *)fgl__GetOpenGLProcAddress(state, "glGenerateTextureMipmap");
-		fgl_glBindTextureUnit = (fgl_func_glBindTextureUnit *)fgl__GetOpenGLProcAddress(state, "glBindTextureUnit");
-		fgl_glGetTextureImage = (fgl_func_glGetTextureImage *)fgl__GetOpenGLProcAddress(state, "glGetTextureImage");
-		fgl_glGetCompressedTextureImage = (fgl_func_glGetCompressedTextureImage *)fgl__GetOpenGLProcAddress(state, "glGetCompressedTextureImage");
-		fgl_glGetTextureLevelParameterfv = (fgl_func_glGetTextureLevelParameterfv *)fgl__GetOpenGLProcAddress(state, "glGetTextureLevelParameterfv");
-		fgl_glGetTextureLevelParameteriv = (fgl_func_glGetTextureLevelParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetTextureLevelParameteriv");
-		fgl_glGetTextureParameterfv = (fgl_func_glGetTextureParameterfv *)fgl__GetOpenGLProcAddress(state, "glGetTextureParameterfv");
-		fgl_glGetTextureParameterIiv = (fgl_func_glGetTextureParameterIiv *)fgl__GetOpenGLProcAddress(state, "glGetTextureParameterIiv");
-		fgl_glGetTextureParameterIuiv = (fgl_func_glGetTextureParameterIuiv *)fgl__GetOpenGLProcAddress(state, "glGetTextureParameterIuiv");
-		fgl_glGetTextureParameteriv = (fgl_func_glGetTextureParameteriv *)fgl__GetOpenGLProcAddress(state, "glGetTextureParameteriv");
-		fgl_glCreateVertexArrays = (fgl_func_glCreateVertexArrays *)fgl__GetOpenGLProcAddress(state, "glCreateVertexArrays");
-		fgl_glDisableVertexArrayAttrib = (fgl_func_glDisableVertexArrayAttrib *)fgl__GetOpenGLProcAddress(state, "glDisableVertexArrayAttrib");
-		fgl_glEnableVertexArrayAttrib = (fgl_func_glEnableVertexArrayAttrib *)fgl__GetOpenGLProcAddress(state, "glEnableVertexArrayAttrib");
-		fgl_glVertexArrayElementBuffer = (fgl_func_glVertexArrayElementBuffer *)fgl__GetOpenGLProcAddress(state, "glVertexArrayElementBuffer");
-		fgl_glVertexArrayVertexBuffer = (fgl_func_glVertexArrayVertexBuffer *)fgl__GetOpenGLProcAddress(state, "glVertexArrayVertexBuffer");
-		fgl_glVertexArrayVertexBuffers = (fgl_func_glVertexArrayVertexBuffers *)fgl__GetOpenGLProcAddress(state, "glVertexArrayVertexBuffers");
-		fgl_glVertexArrayAttribBinding = (fgl_func_glVertexArrayAttribBinding *)fgl__GetOpenGLProcAddress(state, "glVertexArrayAttribBinding");
-		fgl_glVertexArrayAttribFormat = (fgl_func_glVertexArrayAttribFormat *)fgl__GetOpenGLProcAddress(state, "glVertexArrayAttribFormat");
-		fgl_glVertexArrayAttribIFormat = (fgl_func_glVertexArrayAttribIFormat *)fgl__GetOpenGLProcAddress(state, "glVertexArrayAttribIFormat");
-		fgl_glVertexArrayAttribLFormat = (fgl_func_glVertexArrayAttribLFormat *)fgl__GetOpenGLProcAddress(state, "glVertexArrayAttribLFormat");
-		fgl_glVertexArrayBindingDivisor = (fgl_func_glVertexArrayBindingDivisor *)fgl__GetOpenGLProcAddress(state, "glVertexArrayBindingDivisor");
-		fgl_glGetVertexArrayiv = (fgl_func_glGetVertexArrayiv *)fgl__GetOpenGLProcAddress(state, "glGetVertexArrayiv");
-		fgl_glGetVertexArrayIndexediv = (fgl_func_glGetVertexArrayIndexediv *)fgl__GetOpenGLProcAddress(state, "glGetVertexArrayIndexediv");
-		fgl_glGetVertexArrayIndexed64iv = (fgl_func_glGetVertexArrayIndexed64iv *)fgl__GetOpenGLProcAddress(state, "glGetVertexArrayIndexed64iv");
-		fgl_glCreateSamplers = (fgl_func_glCreateSamplers *)fgl__GetOpenGLProcAddress(state, "glCreateSamplers");
-		fgl_glCreateProgramPipelines = (fgl_func_glCreateProgramPipelines *)fgl__GetOpenGLProcAddress(state, "glCreateProgramPipelines");
-		fgl_glCreateQueries = (fgl_func_glCreateQueries *)fgl__GetOpenGLProcAddress(state, "glCreateQueries");
-		fgl_glGetQueryBufferObjecti64v = (fgl_func_glGetQueryBufferObjecti64v *)fgl__GetOpenGLProcAddress(state, "glGetQueryBufferObjecti64v");
-		fgl_glGetQueryBufferObjectiv = (fgl_func_glGetQueryBufferObjectiv *)fgl__GetOpenGLProcAddress(state, "glGetQueryBufferObjectiv");
-		fgl_glGetQueryBufferObjectui64v = (fgl_func_glGetQueryBufferObjectui64v *)fgl__GetOpenGLProcAddress(state, "glGetQueryBufferObjectui64v");
-		fgl_glGetQueryBufferObjectuiv = (fgl_func_glGetQueryBufferObjectuiv *)fgl__GetOpenGLProcAddress(state, "glGetQueryBufferObjectuiv");
-		fgl_glMemoryBarrierByRegion = (fgl_func_glMemoryBarrierByRegion *)fgl__GetOpenGLProcAddress(state, "glMemoryBarrierByRegion");
-		fgl_glGetTextureSubImage = (fgl_func_glGetTextureSubImage *)fgl__GetOpenGLProcAddress(state, "glGetTextureSubImage");
-		fgl_glGetCompressedTextureSubImage = (fgl_func_glGetCompressedTextureSubImage *)fgl__GetOpenGLProcAddress(state, "glGetCompressedTextureSubImage");
-		fgl_glGetGraphicsResetStatus = (fgl_func_glGetGraphicsResetStatus *)fgl__GetOpenGLProcAddress(state, "glGetGraphicsResetStatus");
-		fgl_glGetnCompressedTexImage = (fgl_func_glGetnCompressedTexImage *)fgl__GetOpenGLProcAddress(state, "glGetnCompressedTexImage");
-		fgl_glGetnTexImage = (fgl_func_glGetnTexImage *)fgl__GetOpenGLProcAddress(state, "glGetnTexImage");
-		fgl_glGetnUniformdv = (fgl_func_glGetnUniformdv *)fgl__GetOpenGLProcAddress(state, "glGetnUniformdv");
-		fgl_glGetnUniformfv = (fgl_func_glGetnUniformfv *)fgl__GetOpenGLProcAddress(state, "glGetnUniformfv");
-		fgl_glGetnUniformiv = (fgl_func_glGetnUniformiv *)fgl__GetOpenGLProcAddress(state, "glGetnUniformiv");
-		fgl_glGetnUniformuiv = (fgl_func_glGetnUniformuiv *)fgl__GetOpenGLProcAddress(state, "glGetnUniformuiv");
-		fgl_glReadnPixels = (fgl_func_glReadnPixels *)fgl__GetOpenGLProcAddress(state, "glReadnPixels");
-		fgl_glGetnMapdv = (fgl_func_glGetnMapdv *)fgl__GetOpenGLProcAddress(state, "glGetnMapdv");
-		fgl_glGetnMapfv = (fgl_func_glGetnMapfv *)fgl__GetOpenGLProcAddress(state, "glGetnMapfv");
-		fgl_glGetnMapiv = (fgl_func_glGetnMapiv *)fgl__GetOpenGLProcAddress(state, "glGetnMapiv");
-		fgl_glGetnPixelMapfv = (fgl_func_glGetnPixelMapfv *)fgl__GetOpenGLProcAddress(state, "glGetnPixelMapfv");
-		fgl_glGetnPixelMapuiv = (fgl_func_glGetnPixelMapuiv *)fgl__GetOpenGLProcAddress(state, "glGetnPixelMapuiv");
-		fgl_glGetnPixelMapusv = (fgl_func_glGetnPixelMapusv *)fgl__GetOpenGLProcAddress(state, "glGetnPixelMapusv");
-		fgl_glGetnPolygonStipple = (fgl_func_glGetnPolygonStipple *)fgl__GetOpenGLProcAddress(state, "glGetnPolygonStipple");
-		fgl_glGetnColorTable = (fgl_func_glGetnColorTable *)fgl__GetOpenGLProcAddress(state, "glGetnColorTable");
-		fgl_glGetnConvolutionFilter = (fgl_func_glGetnConvolutionFilter *)fgl__GetOpenGLProcAddress(state, "glGetnConvolutionFilter");
-		fgl_glGetnSeparableFilter = (fgl_func_glGetnSeparableFilter *)fgl__GetOpenGLProcAddress(state, "glGetnSeparableFilter");
-		fgl_glGetnHistogram = (fgl_func_glGetnHistogram *)fgl__GetOpenGLProcAddress(state, "glGetnHistogram");
-		fgl_glGetnMinmax = (fgl_func_glGetnMinmax *)fgl__GetOpenGLProcAddress(state, "glGetnMinmax");
-		fgl_glTextureBarrier = (fgl_func_glTextureBarrier *)fgl__GetOpenGLProcAddress(state, "glTextureBarrier");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_5", 4, 5);
+		fgl_glClipControl = (fgl_func_glClipControl *)fgl__LoadOpenGLCoreFunction(&loader, "glClipControl");
+		fgl_glCreateTransformFeedbacks = (fgl_func_glCreateTransformFeedbacks *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateTransformFeedbacks");
+		fgl_glTransformFeedbackBufferBase = (fgl_func_glTransformFeedbackBufferBase *)fgl__LoadOpenGLCoreFunction(&loader, "glTransformFeedbackBufferBase");
+		fgl_glTransformFeedbackBufferRange = (fgl_func_glTransformFeedbackBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glTransformFeedbackBufferRange");
+		fgl_glGetTransformFeedbackiv = (fgl_func_glGetTransformFeedbackiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTransformFeedbackiv");
+		fgl_glGetTransformFeedbacki_v = (fgl_func_glGetTransformFeedbacki_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTransformFeedbacki_v");
+		fgl_glGetTransformFeedbacki64_v = (fgl_func_glGetTransformFeedbacki64_v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTransformFeedbacki64_v");
+		fgl_glCreateBuffers = (fgl_func_glCreateBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateBuffers");
+		fgl_glNamedBufferStorage = (fgl_func_glNamedBufferStorage *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedBufferStorage");
+		fgl_glNamedBufferData = (fgl_func_glNamedBufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedBufferData");
+		fgl_glNamedBufferSubData = (fgl_func_glNamedBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedBufferSubData");
+		fgl_glCopyNamedBufferSubData = (fgl_func_glCopyNamedBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyNamedBufferSubData");
+		fgl_glClearNamedBufferData = (fgl_func_glClearNamedBufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedBufferData");
+		fgl_glClearNamedBufferSubData = (fgl_func_glClearNamedBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedBufferSubData");
+		fgl_glMapNamedBuffer = (fgl_func_glMapNamedBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glMapNamedBuffer");
+		fgl_glMapNamedBufferRange = (fgl_func_glMapNamedBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glMapNamedBufferRange");
+		fgl_glUnmapNamedBuffer = (fgl_func_glUnmapNamedBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glUnmapNamedBuffer");
+		fgl_glFlushMappedNamedBufferRange = (fgl_func_glFlushMappedNamedBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glFlushMappedNamedBufferRange");
+		fgl_glGetNamedBufferParameteriv = (fgl_func_glGetNamedBufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedBufferParameteriv");
+		fgl_glGetNamedBufferParameteri64v = (fgl_func_glGetNamedBufferParameteri64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedBufferParameteri64v");
+		fgl_glGetNamedBufferPointerv = (fgl_func_glGetNamedBufferPointerv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedBufferPointerv");
+		fgl_glGetNamedBufferSubData = (fgl_func_glGetNamedBufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedBufferSubData");
+		fgl_glCreateFramebuffers = (fgl_func_glCreateFramebuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateFramebuffers");
+		fgl_glNamedFramebufferRenderbuffer = (fgl_func_glNamedFramebufferRenderbuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferRenderbuffer");
+		fgl_glNamedFramebufferParameteri = (fgl_func_glNamedFramebufferParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferParameteri");
+		fgl_glNamedFramebufferTexture = (fgl_func_glNamedFramebufferTexture *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferTexture");
+		fgl_glNamedFramebufferTextureLayer = (fgl_func_glNamedFramebufferTextureLayer *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferTextureLayer");
+		fgl_glNamedFramebufferDrawBuffer = (fgl_func_glNamedFramebufferDrawBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferDrawBuffer");
+		fgl_glNamedFramebufferDrawBuffers = (fgl_func_glNamedFramebufferDrawBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferDrawBuffers");
+		fgl_glNamedFramebufferReadBuffer = (fgl_func_glNamedFramebufferReadBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedFramebufferReadBuffer");
+		fgl_glInvalidateNamedFramebufferData = (fgl_func_glInvalidateNamedFramebufferData *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateNamedFramebufferData");
+		fgl_glInvalidateNamedFramebufferSubData = (fgl_func_glInvalidateNamedFramebufferSubData *)fgl__LoadOpenGLCoreFunction(&loader, "glInvalidateNamedFramebufferSubData");
+		fgl_glClearNamedFramebufferiv = (fgl_func_glClearNamedFramebufferiv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedFramebufferiv");
+		fgl_glClearNamedFramebufferuiv = (fgl_func_glClearNamedFramebufferuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedFramebufferuiv");
+		fgl_glClearNamedFramebufferfv = (fgl_func_glClearNamedFramebufferfv *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedFramebufferfv");
+		fgl_glClearNamedFramebufferfi = (fgl_func_glClearNamedFramebufferfi *)fgl__LoadOpenGLCoreFunction(&loader, "glClearNamedFramebufferfi");
+		fgl_glBlitNamedFramebuffer = (fgl_func_glBlitNamedFramebuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glBlitNamedFramebuffer");
+		fgl_glCheckNamedFramebufferStatus = (fgl_func_glCheckNamedFramebufferStatus *)fgl__LoadOpenGLCoreFunction(&loader, "glCheckNamedFramebufferStatus");
+		fgl_glGetNamedFramebufferParameteriv = (fgl_func_glGetNamedFramebufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedFramebufferParameteriv");
+		fgl_glGetNamedFramebufferAttachmentParameteriv = (fgl_func_glGetNamedFramebufferAttachmentParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedFramebufferAttachmentParameteriv");
+		fgl_glCreateRenderbuffers = (fgl_func_glCreateRenderbuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateRenderbuffers");
+		fgl_glNamedRenderbufferStorage = (fgl_func_glNamedRenderbufferStorage *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedRenderbufferStorage");
+		fgl_glNamedRenderbufferStorageMultisample = (fgl_func_glNamedRenderbufferStorageMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glNamedRenderbufferStorageMultisample");
+		fgl_glGetNamedRenderbufferParameteriv = (fgl_func_glGetNamedRenderbufferParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetNamedRenderbufferParameteriv");
+		fgl_glCreateTextures = (fgl_func_glCreateTextures *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateTextures");
+		fgl_glTextureBuffer = (fgl_func_glTextureBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureBuffer");
+		fgl_glTextureBufferRange = (fgl_func_glTextureBufferRange *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureBufferRange");
+		fgl_glTextureStorage1D = (fgl_func_glTextureStorage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureStorage1D");
+		fgl_glTextureStorage2D = (fgl_func_glTextureStorage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureStorage2D");
+		fgl_glTextureStorage3D = (fgl_func_glTextureStorage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureStorage3D");
+		fgl_glTextureStorage2DMultisample = (fgl_func_glTextureStorage2DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureStorage2DMultisample");
+		fgl_glTextureStorage3DMultisample = (fgl_func_glTextureStorage3DMultisample *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureStorage3DMultisample");
+		fgl_glTextureSubImage1D = (fgl_func_glTextureSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureSubImage1D");
+		fgl_glTextureSubImage2D = (fgl_func_glTextureSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureSubImage2D");
+		fgl_glTextureSubImage3D = (fgl_func_glTextureSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureSubImage3D");
+		fgl_glCompressedTextureSubImage1D = (fgl_func_glCompressedTextureSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTextureSubImage1D");
+		fgl_glCompressedTextureSubImage2D = (fgl_func_glCompressedTextureSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTextureSubImage2D");
+		fgl_glCompressedTextureSubImage3D = (fgl_func_glCompressedTextureSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glCompressedTextureSubImage3D");
+		fgl_glCopyTextureSubImage1D = (fgl_func_glCopyTextureSubImage1D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTextureSubImage1D");
+		fgl_glCopyTextureSubImage2D = (fgl_func_glCopyTextureSubImage2D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTextureSubImage2D");
+		fgl_glCopyTextureSubImage3D = (fgl_func_glCopyTextureSubImage3D *)fgl__LoadOpenGLCoreFunction(&loader, "glCopyTextureSubImage3D");
+		fgl_glTextureParameterf = (fgl_func_glTextureParameterf *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameterf");
+		fgl_glTextureParameterfv = (fgl_func_glTextureParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameterfv");
+		fgl_glTextureParameteri = (fgl_func_glTextureParameteri *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameteri");
+		fgl_glTextureParameterIiv = (fgl_func_glTextureParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameterIiv");
+		fgl_glTextureParameterIuiv = (fgl_func_glTextureParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameterIuiv");
+		fgl_glTextureParameteriv = (fgl_func_glTextureParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureParameteriv");
+		fgl_glGenerateTextureMipmap = (fgl_func_glGenerateTextureMipmap *)fgl__LoadOpenGLCoreFunction(&loader, "glGenerateTextureMipmap");
+		fgl_glBindTextureUnit = (fgl_func_glBindTextureUnit *)fgl__LoadOpenGLCoreFunction(&loader, "glBindTextureUnit");
+		fgl_glGetTextureImage = (fgl_func_glGetTextureImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureImage");
+		fgl_glGetCompressedTextureImage = (fgl_func_glGetCompressedTextureImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetCompressedTextureImage");
+		fgl_glGetTextureLevelParameterfv = (fgl_func_glGetTextureLevelParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureLevelParameterfv");
+		fgl_glGetTextureLevelParameteriv = (fgl_func_glGetTextureLevelParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureLevelParameteriv");
+		fgl_glGetTextureParameterfv = (fgl_func_glGetTextureParameterfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureParameterfv");
+		fgl_glGetTextureParameterIiv = (fgl_func_glGetTextureParameterIiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureParameterIiv");
+		fgl_glGetTextureParameterIuiv = (fgl_func_glGetTextureParameterIuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureParameterIuiv");
+		fgl_glGetTextureParameteriv = (fgl_func_glGetTextureParameteriv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureParameteriv");
+		fgl_glCreateVertexArrays = (fgl_func_glCreateVertexArrays *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateVertexArrays");
+		fgl_glDisableVertexArrayAttrib = (fgl_func_glDisableVertexArrayAttrib *)fgl__LoadOpenGLCoreFunction(&loader, "glDisableVertexArrayAttrib");
+		fgl_glEnableVertexArrayAttrib = (fgl_func_glEnableVertexArrayAttrib *)fgl__LoadOpenGLCoreFunction(&loader, "glEnableVertexArrayAttrib");
+		fgl_glVertexArrayElementBuffer = (fgl_func_glVertexArrayElementBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayElementBuffer");
+		fgl_glVertexArrayVertexBuffer = (fgl_func_glVertexArrayVertexBuffer *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayVertexBuffer");
+		fgl_glVertexArrayVertexBuffers = (fgl_func_glVertexArrayVertexBuffers *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayVertexBuffers");
+		fgl_glVertexArrayAttribBinding = (fgl_func_glVertexArrayAttribBinding *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayAttribBinding");
+		fgl_glVertexArrayAttribFormat = (fgl_func_glVertexArrayAttribFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayAttribFormat");
+		fgl_glVertexArrayAttribIFormat = (fgl_func_glVertexArrayAttribIFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayAttribIFormat");
+		fgl_glVertexArrayAttribLFormat = (fgl_func_glVertexArrayAttribLFormat *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayAttribLFormat");
+		fgl_glVertexArrayBindingDivisor = (fgl_func_glVertexArrayBindingDivisor *)fgl__LoadOpenGLCoreFunction(&loader, "glVertexArrayBindingDivisor");
+		fgl_glGetVertexArrayiv = (fgl_func_glGetVertexArrayiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexArrayiv");
+		fgl_glGetVertexArrayIndexediv = (fgl_func_glGetVertexArrayIndexediv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexArrayIndexediv");
+		fgl_glGetVertexArrayIndexed64iv = (fgl_func_glGetVertexArrayIndexed64iv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetVertexArrayIndexed64iv");
+		fgl_glCreateSamplers = (fgl_func_glCreateSamplers *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateSamplers");
+		fgl_glCreateProgramPipelines = (fgl_func_glCreateProgramPipelines *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateProgramPipelines");
+		fgl_glCreateQueries = (fgl_func_glCreateQueries *)fgl__LoadOpenGLCoreFunction(&loader, "glCreateQueries");
+		fgl_glGetQueryBufferObjecti64v = (fgl_func_glGetQueryBufferObjecti64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryBufferObjecti64v");
+		fgl_glGetQueryBufferObjectiv = (fgl_func_glGetQueryBufferObjectiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryBufferObjectiv");
+		fgl_glGetQueryBufferObjectui64v = (fgl_func_glGetQueryBufferObjectui64v *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryBufferObjectui64v");
+		fgl_glGetQueryBufferObjectuiv = (fgl_func_glGetQueryBufferObjectuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetQueryBufferObjectuiv");
+		fgl_glMemoryBarrierByRegion = (fgl_func_glMemoryBarrierByRegion *)fgl__LoadOpenGLCoreFunction(&loader, "glMemoryBarrierByRegion");
+		fgl_glGetTextureSubImage = (fgl_func_glGetTextureSubImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetTextureSubImage");
+		fgl_glGetCompressedTextureSubImage = (fgl_func_glGetCompressedTextureSubImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetCompressedTextureSubImage");
+		fgl_glGetGraphicsResetStatus = (fgl_func_glGetGraphicsResetStatus *)fgl__LoadOpenGLCoreFunction(&loader, "glGetGraphicsResetStatus");
+		fgl_glGetnCompressedTexImage = (fgl_func_glGetnCompressedTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnCompressedTexImage");
+		fgl_glGetnTexImage = (fgl_func_glGetnTexImage *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnTexImage");
+		fgl_glGetnUniformdv = (fgl_func_glGetnUniformdv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnUniformdv");
+		fgl_glGetnUniformfv = (fgl_func_glGetnUniformfv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnUniformfv");
+		fgl_glGetnUniformiv = (fgl_func_glGetnUniformiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnUniformiv");
+		fgl_glGetnUniformuiv = (fgl_func_glGetnUniformuiv *)fgl__LoadOpenGLCoreFunction(&loader, "glGetnUniformuiv");
+		fgl_glReadnPixels = (fgl_func_glReadnPixels *)fgl__LoadOpenGLCoreFunction(&loader, "glReadnPixels");
+		fgl_glGetnMapdv = (fgl_func_glGetnMapdv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnMapdv");
+		fgl_glGetnMapfv = (fgl_func_glGetnMapfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnMapfv");
+		fgl_glGetnMapiv = (fgl_func_glGetnMapiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnMapiv");
+		fgl_glGetnPixelMapfv = (fgl_func_glGetnPixelMapfv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnPixelMapfv");
+		fgl_glGetnPixelMapuiv = (fgl_func_glGetnPixelMapuiv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnPixelMapuiv");
+		fgl_glGetnPixelMapusv = (fgl_func_glGetnPixelMapusv *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnPixelMapusv");
+		fgl_glGetnPolygonStipple = (fgl_func_glGetnPolygonStipple *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnPolygonStipple");
+		fgl_glGetnColorTable = (fgl_func_glGetnColorTable *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnColorTable");
+		fgl_glGetnConvolutionFilter = (fgl_func_glGetnConvolutionFilter *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnConvolutionFilter");
+		fgl_glGetnSeparableFilter = (fgl_func_glGetnSeparableFilter *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnSeparableFilter");
+		fgl_glGetnHistogram = (fgl_func_glGetnHistogram *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnHistogram");
+		fgl_glGetnMinmax = (fgl_func_glGetnMinmax *)fgl__LoadOpenGLCompatibilityFunction(&loader, "glGetnMinmax");
+		fgl_glTextureBarrier = (fgl_func_glTextureBarrier *)fgl__LoadOpenGLCoreFunction(&loader, "glTextureBarrier");
+		isGL_VERSION_4_5 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_5
 
 #	if GL_VERSION_4_6
-		fgl_glSpecializeShader = (fgl_func_glSpecializeShader *)fgl__GetOpenGLProcAddress(state, "glSpecializeShader");
-		fgl_glMultiDrawArraysIndirectCount = (fgl_func_glMultiDrawArraysIndirectCount *)fgl__GetOpenGLProcAddress(state, "glMultiDrawArraysIndirectCount");
-		fgl_glMultiDrawElementsIndirectCount = (fgl_func_glMultiDrawElementsIndirectCount *)fgl__GetOpenGLProcAddress(state, "glMultiDrawElementsIndirectCount");
-		fgl_glPolygonOffsetClamp = (fgl_func_glPolygonOffsetClamp *)fgl__GetOpenGLProcAddress(state, "glPolygonOffsetClamp");
+		fgl__BeginOpenGLFunctionBlock(&loader, "GL_VERSION_4_6", 4, 6);
+		fgl_glSpecializeShader = (fgl_func_glSpecializeShader *)fgl__LoadOpenGLCoreFunction(&loader, "glSpecializeShader");
+		fgl_glMultiDrawArraysIndirectCount = (fgl_func_glMultiDrawArraysIndirectCount *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawArraysIndirectCount");
+		fgl_glMultiDrawElementsIndirectCount = (fgl_func_glMultiDrawElementsIndirectCount *)fgl__LoadOpenGLCoreFunction(&loader, "glMultiDrawElementsIndirectCount");
+		fgl_glPolygonOffsetClamp = (fgl_func_glPolygonOffsetClamp *)fgl__LoadOpenGLCoreFunction(&loader, "glPolygonOffsetClamp");
+		isGL_VERSION_4_6 = fgl__EndOpenGLFunctionBlock(&loader);
 #	endif //GL_VERSION_4_6
 
 }
@@ -8801,6 +9080,15 @@ fgl_api void fglLoadOpenGLFunctions() {
 	if(state->isLoaded) {
 		fgl__LoadOpenGLExtensions(state);
 	}
+}
+
+fgl_api bool fglGetOpenGLContextVersion(fglOpenGLContextVersion *outVersion) {
+	if(outVersion == fgl_null) {
+		fgl__SetLastError("Out version is missing!");
+		return false;
+	}
+	bool result = fgl__QueryOpenGLContextVersion(fgl_glGetString, fgl_glGetIntegerv, outVersion);
+	return(result);
 }
 
 fgl_api bool fglLoadOpenGL(const bool loadFunctions) {

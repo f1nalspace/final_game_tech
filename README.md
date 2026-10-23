@@ -19,7 +19,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 | [final_xml.h](final_xml.h)                       | Single file xml parser library              | Independent      | C99      | 0.3.2-alpha    | Finished | 33 KB   |
 | [final_tiletrace.h](final_tiletrace.h)           | Single file tilemap contour tracing library | Independent      | C17      | 2.0.1          | Finished | 49 KB   |
 | [final_tiletrace.hpp](final_tiletrace.hpp)       | Single file tilemap contour tracing library | Independent      | C++/11   | 1.02           | Obsolete | 34 KB   |
-| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.7-beta     | Beta     | 642 KB  |
+| [final_ui.h](final_ui.h)                         | Single file immediate mode user interface   | Independent      | C99      | 0.9.8-beta     | Beta     | 642 KB  |
 | [final_ui_texteditor.h](final_ui_texteditor.h)   | Single file code and text editor widget for final_ui.h | Independent      | C99      | 1.0.0          | Finished | 460 KB  |
 
 * All libraries written in C99/C17 are fully C++ compatible.

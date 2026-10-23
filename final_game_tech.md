@@ -109,7 +109,7 @@ The main platform abstraction layer that provides:
 
 ### Supported Architectures
 
-- X86
+- X86 (i586 or higher, i386/i486 are not supported)
 - X86_64
 - ARM32
 - ARM64

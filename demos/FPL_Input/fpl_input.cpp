@@ -18,6 +18,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Show the media and volume keys, the keyboard image has a row for them
+
 	## 2026-05-09
 	- Handle gamepad connect/disconnect in poll state
 	- Added gamepad mapping detection
@@ -463,7 +466,15 @@ public:
 		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
 		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
 
-		AddKeyDef(fplKey_Oem5, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(102, 382)), 2, MakeKeyChar(L"^", V2f(-0.5f, -0.4f)), MakeKeyChar(L"°", V2f(-0.5f, 0.3f)));
+		// Media keys, the symbols are part of the image
+		AddKeyDef(fplKey_VolumeMute, UVRectFromPos(KeyboardImageS, V2i(103, 66), V2i(103, 191)), 0);
+		AddKeyDef(fplKey_MediaPrevTrack, UVRectFromPos(KeyboardImageS, V2i(141, 66), V2i(293, 191)), 0);
+		AddKeyDef(fplKey_MediaPlayPause, UVRectFromPos(KeyboardImageS, V2i(170, 67), V2i(441, 190)), 0);
+		AddKeyDef(fplKey_MediaNextTrack, UVRectFromPos(KeyboardImageS, V2i(155, 67), V2i(618, 190)), 0);
+		AddKeyDef(fplKey_VolumeDown, UVRectFromPos(KeyboardImageS, V2i(157, 66), V2i(855, 191)), 0);
+		AddKeyDef(fplKey_VolumeUp, UVRectFromPos(KeyboardImageS, V2i(154, 67), V2i(1018, 190)), 0);
+
+		AddKeyDef(fplKey_Oem5,UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(102, 382)), 2, MakeKeyChar(L"^", V2f(-0.5f, -0.4f)), MakeKeyChar(L"°", V2f(-0.5f, 0.3f)));
 		AddKeyDef(fplKey_1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(192, 383)), 2, MakeKeyChar(L"1", V2f(-0.5f, -0.4f)), MakeKeyChar(L"!", V2f(-0.5f, 0.45f)));
 		AddKeyDef(fplKey_2, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(268, 383)), 2, MakeKeyChar(L"2", V2f(-0.5f, -0.4f)), MakeKeyChar(L"\"", V2f(-0.5f, 0.3f)));
 		AddKeyDef(fplKey_3, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(343, 383)), 2, MakeKeyChar(L"3", V2f(-0.5f, -0.4f)), MakeKeyChar(L"§", V2f(-0.5f, 0.45f)));
@@ -585,6 +596,14 @@ public:
 		AddKeyDef(fplKey_Print, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
 		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
 		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
+
+		// Media keys, the symbols are part of the image
+		AddKeyDef(fplKey_VolumeMute, UVRectFromPos(KeyboardImageS, V2i(103, 66), V2i(103, 191)), 0);
+		AddKeyDef(fplKey_MediaPrevTrack, UVRectFromPos(KeyboardImageS, V2i(141, 66), V2i(293, 191)), 0);
+		AddKeyDef(fplKey_MediaPlayPause, UVRectFromPos(KeyboardImageS, V2i(170, 67), V2i(441, 190)), 0);
+		AddKeyDef(fplKey_MediaNextTrack, UVRectFromPos(KeyboardImageS, V2i(155, 67), V2i(618, 190)), 0);
+		AddKeyDef(fplKey_VolumeDown, UVRectFromPos(KeyboardImageS, V2i(157, 66), V2i(855, 191)), 0);
+		AddKeyDef(fplKey_VolumeUp, UVRectFromPos(KeyboardImageS, V2i(154, 67), V2i(1018, 190)), 0);
 
 		// @TODO(final): fplKey_Oem3 `~
 		AddKeyDef(fplKey_1, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(192, 383)), 2, MakeKeyChar(L"1", V2f(-0.5f, -0.4f)), MakeKeyChar(L"!", V2f(-0.5f, 0.45f)));

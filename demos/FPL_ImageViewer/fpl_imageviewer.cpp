@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.5.6 (version.h)
+	v0.6.0 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -16,12 +16,71 @@ Requirements:
 	- C++ Compiler :-( Just because to support R"()"
 	- Final Platform Layer
 	- Final Dynamic OpenGL
-	- STB_image
+	- OpenGL 3.3 core profile
+	- STB_image (the default loader, others are optional)
+	- STB_truetype, final_ui.h and from demos/additions: fui_backend_gl3.h, fui_input_fpl.h, fui_font_stbtt.h, final_fonts.h
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.6.0
+	- New: Info line at the top with file name, size, bpp and zoom, already while loading; I or --no-info hides it
+	- New: N or --relative-path shows the path relative to the opened folder, shortened at the front when too long
+	- New: final_ui.h draws the interface through the new OpenGL 3.3 backend fui_backend_gl3.h
+	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits, the window it needs for OpenGL stays hidden
+	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
+	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
+	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
+	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
+	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
+	- New: --down-filter=<key>, --up-filter=<key>, -f also takes a key and sets both directions (numbers keep their old meaning)
+	- New: Upscaling filters the sRGB values instead of linear light (like mpv), so the negative lobes of Catmull-Rom and Lanczos3 no longer dig halos down to black next to dark tones, downscaling stays in linear light
+	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
+	- New: Zoom: the mouse wheel zooms around the mouse (1.2 per notch, snapping to fit and 100 %), + and - step through 1/8 ... 32 with fit as a step of its own, 0 fits, 1 shows 100 %, 2 shows 200 % (also with Ctrl and on the keypad), a double click toggles between 100 % at the mouse and fit
+	- New: Dragging with the left or middle button or Shift + arrow keys moves a picture that is larger than the window, it never shows a border; left and right still page while zoomed
+	- New: K keeps the view over picture changes: reset, relative to the fit size or absolute, also --keep-view=reset|relative|absolute; W or --wheel=zoom|navigate lets the wheel page (Ctrl + wheel still zooms); --center=<x>,<y> sets the start center
+	- Changed: The window title shows the zoom, the center of a picture that can be moved and the view and wheel modes
+	- New: Auto Nearest for pixel inspection: from a zoom of --nearest-from=<percent> on (at least 100) upscaling uses Nearest, A turns it on at 400 % (or the --nearest-from value) and off again, off by default
+	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
+	- New: The scaled picture is cached and only computed again when picture, filter or placement change, the GPU time of both passes is logged
+	- Changed: The preview strip scales its pictures with the resample pipeline too, computed once per picture
+	- New: Test image generator and scaling test runner in tests/
+	- New: Pictures are read through exchangeable loaders (imageloader.h), each with a fixed 128-bit id: stb_image (default: JPEG, PNG, BMP), PNM/PAM (PGM, PPM, PAM) and a reference BMP loader behind stb_image
+	- New: A loader is picked by the first bytes of the file (the signature beats the extension), a pinned loader goes first, Unsupported or Corrupt falls back to the next loader
+	- New: --loader=<id|name>, --loader-for=<extension>:<id|name>, --loader-order=<id|name>,..., --no-loader-fallback, --list-loaders and --decode-all=<folder>
+	- New: L reads the active picture again with the next loader that recognizes it, the window title shows the loader
+	- New: The EXIF orientation of JPEG files is applied to the picture, its scaling and the preview strip, without copying pixels
+	- New: Level of detail chain (imagepyramid.h): the load thread halves every picture again and again until the longer side is at most 32 pixels, in linear light with premultiplied alpha and fixed point Mitchell weights, each level becomes its own texture
+	- New: The resample pipeline reads the smallest level that is still at least eight times the displayed size, Nearest and Box always read the largest level on the GPU
+	- New: A picture larger than GL_MAX_TEXTURE_SIZE is shown from the first level that fits
+	- New: SSE2 and AVX2 row functions for the levels, picked from the CPU capabilities FPL reports and bit identical to the scalar reference, --simd=scalar|sse2|avx2|avx512|neon forces a level and an unavailable one falls back to the next lower
+	- New: --lod-source=auto|0 and --lod-kernel=mitchell|lanczos2 for comparisons, --bench-lod=<file> measures decode and levels on every SIMD level, --write-pyramid=<folder> writes all levels as PAM, --selftest=<folder> also compares every SIMD level on the pictures of the folder
+	- Changed: The folder scan takes every extension of every loader
+	- Changed: The loading progress only moves forward: reading and decoding fill 70 %, the levels 95 %, then the upload; a PNG counts its reading up to a quarter of the first phase and then shows a running segment while stb_image inflates it
+	- Changed: The loading progress bar moved below the info line
+	- Changed: The resample passes run in bands of output rows, so the intermediate texture stays below 64 MB at any scale, and the log shows the GPU time of both passes with the band count
+	- Changed: A load job that meets a cancel is dropped, the reload queues everything it needs again
+	- Fixed: Two load threads could take the same picture slot
+	- Changed: Requires an OpenGL 3.3 core profile, the legacy OpenGL path is removed and a missing context is reported on the console and in the log
+	- Changed: Pictures are GL_TEXTURE_2D textures read with texelFetch, GL_TEXTURE_RECTANGLE and the 16x multisampling are gone
+	- Changed: Drawing uses viewport pixels with y pointing down, the picture is placed at whole pixels by viewtransform.h
+	- Changed: A frame is only drawn when something changed, otherwise the main loop sleeps
+	- Changed: The preview strip keeps the aspect ratio of the pictures
+	- Removed: Unfinished mipmap code and stb_image_resize
+	- Fixed: Every filter except Nearest was shifted by half a texel, so 100% was blurred and scaled pictures were asymmetric
+	- Fixed: Filters clamped at the picture edge, now taps outside the picture are left out and the weights renormalized
+	- Fixed: Lanczos3 made transparent pixels opaque
+	- Fixed: Dropping another folder onto the window leaked the textures of all loaded pictures
+	- Fixed: The next picture was drawn outside of the window in every frame
+	- Fixed: -p and -f parameters were never evaluated
+	- Fixed: Unknown or malformed parameters are reported instead of silently ignored
+	- Fixed: Preload count is rounded up to an even count before it is used and clamped to the view picture capacity
+	- Fixed: Start index was not reset when a dropped file was not found in its folder
+	- Fixed: The log kept a pointer to a temporary path buffer, so log lines could end up in a garbage named file in the working directory
+	- Fixed: Load threads waited on their condition variable without holding its mutex
+	- Fixed: Log timestamps showed the previous month, load threads shared one format buffer and platform log messages were used as format strings
+
 	## v0.5.6
 	- Changed multi sample count to 16, to improve quality for downscaled pictures
 	- Changed default filter to bicubic triangular
@@ -107,9 +166,6 @@ License:
 -------------------------------------------------------------------------------
 */
 
-// Enable this to prevent the usage of modern OpenGL
-#define FORCE_LEGACY_OPENGL 0
-
 #define FPL_IMPLEMENTATION
 #define FPL_LOGGING
 #define FPL_NO_VIDEO_VULKAN
@@ -121,8 +177,14 @@ License:
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb/stb_image_resize.h>
+#define IMAGE_LOADER_IMPLEMENTATION
+#include "imageloader.h"
+#define IMAGE_LOADER_STB_IMPLEMENTATION
+#include "imageloader_stb.h"
+#define IMAGE_LOADER_PNM_IMPLEMENTATION
+#include "imageloader_pnm.h"
+#define IMAGE_LOADER_BMP_IMPLEMENTATION
+#include "imageloader_bmp.h"
 
 #include <string.h>
 
@@ -134,6 +196,31 @@ License:
 
 #define FLOG_IMPLEMENTATION
 #include "logging.h"
+
+#define VIEW_TRANSFORM_IMPLEMENTATION
+#include "viewtransform.h"
+
+#define RESAMPLE_PIPELINE_IMPLEMENTATION
+#include "resamplepipeline.h"
+
+#define IMAGE_PYRAMID_IMPLEMENTATION
+#include "imagepyramid.h"
+
+#include "selftest.h"
+
+// final_ui draws the info line over the picture (plan section 2.8)
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb/stb_truetype.h>
+#include <final_fonts.h>
+
+#define FUI_IMPLEMENTATION
+#include <final_ui.h>
+#define FUI_STBTT_IMPLEMENTATION
+#include <fui_font_stbtt.h>
+#define FUI_GL3_IMPLEMENTATION
+#include <fui_backend_gl3.h>
+#define FUI_INPUT_FPL_IMPLEMENTATION
+#include <fui_input_fpl.h>
 
 char ToLowerCase(char ch) {
 	if (ch >= 'A' && ch <= 'Z') {
@@ -160,28 +247,10 @@ static int CompareStringIgnoreCase(const char* a, const char* b) {
 	return(0);
 }
 
-static int CompareStringLengthIgnoreCase(const char* a, const char* b, const size_t length) {
-	size_t count = 0;
-	while (true) {
-		if (count == length) {
-			break;
-		} else if (!*a || !*b) {
-			return -1;
-		}
-		char ca = ToLowerCase(*a);
-		char cb = ToLowerCase(*b);
-		if (ca < cb || ca > cb) {
-			return (int)ca - (int)cb;
-		}
-		++a;
-		++b;
-		++count;
-	}
-	return(0);
-}
-
 typedef struct PictureFile {
 	char filePath[FPL_MAX_PATH_LENGTH];
+	// Loader entry the L key chose for this file, -1 lets the registry select
+	int32_t forcedLoaderEntry;
 } PictureFile;
 
 typedef enum LoadedPictureStateType {
@@ -195,31 +264,45 @@ typedef enum LoadedPictureStateType {
 
 typedef int32_t LoadedPictureState;
 
-#define MAX_FILE_BUFFER_SIZE 4096
-typedef struct StreamingFileBuffer {
-	fplFileHandle handle;
-	size_t size;
-} StreamingFileBuffer;
-
-typedef struct ImageData {
-	uint8_t* data;
+// One level of detail on the GPU, RGBA8 (sRGB) as stored, before the orientation
+typedef struct ImageLevelTexture {
+	GLuint textureId;
 	uint32_t width;
 	uint32_t height;
-	uint32_t components;
-	GLuint textureId;
+} ImageLevelTexture;
+
+// Always RGBA8, top row first, as stored (before the orientation)
+typedef struct ImageData {
+	// Decoded pixels until the upload, owned by the loader in loaderEntry
+	ImagePixels pixels;
+	// Reduced levels until the upload, level 0 borrows pixels
+	ImagePyramid pyramid;
+	ImageLevelTexture levels[IMAGE_PYRAMID_MAX_LEVELS];
+	int32_t loaderEntry;
+	// Level 0
+	uint32_t width;
+	uint32_t height;
+	uint32_t levelCount;
+	// Levels before this one are larger than GL_MAX_TEXTURE_SIZE and have no texture
+	uint32_t firstUploadedLevel;
 } ImageData;
 
-#define MAX_PICTURE_MIPMAPS (1)
-#define MIN_PICTURE_MIPMAP_SIZE 512
-
 typedef struct ViewPicture {
-	StreamingFileBuffer fileStream;
 	char filePath[FPL_MAX_PATH_LENGTH];
-	ImageData imageData[MAX_PICTURE_MIPMAPS];
-	float progress;
+	ImageData image;
+	PictureInfo info;
+	// Scaled into its preview block, main thread only
+	ResampleResult thumbnail;
+	// Changes with every upload, the texture name alone may be reused by OpenGL
+	uint64_t uploadSerial;
+	// 0..1, only grows while a picture loads (plan section 2.9)
+	volatile float progress;
+	// The loader works on without knowing how far it is, the bar shows a running animation after progress
+	volatile bool isProgressIndeterminate;
+	// info holds what the loader read about fileIndex, set before the pixels are decoded; info, hasInfo and fileIndex change under ViewerState::pictureInfoMutex
+	bool hasInfo;
 	size_t fileIndex;
 	volatile LoadedPictureState state;
-	uint8_t mipmapCount;
 } ViewPicture;
 
 typedef struct LoadPictureContext {
@@ -240,6 +323,8 @@ typedef struct PictureLoadThread {
 #define MAX_VIEW_PICTURE_COUNT MAX_LOAD_THREAD_COUNT * 4
 #define MAX_LOAD_QUEUE_COUNT MAX_VIEW_PICTURE_COUNT * 2
 #define PAGE_INCREMENT_COUNT 10
+// Longest sleep of an idle load thread before it looks into the queue again, a new job wakes it up earlier
+#define LOAD_THREAD_POLL_MILLISECONDS 50
 
 typedef struct LoadQueueValue {
 	int fileIndex;
@@ -272,37 +357,151 @@ typedef struct LoadQueue {
 	CacheLinePad pad4;
 } LoadQueue;
 
+// What the mouse wheel does without Ctrl, with Ctrl it always zooms (plan section 2.6)
+typedef enum WheelMode {
+	WheelMode_Zoom = 0,
+	// Pages through the pictures like IrfanView and XnView
+	WheelMode_Navigate,
+	WheelMode_Count,
+} WheelMode;
+
 typedef struct ViewerParameters {
 	const char* path;
+	const char* renderToFilePath;
 	size_t threadCount;
 	size_t preloadCount;
-	int filter;
+	uint32_t windowWidth;
+	uint32_t windowHeight;
+	float zoomScale;
+	ViewZoomMode zoomMode;
+	// Normalized picture point at the viewport center of the start view (--center)
+	float centerX;
+	float centerY;
+	ViewPersistence persistence;
+	WheelMode wheelMode;
+	ResampleKernel downKernel;
+	ResampleKernel upKernel;
+	ResampleBackground background;
+	// --nearest-from as a scale, 0 when not given: auto Nearest starts on and A toggles this scale instead of the default one
+	float nearestFromScale;
+	// Loader selection, resolved against the registry after parsing
+	const char* loaderValue;
+	const char* loaderOrderValue;
+	const char* loaderForValues[IMAGE_LOADER_MAX_EXTENSION_PINS];
+	uint32_t loaderForCount;
+	const char* decodeAllPath;
+	// Optional folder of --selftest=<folder>, its pictures are compared on every SIMD level too
+	const char* selfTestFolder;
+	const char* benchLevelsPath;
+	const char* writePyramidFolder;
+	SimdLevel simdLevel;
+	ImagePyramidKernel levelKernel;
+	bool isLoaderFallbackDisabled;
+	bool listLoaders;
 	bool recursive;
 	bool preview;
-	bool border;
+	// The info line at the top, I and --no-info
+	bool showInfo;
+	// The info line shows the path relative to the opened folder instead of the file name, N and --relative-path
+	bool showRelativePath;
+	bool runSelfTest;
+	// --lod-source=0: the resample pipeline always reads level 0, for reference comparisons
+	bool isFullSourceLevelForced;
 } ViewerParameters;
 
-typedef struct Vertex {
-	Vec4f position;
-	Vec2f texCoord;
-} Vertex;
+// Exit codes of --render-to
+typedef enum RenderToFileResult {
+	RenderToFileResult_Success = 0,
+	RenderToFileResult_InvalidParameters = 1,
+	RenderToFileResult_NoPicture = 2,
+	RenderToFileResult_LoadFailed = 3,
+	RenderToFileResult_Timeout = 4,
+	RenderToFileResult_GraphicsFailed = 5,
+	RenderToFileResult_WriteFailed = 6,
+	RenderToFileResult_Canceled = 7,
+} RenderToFileResult;
 
-typedef enum FilterType {
-	FilterType_Nearest = 0,
-	FilterType_Bilinear,
-	FilterType_CubicTriangular,
-	FilterType_CubicBell,
-	FilterType_CubicBSpline,
-	FilterType_CatMullRom,
-	FilterType_Lanczos3,
-	FilterType_Count,
-} FilterType;
+// Longest time --render-to waits for the picture to be loaded and uploaded
+#define RENDER_TO_FILE_TIMEOUT_MILLISECONDS 60000
+// Sleep between two frames while --render-to waits for the picture
+#define RENDER_TO_FILE_POLL_MILLISECONDS 1
+// Size of the hidden window for --render-to, the picture is rendered into an offscreen framebuffer of --window size
+#define RENDER_TO_FILE_WINDOW_SIZE 256
+// Number of pictures preloaded on both sides of the active picture, when not set by -p
+#define DEFAULT_PRELOAD_COUNT 16
+// Sleep of the main loop when nothing needs to be drawn
+#define IDLE_SLEEP_MILLISECONDS 5
+// Oldest OpenGL version the viewer runs on, always as core profile
+#define REQUIRED_OPENGL_MAJOR_VERSION 3
+#define REQUIRED_OPENGL_MINOR_VERSION 3
 
-typedef struct Filter {
-	const char* name;
+// Filters of -f=<number> in the numbering before the Box and Mitchell kernels existed
+static const ResampleKernel LegacyFilterNumberKernels[] = {
+	ResampleKernel_Nearest,
+	ResampleKernel_Triangle,
+	ResampleKernel_Triangular,
+	ResampleKernel_Bell,
+	ResampleKernel_BSpline,
+	ResampleKernel_CatmullRom,
+	ResampleKernel_Lanczos3,
+};
+
+// Command line keys of --keep-view and --wheel, and how the window title shows the modes (empty for the default)
+static const char* ViewPersistenceKeys[ViewPersistence_Count] = { "reset", "relative", "absolute" };
+static const char* ViewPersistenceTitles[ViewPersistence_Count] = { "", "keep relative", "keep absolute" };
+static const char* WheelModeKeys[WheelMode_Count] = { "zoom", "navigate" };
+static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
+
+// Both defaults decided with the comparison crops of iteration 2 and 5 (plan section 2.2)
+#define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
+#define DEFAULT_UP_KERNEL ResampleKernel_CatmullRom
+#define DEFAULT_BACKGROUND ResampleBackground_Checker
+// Zoom from which A switches upscaling to Nearest for pixel inspection, unless --nearest-from sets another one (plan section 2.6)
+#define DEFAULT_NEAREST_FROM_SCALE 4.0f
+// Normalized center of the start view, unless --center sets another one
+#define DEFAULT_VIEW_CENTER 0.5f
+// Two left clicks at most this far apart in time and in pixels on each axis are a double click, FPL reports single clicks only
+#define DOUBLE_CLICK_MILLISECONDS 400
+#define DOUBLE_CLICK_DISTANCE 4
+// Shift + arrow keys move the view by this share of the viewport per press and repeat
+#define KEYBOARD_PAN_VIEWPORT_SHARE 0.125f
+// Kernel of the 2:1 reductions of the level chain (plan section 2.3)
+#define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
+
+// Info line (plan section 2.8): a translucent bar over the full width at the top, the file name on the left, size, bpp and zoom on the right
+static const float InfoLineTextPixelHeight = 16.0f;
+static const float InfoLinePaddingX = 8.0f;
+static const float InfoLinePaddingY = 5.0f;
+// Smallest space between the file name and the right part
+static const float InfoLineSeparationWidth = 24.0f;
+// Over a white picture the bar is still dark enough for the gray details, about 5:1
+static const float InfoLineBackgroundOpacity = 0.7f;
+static const float InfoLineNameBrightness = 1.0f;
+static const float InfoLineDetailBrightness = 0.8f;
+// Bitstream Vera Sans, Latin-1 so umlauts in file names show, everything above shows the replacement.
+// Baked at twice the drawn size: thin strokes keep their full brightness, baked at the drawn size they came out visibly softer.
+#define INFO_FONT_BAKE_PIXEL_HEIGHT 32.0f
+#define INFO_FONT_FIRST_CODEPOINT 0x20
+#define INFO_FONT_LAST_CODEPOINT 0xFF
+#define INFO_FONT_ATLAS_SIDE 512
+
+// Load progress phases (plan section 2.9): reading and decoding, then the level chain, then the upload
+static const float ProgressDecodeStart = 0.0f;
+static const float ProgressDecodeEnd = 0.70f;
+static const float ProgressLevelsEnd = 0.95f;
+static const float ProgressComplete = 1.0f;
+// A running segment of this share of the remaining decode phase moves back and forth while the loader cannot tell how far it is
+static const float ProgressIndeterminateSegmentShare = 0.25f;
+static const double ProgressIndeterminatePeriodSeconds = 1.2;
+// Runs per SIMD level of --bench-lod, the median is reported
+#define BENCH_LEVELS_RUN_COUNT 7
+
+typedef struct ColorProgram {
 	GLuint programId;
-	FilterType type;
-} Filter;
+	GLint locationViewportSize;
+	GLint locationRect;
+	GLint locationColor;
+} ColorProgram;
 
 typedef enum PictureRequestType {
 	PictureRequestType_None = 0,
@@ -310,30 +509,21 @@ typedef enum PictureRequestType {
 	PictureRequestType_Force,
 } PictureRequestType;
 
-typedef enum PictureViewFlags {
-	PictureViewFlags_None = 0,
-	PictureViewFlags_KeepAspectRatio = 1 << 1,
-	PictureViewFlags_Upscale = 1 << 2,
-} PictureViewFlags;
-FPL_ENUM_AS_FLAGS_OPERATORS(PictureViewFlags);
-
 typedef struct SupportedFeatures {
-	int openGLMajor;
-	bool rectangleTextures;
 	bool srgbFrameBuffer;
 } SupportedFeatures;
 
-static Vertex QuadVertices[] = {
-	fplStructInit(Vertex, V4f(1.0f, 1.0f, 0.0f, 1.0f), V2f(1.0f, 1.0f)),
-	fplStructInit(Vertex, V4f(-1.0f, 1.0f, 0.0f, 1.0f), V2f(0.0f, 1.0f)),
-	fplStructInit(Vertex, V4f(-1.0f, -1.0f, 0.0f, 1.0f), V2f(0.0f, 0.0f)),
-	fplStructInit(Vertex, V4f(1.0f, -1.0f, 0.0f, 1.0f), V2f(1.0f, 0.0f)),
-};
-
-static uint16_t QuadIndices[] = {
-	0, 1, 2,
-	2, 3, 0,
-};
+// Mouse input between events: dragging, double click detection and wheel notches that page
+typedef struct PointerState {
+	fplMilliseconds lastClickTime;
+	int32_t lastClickX;
+	int32_t lastClickY;
+	int32_t dragLastX;
+	int32_t dragLastY;
+	// Wheel notches in navigate mode that did not make up a whole page yet (touchpads send fractions)
+	float navigateWheelNotches;
+	bool isDragging;
+} PointerState;
 
 typedef struct ViewerState {
 	char rootPath[FPL_MAX_PATH_LENGTH];
@@ -353,21 +543,53 @@ typedef struct ViewerState {
 	size_t loadThreadCount;
 
 	ViewerParameters params;
-	PictureViewFlags viewFlags;
+	ViewState view;
+	// From --zoom and --center, every picture starts with it when the view is not kept
+	ViewState startView;
+	ViewPersistence persistence;
+	WheelMode wheelMode;
+	PointerState pointer;
 
 	LoadQueue loadQueue;
 	size_t loadQueueCapacity;
 
-	GLenum textureTarget;
+	// Rectangles are generated from gl_VertexID, core profile still needs a bound vertex array
 	GLuint vertexArray;
-	GLuint colorShaderProgram;
+	ColorProgram colorProgram;
 
-	Filter filters[FilterType_Count];
-	size_t activeFilter;
-	size_t filterCount;
+	ResamplePipeline pipeline;
+	// Largest texture width and height, larger levels stay on the CPU and are left out
+	GLint maxTextureSize;
+	// Row functions of the SIMD level the load threads reduce with
+	const ImagePyramidRowFunctions* pyramidFunctions;
+	// The active picture scaled into the viewport
+	ResampleResult viewResult;
+	ResampleKernel downKernel;
+	ResampleKernel upKernel;
+	ResampleBackground background;
+	// Auto Nearest: from this scale on upscaling uses Nearest, 0 is off
+	float nearestFromScale;
+	// Scale A turns auto Nearest on with
+	float nearestFromToggleScale;
+	uint64_t nextUploadSerial;
 
-	GLuint quadVBO;
-	GLuint quadIBO;
+	// Every picture is read through these loaders, stb_image first
+	ImageLoaderRegistry loaderRegistry;
+	// Guards info, hasInfo and fileIndex of the view pictures, a load thread writes them while the info line reads them
+	fplMutexHandle pictureInfoMutex;
+
+	// final_ui draws the info line, every polled event goes to its input bridge first (plan section 2.8)
+	fuiContext ui;
+	fuiFplInput uiInput;
+	fuiGL3Backend uiBackend;
+	fuiStbttFont uiBakedFont;
+	fuiFont uiFont;
+	uint32_t uiFontTexture;
+	bool isUserInterfaceReady;
+
+	// Size of the window client area, updated every frame
+	ViewSize viewportSize;
+	char windowTitle[FPL_MAX_BUFFER_LENGTH];
 } ViewerState;
 
 static void InitQueue(LoadQueue* queue, const size_t queueCount) {
@@ -428,14 +650,10 @@ static bool TryQueueDequeue(volatile LoadQueue* queue, volatile LoadQueueValue* 
 	return(false);
 }
 
-static bool IsPictureFile(const char* filePath) {
-	const char* ext = fplExtractFileExtension(filePath);
-	bool result;
-	if (ext != fpl_null) {
-		result = (CompareStringIgnoreCase(ext, ".jpg") == 0) || (CompareStringIgnoreCase(ext, ".jpeg") == 0) || (CompareStringIgnoreCase(ext, ".png") == 0) || (CompareStringIgnoreCase(ext, ".bmp") == 0);
-	} else {
-		result = false;
-	}
+// Every extension any registered loader lists, so a new loader brings its formats into the folder scan
+static bool IsPictureFile(const ViewerState* state, const char* filePath) {
+	const char* extension = fplExtractFileExtension(filePath);
+	bool result = extension != fpl_null && ImageLoaderRegistryIsKnownExtension(&state->loaderRegistry, extension);
 	return(result);
 }
 
@@ -461,6 +679,7 @@ static void AddPictureFile(ViewerState* state, const char* filePath) {
 	}
 	PictureFile* pictureFile = &state->pictureFiles[state->pictureFileCount++];
 	fplCopyString(filePath, pictureFile->filePath, fplArrayCount(pictureFile->filePath));
+	pictureFile->forcedLoaderEntry = -1;
 }
 
 static void AddPicturesFromPath(ViewerState* state, const char* path, const bool recursive) {
@@ -473,7 +692,7 @@ static void AddPicturesFromPath(ViewerState* state, const char* path, const bool
 		char fullPath[FPL_MAX_PATH_LENGTH];
 		fplPathCombine(fullPath, fplArrayCount(fullPath), 2, path, entry.name);
 		if (entry.type == fplFileEntryType_File) {
-			if (IsPictureFile(fullPath)) {
+			if (IsPictureFile(state, fullPath)) {
 				AddPictureFile(state, fullPath);
 				++addedPics;
 			}
@@ -492,236 +711,248 @@ static void ReleaseTexture(GLuint* target) {
 	*target = 0;
 }
 
-static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const uint8_t components, const void* data, const bool repeatable, const GLenum textureTarget, const bool supportsSRGB) {
-	// https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glTexImage2D.xhtml
-	int sizedInternalFormatMapping[] = {
-		/* 0 = */ 0,
-		/* 1 = R */ GL_ALPHA8,
-		/* 2 = RG */ 0,
-		/* 3 = RGB */ GL_RGB8,
-		/* 4 = RGBA */ GL_RGBA8,
-	};
-	int baseInternalFormatMapping[] = {
-		/* 0 = */ 0,
-		/* 1 = R */ GL_ALPHA,
-		/* 2 = RG */ 0,
-		/* 3 = RGB */ GL_RGB,
-		/* 4 = RGBA */ GL_RGBA,
-	};
-
-	if (supportsSRGB) {
-		sizedInternalFormatMapping[4] = GL_SRGB8_ALPHA8;
-	}
+// RGBA8 picture as GL_TEXTURE_2D without mipmaps, sRGB when the framebuffer does the sRGB encoding, returns 0 on failure (e.g. larger than GL_MAX_TEXTURE_SIZE)
+static GLuint AllocateTexture(const uint32_t width, const uint32_t height, const uint32_t stride, const void* data, const bool supportsSRGB) {
+	const uint32_t bytesPerPixel = 4;
+	GLenum internalFormat = supportsSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
 
 	GLuint handle;
 	glGenTextures(1, &handle);
-	glBindTexture(textureTarget, handle);
+	glBindTexture(GL_TEXTURE_2D, handle);
 
-	GLuint baseInternalFormat = baseInternalFormatMapping[components];
-	GLenum sizedInternalFormat = sizedInternalFormatMapping[components];
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	glTexImage2D(textureTarget, 0, sizedInternalFormat, width, height, 0, baseInternalFormat, GL_UNSIGNED_BYTE, data);
-
-	glTexParameteri(textureTarget, GL_TEXTURE_BASE_LEVEL, 0);
-	glTexParameteri(textureTarget, GL_TEXTURE_MAX_LEVEL, (MAX_PICTURE_MIPMAPS - 1));
-
-	glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_S, repeatable ? GL_REPEAT : GL_CLAMP);
-	glTexParameteri(textureTarget, GL_TEXTURE_WRAP_T, repeatable ? GL_REPEAT : GL_CLAMP);
-
+	// Rows may be longer than the pixels need
+	GLint rowLength = (GLint)(stride / bytesPerPixel);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
-	glBindTexture(textureTarget, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
-	GLenum err = glGetError();
-	fplAssert(err == GL_NO_ERROR);
-
+	GLenum error = glGetError();
+	if (error != GL_NO_ERROR) {
+		flogWrite("Failed to allocate texture %u x %u, error 0x%x", width, height, error);
+		glDeleteTextures(1, &handle);
+		handle = 0;
+	}
 	return(handle);
 }
 
-static void ClearPictureData(ViewPicture* viewPicture, bool noTextures) {
-	for (size_t p = 0; p < fplArrayCount(viewPicture->imageData); ++p) {
-		if (viewPicture->imageData[p].data != fpl_null) {
-			stbi_image_free(viewPicture->imageData[p].data);
+static bool HasPictureTextures(const ImageData* image) {
+	for (uint32_t level = 0; level < image->levelCount; ++level) {
+		if (image->levels[level].textureId > 0) {
+			return(true);
 		}
-		if (!noTextures) {
-			if (viewPicture->imageData[p].textureId > 0) {
-				ReleaseTexture(&viewPicture->imageData[p].textureId);
-			}
+	}
+	return(false);
+}
+
+// Main thread only
+static void ReleasePictureTextures(ImageData* image) {
+	for (uint32_t level = 0; level < image->levelCount; ++level) {
+		if (image->levels[level].textureId > 0) {
+			ReleaseTexture(&image->levels[level].textureId);
 		}
-		fplClearStruct(&viewPicture->imageData[p]);
-		viewPicture->mipmapCount = 0;
 	}
 }
 
+// Frees the decoded pixels through the loader that owns them and the reduced levels. Load threads pass noTextures, textures belong to the main thread.
+static void ClearPictureData(ImageLoaderRegistry* registry, ViewPicture* viewPicture, bool noTextures) {
+	ImageData* image = &viewPicture->image;
+	ImagePyramidRelease(&image->pyramid);
+	if (image->pixels.pixels != fpl_null) {
+		ImageLoaderRegistryReleasePixels(registry, image->loaderEntry, &image->pixels);
+	}
+	if (!noTextures) {
+		ReleasePictureTextures(image);
+	}
+	fplClearStruct(image);
+	image->loaderEntry = -1;
+}
+
+// Forgets what a loader read about the picture, the info line shows nothing of it until a load reads it again
+static void ResetPictureInfo(ViewerState* state, ViewPicture* picture) {
+	fplMutexLock(&state->pictureInfoMutex);
+	fplClearStruct(&picture->info);
+	picture->hasInfo = false;
+	fplMutexUnlock(&state->pictureInfoMutex);
+}
+
+// Main thread only, releases the textures as well
 static void ClearViewPictures(ViewerState* state) {
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		state->viewPictures[i].state = LoadedPictureState_Unloaded;
 		state->viewPictures[i].progress = 0.0f;
-		ClearPictureData(&state->viewPictures[i], true);
+		state->viewPictures[i].isProgressIndeterminate = false;
+		ClearPictureData(&state->loaderRegistry, &state->viewPictures[i], false);
+		ResampleResultRelease(&state->viewPictures[i].thumbnail);
+		ResetPictureInfo(state, &state->viewPictures[i]);
 	}
 }
 
-static void UpdateStreamProgress(ViewPicture* pic) {
-	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size > 0) {
-		pic->progress = pos / (float)pic->fileStream.size;
+// Reads one file through the loader registry: the loader chosen with the L key alone, otherwise the selected candidates with fallback.
+// Used by the load threads, --decode-all, --bench-lod and --write-pyramid. The optional info function gets the info before the pixels are decoded.
+static ImageLoadResult LoadPictureFile(ImageLoaderRegistry* registry, const char* filePath, const int32_t forcedLoaderEntry, volatile bool* cancelFlag, ImageSourceProgressFunction* progress, void* progressUserData, ImageLoaderInfoFunction* infoFunction, void* infoUserData, int32_t* outLoaderEntry, PictureInfo* outInfo, ImagePixels* outPixels, char* message, const size_t messageSize) {
+	ImageFileSource fileSource;
+	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, progress, progressUserData)) {
+		fplStringFormat(message, messageSize, "file cannot be opened");
+		return(ImageLoadResult_Corrupt);
+	}
+	const char* extension = fplExtractFileExtension(filePath);
+	ImageLoadResult result = ImageLoaderRegistryLoad(registry, &fileSource.source, extension, forcedLoaderEntry, infoFunction, infoUserData, outLoaderEntry, outInfo, outPixels, message, messageSize);
+	ImageFileSourceClose(&fileSource);
+	return(result);
+}
+
+// The bar only moves forward, a value below the current one is ignored
+static void RaisePictureProgress(ViewPicture* picture, const float value) {
+	float current = picture->progress;
+	if (value > current) {
+		picture->progress = value;
 	}
 }
 
-int ReadPictureStreamCallback(void* user, char* data, int size) {
-	// fill 'data' with 'size' bytes.  return number of bytes actually read
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	ViewPicture* pic = ctx->viewPic;
-	if (ctx->canceled) {
-		return -1;
-	}
-	fplAssert(size >= 0);
-	uint32_t readBytes = fplFileReadBlock32(&pic->fileStream.handle, (uint32_t)size, (void*)data, (uint32_t)size);
-	UpdateStreamProgress(pic);
-	return (int)readBytes;
-}
-void SkipPictureStreamCallback(void* user, int n) {
-	// skip the next 'n' bytes, or 'unget' the last -n bytes if negative
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	if (ctx->canceled) {
-		return;
-	}
-	ViewPicture* pic = ctx->viewPic;
-	fplFileSetPosition32(&pic->fileStream.handle, n, fplFilePositionMode_Current);
-	UpdateStreamProgress(pic);
-}
-int EofPictureStreamCallback(void* user) {
-	// returns nonzero if we are at end of file/data
-	LoadPictureContext* ctx = (LoadPictureContext*)user;
-	ViewPicture* pic = ctx->viewPic;
-	if (ctx->canceled) {
-		return 1;
-	}
-	int res = 0;
-	size_t pos = fplFileGetPosition32(&pic->fileStream.handle);
-	if (pic->fileStream.size == 0 || pos == pic->fileStream.size) {
-		res = 1;
-	}
-	return(res);
+// Reading and decoding fill the first phase
+static void ReportPictureDecodeProgress(void* userData, const float fraction, const bool isIndeterminate) {
+	ViewPicture* picture = (ViewPicture*)userData;
+	float value = ProgressDecodeStart + fraction * (ProgressDecodeEnd - ProgressDecodeStart);
+	RaisePictureProgress(picture, value);
+	picture->isProgressIndeterminate = isIndeterminate;
 }
 
-static void DownsampleImage(const ImageData* sourceData, ImageData* destData) {
-	int targetStride = destData->components * sizeof(char);
-	uint8_t* targetData = (uint8_t*)stbi__malloc(targetStride * destData->width * destData->height);
-	stbir_resize_uint8(sourceData->data, sourceData->width, sourceData->height, 0, targetData, destData->width, destData->height, 0, destData->components);
-	destData->data = targetData;
+// The level chain fills the second phase, by output pixels
+static void ReportPictureLevelsProgress(void* userData, const float fraction) {
+	ViewPicture* picture = (ViewPicture*)userData;
+	float value = ProgressDecodeEnd + fraction * (ProgressLevelsEnd - ProgressDecodeEnd);
+	picture->isProgressIndeterminate = false;
+	RaisePictureProgress(picture, value);
+}
+
+// The info line shows size and bpp while the pixels are still decoded
+static void PublishPictureInfo(void* userData, const PictureInfo* info) {
+	PictureLoadThread* loadThread = (PictureLoadThread*)userData;
+	ViewerState* state = loadThread->state;
+	ViewPicture* picture = loadThread->context.viewPic;
+	fplMutexLock(&state->pictureInfoMutex);
+	picture->info = *info;
+	picture->hasInfo = true;
+	fplMutexUnlock(&state->pictureInfoMutex);
 }
 
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 	PictureLoadThread* loadThread = (PictureLoadThread*)data;
 	ViewerState* state = loadThread->state;
 	volatile LoadQueueValue valueToLoad = fplZeroInit;
-	volatile bool hasValue = false;
 	while (!loadThread->shutdown) {
-		fplConditionWait(&loadThread->condition, &loadThread->mutex, 50);
+		// The wait must hold the mutex, the timeout catches a signal that came before the wait
+		fplMutexLock(&loadThread->mutex);
+		fplConditionWait(&loadThread->condition, &loadThread->mutex, LOAD_THREAD_POLL_MILLISECONDS);
+		fplMutexUnlock(&loadThread->mutex);
 		if (loadThread->shutdown) {
 			break;
 		}
 
-		if (!hasValue) {
-			if (TryQueueDequeue(&state->loadQueue, &valueToLoad)) {
-				hasValue = true;
+		// A job that meets a cancel is dropped, a reload queues everything it needs again
+		if (!TryQueueDequeue(&state->loadQueue, &valueToLoad) || loadThread->context.canceled) {
+			continue;
+		}
+		fplAssert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
+		fplAssert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
+		ViewPicture* loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
+		const PictureFile* picFile = &state->pictureFiles[valueToLoad.fileIndex];
+
+		// Exactly one thread takes a free slot
+		bool isTakenFromUnloaded = fplAtomicIsCompareAndSwapS32(&loadedPic->state, LoadedPictureState_Unloaded, LoadedPictureState_LoadingData);
+		bool isTaken = isTakenFromUnloaded || fplAtomicIsCompareAndSwapS32(&loadedPic->state, LoadedPictureState_Error, LoadedPictureState_LoadingData);
+		if (!isTaken) {
+			continue;
+		}
+
+		// @TODO(final): This should not be neccesary, but in case there are left-overs...
+		fplAssert(!HasPictureTextures(&loadedPic->image));
+		ClearPictureData(&state->loaderRegistry, loadedPic, true);
+		loadedPic->progress = 0.0f;
+		loadedPic->isProgressIndeterminate = false;
+		fplMutexLock(&state->pictureInfoMutex);
+		loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
+		fplClearStruct(&loadedPic->info);
+		loadedPic->hasInfo = false;
+		fplMutexUnlock(&state->pictureInfoMutex);
+		fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
+		loadThread->context.viewPic = loadedPic;
+
+		flogWrite("Load picture '%s' [%zu]", loadedPic->filePath, loadedPic->fileIndex);
+		PictureInfo info = fplZeroInit;
+		ImagePixels pixels = fplZeroInit;
+		int32_t loaderEntry = -1;
+		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+		ImageLoadResult result = LoadPictureFile(&state->loaderRegistry, loadedPic->filePath, picFile->forcedLoaderEntry, &loadThread->context.canceled, ReportPictureDecodeProgress, loadedPic, PublishPictureInfo, loadThread, &loaderEntry, &info, &pixels, message, sizeof(message));
+		bool isCanceled = loadThread->shutdown || loadThread->context.canceled;
+		if (result == ImageLoadResult_Success && isCanceled) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+			result = ImageLoadResult_Canceled;
+		}
+
+		// The level chain, from the decoded pixels in this thread
+		ImagePyramid pyramid = fplZeroInit;
+		if (result == ImageLoadResult_Success) {
+			const double millisecondsPerSecond = 1000.0;
+			RaisePictureProgress(loadedPic, ProgressDecodeEnd);
+			loadedPic->isProgressIndeterminate = false;
+			ImagePyramidLevel baseLevel = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+			ImagePyramidSettings pyramidSettings = fplZeroInit;
+			pyramidSettings.functions = state->pyramidFunctions;
+			pyramidSettings.kernel = state->params.levelKernel;
+			pyramidSettings.cancelFlag = &loadThread->context.canceled;
+			pyramidSettings.progress = ReportPictureLevelsProgress;
+			pyramidSettings.progressUserData = loadedPic;
+			fplTimestamp pyramidStart = fplTimestampQuery();
+			ImagePyramidResult pyramidResult = ImagePyramidBuild(&baseLevel, &pyramidSettings, &pyramid);
+			fplTimestamp pyramidFinish = fplTimestampQuery();
+			double pyramidMilliseconds = fplTimestampElapsed(pyramidStart, pyramidFinish) * millisecondsPerSecond;
+			if (pyramidResult == ImagePyramidResult_Canceled || loadThread->shutdown || loadThread->context.canceled) {
+				ImagePyramidRelease(&pyramid);
+				ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+				fplCopyString("canceled while reducing", message, fplArrayCount(message));
+				result = ImageLoadResult_Canceled;
+				isCanceled = true;
+			} else if (pyramidResult == ImagePyramidResult_OutOfMemory) {
+				// Level 0 alone still shows the picture, just slower and with more work for the pipeline
+				flogWrite("Out of memory for the levels of '%s' [%zu], only level 0 is used", loadedPic->filePath, loadedPic->fileIndex);
+			} else {
+				flogWrite("Levels of '%s' [%zu]: %u levels in %.1f ms (%s)", loadedPic->filePath, loadedPic->fileIndex, pyramid.levelCount, pyramidMilliseconds, state->pyramidFunctions->name);
 			}
 		}
 
-		if (hasValue) {
-			fplAssert(valueToLoad.fileIndex >= 0 && valueToLoad.fileIndex < (int)state->pictureFileCount);
-			fplAssert(valueToLoad.pictureIndex >= 0 && valueToLoad.pictureIndex < (int)state->viewPicturesCapacity);
-			ViewPicture* loadedPic = &state->viewPictures[valueToLoad.pictureIndex];
-			const PictureFile* picFile = &state->pictureFiles[valueToLoad.fileIndex];
-
-			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
-			if (loadState == LoadedPictureState_Discard || loadThread->context.canceled || loadedPic->fileStream.handle.isValid) {
-				continue;
-			}
-			if (loadState == LoadedPictureState_Unloaded || loadState == LoadedPictureState_Error) {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_LoadingData);
-
-				// @TODO(final): This should not be neccesary, but in case there are left-overs...
-				ClearPictureData(loadedPic, true);
-
-				ImageData* firstImage = &loadedPic->imageData[0];
-
-				fplAssert(!loadedPic->fileStream.handle.isValid);
-				fplAssert(firstImage->data == fpl_null);
-				fplAssert(firstImage->textureId == 0);
-				fplAssert(picFile->filePath != fpl_null);
-
-				loadedPic->progress = 0.0f;
-				loadedPic->fileStream.size = 0;
-				loadedPic->fileIndex = (size_t)valueToLoad.fileIndex;
-				fplCopyString(picFile->filePath, loadedPic->filePath, fplArrayCount(loadedPic->filePath));
-				firstImage->width = firstImage->height = 0;
-				firstImage->components = 0;
-				loadThread->context.viewPic = loadedPic;
-
-				int w = 0, h = 0, comp = 0;
-				uint8_t* decodedData = fpl_null;
-
-				flogWrite("Load picture stream '%s' [%d]", loadedPic->filePath, loadedPic->fileIndex);
-				if (fplFileOpenBinary(loadedPic->filePath, &loadedPic->fileStream.handle)) {
-					loadedPic->fileStream.size = fplFileGetSizeFromHandle32(&loadedPic->fileStream.handle);
-					stbi_io_callbacks callbacks;
-					callbacks.read = ReadPictureStreamCallback;
-					callbacks.skip = SkipPictureStreamCallback;
-					callbacks.eof = EofPictureStreamCallback;
-					stbi_set_flip_vertically_on_load(0);
-					decodedData = stbi_load_from_callbacks(&callbacks, &loadThread->context, &w, &h, &comp, 4);
-					fplFileClose(&loadedPic->fileStream.handle);
-				}
-
-				if (loadThread->shutdown || loadThread->context.canceled) {
-					// Loading is canceled
-					if (decodedData != fpl_null) {
-						stbi_image_free(decodedData);
-						decodedData = fpl_null;
-					}
-				}
-				if (decodedData != fpl_null) {
-					// Loading was successful, mark it as ToUpload
-					flogWrite("Successfully loaded picture stream '%s' [%d], Size (%d x %d)", loadedPic->filePath, loadedPic->fileIndex, w, h);
-
-					firstImage->width = (uint32_t)w;
-					firstImage->height = (uint32_t)h;
-					firstImage->components = 4;
-					firstImage->data = decodedData;
-					loadedPic->progress = 0.75f;
-
-					const ImageData* bigImage = firstImage;
-					for (uint32_t mipmapIndex = 1; mipmapIndex < MAX_PICTURE_MIPMAPS; ++mipmapIndex) {
-						int32_t mipSizeW = w / (2 * mipmapIndex);
-						int32_t mipSizeH = h / (2 * mipmapIndex);
-						if (mipSizeW < MIN_PICTURE_MIPMAP_SIZE &&
-							mipSizeH < MIN_PICTURE_MIPMAP_SIZE)
-							break;
-
-						ImageData* smallImage = &loadedPic->imageData[mipmapIndex];
-						smallImage->width = mipSizeW;
-						smallImage->height = mipSizeH;
-						smallImage->components = bigImage->components;
-						DownsampleImage(bigImage, smallImage);
-
-						++loadedPic->mipmapCount;
-					}
-
-
-					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
-				} else {
-					// Failed or canceled loading
-					bool isFailed = !(loadThread->shutdown || loadThread->context.canceled);
-					flogWrite("%s loaded picture stream '%s' [%d], Size (%d x %d)", (isFailed ? "Failed" : "Canceled"), loadedPic->filePath, loadedPic->fileIndex, w, h);
-					loadedPic->progress = 1.0f;
-					fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
-				}
-			}
-			hasValue = false;
+		if (result == ImageLoadResult_Success) {
+			const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, loaderEntry);
+			flogWrite("Loaded picture '%s' [%zu] with %s: %s %u x %u, %u bpp%s, orientation %d", loadedPic->filePath, loadedPic->fileIndex, loader->name, info.formatName, info.width, info.height, info.bitsPerPixel, (info.isPalette ? " palette" : ""), (int)info.orientation);
+			ImageData* image = &loadedPic->image;
+			image->pixels = pixels;
+			image->pyramid = pyramid;
+			image->loaderEntry = loaderEntry;
+			image->width = pixels.width;
+			image->height = pixels.height;
+			image->levelCount = pyramid.levelCount;
+			fplMutexLock(&state->pictureInfoMutex);
+			loadedPic->info = info;
+			loadedPic->hasInfo = true;
+			fplMutexUnlock(&state->pictureInfoMutex);
+			RaisePictureProgress(loadedPic, ProgressLevelsEnd);
+			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_ToUpload);
+		} else {
+			const char* resultName = ImageLoadResultGetName(result);
+			flogWrite("%s picture '%s' [%zu]: %s (%s)", (isCanceled ? "Canceled" : "Failed"), loadedPic->filePath, loadedPic->fileIndex, resultName, message);
+			loadedPic->isProgressIndeterminate = false;
+			RaisePictureProgress(loadedPic, ProgressComplete);
+			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
 		}
 	}
 }
@@ -815,16 +1046,251 @@ static void QueueUpPictures(ViewerState* state) {
 	}
 }
 
+// Size as displayed: turned by the EXIF orientation
+static ViewSize GetDisplayedPictureSize(const ViewPicture* picture) {
+	ViewSize storedSize = fplStructInit(ViewSize, picture->image.width, picture->image.height);
+	ViewSize result = ComputeViewOrientedSize((uint32_t)picture->info.orientation, storedSize);
+	return(result);
+}
+
+// Displayed size of the active picture, false while the picture is not ready
+static bool GetActivePictureSize(ViewerState* state, ViewSize* outSize) {
+	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return(false);
+	}
+	ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+	LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+	if (pictureState != LoadedPictureState_Ready) {
+		return(false);
+	}
+	*outSize = GetDisplayedPictureSize(activePicture);
+	return(true);
+}
+
+// Transform of the active picture in the current viewport, false while the picture is not ready
+static bool GetActivePictureTransform(ViewerState* state, ViewTransform* outTransform) {
+	ViewSize pictureSize;
+	if (!GetActivePictureSize(state, &pictureSize)) {
+		return(false);
+	}
+	*outTransform = ComputeViewTransform(&state->view, pictureSize, state->viewportSize);
+	return(true);
+}
+
+// Downscaling uses the down kernel, 1:1 and upscaling the up kernel
+static bool IsDownscaling(const ViewTransform* transform) {
+	bool result = transform->scale < 1.0f;
+	return(result);
+}
+
+// Pixel inspection: from the scale of A or --nearest-from on, upscaling uses Nearest (plan section 2.6)
+static bool IsAutoNearestInEffect(const ViewerState* state, const ViewTransform* transform) {
+	bool isEnabled = state->nearestFromScale > 0.0f;
+	bool result = isEnabled && transform->scale >= state->nearestFromScale;
+	return(result);
+}
+
+static ResampleKernel GetKernelForTransform(const ViewerState* state, const ViewTransform* transform) {
+	if (IsAutoNearestInEffect(state, transform)) {
+		return(ResampleKernel_Nearest);
+	}
+	bool isDownscaling = IsDownscaling(transform);
+	ResampleKernel result = isDownscaling ? state->downKernel : state->upKernel;
+	return(result);
+}
+
+// Downscaling averages in linear light, upscaling filters the sRGB values, so the halos of negative lobes stay close to the tone they ring around (plan section 2.1).
+// Without an sRGB framebuffer the textures hold the sRGB values already and everything runs on them.
+static ResampleSpace GetSpaceForTransform(const ViewerState* state, const ViewTransform* transform) {
+	bool isDownscaling = IsDownscaling(transform);
+	bool isEncodingSRGB = state->features.srgbFrameBuffer && !isDownscaling;
+	ResampleSpace result = isEncodingSRGB ? ResampleSpace_SRGB : ResampleSpace_Linear;
+	return(result);
+}
+
+// Level the resample pipeline reads for the transform (plan section 2.3), --lod-source=0 always takes the largest level on the GPU.
+// So do Nearest and Box: both let details above the output Nyquist limit through (Nearest all of them, Box through the side lobes of its spectrum),
+// that is what they look like, and a reduced level has those details already filtered out.
+static uint32_t GetPictureSourceLevel(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform) {
+	const ImageData* image = &picture->image;
+	ResampleKernel kernel = GetKernelForTransform(state, transform);
+	bool isAliasingKernel = kernel == ResampleKernel_Nearest || kernel == ResampleKernel_Box;
+	if (state->params.isFullSourceLevelForced || isAliasingKernel) {
+		return(image->firstUploadedLevel);
+	}
+	float largerScale = fplMax(transform->scaleX, transform->scaleY);
+	uint32_t result = ComputeViewSourceLevel(largerScale, image->levelCount, image->firstUploadedLevel);
+	return(result);
+}
+
+// Request that scales the picture for the transform, but only the part in outputRect (viewport pixels).
+// The source is the level GetPictureSourceLevel() picks: its scale is 2^level times larger, a mirrored axis of an odd sized level is shifted onto the picture
+// and the edge pixel that reaches beyond the picture is weighted by the part that lies on it.
+static ResampleRequest BuildPictureRequest(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect) {
+	const ImageData* image = &picture->image;
+	uint32_t sourceLevel = GetPictureSourceLevel(state, picture, transform);
+	const ImageLevelTexture* levelTexture = &image->levels[sourceLevel];
+	uint32_t orientation = (uint32_t)picture->info.orientation;
+	float levelFactor = ldexpf(1.0f, (int)sourceLevel);
+	ViewSize storedSize = fplStructInit(ViewSize, image->width, image->height);
+	ViewSize storedLevelSize = fplStructInit(ViewSize, levelTexture->width, levelTexture->height);
+	ViewSize displayedLevelSize = ComputeViewOrientedSize(orientation, storedLevelSize);
+	ViewOrientationMapping mapping = ComputeViewOrientationMapping(orientation, storedLevelSize);
+	ViewLevelPlacement placement = ComputeViewLevelPlacement(orientation, storedSize, storedLevelSize, sourceLevel);
+	float levelScaleX = transform->scaleX * levelFactor;
+	float levelScaleY = transform->scaleY * levelFactor;
+	float originX = transform->imageRect.left - outputRect.left;
+	float originY = transform->imageRect.top - outputRect.top;
+
+	ResampleRequest result = fplZeroInit;
+	result.sourceTexture = levelTexture->textureId;
+	result.sourceSerial = picture->uploadSerial;
+	result.sourceWidth = displayedLevelSize.width;
+	result.sourceHeight = displayedLevelSize.height;
+	result.axisMapping.originX = mapping.originX;
+	result.axisMapping.originY = mapping.originY;
+	result.axisMapping.stepUX = mapping.stepUX;
+	result.axisMapping.stepUY = mapping.stepUY;
+	result.axisMapping.stepVX = mapping.stepVX;
+	result.axisMapping.stepVY = mapping.stepVY;
+	result.firstCoverageX = placement.firstCoverageU;
+	result.lastCoverageX = placement.lastCoverageU;
+	result.firstCoverageY = placement.firstCoverageV;
+	result.lastCoverageY = placement.lastCoverageV;
+	result.kernel = GetKernelForTransform(state, transform);
+	result.space = GetSpaceForTransform(state, transform);
+	result.scaleX = levelScaleX;
+	result.scaleY = levelScaleY;
+	result.originX = originX - placement.offsetU * levelScaleX;
+	result.originY = originY - placement.offsetV * levelScaleY;
+	result.outputWidth = (uint32_t)outputRect.width;
+	result.outputHeight = (uint32_t)outputRect.height;
+	return(result);
+}
+
+// The pipeline copies the pixels of the level instead of filtering them (exactly 1:1 at a whole pixel origin), outLevel receives that level
+static bool IsPictureCopied(const ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, uint32_t* outLevel) {
+	ResampleRequest request = BuildPictureRequest(state, picture, transform, transform->imageRect);
+	*outLevel = GetPictureSourceLevel(state, picture, transform);
+	bool result = ResampleIsPixelCopy(&request);
+	return(result);
+}
+
+// "fit 25 %" while the zoom mode fits the picture, "150 %" or "37.5 %" otherwise
+static void FormatZoomText(const ViewerState* state, const ViewTransform* transform, char* buffer, const size_t bufferSize) {
+	const float percentPerScale = 100.0f;
+	const float wholePercentTolerance = 0.05f;
+	float percent = transform->scale * percentPerScale;
+	float roundedPercent = roundf(percent);
+	bool isWholePercent = fabsf(percent - roundedPercent) < wholePercentTolerance;
+	char percentText[FPL_MAX_NAME_LENGTH];
+	if (isWholePercent) {
+		fplStringFormat(percentText, fplArrayCount(percentText), "%.0f %%", roundedPercent);
+	} else {
+		fplStringFormat(percentText, fplArrayCount(percentText), "%.1f %%", percent);
+	}
+	bool isFitMode = state->view.zoomMode == ViewZoomMode_Fit || state->view.zoomMode == ViewZoomMode_ShrinkToFit;
+	bool isFitted = isFitMode && transform->scale == transform->fitScale;
+	fplStringFormat(buffer, bufferSize, "%s%s", (isFitted ? "fit " : ""), percentText);
+}
+
+// Sets the title only when it changed, so it can be called every frame
 static void UpdateWindowTitle(ViewerState* state) {
-	char titleBuffer[256];
+	const char* downArrow = "\xE2\x86\x93";
+	const char* upArrow = "\xE2\x86\x91";
+	const ResampleKernelDefinition* downDefinition = ResampleGetKernelDefinition(state->downKernel);
+	const ResampleKernelDefinition* upDefinition = ResampleGetKernelDefinition(state->upKernel);
+	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->background);
+
+	// Auto Nearest is listed whenever it is on, so A always shows an effect
+	const float percentPerScale = 100.0f;
+	char nearestText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	if (state->nearestFromScale > 0.0f) {
+		float nearestFromPercent = state->nearestFromScale * percentPerScale;
+		fplStringFormat(nearestText, fplArrayCount(nearestText), ", Nearest from %.0f %%", nearestFromPercent);
+	}
+
+	// The filter of the direction that is in effect, both while that is unknown.
+	// At 1:1 no filter is in effect, the kernel in parentheses is the one T changes and the next zoom uses; the same goes for auto Nearest.
+	char filterText[FPL_MAX_NAME_LENGTH];
+	ViewTransform transform;
+	bool hasTransform = GetActivePictureTransform(state, &transform);
+	if (hasTransform) {
+		const ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		bool isDownscaling = IsDownscaling(&transform);
+		const char* arrow = isDownscaling ? downArrow : upArrow;
+		const char* kernelName = isDownscaling ? downDefinition->name : upDefinition->name;
+		uint32_t copiedLevel = 0;
+		bool isCopied = IsPictureCopied(state, activePicture, &transform, &copiedLevel);
+		if (isCopied && copiedLevel == 0) {
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 (%s %s%s)", arrow, kernelName, nearestText);
+		} else if (isCopied) {
+			fplStringFormat(filterText, fplArrayCount(filterText), "1:1 of level %u (%s %s%s)", copiedLevel, arrow, kernelName, nearestText);
+		} else if (IsAutoNearestInEffect(state, &transform)) {
+			float nearestFromPercent = state->nearestFromScale * percentPerScale;
+			fplStringFormat(filterText, fplArrayCount(filterText), "%s Nearest from %.0f %% (%s below)", upArrow, nearestFromPercent, upDefinition->name);
+		} else {
+			fplStringFormat(filterText, fplArrayCount(filterText), "%s %s%s", arrow, kernelName, nearestText);
+		}
+	} else {
+		fplStringFormat(filterText, fplArrayCount(filterText), "%s %s %s %s%s", downArrow, downDefinition->name, upArrow, upDefinition->name, nearestText);
+	}
+
+	// Zoom (fit when the zoom mode fits the picture), the center once the picture is larger than the viewport, the view and wheel modes when they are not the defaults.
+	// The info line shows the zoom as well.
+	char viewText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	if (hasTransform) {
+		const float half = 0.5f;
+		char zoomText[FPL_MAX_NAME_LENGTH];
+		FormatZoomText(state, &transform, zoomText, fplArrayCount(zoomText));
+		fplStringFormat(viewText, fplArrayCount(viewText), " | %s", zoomText);
+		float viewportWidth = (float)state->viewportSize.width;
+		float viewportHeight = (float)state->viewportSize.height;
+		bool isMovable = transform.imageRect.width > viewportWidth || transform.imageRect.height > viewportHeight;
+		if (isMovable) {
+			float centerX = (viewportWidth * half - transform.imageRect.left) / transform.imageRect.width;
+			float centerY = (viewportHeight * half - transform.imageRect.top) / transform.imageRect.height;
+			char centerText[FPL_MAX_NAME_LENGTH];
+			fplStringFormat(centerText, fplArrayCount(centerText), " at %.2f, %.2f", centerX, centerY);
+			fplStringAppend(centerText, viewText, fplArrayCount(viewText));
+		}
+	}
+	const char* persistenceTitle = ViewPersistenceTitles[state->persistence];
+	const char* wheelModeTitle = WheelModeTitles[state->wheelMode];
+	const char* titleSeparator = " | ";
+	if (*persistenceTitle != 0) {
+		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
+		fplStringAppend(persistenceTitle, viewText, fplArrayCount(viewText));
+	}
+	if (*wheelModeTitle != 0) {
+		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
+		fplStringAppend(wheelModeTitle, viewText, fplArrayCount(viewText));
+	}
+
+	// The loader that read the active picture, once it is shown
+	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+	bool hasActivePicture = state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (hasActivePicture) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+		const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, activePicture->image.loaderEntry);
+		if (pictureState == LoadedPictureState_Ready && loader != fpl_null) {
+			fplStringFormat(loaderText, fplArrayCount(loaderText), " | %s", loader->name);
+		}
+	}
+
+	char titleBuffer[FPL_MAX_BUFFER_LENGTH];
 	if (state->activeFileIndex > -1) {
-		const char* filterName = state->filters[state->activeFilter].name;
 		const char* picFilename = fplExtractFileName(state->pictureFiles[state->activeFileIndex].filePath);
-		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterName);
+		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - %s [%d / %zu] {%s%s | %s%s}", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR, picFilename, (state->activeFileIndex + 1), state->pictureFileCount, filterText, viewText, backgroundDefinition->name, loaderText);
 	} else {
 		fplStringFormat(titleBuffer, fplArrayCount(titleBuffer), "%s v%s - No pictures found", VER_PRODUCTNAME_STR, VER_PRODUCTVERSION_STR);
 	}
-	fplSetWindowTitle(titleBuffer);
+	if (!fplIsStringEqual(titleBuffer, state->windowTitle)) {
+		fplCopyString(titleBuffer, state->windowTitle, fplArrayCount(state->windowTitle));
+		fplSetWindowTitle(titleBuffer);
+	}
 }
 
 static void ChangeViewPicture(ViewerState* state, const int offset, const bool forceReload) {
@@ -833,6 +1299,11 @@ static void ChangeViewPicture(ViewerState* state, const int offset, const bool f
 		fplAssert(state->activeFileIndex == -1);
 		return;
 	}
+	// The size of the picture that is shown now carries the view over (plan section 2.6), zero while it is still loading
+	ViewSize previousPictureSize = fplZeroInit;
+	GetActivePictureSize(state, &previousPictureSize);
+	int previousFileIndex = state->activeFileIndex;
+
 	int capacity = (int)state->viewPicturesCapacity;
 	bool loadPictures = false;
 	int viewIndex;
@@ -848,6 +1319,9 @@ static void ChangeViewPicture(ViewerState* state, const int offset, const bool f
 	}
 	state->viewPictureIndex = viewIndex;
 	state->activeFileIndex = fplMax(fplMin(state->activeFileIndex + offset, (int)state->pictureFileCount - 1), 0);
+	if (state->activeFileIndex != previousFileIndex) {
+		state->view = ComputeViewForNextPicture(&state->view, state->persistence, &state->startView, previousPictureSize, state->viewportSize);
+	}
 
 	UpdateWindowTitle(state);
 
@@ -867,57 +1341,683 @@ static uint32_t ParseNumber(const char **p) {
 	return(v);
 }
 
-static void ParseParameters(ViewerParameters *params, const ViewerParameters *defaultParams, const int argc, char** argv) {
+// Parses a complete unsigned decimal number, trailing characters are an error
+static bool ParseUnsignedValue(const char* text, uint32_t* outValue) {
+	const char* p = text;
+	uint32_t value = ParseNumber(&p);
+	if (p == text || *p != 0) {
+		return(false);
+	}
+	*outValue = value;
+	return(true);
+}
+
+// Parses <W>x<H>, both must be greater than zero
+static bool ParseSizeValue(const char* text, uint32_t* outWidth, uint32_t* outHeight) {
+	const char* p = text;
+	uint32_t width = ParseNumber(&p);
+	if (p == text || (*p != 'x' && *p != 'X')) {
+		return(false);
+	}
+	++p;
+	const char* heightStart = p;
+	uint32_t height = ParseNumber(&p);
+	if (p == heightStart || *p != 0 || width == 0 || height == 0) {
+		return(false);
+	}
+	*outWidth = width;
+	*outHeight = height;
+	return(true);
+}
+
+// Parses fit, 100 or any other percentage
+static bool ParseZoomValue(const char* text, ViewZoomMode* outMode, float* outScale) {
+	const double actualSizePercent = 100.0;
+	if (CompareStringIgnoreCase(text, "fit") == 0) {
+		*outMode = ViewZoomMode_Fit;
+		*outScale = 1.0f;
+		return(true);
+	}
+	char* end = fpl_null;
+	double percent = strtod(text, &end);
+	if (end == text || *end != 0 || percent <= 0.0) {
+		return(false);
+	}
+	if (percent == actualSizePercent) {
+		*outMode = ViewZoomMode_ActualSize;
+		*outScale = 1.0f;
+	} else {
+		*outMode = ViewZoomMode_Custom;
+		*outScale = (float)(percent / actualSizePercent);
+	}
+	return(true);
+}
+
+// Parses <x>,<y> of --center, both normalized between 0 and 1
+static bool ParseCenterValue(const char* text, float* outX, float* outY) {
+	const double lowest = 0.0;
+	const double highest = 1.0;
+	char* end = fpl_null;
+	double x = strtod(text, &end);
+	if (end == text || *end != ',') {
+		return(false);
+	}
+	const char* yText = end + 1;
+	double y = strtod(yText, &end);
+	if (end == yText || *end != 0 || x < lowest || x > highest || y < lowest || y > highest) {
+		return(false);
+	}
+	*outX = (float)x;
+	*outY = (float)y;
+	return(true);
+}
+
+// Index of the key in the list, ignoring case
+static bool FindKeyIndex(const char* text, const char* const* keys, const int keyCount, int* outIndex) {
+	for (int keyIndex = 0; keyIndex < keyCount; ++keyIndex) {
+		if (CompareStringIgnoreCase(text, keys[keyIndex]) == 0) {
+			*outIndex = keyIndex;
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// Parses the percentage of --nearest-from, at least 100: auto Nearest is meant for enlarged pixels, below 100 % it would alias
+static bool ParseNearestFromValue(const char* text, float* outScale) {
+	const double actualSizePercent = 100.0;
+	char* end = fpl_null;
+	double percent = strtod(text, &end);
+	if (end == text || *end != 0 || percent < actualSizePercent) {
+		return(false);
+	}
+	*outScale = (float)(percent / actualSizePercent);
+	return(true);
+}
+
+// A kernel key (e.g. mitchell) or, for -f, a number in the numbering before Box and Mitchell existed
+static bool ParseFilterValue(const char* text, const bool allowLegacyNumber, ResampleKernel* outKernel) {
+	uint32_t number = 0;
+	if (allowLegacyNumber && ParseUnsignedValue(text, &number)) {
+		const uint32_t firstLegacyNumber = 1;
+		uint32_t legacyCount = fplArrayCount(LegacyFilterNumberKernels);
+		if (number < firstLegacyNumber || number >= firstLegacyNumber + legacyCount) {
+			return(false);
+		}
+		*outKernel = LegacyFilterNumberKernels[number - firstLegacyNumber];
+		return(true);
+	}
+	bool result = ResampleFindKernel(text, outKernel);
+	return(result);
+}
+
+// Returns the text after "<name>=" or an empty string for "<name>" alone, null when the argument is a different parameter
+static const char* MatchLongParameter(const char* argument, const char* name) {
+	size_t nameLength = fplGetStringLength(name);
+	if (strncmp(argument, name, nameLength) != 0) {
+		return(fpl_null);
+	}
+	const char* rest = argument + nameLength;
+	if (*rest == '=') {
+		return(rest + 1);
+	}
+	if (*rest == 0) {
+		return(rest);
+	}
+	return(fpl_null);
+}
+
+static bool ParseParameters(ViewerParameters *params, const ViewerParameters *defaultParams, const int argc, char** argv) {
 	fplClearStruct(params);
 	*params = *defaultParams;
 	params->path = fpl_null;
 	for (int i = 0; i < argc; ++i) {
-		const char* p = argv[i];
-		if (p[0] == '-') {
-			++p;
-			if (!isalpha(*p)) {
-				continue;
+		const char* argument = argv[i];
+		bool isValid = true;
+		if (argument[0] == '-' && argument[1] == '-') {
+			const char* renderToValue = MatchLongParameter(argument, "--render-to");
+			const char* windowValue = MatchLongParameter(argument, "--window");
+			const char* zoomValue = MatchLongParameter(argument, "--zoom");
+			const char* noPreviewValue = MatchLongParameter(argument, "--no-preview");
+			const char* noInfoValue = MatchLongParameter(argument, "--no-info");
+			const char* relativePathValue = MatchLongParameter(argument, "--relative-path");
+			const char* selfTestValue = MatchLongParameter(argument, "--selftest");
+			const char* downFilterValue = MatchLongParameter(argument, "--down-filter");
+			const char* upFilterValue = MatchLongParameter(argument, "--up-filter");
+			const char* backgroundValue = MatchLongParameter(argument, "--background");
+			const char* nearestFromValue = MatchLongParameter(argument, "--nearest-from");
+			const char* centerValue = MatchLongParameter(argument, "--center");
+			const char* keepViewValue = MatchLongParameter(argument, "--keep-view");
+			const char* wheelValue = MatchLongParameter(argument, "--wheel");
+			const char* loaderValue = MatchLongParameter(argument, "--loader");
+			const char* loaderForValue = MatchLongParameter(argument, "--loader-for");
+			const char* loaderOrderValue = MatchLongParameter(argument, "--loader-order");
+			const char* noLoaderFallbackValue = MatchLongParameter(argument, "--no-loader-fallback");
+			const char* listLoadersValue = MatchLongParameter(argument, "--list-loaders");
+			const char* decodeAllValue = MatchLongParameter(argument, "--decode-all");
+			const char* simdValue = MatchLongParameter(argument, "--simd");
+			const char* levelKernelValue = MatchLongParameter(argument, "--lod-kernel");
+			const char* levelSourceValue = MatchLongParameter(argument, "--lod-source");
+			const char* benchLevelsValue = MatchLongParameter(argument, "--bench-lod");
+			const char* writePyramidValue = MatchLongParameter(argument, "--write-pyramid");
+			if (renderToValue != fpl_null) {
+				params->renderToFilePath = renderToValue;
+				isValid = *renderToValue != 0;
+			} else if (windowValue != fpl_null) {
+				isValid = ParseSizeValue(windowValue, &params->windowWidth, &params->windowHeight);
+			} else if (zoomValue != fpl_null) {
+				isValid = ParseZoomValue(zoomValue, &params->zoomMode, &params->zoomScale);
+			} else if (noPreviewValue != fpl_null) {
+				params->preview = false;
+				isValid = *noPreviewValue == 0;
+			} else if (noInfoValue != fpl_null) {
+				params->showInfo = false;
+				isValid = *noInfoValue == 0;
+			} else if (relativePathValue != fpl_null) {
+				params->showRelativePath = true;
+				isValid = *relativePathValue == 0;
+			} else if (selfTestValue != fpl_null) {
+				params->runSelfTest = true;
+				params->selfTestFolder = *selfTestValue != 0 ? selfTestValue : fpl_null;
+			} else if (downFilterValue != fpl_null) {
+				isValid = ParseFilterValue(downFilterValue, false, &params->downKernel);
+			} else if (upFilterValue != fpl_null) {
+				isValid = ParseFilterValue(upFilterValue, false, &params->upKernel);
+			} else if (backgroundValue != fpl_null) {
+				isValid = ResampleFindBackground(backgroundValue, &params->background);
+			} else if (nearestFromValue != fpl_null) {
+				isValid = ParseNearestFromValue(nearestFromValue, &params->nearestFromScale);
+			} else if (centerValue != fpl_null) {
+				isValid = ParseCenterValue(centerValue, &params->centerX, &params->centerY);
+			} else if (keepViewValue != fpl_null) {
+				int persistenceIndex = 0;
+				isValid = FindKeyIndex(keepViewValue, ViewPersistenceKeys, ViewPersistence_Count, &persistenceIndex);
+				params->persistence = (ViewPersistence)persistenceIndex;
+			} else if (wheelValue != fpl_null) {
+				int wheelModeIndex = 0;
+				isValid = FindKeyIndex(wheelValue, WheelModeKeys, WheelMode_Count, &wheelModeIndex);
+				params->wheelMode = (WheelMode)wheelModeIndex;
+			} else if (loaderValue != fpl_null) {
+				params->loaderValue = loaderValue;
+				isValid = *loaderValue != 0;
+			} else if (loaderForValue != fpl_null) {
+				isValid = *loaderForValue != 0 && params->loaderForCount < fplArrayCount(params->loaderForValues);
+				if (isValid) {
+					params->loaderForValues[params->loaderForCount++] = loaderForValue;
+				}
+			} else if (loaderOrderValue != fpl_null) {
+				params->loaderOrderValue = loaderOrderValue;
+				isValid = *loaderOrderValue != 0;
+			} else if (noLoaderFallbackValue != fpl_null) {
+				params->isLoaderFallbackDisabled = true;
+				isValid = *noLoaderFallbackValue == 0;
+			} else if (listLoadersValue != fpl_null) {
+				params->listLoaders = true;
+				isValid = *listLoadersValue == 0;
+			} else if (decodeAllValue != fpl_null) {
+				params->decodeAllPath = decodeAllValue;
+				isValid = *decodeAllValue != 0;
+			} else if (simdValue != fpl_null) {
+				isValid = ImagePyramidFindSimdLevel(simdValue, &params->simdLevel);
+			} else if (levelKernelValue != fpl_null) {
+				isValid = ImagePyramidFindKernel(levelKernelValue, &params->levelKernel);
+			} else if (levelSourceValue != fpl_null) {
+				bool isAuto = CompareStringIgnoreCase(levelSourceValue, "auto") == 0;
+				bool isFull = fplIsStringEqual(levelSourceValue, "0");
+				params->isFullSourceLevelForced = isFull;
+				isValid = isAuto || isFull;
+			} else if (benchLevelsValue != fpl_null) {
+				params->benchLevelsPath = benchLevelsValue;
+				isValid = *benchLevelsValue != 0;
+			} else if (writePyramidValue != fpl_null) {
+				params->writePyramidFolder = writePyramidValue;
+				isValid = *writePyramidValue != 0;
+			} else {
+				isValid = false;
 			}
-			const char param = p[0];
-			switch (param) {
-				case 'r':
-					params->recursive = true;
-					break;
-				case 't':
-					params->threadCount = 0;
-					break;
-				default:
-					continue;
-			}
-			if (param == 't') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->threadCount = ParseNumber(&p);
-				} else {
-					continue;
-				}
-			} else if (param == 'p') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->preloadCount = ParseNumber(&p);
-				} else {
-					continue;
-				}
-			} else if (param == 'f') {
-				++p;
-				if (p[0] == '=') {
-					++p;
-					params->filter = ParseNumber(&p);
-				} else {
-					continue;
-				}
+		} else if (argument[0] == '-') {
+			// Short forms: -r, -t=<threads>, -p=<preload count>, -f=<filter number or key> for both directions
+			const char shortName = argument[1];
+			const bool hasValue = shortName != 0 && argument[2] == '=';
+			const char* shortValue = hasValue ? argument + 3 : fpl_null;
+			uint32_t number = 0;
+			if (shortName == 'r' && argument[2] == 0) {
+				params->recursive = true;
+			} else if (shortName == 't' && hasValue && ParseUnsignedValue(shortValue, &number)) {
+				params->threadCount = number;
+			} else if (shortName == 'p' && hasValue && ParseUnsignedValue(shortValue, &number)) {
+				params->preloadCount = number;
+			} else if (shortName == 'f' && hasValue && ParseFilterValue(shortValue, true, &params->downKernel)) {
+				params->upKernel = params->downKernel;
+			} else {
+				isValid = false;
 			}
 		} else {
-			params->path = p;
+			params->path = argument;
+		}
+		if (!isValid) {
+			fplConsoleFormatError("Invalid parameter '%s'\n", argument);
+			flogWrite("Invalid parameter '%s'", argument);
+			return(false);
 		}
 	}
+	if (params->renderToFilePath != fpl_null && (params->windowWidth == 0 || params->path == fpl_null)) {
+		fplConsoleFormatError("--render-to requires --window=<W>x<H> and a picture path\n");
+		flogWrite("--render-to requires --window=<W>x<H> and a picture path");
+		return(false);
+	}
+	if (params->writePyramidFolder != fpl_null && params->path == fpl_null) {
+		fplConsoleFormatError("--write-pyramid requires a picture path\n");
+		flogWrite("--write-pyramid requires a picture path");
+		return(false);
+	}
+	return(true);
+}
+
+static void LogLoaderMessage(const char* message) {
+	flogWrite("%s", message);
+}
+
+// stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned
+static bool RegisterLoaders(ImageLoaderRegistry* registry) {
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet() };
+	ImageLoaderRegistryInit(registry);
+	registry->log = LogLoaderMessage;
+	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
+		char message[IMAGE_LOADER_MESSAGE_SIZE];
+		if (!ImageLoaderRegistryAdd(registry, loaders[loaderIndex], message, sizeof(message))) {
+			fplConsoleFormatError("Failed to register loader '%s': %s\n", loaders[loaderIndex]->name, message);
+			return(false);
+		}
+	}
+	return(true);
+}
+
+static void ReportLoaderParameterError(const char* parameter, const char* message) {
+	fplConsoleFormatError("Invalid parameter '%s': %s\n", parameter, message);
+	flogWrite("Invalid parameter '%s': %s", parameter, message);
+}
+
+// Applies --loader-order, --loader, --loader-for and --no-loader-fallback; an unknown id or an ambiguous name is an error
+static bool ApplyLoaderParameters(ImageLoaderRegistry* registry, const ViewerParameters* params) {
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+	if (params->loaderOrderValue != fpl_null) {
+		char buffer[FPL_MAX_BUFFER_LENGTH];
+		fplCopyString(params->loaderOrderValue, buffer, fplArrayCount(buffer));
+		int32_t entries[IMAGE_LOADER_MAX_COUNT];
+		uint32_t entryCount = 0;
+		for (char* token = strtok(buffer, ","); token != fpl_null; token = strtok(fpl_null, ",")) {
+			int32_t entry = ImageLoaderRegistryFind(registry, token, message, sizeof(message));
+			if (entry < 0 || entryCount >= fplArrayCount(entries)) {
+				ReportLoaderParameterError(params->loaderOrderValue, message);
+				return(false);
+			}
+			entries[entryCount++] = entry;
+		}
+		if (!ImageLoaderRegistrySetOrder(registry, entries, entryCount)) {
+			ReportLoaderParameterError(params->loaderOrderValue, "a loader is named twice");
+			return(false);
+		}
+	}
+	if (params->loaderValue != fpl_null) {
+		int32_t entry = ImageLoaderRegistryFind(registry, params->loaderValue, message, sizeof(message));
+		if (entry < 0) {
+			ReportLoaderParameterError(params->loaderValue, message);
+			return(false);
+		}
+		ImageLoaderRegistryPinGlobal(registry, entry);
+	}
+	for (uint32_t pinIndex = 0; pinIndex < params->loaderForCount; ++pinIndex) {
+		const char* value = params->loaderForValues[pinIndex];
+		const char* separator = strchr(value, ':');
+		if (separator == fpl_null || separator == value) {
+			ReportLoaderParameterError(value, "expected <extension>:<loader id or name>");
+			return(false);
+		}
+		char extension[IMAGE_LOADER_MAX_EXTENSION_LENGTH];
+		size_t extensionLength = (size_t)(separator - value);
+		if (extensionLength >= fplArrayCount(extension)) {
+			ReportLoaderParameterError(value, "extension too long");
+			return(false);
+		}
+		fplCopyStringLen(value, extensionLength, extension, fplArrayCount(extension));
+		int32_t entry = ImageLoaderRegistryFind(registry, separator + 1, message, sizeof(message));
+		if (entry < 0 || !ImageLoaderRegistryPinExtension(registry, extension, entry)) {
+			ReportLoaderParameterError(value, entry < 0 ? message : "too many extension pins");
+			return(false);
+		}
+	}
+	registry->isFallbackEnabled = !params->isLoaderFallbackDisabled;
+	return(true);
+}
+
+// --list-loaders: one line per loader in selection order, then the pins
+static void PrintLoaders(const ImageLoaderRegistry* registry) {
+	fplConsoleFormatOut("Loaders in selection order, the first one is the default:\n");
+	for (uint32_t orderIndex = 0; orderIndex < registry->count; ++orderIndex) {
+		int32_t entry = registry->order[orderIndex];
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, entry);
+		char idText[IMAGE_LOADER_ID_TEXT_SIZE];
+		ImageLoaderIdFormat(&loader->id, idText, sizeof(idText));
+		char extensions[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+		for (const char* const* extension = loader->fileExtensions; *extension != fpl_null; ++extension) {
+			fplStringAppend(*extension, extensions, fplArrayCount(extensions));
+			fplStringAppend(" ", extensions, fplArrayCount(extensions));
+		}
+		const char* threadText = (loader->flags & ImageLoaderFlags_NotThreadSafe) ? "serialized" : "thread-safe";
+		fplConsoleFormatOut("  %u. %-14s %-5s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
+	}
+	if (registry->globalPinIndex >= 0) {
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->globalPinIndex);
+		fplConsoleFormatOut("Pinned for all files: %s\n", loader->name);
+	}
+	for (uint32_t pinIndex = 0; pinIndex < registry->extensionPinCount; ++pinIndex) {
+		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->extensionPins[pinIndex].entryIndex);
+		fplConsoleFormatOut("Pinned for %s: %s\n", registry->extensionPins[pinIndex].extension, loader->name);
+	}
+	fplConsoleFormatOut("Fallback to the next loader: %s\n", registry->isFallbackEnabled ? "on" : "off");
+}
+
+typedef struct DecodeAllResult {
+	ImageLoadResult result;
+	int32_t loaderEntry;
+	double milliseconds;
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+} DecodeAllResult;
+
+typedef struct DecodeAllJob {
+	ViewerState* state;
+	DecodeAllResult* results;
+	volatile int32_t nextFileIndex;
+} DecodeAllJob;
+
+static void DecodeAllThreadProc(const fplThreadHandle* thread, void* data) {
+	const double millisecondsPerSecond = 1000.0;
+	DecodeAllJob* job = (DecodeAllJob*)data;
+	ViewerState* state = job->state;
+	while (true) {
+		int32_t fileIndex = fplAtomicFetchAndAddS32(&job->nextFileIndex, 1);
+		if (fileIndex >= (int32_t)state->pictureFileCount) {
+			break;
+		}
+		DecodeAllResult* result = &job->results[fileIndex];
+		PictureInfo info;
+		ImagePixels pixels = fplZeroInit;
+		fplTimestamp start = fplTimestampQuery();
+		result->loaderEntry = -1;
+		result->result = LoadPictureFile(&state->loaderRegistry, state->pictureFiles[fileIndex].filePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &result->loaderEntry, &info, &pixels, result->message, sizeof(result->message));
+		fplTimestamp finish = fplTimestampQuery();
+		result->milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+		if (result->result == ImageLoadResult_Success) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, result->loaderEntry, &pixels);
+		}
+	}
+}
+
+// --decode-all: decodes every picture of the folder with the loader threads, without window and GL, and reports errors and time per loader
+static int DecodeAllPictures(ViewerState* state, const char* folderPath) {
+	const double millisecondsPerSecond = 1000.0;
+	const uint32_t largestListedFailures = 20;
+	if (!fplDirectoryExists(folderPath)) {
+		fplConsoleFormatError("Folder '%s' does not exist\n", folderPath);
+		return(1);
+	}
+	AddPicturesFromPath(state, folderPath, state->params.recursive);
+	size_t fileCount = state->pictureFileCount;
+	DecodeAllJob job = fplZeroInit;
+	job.state = state;
+	job.results = (DecodeAllResult*)calloc(fileCount > 0 ? fileCount : 1, sizeof(DecodeAllResult));
+	size_t threadCount = fplMax(fplMin(state->params.threadCount, (size_t)MAX_LOAD_THREAD_COUNT), (size_t)1);
+	fplThreadHandle* threads[MAX_LOAD_THREAD_COUNT];
+	fplTimestamp start = fplTimestampQuery();
+	for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+		threads[threadIndex] = fplThreadCreate(DecodeAllThreadProc, &job);
+	}
+	fplThreadWaitForAll(threads, threadCount, sizeof(fplThreadHandle*), FPL_TIMEOUT_INFINITE);
+	fplTimestamp finish = fplTimestampQuery();
+	double wallMilliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+
+	uint32_t failureCount = 0;
+	uint32_t loaderFileCounts[IMAGE_LOADER_MAX_COUNT] = fplZeroInit;
+	double loaderMilliseconds[IMAGE_LOADER_MAX_COUNT] = fplZeroInit;
+	for (size_t fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
+		const DecodeAllResult* result = &job.results[fileIndex];
+		if (result->result == ImageLoadResult_Success) {
+			++loaderFileCounts[result->loaderEntry];
+			loaderMilliseconds[result->loaderEntry] += result->milliseconds;
+		} else {
+			if (failureCount < largestListedFailures) {
+				const char* resultName = ImageLoadResultGetName(result->result);
+				fplConsoleFormatOut("FAILED %s: %s (%s)\n", state->pictureFiles[fileIndex].filePath, resultName, result->message);
+			}
+			++failureCount;
+		}
+	}
+	fplConsoleFormatOut("Decoded %zu files with %zu threads in %.0f ms, %u failed\n", fileCount, threadCount, wallMilliseconds, failureCount);
+	for (uint32_t entry = 0; entry < state->loaderRegistry.count; ++entry) {
+		if (loaderFileCounts[entry] == 0) {
+			continue;
+		}
+		const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, entry);
+		double averageMilliseconds = loaderMilliseconds[entry] / (double)loaderFileCounts[entry];
+		fplConsoleFormatOut("  %-14s %u files, %.1f ms per file on average\n", loader->name, loaderFileCounts[entry], averageMilliseconds);
+	}
+	flogWrite("Decode all '%s': %zu files, %u failed, %.0f ms", folderPath, fileCount, failureCount, wallMilliseconds);
+	free(job.results);
+	int result = failureCount == 0 ? 0 : 1;
+	return(result);
+}
+
+// Largest PAM header: magic, size, depth, maximum value and tuple type
+#define PORTABLE_MAP_HEADER_CAPACITY 256
+
+// Writes top-down RGBA8 rows as a PAM with RGB_ALPHA tuples
+static bool WritePortableArbitraryMapRGBA(const char* filePath, const ImagePyramidLevel* level) {
+	const uint32_t components = 4;
+	fplFileHandle file;
+	if (!fplFileCreateBinary(filePath, &file)) {
+		return(false);
+	}
+	char header[PORTABLE_MAP_HEADER_CAPACITY];
+	size_t headerLength = fplStringFormat(header, fplArrayCount(header), "P7\nWIDTH %u\nHEIGHT %u\nDEPTH %u\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", level->width, level->height, components);
+	uint32_t writtenHeaderBytes = fplFileWriteBlock32(&file, header, (uint32_t)headerLength);
+	bool result = writtenHeaderBytes == (uint32_t)headerLength;
+	uint32_t rowSize = level->width * components;
+	for (uint32_t row = 0; result && row < level->height; ++row) {
+		uint8_t* rowPixels = level->pixels + (size_t)row * level->stride;
+		uint32_t writtenRowBytes = fplFileWriteBlock32(&file, rowPixels, rowSize);
+		result = writtenRowBytes == rowSize;
+	}
+	fplFileClose(&file);
+	return(result);
+}
+
+static void LogConsoleLine(const char* text) {
+	fplConsoleFormatOut("%s\n", text);
+	flogWrite("%s", text);
+}
+
+// --write-pyramid=<folder>: reduces the picture with the selected SIMD level and kernel and writes every level as level_<n>.pam (RGBA), without window and GL
+static int WritePyramidLevels(ViewerState* state, const char* picturePath, const char* folderPath) {
+	int32_t loaderEntry = -1;
+	PictureInfo info = fplZeroInit;
+	ImagePixels pixels = fplZeroInit;
+	char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+	ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+	if (loadResult != ImageLoadResult_Success) {
+		const char* resultName = ImageLoadResultGetName(loadResult);
+		fplConsoleFormatError("Failed to load '%s': %s (%s)\n", picturePath, resultName, message);
+		return(1);
+	}
+	ImagePyramidLevel baseLevel = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+	ImagePyramidSettings settings = fplZeroInit;
+	settings.functions = state->pyramidFunctions;
+	settings.kernel = state->params.levelKernel;
+	ImagePyramid pyramid;
+	ImagePyramidResult pyramidResult = ImagePyramidBuild(&baseLevel, &settings, &pyramid);
+	int result = pyramidResult == ImagePyramidResult_Success ? 0 : 1;
+	fplDirectoriesCreate(folderPath);
+	for (uint32_t level = 0; result == 0 && level < pyramid.levelCount; ++level) {
+		char fileName[FPL_MAX_NAME_LENGTH];
+		char filePath[FPL_MAX_PATH_LENGTH];
+		fplStringFormat(fileName, fplArrayCount(fileName), "level_%u.pam", level);
+		fplPathCombine(filePath, fplArrayCount(filePath), 2, folderPath, fileName);
+		if (!WritePortableArbitraryMapRGBA(filePath, &pyramid.levels[level])) {
+			fplConsoleFormatError("Failed to write '%s'\n", filePath);
+			result = 1;
+		}
+	}
+	if (result == 0) {
+		const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition(settings.kernel);
+		char line[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(line, fplArrayCount(line), "Wrote %u levels of '%s' (%u x %u) into '%s', kernel %s, %s", pyramid.levelCount, picturePath, pixels.width, pixels.height, folderPath, kernelDefinition->name, settings.functions->name);
+		LogConsoleLine(line);
+	}
+	ImagePyramidRelease(&pyramid);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+	return(result);
+}
+
+// Median of the values, the array gets sorted
+static double SortAndGetMedian(double* values, const uint32_t count) {
+	for (uint32_t index = 1; index < count; ++index) {
+		double value = values[index];
+		uint32_t target = index;
+		while (target > 0 && values[target - 1] > value) {
+			values[target] = values[target - 1];
+			--target;
+		}
+		values[target] = value;
+	}
+	double result = count > 0 ? values[count / 2] : 0.0;
+	return(result);
+}
+
+// --bench-lod=<file>: decode and the level chain on every available SIMD level, median of BENCH_LEVELS_RUN_COUNT runs, without window and GL
+static int BenchmarkLevels(ViewerState* state, const char* picturePath) {
+	const double millisecondsPerSecond = 1000.0;
+	const double pixelsPerMegapixel = 1000000.0;
+	const uint32_t runCount = BENCH_LEVELS_RUN_COUNT;
+	const uint32_t bytesPerPixel = 4;
+
+	// Decode, the pixels of the last run stay for the levels
+	double decodeMilliseconds[BENCH_LEVELS_RUN_COUNT];
+	int32_t loaderEntry = -1;
+	PictureInfo info = fplZeroInit;
+	ImagePixels pixels = fplZeroInit;
+	for (uint32_t run = 0; run < runCount; ++run) {
+		if (pixels.pixels != fpl_null) {
+			ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+		}
+		char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+		fplTimestamp start = fplTimestampQuery();
+		ImageLoadResult loadResult = LoadPictureFile(&state->loaderRegistry, picturePath, -1, fpl_null, fpl_null, fpl_null, fpl_null, fpl_null, &loaderEntry, &info, &pixels, message, sizeof(message));
+		fplTimestamp finish = fplTimestampQuery();
+		if (loadResult != ImageLoadResult_Success) {
+			const char* resultName = ImageLoadResultGetName(loadResult);
+			fplConsoleFormatError("Failed to load '%s': %s (%s)\n", picturePath, resultName, message);
+			return(1);
+		}
+		decodeMilliseconds[run] = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+	}
+	double decodeMedian = SortAndGetMedian(decodeMilliseconds, runCount);
+
+	// Level buffers, reused by every SIMD level
+	ImagePyramidLevel levels[IMAGE_PYRAMID_MAX_LEVELS];
+	uint32_t levelCount = ImagePyramidComputeLevelCount(pixels.width, pixels.height);
+	levels[0] = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+	size_t levelBytes = 0;
+	uint64_t levelPixels = 0;
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		ImagePyramidComputeLevelSize(pixels.width, pixels.height, level, &levels[level].width, &levels[level].height);
+		levels[level].stride = levels[level].width * bytesPerPixel;
+		levelBytes += (size_t)levels[level].stride * levels[level].height;
+		levelPixels += (uint64_t)levels[level].width * levels[level].height;
+	}
+	uint8_t* levelMemory = (uint8_t*)malloc(levelBytes > 0 ? levelBytes : 1);
+	size_t levelOffset = 0;
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		levels[level].pixels = levelMemory + levelOffset;
+		levelOffset += (size_t)levels[level].stride * levels[level].height;
+	}
+
+	fplCPUCapabilities capabilities = fplZeroInit;
+	fplCPUGetCapabilities(&capabilities);
+	SimdLevel measuredLevels[SimdLevel_Count];
+	uint32_t measuredCount = 0;
+	double levelMedians[SimdLevel_Count][IMAGE_PYRAMID_MAX_LEVELS] = fplZeroInit;
+	double totalMedians[SimdLevel_Count] = fplZeroInit;
+	for (int32_t simdLevel = SimdLevel_Scalar; simdLevel < SimdLevel_Count; ++simdLevel) {
+		if (!ImagePyramidIsSimdLevelAvailable(&capabilities, (SimdLevel)simdLevel)) {
+			continue;
+		}
+		ImagePyramidSettings settings = fplZeroInit;
+		settings.functions = ImagePyramidGetRowFunctions((SimdLevel)simdLevel);
+		settings.kernel = state->params.levelKernel;
+		double runLevelMilliseconds[IMAGE_PYRAMID_MAX_LEVELS][BENCH_LEVELS_RUN_COUNT];
+		double runTotalMilliseconds[BENCH_LEVELS_RUN_COUNT];
+		for (uint32_t run = 0; run < runCount; ++run) {
+			runTotalMilliseconds[run] = 0.0;
+			for (uint32_t level = 1; level < levelCount; ++level) {
+				fplTimestamp start = fplTimestampQuery();
+				ImagePyramidReduceHalf(&levels[level - 1], &levels[level], &settings);
+				fplTimestamp finish = fplTimestampQuery();
+				double milliseconds = fplTimestampElapsed(start, finish) * millisecondsPerSecond;
+				runLevelMilliseconds[level][run] = milliseconds;
+				runTotalMilliseconds[run] += milliseconds;
+			}
+		}
+		for (uint32_t level = 1; level < levelCount; ++level) {
+			levelMedians[measuredCount][level] = SortAndGetMedian(runLevelMilliseconds[level], runCount);
+		}
+		totalMedians[measuredCount] = SortAndGetMedian(runTotalMilliseconds, runCount);
+		measuredLevels[measuredCount] = (SimdLevel)simdLevel;
+		++measuredCount;
+	}
+
+	const ImageLoader* loader = ImageLoaderRegistryGet(&state->loaderRegistry, loaderEntry);
+	const ImagePyramidKernelDefinition* kernelDefinition = ImagePyramidGetKernelDefinition(state->params.levelKernel);
+	double levelMegapixels = (double)levelPixels / pixelsPerMegapixel;
+	char line[FPL_MAX_BUFFER_LENGTH];
+	char cell[FPL_MAX_NAME_LENGTH];
+	fplStringFormat(line, fplArrayCount(line), "Picture '%s': %u x %u, %s, decode %.1f ms (median of %u runs)", picturePath, pixels.width, pixels.height, loader->name, decodeMedian, runCount);
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%u reduced levels, %.2f megapixels, kernel %s, median of %u runs per SIMD level", levelCount - 1, levelMegapixels, kernelDefinition->name, runCount);
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "Level", "Size");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		const char* simdName = ImagePyramidGetSimdLevelName(measuredLevels[measured]);
+		fplStringFormat(cell, fplArrayCount(cell), " %10s", simdName);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+	for (uint32_t level = 1; level < levelCount; ++level) {
+		char sizeText[FPL_MAX_NAME_LENGTH];
+		fplStringFormat(sizeText, fplArrayCount(sizeText), "%ux%u", levels[level].width, levels[level].height);
+		fplStringFormat(line, fplArrayCount(line), "%-6u %-12s", level, sizeText);
+		for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+			fplStringFormat(cell, fplArrayCount(cell), " %7.2f ms", levelMedians[measured][level]);
+			fplStringAppend(cell, line, fplArrayCount(line));
+		}
+		LogConsoleLine(line);
+	}
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "All", "");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		fplStringFormat(cell, fplArrayCount(cell), " %7.2f ms", totalMedians[measured]);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+	fplStringFormat(line, fplArrayCount(line), "%-6s %-12s", "Decode", "share");
+	for (uint32_t measured = 0; measured < measuredCount; ++measured) {
+		double share = decodeMedian > 0.0 ? totalMedians[measured] / decodeMedian : 0.0;
+		fplStringFormat(cell, fplArrayCount(cell), " %9.2fx", share);
+		fplStringAppend(cell, line, fplArrayCount(line));
+	}
+	LogConsoleLine(line);
+
+	free(levelMemory);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+	return(0);
 }
 
 size_t RoundToPowerOfTwo(size_t v) {
@@ -936,8 +2036,6 @@ size_t RoundToPowerOfTwo(size_t v) {
 	return(v);
 }
 
-#define BUFFER_OFFSET(i) ((char *)NULL + (i))
-
 static GLuint CreateShaderType(GLenum type, const char* name, const char* source) {
 	GLuint shaderId = glCreateShader(type);
 
@@ -949,17 +2047,11 @@ static GLuint CreateShaderType(GLenum type, const char* name, const char* source
 	GLint compileResult;
 	glGetShaderiv(shaderId, GL_COMPILE_STATUS, &compileResult);
 	if (!compileResult) {
-		GLint infoLen;
-		glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= fplArrayCount(info));
-		glGetShaderInfoLog(shaderId, infoLen, &infoLen, info);
-		fplDebugFormatOut("Failed compiling '%s' %s shader!\n", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"));
-		fplDebugFormatOut("%s\n", info);
+		glGetShaderInfoLog(shaderId, (GLsizei)fplArrayCount(info), fpl_null, info);
+		flogWrite("Failed compiling '%s' %s shader: %s", name, (type == GL_VERTEX_SHADER ? "vertex" : "fragment"), info);
 		glDeleteShader(shaderId);
 		shaderId = 0;
 	}
-
-	fplAssert(shaderId > 0);
 
 	return(shaderId);
 }
@@ -969,6 +2061,12 @@ static GLuint CreateShaderProgram(const char* name, const char* vertexSource, co
 
 	GLuint vertexShader = CreateShaderType(GL_VERTEX_SHADER, name, vertexSource);
 	GLuint fragmentShader = CreateShaderType(GL_FRAGMENT_SHADER, name, fragmentSource);
+	if (vertexShader == 0 || fragmentShader == 0) {
+		glDeleteShader(fragmentShader);
+		glDeleteShader(vertexShader);
+		glDeleteProgram(programId);
+		return(0);
+	}
 
 	glAttachShader(programId, vertexShader);
 	glAttachShader(programId, fragmentShader);
@@ -982,24 +2080,30 @@ static GLuint CreateShaderProgram(const char* name, const char* vertexSource, co
 	GLint linkResult;
 	glGetProgramiv(programId, GL_LINK_STATUS, &linkResult);
 	if (!linkResult) {
-		GLint infoLen;
-		glGetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLen);
-		fplAssert(infoLen <= fplArrayCount(info));
-		glGetProgramInfoLog(programId, infoLen, &infoLen, info);
-		fplDebugFormatOut("Failed linking '%s' shader!\n", name);
-		fplDebugFormatOut("%s\n", info);
+		glGetProgramInfoLog(programId, (GLsizei)fplArrayCount(info), fpl_null, info);
+		flogWrite("Failed linking '%s' shader: %s", name, info);
 		glDeleteProgram(programId);
 		programId = 0;
 	}
-	fplAssert(programId > 0);
 
 	return(programId);
+}
+
+static ColorProgram CreateColorProgram() {
+	ColorProgram result = fplZeroInit;
+	result.programId = CreateShaderProgram("Color", RectangleVertexSource, ColorFragmentSource);
+	if (result.programId > 0) {
+		result.locationViewportSize = glGetUniformLocation(result.programId, "uniViewportSize");
+		result.locationRect = glGetUniformLocation(result.programId, "uniRect");
+		result.locationColor = glGetUniformLocation(result.programId, "uniColor");
+	}
+	return(result);
 }
 
 static void CheckGLError(const char* stmt, const char* fname, int line) {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
-		flogWrite("Error: OpenGL check %08x, at %s:%i - for %s\n", err, fname, line, stmt);
+		flogWrite("Error: OpenGL check %08x, at %s:%i - for %s", err, fname, line, stmt);
 		fplAssert(!"OpenGL Error!");
 	}
 }
@@ -1014,6 +2118,7 @@ static void Kill(ViewerState* state) {
 	ShutdownLoadThreads(state);
 	ClearPictureFiles(state);
 	ClearViewPictures(state);
+	fplMutexDestroy(&state->pictureInfoMutex);
 }
 
 static void Clear(ViewerState* state) {
@@ -1043,11 +2148,11 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 		result = state->pictureFileCount > 0;
 		*startIndex = 0;
 	} else if (fplFileExists(path)) {
-		if (IsPictureFile(path)) {
+		if (IsPictureFile(state, path)) {
 			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
 			AddPicturesFromPath(state, state->rootPath, recursive);
 			if (!FindPictureIndexByPath(state, path, startIndex)) {
-				startIndex = 0;
+				*startIndex = 0;
 			}
 			result = true;
 		}
@@ -1055,132 +2160,123 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 	return(result);
 }
 
+static void ReleaseUserInterface(ViewerState* state) {
+	if (state->isUserInterfaceReady) {
+		fuiRelease(&state->ui);
+	}
+	if (state->uiFontTexture != 0) {
+		fuiGL3DeleteTexture(state->uiFontTexture);
+		state->uiFontTexture = 0;
+	}
+	fuiGL3Release(&state->uiBackend);
+	fuiStbttFontRelease(&state->uiBakedFont);
+	state->isUserInterfaceReady = false;
+}
+
+// final_ui with Bitstream Vera Sans for the info line (plan section 2.8)
+static bool InitUserInterface(ViewerState* state) {
+	fuiStbttBakeSettings bakeSettings = fuiStbttDefaultBakeSettings();
+	bakeSettings.pixelHeight = INFO_FONT_BAKE_PIXEL_HEIGHT;
+	bakeSettings.firstCodePoint = INFO_FONT_FIRST_CODEPOINT;
+	bakeSettings.codePointCount = INFO_FONT_LAST_CODEPOINT - INFO_FONT_FIRST_CODEPOINT + 1;
+	bakeSettings.atlasWidth = INFO_FONT_ATLAS_SIDE;
+	bakeSettings.atlasHeight = INFO_FONT_ATLAS_SIDE;
+	const char* failure = fpl_null;
+	if (!fuiStbttFontBake(&state->uiBakedFont, ptr_fontBitstreamVeraRegular, &bakeSettings)) {
+		failure = "the font could not be baked";
+	} else if (!fuiGL3Init(&state->uiBackend)) {
+		failure = state->uiBackend.errorLog;
+	} else if (!fuiGL3UploadFontAtlas(state->uiBakedFont.atlasPixels, state->uiBakedFont.atlasWidth, state->uiBakedFont.atlasHeight, &state->uiFontTexture)) {
+		failure = "the font atlas could not be uploaded";
+	} else {
+		state->uiFont = fuiStbttFontToFuiFont(&state->uiBakedFont, (fuiTextureId)state->uiFontTexture);
+		if (!fuiInit(&state->ui, &state->uiFont, fpl_null)) {
+			failure = "the context could not be created";
+		}
+	}
+	if (failure != fpl_null) {
+		fplConsoleFormatError("Failed to initialize the user interface: %s\n", failure);
+		flogWrite("Failed to initialize the user interface: %s", failure);
+		ReleaseUserInterface(state);
+		return(false);
+	}
+	state->isUserInterfaceReady = true;
+	fuiFplInputInit(&state->uiInput);
+	return(true);
+}
+
 static bool Init(ViewerState* state) {
-	// Query GL version
-	state->features.openGLMajor = 1;
-
-#if !FORCE_LEGACY_OPENGL
-	const char* versionStr = (const char*)glGetString(GL_VERSION);
-	int versions[2] = fplZeroInit;
-	if (versionStr != fpl_null) {
-		const char* p = versionStr;
-		for (int i = 0; i < 2; ++i) {
-			const char* digitStart = p;
-			int value = 0;
-			while (isdigit(*p)) {
-				int part = (int)(*p - '0');
-				value = value * 10 + part;
-				++p;
-			}
-			versions[i] = value;
-			if (*p != '.' && *p != '-') break;
-			++p;
-		}
-		state->features.openGLMajor = versions[0];
+	GLint majorVersion = 0;
+	GLint minorVersion = 0;
+	glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+	glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+	bool isMajorTooOld = majorVersion < REQUIRED_OPENGL_MAJOR_VERSION;
+	bool isMinorTooOld = majorVersion == REQUIRED_OPENGL_MAJOR_VERSION && minorVersion < REQUIRED_OPENGL_MINOR_VERSION;
+	if (isMajorTooOld || isMinorTooOld) {
+		fplConsoleFormatError("OpenGL %d.%d core profile is required, but got %d.%d\n", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, majorVersion, minorVersion);
+		flogWrite("OpenGL %d.%d core profile is required, but got %d.%d", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, majorVersion, minorVersion);
+		return(false);
 	}
-#endif
 
-	state->features.rectangleTextures = false;
 	state->features.srgbFrameBuffer = false;
-
-#if !FORCE_LEGACY_OPENGL
-	if (state->features.openGLMajor >= 3) {
-		GLint extensionCount = 0;
-		glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
-		for (int i = 0; i < extensionCount; ++i) {
-			const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
-			if (CompareStringIgnoreCase("GL_ARB_framebuffer_sRGB", extension) == 0) {
-				state->features.srgbFrameBuffer = true;
-			} else if (CompareStringIgnoreCase("GL_ARB_texture_rectangle", extension) == 0) {
-				state->features.rectangleTextures = true;
-			}
+	GLint extensionCount = 0;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+	for (int i = 0; i < extensionCount; ++i) {
+		const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
+		if (CompareStringIgnoreCase("GL_ARB_framebuffer_sRGB", extension) == 0) {
+			state->features.srgbFrameBuffer = true;
 		}
-	} else {
-		const char* extensions = (const char*)glGetString(GL_EXTENSIONS);
-		const char* p = extensions;
-		const char* start = p;
-		while (true) {
-			if (*p == ' ' || *p == 0) {
-				if (CompareStringLengthIgnoreCase(start, "GL_ARB_framebuffer_sRGB", fplGetStringLength("GL_ARB_framebuffer_sRGB")) == 0) {
-					state->features.srgbFrameBuffer = true;
-				} else if (CompareStringLengthIgnoreCase(start, "GL_ARB_texture_rectangle", fplGetStringLength("GL_ARB_texture_rectangle")) == 0) {
-					state->features.rectangleTextures = true;
-				}
-				start = p + 1;
-			}
-			if (*p == 0) {
-				break;
-			}
-			++p;
-		}
-	}
-#endif
-
-	if (state->features.rectangleTextures) {
-		state->textureTarget = GL_TEXTURE_RECTANGLE;
-	} else {
-		state->textureTarget = GL_TEXTURE_2D;
 	}
 
 	glClearColor(0, 0, 0, 1);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	const char* samplerType = state->textureTarget == GL_TEXTURE_2D ? "sampler2D" : "sampler2DRect";
-
-	if (state->features.openGLMajor < 2) {
-		glMatrixMode(GL_MODELVIEW);
-		state->filterCount = 0;
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", 0);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", 0);
-		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
-			state->activeFilter = state->params.filter - 1;
-		else
-			state->activeFilter = state->filterCount - 1;
-	} else {
-		if (state->features.srgbFrameBuffer) {
-			glEnable(GL_FRAMEBUFFER_SRGB);
-		}
-
-		glGenVertexArrays(1, &state->vertexArray);
-		glBindVertexArray(state->vertexArray);
-
-		state->colorShaderProgram = CreateShaderProgram("Color", ColorVertexSource, ColorFragmentSource);
-
-		state->filterCount = 0;
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Nearest", CreateShaderProgram("Nearest", FilterVertexSource, NoFilterFragmentSource(samplerType).c_str()), FilterType_Nearest);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bilinear", CreateShaderProgram("Bilinear", FilterVertexSource, BilinearFilterFragmentSource(samplerType).c_str()), FilterType_Bilinear);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Triangular)", CreateShaderProgram("Bicubic (Triangular)", FilterVertexSource, BicubicTriangularFilterFragmentSource(samplerType).c_str()), FilterType_CubicTriangular);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (Bell)", CreateShaderProgram("Bicubic (Bell)", FilterVertexSource, BicubicBellFilterFragmentSource(samplerType).c_str()), FilterType_CubicBell);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (B-Spline)", CreateShaderProgram("Bicubic (B-Spline)", FilterVertexSource, BicubicBSplineFilterFragmentSource(samplerType).c_str()), FilterType_CubicBSpline);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Bicubic (CatMull-Rom)", CreateShaderProgram("Bicubic (CatMull-Rom)", FilterVertexSource, BicubicCatMullRowFilterFragmentSource(samplerType).c_str()), FilterType_CatMullRom);
-		state->filters[state->filterCount++] = fplStructInit(Filter, "Lanczos3", CreateShaderProgram("Lanczos3", FilterVertexSource, Lanczos3FilterFragmentSource(samplerType).c_str()), FilterType_Lanczos3);
-
-		if (state->params.filter > 0 && state->params.filter <= state->filterCount)
-			state->activeFilter = state->params.filter - 1;
-		else
-			state->activeFilter = 2;
-
-		CheckGL(true);
-
-		glGenBuffers(1, &state->quadVBO);
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * 4, &QuadVertices[0].position.x, GL_STATIC_DRAW);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-		glGenBuffers(1, &state->quadIBO);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort) * 6, &QuadIndices[0], GL_STATIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		CheckGL(0);
+	if (state->features.srgbFrameBuffer) {
+		glEnable(GL_FRAMEBUFFER_SRGB);
 	}
+
+	glGenVertexArrays(1, &state->vertexArray);
+	glBindVertexArray(state->vertexArray);
+
+	state->colorProgram = CreateColorProgram();
+	bool hasAllPrograms = state->colorProgram.programId > 0;
+
+	if (!ResamplePipelineInit(&state->pipeline)) {
+		hasAllPrograms = false;
+	}
+	if (!hasAllPrograms) {
+		fplConsoleFormatError("Failed to create the shader programs, see the log for details\n");
+		return(false);
+	}
+
+	if (!InitUserInterface(state)) {
+		return(false);
+	}
+
+	state->downKernel = state->params.downKernel;
+	state->upKernel = state->params.upKernel;
+	state->background = state->params.background;
+	// --nearest-from starts with auto Nearest on and is also the scale A toggles, otherwise it starts off
+	bool isNearestFromGiven = state->params.nearestFromScale > 0.0f;
+	state->nearestFromScale = state->params.nearestFromScale;
+	state->nearestFromToggleScale = isNearestFromGiven ? state->params.nearestFromScale : DEFAULT_NEAREST_FROM_SCALE;
+	// Before the first picture change, which already applies the view persistence
+	state->startView = ViewMakeState(state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
+	state->view = state->startView;
+	state->persistence = state->params.persistence;
+	state->wheelMode = state->params.wheelMode;
+
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &state->maxTextureSize);
+	flogWrite("Largest texture size: %d", state->maxTextureSize);
+
+	CheckGLError("Init", __FILE__, __LINE__);
 
 	state->viewPictureIndex = -1;
 	state->activeFileIndex = -1;
 	state->doPictureReload = false;
 
 	// Allocate and startup load threads
+	fplMutexInit(&state->pictureInfoMutex);
 	size_t threadCount;
 	if (state->params.threadCount > 0) {
 		threadCount = fplMax(fplMin(state->params.threadCount, MAX_LOAD_THREAD_COUNT), 1);
@@ -1189,15 +2285,18 @@ static bool Init(ViewerState* state) {
 	}
 	InitLoadThreads(state, threadCount);
 
+	// Even count, so both sides of the active picture get the same number of preloaded pictures, plus one slot for the active picture
+	const size_t maxPreloadCapacity = MAX_VIEW_PICTURE_COUNT - 2;
 	size_t preloadCapacity;
-	if (state->params.preloadCount > 0) {
-		preloadCapacity = state->params.preloadCount;
-		if ((state->params.preloadCount % 2) != 0) {
-			state->params.preloadCount++;
-		}
+	if (state->params.renderToFilePath != fpl_null) {
+		preloadCapacity = 0;
+	} else if (state->params.preloadCount > 0) {
+		size_t evenPreloadCount = state->params.preloadCount + (state->params.preloadCount % 2);
+		preloadCapacity = fplMin(evenPreloadCount, maxPreloadCapacity);
 	} else {
-		preloadCapacity = 16;
+		preloadCapacity = DEFAULT_PRELOAD_COUNT;
 	}
+	state->params.preloadCount = preloadCapacity;
 	size_t queueCapacity = RoundToPowerOfTwo((preloadCapacity + 1) * 2);
 	state->viewPicturesCapacity = preloadCapacity + 1;
 	state->loadQueueCapacity = queueCapacity;
@@ -1214,194 +2313,98 @@ static bool Init(ViewerState* state) {
 		}
 	}
 
-	state->viewFlags = PictureViewFlags_KeepAspectRatio;
-
 	UpdateWindowTitle(state);
 
 	return(true);
 }
 
-inline void BuildModelMat(const float centerX, const float centerY, const float scaleX, const float scaleY, Mat4f* modelView) {
-	Mat4f modelScale = M4fScaleV3(V3fInit(scaleX, scaleY, 1.0f));
-	Mat4f modelTranslation = M4fTranslationV3(V3fInit(centerX, centerY, 0.0f));
-	*modelView = M4fMult(modelTranslation, modelScale);
+// All programs use RectangleVertexSource, a triangle strip with 4 corners
+static const GLsizei RectangleVertexCount = 4;
+
+static void SetRectangleUniforms(const GLint locationViewportSize, const GLint locationRect, const ViewSize viewportSize, const ViewRect rect) {
+	glUniform2f(locationViewportSize, (float)viewportSize.width, (float)viewportSize.height);
+	glUniform4f(locationRect, rect.left, rect.top, rect.width, rect.height);
 }
 
-static void DrawLinedRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color, const float lineWidth) {
-	if (state->features.openGLMajor >= 2) {
-		GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-		GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-		GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-
-		glUseProgram(state->colorShaderProgram);
-
-		Mat4f modelMat;
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-
-		// Top
-		BuildModelMat(pos.x, pos.y + ext.y, ext.x, lineWidth * 0.5f, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Left
-		BuildModelMat(pos.x - ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Bottom
-		BuildModelMat(pos.x, pos.y - ext.y, ext.x, lineWidth * 0.5f, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		// Right
-		BuildModelMat(pos.x + ext.x, pos.y, lineWidth * 0.5f, ext.y, &modelMat);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-	} else {
-		glLoadMatrixf(&vpMat->m[0]);
-		glColor4fv(&color.m[0]);
-		glLineWidth(lineWidth);
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(pos.x + ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y - ext.y);
-		glVertex2f(pos.x + ext.x, pos.y - ext.y);
-		glEnd();
-	}
-
-	fplAssert(glGetError() == GL_NO_ERROR);
+static void DrawSolidRectangle(const ViewerState* state, const ViewSize viewportSize, const ViewRect rect, const Vec4f color) {
+	const ColorProgram* program = &state->colorProgram;
+	glUseProgram(program->programId);
+	SetRectangleUniforms(program->locationViewportSize, program->locationRect, viewportSize, rect);
+	glUniform4fv(program->locationColor, 1, &color.m[0]);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, RectangleVertexCount);
+	glUseProgram(0);
 }
 
-static void DrawSolidRectangle(ViewerState* state, const Mat4f* vpMat, const Vec2f pos, const Vec2f ext, const Vec4f color) {
-	if (state->features.openGLMajor >= 2) {
-		Mat4f translationMat = M4fTranslationV3(V3fInit(pos.x, pos.y, 0.0f));
-		Mat4f scaleMat = M4fScaleV3(V3fInit(ext.x, ext.y, 1.0f));
-		Mat4f modelMat = M4fMult(translationMat, scaleMat);
-
-		GLint locVP = glGetUniformLocation(state->colorShaderProgram, "uniVP");
-		GLint locModel = glGetUniformLocation(state->colorShaderProgram, "uniModel");
-		GLint locColor = glGetUniformLocation(state->colorShaderProgram, "uniColor");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-
-		glUseProgram(state->colorShaderProgram);
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat.m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-	} else {
-		glLoadMatrixf(&vpMat->m[0]);
-		glColor4fv(&color.m[0]);
-		glBegin(GL_QUADS);
-		glVertex2f(pos.x + ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y + ext.y);
-		glVertex2f(pos.x - ext.x, pos.y - ext.y);
-		glVertex2f(pos.x + ext.x, pos.y - ext.y);
-		glEnd();
-	}
-
-	fplAssert(glGetError() == GL_NO_ERROR);
+// Outline of the rectangle, the lines are centered on its edges and do not overlap, so a translucent color stays even
+static void DrawLinedRectangle(const ViewerState* state, const ViewSize viewportSize, const ViewRect rect, const Vec4f color, const float lineWidth) {
+	float halfLineWidth = lineWidth * 0.5f;
+	float left = rect.left - halfLineWidth;
+	float top = rect.top - halfLineWidth;
+	float right = rect.left + rect.width - halfLineWidth;
+	float bottom = rect.top + rect.height - halfLineWidth;
+	float lineLength = rect.width + lineWidth;
+	float sideTop = top + lineWidth;
+	float sideLength = rect.height - lineWidth;
+	ViewRect topLine = fplStructInit(ViewRect, left, top, lineLength, lineWidth);
+	ViewRect bottomLine = fplStructInit(ViewRect, left, bottom, lineLength, lineWidth);
+	ViewRect leftLine = fplStructInit(ViewRect, left, sideTop, lineWidth, sideLength);
+	ViewRect rightLine = fplStructInit(ViewRect, right, sideTop, lineWidth, sideLength);
+	DrawSolidRectangle(state, viewportSize, topLine, color);
+	DrawSolidRectangle(state, viewportSize, bottomLine, color);
+	DrawSolidRectangle(state, viewportSize, leftLine, color);
+	DrawSolidRectangle(state, viewportSize, rightLine, color);
 }
 
-static void DrawTexturedRectangle(ViewerState* state, const GLuint textureId, const GLenum textureTarget, const GLuint programId, const Mat4f* vpMat, const Mat4f* modelMat, const Vec4f color, const Vec2f texSize, const Vec2f texScale) {
-	if (state->features.openGLMajor >= 2) {
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(textureTarget, textureId);
-		glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-		GLint locVP = glGetUniformLocation(programId, "uniVP");
-		GLint locModel = glGetUniformLocation(programId, "uniModel");
-		GLint locImage = glGetUniformLocation(programId, "uniImage");
-		GLint locColor = glGetUniformLocation(programId, "uniColor");
-		GLint locTexSize = glGetUniformLocation(programId, "uniTexSize");
-		GLint locTexScale = glGetUniformLocation(programId, "uniTexScale");
-
-		glBindBuffer(GL_ARRAY_BUFFER, state->quadVBO);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(0));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(sizeof(Vec4f)));
-
-		glUseProgram(programId);
-
-		glUniformMatrix4fv(locVP, 1, GL_FALSE, &vpMat->m[0]);
-		glUniformMatrix4fv(locModel, 1, GL_FALSE, &modelMat->m[0]);
-		glUniform4fv(locColor, 1, &color.m[0]);
-		glUniform2fv(locTexSize, 1, &texSize.m[0]);
-		glUniform2fv(locTexScale, 1, &texScale.m[0]);
-		glUniform1i(locImage, 0);
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->quadIBO);
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, BUFFER_OFFSET(0));
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-		glUseProgram(0);
-
-		glDisableVertexAttribArray(1);
-		glDisableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-		glBindTexture(textureTarget, 0);
-	} else {
-		Mat4f mvp = M4fMult(*vpMat, *modelMat);
-
-		glEnable(textureTarget);
-		glBindTexture(textureTarget, textureId);
-
-		if (state->activeFilter == FilterType_Nearest) {
-			glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		} else {
-			glTexParameteri(textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+// Uploads every level that fits the GPU as its own texture, small to large, then frees the CPU copies. False when not even the smallest level could be uploaded.
+static bool UploadPictureLevels(ViewerState* state, ViewPicture* picture) {
+	const double millisecondsPerSecond = 1000.0;
+	ImageData* image = &picture->image;
+	uint32_t largestTextureSize = (uint32_t)state->maxTextureSize;
+	fplTimestamp uploadStart = fplTimestampQuery();
+	size_t uploadedBytes = 0;
+	image->firstUploadedLevel = image->levelCount;
+	for (int32_t level = (int32_t)image->levelCount - 1; level >= 0; --level) {
+		const ImagePyramidLevel* pyramidLevel = &image->pyramid.levels[level];
+		bool fitsTexture = pyramidLevel->width <= largestTextureSize && pyramidLevel->height <= largestTextureSize;
+		if (!fitsTexture) {
+			break;
 		}
-
-		glLoadMatrixf(&mvp.m[0]);
-		glColor4fv(&color.m[0]);
-
-		glBegin(GL_TRIANGLES);
-		for (int i = 0; i < fplArrayCount(QuadIndices); ++i) {
-			GLushort index = QuadIndices[i];
-			glTexCoord2f(QuadVertices[index].texCoord.x * texScale.x, (1.0f - QuadVertices[index].texCoord.y) * texScale.y);
-			glVertex2fv(&QuadVertices[index].position.m[0]);
+		GLuint textureId = AllocateTexture(pyramidLevel->width, pyramidLevel->height, pyramidLevel->stride, pyramidLevel->pixels, state->features.srgbFrameBuffer);
+		if (textureId == 0) {
+			break;
 		}
-		glEnd();
+		ImageLevelTexture* levelTexture = &image->levels[level];
+		levelTexture->textureId = textureId;
+		levelTexture->width = pyramidLevel->width;
+		levelTexture->height = pyramidLevel->height;
+		image->firstUploadedLevel = (uint32_t)level;
+		uploadedBytes += (size_t)pyramidLevel->stride * pyramidLevel->height;
+	}
+	fplTimestamp uploadFinish = fplTimestampQuery();
+	double uploadMilliseconds = fplTimestampElapsed(uploadStart, uploadFinish) * millisecondsPerSecond;
 
-		glBindTexture(textureTarget, 0);
-		glDisable(textureTarget);
+	bool result = image->firstUploadedLevel < image->levelCount;
+	const char* pictureFileName = fplExtractFileName(picture->filePath);
+	const double bytesPerMegabyte = 1024.0 * 1024.0;
+	double uploadedMegabytes = (double)uploadedBytes / bytesPerMegabyte;
+	if (!result) {
+		flogWrite("Upload '%s' failed, no level fits the GPU texture size %d", pictureFileName, state->maxTextureSize);
+	} else if (image->firstUploadedLevel > 0) {
+		const ImageLevelTexture* firstTexture = &image->levels[image->firstUploadedLevel];
+		flogWrite("Uploaded '%s': %u x %u exceeds the GPU texture size %d, levels %u..%u from %u x %u, %.1f MB in %.1f ms", pictureFileName, image->width, image->height, state->maxTextureSize, image->firstUploadedLevel, image->levelCount - 1, firstTexture->width, firstTexture->height, uploadedMegabytes, uploadMilliseconds);
+	} else {
+		flogWrite("Uploaded '%s': %u levels, %.1f MB in %.1f ms", pictureFileName, image->levelCount, uploadedMegabytes, uploadMilliseconds);
 	}
 
-	fplAssert(glGetError() == GL_NO_ERROR);
+	ImagePyramidRelease(&image->pyramid);
+	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, image->loaderEntry, &image->pixels);
+	return(result);
 }
 
-static void UpdateAndRender(ViewerState* state, const float deltaTime) {
+// Discards, uploads and queues pictures. Returns true when a picture changed or is still loading, so the next frame has to be drawn.
+static bool UpdatePictures(ViewerState* state) {
+	bool isChanging = false;
+
 	// Discard textures on the left/right side when the fileIndex is out of bounds
 	if (state->viewPictureIndex != -1) {
 		ViewPicture* currentPic = &state->viewPictures[state->viewPictureIndex];
@@ -1425,56 +2428,38 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 	// Discard or upload textures
 	for (size_t i = 0; i < state->viewPicturesCapacity; ++i) {
 		ViewPicture* loadedPic = &state->viewPictures[i];
-
-		if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_Discard) {
-
-			for (int p = 0; p < fplArrayCount(loadedPic->imageData); ++p) {
-				if (loadedPic->imageData[p].textureId > 0) {
-					fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-					ReleaseTexture(&loadedPic->imageData[p].textureId);
-				}
+		ImageData* image = &loadedPic->image;
+		LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
+		if (loadState == LoadedPictureState_Discard) {
+			if (HasPictureTextures(image)) {
+				fplDebugFormatOut("Release textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleasePictureTextures(image);
 			}
-
+			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
-		} else if (fplAtomicLoadS32(&loadedPic->state) == LoadedPictureState_ToUpload) {
-			for (int p = 0; p < fplArrayCount(loadedPic->imageData); ++p) {
-				if (loadedPic->imageData[p].textureId > 0) {
-					fplDebugFormatOut("Release texture '%s'[%d]\n", loadedPic->filePath, loadedPic->fileIndex);
-					ReleaseTexture(&loadedPic->imageData[p].textureId);
-				}
-				fplAssert(loadedPic->imageData[p].textureId == 0);
+			isChanging = true;
+		} else if (loadState == LoadedPictureState_ToUpload) {
+			if (HasPictureTextures(image)) {
+				fplDebugFormatOut("Release textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+				ReleasePictureTextures(image);
 			}
+			ResampleResultRelease(&loadedPic->thumbnail);
+			fplAssert(image->pixels.pixels != fpl_null);
+			fplAssert(image->width > 0 && image->height > 0 && image->levelCount > 0);
 
-			bool hasError = false;
-			uint32_t mipmapCount = loadedPic->mipmapCount + 1;
-			for (uint32_t mipmapIndex = 0; mipmapIndex < mipmapCount; ++mipmapIndex) {
-				ImageData* currentImageData = &loadedPic->imageData[mipmapIndex];
+			fplDebugFormatOut("Allocate textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
+			bool isUploaded = UploadPictureLevels(state, loadedPic);
+			loadedPic->uploadSerial = ++state->nextUploadSerial;
 
-				fplAssert(currentImageData->data != fpl_null);
-				fplAssert(currentImageData->width > 0 && currentImageData->height > 0);
-				fplAssert(currentImageData->components > 0);
-
-				fplDebugFormatOut("Allocate texture '%s'/%d for level %d\n", loadedPic->filePath, loadedPic->fileIndex, mipmapIndex);
-				currentImageData->textureId = AllocateTexture(currentImageData->width, currentImageData->height, (uint8_t)currentImageData->components, currentImageData->data, false, state->textureTarget, state->features.srgbFrameBuffer);
-				if (currentImageData->textureId == 0) {
-					hasError = true;
-					break;
-				}
-
-				stbi_image_free(currentImageData->data);
-				currentImageData->data = fpl_null;
-			}
-
-			if (!hasError) {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Ready);
-			} else {
-				fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Error);
-			}
-
-			loadedPic->progress = 1.0f;
+			LoadedPictureState uploadedState = isUploaded ? LoadedPictureState_Ready : LoadedPictureState_Error;
+			RaisePictureProgress(loadedPic, ProgressComplete);
+			fplAtomicStoreS32(&loadedPic->state, uploadedState);
+			isChanging = true;
+		} else if (loadState == LoadedPictureState_LoadingData) {
+			// The progress bars move
+			isChanging = true;
 		}
 	}
-	fplAssert(glGetError() == GL_NO_ERROR);
 
 	// Start to queue up pictures to load
 	if (state->doPictureReload) {
@@ -1494,237 +2479,785 @@ static void UpdateAndRender(ViewerState* state, const float deltaTime) {
 			QueueUpPictures(state);
 			state->doPictureReload = false;
 		}
+		isChanging = true;
 	}
 
-	int w, h;
-	fplWindowSize winSize;
-	if (fplGetWindowSize(&winSize)) {
-		w = winSize.width;
-		h = winSize.height;
-	} else {
-		w = 0;
-		h = 0;
+	CheckGLError("UpdatePictures", __FILE__, __LINE__);
+
+	return(isChanging);
+}
+
+static Vec4f GetPreviewBlockColor(const LoadedPictureState loadState) {
+	Vec4f result;
+	switch (loadState) {
+		case LoadedPictureState_LoadingData:
+			result = V4fInit(0.0f, 0.0f, 1.0f, 0.5f);
+			break;
+		case LoadedPictureState_Ready:
+			result = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+			break;
+		case LoadedPictureState_ToUpload:
+			result = V4fInit(0.0f, 0.5f, 0.5f, 0.5f);
+			break;
+		case LoadedPictureState_Discard:
+			result = V4fInit(0.75f, 0.25f, 0.0f, 0.5f);
+			break;
+		case LoadedPictureState_Error:
+			result = V4fInit(1.0f, 0.0f, 0.0f, 0.5f);
+			break;
+		default:
+			fplAssert(!"Invalid loaded picture state!");
+			result = V4fInit(0.0f, 0.0f, 0.0f, 0.0f);
+			break;
+	}
+	return(result);
+}
+
+// Part of a whole pixel rectangle that lies inside the viewport
+static ViewRect IntersectWithViewport(const ViewRect rect, const ViewSize viewportSize) {
+	float left = fplMax(rect.left, 0.0f);
+	float top = fplMax(rect.top, 0.0f);
+	float right = fplMin(rect.left + rect.width, (float)viewportSize.width);
+	float bottom = fplMin(rect.top + rect.height, (float)viewportSize.height);
+	float width = fplMax(right - left, 0.0f);
+	float height = fplMax(bottom - top, 0.0f);
+	ViewRect result = fplStructInit(ViewRect, left, top, width, height);
+	return(result);
+}
+
+// Scales the picture for the transform into the result, but only the part in outputRect (viewport pixels). Returns true when it had to be computed.
+static bool UpdatePictureResult(ViewerState* state, const ViewPicture* picture, const ViewTransform* transform, const ViewRect outputRect, ResampleResult* result, const char* timerLabel) {
+	ResampleRequest request = BuildPictureRequest(state, picture, transform, outputRect);
+	bool isComputed = ResampleUpdate(&state->pipeline, &request, result, timerLabel);
+	return(isComputed);
+}
+
+// One block per view picture slot at the bottom, the active slot is outlined green
+static void RenderPreviewStrip(ViewerState* state, const ViewSize viewportSize) {
+	const float stripWidthFactor = 0.75f;
+	const float blockPadding = 4.0f;
+	const float activeBlockLineWidth = 2.0f;
+	const float blockLineWidth = 1.0f;
+	const float minimumPictureBlockSize = 1.0f;
+	const Vec4f activeBlockLineColor = V4fInit(0.0f, 1.0f, 0.0f, 1.0f);
+	const Vec4f unloadedBlockLineColor = V4fInit(1.0f, 1.0f, 1.0f, 0.2f);
+	const Vec4f loadedBlockLineColor = V4fInit(1.0f, 1.0f, 1.0f, 0.5f);
+
+	float viewportWidth = (float)viewportSize.width;
+	float viewportHeight = (float)viewportSize.height;
+	int blockCount = (int)state->viewPicturesCapacity;
+	float shorterViewportSide = fplMin(viewportWidth, viewportHeight);
+	float stripWidth = shorterViewportSide * stripWidthFactor;
+	float paddingSum = (float)(blockCount - 1) * blockPadding;
+	float blockSize = (stripWidth - paddingSum) / (float)blockCount;
+	float stripLeft = (viewportWidth - stripWidth) * 0.5f;
+	float stripTop = floorf(viewportHeight - blockPadding - blockSize);
+	const float centered = 0.5f;
+	ViewState fitView = ViewMakeState(ViewZoomMode_Fit, 0.0f, centered, centered);
+	ViewSize blockPixelSize = fplStructInit(ViewSize, (uint32_t)blockSize, (uint32_t)blockSize);
+
+	for (int i = 0; i < blockCount; ++i) {
+		ViewPicture* picture = &state->viewPictures[i];
+		float blockLeft = floorf(stripLeft + (float)i * (blockSize + blockPadding));
+		ViewRect blockRect = fplStructInit(ViewRect, blockLeft, stripTop, blockSize, blockSize);
+
+		LoadedPictureState loadState = fplAtomicLoadS32(&picture->state);
+		if (loadState == LoadedPictureState_Ready) {
+			if (blockSize >= minimumPictureBlockSize) {
+				// Fitted into the block with the resample pipeline, computed once per picture and block size
+				ViewSize pictureSize = GetDisplayedPictureSize(picture);
+				ViewTransform transform = ComputeViewTransform(&fitView, pictureSize, blockPixelSize);
+				UpdatePictureResult(state, picture, &transform, transform.imageRect, &picture->thumbnail, fpl_null);
+				ResampleCompositeParameters composite = fplZeroInit;
+				composite.viewportWidth = viewportSize.width;
+				composite.viewportHeight = viewportSize.height;
+				composite.left = blockLeft + transform.imageRect.left;
+				composite.top = stripTop + transform.imageRect.top;
+				composite.background = state->background;
+				composite.checkerOriginX = composite.left;
+				composite.checkerOriginY = composite.top;
+				ResampleComposite(&state->pipeline, &picture->thumbnail, &composite);
+			}
+		} else if (loadState != LoadedPictureState_Unloaded) {
+			// Grows from the center with the progress
+			Vec4f color = GetPreviewBlockColor(loadState);
+			float progressSize = blockSize * picture->progress;
+			float progressOffset = (blockSize - progressSize) * 0.5f;
+			ViewRect progressRect = fplStructInit(ViewRect, blockLeft + progressOffset, stripTop + progressOffset, progressSize, progressSize);
+			DrawSolidRectangle(state, viewportSize, progressRect, color);
+		}
+
+		if (i == state->viewPictureIndex) {
+			DrawLinedRectangle(state, viewportSize, blockRect, activeBlockLineColor, activeBlockLineWidth);
+		} else if (loadState == LoadedPictureState_Unloaded) {
+			DrawLinedRectangle(state, viewportSize, blockRect, unloadedBlockLineColor, blockLineWidth);
+		} else {
+			DrawLinedRectangle(state, viewportSize, blockRect, loadedBlockLineColor, blockLineWidth);
+		}
+	}
+}
+
+static bool IsPathSeparator(const char c) {
+	bool result = c == '/' || c == '\\';
+	return(result);
+}
+
+// The file name of the active picture, with N the path relative to the opened folder
+static const char* GetActivePictureDisplayPath(const ViewerState* state) {
+	const char* filePath = state->pictureFiles[state->activeFileIndex].filePath;
+	if (!state->params.showRelativePath) {
+		const char* fileName = fplExtractFileName(filePath);
+		return(fileName);
+	}
+	size_t rootLength = fplGetStringLength(state->rootPath);
+	bool isInsideRoot = rootLength > 0 && strncmp(filePath, state->rootPath, rootLength) == 0;
+	if (!isInsideRoot) {
+		return(filePath);
+	}
+	bool isFolderBoundary = IsPathSeparator(filePath[rootLength]) || IsPathSeparator(state->rootPath[rootLength - 1]);
+	if (!isFolderBoundary) {
+		return(filePath);
+	}
+	const char* relativePath = filePath + rootLength;
+	while (IsPathSeparator(*relativePath)) {
+		++relativePath;
+	}
+	return(relativePath);
+}
+
+// Shortens a path at the FRONT until it fits, because the file name matters more than its folders: whole folders go first (".../folder/name.jpg"), then characters of the name
+static void TruncatePathFrontToWidth(const fuiContext* ui, const char* path, const float maxWidth, const float pixelHeight, char* buffer, const size_t bufferSize) {
+	const char* ellipsis = "...";
+	size_t pathLength = fplGetStringLength(path);
+	fuiVec2 pathSize = fuiMeasureText(ui, path, pathLength, pixelHeight);
+	if (pathSize.x <= maxWidth) {
+		fplCopyString(path, buffer, bufferSize);
+		return;
 	}
 
-	float screenLeft = -(float)w * 0.5f;
-	float screenRight = (float)w * 0.5f;
-	float screenBottom = -(float)h * 0.5f;
-	float screenTop = (float)h * 0.5f;
-	float screenW = (float)w;
-	float screenH = (float)h;
+	// Whole folders: every cut lands on a separator, which stays in front of the rest
+	size_t nameStart = 0;
+	for (size_t offset = 0; offset < pathLength; ++offset) {
+		if (IsPathSeparator(path[offset])) {
+			nameStart = offset + 1;
+		}
+	}
+	for (size_t offset = 1; offset < nameStart; ++offset) {
+		if (!IsPathSeparator(path[offset])) {
+			continue;
+		}
+		fplStringFormat(buffer, bufferSize, "%s%s", ellipsis, path + offset);
+		fuiVec2 size = fuiMeasureText(ui, buffer, 0, pixelHeight);
+		if (size.x <= maxWidth) {
+			return;
+		}
+	}
 
+	// Then characters of the name, whole UTF-8 sequences only
+	size_t offset = nameStart;
+	while (offset < pathLength) {
+		fuiDecodeUtf8(path, pathLength, &offset);
+		fplStringFormat(buffer, bufferSize, "%s%s", ellipsis, path + offset);
+		fuiVec2 size = fuiMeasureText(ui, buffer, 0, pixelHeight);
+		if (size.x <= maxWidth) {
+			return;
+		}
+	}
+
+	// Not even the ellipsis fits
+	buffer[0] = 0;
+}
+
+// What a loader read about the active file, while it loads or once it is there; false before that, outIsFailed when no loader could read it
+static bool GetActivePictureInfo(ViewerState* state, PictureInfo* outInfo, bool* outIsFailed) {
+	*outIsFailed = false;
+	bool hasActivePicture = state->activeFileIndex > -1 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return(false);
+	}
+	// The slot may still hold another file while the pictures around the active one are loaded again
+	ViewPicture* picture = &state->viewPictures[state->viewPictureIndex];
+	fplMutexLock(&state->pictureInfoMutex);
+	bool isActiveFile = picture->fileIndex == (size_t)state->activeFileIndex;
+	bool result = isActiveFile && picture->hasInfo;
+	if (result) {
+		*outInfo = picture->info;
+	}
+	LoadedPictureState pictureState = fplAtomicLoadS32(&picture->state);
+	*outIsFailed = isActiveFile && pictureState == LoadedPictureState_Error;
+	fplMutexUnlock(&state->pictureInfoMutex);
+	return(result);
+}
+
+static void AppendInfoLinePart(const char* part, char* buffer, const size_t bufferSize) {
+	const char* separator = " \xC2\xB7 ";
+	if (buffer[0] != 0) {
+		fplStringAppend(separator, buffer, bufferSize);
+	}
+	fplStringAppend(part, buffer, bufferSize);
+}
+
+// Right part of the info line, e.g. "4032 × 3024 · 24 bpp · fit 25 %", with the size as displayed (turned by the orientation)
+static void BuildInfoLineDetails(ViewerState* state, char* buffer, const size_t bufferSize) {
+	const char* timesSign = "\xC3\x97";
+	buffer[0] = 0;
+
+	PictureInfo info;
+	bool isFailed = false;
+	if (GetActivePictureInfo(state, &info, &isFailed)) {
+		ViewSize storedSize = fplStructInit(ViewSize, info.width, info.height);
+		ViewSize displayedSize = ComputeViewOrientedSize((uint32_t)info.orientation, storedSize);
+		const char* paletteText = info.isPalette ? " (palette)" : "";
+		char sizeText[FPL_MAX_NAME_LENGTH];
+		char depthText[FPL_MAX_NAME_LENGTH];
+		fplStringFormat(sizeText, fplArrayCount(sizeText), "%u %s %u", displayedSize.width, timesSign, displayedSize.height);
+		fplStringFormat(depthText, fplArrayCount(depthText), "%u bpp%s", info.bitsPerPixel, paletteText);
+		AppendInfoLinePart(sizeText, buffer, bufferSize);
+		AppendInfoLinePart(depthText, buffer, bufferSize);
+	}
+	if (isFailed) {
+		AppendInfoLinePart("cannot be read", buffer, bufferSize);
+	}
+
+	ViewTransform transform;
+	if (GetActivePictureTransform(state, &transform)) {
+		char zoomText[FPL_MAX_NAME_LENGTH];
+		FormatZoomText(state, &transform, zoomText, fplArrayCount(zoomText));
+		AppendInfoLinePart(zoomText, buffer, bufferSize);
+	}
+}
+
+// Height of the info line bar in pixels, 0 while it is hidden
+static float GetInfoLineHeight(const ViewerState* state) {
+	bool isShown = state->params.showInfo && state->isUserInterfaceReady && state->activeFileIndex > -1;
+	if (!isShown) {
+		return(0.0f);
+	}
+	const float bothSides = 2.0f;
+	float lineHeight = fuiGetLineHeight(&state->ui, InfoLineTextPixelHeight);
+	float barHeight = lineHeight + InfoLinePaddingY * bothSides;
+	float result = ceilf(barHeight);
+	return(result);
+}
+
+// Over the full width at the top: the file name on the left, shortened at the front when space runs out, the details right aligned and never shortened
+static void DrawInfoLine(ViewerState* state, const ViewSize viewportSize) {
+	float barHeight = GetInfoLineHeight(state);
+	if (barHeight <= 0.0f) {
+		return;
+	}
+	fuiContext* ui = &state->ui;
+	float viewportWidth = (float)viewportSize.width;
+	fuiRect barRect = fuiRectMake(0.0f, 0.0f, viewportWidth, barHeight);
+	fuiColor barColor = fuiColorRGBA(0.0f, 0.0f, 0.0f, InfoLineBackgroundOpacity);
+	fuiDrawRect(ui, barRect, barColor);
+
+	// Whole pixels, so every line starts on the same row of the atlas texels
+	const float half = 0.5f;
+	float lineHeight = fuiGetLineHeight(ui, InfoLineTextPixelHeight);
+	float textTop = floorf((barHeight - lineHeight) * half);
+
+	char detailsText[FPL_MAX_BUFFER_LENGTH];
+	BuildInfoLineDetails(state, detailsText, fplArrayCount(detailsText));
+	fuiVec2 detailsSize = fuiMeasureText(ui, detailsText, 0, InfoLineTextPixelHeight);
+	float detailsLeft = floorf(viewportWidth - InfoLinePaddingX - detailsSize.x);
+	fuiVec2 detailsPosition = fuiV2(detailsLeft, textTop);
+	fuiColor detailsColor = fuiColorRGB(InfoLineDetailBrightness, InfoLineDetailBrightness, InfoLineDetailBrightness);
+	fuiDrawText(ui, detailsText, 0, detailsPosition, InfoLineTextPixelHeight, detailsColor);
+
+	bool hasDetails = detailsText[0] != 0;
+	float nameRight = hasDetails ? detailsLeft - InfoLineSeparationWidth : viewportWidth - InfoLinePaddingX;
+	float nameMaxWidth = nameRight - InfoLinePaddingX;
+	const char* displayPath = GetActivePictureDisplayPath(state);
+	char nameText[FPL_MAX_PATH_LENGTH];
+	TruncatePathFrontToWidth(ui, displayPath, nameMaxWidth, InfoLineTextPixelHeight, nameText, fplArrayCount(nameText));
+	fuiVec2 namePosition = fuiV2(InfoLinePaddingX, textTop);
+	fuiColor nameColor = fuiColorRGB(InfoLineNameBrightness, InfoLineNameBrightness, InfoLineNameBrightness);
+	fuiDrawText(ui, nameText, 0, namePosition, InfoLineTextPixelHeight, nameColor);
+}
+
+// The interface over the finished picture, drawn by final_ui (plan section 2.8)
+static void RenderUserInterface(ViewerState* state, const ViewSize viewportSize) {
+	fuiFplInputBuild(&state->uiInput);
+	fuiBeginFrame(&state->ui, &state->uiInput.input, fuiPass_Both);
+	DrawInfoLine(state, viewportSize);
+	fuiEndFrame(&state->ui);
+	const fuiDrawData* drawData = fuiGetDrawData(&state->ui);
+	fuiGL3Render(&state->uiBackend, drawData);
+}
+
+// Draws into the bound framebuffer, the resample passes run before and keep that binding
+static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
+	state->viewportSize = viewportSize;
+
+	// A relative scale kept over a picture change becomes the scale itself once the picture is there, so resizing the window keeps it
+	ViewSize activePictureSize;
+	if (GetActivePictureSize(state, &activePictureSize)) {
+		state->view = ComputeViewResolved(&state->view, activePictureSize, viewportSize);
+	}
+
+	// Scale the active picture, only when its placement, filter or content changed
+	ViewTransform transform;
+	bool isActivePictureReady = GetActivePictureTransform(state, &transform);
+	ViewRect visibleRect = fplZeroInit;
+	if (isActivePictureReady) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		ResampleKernel kernel = GetKernelForTransform(state, &transform);
+		const ResampleKernelDefinition* kernelDefinition = ResampleGetKernelDefinition(kernel);
+		const char* pictureFileName = fplExtractFileName(activePicture->filePath);
+		uint32_t sourceLevel = GetPictureSourceLevel(state, activePicture, &transform);
+		const ImageLevelTexture* levelTexture = &activePicture->image.levels[sourceLevel];
+		visibleRect = IntersectWithViewport(transform.imageRect, viewportSize);
+		char timerLabel[FPL_MAX_BUFFER_LENGTH];
+		fplStringFormat(timerLabel, fplArrayCount(timerLabel), "'%s' level %u (%u x %u) -> %u x %u of %u x %u (%s)", pictureFileName, sourceLevel, levelTexture->width, levelTexture->height, (uint32_t)visibleRect.width, (uint32_t)visibleRect.height, (uint32_t)transform.imageRect.width, (uint32_t)transform.imageRect.height, kernelDefinition->name);
+		UpdatePictureResult(state, activePicture, &transform, visibleRect, &state->viewResult, timerLabel);
+	}
+
+	glViewport(0, 0, (GLsizei)viewportSize.width, (GLsizei)viewportSize.height);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glViewport(0, 0, w, h);
 
-	Mat4f view;
-	BuildModelMat(0.0f, 0.0f, 1.0f, 1.0f, &view);
-	Mat4f proj = M4fOrthoLH(screenLeft, screenRight, screenBottom, screenTop, 0.0f, 1.0f);
-	Mat4f viewProjection = M4fMult(proj, view);
-
-	float pictureScale = 1.0f;
-	int pictureFrameSideCount = 0;
-
-	float targetRectWidth = screenW * pictureScale;
-	float targetRectHeight = screenH * pictureScale;
-	float targetRectLeft = screenLeft + (screenW - targetRectWidth) * 0.5f;
-	float targetRectBottom = screenBottom + (screenH - targetRectHeight) * 0.5f;
-	float pictureFrameSpacing = 10;
-
-	if (state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity) {
-		int framePictureStart = fplMin(-pictureFrameSideCount, 0);
-		int framePictureEnd = (framePictureStart + 1 + pictureFrameSideCount);
-		for (int framePictureOffset = framePictureStart; framePictureOffset < (framePictureEnd + 1); ++framePictureOffset) {
-			if ((state->viewPictureIndex + framePictureOffset) < 0 || (state->viewPictureIndex + framePictureOffset) > ((int)state->viewPicturesCapacity - 1)) {
-				continue;
+	float viewportWidth = (float)viewportSize.width;
+	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (isActivePictureReady) {
+		ResampleCompositeParameters composite = fplZeroInit;
+		composite.viewportWidth = viewportSize.width;
+		composite.viewportHeight = viewportSize.height;
+		composite.left = visibleRect.left;
+		composite.top = visibleRect.top;
+		composite.background = state->background;
+		composite.checkerOriginX = transform.imageRect.left;
+		composite.checkerOriginY = transform.imageRect.top;
+		ResampleComposite(&state->pipeline, &state->viewResult, &composite);
+	} else if (hasActivePicture) {
+		ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+		LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
+		if (pictureState == LoadedPictureState_LoadingData) {
+			// Progress bar centered at the top, below the info line
+			const float progressPadding = 4.0f;
+			const float progressWidthFactor = 0.5f;
+			const float progressAspectRatio = 400.0f / 10.0f;
+			const float progressBorderWidth = 2.0f;
+			const Vec4f progressFillColor = V4fInit(0.25f, 0.25f, 0.25f, 1.0f);
+			const Vec4f progressRunningColor = V4fInit(0.5f, 0.5f, 0.5f, 1.0f);
+			const Vec4f progressBorderColor = V4fInit(1.0f, 1.0f, 1.0f, 1.0f);
+			float progressWidth = viewportWidth * progressWidthFactor;
+			float progressHeight = progressWidth / progressAspectRatio;
+			float progressLeft = (viewportWidth - progressWidth) * 0.5f;
+			float infoLineHeight = GetInfoLineHeight(state);
+			float progressTop = infoLineHeight + progressPadding;
+			float progress = activePicture->progress;
+			float filledWidth = progressWidth * progress;
+			ViewRect filledRect = fplStructInit(ViewRect, progressLeft, progressTop, filledWidth, progressHeight);
+			ViewRect borderRect = fplStructInit(ViewRect, progressLeft, progressTop, progressWidth, progressHeight);
+			DrawSolidRectangle(state, viewportSize, filledRect, progressFillColor);
+			if (activePicture->isProgressIndeterminate) {
+				// A segment runs back and forth over the rest of the decode phase, the frame is drawn anyway while the picture loads
+				const double millisecondsPerSecond = 1000.0;
+				fplMilliseconds now = fplMillisecondsQuery();
+				double seconds = (double)now / millisecondsPerSecond;
+				double cycle = fmod(seconds / ProgressIndeterminatePeriodSeconds, 1.0);
+				float triangle = (float)(1.0 - fabs(2.0 * cycle - 1.0));
+				float remaining = fplMax(ProgressDecodeEnd - progress, 0.0f);
+				float segment = remaining * ProgressIndeterminateSegmentShare;
+				float segmentStart = progress + (remaining - segment) * triangle;
+				ViewRect runningRect = fplStructInit(ViewRect, progressLeft + progressWidth * segmentStart, progressTop, progressWidth * segment, progressHeight);
+				DrawSolidRectangle(state, viewportSize, runningRect, progressRunningColor);
 			}
-			ViewPicture* loadedPic = &state->viewPictures[state->viewPictureIndex + framePictureOffset];
-			LoadedPictureState pictureState = fplAtomicLoadS32(&loadedPic->state);
-			if (pictureState == LoadedPictureState_Unloaded) {
-				continue;
+			DrawLinedRectangle(state, viewportSize, borderRect, progressBorderColor, progressBorderWidth);
+		}
+	}
+
+	if (state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount > 0) {
+		RenderPreviewStrip(state, viewportSize);
+	}
+
+	CheckGLError("RenderFrame", __FILE__, __LINE__);
+}
+
+// Writes the GPU time of the last timed resample into the log once it is available
+static void LogResampleTimer(ViewerState* state) {
+	const char* label = fpl_null;
+	double milliseconds = 0.0;
+	uint32_t bandCount = 0;
+	if (ResamplePollTimer(&state->pipeline, &label, &milliseconds, &bandCount)) {
+		flogWrite("Resample %s: %.3f ms in %u band%s", label, milliseconds, bandCount, (bandCount == 1 ? "" : "s"));
+	}
+}
+
+// Reads a view picture again, main thread only: the texture goes at once and the slot is queued like on the first load
+static void ReloadViewPicture(ViewerState* state, const int pictureIndex) {
+	ViewPicture* picture = &state->viewPictures[pictureIndex];
+	ClearPictureData(&state->loaderRegistry, picture, false);
+	ResampleResultRelease(&picture->thumbnail);
+	picture->progress = 0.0f;
+	picture->isProgressIndeterminate = false;
+	fplAtomicStoreS32(&picture->state, LoadedPictureState_Unloaded);
+	LoadQueueValue value;
+	value.fileIndex = (int)picture->fileIndex;
+	value.pictureIndex = pictureIndex;
+	TryQueueEnqueue(&state->loadQueue, value);
+	for (size_t threadIndex = 0; threadIndex < state->loadThreadCount; ++threadIndex) {
+		fplConditionSignal(&state->loadThreads[threadIndex].condition);
+	}
+}
+
+// L: reads the active picture again with the next loader that recognizes the file, so two loaders can be compared on the same file
+static void SwitchActivePictureLoader(ViewerState* state) {
+	bool hasActivePicture = state->activeFileIndex > -1 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return;
+	}
+	ViewPicture* picture = &state->viewPictures[state->viewPictureIndex];
+	LoadedPictureState pictureState = fplAtomicLoadS32(&picture->state);
+	if (pictureState != LoadedPictureState_Ready && pictureState != LoadedPictureState_Error) {
+		return;
+	}
+	PictureFile* file = &state->pictureFiles[picture->fileIndex];
+
+	int32_t candidates[IMAGE_LOADER_MAX_COUNT];
+	uint32_t candidateCount = 0;
+	ImageFileSource fileSource;
+	if (ImageFileSourceOpen(&fileSource, file->filePath, fpl_null, fpl_null, fpl_null)) {
+		const char* extension = fplExtractFileExtension(file->filePath);
+		candidateCount = ImageLoaderRegistrySelectForSource(&state->loaderRegistry, &fileSource.source, extension, true, candidates, IMAGE_LOADER_MAX_COUNT);
+		ImageFileSourceClose(&fileSource);
+	}
+	if (candidateCount < 2) {
+		flogWrite("No other loader recognizes '%s'", file->filePath);
+		return;
+	}
+
+	int32_t currentEntry = pictureState == LoadedPictureState_Ready ? picture->image.loaderEntry : file->forcedLoaderEntry;
+	uint32_t nextIndex = 0;
+	for (uint32_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex) {
+		if (candidates[candidateIndex] == currentEntry) {
+			nextIndex = (candidateIndex + 1) % candidateCount;
+		}
+	}
+	file->forcedLoaderEntry = candidates[nextIndex];
+	const ImageLoader* nextLoader = ImageLoaderRegistryGet(&state->loaderRegistry, file->forcedLoaderEntry);
+	flogWrite("Read '%s' again with loader %s", file->filePath, nextLoader->name);
+	ReloadViewPicture(state, state->viewPictureIndex);
+}
+
+// Steps the kernel of the direction that is in effect, the down kernel while no picture is shown
+static void CycleActiveKernel(ViewerState* state, const int step) {
+	ViewTransform transform;
+	bool isDownscaling = true;
+	if (GetActivePictureTransform(state, &transform)) {
+		isDownscaling = IsDownscaling(&transform);
+	}
+	ResampleKernel* kernel = isDownscaling ? &state->downKernel : &state->upKernel;
+	int kernelCount = (int)ResampleKernel_Count;
+	int next = ((int)*kernel + step + kernelCount) % kernelCount;
+	*kernel = (ResampleKernel)next;
+}
+
+// Zooms so that the picture point under the viewport point stays there, while no picture is shown only the zoom mode and scale change
+static void ZoomActivePicture(ViewerState* state, const ViewZoomMode mode, const float scale, const float pointX, const float pointY) {
+	ViewSize pictureSize;
+	if (GetActivePictureSize(state, &pictureSize)) {
+		state->view = ComputeViewZoomAtPoint(&state->view, pictureSize, state->viewportSize, mode, scale, pointX, pointY);
+	} else {
+		state->view = ViewMakeState(mode, scale, state->view.centerX, state->view.centerY);
+	}
+}
+
+// The keyboard zooms around the viewport center
+static void ZoomActivePictureAtCenter(ViewerState* state, const ViewZoomMode mode, const float scale) {
+	const float half = 0.5f;
+	float centerX = (float)state->viewportSize.width * half;
+	float centerY = (float)state->viewportSize.height * half;
+	ZoomActivePicture(state, mode, scale, centerX, centerY);
+}
+
+// + and -: the next zoom step up or down, the fit scale is a step of its own
+static void StepActivePictureZoom(ViewerState* state, const int direction) {
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	ViewZoomMode mode;
+	float scale = ComputeViewStepScale(transform.scale, transform.fitScale, direction, &mode);
+	ZoomActivePictureAtCenter(state, mode, scale);
+}
+
+static void WheelZoomActivePicture(ViewerState* state, const float wheelDelta, const int32_t mouseX, const int32_t mouseY) {
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	ViewZoomMode mode;
+	float scale = ComputeViewWheelScale(transform.scale, transform.fitScale, wheelDelta, &mode);
+	ZoomActivePicture(state, mode, scale, (float)mouseX, (float)mouseY);
+}
+
+// Moves the picture by viewport pixels
+static void PanActivePicture(ViewerState* state, const float deltaX, const float deltaY) {
+	ViewSize pictureSize;
+	if (GetActivePictureSize(state, &pictureSize)) {
+		state->view = ComputeViewPan(&state->view, pictureSize, state->viewportSize, deltaX, deltaY);
+	}
+}
+
+// Shift + arrow key: the view moves in the direction of the arrow, so the picture moves the other way
+static void PanActivePictureByKey(ViewerState* state, const fplKey key) {
+	float stepX = (float)state->viewportSize.width * KEYBOARD_PAN_VIEWPORT_SHARE;
+	float stepY = (float)state->viewportSize.height * KEYBOARD_PAN_VIEWPORT_SHARE;
+	float deltaX = 0.0f;
+	float deltaY = 0.0f;
+	if (key == fplKey_Left) {
+		deltaX = stepX;
+	} else if (key == fplKey_Right) {
+		deltaX = -stepX;
+	} else if (key == fplKey_Up) {
+		deltaY = stepY;
+	} else if (key == fplKey_Down) {
+		deltaY = -stepY;
+	}
+	PanActivePicture(state, deltaX, deltaY);
+}
+
+// Double click: 100 % at the mouse position, from 100 % back to fit
+static void ToggleActualSizeAtPoint(ViewerState* state, const int32_t mouseX, const int32_t mouseY) {
+	const float actualScale = 1.0f;
+	ViewTransform transform;
+	if (!GetActivePictureTransform(state, &transform)) {
+		return;
+	}
+	bool isActualSize = transform.scale == actualScale;
+	ViewZoomMode mode = isActualSize ? ViewZoomMode_Fit : ViewZoomMode_ActualSize;
+	ZoomActivePicture(state, mode, actualScale, (float)mouseX, (float)mouseY);
+}
+
+// Left or middle button drags the picture, a left double click toggles 100 %, the wheel zooms around the mouse or pages (plan section 2.7)
+static void HandleMouseEvent(ViewerState* state, const fplMouseEvent* mouse) {
+	PointerState* pointer = &state->pointer;
+	bool isDragButton = mouse->mouseButton == fplMouseButtonType_Left || mouse->mouseButton == fplMouseButtonType_Middle;
+	if (mouse->type == fplMouseEventType_Button && isDragButton) {
+		if (mouse->buttonState == fplButtonState_Press) {
+			pointer->isDragging = true;
+			pointer->dragLastX = mouse->mouseX;
+			pointer->dragLastY = mouse->mouseY;
+			if (mouse->mouseButton == fplMouseButtonType_Left) {
+				fplMilliseconds now = fplMillisecondsQuery();
+				int32_t distanceX = abs(mouse->mouseX - pointer->lastClickX);
+				int32_t distanceY = abs(mouse->mouseY - pointer->lastClickY);
+				bool isInTime = pointer->lastClickTime > 0 && (now - pointer->lastClickTime) <= DOUBLE_CLICK_MILLISECONDS;
+				bool isInPlace = distanceX <= DOUBLE_CLICK_DISTANCE && distanceY <= DOUBLE_CLICK_DISTANCE;
+				if (isInTime && isInPlace) {
+					ToggleActualSizeAtPoint(state, mouse->mouseX, mouse->mouseY);
+					// A third click starts a new double click
+					pointer->lastClickTime = 0;
+				} else {
+					pointer->lastClickTime = now;
+					pointer->lastClickX = mouse->mouseX;
+					pointer->lastClickY = mouse->mouseY;
+				}
 			}
+		} else if (mouse->buttonState == fplButtonState_Release) {
+			pointer->isDragging = false;
+		}
+	} else if (mouse->type == fplMouseEventType_Move && pointer->isDragging) {
+		int32_t deltaX = mouse->mouseX - pointer->dragLastX;
+		int32_t deltaY = mouse->mouseY - pointer->dragLastY;
+		pointer->dragLastX = mouse->mouseX;
+		pointer->dragLastY = mouse->mouseY;
+		PanActivePicture(state, (float)deltaX, (float)deltaY);
+	} else if (mouse->type == fplMouseEventType_Wheel) {
+		// Mouse events carry no modifiers
+		fplKeyboardState keyboardState = fplZeroInit;
+		fplPollKeyboardState(&keyboardState);
+		int ctrlFlags = (int)fplKeyboardModifierFlags_LCtrl | (int)fplKeyboardModifierFlags_RCtrl;
+		bool isCtrlDown = ((int)keyboardState.modifiers & ctrlFlags) != 0;
+		if (state->wheelMode == WheelMode_Navigate && !isCtrlDown) {
+			// Up pages back, down pages forward, one picture per whole notch
+			const float notchesPerPicture = 1.0f;
+			pointer->navigateWheelNotches += mouse->wheelDelta;
+			while (pointer->navigateWheelNotches >= notchesPerPicture) {
+				pointer->navigateWheelNotches -= notchesPerPicture;
+				if (state->activeFileIndex > 0) {
+					ChangeViewPicture(state, -1, false);
+				}
+			}
+			while (pointer->navigateWheelNotches <= -notchesPerPicture) {
+				pointer->navigateWheelNotches += notchesPerPicture;
+				if (state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
+					ChangeViewPicture(state, +1, false);
+				}
+			}
+		} else {
+			WheelZoomActivePicture(state, mouse->wheelDelta, mouse->mouseX, mouse->mouseY);
+		}
+	}
+}
 
-			float targetOpacity = 1.0f;
-			float targetRectX = targetRectLeft + (targetRectWidth * (float)framePictureOffset) + (pictureFrameSpacing * (float)framePictureOffset);
-			float targetRectY = targetRectBottom;
+typedef struct OffscreenTarget {
+	GLuint frameBufferId;
+	GLuint colorTextureId;
+	uint32_t width;
+	uint32_t height;
+} OffscreenTarget;
 
+static void DestroyOffscreenTarget(OffscreenTarget* target) {
+	if (target->frameBufferId > 0) {
+		glDeleteFramebuffers(1, &target->frameBufferId);
+	}
+	if (target->colorTextureId > 0) {
+		glDeleteTextures(1, &target->colorTextureId);
+	}
+	fplClearStruct(target);
+}
+
+// Color attachment is sRGB when the default framebuffer is, so GL_FRAMEBUFFER_SRGB encodes exactly as on screen
+static bool CreateOffscreenTarget(OffscreenTarget* target, const uint32_t width, const uint32_t height, const bool supportsSRGB) {
+	fplClearStruct(target);
+	target->width = width;
+	target->height = height;
+
+	GLenum internalFormat = supportsSRGB ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+	glGenTextures(1, &target->colorTextureId);
+	glBindTexture(GL_TEXTURE_2D, target->colorTextureId);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, fpl_null);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glGenFramebuffers(1, &target->frameBufferId);
+	glBindFramebuffer(GL_FRAMEBUFFER, target->frameBufferId);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target->colorTextureId, 0);
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	GLenum error = glGetError();
+	if (status != GL_FRAMEBUFFER_COMPLETE || error != GL_NO_ERROR) {
+		flogWrite("Failed to create offscreen framebuffer %u x %u, status 0x%x, error 0x%x", width, height, status, error);
+		DestroyOffscreenTarget(target);
+		return(false);
+	}
+	return(true);
+}
+
+// Writes bottom-up RGBA rows (as glReadPixels returns them) as a top-down PAM with RGB tuples, alpha is dropped because the screen shows no alpha either
+static bool WritePortableArbitraryMapRGB(const char* filePath, const uint8_t* bottomUpPixelsRGBA, const uint32_t width, const uint32_t height) {
+	const uint32_t sourceComponents = 4;
+	const uint32_t targetComponents = 3;
+	fplFileHandle file;
+	if (!fplFileCreateBinary(filePath, &file)) {
+		return(false);
+	}
+	char header[256];
+	size_t headerLength = fplStringFormat(header, fplArrayCount(header), "P7\nWIDTH %u\nHEIGHT %u\nDEPTH %u\nMAXVAL 255\nTUPLTYPE RGB\nENDHDR\n", width, height, targetComponents);
+	uint32_t writtenHeaderBytes = fplFileWriteBlock32(&file, header, (uint32_t)headerLength);
+	bool result = writtenHeaderBytes == (uint32_t)headerLength;
+
+	uint32_t targetRowSize = width * targetComponents;
+	uint8_t* targetRow = (uint8_t*)malloc(targetRowSize);
+	for (uint32_t row = 0; result && row < height; ++row) {
+		uint32_t sourceRow = height - 1 - row;
+		const uint8_t* source = bottomUpPixelsRGBA + (size_t)sourceRow * width * sourceComponents;
+		for (uint32_t x = 0; x < width; ++x) {
+			targetRow[x * targetComponents + 0] = source[x * sourceComponents + 0];
+			targetRow[x * targetComponents + 1] = source[x * sourceComponents + 1];
+			targetRow[x * targetComponents + 2] = source[x * sourceComponents + 2];
+		}
+		uint32_t writtenRowBytes = fplFileWriteBlock32(&file, targetRow, targetRowSize);
+		result = writtenRowBytes == targetRowSize;
+	}
+	free(targetRow);
+	fplFileClose(&file);
+	return(result);
+}
+
+static RenderToFileResult ReadOffscreenTargetToFile(const OffscreenTarget* target, const char* filePath) {
+	const size_t bytesPerPixel = 4;
+	size_t pixelsSize = (size_t)target->width * target->height * bytesPerPixel;
+	uint8_t* pixels = (uint8_t*)malloc(pixelsSize);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, target->frameBufferId);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glReadPixels(0, 0, (GLsizei)target->width, (GLsizei)target->height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	GLenum error = glGetError();
+	RenderToFileResult result;
+	if (error != GL_NO_ERROR) {
+		flogWrite("Failed to read offscreen framebuffer, error 0x%x", error);
+		result = RenderToFileResult_GraphicsFailed;
+	} else if (!WritePortableArbitraryMapRGB(filePath, pixels, target->width, target->height)) {
+		flogWrite("Failed to write '%s'", filePath);
+		result = RenderToFileResult_WriteFailed;
+	} else {
+		result = RenderToFileResult_Success;
+	}
+	free(pixels);
+	return(result);
+}
+
+// Renders the active picture into an offscreen framebuffer of --window size, as soon as it is loaded, and writes it to --render-to
+static RenderToFileResult RenderPictureToFile(ViewerState* state) {
+	const char* filePath = state->params.renderToFilePath;
+	const uint32_t width = state->params.windowWidth;
+	const uint32_t height = state->params.windowHeight;
+	const ViewSize targetSize = fplStructInit(ViewSize, width, height);
+	if (state->pictureFileCount == 0) {
+		fplConsoleFormatError("No picture found in '%s'\n", state->params.path);
+		return(RenderToFileResult_NoPicture);
+	}
+
+	OffscreenTarget target;
+	if (!CreateOffscreenTarget(&target, width, height, state->features.srgbFrameBuffer)) {
+		fplConsoleFormatError("Failed to create offscreen framebuffer %u x %u\n", width, height);
+		return(RenderToFileResult_GraphicsFailed);
+	}
+
+	RenderToFileResult result = RenderToFileResult_Canceled;
+	fplMilliseconds startTime = fplMillisecondsQuery();
+	while (fplWindowUpdate()) {
+		fplEvent ev;
+		while (fplPollEvent(&ev)) {
+		}
+
+		UpdatePictures(state);
+		glBindFramebuffer(GL_FRAMEBUFFER, target.frameBufferId);
+		RenderFrame(state, targetSize);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// The frame that uploads the picture already draws it
+		if (!state->doPictureReload && state->viewPictureIndex > -1) {
+			ViewPicture* activePicture = &state->viewPictures[state->viewPictureIndex];
+			LoadedPictureState pictureState = fplAtomicLoadS32(&activePicture->state);
 			if (pictureState == LoadedPictureState_Ready) {
-				ImageData imageData = loadedPic->imageData[0];
-				float texW = (float)imageData.width;
-				float texH = (float)imageData.height;
-				float viewWidth;
-				float viewHeight;
-				float viewX;
-				float viewY;
-				if ((state->viewFlags & PictureViewFlags_KeepAspectRatio) == PictureViewFlags_KeepAspectRatio) {
-					float aspect = texH > 0 ? texW / texH : 1;
-					fplAssert(aspect != 0);
-					float targetHeight = targetRectWidth / aspect;
-					if ((texW > targetRectWidth || texH > targetRectHeight) || ((state->viewFlags & PictureViewFlags_Upscale) == PictureViewFlags_Upscale)) {
-						// Upscaling
-						if (targetHeight > targetRectHeight) {
-							viewHeight = targetRectHeight;
-							viewWidth = targetRectHeight * aspect;
-							viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
-							viewY = targetRectY;
-						} else {
-							viewWidth = targetRectWidth;
-							viewHeight = targetRectWidth / aspect;
-							viewX = targetRectX;
-							viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
-						}
-					} else {
-						// Downscaling
-						viewWidth = texW;
-						viewHeight = texH;
-						viewX = targetRectX + (targetRectWidth - viewWidth) * 0.5f;
-						viewY = targetRectY + (targetRectHeight - viewHeight) * 0.5f;
-					}
-				} else {
-					viewWidth = targetRectWidth;
-					viewHeight = targetRectHeight;
-					viewX = targetRectX;
-					viewY = targetRectY;
-				}
-				float viewLeft = viewX;
-				float viewRight = viewX + viewWidth;
-				float viewBottom = viewY;
-				float viewTop = viewY + viewHeight;
-
-				float compareFactor = 2.0f;
-				uint32_t compareW = (uint32_t)(viewWidth * compareFactor + 0.5f);
-				uint32_t compareH = (uint32_t)(viewHeight * compareFactor + 0.5f);
-
-				uint32_t mipmapCount = loadedPic->mipmapCount + 1;
-				uint32_t lastIndex = mipmapCount - 1;
-				ImageData* actualImageData = &loadedPic->imageData[lastIndex];
-				for (uint32_t mipmapIndex = lastIndex; mipmapIndex > 0; --mipmapIndex) {
-					ImageData *testImageData = &loadedPic->imageData[mipmapIndex];
-					if (compareW > testImageData->width&& compareH > testImageData->height) {
-						actualImageData = testImageData;
-						break;
-					}
-				}
-				
-				texW = (float)actualImageData->width;
-				texH = (float)actualImageData->height;
-
-				Mat4f modelMat;
-				BuildModelMat(viewLeft + viewWidth * 0.5f, viewBottom + viewHeight * 0.5f, viewWidth * 0.5f, viewHeight * 0.5f, &modelMat);
-
-				Vec4f texColor = V4f(1, 1, 1, targetOpacity);
-				Vec2f texSize = V2f(texW, texH);
-				Vec2f texScale = state->features.rectangleTextures ? texSize : V2f(1.0f, 1.0f);
-
-				GLuint filterProgramId = state->filters[state->activeFilter].programId;
-				DrawTexturedRectangle(state, actualImageData->textureId, state->textureTarget, filterProgramId, &viewProjection, &modelMat, texColor, texSize, texScale);
-			} else if (pictureState == LoadedPictureState_LoadingData) {
-				float progressPadding = 4;
-				float progressAspect = 400.0f / 10.0f;
-				float progressW = targetRectWidth * 0.5f;
-				float progressH = progressW / progressAspect;
-				float progressLeft = targetRectX + (targetRectWidth - progressW) * 0.5f;
-				float progressBottom = targetRectY + targetRectHeight - progressH - progressPadding;
-				float percentage = loadedPic->progress;
-				Vec2f progressExt = V2f(progressW * 0.5f, progressH * 0.5f);
-
-				Vec4f progressColor = V4f(0.25f, 0.25f, 0.25f, targetOpacity);
-				Vec4f borderColor = V4f(1, 1, 1, targetOpacity);
-				Vec2f progressCenter = V2f(progressLeft + progressExt.x, progressBottom + progressExt.y);
-				float borderLineWidth = 2.0f;
-
-				Vec2f actualProgressCenter = V2f(progressLeft + progressExt.x * percentage, progressBottom + progressExt.y);
-				Vec2f actualProgressExt = V2f(progressExt.x * percentage, progressExt.y);
-
-				DrawSolidRectangle(state, &viewProjection, actualProgressCenter, actualProgressExt, progressColor);
-				DrawLinedRectangle(state, &viewProjection, progressCenter, progressExt, borderColor, borderLineWidth);
-			}
-			if (state->params.border) {
-				Vec4f frameBorderColor = V4f(1.0f, 1.0f, 1.0f, targetOpacity);
-				float frameBorderWidth = 1.0f;
-				Vec2f targetRectExt = V2f(targetRectWidth * 0.5f + frameBorderWidth * 2.0f, targetRectHeight * 0.5f + frameBorderWidth * 2.0f);
-				DrawLinedRectangle(state, &viewProjection, V2f(targetRectX + targetRectWidth * 0.5f, targetRectY + targetRectHeight * 0.5f), targetRectExt, frameBorderColor, frameBorderWidth);
+				result = ReadOffscreenTargetToFile(&target, filePath);
+				glFinish();
+				LogResampleTimer(state);
+				break;
+			} else if (pictureState == LoadedPictureState_Error) {
+				fplConsoleFormatError("Failed to load picture '%s'\n", activePicture->filePath);
+				result = RenderToFileResult_LoadFailed;
+				break;
 			}
 		}
-	}
 
-	if (state->params.preview && state->viewPicturesCapacity > 1 && state->pictureFileCount) {
-		int blockCount = (int)state->viewPicturesCapacity;
-		float maxBlockW = ((fplMin(screenW, screenH)) * 0.75f);
-		float blockPadding = 4;
-		float blockW = ((maxBlockW - ((float)(blockCount - 1) * blockPadding)) / (float)blockCount);
-		float blockH = blockW;
-		float blocksLeft = -maxBlockW * 0.5f;
-		float blocksBottom = (-screenH * 0.5f + blockPadding);
-		Vec2f blockExt = V2f(blockW * 0.5f, blockH * 0.5f);
-		for (int i = 0; i < blockCount; ++i) {
-			ViewPicture* loadedPic = &state->viewPictures[i];
-			float bx = blocksLeft + (float)i * blockW + ((float)i * blockPadding);
-			float by = blocksBottom;
-			Vec2f blockPos = V2f(bx + blockW * 0.5f, by + blockH * 0.5f);
-
-			LoadedPictureState loadState = fplAtomicLoadS32(&loadedPic->state);
-			if (loadState != LoadedPictureState_Unloaded) {
-				Vec4f color = V4f(0, 0, 0, 0);
-				switch (loadState) {
-					case LoadedPictureState_LoadingData:
-						color = V4f(0, 0, 1, 0.5f);
-						break;
-					case LoadedPictureState_Ready:
-						color = V4f(1, 1, 1, 1);
-						break;
-					case LoadedPictureState_ToUpload:
-						color = V4f(0, 0.5f, 0.5f, 0.5f);
-						break;
-					case LoadedPictureState_Discard:
-						color = V4f(0.75f, 0.25f, 0.0f, 0.5f);
-						break;
-					case LoadedPictureState_Error:
-						color = V4f(1.0, 0.0f, 0.0f, 0.5f);
-						break;
-					default:
-						fplAssert(!"Invalid loaded picture state!");
-						break;
-				}
-
-				if (loadState == LoadedPictureState_Ready) {
-					ImageData imageData = loadedPic->imageData[0];
-					float texW = (float)imageData.width;
-					float texH = (float)imageData.height;
-					Vec2f texSize = V2f(texW, texH);
-					Vec2f texScale = state->features.rectangleTextures ? texSize : V2f(1.0f, 1.0f);
-					GLuint filterProgramId = state->filters[state->activeFilter].programId;
-					Mat4f blockModelMat;
-					BuildModelMat(blockPos.x, blockPos.y, blockExt.x, blockExt.y, &blockModelMat);
-					DrawTexturedRectangle(state, imageData.textureId, state->textureTarget, filterProgramId, &viewProjection, &blockModelMat, color, texSize, texScale);
-				} else {
-					Vec2f actualBlockStart = V2f(blockPos.x, blockPos.y);
-					Vec2f actualBlockExt = V2f(blockExt.x * loadedPic->progress, blockExt.y * loadedPic->progress);
-					DrawSolidRectangle(state, &viewProjection, actualBlockStart, actualBlockExt, color);
-				}
-			}
-
-			Vec4f blockColor;
-			float blockLineWidth;
-			if (i == state->viewPictureIndex) {
-				blockLineWidth = 2;
-				blockColor = V4f(0, 1, 0, 1);
-			} else {
-				blockLineWidth = 1;
-				if (loadedPic->state == LoadedPictureState_Unloaded) {
-					blockColor = V4f(1, 1, 1, 0.2f);
-				} else {
-					blockColor = V4f(1, 1, 1, 0.5f);
-				}
-			}
-			DrawLinedRectangle(state, &viewProjection, blockPos, blockExt, blockColor, blockLineWidth);
+		fplMilliseconds elapsed = fplMillisecondsQuery() - startTime;
+		if (elapsed > RENDER_TO_FILE_TIMEOUT_MILLISECONDS) {
+			fplConsoleFormatError("Timeout while waiting for picture '%s'\n", state->params.path);
+			result = RenderToFileResult_Timeout;
+			break;
 		}
+		fplThreadSleep(RENDER_TO_FILE_POLL_MILLISECONDS);
 	}
 
-	fplAssert(glGetError() == GL_NO_ERROR);
+	DestroyOffscreenTarget(&target);
+
+	if (result == RenderToFileResult_Success) {
+		flogWrite("Rendered '%s' into '%s' (%u x %u)", state->params.path, filePath, width, height);
+	} else if (result == RenderToFileResult_GraphicsFailed || result == RenderToFileResult_WriteFailed) {
+		fplConsoleFormatError("Failed to write '%s'\n", filePath);
+	}
+	return(result);
 }
 
 static void LogCallbackFunc(const char* funcName, const int lineNumber, fplLogLevel level, const char* message) {
-	flogWrite(message);
+	flogWrite("%s", message);
 }
 
 int main(int argc, char** argv) {
@@ -1750,33 +3283,140 @@ int main(int argc, char** argv) {
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
 	ViewerParameters defaultParams = fplZeroInit;
 	defaultParams.preview = true;
+	defaultParams.showInfo = true;
+	defaultParams.recursive = true;
+	defaultParams.downKernel = DEFAULT_DOWN_KERNEL;
+	defaultParams.upKernel = DEFAULT_UP_KERNEL;
+	defaultParams.background = DEFAULT_BACKGROUND;
+	defaultParams.centerX = DEFAULT_VIEW_CENTER;
+	defaultParams.centerY = DEFAULT_VIEW_CENTER;
+	defaultParams.simdLevel = SimdLevel_Best;
+	defaultParams.levelKernel = DEFAULT_LEVEL_KERNEL;
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
 	state->params = defaultParams;
 	if (argc >= 2) {
-		ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1);
+		if (!ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1)) {
+			fplMemoryFree(state);
+			return(RenderToFileResult_InvalidParameters);
+		}
+	}
+
+	// The lookup tables of the level chain, before any load thread runs
+	ImagePyramidInitialize();
+
+	if (state->params.runSelfTest) {
+		// Without video, the folder of --selftest=<folder> needs the file functions only
+		bool isPlatformReady = fplPlatformInit(fplInitFlags_None, fpl_null);
+		int selfTestResult = RunSelfTest(state->params.selfTestFolder);
+		if (isPlatformReady) {
+			fplPlatformRelease();
+		}
+		fplMemoryFree(state);
+		return(selfTestResult);
+	}
+
+	if (!RegisterLoaders(&state->loaderRegistry) || !ApplyLoaderParameters(&state->loaderRegistry, &state->params)) {
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(RenderToFileResult_InvalidParameters);
+	}
+
+	// SIMD level of the level chain from the CPU capabilities FPL reports, an unavailable --simd= level falls back to the next lower one
+	fplCPUCapabilities capabilities = fplZeroInit;
+	fplCPUGetCapabilities(&capabilities);
+	state->pyramidFunctions = ImagePyramidSelectRowFunctions(&capabilities, state->params.simdLevel);
+	bool isSimdLevelRequested = state->params.simdLevel != SimdLevel_Best;
+	if (isSimdLevelRequested && state->pyramidFunctions->level != state->params.simdLevel) {
+		const char* requestedName = ImagePyramidGetSimdLevelName(state->params.simdLevel);
+		fplConsoleFormatOut("SIMD level %s is not available, using %s\n", requestedName, state->pyramidFunctions->name);
+		flogWrite("SIMD level %s is not available, using %s", requestedName, state->pyramidFunctions->name);
+	}
+	const ImagePyramidKernelDefinition* levelKernelDefinition = ImagePyramidGetKernelDefinition(state->params.levelKernel);
+	flogWrite("Level chain: %s, kernel %s, source level %s", state->pyramidFunctions->name, levelKernelDefinition->name, (state->params.isFullSourceLevelForced ? "always 0" : "auto"));
+
+	// Modes without window
+	if (state->params.listLoaders) {
+		PrintLoaders(&state->loaderRegistry);
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(0);
+	}
+	if (state->params.decodeAllPath != fpl_null) {
+		int decodeResult = 1;
+		if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			decodeResult = DecodeAllPictures(state, state->params.decodeAllPath);
+			ClearPictureFiles(state);
+			fplPlatformRelease();
+		}
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(decodeResult);
+	}
+	if (state->params.benchLevelsPath != fpl_null || state->params.writePyramidFolder != fpl_null) {
+		int levelsResult = 1;
+		if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			if (state->params.benchLevelsPath != fpl_null) {
+				levelsResult = BenchmarkLevels(state, state->params.benchLevelsPath);
+			} else {
+				levelsResult = WritePyramidLevels(state, state->params.path, state->params.writePyramidFolder);
+			}
+			fplPlatformRelease();
+		}
+		ImageLoaderRegistryRelease(&state->loaderRegistry);
+		fplMemoryFree(state);
+		return(levelsResult);
+	}
+
+	const bool isRenderToFile = state->params.renderToFilePath != fpl_null;
+	if (isRenderToFile) {
+		// Nothing but the picture itself goes into the file
+		state->params.preview = false;
+		state->params.showInfo = false;
 	}
 
 	flogWrite("Initial Parameters:");
 	flogWrite("Path: %s", state->params.path);
-	flogWrite("Preload count: %lu", state->params.preloadCount);
-	flogWrite("Thread count: %lu", state->params.threadCount);
+	flogWrite("Preload count: %zu", state->params.preloadCount);
+	flogWrite("Thread count: %zu", state->params.threadCount);
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
+	flogWrite("Info line: %s", (state->params.showInfo ? (state->params.showRelativePath ? "relative path" : "file name") : "off"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
+	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
+	flogWrite("Zoom mode: %d, scale: %f, center: %.3f, %.3f", (int)state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
+	flogWrite("View on picture change: %s, wheel: %s", ViewPersistenceKeys[state->params.persistence], WheelModeKeys[state->params.wheelMode]);
+	const ResampleKernelDefinition* downKernelDefinition = ResampleGetKernelDefinition(state->params.downKernel);
+	const ResampleKernelDefinition* upKernelDefinition = ResampleGetKernelDefinition(state->params.upKernel);
+	const ResampleBackgroundDefinition* backgroundDefinition = ResampleGetBackgroundDefinition(state->params.background);
+	flogWrite("Filters: down %s, up %s, background %s", downKernelDefinition->name, upKernelDefinition->name, backgroundDefinition->name);
+	if (state->params.nearestFromScale > 0.0f) {
+		const float percentPerScale = 100.0f;
+		float nearestFromPercent = state->params.nearestFromScale * percentPerScale;
+		flogWrite("Auto Nearest from %.0f %%", nearestFromPercent);
+	}
+	if (isRenderToFile) {
+		flogWrite("Render to: %s", state->params.renderToFilePath);
+	}
 
 	int returnCode = 0;
 	fplSettings settings;
 	fplSetDefaultSettings(&settings);
-	settings.video.isVSync = true;
+	settings.video.isVSync = !isRenderToFile;
 	settings.video.backend = fplVideoBackendType_OpenGL;
-#if FORCE_LEGACY_OPENGL
-	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
-#else
+	// No multisampling: it only smooths geometry edges, a full screen picture has none and the filters compute every pixel themselves
 	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Core;
-	settings.video.graphics.opengl.majorVersion = 3;
-	settings.video.graphics.opengl.minorVersion = 3;
-	settings.video.graphics.opengl.multiSamplingCount = 16;
-#endif
+	settings.video.graphics.opengl.majorVersion = REQUIRED_OPENGL_MAJOR_VERSION;
+	settings.video.graphics.opengl.minorVersion = REQUIRED_OPENGL_MINOR_VERSION;
+	settings.video.graphics.opengl.multiSamplingCount = 0;
 	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
+	if (isRenderToFile) {
+		// Hidden: the window manager never sees it, so a render cannot run into a reused X window id of the previous one
+		settings.window.windowSize.width = RENDER_TO_FILE_WINDOW_SIZE;
+		settings.window.windowSize.height = RENDER_TO_FILE_WINDOW_SIZE;
+		settings.window.initialVisibility = fplWindowVisibilityState_Hide;
+	} else if (state->params.windowWidth > 0) {
+		settings.window.windowSize.width = state->params.windowWidth;
+		settings.window.windowSize.height = state->params.windowHeight;
+	}
 
 	// Load icons (Memory are released on shutdown)
 	int iconW, iconH, iconC;
@@ -1796,16 +3436,42 @@ int main(int argc, char** argv) {
 		settings.window.icons[1].type = fplImageType_RGBA;
 	}
 
-	if (fplPlatformInit(fplInitFlags_Video, &settings)) {
-		if (fglLoadOpenGL(true) && Init(state)) {
+	bool isPlatformInitialized = fplPlatformInit(fplInitFlags_Video, &settings);
+	if (!isPlatformInitialized) {
+		const char* platformError = fplGetLastError();
+		fplConsoleFormatError("Failed to create a window with an OpenGL %d.%d core profile context: %s\n", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, platformError);
+		flogWrite("Failed to create a window with an OpenGL %d.%d core profile context: %s", REQUIRED_OPENGL_MAJOR_VERSION, REQUIRED_OPENGL_MINOR_VERSION, platformError);
+		returnCode = -1;
+	}
+	bool isOpenGLLoaded = isPlatformInitialized && fglLoadOpenGL(true);
+	if (isPlatformInitialized && !isOpenGLLoaded) {
+		fplConsoleFormatError("Failed to load the OpenGL functions\n");
+		flogWrite("Failed to load the OpenGL functions");
+		returnCode = -1;
+	}
+	if (isOpenGLLoaded) {
+		if (Init(state)) {
 			fplKey activeKey = fplKey_None;
 			uint64_t activeKeyStart = 0;
 			const int ActiveKeyThreshold = 150;
-			const float deltaTime = 1.0f / 60.0f;
-			while (fplWindowUpdate()) {
-				// Events
+			// The arrow key that is held moves the view instead of paging, decided by shift when it went down
+			bool isActiveKeyPanning = false;
+			if (isRenderToFile) {
+				returnCode = RenderPictureToFile(state);
+			}
+			// The first frame is always drawn
+			bool hasDrawnFrame = false;
+			ViewSize lastViewportSize = fplZeroInit;
+			while (!isRenderToFile && fplWindowUpdate()) {
+				// Events: the interface bridge sees every event first, the viewer gets mouse and keyboard only while the interface of the last frame does not want them
+				bool hasEvents = false;
+				bool isMouseForInterface = fuiWantsMouse(&state->ui);
+				bool isKeyboardForInterface = fuiWantsKeyboard(&state->ui);
+				fuiFplInputBeginEvents(&state->uiInput);
 				fplEvent ev;
 				while (fplPollEvent(&ev)) {
+					hasEvents = true;
+					fuiFplInputHandleEvent(&state->uiInput, &ev);
 					switch (ev.type) {
 						case fplEventType_Window:
 						{
@@ -1814,7 +3480,9 @@ int main(int argc, char** argv) {
 								for (size_t fileIndex = 0; fileIndex < ev.window.dropFiles.fileCount; ++fileIndex) {
 									const char* filePath = ev.window.dropFiles.files[fileIndex];
 									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
-									if (LoadPicturesPath(state, filePath, false, &startPicIndex)) {
+									if (LoadPicturesPath(state, filePath, true, &startPicIndex)) {
+										// A new folder starts with the start view
+										state->view = state->startView;
 										state->activeFileIndex = (int)startPicIndex;
 										ChangeViewPicture(state, 0, true);
 									}
@@ -1824,17 +3492,26 @@ int main(int argc, char** argv) {
 
 						case fplEventType_Keyboard:
 						{
-							if (ev.keyboard.type == fplKeyboardEventType_Button) {
+							if (ev.keyboard.type == fplKeyboardEventType_Button && !isKeyboardForInterface) {
+								int shiftFlags = (int)fplKeyboardModifierFlags_LShift | (int)fplKeyboardModifierFlags_RShift;
+								bool isShiftDown = ((int)ev.keyboard.modifiers & shiftFlags) != 0;
+								fplKey key = ev.keyboard.mappedKey;
+								bool isArrowKey = key == fplKey_Left || key == fplKey_Right || key == fplKey_Up || key == fplKey_Down;
+								bool isFirstPress = ev.keyboard.buttonState == fplButtonState_Press;
 								if (ev.keyboard.buttonState >= fplButtonState_Press) {
 									bool isActiveKeyRepeat;
 									if (activeKey != ev.keyboard.mappedKey) {
 										activeKey = ev.keyboard.mappedKey;
 										activeKeyStart = fplMillisecondsQuery();
 										isActiveKeyRepeat = false;
+										// Once per hold, shift is often let go before the arrow key
+										isActiveKeyPanning = isShiftDown && isArrowKey;
 									} else {
 										isActiveKeyRepeat = (fplMillisecondsQuery() - activeKeyStart) >= ActiveKeyThreshold;
 									}
-									if (ev.keyboard.mappedKey == fplKey_Left) {
+									if (isActiveKeyPanning) {
+										PanActivePictureByKey(state, key);
+									} else if (ev.keyboard.mappedKey == fplKey_Left) {
 										if (activeKey == ev.keyboard.mappedKey && isActiveKeyRepeat) {
 											if (state->activeFileIndex > 0) {
 												ChangeViewPicture(state, -1, false);
@@ -1846,19 +3523,55 @@ int main(int argc, char** argv) {
 												ChangeViewPicture(state, +1, false);
 											}
 										}
+									} else if (ev.keyboard.mappedKey == fplKey_T && isFirstPress) {
+										// Filter of the direction in effect, backwards with shift. On press, because shift is often let go before the key.
+										int step = isShiftDown ? -1 : 1;
+										CycleActiveKernel(state, step);
+									} else if (key == fplKey_OemPlus || key == fplKey_Add) {
+										// Zoom steps repeat while the key is held, Ctrl makes no difference
+										StepActivePictureZoom(state, 1);
+									} else if (key == fplKey_OemMinus || key == fplKey_Substract) {
+										StepActivePictureZoom(state, -1);
+									} else if ((key == fplKey_0 || key == fplKey_NumPad0) && isFirstPress) {
+										const float unusedScale = 0.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_Fit, unusedScale);
+									} else if ((key == fplKey_1 || key == fplKey_NumPad1) && isFirstPress) {
+										const float actualScale = 1.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_ActualSize, actualScale);
+									} else if ((key == fplKey_2 || key == fplKey_NumPad2) && isFirstPress) {
+										const float doubleScale = 2.0f;
+										ZoomActivePictureAtCenter(state, ViewZoomMode_Custom, doubleScale);
 									}
 								} else {
 									fplAssert(ev.keyboard.buttonState == fplButtonState_Release);
-									activeKey = fplKey_None;
-									activeKeyStart = 0;
-									if (ev.keyboard.mappedKey == fplKey_Left) {
+									// Only the release of the held key ends the hold, releasing shift during a pan keeps panning
+									bool isActiveKeyReleased = key == activeKey;
+									bool wasActiveKeyPanning = isActiveKeyReleased && isActiveKeyPanning;
+									if (isActiveKeyReleased) {
+										activeKey = fplKey_None;
+										activeKeyStart = 0;
+										isActiveKeyPanning = false;
+									}
+									// An arrow key that moved the view does not page as well
+									if (ev.keyboard.mappedKey == fplKey_Left && !wasActiveKeyPanning) {
 										if (state->activeFileIndex > 0) {
 											ChangeViewPicture(state, -1, false);
 										}
-									} else if (ev.keyboard.mappedKey == fplKey_Right) {
+									} else if (ev.keyboard.mappedKey == fplKey_Right && !wasActiveKeyPanning) {
 										if (state->activeFileIndex < ((int)state->pictureFileCount - 1)) {
 											ChangeViewPicture(state, +1, false);
 										}
+									} else if (ev.keyboard.mappedKey == fplKey_K) {
+										int persistenceCount = (int)ViewPersistence_Count;
+										int nextPersistence = ((int)state->persistence + 1) % persistenceCount;
+										state->persistence = (ViewPersistence)nextPersistence;
+										flogWrite("View on picture change: %s", ViewPersistenceKeys[state->persistence]);
+									} else if (ev.keyboard.mappedKey == fplKey_W) {
+										int wheelModeCount = (int)WheelMode_Count;
+										int nextWheelMode = ((int)state->wheelMode + 1) % wheelModeCount;
+										state->wheelMode = (WheelMode)nextWheelMode;
+										state->pointer.navigateWheelNotches = 0.0f;
+										flogWrite("Mouse wheel: %s", WheelModeKeys[state->wheelMode]);
 									} else if (ev.keyboard.mappedKey == fplKey_PageDown) {
 										if (state->activeFileIndex < ((int)state->pictureFileCount - PAGE_INCREMENT_COUNT)) {
 											ChangeViewPicture(state, PAGE_INCREMENT_COUNT, false);
@@ -1879,11 +3592,31 @@ int main(int argc, char** argv) {
 										state->params.preview = !state->params.preview;
 									} else if (ev.keyboard.mappedKey == fplKey_R) {
 										ChangeViewPicture(state, 0, true);
-									} else if (ev.keyboard.mappedKey == fplKey_T) {
-										state->activeFilter = (state->activeFilter + 1) % state->filterCount;
-										UpdateWindowTitle(state);
+									} else if (ev.keyboard.mappedKey == fplKey_L) {
+										SwitchActivePictureLoader(state);
+									} else if (ev.keyboard.mappedKey == fplKey_B) {
+										int backgroundCount = (int)ResampleBackground_Count;
+										int nextBackground = ((int)state->background + 1) % backgroundCount;
+										state->background = (ResampleBackground)nextBackground;
+									} else if (ev.keyboard.mappedKey == fplKey_A) {
+										bool isAutoNearestOn = state->nearestFromScale > 0.0f;
+										state->nearestFromScale = isAutoNearestOn ? 0.0f : state->nearestFromToggleScale;
+										flogWrite("Auto Nearest %s", (isAutoNearestOn ? "off" : "on"));
+									} else if (ev.keyboard.mappedKey == fplKey_I) {
+										state->params.showInfo = !state->params.showInfo;
+									} else if (ev.keyboard.mappedKey == fplKey_N) {
+										state->params.showRelativePath = !state->params.showRelativePath;
 									}
 								}
+							}
+						} break;
+
+						case fplEventType_Mouse:
+						{
+							// A release always reaches the viewer, so a drag that started on the picture also ends over the interface
+							bool isButtonRelease = ev.mouse.type == fplMouseEventType_Button && ev.mouse.buttonState == fplButtonState_Release;
+							if (!isMouseForInterface || isButtonRelease) {
+								HandleMouseEvent(state, &ev.mouse);
 							}
 						} break;
 
@@ -1892,23 +3625,47 @@ int main(int argc, char** argv) {
 					}
 				}
 
-				UpdateAndRender(state, deltaTime);
+				fplWindowSize windowSize = fplZeroInit;
+				fplGetWindowSize(&windowSize);
+				ViewSize viewportSize = fplStructInit(ViewSize, windowSize.width, windowSize.height);
+				bool isViewportChanged = viewportSize.width != lastViewportSize.width || viewportSize.height != lastViewportSize.height;
+				lastViewportSize = viewportSize;
 
-				fplVideoFlip();
+				state->viewportSize = viewportSize;
+				bool arePicturesChanging = UpdatePictures(state);
+				UpdateWindowTitle(state);
+				LogResampleTimer(state);
+
+				// Draw only when something changed, otherwise idle, and never into an empty (minimized) viewport
+				bool isViewportEmpty = viewportSize.width == 0 || viewportSize.height == 0;
+				bool needsFrame = !hasDrawnFrame || hasEvents || isViewportChanged || arePicturesChanging;
+				if (needsFrame && !isViewportEmpty) {
+					RenderFrame(state, viewportSize);
+					RenderUserInterface(state, viewportSize);
+					fplVideoFlip();
+					hasDrawnFrame = true;
+				} else {
+					fplThreadSleep(IDLE_SLEEP_MILLISECONDS);
+				}
 			}
 
 			Kill(state);
-
-			fglUnloadOpenGL();
 		} else {
 			returnCode = -1;
 		}
-
+		for (size_t pictureIndex = 0; pictureIndex < fplArrayCount(state->viewPictures); ++pictureIndex) {
+			ResampleResultRelease(&state->viewPictures[pictureIndex].thumbnail);
+		}
+		ResampleResultRelease(&state->viewResult);
+		ResamplePipelineRelease(&state->pipeline);
+		ReleaseUserInterface(state);
+		fglUnloadOpenGL();
+	}
+	if (isPlatformInitialized) {
 		fplPlatformRelease();
-	} else {
-		returnCode = -1;
 	}
 
+	ImageLoaderRegistryRelease(&state->loaderRegistry);
 	fplMemoryFree(state);
 
 	if (icon16Data != fpl_null) {

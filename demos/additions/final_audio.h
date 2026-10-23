@@ -8,6 +8,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-10-22
+	- New: loopStartFrame and loopEndFrame in PCMWaveFormat, the loop region from the tags of the file
+
 	## 2026-07-19
 	- Fixed DecibelToAmplitude using pow(20,..) instead of pow(10,..) (wrong gain)
 	- Fixed DecibelToPower not clamping the upper end (dB > max tripped its own assert)
@@ -208,6 +211,10 @@ typedef struct AudioStaticBuffer {
 typedef struct PCMWaveFormat {
 	//! Total frame count
 	uint32_t frameCount;
+	//! First frame of the loop region from the tags of the file
+	uint32_t loopStartFrame;
+	//! Frame after the last one of the loop region from the tags of the file, 0 when the file has none (or an invalid one)
+	uint32_t loopEndFrame;
 	//! Samples per second
 	uint32_t samplesPerSecond;
 	//! Bytes per sample

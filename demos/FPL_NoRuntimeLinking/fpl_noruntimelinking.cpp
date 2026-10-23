@@ -9,7 +9,7 @@ Description:
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
-	- Linking to POSIX libraries (pthread, x11, gl, libasound, libvulkan, m)
+	- Linking to POSIX libraries (pthread, X11, Xrandr, Xinerama, Xi, GL, libasound, libvulkan, m, libpulse and libpipewire when their headers are found)
 	- Linking to Win32 libraries (kernel32.lib, user32.lib, shell32.lib, gdi32.lib, ole32.lib, opengl32.lib, vulkan.lib, xinput.lib, dsound.lib)
 
 Author:

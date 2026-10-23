@@ -14,6 +14,17 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Added a timestamp test across fplPlatformInit and fplPlatformRelease
+
+	## 2026-10-20
+	- Added wildcard match tests
+
+	## 2026-09-28
+	- Fixed the condition test waiting without the mutex and without a flag
+	- Fixed the memory tests freeing a moved pointer
+	- Fixed the semaphore test letting several writers in at once
+
 	## 2026-08-23
 	- Added the process tests from process_tests.c, wired in through TestProcess()
 	- Added the child mode detection in main(), so the test executable can start itself as the child program for the process tests
@@ -415,7 +426,7 @@ static void TestMemory(void) {
 		size_t memSize = fplKiloBytes(42);
 		uint8_t *mem = (uint8_t *)fplMemoryAllocate(memSize);
 		for (size_t i = 0; i < memSize; ++i) {
-			uint8_t value = *mem++;
+			uint8_t value = mem[i];
 			ftAssertU8Equals(0, value);
 		}
 		fplMemoryFree(mem);
@@ -453,7 +464,7 @@ static void TestMemory(void) {
 		}
 		fplMemorySet(mem, 0, memSize);
 		for (size_t i = 0; i < memSize; ++i) {
-			uint8_t value = *mem++;
+			uint8_t value = mem[i];
 			ftAssertU8Equals(0, value);
 		}
 		fplMemoryFree(mem);
@@ -468,7 +479,7 @@ static void TestMemory(void) {
 		}
 		fplMemorySet(mem, 128, memSize);
 		for (size_t i = 0; i < memSize; ++i) {
-			uint8_t value = *mem++;
+			uint8_t value = mem[i];
 			ftAssertU8Equals(128, value);
 		}
 		fplMemoryFree(mem);
@@ -724,7 +735,8 @@ static void SyncThreadsTestSemaphores(const size_t numWriters) {
 	ftMsg("Sync test for %zu writers using semaphores\n", numWriters);
 	{
 		MutableThreadData mutableData = fplZeroInit;
-		uint32_t initialValue = (uint32_t)numWriters - 1;
+		// One writer at a time, the read-modify-write of the shared value is not atomic
+		uint32_t initialValue = 1;
 		ftIsTrue(fplSemaphoreInit(&mutableData.semaphore, initialValue));
 		mutableData.value = 0;
 
@@ -763,6 +775,8 @@ typedef struct SlaveThreadData {
 	fplConditionVariable condition;
 	fplMutexHandle mutex;
 	ConditionTestType testType;
+	//! Set by the master under the mutex, the condition only wakes the slave up to look at it
+	bool isSignaled;
 	bool isSuccess;
 } SlaveThreadData;
 
@@ -784,7 +798,12 @@ static void ThreadSlaveProc(const fplThreadHandle *context, void *data) {
 		ftMsg("Got signal on Slave-Thread %d\n", d->base.num);
 	} else if (d->testType == ConditionTestType_ConditionSignal) {
 		ftMsg("Slave-Thread %d waits on condition\n", d->base.num);
-		fplConditionWait(&d->condition, &d->mutex, FPL_TIMEOUT_INFINITE);
+		// The mutex has to be held while waiting, and the wait is on a flag: a condition can wake up without a signal, and a signal sent before the wait started is lost
+		fplMutexLock(&d->mutex);
+		while (!d->isSignaled) {
+			fplConditionWait(&d->condition, &d->mutex, FPL_TIMEOUT_INFINITE);
+		}
+		fplMutexUnlock(&d->mutex);
 		d->isSuccess = true;
 		ftMsg("Got condition on Slave-Thread %d\n", d->base.num);
 	}
@@ -804,7 +823,11 @@ static void ThreadMasterProc(const fplThreadHandle *context, void *data) {
 			fplSignalSet(&d->slaveThreads[signalIndex].signal);
 		} else if (d->testType == ConditionTestType_ConditionSignal) {
 			ftMsg("Master-Thread %d sends signal to condition %u\n", d->base.num, signalIndex);
-			fplConditionSignal(&d->slaveThreads[signalIndex].condition);
+			SlaveThreadData *slave = &d->slaveThreads[signalIndex];
+			fplMutexLock(&slave->mutex);
+			slave->isSignaled = true;
+			fplConditionSignal(&slave->condition);
+			fplMutexUnlock(&slave->mutex);
 		}
 	}
 
@@ -1674,6 +1697,35 @@ static void TestStrings(void) {
 		ftAssertSizeEquals(3, actual);
 	}
 
+	ftMsg("Test string wildcard match\n");
+	{
+		ftAssertTrue(fplIsStringMatchWildcard("file.txt", "*.txt"));
+		ftAssertTrue(fplIsStringMatchWildcard("a.b.txt", "*.txt"));
+		ftAssertTrue(fplIsStringMatchWildcard("archive.tar.gz", "*.gz"));
+		ftAssertTrue(fplIsStringMatchWildcard("abcabd", "*abd"));
+		ftAssertTrue(fplIsStringMatchWildcard("x GLX_A GLX_B", "*GLX_B*"));
+		ftAssertTrue(fplIsStringMatchWildcard("NAME=Arch Linux", "NAME=*"));
+		ftAssertTrue(fplIsStringMatchWildcard("sysdefault:CARD=bcm2835", "*bcm2835*"));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "a?c"));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "***"));
+		ftAssertTrue(fplIsStringMatchWildcard("", "*"));
+		ftAssertTrue(fplIsStringMatchWildcard("", ""));
+		ftAssertTrue(fplIsStringMatchWildcard("abc", "abc"));
+		ftAssertTrue(fplIsStringMatchWildcard("a*c", "a*c"));
+	}
+	{
+		ftAssertFalse(fplIsStringMatchWildcard("file.txt.bak", "*.txt"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "a"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "abcd"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", "a?"));
+		ftAssertFalse(fplIsStringMatchWildcard("ab", "a?c"));
+		ftAssertFalse(fplIsStringMatchWildcard("Makefile", "*.*"));
+		ftAssertFalse(fplIsStringMatchWildcard("", "?"));
+		ftAssertFalse(fplIsStringMatchWildcard("PRETTY_NAME=Arch", "NAME=*"));
+		ftAssertFalse(fplIsStringMatchWildcard(fpl_null, "*"));
+		ftAssertFalse(fplIsStringMatchWildcard("abc", fpl_null));
+	}
+
 	ftMsg("Test string equal\n");
 	{
 		bool res = fplIsStringEqual(fpl_null, fpl_null);
@@ -2065,6 +2117,28 @@ static void TestTimes(void) {
 		fplTimestamp ende = fplTimestampQuery();
 		double delta = fplTimestampElapsed(start, ende);
 		ftAssert(delta >= 1.5 && delta < 1.75);
+	}
+
+	// Across fplPlatformInit and fplPlatformRelease, [Win32] the first timestamp was a tick count and the second a performance counter value, which came out as the system uptime
+	ftMsg("Test fplTimestampElapsed across fplPlatformInit and fplPlatformRelease\n");
+	{
+		const uint32_t sleepMilliseconds = 100;
+		const double minExpectedSeconds = 0.1;
+		const double maxExpectedSeconds = 5.0;
+
+		fplTimestamp beforeInit = fplTimestampQuery();
+		fplThreadSleep(sleepMilliseconds);
+		bool inited = fplPlatformInit(fplInitFlags_None, fpl_null);
+		ftAssert(inited);
+		fplTimestamp afterInit = fplTimestampQuery();
+		double initDelta = fplTimestampElapsed(beforeInit, afterInit);
+		ftAssert(initDelta >= minExpectedSeconds && initDelta < maxExpectedSeconds);
+
+		fplThreadSleep(sleepMilliseconds);
+		fplPlatformRelease();
+		fplTimestamp afterRelease = fplTimestampQuery();
+		double releaseDelta = fplTimestampElapsed(afterInit, afterRelease);
+		ftAssert(releaseDelta >= minExpectedSeconds && releaseDelta < maxExpectedSeconds);
 	}
 }
 

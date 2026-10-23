@@ -16,6 +16,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Fixed: LockFreeRingBuffer reads and writes head, tail and the fill count atomically everywhere, its asserts and a thread that shows the positions raced with the other side
+	- Changed: Uses fplMemoryCopy, fplMemorySet and fplAssert instead of memcpy, memset and assert, which it used without including their headers
+	- Fixed: [Win32] VirtualAlloc2 and MapViewOfFile3 were called without WINAPI, which broke the stack of a 32-bit build (crash on Windows 10 32-bit and Wine)
+
 	## 2026-07-19
 	- Fixed unconditional FINAL_BUFFER_IMPLEMENTATION define causing duplicate-symbol link errors across multiple TUs (callers must now define it in one TU)
 	- Fixed false-sharing padding computed as 64 - UINTPTR_MAX (wraps to 65); now 64 - sizeof(void*)
@@ -77,11 +82,12 @@ typedef struct LockFreeRingBuffer {
 	uint8_t lengthPadding[64 - 8];
 	uint64_t length;
 
+	// Only the consumer moves the tail and only the producer moves the head, both atomically, so another thread may show them
 	uint8_t tailPadding[64 - 8];
-	uint64_t tail;
+	volatile uint64_t tail;
 
 	uint8_t headPadding[64 - 8];
-	uint64_t head;
+	volatile uint64_t head;
 
 	uint8_t fillCountPadding[64 - 8];
 	volatile int64_t fillCount;
@@ -156,10 +162,10 @@ typedef struct MEM_EXTENDED_PARAMETER {
 
 #define WIN32_KERNEL_DLL "kernelbase.dll"
 
-#define WIN32_FUNC_VirtualAlloc2(name) PVOID name(HANDLE process, PVOID baseAddress, SIZE_T size, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
+#define WIN32_FUNC_VirtualAlloc2(name) PVOID WINAPI name(HANDLE process, PVOID baseAddress, SIZE_T size, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
 typedef WIN32_FUNC_VirtualAlloc2(win32_func_virtualalloc2);
 
-#define WIN32_FUNC_MapViewOfFile3(name) PVOID name(HANDLE fileMapping, HANDLE process, PVOID baseAddress, ULONG64 offset, SIZE_T viewSize, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
+#define WIN32_FUNC_MapViewOfFile3(name) PVOID WINAPI name(HANDLE fileMapping, HANDLE process, PVOID baseAddress, ULONG64 offset, SIZE_T viewSize, ULONG allocationType, ULONG pageProtection, MEM_EXTENDED_PARAMETER *extendedParameters, ULONG parameterCount)
 typedef WIN32_FUNC_MapViewOfFile3(win32_func_mapviewoffile3);
 
 static void f_ReleaseMemoryMirrorWin32(MirroredMemory *mem) {
@@ -458,16 +464,23 @@ extern void LockFreeRingBufferRelease(LockFreeRingBuffer *buffer) {
 
 fpl_force_inline void f_LockFreeRingBufferProduce(LockFreeRingBuffer *buffer, uint64_t amount) {
 	fplAssert(buffer != fpl_null);
-	buffer->head = (buffer->head + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
-	assert(buffer->fillCount <= (int64_t)buffer->length);
+	uint64_t head = fplAtomicLoadU64(&buffer->head);
+	uint64_t nextHead = (head + amount) % buffer->length;
+	fplAtomicStoreU64(&buffer->head, nextHead);
+	// The fill count of the add itself, the other thread changes it at any time
+	int64_t previousFillCount = fplAtomicFetchAndAddS64(&buffer->fillCount, (int64_t)amount);
+	fplAssert(previousFillCount + (int64_t)amount <= (int64_t)buffer->length);
+	(void)previousFillCount;
 }
 
 fpl_force_inline void f_LockFreeRingBufferConsume(LockFreeRingBuffer *buffer, uint64_t amount) {
 	fplAssert(buffer != fpl_null);
-	buffer->tail = (buffer->tail + amount) % buffer->length;
-	fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
-	assert(buffer->fillCount >= 0);
+	uint64_t tail = fplAtomicLoadU64(&buffer->tail);
+	uint64_t nextTail = (tail + amount) % buffer->length;
+	fplAtomicStoreU64(&buffer->tail, nextTail);
+	int64_t previousFillCount = fplAtomicFetchAndAddS64(&buffer->fillCount, -(int64_t)amount);
+	fplAssert(previousFillCount - (int64_t)amount >= 0);
+	(void)previousFillCount;
 }
 
 extern bool LockFreeRingBufferCanRead(LockFreeRingBuffer *buffer, size_t *availableBytes) {
@@ -494,17 +507,21 @@ extern bool LockFreeRingBufferWrite(LockFreeRingBuffer *buffer, const void *src,
 	if(buffer == fpl_null) return(false);
 	uint64_t available = buffer->length - fplAtomicLoadS64(&buffer->fillCount);
 	if(available < len) return false;
+	// fplMemoryCopy refuses a size of zero, and there is nothing to move
+	if(len == 0) return true;
 
 	uint8_t *srcAddr = (uint8_t *)src;
 	uint8_t *dstAddr = (uint8_t *)buffer->buffer;
-	if(buffer->isMirror || (buffer->head + len) <= buffer->length) {
-		memcpy(dstAddr + buffer->head, srcAddr, len);
+	uint64_t head = fplAtomicLoadU64(&buffer->head);
+	if(buffer->isMirror || (head + len) <= buffer->length) {
+		fplMemoryCopy(srcAddr, len, dstAddr + head);
 	} else {
-		uint64_t bytesLeft = fplMin(fplMin(len, available), buffer->length - buffer->head);
-		memcpy(dstAddr + buffer->head, srcAddr, (size_t)bytesLeft);
+		// Both parts are at least one byte: the head is below the length, and the copy does not fit in front of it
+		uint64_t bytesLeft = fplMin(fplMin(len, available), buffer->length - head);
+		fplMemoryCopy(srcAddr, (size_t)bytesLeft, dstAddr + head);
 
 		uint64_t bytesRight = len - bytesLeft;
-		memcpy(dstAddr, srcAddr + bytesLeft, (size_t)bytesRight);
+		fplMemoryCopy(srcAddr + bytesLeft, (size_t)bytesRight, dstAddr);
 	}
 	f_LockFreeRingBufferProduce(buffer, len);
 	return(true);
@@ -514,17 +531,21 @@ extern bool LockFreeRingBufferRead(LockFreeRingBuffer *buffer, void *dst, const 
 	if(buffer == fpl_null) return(false);
 	uint64_t fillCount = fplAtomicLoadS64(&buffer->fillCount);
 	if(len > fillCount) return(false);
+	// fplMemoryCopy refuses a size of zero, and there is nothing to move
+	if(len == 0) return(true);
 	uint8_t *srcAddr = (uint8_t *)buffer->buffer;
 	uint8_t *dstAddr = (uint8_t *)dst;
 	if(dst != fpl_null) {
-		if(buffer->isMirror || (buffer->tail + len) <= buffer->length) {
-			memcpy(dstAddr, srcAddr + buffer->tail, len);
+		uint64_t tail = fplAtomicLoadU64(&buffer->tail);
+		if(buffer->isMirror || (tail + len) <= buffer->length) {
+			fplMemoryCopy(srcAddr + tail, len, dstAddr);
 		} else {
-			uint64_t bytesLeft = fplMin(fplMin(len, fillCount), buffer->length - buffer->tail);
-			memcpy(dstAddr, srcAddr + buffer->tail, (size_t)bytesLeft);
+			// Both parts are at least one byte: the tail is below the length, and the copy does not fit behind it
+			uint64_t bytesLeft = fplMin(fplMin(len, fillCount), buffer->length - tail);
+			fplMemoryCopy(srcAddr + tail, (size_t)bytesLeft, dstAddr);
 
 			uint64_t bytesRight = len - bytesLeft;
-			memcpy(dstAddr + bytesLeft, srcAddr, (size_t)bytesRight);
+			fplMemoryCopy(srcAddr, (size_t)bytesRight, dstAddr + bytesLeft);
 		}
 	}
 	f_LockFreeRingBufferConsume(buffer, len);
@@ -535,19 +556,24 @@ extern bool LockFreeRingBufferPeek(LockFreeRingBuffer *buffer, void *dst, const 
 	if(buffer == fpl_null) return(false);
 	uint64_t fillCount = fplAtomicLoadS64(&buffer->fillCount);
 	if((offset + len) > fillCount) return(false);
+	// fplMemoryCopy refuses a size of zero, and there is nothing to move
+	if(len == 0) return(true);
 	uint8_t *srcAddr = (uint8_t *)buffer->buffer;
 	uint8_t *dstAddr = (uint8_t *)dst;
 	if(dst != fpl_null) {
-		if(buffer->isMirror || (buffer->tail + offset + len) <= buffer->length) {
-			memcpy(dstAddr, srcAddr + buffer->tail + offset, len);
+		uint64_t currentTail = fplAtomicLoadU64(&buffer->tail);
+		if(buffer->isMirror || (currentTail + offset + len) <= buffer->length) {
+			fplMemoryCopy(srcAddr + currentTail + offset, len, dstAddr);
 		} else {
-			uint64_t tail = (buffer->tail + offset) % buffer->length;
+			uint64_t tail = (currentTail + offset) % buffer->length;
 
 			uint64_t bytesLeft = fplMin(fplMin(len, fillCount - offset), buffer->length - tail);
-			memcpy(dstAddr, srcAddr + tail, (size_t)bytesLeft);
+			fplMemoryCopy(srcAddr + tail, (size_t)bytesLeft, dstAddr);
 
 			uint64_t bytesRight = len - bytesLeft;
-			memcpy(dstAddr + bytesLeft, srcAddr, (size_t)bytesRight);
+			if(bytesRight > 0) {
+				fplMemoryCopy(srcAddr, (size_t)bytesRight, dstAddr + bytesLeft);
+			}
 		}
 	}
 	return(true);
@@ -560,7 +586,8 @@ extern void LockFreeRingBufferClear(LockFreeRingBuffer *buffer) {
 	if(fillCount > 0) {
 		f_LockFreeRingBufferConsume(buffer, fillCount);
 	}
-	buffer->tail = buffer->head = 0;
+	fplAtomicStoreU64(&buffer->tail, 0);
+	fplAtomicStoreU64(&buffer->head, 0);
 	fplAtomicExchangeS64(&buffer->fillCount, 0);
 }
 
@@ -583,7 +610,7 @@ extern bool LockFreeRingBufferSkip(LockFreeRingBuffer *buffer, const size_t leng
 void assertBytes(const uint8_t *data, const uint8_t test, const size_t offset, const size_t len) {
 	for(size_t i = 0; i < len; ++i) {
 		size_t p = offset + i;
-		assert(data[p] == test);
+		fplAlwaysAssert(data[p] == test);
 	}
 }
 
@@ -592,109 +619,109 @@ extern void LockFreeRingBufferUnitTest() {
 #if 0
 	LockFreeRingBuffer buffer;
 	bool res = LockFreeRingBufferInit(&buffer, 128, true);
-	assert(res);
+	fplAlwaysAssert(res);
 
 	// Validate initial buffer
-	assert(buffer.length == 128);
-	assert(buffer.head == 0);
-	assert(buffer.tail == 0);
-	assert(buffer.fillCount == 0);
-	assert(!buffer.isMirror);
+	fplAlwaysAssert(buffer.length == 128);
+	fplAlwaysAssert(buffer.head == 0);
+	fplAlwaysAssert(buffer.tail == 0);
+	fplAlwaysAssert(buffer.fillCount == 0);
+	fplAlwaysAssert(!buffer.isMirror);
 
 	bool canWrite, canRead;
 	size_t writeAvailable, readAvailable;
 
 	// Validate initial head
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(canWrite);
-	assert(writeAvailable == 128);
+	fplAlwaysAssert(canWrite);
+	fplAlwaysAssert(writeAvailable == 128);
 
 	// Validate initial tail
 	canRead = LockFreeRingBufferCanRead(&buffer, &readAvailable);
-	assert(!canRead);
-	assert(readAvailable == 0);
+	fplAlwaysAssert(!canRead);
+	fplAlwaysAssert(readAvailable == 0);
 
 	uint8_t data[1024];
 
 	// Write 32-bytes 0xAA
-	memset(data, 0xAA, 1024);
+	fplMemorySet(data, 0xAA, 1024);
 	res = LockFreeRingBufferWrite(&buffer, &data, 32);
-	assert(res);
+	fplAlwaysAssert(res);
 	assertBytes(buffer.buffer, 0xAA, 0, 32);
 
 	// Validate buffer (0xAA)
-	assert(buffer.head == 32);
-	assert(buffer.tail == 0);
-	assert(buffer.fillCount == 32);
+	fplAlwaysAssert(buffer.head == 32);
+	fplAlwaysAssert(buffer.tail == 0);
+	fplAlwaysAssert(buffer.fillCount == 32);
 
 	// Validate head (0xAA)
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(canWrite);
-	assert(writeAvailable == 32 + 64);
+	fplAlwaysAssert(canWrite);
+	fplAlwaysAssert(writeAvailable == 32 + 64);
 
 	// Write 64-bytes 0xBB
-	memset(data, 0xBB, 1024);
+	fplMemorySet(data, 0xBB, 1024);
 	res = LockFreeRingBufferWrite(&buffer, &data, 64);
-	assert(res);
+	fplAlwaysAssert(res);
 	assertBytes(buffer.buffer, 0xAA, 0, 32);
 	assertBytes(buffer.buffer, 0xBB, 32, 64);
 
 	// Validate buffer (0xBB)
-	assert(buffer.head == (32 + 64));
-	assert(buffer.tail == 0);
-	assert(buffer.fillCount == (32 + 64));
+	fplAlwaysAssert(buffer.head == (32 + 64));
+	fplAlwaysAssert(buffer.tail == 0);
+	fplAlwaysAssert(buffer.fillCount == (32 + 64));
 
 	// Validate head (0xBB)
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(canWrite);
-	assert(writeAvailable == 32);
+	fplAlwaysAssert(canWrite);
+	fplAlwaysAssert(writeAvailable == 32);
 
 	// Write 16-bytes 0xCC
-	memset(data, 0xCC, 1024);
+	fplMemorySet(data, 0xCC, 1024);
 	res = LockFreeRingBufferWrite(&buffer, &data, 16);
-	assert(res);
+	fplAlwaysAssert(res);
 	assertBytes(buffer.buffer, 0xAA, 0, 32);
 	assertBytes(buffer.buffer, 0xBB, 32, 64);
 	assertBytes(buffer.buffer, 0xCC, 32 + 64, 16);
 
 	// Validate buffer (0xCC)
-	assert(buffer.head == (32 + 64 + 16));
-	assert(buffer.tail == 0);
-	assert(buffer.fillCount == (32 + 64 + 16));
+	fplAlwaysAssert(buffer.head == (32 + 64 + 16));
+	fplAlwaysAssert(buffer.tail == 0);
+	fplAlwaysAssert(buffer.fillCount == (32 + 64 + 16));
 
 	// Validate head (0xCC)
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(canWrite);
-	assert(writeAvailable == 16);
+	fplAlwaysAssert(canWrite);
+	fplAlwaysAssert(writeAvailable == 16);
 
 	// Try to write 32-bytes 0xDD
-	memset(data, 0xCC, 1024);
+	fplMemorySet(data, 0xCC, 1024);
 	res = LockFreeRingBufferWrite(&buffer, &data, 32);
-	assert(!res);
+	fplAlwaysAssert(!res);
 
 	// Validate tail (96 bytes available)
 	canRead = LockFreeRingBufferCanRead(&buffer, &readAvailable);
-	assert(canRead);
-	assert(readAvailable == 32 + 64 + 16);
+	fplAlwaysAssert(canRead);
+	fplAlwaysAssert(readAvailable == 32 + 64 + 16);
 
 	// Validate buffer
-	assert(buffer.head == 64 + 32 + 16);
-	assert(buffer.tail == 0);
-	assert(buffer.fillCount == 64 + 32 + 16);
+	fplAlwaysAssert(buffer.head == 64 + 32 + 16);
+	fplAlwaysAssert(buffer.tail == 0);
+	fplAlwaysAssert(buffer.fillCount == 64 + 32 + 16);
 
 	// Consume 16 bytes
 	res = LockFreeRingBufferRead(&buffer, fpl_null, 16);
-	assert(res);
+	fplAlwaysAssert(res);
 
 	// Validate tail (96 bytes available)
 	canRead = LockFreeRingBufferCanRead(&buffer, &readAvailable);
-	assert(canRead);
-	assert(readAvailable == 96);
+	fplAlwaysAssert(canRead);
+	fplAlwaysAssert(readAvailable == 96);
 
 	// Write 32-bytes 0xDD
-	memset(data, 0xDD, 1024);
+	fplMemorySet(data, 0xDD, 1024);
 	res = LockFreeRingBufferWrite(&buffer, &data, 32);
-	assert(res);
+	fplAlwaysAssert(res);
 	assertBytes(buffer.buffer, 0xDD, 0, 16); // Data is overidden
 	assertBytes(buffer.buffer, 0xAA, 16, 16);
 	assertBytes(buffer.buffer, 0xBB, 32, 64);
@@ -702,33 +729,33 @@ extern void LockFreeRingBufferUnitTest() {
 	assertBytes(buffer.buffer, 0xDD, 32 + 64 + 16, 16); // Written to the very end
 
 	// Validate buffer
-	assert(buffer.head == 16); // Head is wrapped
-	assert(buffer.tail == 16);
-	assert(buffer.fillCount == 64 + 32 + 32);
+	fplAlwaysAssert(buffer.head == 16); // Head is wrapped
+	fplAlwaysAssert(buffer.tail == 16);
+	fplAlwaysAssert(buffer.fillCount == 64 + 32 + 32);
 
 	// Validate head (0xDD)
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(!canWrite);
-	assert(writeAvailable == 0);
+	fplAlwaysAssert(!canWrite);
+	fplAlwaysAssert(writeAvailable == 0);
 
 	// Validate tail (128 bytes available)
 	canRead = LockFreeRingBufferCanRead(&buffer, &readAvailable);
-	assert(canRead);
-	assert(readAvailable == 128);
+	fplAlwaysAssert(canRead);
+	fplAlwaysAssert(readAvailable == 128);
 
 	// Consume 64 bytes
 	res = LockFreeRingBufferRead(&buffer, fpl_null, 64);
-	assert(res);
+	fplAlwaysAssert(res);
 
 	// Validate head (64 bytes available)
 	canWrite = LockFreeRingBufferCanWrite(&buffer, &writeAvailable);
-	assert(canWrite);
-	assert(writeAvailable == 64);
+	fplAlwaysAssert(canWrite);
+	fplAlwaysAssert(writeAvailable == 64);
 
 	// Validate tail (64 bytes available)
 	canRead = LockFreeRingBufferCanRead(&buffer, &readAvailable);
-	assert(canRead);
-	assert(readAvailable == 64);
+	fplAlwaysAssert(canRead);
+	fplAlwaysAssert(readAvailable == 64);
 
 	LockFreeRingBufferRelease(&buffer);
 #endif

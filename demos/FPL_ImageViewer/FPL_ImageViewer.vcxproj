@@ -200,10 +200,24 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\final_ui.h" />
+    <ClInclude Include="..\additions\final_fonts.h" />
+    <ClInclude Include="..\additions\fui_backend_gl3.h" />
+    <ClInclude Include="..\additions\fui_font_stbtt.h" />
+    <ClInclude Include="..\additions\fui_input_fpl.h" />
+    <ClInclude Include="imageloader.h" />
+    <ClInclude Include="imageloader_bmp.h" />
+    <ClInclude Include="imageloader_pnm.h" />
+    <ClInclude Include="imageloader_stb.h" />
+    <ClInclude Include="imagepyramid.h" />
+    <ClInclude Include="imagepyramid_x86.h" />
     <ClInclude Include="imageresources.h" />
     <ClInclude Include="logging.h" />
+    <ClInclude Include="resamplepipeline.h" />
+    <ClInclude Include="selftest.h" />
     <ClInclude Include="shadersources.h" />
     <ClInclude Include="version.h" />
+    <ClInclude Include="viewtransform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fpl_imageviewer.cpp" />

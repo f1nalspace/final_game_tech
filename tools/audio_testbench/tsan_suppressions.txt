@@ -1,0 +1,2 @@
+# ThreadSanitizer suppressions for the TSan runs of the test bench: TSAN_OPTIONS="suppressions=<this file>"
+# Only known reports outside the audio system belong here, each one is to be fixed on its own branch and then removed.

@@ -72,7 +72,7 @@ typedef struct AudioTrackList {
 	fpl_b32 changedPending;
 } AudioTrackList;
 
-static bool HasAudioTrack(AudioTrackList *tracklist) {
+static inline bool HasAudioTrack(AudioTrackList *tracklist) {
 	if(tracklist->changedPending)
 		return(false);
 	if (!(tracklist->currentIndex >= 0 && tracklist->currentIndex < (int32_t)tracklist->count))
@@ -82,14 +82,14 @@ static bool HasAudioTrack(AudioTrackList *tracklist) {
 	return(result);
 }
 
-static void StopAllAudioTracks(AudioSystem *audioSys, AudioTrackList *tracklist) {
+static inline void StopAllAudioTracks(AudioSystem *audioSys, AudioTrackList *tracklist) {
 	AudioSystemStopAll(audioSys);
 	tracklist->currentIndex = -1;
 	tracklist->lastIndex = -1;
 	tracklist->changedPending = false;
 }
 
-static bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, const uint32_t index) {
+static inline bool PlayAudioTrack(AudioSystem *audioSys, AudioTrackList *tracklist, const uint32_t index) {
 	if(index < tracklist->count) {
 		AudioTrack *track = tracklist->tracks + index;
 		AudioTrackState state = (AudioTrackState)fplAtomicLoadS32(&track->state);
@@ -134,9 +134,11 @@ typedef enum LoadAudioTrackFlags {
 	LoadAudioTrackFlags_None = 0,
 	LoadAudioTrackFlags_AutoLoad = 1 << 0,
 	LoadAudioTrackFlags_AutoPlay = 1 << 1,
+	//! The sine wave is a stream source (AudioSystemCreateSineStreamSource), which generates its frames while it is mixed. With LoadAudioTrackFlags_AutoLoad a file that can stream (Vorbis, mp3) is a stream source too, any other file loads in full
+	LoadAudioTrackFlags_Stream = 1 << 2,
 } LoadAudioTrackFlags;
 
-static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *sources, const size_t sourceCount, const bool forceSineWave, const AudioSineWaveData *sineWave, const LoadAudioTrackFlags flags, AudioTrackList *tracklist) {
+static inline bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *sources, const size_t sourceCount, const bool forceSineWave, const AudioSineWaveData *sineWave, const LoadAudioTrackFlags flags, AudioTrackList *tracklist) {
 	// Stop any audio tracks
 	StopAllAudioTracks(audioSys, tracklist);
 
@@ -145,6 +147,7 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 
 	bool autoLoad = flags & LoadAudioTrackFlags_AutoLoad;
 	bool autoPlay = flags & LoadAudioTrackFlags_AutoPlay;
+	bool isStream = flags & LoadAudioTrackFlags_Stream;
 
 	// Add to track list (Optionally start playing)
 	uint32_t maxTrackCount = fplArrayCount(tracklist->tracks);
@@ -179,17 +182,34 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 				if(autoLoad) {
 					fplConsoleFormatOut("Loading audio track '%s\n", trackSource->name);
 
-					AudioSource *source = fpl_null;				
-					
-					switch (trackSource->type) {
-						case AudioTrackSourceType_URL:
-							source = AudioSystemLoadFileSource(audioSys, trackSource->url.urlOrFilePath);
-							break;
-						case AudioTrackSourceType_Data:
-							source = AudioSystemLoadDataSource(audioSys, trackSource->data.size, trackSource->data.data);
-							break;
-						default:
-							FPL_NOT_IMPLEMENTED;
+					AudioSource *source = fpl_null;
+
+					// Data is copied as with a full load, the caller may release it afterwards
+					if(isStream) {
+						switch (trackSource->type) {
+							case AudioTrackSourceType_URL:
+								source = AudioSystemLoadFileStreamSource(audioSys, trackSource->url.urlOrFilePath);
+								break;
+							case AudioTrackSourceType_Data:
+								source = AudioSystemLoadDataStreamSource(audioSys, trackSource->data.size, trackSource->data.data, true);
+								break;
+							default:
+								break;
+						}
+					}
+
+					// Not streamed: the format cannot stream or no stream was asked for
+					if(source == fpl_null) {
+						switch (trackSource->type) {
+							case AudioTrackSourceType_URL:
+								source = AudioSystemLoadFileSource(audioSys, trackSource->url.urlOrFilePath);
+								break;
+							case AudioTrackSourceType_Data:
+								source = AudioSystemLoadDataSource(audioSys, trackSource->data.size, trackSource->data.data);
+								break;
+							default:
+								FPL_NOT_IMPLEMENTED;
+						}
 					}
 
 					if (source == fpl_null) {
@@ -223,24 +243,29 @@ static bool LoadAudioTrackList(AudioSystem *audioSys, const AudioTrackSource *so
 			AudioSineWaveData waveData = *sineWave;
 			AudioHertz sampleRate = audioSys->targetFormat.sampleRate;
 			AudioChannelIndex channels = audioSys->targetFormat.channels;
-			AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
-			AudioSource *source = AudioSystemAllocateSource(audioSys, audioSys->targetFormat.channels, audioSys->targetFormat.sampleRate, fplAudioFormatType_S16, frameCount);
+			AudioSource *source;
+			if(isStream) {
+				source = AudioSystemCreateSineStreamSource(audioSys, channels, sampleRate, &waveData);
+			} else {
+				AudioFrameIndex frameCount = (AudioFrameIndex)(sampleRate * waveData.duration + 0.5);
+				source = AudioSystemAllocateSource(audioSys, channels, sampleRate, fplAudioFormatType_S16, frameCount);
+			}
 			if(source != fpl_null) {
-				fplAssert(source->type == AudioSourceType_Allocated);
-
 				if (!AudioSystemAddSource(audioSys, source)) {
 					fplConsoleFormatError("Failed to add sine wave audio source id '%zu'!\n", source->id.value);
 					return false;
 				}
 
-				// Generate sine wave
-				source->type = AudioSourceType_Stream;
-				AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+				// A stream generates its frames while it is mixed, the other source gets all of them now
+				if(!isStream) {
+					fplAssert(source->type == AudioSourceType_Allocated);
+					AudioGenerateSineWave(&waveData, source->buffer.samples, source->format.format, source->format.sampleRate, source->format.channels, source->buffer.frameCount);
+				}
 
 				uint32_t trackIndex = tracklist->count++;
 				AudioTrack *track = &tracklist->tracks[trackIndex];
 				track->sourceID = source->id;
-				track->state = AudioTrackState_Full;
+				track->state = isStream ? AudioTrackState_Ready : AudioTrackState_Full;
 
 				if(autoPlay) {
 					AudioPlayItemID playID = AudioSystemPlaySource(audioSys, source, true, 1.0f, AudioSystemDefaultPitch);

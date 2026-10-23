@@ -10,6 +10,10 @@ Description:
 License:
 	MIT License
 	Copyright 2017-2026 Torsten Spaete
+
+Changelog:
+	## 2026-10-22
+	- New: LoadMP3FrameOffsetsFromBuffer() writes the byte offset of every frame without decoding, for streams that seek
 */
 
 #ifndef FINAL_MP3LOADER_H
@@ -33,6 +37,10 @@ extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PC
 extern bool LoadMP3FromFile(const char *filePath, PCMWaveData *outWave);
 
 extern bool LoadMP3FormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat);
+
+// Writes the byte offset of every MPEG frame of an mp3 in memory, the frames LoadMP3FormatFromBuffer counts, without decoding. outFrameOffsets may be null to count them only, at most maxFrameCount offsets are written.
+// Returns the number of frames, 0 when the buffer holds no mp3 frame.
+extern uint32_t LoadMP3FrameOffsetsFromBuffer(const uint8_t *buffer, const size_t bufferSize, uint32_t *outFrameOffsets, const uint32_t maxFrameCount);
 
 #endif // FINAL_MP3LOADER_H
 
@@ -111,6 +119,52 @@ static size_t MP3SkipID3v2Tag(const uint8_t *buffer, const size_t bufferSize) {
 	return (totalSize <= bufferSize) ? totalSize : bufferSize;
 }
 
+// What a walk over the frame headers of an mp3 finds, see WalkMP3FrameHeaders
+typedef struct MP3FrameWalk {
+	uint64_t totalFrameSamples;
+	uint32_t frameCount;
+	unsigned sampleRate;
+	unsigned channelCount;
+} MP3FrameWalk;
+
+// Hops from frame header to frame header like mp3dec_iterate_buf, minus the decoding and the callback. The offset of every frame goes into outFrameOffsets (may be null), at most maxFrameCount of them
+static void WalkMP3FrameHeaders(const uint8_t *buffer, const size_t bufferSize, uint32_t *outFrameOffsets, const uint32_t maxFrameCount, MP3FrameWalk *outWalk) {
+	fplClearStruct(outWalk);
+
+	size_t id3v2Size = MP3SkipID3v2Tag(buffer, bufferSize);
+	const uint8_t *scan = buffer + id3v2Size;
+	size_t remaining = bufferSize - id3v2Size;
+
+	bool isFirstFrame = true;
+	int freeFormatBytes = 0;
+
+	while (remaining > 0) {
+		int frameSize = 0;
+		int skippedBytes = mp3d_find_frame(scan, (int)remaining, &freeFormatBytes, &frameSize);
+		scan += skippedBytes;
+		remaining -= (size_t)skippedBytes;
+		if (skippedBytes > 0 && frameSize == 0) {
+			continue; // junk between frames -- mp3d_find_frame already stepped past it
+		}
+		if (frameSize == 0) {
+			break; // no further frame in what is left
+		}
+		const uint8_t *frameHeader = scan;
+		if (isFirstFrame) {
+			outWalk->sampleRate = hdr_sample_rate_hz(frameHeader);
+			outWalk->channelCount = HDR_IS_MONO(frameHeader) ? 1 : 2;
+		}
+		if (outFrameOffsets != fpl_null && outWalk->frameCount < maxFrameCount) {
+			outFrameOffsets[outWalk->frameCount] = (uint32_t)(frameHeader - buffer);
+		}
+		outWalk->totalFrameSamples += hdr_frame_samples(frameHeader);
+		++outWalk->frameCount;
+		isFirstFrame = false;
+		scan += frameSize;
+		remaining -= (size_t)frameSize;
+	}
+}
+
 // Read an mp3's FORMAT without decoding it.
 //
 // This used to call mp3dec_load_buf and read fileInfo.samples off the result -- i.e. it decoded the whole
@@ -132,49 +186,27 @@ extern bool LoadMP3FormatFromBuffer(const uint8_t *buffer, const size_t bufferSi
 
 	fplClearStruct(outFormat);
 
-	size_t id3v2Size = MP3SkipID3v2Tag(buffer, bufferSize);
-	const uint8_t *scan = buffer + id3v2Size;
-	size_t remaining = bufferSize - id3v2Size;
-
-	uint64_t totalFrameSamples = 0;
-	unsigned sampleRate = 0;
-	unsigned channelCount = 0;
-	bool isFirstFrame = true;
-	int freeFormatBytes = 0;
-
-	// Mirrors mp3dec_iterate_buf's loop, minus the decoding and the callback.
-	while (remaining > 0) {
-		int frameSize = 0;
-		int skippedBytes = mp3d_find_frame(scan, (int)remaining, &freeFormatBytes, &frameSize);
-		scan += skippedBytes;
-		remaining -= (size_t)skippedBytes;
-		if (skippedBytes > 0 && frameSize == 0) {
-			continue; // junk between frames -- mp3d_find_frame already stepped past it
-		}
-		if (frameSize == 0) {
-			break; // no further frame in what is left
-		}
-		const uint8_t *frameHeader = scan;
-		if (isFirstFrame) {
-			sampleRate = hdr_sample_rate_hz(frameHeader);
-			channelCount = HDR_IS_MONO(frameHeader) ? 1 : 2;
-		}
-		totalFrameSamples += hdr_frame_samples(frameHeader);
-		isFirstFrame = false;
-		scan += frameSize;
-		remaining -= (size_t)frameSize;
-	}
-
-	if (totalFrameSamples == 0 || sampleRate == 0 || channelCount == 0) {
+	MP3FrameWalk walk;
+	WalkMP3FrameHeaders(buffer, bufferSize, fpl_null, 0, &walk);
+	if (walk.totalFrameSamples == 0 || walk.sampleRate == 0 || walk.channelCount == 0) {
 		return false;
 	}
 
-	outFormat->channelCount = (uint16_t)channelCount;
-	outFormat->samplesPerSecond = sampleRate;
+	outFormat->channelCount = (uint16_t)walk.channelCount;
+	outFormat->samplesPerSecond = walk.sampleRate;
 	outFormat->formatType = fplAudioFormatType_S16; // what LoadMP3FromBuffer decodes to
 	outFormat->bytesPerSample = fplGetAudioSampleSizeInBytes(outFormat->formatType);
-	outFormat->frameCount = (uint32_t)totalFrameSamples;
+	outFormat->frameCount = (uint32_t)walk.totalFrameSamples;
 	return true;
+}
+
+extern uint32_t LoadMP3FrameOffsetsFromBuffer(const uint8_t *buffer, const size_t bufferSize, uint32_t *outFrameOffsets, const uint32_t maxFrameCount) {
+	if ((buffer == fpl_null) || (bufferSize == 0)) {
+		return 0;
+	}
+	MP3FrameWalk walk;
+	WalkMP3FrameHeaders(buffer, bufferSize, outFrameOffsets, maxFrameCount, &walk);
+	return walk.frameCount;
 }
 
 extern bool LoadMP3FromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveData *outWave) {

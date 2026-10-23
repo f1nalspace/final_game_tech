@@ -31,6 +31,9 @@ Description:
 	This file is part of the final_framework.
 
 Changelog:
+	## 2026-10-20
+	- New: Textured triangle commands (tiled nine-slice images) are drawn as sprites
+
 	## 2026-08-23
 	- Changed: States the final_ui.h version it is built against (v0.9.0)
 	- New: Value conversions fuiVec2FromVec2f, fuiColorFromVec4f, fuiButtonStateFromFinalGame and V2fFromFuiVec2
@@ -596,6 +599,31 @@ fpl_internal void fui__RenderCommandTriangles(RenderState *renderState, const fu
 	}
 }
 
+// The renderer has no textured triangles, but the library only emits textured triangles as axis-aligned quads (the copies of a tiled nine-slice), so each quad goes out as a sprite
+fpl_internal void fui__RenderCommandTexturedQuads(RenderState *renderState, const fuiDrawData *drawData, const fuiDrawCommand *command, const float windowHeight) {
+	TextureHandle texture = (TextureHandle)(uintptr_t)command->texture;
+	// A quad is written as top-left, top-right, bottom-right, bottom-left and indexed as two triangles
+	const uint32_t indicesPerQuad = 6u;
+	const uint32_t bottomRightIndexInQuad = 2u;
+	for(uint32_t indexAt = 0; indexAt + indicesPerQuad <= command->indexCount; indexAt += indicesPerQuad) {
+		fuiDrawIndex topLeftIndex = drawData->indices[command->indexOffset + indexAt];
+		fuiDrawIndex bottomRightIndex = drawData->indices[command->indexOffset + indexAt + bottomRightIndexInQuad];
+		const fuiVertex *topLeft = &drawData->vertices[topLeftIndex];
+		const fuiVertex *bottomRight = &drawData->vertices[bottomRightIndex];
+
+		float halfWidth = (bottomRight->position.x - topLeft->position.x) * 0.5f;
+		float halfHeight = (bottomRight->position.y - topLeft->position.y) * 0.5f;
+		fuiVec2 centreInUiSpace = fuiV2(topLeft->position.x + halfWidth, topLeft->position.y + halfHeight);
+		Vec2f centre = fui__ToRenderPoint(centreInUiSpace, windowHeight);
+		Vec2f halfExtent = V2fInit(halfWidth, halfHeight);
+
+		fuiColor unpackedColor = fuiUnpackColor(topLeft->color);
+		Vec4f tint = fui__ToRenderColor(unpackedColor);
+		UVRect uvRect = UVRectInit(topLeft->uv.x, topLeft->uv.y, bottomRight->uv.x, bottomRight->uv.y);
+		RenderPushSprite(renderState, centre, halfExtent, texture, tint, uvRect, SpriteFlags_None);
+	}
+}
+
 fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *drawData, const FontAsset *fontAsset) {
 	fplAssert(renderState != fpl_null);
 	if(renderState == fpl_null || drawData == fpl_null || drawData->commandCount == 0) {
@@ -715,7 +743,11 @@ fpl_extern void fuiRenderDrawData(RenderState *renderState, const fuiDrawData *d
 			case fuiDrawKind_Triangles:
 			default:
 			{
-				fui__RenderCommandTriangles(renderState, drawData, command, windowHeight);
+				if(command->texture != FUI_TEXTURE_ID_NONE) {
+					fui__RenderCommandTexturedQuads(renderState, drawData, command, windowHeight);
+				} else {
+					fui__RenderCommandTriangles(renderState, drawData, command, windowHeight);
+				}
 			} break;
 		}
 	}

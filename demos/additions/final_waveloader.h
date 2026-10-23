@@ -12,6 +12,11 @@ License:
 	Copyright 2017-2026 Torsten Spaete
 
 Changelog:
+	## 2026-10-22
+	- Fixed: Chunks after a chunk of odd size were not found (pad byte)
+	- Fixed: A huge chunk size could loop forever on 32-bit
+	- New: The loop region from the first loop of the smpl chunk (PCMWaveFormat.loopStartFrame and loopEndFrame)
+
 	## 2026-07-19
 	- Fixed: Malformed WAV chunk sizes now bounds-checked (no more heap over-read / div-by-zero); allocation is null-checked
 */
@@ -56,6 +61,7 @@ typedef enum WaveChunkId {
 	WaveChunkId_WAVE = RIFF_ID('W', 'A', 'V', 'E'),
 	WaveChunkId_Format = RIFF_ID('f', 'm', 't', ' '),
 	WaveChunkId_Data = RIFF_ID('d', 'a', 't', 'a'),
+	WaveChunkId_Sampler = RIFF_ID('s', 'm', 'p', 'l'),
 } WaveChunkID;
 
 typedef enum WaveFormatTags {
@@ -73,7 +79,35 @@ typedef struct WaveFormatEx {
 	uint16_t bitsPerSample;
 	uint16_t cbSize;
 } WaveFormatEx;
+
+// Start of the smpl chunk, its sample loops follow right after it
+typedef struct WaveSamplerHeader {
+	uint32_t manufacturer;
+	uint32_t product;
+	uint32_t samplePeriod;
+	uint32_t midiUnityNote;
+	uint32_t midiPitchFraction;
+	uint32_t smpteFormat;
+	uint32_t smpteOffset;
+	uint32_t sampleLoopCount;
+	uint32_t samplerDataSize;
+} WaveSamplerHeader;
+
+typedef struct WaveSampleLoop {
+	uint32_t identifier;
+	uint32_t type;
+	// First frame of the loop
+	uint32_t start;
+	// Last frame of the loop, it plays as well
+	uint32_t end;
+	uint32_t fraction;
+	uint32_t playCount;
+} WaveSampleLoop;
 #pragma pack(pop)
+
+typedef enum WaveSampleLoopType {
+	WaveSampleLoopType_Forward = 0,
+} WaveSampleLoopType;
 
 extern bool TestWaveHeader(const uint8_t *buffer, const size_t bufferSize) {
 	if ((buffer == fpl_null) || (bufferSize == 0)) {
@@ -121,6 +155,41 @@ static bool ConvertWaveFormatExToPCMWaveFormat(const WaveFormatEx *sourceFormat,
 	return true;
 }
 
+// Where the chunk after a chunk body ends: every chunk of odd size is followed by a pad byte, which the last chunk of a file may lack
+static size_t GetNextWaveChunkPosition(const size_t bodyPosition, const uint32_t chunkSize) {
+	const uint32_t chunkAlignment = 2;
+	const size_t padByteCount = chunkSize % chunkAlignment;
+	const size_t result = bodyPosition + chunkSize + padByteCount;
+	return(result);
+}
+
+// The first sample loop of a smpl chunk, false when the chunk has none
+static bool ReadFirstWaveSampleLoop(const uint8_t *chunkBody, const uint32_t chunkSize, WaveSampleLoop *outLoop) {
+	const size_t firstLoopEndOffset = sizeof(WaveSamplerHeader) + sizeof(WaveSampleLoop);
+	if(chunkSize < firstLoopEndOffset) {
+		return(false);
+	}
+	const WaveSamplerHeader *header = (const WaveSamplerHeader *)chunkBody;
+	if(header->sampleLoopCount == 0) {
+		return(false);
+	}
+	const WaveSampleLoop *firstLoop = (const WaveSampleLoop *)(chunkBody + sizeof(WaveSamplerHeader));
+	*outLoop = *firstLoop;
+	return(true);
+}
+
+// Sets the loop region of a forward sample loop that lies inside the frame count, otherwise the format keeps no region
+static void SetWaveLoopRegion(const WaveSampleLoop *loop, PCMWaveFormat *targetFormat) {
+	const bool isForward = (loop->type == WaveSampleLoopType_Forward);
+	const bool isInsideFile = (loop->start <= loop->end) && (loop->end < targetFormat->frameCount);
+	if(isForward && isInsideFile) {
+		// The region ends after the last frame of the loop
+		const uint32_t loopEndFrame = loop->end + 1;
+		targetFormat->loopStartFrame = loop->start;
+		targetFormat->loopEndFrame = loopEndFrame;
+	}
+}
+
 extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferSize, PCMWaveFormat *outFormat) {
 	if((buffer == fpl_null) || (bufferSize == 0) || outFormat == fpl_null) {
 		return false;
@@ -139,13 +208,19 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 
 	WaveFormatEx waveFormat = fplZeroInit;
 
+	// The smpl chunk may come before or after the data chunk
+	WaveSampleLoop firstSampleLoop = fplZeroInit;
+	bool hasSampleLoop = false;
+
 	size_t bufferPosition = sizeof(*header);
 	while(bufferPosition + sizeof(WaveChunk) <= bufferSize) {
 		const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
 		uint32_t chunkId = chunk->id;
 		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		if(bufferPosition + chunkSize > bufferSize) {
+		// Compared with what is left of the buffer, a sum of position and size overflows on 32-bit
+		const size_t remainingBufferSize = bufferSize - bufferPosition;
+		if(chunkSize > remainingBufferSize) {
 			// Chunk body exceeds the buffer, malformed
 			return false;
 		}
@@ -181,8 +256,18 @@ extern bool LoadWaveFormatFromBuffer(const uint8_t *buffer, const size_t bufferS
 					} break;
 				}
 			} break;
+
+			case WaveChunkId_Sampler:
+			{
+				if(!hasSampleLoop) {
+					hasSampleLoop = ReadFirstWaveSampleLoop(buffer + bufferPosition, chunkSize, &firstSampleLoop);
+				}
+			} break;
 		}
-		bufferPosition += chunkSize;
+		bufferPosition = GetNextWaveChunkPosition(bufferPosition, chunkSize);
+	}
+	if(result && hasSampleLoop) {
+		SetWaveLoopRegion(&firstSampleLoop, outFormat);
 	}
 	return(result);
 }
@@ -209,13 +294,19 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 
 	WaveFormatEx waveFormat = fplZeroInit;
 
+	// The smpl chunk may come before or after the data chunk
+	WaveSampleLoop firstSampleLoop = fplZeroInit;
+	bool hasSampleLoop = false;
+
 	size_t bufferPosition = sizeof(*header);
 	while(bufferPosition + sizeof(WaveChunk) <= bufferSize) {
 		const WaveChunk *chunk = (const WaveChunk *)(buffer + bufferPosition);
 		uint32_t chunkId = chunk->id;
 		uint32_t chunkSize = chunk->size;
 		bufferPosition += sizeof(WaveChunk);
-		if(bufferPosition + chunkSize > bufferSize) {
+		// Compared with what is left of the buffer, a sum of position and size overflows on 32-bit
+		const size_t remainingBufferSize = bufferSize - bufferPosition;
+		if(chunkSize > remainingBufferSize) {
 			// Chunk body exceeds the buffer, malformed
 			PushWaveError(outWave, "Chunk body of size '%lu' exceeds the buffer!", (unsigned long)chunkSize);
 			return false;
@@ -267,8 +358,18 @@ extern bool LoadWaveFromBuffer(const uint8_t *buffer, const size_t bufferSize, P
 					} break;
 				}
 			} break;
+
+			case WaveChunkId_Sampler:
+			{
+				if(!hasSampleLoop) {
+					hasSampleLoop = ReadFirstWaveSampleLoop(buffer + bufferPosition, chunkSize, &firstSampleLoop);
+				}
+			} break;
 		}
-		bufferPosition += chunkSize;
+		bufferPosition = GetNextWaveChunkPosition(bufferPosition, chunkSize);
+	}
+	if(result && hasSampleLoop) {
+		SetWaveLoopRegion(&firstSampleLoop, &outWave->format);
 	}
 	return(result);
 }

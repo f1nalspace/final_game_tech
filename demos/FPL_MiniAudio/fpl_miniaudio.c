@@ -15,6 +15,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-10-21
+	- Changed: The play item count comes from AudioSystemGetStats()
+
 	## 2025-03-28
 	- Fixed warnings for int vs size_t
 
@@ -381,7 +384,9 @@ int main(int argc, char **args) {
     const char *systemName = "FPL";
 #endif
 
-    fplConsoleFormatOut("Playing %lu audio sources (%s, %s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioContext->system.playItems.count, systemName, backendName, deviceName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
+    AudioSystemStats audioStats = fplZeroInit;
+    AudioSystemGetStats(&audioContext->system, &audioStats);
+    fplConsoleFormatOut("Playing %u audio sources (%s, %s, %s, %s, %lu Hz, %lu channels, %lu frames, %lu periods)\n", audioStats.activePlayItemCount, systemName, backendName, deviceName, formatName, playbackFormat->deviceFormat.sampleRate, playbackFormat->deviceFormat.channels, playbackFormat->deviceFormat.bufferSizeInFrames, playbackFormat->deviceFormat.periods);
 
 	// Wait for any key presses
 	fplConsoleFormatOut("Press any key to stop playback\n");

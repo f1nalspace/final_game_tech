@@ -1,0 +1,8 @@
+# Everything the test bench builds, copies or records, only the scripts and tool sources are versioned
+/baseline/
+/baseline_warnings/
+/bin/
+/media/
+/renders/
+/results/
+/runs/
