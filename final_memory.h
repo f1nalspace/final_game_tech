@@ -158,6 +158,7 @@ SOFTWARE.
 	\tableofcontents
 
 	## v1.0.2:
+	- Fixed: fmemReset only emptied the first block of a growable arena, the following blocks stayed used and an arena reset each frame grew with every reset; now every block of the chain is emptied and kept
 	- Fixed: fmemFree never freed an owned block (its guard required source != null, but owned blocks have source == null) so growable/fixed arenas leaked entirely; guard corrected to source == null
 	- Fixed: fmemBeginTemporary on a multi-block growable arena granted the cross-chain remaining while base was only contiguous in one block (heap overflow); now clamped to this block's remaining
 	- Fixed: fmemPushAligned now aligns the returned address (it previously only padded the size, so the pointer was not actually aligned)
@@ -345,7 +346,7 @@ fmem_api bool fmemPushBlock(fmemMemoryBlock *src, fmemMemoryBlock *dst, const si
 fmem_api size_t fmemGetRemainingSize(fmemMemoryBlock *block);
 //! Returns the total size of all blocks starting by the given block
 fmem_api size_t fmemGetTotalSize(fmemMemoryBlock *block);
-//! Resets the given block usage to zero without freeing any memory
+//! Resets the usage of the given block, and of every following block of a growable arena, to zero without freeing any memory
 fmem_api void fmemReset(fmemMemoryBlock *block);
 //! Initializes a temporary block with the remaining size of the source block
 fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *temporary);
@@ -751,8 +752,18 @@ fmem_api bool fmemPushBlock(fmemMemoryBlock *src, fmemMemoryBlock *dst, const si
 }
 
 fmem_api void fmemReset(fmemMemoryBlock *block) {
-	if (block != fmem_null && block->temporary == fmem_null) {
-		block->used = 0;
+	if (block == fmem_null || block->temporary != fmem_null) {
+		return;
+	}
+	// Every block of a growable chain is emptied and kept, not just the first one, otherwise an arena that is reset each frame grows with every reset
+	fmemMemoryBlock *resetBlock = block;
+	while (resetBlock != fmem_null) {
+		resetBlock->used = 0;
+		if (resetBlock->type != fmemType_Growable || resetBlock->base == fmem_null || resetBlock->size == 0) {
+			break;
+		}
+		fmemBlockHeader *header = FMEM__GETHEADER(resetBlock);
+		resetBlock = header->next;
 	}
 }
 

@@ -131,6 +131,30 @@ static void TestGrowable(const bool withInit, const bool withAlloc) {
 	fmemFree(&block);
 }
 
+static void TestResetGrowable() {
+	// Pushes that need three blocks, then a reset, four times over: every block has to be empty after a reset and no round may allocate a new one
+	const size_t pushSize = 3000;
+	const int pushCount = 3;
+	const int roundCount = 4;
+	fmemMemoryBlock block;
+	fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 0, 0));
+	size_t firstRoundTotalSize = 0;
+	for(int round = 0; round < roundCount; ++round) {
+		for(int pushIndex = 0; pushIndex < pushCount; ++pushIndex) {
+			uint8_t *data = fmemPush(&block, pushSize, fmemPushFlags_None);
+			fmemAlwaysAssert(data != fmem_null);
+		}
+		size_t totalSize = fmemGetTotalSize(&block);
+		if(round == 0) {
+			firstRoundTotalSize = totalSize;
+		}
+		fmemAlwaysAssert(totalSize == firstRoundTotalSize);
+		fmemReset(&block);
+		fmemAlwaysAssert(fmemGetRemainingSize(&block) == totalSize);
+	}
+	fmemFree(&block);
+}
+
 static void TestGrowMiddle() {
 	fmemMemoryBlock mainBlock;
 	fmemInit(&mainBlock, fmemType_Growable, 4096, 0);
@@ -147,5 +171,6 @@ int main(int argc, char **args) {
 	TestFixed();
 	TestTemporary();
 	TestGrowMiddle();
+	TestResetGrowable();
 	return 0;
 }
