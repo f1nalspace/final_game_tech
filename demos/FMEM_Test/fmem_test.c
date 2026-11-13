@@ -167,6 +167,17 @@ static void TestBlockSizeRounding() {
 	fmemFree(&block);
 }
 
+static void TestBlockCount() {
+	// The first block allocated by fmemInit counts as well
+	fmemMemoryBlock block;
+	fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 64, 0));
+	fmemAlwaysAssert(block.totalBlockCount == 1);
+	uint8_t *data = fmemPush(&block, FMEM_MEGABYTES(1), fmemPushFlags_None);
+	fmemAlwaysAssert(data != fmem_null);
+	fmemAlwaysAssert(block.totalBlockCount == 2);
+	fmemFree(&block);
+}
+
 static void TestGrowMiddle() {
 	fmemMemoryBlock mainBlock;
 	fmemInit(&mainBlock, fmemType_Growable, 4096, 0);
@@ -184,6 +195,7 @@ int main(int argc, char **args) {
 	TestTemporary();
 	TestGrowMiddle();
 	TestResetGrowable();
+	TestBlockCount();
 	TestBlockSizeRounding();
 	return 0;
 }

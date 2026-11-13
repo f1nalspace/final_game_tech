@@ -158,6 +158,7 @@ SOFTWARE.
 	\tableofcontents
 
 	## v1.0.2:
+	- Fixed: totalBlockCount stayed zero for the first block fmemInit allocates, so it was one too low
 	- Fixed: Block sizes that already were a multiple were rounded one step further, so a minimum block size of 16 MB became 16 MB + 4 KB
 	- Fixed: fmemReset only emptied the first block of a growable arena, the following blocks stayed used and an arena reset each frame grew with every reset; now every block of the chain is emptied and kept
 	- Fixed: fmemFree never freed an owned block (its guard required source != null, but owned blocks have source == null) so growable/fixed arenas leaked entirely; guard corrected to source == null
@@ -533,6 +534,7 @@ fmem_api bool fmemInit(fmemMemoryBlock *block, const fmemType type, const size_t
 		}
 		block->base = (uint8_t *)header + FMEM__BLOCK_META_SIZE;
 		block->size = blockSize - FMEM__BLOCK_META_SIZE;
+		block->totalBlockCount = 1;
 	}
 
 	return(true);
