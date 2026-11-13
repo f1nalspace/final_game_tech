@@ -158,6 +158,7 @@ SOFTWARE.
 	\tableofcontents
 
 	## v1.0.2:
+	- Fixed: fmemGetHeader returned the start of the block's memory instead of the header in front of it; it returns null for borrowed and temporary blocks now
 	- Fixed: totalBlockCount stayed zero for the first block fmemInit allocates, so it was one too low
 	- Fixed: Block sizes that already were a multiple were rounded one step further, so a minimum block size of 16 MB became 16 MB + 4 KB
 	- Fixed: fmemReset only emptied the first block of a growable arena, the following blocks stayed used and an arena reset each frame grew with every reset; now every block of the chain is emptied and kept
@@ -354,7 +355,7 @@ fmem_api void fmemReset(fmemMemoryBlock *block);
 fmem_api bool fmemBeginTemporary(fmemMemoryBlock *source, fmemMemoryBlock *temporary);
 //! Gives the memory back to source block from the temporary block
 fmem_api void fmemEndTemporary(fmemMemoryBlock *temporary);
-//! Returns the block header pointer for the given block
+//! Returns the header in front of a block fmem allocated itself, null for a borrowed or temporary block
 fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block);
 
 //! Gets memory for a struct from the block and return a pointer to the struct
@@ -441,10 +442,11 @@ fmem_api fmemBlockHeader *fmemGetHeader(fmemMemoryBlock *block) {
 	if (block == fmem_null) {
 		return fmem_null;
 	}
-	if (block->base == fmem_null) {
+	// Only a block fmem allocated itself has a header, in front of its memory; borrowed and temporary blocks have none
+	if (block->base == fmem_null || block->size == 0 || block->source != fmem_null) {
 		return fmem_null;
 	}
-	fmemBlockHeader *header = (fmemBlockHeader *)block->base;
+	fmemBlockHeader *header = FMEM__GETHEADER(block);
 	return(header);
 }
 

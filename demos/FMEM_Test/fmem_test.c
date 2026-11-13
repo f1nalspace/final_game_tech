@@ -178,6 +178,22 @@ static void TestBlockCount() {
 	fmemFree(&block);
 }
 
+static void TestGetHeader() {
+	// The header of an owned block links to the next block, a borrowed block has none
+	fmemMemoryBlock block;
+	fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 64, 0));
+	uint8_t *data = fmemPush(&block, FMEM_MEGABYTES(1), fmemPushFlags_None);
+	fmemAlwaysAssert(data != fmem_null);
+	fmemBlockHeader *header = fmemGetHeader(&block);
+	fmemAlwaysAssert(header == FMEM__GETHEADER(&block));
+	fmemAlwaysAssert(header->next != fmem_null);
+	uint8_t sourceMemory[64];
+	fmemMemoryBlock borrowed;
+	fmemAlwaysAssert(fmemInitFromSource(&borrowed, sourceMemory, sizeof(sourceMemory)));
+	fmemAlwaysAssert(fmemGetHeader(&borrowed) == fmem_null);
+	fmemFree(&block);
+}
+
 static void TestGrowMiddle() {
 	fmemMemoryBlock mainBlock;
 	fmemInit(&mainBlock, fmemType_Growable, 4096, 0);
@@ -195,6 +211,7 @@ int main(int argc, char **args) {
 	TestTemporary();
 	TestGrowMiddle();
 	TestResetGrowable();
+	TestGetHeader();
 	TestBlockCount();
 	TestBlockSizeRounding();
 	return 0;
