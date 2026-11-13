@@ -202,6 +202,7 @@ SOFTWARE.
 	@tableofcontents
 
 	# v0.9.8:
+	- New: fuiMessageBox shows a message of several lines. Every '\n' starts a new line, a line too long for the widest box (720 pixels) is wrapped at a space, and the box grows as tall as its lines. A short message of one line looks as before
 	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
 	- New: fuiImageSliceMode and fuiImageSliceBorders, the fields sliceMode and sliceBorders of fuiImageDesc
 	- New: fuiSetScale and fuiGetScale, the interface is laid out in ui units and drawn that many screen pixels per unit
@@ -4878,11 +4879,11 @@ typedef struct fuiListIcons {
 } fuiListIcons;
 
 /**
-* @brief A message box with a title, one line of text and a set of buttons.
+* @brief A message box with a title, a message of one or more lines and a set of buttons.
 * @param[in,out] context Reference to the context @ref fuiContext.
 * @param[in] id Identifies the dialog, the same string @ref fuiOpenDialog was given.
 * @param[in] title What the title bar says.
-* @param[in] text The message. The box grows wider than its minimum to fit a long one.
+* @param[in] text The message. Every '\n' starts a new line, and a line too long for the widest box is wrapped at a space. The box grows from its minimum width up to its maximum to fit the text, and as tall as its lines.
 * @param[in] buttons Which buttons to offer @ref fuiMessageBoxButtons.
 * @return Returns what the user chose, and @ref fuiDialogResult_None while it is still up.
 * @note Closes itself as soon as it is answered. Enter takes the first button, escape the dismissing one.
@@ -13605,6 +13606,12 @@ fui_api void fuiStatusSeparator(fuiContext *context) {
 #define FUI__MESSAGE_BOX_MIN_WIDTH 360.0f
 //! How much room a message box keeps either side of its text before it grows wider
 #define FUI__MESSAGE_BOX_SIDE_MARGIN 24.0f
+//! Widest a message box gets, a longer line of its text is wrapped at a space instead of widening the box past the window
+#define FUI__MESSAGE_BOX_MAX_WIDTH 720.0f
+//! Height of a message box whose text is one line, every further line adds its own height to it
+#define FUI__MESSAGE_BOX_ONE_LINE_HEIGHT 160.0f
+//! How many lines of the message are broken out to tell one line from several, the second one is all it takes
+#define FUI__MESSAGE_BOX_LINE_PROBE_COUNT 2
 //! How many buttons the widest button row holds, which is Yes, No and Cancel
 #define FUI__DIALOG_MAX_BUTTONS 3
 
@@ -14941,19 +14948,43 @@ fui_api fuiDialogResult fuiMessageBox(fuiContext *context, const char *id, const
 		return(fuiDialogResult_None);
 	}
 
-	// The message is drawn as one line, so a box narrower than it would silently clip the tail. The box grows
-	// to fit instead, with the minimum as a floor so a short prompt stays compact.
-	fuiVec2 messageSize = fuiMeasureText(context, text, 0, context->theme.fontHeight);
-	float fittedWidth = messageSize.x + FUI__MESSAGE_BOX_SIDE_MARGIN * 2.0f;
-	float dialogWidth = fuiMaxF(fittedWidth, FUI__MESSAGE_BOX_MIN_WIDTH);
-	const float dialogHeight = 160.0f;
+	/*
+		The message keeps its line breaks, and a line too long for the widest box is wrapped at a space.
+		It is measured at the widest wrap the box can have: the maximum width less the panel padding and the label inset on both sides.
+		The box then grows from its minimum to fit the widest line, up to that maximum, so a short prompt stays compact.
+		The label wraps at the width the box ends up with, and that is never narrower than the widest measured line, so it breaks the text exactly where the measure did.
+		A message of one line is laid out as it always was: one text row in a box of the one line height.
+	*/
+	const fuiTheme *theme = &context->theme;
+	float pixelHeight = theme->fontHeight;
+	float textInsetX = theme->panelPaddingX + theme->widgetPaddingX;
+	float widestWrapWidth = FUI__MESSAGE_BOX_MAX_WIDTH - textInsetX * 2.0f;
+	const bool wrapsWords = true;
+	fuiVec2 messageSize = fuiMeasureTextBlock(context, text, 0, pixelHeight, wrapsWords, widestWrapWidth);
+	fuiTextLine probedLines[FUI__MESSAGE_BOX_LINE_PROBE_COUNT];
+	uint32_t probedLineCount = fuiBreakTextLines(context, text, 0, pixelHeight, wrapsWords, widestWrapWidth, probedLines, FUI__MESSAGE_BOX_LINE_PROBE_COUNT);
+	bool messageIsOneLine = (probedLineCount == 1);
+
+	float sideRoom = fuiMaxF(FUI__MESSAGE_BOX_SIDE_MARGIN, textInsetX);
+	float fittedWidth = messageSize.x + sideRoom * 2.0f;
+	float grownWidth = fuiMaxF(fittedWidth, FUI__MESSAGE_BOX_MIN_WIDTH);
+	float dialogWidth = fuiMinF(grownWidth, FUI__MESSAGE_BOX_MAX_WIDTH);
+
+	float textRowHeight = fui__DialogTextRowHeight(context);
+	float textBlockHeight = messageSize.y + FUI__MULTILINE_PADDING_Y * 2.0f;
+	float textHeight = messageIsOneLine ? textRowHeight : fuiMaxF(textBlockHeight, textRowHeight);
+	float dialogHeight = FUI__MESSAGE_BOX_ONE_LINE_HEIGHT + (textHeight - textRowHeight);
 
 	fuiDialogResult result = fuiDialogResult_None;
 	if(fuiBeginModal(context, id, title, dialogWidth, dialogHeight)) {
 		fuiRect content = fuiLayoutRemaining(context);
-		float textRowHeight = fui__DialogTextRowHeight(context);
-		fuiRect textRect = fuiRectMake(content.x, content.y, content.w, textRowHeight);
-		fuiLabel(context, textRect, text);
+		fuiRect textRect = fuiRectMake(content.x, content.y, content.w, textHeight);
+		if(messageIsOneLine) {
+			fuiLabel(context, textRect, text);
+		} else {
+			const bool isMultiline = true;
+			fuiLabelEx(context, textRect, text, isMultiline, wrapsWords);
+		}
 
 		fui__DialogButtonSpec specs[FUI__DIALOG_MAX_BUTTONS];
 		fuiDialogResult acceptResult = fuiDialogResult_None;
