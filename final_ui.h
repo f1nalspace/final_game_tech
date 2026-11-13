@@ -202,6 +202,7 @@ SOFTWARE.
 	@tableofcontents
 
 	# v0.9.8:
+	- Fixed: fuiMeasureTextBlock measured an empty line as the whole rest of the text, because fuiMeasureText reads a length of zero as up to the terminator. A block with an empty line came out too wide
 	- New: fuiMessageBox shows a message of several lines. Every '\n' starts a new line, a line too long for the widest box (720 pixels) is wrapped at a space, and the box grows as tall as its lines. A short message of one line looks as before
 	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
 	- New: fuiImageSliceMode and fuiImageSliceBorders, the fields sliceMode and sliceBorders of fuiImageDesc
@@ -8513,6 +8514,10 @@ fui_api fuiVec2 fuiMeasureTextBlock(const fuiContext *context, const char *text,
 
 	float widestLine = 0.0f;
 	for(uint32_t lineIndex = 0; lineIndex < lineCount; ++lineIndex) {
+		// An empty line has no width, and its length of zero would make fuiMeasureText measure the whole rest of the text.
+		if(lines[lineIndex].length == 0) {
+			continue;
+		}
 		fuiVec2 lineSize = fuiMeasureText(context, lines[lineIndex].start, lines[lineIndex].length, pixelHeight);
 		widestLine = fuiMaxF(widestLine, lineSize.x);
 	}
