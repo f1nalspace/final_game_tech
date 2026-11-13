@@ -158,6 +158,7 @@ SOFTWARE.
 	\tableofcontents
 
 	## v1.0.2:
+	- Fixed: Block sizes that already were a multiple were rounded one step further, so a minimum block size of 16 MB became 16 MB + 4 KB
 	- Fixed: fmemReset only emptied the first block of a growable arena, the following blocks stayed used and an arena reset each frame grew with every reset; now every block of the chain is emptied and kept
 	- Fixed: fmemFree never freed an owned block (its guard required source != null, but owned blocks have source == null) so growable/fixed arenas leaked entirely; guard corrected to source == null
 	- Fixed: fmemBeginTemporary on a multi-block growable arena granted the cross-chain remaining while base was only contiguous in one block (heap overflow); now clamped to this block's remaining
@@ -408,7 +409,11 @@ static size_t fmem__GetSpaceAvailableFor(const fmemMemoryBlock *block, const siz
 }
 
 static size_t fmem__RoundToSize(const size_t size, const size_t roundSize) {
-	size_t count = (size / roundSize) + 1;
+	// Up to the next multiple, a size that already is one stays as it is
+	size_t count = size / roundSize;
+	if ((size % roundSize) != 0) {
+		count++;
+	}
 	size_t result = count * roundSize;
 	return(result);
 }

@@ -155,6 +155,18 @@ static void TestResetGrowable() {
 	fmemFree(&block);
 }
 
+static void TestBlockSizeRounding() {
+	// A minimum block size that is a multiple of a page stays as it is, and the block for a small push is exactly that size
+	const size_t minBlockSize = FMEM_MEGABYTES(16);
+	fmemMemoryBlock block;
+	fmemAlwaysAssert(fmemInit(&block, fmemType_Growable, 0, minBlockSize));
+	fmemAlwaysAssert(block.minBlockSize == minBlockSize);
+	uint8_t *data = fmemPush(&block, 1, fmemPushFlags_None);
+	fmemAlwaysAssert(data != fmem_null);
+	fmemAlwaysAssert(block.size + FMEM__BLOCK_META_SIZE == minBlockSize);
+	fmemFree(&block);
+}
+
 static void TestGrowMiddle() {
 	fmemMemoryBlock mainBlock;
 	fmemInit(&mainBlock, fmemType_Growable, 4096, 0);
@@ -172,5 +184,6 @@ int main(int argc, char **args) {
 	TestTemporary();
 	TestGrowMiddle();
 	TestResetGrowable();
+	TestBlockSizeRounding();
 	return 0;
 }
