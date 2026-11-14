@@ -203,6 +203,7 @@ SOFTWARE.
 
 	# v0.9.8:
 	- Fixed: Tab out of a numeric field that was typed into kept the keyboard on that field, because the field and the text field it is typed into registered the same id twice in the tab chain. A widget registered twice in a row is one stop now
+	- Fixed: A click from one numeric field straight into another lost what was typed into the first, because the second took the one edit buffer over before the first could read it back. The text is put aside now, and the first field reads it back the next time it is built
 	- Fixed: fuiMeasureTextBlock measured an empty line as the whole rest of the text, because fuiMeasureText reads a length of zero as up to the terminator. A block with an empty line came out too wide
 	- New: fuiMessageBox shows a message of several lines. Every '\n' starts a new line, a line too long for the widest box (720 pixels) is wrapped at a space, and the box grows as tall as its lines. A short message of one line looks as before
 	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
@@ -2488,6 +2489,12 @@ typedef struct fuiContext {
 	char numericEditText[FUI_MAX_NUMERIC_TEXT];
 	//! Which numeric widget that text belongs to, zero while nothing is being typed into
 	fuiId numericEditId;
+	//! What was typed into a numeric widget whose edit another one took over with a click, before the first could read it back
+	char numericPendingText[FUI_MAX_NUMERIC_TEXT];
+	//! Which numeric widget that put aside text belongs to. It reads it back the next time it is built, zero while nothing waits
+	fuiId numericPendingId;
+	//! Set on the build the text was put aside in, so it lasts until the end of the following build and not a frame longer
+	bool numericPendingIsFresh;
 
 	//! First focusable widget built this frame, which is where a tab off the last one wraps back to
 	fuiId firstFocusableThisFrame;
@@ -7054,6 +7061,16 @@ fui_api void fuiEndFrame(fuiContext *context) {
 		context->focused = FUI_ID_NONE;
 	}
 
+	// Text put aside for a numeric widget lasts until the end of the interacting build after the one it was put aside in.
+	// A widget that was not built again by then is gone, and must not read it back on some later frame when it comes back.
+	if(context->isInteractive) {
+		if(context->numericPendingIsFresh) {
+			context->numericPendingIsFresh = false;
+		} else {
+			context->numericPendingId = FUI_ID_NONE;
+		}
+	}
+
 	// Tab off the LAST focusable field wraps around to the first. The walk itself happens as the fields
 	// are built, and reaching the end unconsumed is exactly the case that walk cannot see.
 	bool tabWentUnanswered = fuiKeyWentDown(context, fuiKey_Tab) && !context->tabWasConsumedThisFrame;
@@ -11394,6 +11411,14 @@ fui_inline bool fui__NumericEditIsActive(const fuiContext *context, const fuiId 
 
 //! Puts a widget into type-in mode, seeded with the number it is showing and with that number selected whole
 fui_inline void fui__NumericEditBegin(fuiContext *context, const fuiId widgetId, const char *seedText) {
+	// A click from one numeric widget straight into another takes the one buffer over before the first could read back what was typed into it.
+	// Built before this one, the first has already been built this frame. So the text is put aside, and the first reads it back the next time it is built.
+	bool anotherEditIsOpen = (context->numericEditId != FUI_ID_NONE) && (context->numericEditId != widgetId);
+	if(anotherEditIsOpen) {
+		context->numericPendingId = context->numericEditId;
+		(void)fui__FormatString(context->numericPendingText, sizeof(context->numericPendingText), "%s", context->numericEditText);
+		context->numericPendingIsFresh = true;
+	}
 	context->numericEditId = widgetId;
 	(void)fui__FormatString(context->numericEditText, sizeof(context->numericEditText), "%s", seedText);
 	context->focused = widgetId;
@@ -11405,6 +11430,9 @@ fui_inline void fui__NumericEditBegin(fuiContext *context, const fuiId widgetId,
 
 //! Gives a type-in up without reading it back, for a widget that was disabled while it was open
 fui_inline void fui__NumericEditAbandon(fuiContext *context, const fuiId widgetId) {
+	if(context->numericPendingId == widgetId) {
+		context->numericPendingId = FUI_ID_NONE;
+	}
 	if(!fui__NumericEditIsActive(context, widgetId)) {
 		return;
 	}
@@ -11414,12 +11442,12 @@ fui_inline void fui__NumericEditAbandon(fuiContext *context, const fuiId widgetI
 	}
 }
 
-//! Reads back what was typed and closes the edit. Text that is not a number leaves the value exactly as it was
-fui_inline bool fui__NumericEditCommit(fuiContext *context, const fui__NumericSpec *spec, float *value) {
+//! Reads typed text back into a value, clamped to the range. Text that is not a number leaves the value exactly as it was
+fui_inline bool fui__NumericReadBack(const fui__NumericSpec *spec, const char *typedText, float *value) {
 	bool didChange = false;
 	if(spec->isInteger) {
 		int32_t typedValue = 0;
-		if(fui__ParseInt(context->numericEditText, &typedValue)) {
+		if(fui__ParseInt(typedText, &typedValue)) {
 			float clampedValue = fuiClampF((float)typedValue, spec->minValue, spec->maxValue);
 			if(clampedValue != *value) {
 				*value = clampedValue;
@@ -11428,7 +11456,7 @@ fui_inline bool fui__NumericEditCommit(fuiContext *context, const fui__NumericSp
 		}
 	} else {
 		float typedValue = 0.0f;
-		if(fui__ParseFloat(context->numericEditText, &typedValue)) {
+		if(fui__ParseFloat(typedText, &typedValue)) {
 			float clampedValue = fuiClampF(typedValue, spec->minValue, spec->maxValue);
 			if(clampedValue != *value) {
 				*value = clampedValue;
@@ -11436,6 +11464,12 @@ fui_inline bool fui__NumericEditCommit(fuiContext *context, const fui__NumericSp
 			}
 		}
 	}
+	return(didChange);
+}
+
+//! Reads back what was typed and closes the edit
+fui_inline bool fui__NumericEditCommit(fuiContext *context, const fui__NumericSpec *spec, float *value) {
+	bool didChange = fui__NumericReadBack(spec, context->numericEditText, value);
 	context->numericEditId = FUI_ID_NONE;
 	return(didChange);
 }
@@ -11458,6 +11492,14 @@ fui_inline bool fui__NumericTypeInWasAsked(const fuiContext *context, const fuiI
 	"-" on its own, "1." and "1e" are each halfway to a number and not one of them is one yet.
 */
 fui_inline bool fui__NumericTypeIn(fuiContext *context, const fuiRect rect, const char *id, const fuiId widgetId, const fui__NumericSpec *spec, float *value, bool *outDidChange) {
+	// Text typed into this widget before another one took the edit over with a click, read back exactly as when the focus leaves it.
+	// Only on an interacting build, so a caller that builds twice per frame reads it back once.
+	bool textWaitsForThisWidget = context->isInteractive && (context->numericPendingId == widgetId);
+	if(textWaitsForThisWidget) {
+		*outDidChange = fui__NumericReadBack(spec, context->numericPendingText, value);
+		context->numericPendingId = FUI_ID_NONE;
+	}
+
 	bool editIsActive = fui__NumericEditIsActive(context, widgetId);
 
 	// Escape gives the edit up and keeps the number. It is taken BEFORE the field can see it, because a
