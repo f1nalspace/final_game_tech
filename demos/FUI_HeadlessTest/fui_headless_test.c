@@ -105,6 +105,8 @@ typedef struct TestFrame {
 	fuiKey tappedKey;
 	//! Whether the left control key is held through the frame
 	bool controlIsHeld;
+	//! Whether the left shift key is held through the frame
+	bool shiftIsHeld;
 	//! Text typed in the frame, null for none
 	const char *typedText;
 } TestFrame;
@@ -141,6 +143,7 @@ static fuiInput TestBuildInput(TestHost *host, const TestFrame *frame) {
 	host->leftWasDown = frame->leftIsDown;
 
 	input.keys[fuiKey_LeftControl].endedDown = frame->controlIsHeld;
+	input.keys[fuiKey_LeftShift].endedDown = frame->shiftIsHeld;
 
 	if(frame->tappedKey != fuiKey_None) {
 		input.keys[frame->tappedKey].endedDown = false;
@@ -381,6 +384,102 @@ static void TestPutAsideTextExpires(TestResult *result) {
 }
 
 // ----------------------------------------------------------------------------
+// > Keys and shortcuts
+// ----------------------------------------------------------------------------
+
+//! Room for a shortcut written out, the library says how much is always enough
+#define TEST_SHORTCUT_TEXT_CAPACITY FUI_MAX_SHORTCUT_TEXT
+
+//! Plus, minus and the number pad have names, so a shortcut on them can be written next to its menu row
+static void TestPlusMinusKeyNames(TestResult *result) {
+	typedef struct ShortcutCase {
+		fuiKey key;
+		uint32_t modifiers;
+		const char *expectedText;
+	} ShortcutCase;
+	const ShortcutCase cases[] = {
+		{ fuiKey_Plus, fuiModifier_Control, "Ctrl++" },
+		{ fuiKey_Minus, fuiModifier_Control, "Ctrl+-" },
+		{ fuiKey_NumPadAdd, fuiModifier_Control, "Ctrl+Num +" },
+		{ fuiKey_NumPadSubtract, fuiModifier_Control, "Ctrl+Num -" },
+		{ fuiKey_NumPad0, fuiModifier_None, "Num 0" },
+		{ fuiKey_NumPad9, fuiModifier_None, "Num 9" },
+		{ fuiKey_NumPadMultiply, fuiModifier_None, "Num *" },
+		{ fuiKey_NumPadDivide, fuiModifier_None, "Num /" },
+		{ fuiKey_NumPadDecimal, fuiModifier_None, "Num ." },
+	};
+	const size_t caseCount = sizeof(cases) / sizeof(cases[0]);
+	for(size_t caseIndex = 0; caseIndex < caseCount; ++caseIndex) {
+		const ShortcutCase *shortcutCase = &cases[caseIndex];
+		fuiShortcut shortcut;
+		shortcut.key = shortcutCase->key;
+		shortcut.modifiers = shortcutCase->modifiers;
+		char text[TEST_SHORTCUT_TEXT_CAPACITY];
+		fuiShortcutToText(shortcut, text, sizeof(text));
+		bool textMatches = (strcmp(text, shortcutCase->expectedText) == 0);
+		TestExpect(result, textMatches, "expected the shortcut to read \"%s\", it reads \"%s\"", shortcutCase->expectedText, text);
+	}
+}
+
+//! The two zoom commands of an image editor, one on the main block and one on the number pad
+typedef enum TestCommandId {
+	TestCommandId_ZoomIn = 1,
+	TestCommandId_ZoomInWithTheNumberPad,
+	TestCommandId_ZoomOut,
+} TestCommandId;
+
+static const fuiCommand testZoomCommands[] = {
+	{ .id = TestCommandId_ZoomIn, .label = "Zoom In", .shortcut = { fuiKey_Plus, fuiModifier_Control } },
+	{ .id = TestCommandId_ZoomInWithTheNumberPad, .label = "Zoom In", .shortcut = { fuiKey_NumPadAdd, fuiModifier_Control } },
+	{ .id = TestCommandId_ZoomOut, .label = "Zoom Out", .shortcut = { fuiKey_Minus, fuiModifier_Control } },
+};
+
+//! One frame that does nothing but hand its keys to the command table, and says which command ran
+static fuiCommandId TestDispatchFrame(TestHost *host, const TestFrame *frame) {
+	const fuiCommandTable table = { testZoomCommands, (uint32_t)(sizeof(testZoomCommands) / sizeof(testZoomCommands[0])) };
+	fuiInput input = TestBuildInput(host, frame);
+	fuiBeginFrame(&host->ui, &input, fuiPass_Both);
+	void *noUserData = fui_null;
+	fuiCommandId result = fuiDispatchShortcuts(&host->ui, &table, noUserData);
+	fuiEndFrame(&host->ui);
+	return(result);
+}
+
+//! Ctrl with plus, minus and the plus of the number pad each run their own command, and plus with Ctrl and Shift runs none, because modifiers match exactly
+static void TestPlusMinusShortcutsDispatch(TestResult *result) {
+	TestHost host;
+	bool hostIsReady = TestHostInit(&host, TestPasses_One);
+	TestExpect(result, hostIsReady, "expected the context to come up");
+	if(!hostIsReady) {
+		return;
+	}
+	typedef struct DispatchCase {
+		const char *name;
+		fuiKey key;
+		bool shiftIsHeld;
+		fuiCommandId expectedCommand;
+	} DispatchCase;
+	const DispatchCase cases[] = {
+		{ "Ctrl++", fuiKey_Plus, false, TestCommandId_ZoomIn },
+		{ "Ctrl+Num +", fuiKey_NumPadAdd, false, TestCommandId_ZoomInWithTheNumberPad },
+		{ "Ctrl+-", fuiKey_Minus, false, TestCommandId_ZoomOut },
+		{ "Ctrl+Shift++", fuiKey_Plus, true, FUI_COMMAND_NONE },
+	};
+	const size_t caseCount = sizeof(cases) / sizeof(cases[0]);
+	for(size_t caseIndex = 0; caseIndex < caseCount; ++caseIndex) {
+		const DispatchCase *dispatchCase = &cases[caseIndex];
+		TestFrame frame;
+		memset(&frame, 0, sizeof(frame));
+		frame.controlIsHeld = true;
+		frame.shiftIsHeld = dispatchCase->shiftIsHeld;
+		frame.tappedKey = dispatchCase->key;
+		fuiCommandId ranCommand = TestDispatchFrame(&host, &frame);
+		TestExpect(result, ranCommand == dispatchCase->expectedCommand, "expected %s to run command %d, it ran %d", dispatchCase->name, (int)dispatchCase->expectedCommand, (int)ranCommand);
+	}
+	TestHostRelease(&host);
+}
+
+// ----------------------------------------------------------------------------
 // > Main
 // ----------------------------------------------------------------------------
 
@@ -404,6 +503,8 @@ static const TestEntry testEntries[] = {
 	{ "numeric/click-into-a-later-field-keeps-the-number-two-passes", TestClickIntoALaterFieldTwoPasses },
 	{ "numeric/click-into-an-earlier-field-keeps-the-number", TestClickIntoAnEarlierFieldKeepsTheNumber },
 	{ "numeric/put-aside-text-expires", TestPutAsideTextExpires },
+	{ "keys/plus-minus-names", TestPlusMinusKeyNames },
+	{ "keys/plus-minus-shortcuts-dispatch", TestPlusMinusShortcutsDispatch },
 };
 
 int main(int argc, char **argv) {

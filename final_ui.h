@@ -202,6 +202,7 @@ SOFTWARE.
 	@tableofcontents
 
 	# v0.9.8:
+	- New: fuiKey_Plus and fuiKey_Minus for the plus and minus keys of the main block, and fuiKey_NumPad0 to fuiKey_NumPad9, fuiKey_NumPadAdd, fuiKey_NumPadSubtract, fuiKey_NumPadMultiply, fuiKey_NumPadDivide and fuiKey_NumPadDecimal for the number pad. A shortcut on them reads "Ctrl++", "Ctrl+-" and "Ctrl+Num +"
 	- Fixed: Tab out of a numeric field that was typed into kept the keyboard on that field, because the field and the text field it is typed into registered the same id twice in the tab chain. A widget registered twice in a row is one stop now
 	- Fixed: A click from one numeric field straight into another lost what was typed into the first, because the second took the one edit buffer over before the first could read it back. The text is put aside now, and the first field reads it back the next time it is built
 	- Fixed: fuiMeasureTextBlock measured an empty line as the whole rest of the text, because fuiMeasureText reads a length of zero as up to the terminator. A block with an empty line came out too wide
@@ -1831,6 +1832,27 @@ typedef enum fuiKey {
 	fuiKey_LeftAlt,
 	//! The right alt key
 	fuiKey_RightAlt,
+
+	//! The plus key of the main block, the one that types a plus. On a US layout that is the equals key with shift
+	fuiKey_Plus,
+	//! The minus key of the main block
+	fuiKey_Minus,
+
+	//! The digit 0 of the number pad, the digits are contiguous up to @ref fuiKey_NumPad9
+	fuiKey_NumPad0,
+	fuiKey_NumPad1, fuiKey_NumPad2, fuiKey_NumPad3, fuiKey_NumPad4, fuiKey_NumPad5, fuiKey_NumPad6, fuiKey_NumPad7, fuiKey_NumPad8,
+	//! The digit 9 of the number pad
+	fuiKey_NumPad9,
+	//! The plus of the number pad
+	fuiKey_NumPadAdd,
+	//! The minus of the number pad
+	fuiKey_NumPadSubtract,
+	//! The star of the number pad
+	fuiKey_NumPadMultiply,
+	//! The slash of the number pad
+	fuiKey_NumPadDivide,
+	//! The decimal point of the number pad
+	fuiKey_NumPadDecimal,
 
 	//! How many keys there are, which is the size of the key array in @ref fuiInput
 	fuiKey_Count,
@@ -6664,6 +6686,7 @@ fui_api fuiInput fuiZeroInput(void) {
 static const char *fui__DigitKeyNames[10] = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 static const char *fui__LetterKeyNames[26] = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" };
 static const char *fui__FunctionKeyNames[12] = { "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12" };
+static const char *fui__NumPadDigitKeyNames[10] = { "Num 0", "Num 1", "Num 2", "Num 3", "Num 4", "Num 5", "Num 6", "Num 7", "Num 8", "Num 9" };
 
 fui_api const char *fuiKeyGetName(const fuiKey key) {
 	if(key >= fuiKey_0 && key <= fuiKey_9) {
@@ -6674,6 +6697,9 @@ fui_api const char *fuiKeyGetName(const fuiKey key) {
 	}
 	if(key >= fuiKey_F1 && key <= fuiKey_F12) {
 		return(fui__FunctionKeyNames[(int)key - (int)fuiKey_F1]);
+	}
+	if(key >= fuiKey_NumPad0 && key <= fuiKey_NumPad9) {
+		return(fui__NumPadDigitKeyNames[(int)key - (int)fuiKey_NumPad0]);
 	}
 	switch(key) {
 		case fuiKey_Backspace: return("Backspace");
@@ -6697,6 +6723,14 @@ fui_api const char *fuiKeyGetName(const fuiKey key) {
 		case fuiKey_RightShift: return("Shift");
 		case fuiKey_LeftAlt: return("Alt");
 		case fuiKey_RightAlt: return("Alt");
+		// Written as the sign itself, so a shortcut reads "Ctrl++" and "Ctrl+-" the way every program writes zoom.
+		case fuiKey_Plus: return("+");
+		case fuiKey_Minus: return("-");
+		case fuiKey_NumPadAdd: return("Num +");
+		case fuiKey_NumPadSubtract: return("Num -");
+		case fuiKey_NumPadMultiply: return("Num *");
+		case fuiKey_NumPadDivide: return("Num /");
+		case fuiKey_NumPadDecimal: return("Num .");
 		default: return("");
 	}
 }
