@@ -202,6 +202,7 @@ SOFTWARE.
 	@tableofcontents
 
 	# v0.9.8:
+	- Fixed: Tab out of a numeric field that was typed into kept the keyboard on that field, because the field and the text field it is typed into registered the same id twice in the tab chain. A widget registered twice in a row is one stop now
 	- Fixed: fuiMeasureTextBlock measured an empty line as the whole rest of the text, because fuiMeasureText reads a length of zero as up to the terminator. A block with an empty line came out too wide
 	- New: fuiMessageBox shows a message of several lines. Every '\n' starts a new line, a line too long for the widest box (720 pixels) is wrapped at a space, and the box grows as tall as its lines. A short message of one line looks as before
 	- New: fuiDrawImageNineSlice, a texture part with fixed corners whose edges and center stretch or tile
@@ -10375,6 +10376,11 @@ static void fui__DrawPendingTooltip(fuiContext *context) {
 
 //! Puts one widget into the tab chain, and moves the focus onto it when tab pointed here
 fui_inline void fui__RegisterFocusable(fuiContext *context, const fuiId id) {
+	// A widget that hands its build on to another one registers the same id twice in a row: a numeric field and the text field it is typed into.
+	// That is still ONE stop of the chain, and a second registration would take the tab for the widget that already has the keyboard.
+	if(context->previousFocusableThisFrame == id) {
+		return;
+	}
 	if(context->firstFocusableThisFrame == FUI_ID_NONE) {
 		context->firstFocusableThisFrame = id;
 	}
