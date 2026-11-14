@@ -183,6 +183,9 @@ fui_api fuiKey fuiFplMapKey(const fplKey key) {
 	if(key >= fplKey_F1 && key <= fplKey_F12) {
 		return (fuiKey)((int)fuiKey_F1 + ((int)key - (int)fplKey_F1));
 	}
+	if(key >= fplKey_NumPad0 && key <= fplKey_NumPad9) {
+		return (fuiKey)((int)fuiKey_NumPad0 + ((int)key - (int)fplKey_NumPad0));
+	}
 	switch(key) {
 		case fplKey_Backspace: return fuiKey_Backspace;
 		case fplKey_Tab: return fuiKey_Tab;
@@ -199,6 +202,13 @@ fui_api fuiKey fuiFplMapKey(const fplKey key) {
 		case fplKey_Down: return fuiKey_Down;
 		case fplKey_Insert: return fuiKey_Insert;
 		case fplKey_Delete: return fuiKey_Delete;
+		case fplKey_OemPlus: return fuiKey_Plus;
+		case fplKey_OemMinus: return fuiKey_Minus;
+		case fplKey_Add: return fuiKey_NumPadAdd;
+		case fplKey_Substract: return fuiKey_NumPadSubtract;
+		case fplKey_Multiply: return fuiKey_NumPadMultiply;
+		case fplKey_Divide: return fuiKey_NumPadDivide;
+		case fplKey_Decimal: return fuiKey_NumPadDecimal;
 		case fplKey_LeftShift: return fuiKey_LeftShift;
 		case fplKey_RightShift: return fuiKey_RightShift;
 		case fplKey_LeftControl: return fuiKey_LeftControl;
