@@ -353,6 +353,9 @@ SOFTWARE.
 	- Changed: [X11] fplSetWindowVisibility() shows the window and gives it the focus, as on Win32
 	- Changed: The first fplSetWindowVisibility() show of a window that started hidden is its start, it takes the focus only when isFocusedOnStart is set and it is not shown minimized ([Win32] it was always activated)
 	- Fixed: The memory of a polled fplWindowEventType_DroppedFiles event was never released
+	- Fixed: [X11] The last dropped file was missing when the file list did not end with a line break
+	- Fixed: [X11] Dropped file lists with LF line endings, comment lines or a host in the file URI were parsed wrong
+	- Fixed: [X11] XdndFinished told the drag source an even sized file list was rejected
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -30905,26 +30908,73 @@ static size_t fpl__X11UriDecode(char *dst,
 	return written;
 }
 
-fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *count, int textLength) {
-	const char *textCursor = text;
-	const char *textEnd = text + textLength;
-	int fileCount = 0;
+// Finds the next entry of a text/uri-list and moves the cursor behind its line.
+// A line ends with CRLF, a single LF or CR, or the end of the text, empty lines and comment lines starting with '#' are skipped.
+fpl_internal bool fpl__X11NextUriListEntry(const char **textCursor, const char *textEnd, const char **entry, size_t *entryLength) {
+	const char *cursor = *textCursor;
+	bool result = false;
+	while (!result && cursor < textEnd) {
+		const char *lineStart = cursor;
+		while (cursor < textEnd && *cursor != '\r' && *cursor != '\n') {
+			++cursor;
+		}
+		const char *lineEnd = cursor;
+		if (cursor < textEnd && *cursor == '\r') {
+			++cursor;
+		}
+		if (cursor < textEnd && *cursor == '\n') {
+			++cursor;
+		}
+		size_t lineLength = (size_t)(lineEnd - lineStart);
+		bool isComment = lineLength > 0 && *lineStart == '#';
+		if (lineLength > 0 && !isComment) {
+			*entry = lineStart;
+			*entryLength = lineLength;
+			result = true;
+		}
+	}
+	*textCursor = cursor;
+	return result;
+}
 
-	// count file entries
-	while (*textCursor != '\0' || textCursor != textEnd) {
-		if (*textCursor == '\r' && *(textCursor + 1) == '\n')
-			++fileCount;
-		++textCursor;
+// Returns null when the list has no entries
+fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *count, int textLength) {
+	const size_t filesTableAlignment = 8;
+	static const char fileScheme[] = "file:";
+	const size_t fileSchemeLength = fplArrayCount(fileScheme) - 1;
+	static const char authorityPrefix[] = "//";
+	const size_t authorityPrefixLength = fplArrayCount(authorityPrefix) - 1;
+
+	*size = 0;
+	*count = 0;
+
+	// Some sources count a terminating zero into the list, the list ends at the first zero
+	const char *propertyEnd = text + textLength;
+	const char *textEnd = text;
+	while (textEnd < propertyEnd && *textEnd != '\0') {
+		++textEnd;
 	}
 
-
-	textCursor = text;
+	// Count file entries, the last one needs no line ending
+	int fileCount = 0;
+	const char *textCursor = text;
+	const char *entry = fpl_null;
+	size_t entryLength = 0;
+	while (fpl__X11NextUriListEntry(&textCursor, textEnd, &entry, &entryLength)) {
+		++fileCount;
+	}
+	if (fileCount == 0) {
+		return fpl_null;
+	}
 
 	const size_t filesTableSize = fileCount * sizeof(char **);
 	const size_t maxFileStride = FPL_MAX_PATH_LENGTH + 1;
 	const size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
 
-	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 8);
+	void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, filesTableAlignment);
+	if (filesTableMemory == fpl_null) {
+		return fpl_null;
+	}
 	char **filesTable = (char **)filesTableMemory;
 
 	// Assign pointers
@@ -30933,28 +30983,31 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 	}
 
 	// Parse and decode each entry
+	textCursor = text;
 	for (int fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 		char *fileBuffer = filesTable[fileIndex];
-		const char *line = textCursor;
+		fpl__X11NextUriListEntry(&textCursor, textEnd, &entry, &entryLength);
+		const char *path = entry;
+		size_t pathLength = entryLength;
 
-		// Split on '\r\n' divider
-		while (*textCursor != '\r' && (*textCursor != '\0' || textCursor != textEnd)) {
-			++textCursor;
-		}
-
-		// Strip protocol
-		if (fplIsStringEqualLen(line, 7, "file://", 7)) {
-			line += 7;
+		// Strip the scheme and the host: file:///tmp/a, file://localhost/tmp/a and file:/tmp/a all become /tmp/a
+		bool hasFileScheme = pathLength >= fileSchemeLength && fplIsStringEqualLen(path, fileSchemeLength, fileScheme, fileSchemeLength);
+		if (hasFileScheme) {
+			path += fileSchemeLength;
+			pathLength -= fileSchemeLength;
+			bool hasAuthority = pathLength >= authorityPrefixLength && fplIsStringEqualLen(path, authorityPrefixLength, authorityPrefix, authorityPrefixLength);
+			if (hasAuthority) {
+				path += authorityPrefixLength;
+				pathLength -= authorityPrefixLength;
+				while (pathLength > 0 && *path != '/') {
+					++path;
+					--pathLength;
+				}
+			}
 		}
 
 		// Decode into destination buffer
-		const size_t lineLen = textCursor - line;
-		fpl__X11UriDecode(fileBuffer, line, maxFileStride, lineLen);
-
-		// Skip CRLF
-		if (textCursor < textEnd) {
-			textCursor += 2;
-		}
+		fpl__X11UriDecode(fileBuffer, path, maxFileStride, pathLength);
 	}
 	*size = filesMemorySize;
 	*count = fileCount;
@@ -31862,14 +31915,18 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				// The converted data from the drag operation has arrived
 				char *data;
 				const unsigned long result = fpl__X11GetWindowProperty(x11Api, x11WinState->display, ev->xselection.requestor, ev->xselection.property, ev->xselection.target, (unsigned char **)&data);
+				bool isDropAccepted = false;
 				if (result) {
 					size_t filesTableSize;
 					int fileCount;
 					void *filesTable = fpl__X11ParseUriPaths(data, &filesTableSize, &fileCount, result);
-					fplMemoryBlock memory = fplZeroInit;
-					memory.size = filesTableSize;
-					memory.base = filesTable;
-					fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+					if (filesTable != fpl_null) {
+						fplMemoryBlock memory = fplZeroInit;
+						memory.size = filesTableSize;
+						memory.base = filesTable;
+						fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+						isDropAccepted = true;
+					}
 				}
 				if (data) {
 					x11Api->XFree(data);
@@ -31882,9 +31939,11 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					reply.xclient.window = x11WinState->xdnd.source;
 					reply.xclient.message_type = x11WinState->xdnd.xdndFinished;
 					reply.xclient.format = 32;
+					// Bit 0 tells the source whether the drop was accepted, a rejected drop performed no action
+					const long dropAcceptedFlag = 1;
 					reply.xclient.data.l[0] = x11WinState->core.window;
-					reply.xclient.data.l[1] = result;
-					reply.xclient.data.l[2] = x11WinState->xdnd.xdndActionCopy;
+					reply.xclient.data.l[1] = isDropAccepted ? dropAcceptedFlag : 0;
+					reply.xclient.data.l[2] = isDropAccepted ? x11WinState->xdnd.xdndActionCopy : FPL__X11_None;
 
 					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
 					x11Api->XFlush(x11WinState->display);
