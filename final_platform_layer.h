@@ -356,6 +356,9 @@ SOFTWARE.
 	- Fixed: [X11] The last dropped file was missing when the file list did not end with a line break
 	- Fixed: [X11] Dropped file lists with LF line endings, comment lines or a host in the file URI were parsed wrong
 	- Fixed: [X11] XdndFinished told the drag source an even sized file list was rejected
+	- Fixed: [Win32] Every dropped file was reported as the first one
+	- Fixed: [Win32] Each file drop leaked the drop handle of the system
+	- Fixed: [Win32] Dropped file paths with many non-ASCII characters were cut off
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -12598,6 +12601,8 @@ typedef FPL__FUNC_WIN32_SHGetFolderPathW(fpl__win32_func_SHGetFolderPathW);
 typedef FPL__FUNC_WIN32_DragQueryFileW(fpl__win32_func_DragQueryFileW);
 #define FPL__FUNC_WIN32_DragAcceptFiles(name) void WINAPI name(HWND hWnd, BOOL fAccept)
 typedef FPL__FUNC_WIN32_DragAcceptFiles(fpl__win32_func_DragAcceptFiles);
+#define FPL__FUNC_WIN32_DragFinish(name) void WINAPI name(HDROP hDrop)
+typedef FPL__FUNC_WIN32_DragFinish(fpl__win32_func_DragFinish);
 
 // User32
 #define FPL__FUNC_WIN32_RegisterClassExW(name) ATOM WINAPI name(CONST WNDCLASSEXW *)
@@ -12800,6 +12805,7 @@ typedef struct fpl__Win32ShellApi {
 	fpl__win32_func_SHGetFolderPathW *SHGetFolderPathW;
 	fpl__win32_func_DragQueryFileW *DragQueryFileW;
 	fpl__win32_func_DragAcceptFiles *DragAcceptFiles;
+	fpl__win32_func_DragFinish *DragFinish;
 } fpl__Win32ShellApi;
 
 typedef struct fpl__Win32UserApi {
@@ -12940,6 +12946,7 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_SHGetFolderPathW, SHGetFolderPathW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragQueryFileW, DragQueryFileW);
 		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragAcceptFiles, DragAcceptFiles);
+		FPL__WIN32_GET_FUNCTION_ADDRESS(FPL__MODULE_WIN32, shellLibrary, shellLibraryName, &wapi->shell, fpl__win32_func_DragFinish, DragFinish);
 
 		// User32
 		const char *userLibraryName = "user32.dll";
@@ -20289,11 +20296,16 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			UINT fileCount;
 			wchar_t fileBufferW[FPL_MAX_PATH_LENGTH];
 			fileCount = wapi->shell.DragQueryFileW(dropHandle, 0xFFFFFFFF, fileBufferW, 0);
+			void *filesTableMemory = fpl_null;
+			size_t filesTableSize = fileCount * sizeof(char **);
+			// A UTF-16 code unit takes up to 3 bytes in UTF-8
+			const size_t maxUTF8BytesPerUTF16Unit = 3;
+			size_t maxFileStride = FPL_MAX_PATH_LENGTH * maxUTF8BytesPerUTF16Unit + 1;
+			size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
 			if (fileCount > 0) {
-				size_t filesTableSize = fileCount * sizeof(char **);
-				size_t maxFileStride = FPL_MAX_PATH_LENGTH * 2 + 1;
-				size_t filesMemorySize = filesTableSize + FPL__ARBITARY_PADDING + maxFileStride * fileCount;
-				void *filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 16);
+				filesTableMemory = fpl__AllocateDynamicMemory(filesMemorySize, 16);
+			}
+			if (filesTableMemory != fpl_null) {
 				char **filesTable = (char **)filesTableMemory;
 				for (UINT fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 					filesTable[fileIndex] = (char *)((uint8_t *)filesTableMemory + filesTableSize + FPL__ARBITARY_PADDING + fileIndex * maxFileStride);
@@ -20301,7 +20313,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				for (UINT fileIndex = 0; fileIndex < fileCount; ++fileIndex) {
 					char *file = filesTable[fileIndex];
 					fileBufferW[0] = 0;
-					UINT dragResult = wapi->shell.DragQueryFileW(dropHandle, 0, fileBufferW, fplArrayCount(fileBufferW));
+					UINT dragResult = wapi->shell.DragQueryFileW(dropHandle, fileIndex, fileBufferW, fplArrayCount(fileBufferW));
 					size_t sourceLen = lstrlenW(fileBufferW);
 					fplWideStringToUTF8String(fileBufferW, sourceLen, file, maxFileStride);
 				}
@@ -20310,6 +20322,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				memory.base = filesTableMemory;
 				fpl__PushWindowDropFilesEvent(fileBufferA, fileCount, (const char **)filesTable, &memory);
 			}
+			// Releases the memory the system allocated for the drop
+			wapi->shell.DragFinish(dropHandle);
 		} break;
 
 		case WM_SYSKEYDOWN:
