@@ -352,6 +352,7 @@ SOFTWARE.
 	- New: [X11] WM_HINTS input is set to True
 	- Changed: [X11] fplSetWindowVisibility() shows the window and gives it the focus, as on Win32
 	- Changed: The first fplSetWindowVisibility() show of a window that started hidden is its start, it takes the focus only when isFocusedOnStart is set and it is not shown minimized ([Win32] it was always activated)
+	- Fixed: The memory of a polled fplWindowEventType_DroppedFiles event was never released
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -10654,7 +10655,7 @@ typedef enum fplWindowEventType {
 typedef struct fplWindowDropFiles {
 	//! The internal memory block, do not touch.
 	fplMemoryBlock internalMemory;
-	//! File paths (Do not release this memory, it's automatically released after the event is processed).
+	//! File paths, valid until the next @ref fplWindowUpdate() or @ref fplPollEvents() - copy them to keep them longer (Do not release this memory, it's released automatically).
 	const char **files;
 	//! Number of dropped files.
 	size_t fileCount;
@@ -14916,21 +14917,26 @@ fpl_internal size_t fpl__HasInternalEvents(void) {
 	return result;
 }
 
+// Releases the memory an event carries (the file paths of fplWindowEventType_DroppedFiles)
+fpl_internal void fpl__ReleaseInternalEventMemory(fplEvent *ev) {
+	if (ev->type == fplEventType_Window && ev->window.type == fplWindowEventType_DroppedFiles) {
+		if (ev->window.dropFiles.internalMemory.base != fpl_null) {
+			fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
+			fplClearStruct(&ev->window.dropFiles.internalMemory);
+		}
+	}
+}
+
 fpl_internal void fpl__ClearInternalEvents(void) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
-	size_t currentPop = fplAtomicLoadSize(&eventQueue->popIndex);
+	// Polled events stay in their slot until the queue is cleared, so this covers the polled and the unpolled events since the last clear
 	size_t currentPush = fplAtomicLoadSize(&eventQueue->pushIndex);
-
-	for (size_t i = currentPop; i < currentPush; ++i) {
-		fplEvent *ev = &eventQueue->events[i % FPL__MAX_EVENT_COUNT];
-		if (ev->type == fplEventType_Window && ev->window.type == fplWindowEventType_DroppedFiles) {
-			if (ev->window.dropFiles.internalMemory.base != fpl_null) {
-				fpl__ReleaseDynamicMemory(ev->window.dropFiles.internalMemory.base);
-				fplClearStruct(&ev->window.dropFiles.internalMemory);
-			}
-		}
+	size_t usedSlotCount = fplMin(currentPush, FPL__MAX_EVENT_COUNT);
+	for (size_t slotIndex = 0; slotIndex < usedSlotCount; ++slotIndex) {
+		fplEvent *ev = &eventQueue->events[slotIndex];
+		fpl__ReleaseInternalEventMemory(ev);
 	}
 
 	fplAtomicStoreSize(&eventQueue->popIndex, 0);
@@ -14961,7 +14967,8 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	return true;
 }
 
-fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
+// Returns false when the queue is full and the event was dropped
+fpl_internal bool fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->eventQueue;
 
@@ -14975,14 +14982,18 @@ fpl_internal void fpl__PushInternalEvent(const fplEvent *event) {
 
 		if ((currentPush - currentPop) >= FPL__MAX_EVENT_COUNT) {
 			// Queue full, drop event or handle overflow
-			return;
+			return false;
 		}
 
 		newPush = currentPush + 1;
 	} while (!fplAtomicIsCompareAndSwapSize(&eventQueue->pushIndex, currentPush, newPush));
 
 	size_t index = currentPush % FPL__MAX_EVENT_COUNT;
-	eventQueue->events[index] = *event;
+	fplEvent *slot = &eventQueue->events[index];
+	// Without a clear for a whole round through the queue, the slot still holds a polled event of this round
+	fpl__ReleaseInternalEventMemory(slot);
+	*slot = *event;
+	return true;
 }
 
 fpl_internal void fpl__PushGamepadConnectionEvent(const uint32_t deviceIndex, const char *deviceName, const bool isConnected) {
@@ -15331,7 +15342,11 @@ fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size
 	newEvent.window.dropFiles.fileCount = fileCount;
 	newEvent.window.dropFiles.files = files;
 	newEvent.window.dropFiles.internalMemory = *memory;
-	fpl__PushInternalEvent(&newEvent);
+	bool wasPushed = fpl__PushInternalEvent(&newEvent);
+	if (!wasPushed && memory->base != fpl_null) {
+		// The full queue dropped the event, so nobody else releases its memory
+		fpl__ReleaseDynamicMemory(memory->base);
+	}
 }
 
 // PC scan codes of set 1 that fplKeyboardEvent.scanCode reports, the platforms make them from their own codes

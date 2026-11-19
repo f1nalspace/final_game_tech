@@ -1176,10 +1176,13 @@
 			// ... Do something when window was exposed
 		} break;
 
-		case fplWindowEventType_DropSingleFile:
+		case fplWindowEventType_DroppedFiles:
 		{
-			const char *filePath = ev.window.dropFiles.single.filePath;
-			// ... Do something when window got a single file dropped into it
+			// The paths are valid until the next fplWindowUpdate() or fplPollEvents(), copy them to keep them longer
+			for (size_t fileIndex = 0; fileIndex < currentEvent.window.dropFiles.fileCount; ++fileIndex) {
+				const char *filePath = currentEvent.window.dropFiles.files[fileIndex];
+				// ... Do something with a file that was dropped into the window
+			}
 		} break;
 
 		case fplWindowEventType_Minimized:
