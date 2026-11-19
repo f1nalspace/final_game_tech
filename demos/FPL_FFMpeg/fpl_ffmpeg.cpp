@@ -16,6 +16,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-11-19
+	- Fixed a dropped file path was used after FPL released it
+
 	## 2026-04-16
 	- Fixed seeking was breaking audio/video sync
 	- Fixed build error when FPL_LOGGING is disabled
@@ -317,6 +320,9 @@ constexpr uint32_t MAX_FRAME_QUEUE_COUNT = fplMax(MAX_AUDIO_FRAME_QUEUE_COUNT, M
 
 // Total size of data from all packet queues
 constexpr uint64_t MAX_PACKET_QUEUE_SIZE = fplMegaBytes(16);
+
+// Longest media path or url the loader and the player keep a copy of
+constexpr size_t MAX_MEDIA_URL_LENGTH = 4096;
 
 // Min number of packet frames in a single queue
 constexpr uint32_t MIN_PACKET_FRAMES = 25;
@@ -1736,6 +1742,8 @@ struct PlayerState {
 	AVFormatContext *formatCtx;
 
 	const char *filePathOrUrl;
+	// The copy filePathOrUrl points to, a dropped path is gone with the next window update
+	char filePathOrUrlBuffer[MAX_MEDIA_URL_LENGTH];
 
 	double streamLength; // Length of the stream in seconds
 	double frameLastPTS;
@@ -1887,7 +1895,8 @@ struct LoadState {
 	fplSignalHandle loadSignal;
 	fplSignalHandle stopSignal;
 	fplMutexHandle mutex;
-	const char *url;
+	// A copy of its own, the loader thread reads it after the paths of a drop event are gone
+	char url[MAX_MEDIA_URL_LENGTH];
 	volatile int32_t state;
 	volatile int32_t stopRequest;
 	bool32 isValid;
@@ -1942,7 +1951,10 @@ static void LoadMediaAsync(AppState &state, const char *url) {
 	LoadState &loadState = state.loadState;
 	if (loadState.isValid) {
 		fplMutexLock(&loadState.mutex);
-		loadState.url = url;
+		loadState.url[0] = 0;
+		if (url != fpl_null) {
+			fplCopyString(url, loadState.url, fplArrayCount(loadState.url));
+		}
 		loadState.state = 1;
 		fplMutexUnlock(&loadState.mutex);
 		fplSignalSet(&loadState.loadSignal);
@@ -4009,7 +4021,8 @@ static bool LoadMedia(PlayerState &state, const char *mediaURL, const uint64_t m
 
 	char tmpError[AV_ERROR_MAX_STRING_SIZE];
 
-	state.filePathOrUrl = mediaURL;
+	fplCopyString(mediaURL, state.filePathOrUrlBuffer, fplArrayCount(state.filePathOrUrlBuffer));
+	state.filePathOrUrl = state.filePathOrUrlBuffer;
 
 	SetPlayingState(state, PlayingState::Loading);
 
@@ -4164,7 +4177,7 @@ static void LoadMediaThreadProc(const fplThreadHandle *thread, void *userData) {
 			if (fplGetStringLength(loadState.url) > 0) {
 				LoadAndPlayMedia(state->player, loadState.url, state->mainThreadId);
 			}
-			loadState.url = fpl_null;
+			loadState.url[0] = 0;
 			loadState.state = 0;
 			fplMutexUnlock(&loadState.mutex);
 		}
