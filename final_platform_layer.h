@@ -364,6 +364,8 @@ SOFTWARE.
 	- New: Added fplWindowHandle and fplWindowGetMain()
 	- New: Added Multi variants of the window functions that take a fplWindowHandle (e.g. fplWindowGetSizeMulti())
 	- Changed: The window functions report an error when there is no window
+	- New: Added field windowHandle to fplEvent, the window the event belongs to
+	- Changed: [Win32] Closing the window pushes fplWindowEventType_Closed like on X11
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -10806,6 +10808,8 @@ typedef struct fplEvent {
 		//! Gamepad event data.
 		fplGamepadEvent gamepad;
 	};
+	//! The window the event belongs to (see @ref fplWindowGetMain()), null for events without a window like the gamepad events. Only compare it, it may belong to a window that does not exist anymore.
+	fplWindowHandle *windowHandle;
 } fplEvent;
 
 /**
@@ -15050,6 +15054,8 @@ typedef struct {
 	fplWindowState pendingState;
 	// Set while a window that started hidden was not shown yet, its first show by fplSetWindowVisibility() is its start (fplWindowSettings.isFocusedOnStart)
 	fpl_b32 isStartShowPending;
+	// The handle of this window, every event of the window carries it
+	fplWindowHandle *handle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
@@ -15091,6 +15097,8 @@ typedef enum fpl__NativeInputEventKind {
 typedef struct fpl__NativeInputEvent {
 	fpl__NativeInputEventKind kind;
 	void *payload;
+	// The window the native event arrived at, its state takes the key and button states and its handle goes into the events
+	fplWindowHandle *window;
 } fpl__NativeInputEvent;
 
 // Holds settings, tracks initialization, and embeds active backend instances.
@@ -15514,7 +15522,7 @@ fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vi
 // window-only block below) so the no-window input backends can push events directly without
 // requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
 // + repeat tracking on top of these primitives.
-fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__PushKeyboardButtonEvent(fplWindowHandle *window, const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Button;
@@ -15523,19 +15531,21 @@ fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uin
 	newEvent.keyboard.modifiers = modifiers;
 	newEvent.keyboard.buttonState = buttonState;
 	newEvent.keyboard.mappedKey = mappedKey;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushKeyboardInputEvent(const uint32_t textCode, const fplKey mappedKey) {
+fpl_internal void fpl__PushKeyboardInputEvent(fplWindowHandle *window, const uint32_t textCode, const fplKey mappedKey) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Input;
 	newEvent.keyboard.keyCode = (uint64_t)textCode;
 	newEvent.keyboard.mappedKey = mappedKey;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+fpl_internal void fpl__PushMouseButtonEvent(fplWindowHandle *window, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Button;
@@ -15543,10 +15553,11 @@ fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, co
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.mouseButton = mouseButton;
 	newEvent.mouse.buttonState = buttonState;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__PushMouseWheelEvent(fplWindowHandle *window, const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = wheelType;
@@ -15554,10 +15565,11 @@ fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, co
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.wheelDelta = wheelDelta;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y, const int32_t deltaX, const int32_t deltaY) {
+fpl_internal void fpl__PushMouseMoveEvent(fplWindowHandle *window, const int32_t x, const int32_t y, const int32_t deltaX, const int32_t deltaY) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Move;
@@ -15566,6 +15578,7 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y, cons
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.deltaX = deltaX;
 	newEvent.mouse.deltaY = deltaY;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -15583,38 +15596,42 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 	return(result);
 }
 
-fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
+fpl_internal void fpl__PushWindowStateEvent(fplWindowHandle *window, const fplWindowEventType windowType) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
+fpl_internal void fpl__PushWindowSizeEvent(fplWindowHandle *window, const fplWindowEventType windowType, uint32_t w, uint32_t h) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
 	newEvent.window.size.width = w;
 	newEvent.window.size.height = h;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
+fpl_internal void fpl__PushWindowPositionEvent(fplWindowHandle *window, const fplWindowEventType windowType, int32_t x, int32_t y) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
 	newEvent.window.position.left = x;
 	newEvent.window.position.top = y;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
+fpl_internal void fpl__PushWindowDropFilesEvent(fplWindowHandle *window, const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = fplWindowEventType_DroppedFiles;
 	newEvent.window.dropFiles.fileCount = fileCount;
 	newEvent.window.dropFiles.files = files;
 	newEvent.window.dropFiles.internalMemory = *memory;
+	newEvent.windowHandle = window;
 	bool wasPushed = fpl__PushInternalEvent(&newEvent);
 	if (!wasPushed && memory->base != fpl_null) {
 		// The full queue dropped the event, so nobody else releases its memory
@@ -15671,12 +15688,12 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 		windowState->keyCodes[keySlot] = keyCode;
 		windowState->keyScanCodes[keySlot] = scanCode;
 	}
-	fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
+	fpl__PushKeyboardButtonEvent(windowState->handle, keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
 fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
-	fpl__PushKeyboardInputEvent(textCode, mappedKey);
+	fpl__PushKeyboardInputEvent(windowState->handle, textCode, mappedKey);
 }
 
 // In the relative mode the cursor sits somewhere hidden, so the mouse events carry the position where the mode started
@@ -15698,7 +15715,7 @@ fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowSt
 	int32_t reportedX;
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
-	fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, buttonState);
+	fpl__PushMouseButtonEvent(windowState->handle, reportedX, reportedY, mouseButton, buttonState);
 }
 
 fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
@@ -15716,7 +15733,7 @@ fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowStat
 	inputGrab->lastMoveX = x;
 	inputGrab->lastMoveY = y;
 	inputGrab->hasLastMove = true;
-	fpl__PushMouseMoveEvent(x, y, deltaX, deltaY);
+	fpl__PushMouseMoveEvent(windowState->handle, x, y, deltaX, deltaY);
 }
 
 // The wheel type is fplMouseEventType_Wheel or fplMouseEventType_HorizontalWheel
@@ -15724,18 +15741,19 @@ fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowSta
 	int32_t reportedX;
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
-	fpl__PushMouseWheelEvent(wheelType, reportedX, reportedY, wheelDelta);
+	fpl__PushMouseWheelEvent(windowState->handle, wheelType, reportedX, reportedY, wheelDelta);
 }
 
 // Only the keyboard and mouse backends of the input system report the crossings
 #if defined(FPL__ENABLE_INPUT_WIN32) || defined(FPL__ENABLE_INPUT_X11)
-fpl_internal void fpl__PushMouseCrossingEvent(const fplMouseEventType type, const int32_t x, const int32_t y) {
+fpl_internal void fpl__PushMouseCrossingEvent(fplWindowHandle *window, const fplMouseEventType type, const int32_t x, const int32_t y) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = type;
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -15750,7 +15768,7 @@ fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *window
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
 	fplMouseEventType type = isInside ? fplMouseEventType_Enter : fplMouseEventType_Leave;
-	fpl__PushMouseCrossingEvent(type, reportedX, reportedY);
+	fpl__PushMouseCrossingEvent(windowState->handle, type, reportedX, reportedY);
 }
 #endif // FPL__ENABLE_INPUT_WIN32 || FPL__ENABLE_INPUT_X11
 
@@ -18195,7 +18213,7 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 			uint64_t keyCode = windowState->keyCodes[keySlot];
 			fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 			uint32_t scanCode = windowState->keyScanCodes[keySlot];
-			fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
+			fpl__PushKeyboardButtonEvent(windowState->handle, keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
 		}
 	}
 	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
@@ -18206,7 +18224,7 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 		if (windowState->mouseStates[buttonIndex] != fplButtonState_Release) {
 			windowState->mouseStates[buttonIndex] = fplButtonState_Release;
 			fplMouseButtonType mouseButton = (fplMouseButtonType)buttonIndex;
-			fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, fplButtonState_Release);
+			fpl__PushMouseButtonEvent(windowState->handle, reportedX, reportedY, mouseButton, fplButtonState_Release);
 		}
 	}
 }
@@ -18354,7 +18372,7 @@ fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState
 	if (countX == 0 && countY == 0) {
 		return;
 	}
-	fpl__PushMouseMoveEvent(inputGrab->frozenX, inputGrab->frozenY, countX, countY);
+	fpl__PushMouseMoveEvent(appState->window.handle, inputGrab->frozenX, inputGrab->frozenY, countX, countY);
 #else
 	// Without the input system no mouse event reaches the application at all
 	FPL__UNUSED(appState);
@@ -18373,7 +18391,7 @@ fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState,
 	// The cursor may have moved anywhere while another window had the focus
 	windowState->inputGrab.hasLastMove = false;
 	fplWindowEventType eventType = hasFocus ? fplWindowEventType_GotFocus : fplWindowEventType_LostFocus;
-	fpl__PushWindowStateEvent(eventType);
+	fpl__PushWindowStateEvent(windowState->handle, eventType);
 	fpl__UpdateInputGrab(appState);
 }
 
@@ -20887,6 +20905,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
+			// The close request is reported like on X11, the destruction that follows it is no second close
+			if (msg == WM_CLOSE) {
+				fpl__PushWindowStateEvent(appState->window.handle, fplWindowEventType_Closed);
+			}
 			appState->window.isRunning = false;
 			fpl__UpdateInputGrab(appState);
 		} break;
@@ -20896,11 +20918,11 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			DWORD newWidth = LOWORD(lParam);
 			DWORD newHeight = HIWORD(lParam);
 			if (wParam == SIZE_MAXIMIZED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Maximized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Maximized, newWidth, newHeight);
 			} else if (wParam == SIZE_MINIMIZED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Minimized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Minimized, newWidth, newHeight);
 			} else if (wParam == SIZE_RESTORED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Restored, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Restored, newWidth, newHeight);
 			}
 			bool isMinimized = wParam == SIZE_MINIMIZED;
 			if (isMinimized != (appState->window.isMinimized != 0)) {
@@ -20915,7 +20937,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 #			endif
 
-			fpl__PushWindowSizeEvent(fplWindowEventType_Resized, newWidth, newHeight);
+			fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
 		} break;
@@ -20951,7 +20973,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplMemoryBlock memory = fplZeroInit;
 				memory.size = filesMemorySize;
 				memory.base = filesTableMemory;
-				fpl__PushWindowDropFilesEvent(fileBufferA, fileCount, (const char **)filesTable, &memory);
+				fpl__PushWindowDropFilesEvent(appState->window.handle, fileBufferA, fileCount, (const char **)filesTable, &memory);
 			}
 			// Releases the memory the system allocated for the drop
 			wapi->shell.DragFinish(dropHandle);
@@ -20974,6 +20996,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = appState->window.handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			// With the keyboard grab F10 and Alt+Space do not open the menus, the keys belong to the application
@@ -21001,6 +21024,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = appState->window.handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			return 0;
@@ -21119,6 +21143,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = appState->window.handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 		} break;
@@ -22711,6 +22736,8 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 	const MSG *msg = (const MSG *)ev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
+	// The window the message belongs to, the main window when the dispatcher did not say
+	fpl__PlatformWindowState *windowState = ev->window != fpl_null ? ev->window->state : &appState->window;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
 	switch (msg->message) {
@@ -22733,7 +22760,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
 			fpl__Win32ReleaseLostWinKeys(appState);
-			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
+			fpl__HandleKeyboardButtonEvent(windowState, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
 			fpl__Win32ReleaseLostShiftKeys(appState);
 			return true;
 		}
@@ -22748,7 +22775,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if ((msg->message == WM_UNICHAR) && (msg->wParam == UNICODE_NOCHAR)) {
 				return true;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
+			fpl__HandleKeyboardInputEvent(windowState, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
 			return true;
 		}
 
@@ -22785,7 +22812,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (mouseButton != fplMouseButtonType_None) {
 				int32_t mouseX = GET_X_LPARAM(msg->lParam);
 				int32_t mouseY = GET_Y_LPARAM(msg->lParam);
-				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+				fpl__HandleMouseButtonEvent(windowState, mouseX, mouseY, mouseButton, buttonState);
 			}
 			return true;
 		}
@@ -22797,17 +22824,17 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			int32_t mouseX = GET_X_LPARAM(msg->lParam);
 			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
 			// Windows has no message for the cursor coming in, it is the first move inside the client area after WM_MOUSELEAVE (a captured cursor moves outside too)
-			if (!appState->window.isMouseInside) {
+			if (!windowState->isMouseInside) {
 				RECT clientRect;
 				bool isInsideClientArea = false;
 				if (wapi->user.GetClientRect(msg->hwnd, &clientRect)) {
 					isInsideClientArea = mouseX >= clientRect.left && mouseX < clientRect.right && mouseY >= clientRect.top && mouseY < clientRect.bottom;
 				}
 				if (isInsideClientArea) {
-					fpl__HandleMouseCrossingEvent(&appState->window, mouseX, mouseY, true);
+					fpl__HandleMouseCrossingEvent(windowState, mouseX, mouseY, true);
 				}
 			}
-			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			fpl__HandleMouseMoveEvent(windowState, mouseX, mouseY);
 			return true;
 		}
 
@@ -22820,7 +22847,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (wapi->user.GetCursorPos(&cursorPosition)) {
 				wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
 			}
-			fpl__HandleMouseCrossingEvent(&appState->window, cursorPosition.x, cursorPosition.y, false);
+			fpl__HandleMouseCrossingEvent(windowState, cursorPosition.x, cursorPosition.y, false);
 			return true;
 		}
 
@@ -22836,7 +22863,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			short wheelRotation = GET_WHEEL_DELTA_WPARAM(msg->wParam);
 			float wheelDelta = wheelRotation / (float)WHEEL_DELTA;
 			fplMouseEventType wheelType = (msg->message == FPL__WIN32_WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
-			fpl__HandleMouseWheelEvent(&appState->window, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
+			fpl__HandleMouseWheelEvent(windowState, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
 			return true;
 		}
 
@@ -25322,7 +25349,7 @@ fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const 
 		if (!isHidden) {
 			wapi->user.ShowWindow(windowHandle, SW_HIDE);
 			platformWindowState->isHidden = true;
-			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -25366,7 +25393,7 @@ fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const 
 			windowState->isShownWithoutActivation = false;
 			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
 			windowState->isFocusEventPending = platformWindowState->hasFocus;
-			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
@@ -25487,7 +25514,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	fpl__ClearInternalEvents();
 	// The window was activated while it was shown, that event was cleared with the queue just now
 	if (isFocusEventPending && appState->window.hasFocus) {
-		fpl__PushWindowStateEvent(fplWindowEventType_GotFocus);
+		fpl__PushWindowStateEvent(appState->window.handle, fplWindowEventType_GotFocus);
 	}
 	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
@@ -31868,7 +31895,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	fpl__X11_XEvent *ev = (fpl__X11_XEvent *)nev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
-	fpl__PlatformWindowState *winState = &appState->window;
+	// The window the event belongs to, the main window when the dispatcher did not say
+	fpl__PlatformWindowState *winState = nev->window != fpl_null ? nev->window->state : &appState->window;
 	fpl__X11WindowState *x11WinState = &winState->x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
@@ -32284,6 +32312,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11FilteredKeyEvent;
 			nev.payload = (void *)&filteredKeyEvent;
+			nev.window = winState->handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 		}
 #endif
@@ -32308,14 +32337,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
+				fpl__PushWindowSizeEvent(winState->handle, fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
 				lastX11WinInfo->size.width = (int32_t)ev->xconfigure.width;
 				lastX11WinInfo->size.height = (int32_t)ev->xconfigure.height;
 			}
 
 			// Window moved
 			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
-				fpl__PushWindowPositionEvent(fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
+				fpl__PushWindowPositionEvent(winState->handle, fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
 				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x;
 				lastX11WinInfo->position.top = (int32_t)ev->xconfigure.y;
 			}
@@ -32329,7 +32358,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					if (protocol == x11WinState->wm.wmDeleteWindow) {
 						// Window asked for closing
 						winState->isRunning = false;
-						fpl__PushWindowStateEvent(fplWindowEventType_Closed);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Closed);
 						fpl__UpdateInputGrab(appState);
 					} else if (protocol == x11WinState->netWM.netWMPing) {
 						// Window manager asks us if we are still alive
@@ -32529,7 +32558,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						fplMemoryBlock memory = fplZeroInit;
 						memory.size = filesTableSize;
 						memory.base = filesTable;
-						fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+						fpl__PushWindowDropFilesEvent(winState->handle, NULL, fileCount, (const char **)filesTable, &memory);
 						isDropAccepted = true;
 					}
 				}
@@ -32581,6 +32610,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11Event;
 			nev.payload = (void *)ev;
+			nev.window = winState->handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 #endif
 		} break;
@@ -32648,23 +32678,23 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
 					case fplWindowVisibilityState_Hide:
-						fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Hidden);
 						break;
 					case fplWindowVisibilityState_Show:
-						fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Shown);
 						break;
 					default:
 						break;
 				}
 				switch (changedWindowStateInfo.state) {
 					case fplWindowState_Iconify:
-						fpl__PushWindowStateEvent(fplWindowEventType_Minimized);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Minimized);
 						break;
 					case fplWindowState_Maximize:
-						fpl__PushWindowStateEvent(fplWindowEventType_Maximized);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Maximized);
 						break;
 					case fplWindowState_Normal:
-						fpl__PushWindowStateEvent(fplWindowEventType_Restored);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Restored);
 						break;
 					default:
 						break;
@@ -33530,7 +33560,7 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = true;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
-			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -33551,7 +33581,7 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = false;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
-			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
@@ -46134,6 +46164,7 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
 		appState->firstWindow = fpl_null;
+		appState->window.handle = fpl_null;
 		fplClearStruct(&appState->mainWindow);
 	}
 }
@@ -46147,6 +46178,7 @@ fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSett
 		mainWindow->state = &appState->window;
 		mainWindow->settings = currentWindowSettings;
 		mainWindow->isMain = true;
+		appState->window.handle = mainWindow;
 		appState->firstWindow = mainWindow;
 #	if defined(FPL_PLATFORM_WINDOWS)
 		result = fpl__Win32InitWindow(mainWindow, initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
