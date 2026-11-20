@@ -57,6 +57,7 @@ ifeq ($(config),debug_winx86)
   FPL_InputGrab_config = debug_winx86
   FPL_ConsoleInput_config = debug_winx86
   FPL_Window_config = debug_winx86
+  FPL_MultiWindow_config = debug_winx86
   FPL_Test_config = debug_winx86
   FPL_NoPlatformIncludes_config = debug_winx86
   FPL_NoRuntimeLinking_config = debug_winx86
@@ -88,6 +89,7 @@ else ifeq ($(config),debug_winx64)
   FPL_InputGrab_config = debug_winx64
   FPL_ConsoleInput_config = debug_winx64
   FPL_Window_config = debug_winx64
+  FPL_MultiWindow_config = debug_winx64
   FPL_Test_config = debug_winx64
   FPL_NoPlatformIncludes_config = debug_winx64
   FPL_NoRuntimeLinking_config = debug_winx64
@@ -119,6 +121,7 @@ else ifeq ($(config),debug_linuxx86)
   FPL_InputGrab_config = debug_linuxx86
   FPL_ConsoleInput_config = debug_linuxx86
   FPL_Window_config = debug_linuxx86
+  FPL_MultiWindow_config = debug_linuxx86
   FPL_Test_config = debug_linuxx86
   FPL_NoPlatformIncludes_config = debug_linuxx86
   FPL_NoRuntimeLinking_config = debug_linuxx86
@@ -150,6 +153,7 @@ else ifeq ($(config),debug_linuxx64)
   FPL_InputGrab_config = debug_linuxx64
   FPL_ConsoleInput_config = debug_linuxx64
   FPL_Window_config = debug_linuxx64
+  FPL_MultiWindow_config = debug_linuxx64
   FPL_Test_config = debug_linuxx64
   FPL_NoPlatformIncludes_config = debug_linuxx64
   FPL_NoRuntimeLinking_config = debug_linuxx64
@@ -181,6 +185,7 @@ else ifeq ($(config),debug_linuxarm32)
   FPL_InputGrab_config = debug_linuxarm32
   FPL_ConsoleInput_config = debug_linuxarm32
   FPL_Window_config = debug_linuxarm32
+  FPL_MultiWindow_config = debug_linuxarm32
   FPL_Test_config = debug_linuxarm32
   FPL_NoPlatformIncludes_config = debug_linuxarm32
   FPL_NoRuntimeLinking_config = debug_linuxarm32
@@ -212,6 +217,7 @@ else ifeq ($(config),debug_linuxarm64)
   FPL_InputGrab_config = debug_linuxarm64
   FPL_ConsoleInput_config = debug_linuxarm64
   FPL_Window_config = debug_linuxarm64
+  FPL_MultiWindow_config = debug_linuxarm64
   FPL_Test_config = debug_linuxarm64
   FPL_NoPlatformIncludes_config = debug_linuxarm64
   FPL_NoRuntimeLinking_config = debug_linuxarm64
@@ -243,6 +249,7 @@ else ifeq ($(config),debug_unixx86)
   FPL_InputGrab_config = debug_unixx86
   FPL_ConsoleInput_config = debug_unixx86
   FPL_Window_config = debug_unixx86
+  FPL_MultiWindow_config = debug_unixx86
   FPL_Test_config = debug_unixx86
   FPL_NoPlatformIncludes_config = debug_unixx86
   FPL_NoRuntimeLinking_config = debug_unixx86
@@ -274,6 +281,7 @@ else ifeq ($(config),debug_unixx64)
   FPL_InputGrab_config = debug_unixx64
   FPL_ConsoleInput_config = debug_unixx64
   FPL_Window_config = debug_unixx64
+  FPL_MultiWindow_config = debug_unixx64
   FPL_Test_config = debug_unixx64
   FPL_NoPlatformIncludes_config = debug_unixx64
   FPL_NoRuntimeLinking_config = debug_unixx64
@@ -305,6 +313,7 @@ else ifeq ($(config),debug_unixarm32)
   FPL_InputGrab_config = debug_unixarm32
   FPL_ConsoleInput_config = debug_unixarm32
   FPL_Window_config = debug_unixarm32
+  FPL_MultiWindow_config = debug_unixarm32
   FPL_Test_config = debug_unixarm32
   FPL_NoPlatformIncludes_config = debug_unixarm32
   FPL_NoRuntimeLinking_config = debug_unixarm32
@@ -336,6 +345,7 @@ else ifeq ($(config),debug_unixarm64)
   FPL_InputGrab_config = debug_unixarm64
   FPL_ConsoleInput_config = debug_unixarm64
   FPL_Window_config = debug_unixarm64
+  FPL_MultiWindow_config = debug_unixarm64
   FPL_Test_config = debug_unixarm64
   FPL_NoPlatformIncludes_config = debug_unixarm64
   FPL_NoRuntimeLinking_config = debug_unixarm64
@@ -367,6 +377,7 @@ else ifeq ($(config),release_winx86)
   FPL_InputGrab_config = release_winx86
   FPL_ConsoleInput_config = release_winx86
   FPL_Window_config = release_winx86
+  FPL_MultiWindow_config = release_winx86
   FPL_Test_config = release_winx86
   FPL_NoPlatformIncludes_config = release_winx86
   FPL_NoRuntimeLinking_config = release_winx86
@@ -398,6 +409,7 @@ else ifeq ($(config),release_winx64)
   FPL_InputGrab_config = release_winx64
   FPL_ConsoleInput_config = release_winx64
   FPL_Window_config = release_winx64
+  FPL_MultiWindow_config = release_winx64
   FPL_Test_config = release_winx64
   FPL_NoPlatformIncludes_config = release_winx64
   FPL_NoRuntimeLinking_config = release_winx64
@@ -429,6 +441,7 @@ else ifeq ($(config),release_linuxx86)
   FPL_InputGrab_config = release_linuxx86
   FPL_ConsoleInput_config = release_linuxx86
   FPL_Window_config = release_linuxx86
+  FPL_MultiWindow_config = release_linuxx86
   FPL_Test_config = release_linuxx86
   FPL_NoPlatformIncludes_config = release_linuxx86
   FPL_NoRuntimeLinking_config = release_linuxx86
@@ -460,6 +473,7 @@ else ifeq ($(config),release_linuxx64)
   FPL_InputGrab_config = release_linuxx64
   FPL_ConsoleInput_config = release_linuxx64
   FPL_Window_config = release_linuxx64
+  FPL_MultiWindow_config = release_linuxx64
   FPL_Test_config = release_linuxx64
   FPL_NoPlatformIncludes_config = release_linuxx64
   FPL_NoRuntimeLinking_config = release_linuxx64
@@ -491,6 +505,7 @@ else ifeq ($(config),release_linuxarm32)
   FPL_InputGrab_config = release_linuxarm32
   FPL_ConsoleInput_config = release_linuxarm32
   FPL_Window_config = release_linuxarm32
+  FPL_MultiWindow_config = release_linuxarm32
   FPL_Test_config = release_linuxarm32
   FPL_NoPlatformIncludes_config = release_linuxarm32
   FPL_NoRuntimeLinking_config = release_linuxarm32
@@ -522,6 +537,7 @@ else ifeq ($(config),release_linuxarm64)
   FPL_InputGrab_config = release_linuxarm64
   FPL_ConsoleInput_config = release_linuxarm64
   FPL_Window_config = release_linuxarm64
+  FPL_MultiWindow_config = release_linuxarm64
   FPL_Test_config = release_linuxarm64
   FPL_NoPlatformIncludes_config = release_linuxarm64
   FPL_NoRuntimeLinking_config = release_linuxarm64
@@ -553,6 +569,7 @@ else ifeq ($(config),release_unixx86)
   FPL_InputGrab_config = release_unixx86
   FPL_ConsoleInput_config = release_unixx86
   FPL_Window_config = release_unixx86
+  FPL_MultiWindow_config = release_unixx86
   FPL_Test_config = release_unixx86
   FPL_NoPlatformIncludes_config = release_unixx86
   FPL_NoRuntimeLinking_config = release_unixx86
@@ -584,6 +601,7 @@ else ifeq ($(config),release_unixx64)
   FPL_InputGrab_config = release_unixx64
   FPL_ConsoleInput_config = release_unixx64
   FPL_Window_config = release_unixx64
+  FPL_MultiWindow_config = release_unixx64
   FPL_Test_config = release_unixx64
   FPL_NoPlatformIncludes_config = release_unixx64
   FPL_NoRuntimeLinking_config = release_unixx64
@@ -615,6 +633,7 @@ else ifeq ($(config),release_unixarm32)
   FPL_InputGrab_config = release_unixarm32
   FPL_ConsoleInput_config = release_unixarm32
   FPL_Window_config = release_unixarm32
+  FPL_MultiWindow_config = release_unixarm32
   FPL_Test_config = release_unixarm32
   FPL_NoPlatformIncludes_config = release_unixarm32
   FPL_NoRuntimeLinking_config = release_unixarm32
@@ -646,6 +665,7 @@ else ifeq ($(config),release_unixarm64)
   FPL_InputGrab_config = release_unixarm64
   FPL_ConsoleInput_config = release_unixarm64
   FPL_Window_config = release_unixarm64
+  FPL_MultiWindow_config = release_unixarm64
   FPL_Test_config = release_unixarm64
   FPL_NoPlatformIncludes_config = release_unixarm64
   FPL_NoRuntimeLinking_config = release_unixarm64
@@ -659,7 +679,7 @@ else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := FPL_ImGui FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_InputGrab FPL_ConsoleInput FPL_Window FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
+PROJECTS := FPL_ImGui FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_InputGrab FPL_ConsoleInput FPL_Window FPL_MultiWindow FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
 
 .PHONY: all clean help $(PROJECTS) Apps Audio Compatibility Console Games Graphics Input Test ThirdParty Window
 
@@ -683,7 +703,7 @@ Test: FPL_Test
 
 ThirdParty: FPL_ImGui FPL_MiniAudio
 
-Window: FPL_Window
+Window: FPL_MultiWindow FPL_Window
 
 FPL_ImGui:
 ifneq (,$(FPL_ImGui_config))
@@ -811,6 +831,12 @@ ifneq (,$(FPL_Window_config))
 	@${MAKE} --no-print-directory -C FPL_Window -f Makefile config=$(FPL_Window_config)
 endif
 
+FPL_MultiWindow:
+ifneq (,$(FPL_MultiWindow_config))
+	@echo "==== Building FPL_MultiWindow ($(FPL_MultiWindow_config)) ===="
+	@${MAKE} --no-print-directory -C FPL_MultiWindow -f Makefile config=$(FPL_MultiWindow_config)
+endif
+
 FPL_Test:
 ifneq (,$(FPL_Test_config))
 	@echo "==== Building FPL_Test ($(FPL_Test_config)) ===="
@@ -881,6 +907,7 @@ clean:
 	@${MAKE} --no-print-directory -C FPL_InputGrab -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_ConsoleInput -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Window -f Makefile clean
+	@${MAKE} --no-print-directory -C FPL_MultiWindow -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_Test -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_NoPlatformIncludes -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_NoRuntimeLinking -f Makefile clean
@@ -939,6 +966,7 @@ help:
 	@echo "   FPL_InputGrab"
 	@echo "   FPL_ConsoleInput"
 	@echo "   FPL_Window"
+	@echo "   FPL_MultiWindow"
 	@echo "   FPL_Test"
 	@echo "   FPL_NoPlatformIncludes"
 	@echo "   FPL_NoRuntimeLinking"

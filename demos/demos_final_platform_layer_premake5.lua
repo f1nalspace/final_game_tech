@@ -345,6 +345,7 @@ group "Input"
 
 group "Window"
 	include "FPL_Window/premake5";
+	include "FPL_MultiWindow/premake5";
 	
 group "Test"
 	include "FPL_Test/premake5";
