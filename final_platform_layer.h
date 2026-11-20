@@ -369,6 +369,7 @@ SOFTWARE.
 	- New: Added fplWindowCreate() and fplWindowDestroy() for additional windows
 	- Changed: [Win32] The focus events come from WM_SETFOCUS/WM_KILLFOCUS of each window instead of WM_ACTIVATEAPP
 	- Changed: [Win32] fplPollEvent() dispatches the messages of all windows of the thread
+	- Changed: [X11] The input context follows the window focus
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -4058,6 +4059,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_ClientMessage ClientMessage
 #define FPL__X11_MappingNotify MappingNotify
 #define FPL__X11_GenericEvent GenericEvent
+#define FPL__X11_LASTEvent LASTEvent
 #define FPL__X11_Button1 Button1
 #define FPL__X11_Button2 Button2
 #define FPL__X11_Button3 Button3
@@ -4627,6 +4629,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_ClientMessage 33
 #define FPL__X11_MappingNotify 34
 #define FPL__X11_GenericEvent 35
+#define FPL__X11_LASTEvent 36
 #define FPL__X11_Button1 1
 #define FPL__X11_Button2 2
 #define FPL__X11_Button3 3
@@ -30868,6 +30871,18 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 	fpl__X11CloseDisplay(x11Api, windowState);
 	fplClearStruct(windowState);
 }
+
+// An additional window shares the display and the input method of the main window and never owns the clipboard, so only its own resources go
+fpl_internal void fpl__X11ReleaseAdditionalWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
+	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fplAssert(windowState->im.xim == 0);
+	fpl__X11ReleaseInputMethod(x11Api, windowState);
+	fpl__X11ReleaseCursor(x11Api, windowState);
+	fpl__X11DestroyWindow(x11Api, windowState);
+	fpl__X11ReleaseColormap(x11Api, windowState);
+	fplClearStruct(windowState);
+}
 #endif // FPL__ENABLE_WINDOW
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
@@ -31261,6 +31276,22 @@ fpl_internal void fpl__X11InternAtoms(const fpl__X11Api *x11Api, fpl__X11WindowS
 	fpl__X11InternClipboardAtoms(x11Api, windowState);
 }
 
+// An additional window shares the connection of the main window, so it takes the atoms from there
+fpl_internal void fpl__X11CopyAtoms(const fpl__X11WindowState *mainWindowState, fpl__X11WindowState *windowState) {
+	windowState->wm = mainWindowState->wm;
+	windowState->netWM = mainWindowState->netWM;
+	// A drag belongs to one window, only the atoms of the main window are taken
+	windowState->xdnd = mainWindowState->xdnd;
+	windowState->xdnd.version = 0;
+	windowState->xdnd.source = FPL__X11_None;
+	windowState->xdnd.format = FPL__X11_None;
+	// The clipboard text belongs to the main window, only the atoms are taken
+	windowState->clipboard.clipboardAtom = mainWindowState->clipboard.clipboardAtom;
+	windowState->clipboard.targetsAtom = mainWindowState->clipboard.targetsAtom;
+	windowState->clipboard.incrAtom = mainWindowState->clipboard.incrAtom;
+	windowState->clipboard.selectionPropAtom = mainWindowState->clipboard.selectionPropAtom;
+}
+
 fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSettings *initSettings, fpl__X11WindowState *windowState) {
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
@@ -31344,6 +31375,17 @@ fpl_internal void fpl__X11PrepareFocusOnMap(const fpl__X11Api *x11Api, fpl__X11W
 	}
 }
 
+#define FPL__X11_UNNAMED_WINDOW "Unnamed FPL X11 fpl__X11_Window"
+
+// The title a window starts with, it is also the class name of the application (WM_CLASS)
+fpl_internal void fpl__X11GetWindowName(const fplWindowSettings *windowSettings, char *outName, const size_t maxNameLength) {
+	if (fplGetStringLength(windowSettings->title) > 0) {
+		fplCopyString(windowSettings->title, outName, maxNameLength);
+	} else {
+		fplCopyString(FPL__X11_UNNAMED_WINDOW, outName, maxNameLength);
+	}
+}
+
 fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
@@ -31361,21 +31403,25 @@ fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const
 	}
 
 	char nameBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
-	if (fplGetStringLength(initSettings->window.title) > 0) {
-		fplCopyString(initSettings->window.title, nameBuffer, fplArrayCount(nameBuffer));
-	} else {
-		fplCopyString("Unnamed FPL X11 fpl__X11_Window", nameBuffer, fplArrayCount(nameBuffer));
-	}
+	fpl__X11GetWindowName(&initSettings->window, nameBuffer, fplArrayCount(nameBuffer));
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->core.window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
 	fpl__X11Window_SetTitle(window, nameBuffer);
 
 	// Set WM_CLASS so EWMH window managers can identify the application.
 	// Without WM_CLASS, GNOME/mutter treats the window as an orphan and shows a generic icon and "Unknown" as its name.
+	// An additional window has the class of the main window, otherwise the window manager groups it as another application.
 	if (x11Api->XSetClassHint != fpl_null) {
+		char classBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+		if (window->isMain) {
+			fplCopyString(nameBuffer, classBuffer, fplArrayCount(classBuffer));
+		} else {
+			const fpl__PlatformAppState *appState = fpl__global__AppState;
+			fpl__X11GetWindowName(&appState->initSettings.window, classBuffer, fplArrayCount(classBuffer));
+		}
 		fpl__X11_XClassHint classHint = fplZeroInit;
-		classHint.res_name = nameBuffer;
-		classHint.res_class = nameBuffer;
+		classHint.res_name = classBuffer;
+		classHint.res_class = classBuffer;
 		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
@@ -31408,6 +31454,24 @@ fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const
 	}
 }
 
+// Creates the input context of a window. The main window focuses it at once as before, an additional window with its first FocusIn, two focused contexts would confuse the input method.
+fpl_internal void fpl__X11CreateInputContext(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState, fpl__X11_XIM inputMethod, const bool isFocused) {
+	const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
+	fpl__X11_XIC xic = x11Api->XCreateIC(inputMethod,
+		FPL__X11_XNInputStyle, inputStyle,
+		FPL__X11_XNClientWindow, windowState->core.window,
+		FPL__X11_XNFocusWindow, windowState->core.window,
+		(void *)fpl_null);
+	if (xic == fpl_null) {
+		FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
+		return;
+	}
+	windowState->im.xic = xic;
+	if (isFocused && x11Api->XSetICFocus != fpl_null) {
+		x11Api->XSetICFocus(xic);
+	}
+}
+
 // Enables UTF-8 capable text input via X Input Method; silently falls back to XLookupString when unavailable.
 // XSetLocaleModifiers must run before XOpenIM, otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
 fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -31420,20 +31484,7 @@ fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11Win
 		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
 		if (xim != fpl_null) {
 			windowState->im.xim = xim;
-			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
-			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
-				FPL__X11_XNInputStyle, inputStyle,
-				FPL__X11_XNClientWindow, windowState->core.window,
-				FPL__X11_XNFocusWindow, windowState->core.window,
-				(void *)fpl_null);
-			if (xic != fpl_null) {
-				windowState->im.xic = xic;
-				if (x11Api->XSetICFocus != fpl_null) {
-					x11Api->XSetICFocus(xic);
-				}
-			} else {
-				FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
-			}
+			fpl__X11CreateInputContext(x11Api, windowState, xim, true);
 		} else {
 			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
 		}
@@ -31563,32 +31614,58 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *mainWindowState = &appState->window.x11;
 
-	if (!fpl__X11OpenDisplay(x11Api, windowState)) {
-		return false;
-	}
-
-	if (setupCallbacks->preSetup != fpl_null) {
-		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
-		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+	if (window->isMain) {
+		if (!fpl__X11OpenDisplay(x11Api, windowState)) {
+			return false;
+		}
+		if (setupCallbacks->preSetup != fpl_null) {
+			FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
+			setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+		}
+	} else {
+		// An additional window uses the connection of the main window, so its events come in the same queue
+		windowState->display = mainWindowState->display;
+		windowState->screen = mainWindowState->screen;
+		windowState->core.root = mainWindowState->core.root;
 	}
 
 	fpl__X11SetupVisualAndColormap(x11Api, windowState);
 
 	if (!fpl__X11CreateWindow(x11Api, initSettings, windowState)) {
-		fpl__X11ReleaseWindow(subplatform, windowState);
+		// An additional window is released by its creator, the connection is not its own
+		if (window->isMain) {
+			fpl__X11ReleaseWindow(subplatform, windowState);
+		}
 		return false;
 	}
 
-	fpl__X11InternAtoms(x11Api, windowState);
+	if (window->isMain) {
+		fpl__X11InternAtoms(x11Api, windowState);
+	} else {
+		fpl__X11CopyAtoms(mainWindowState, windowState);
+	}
 
 	// Cursor defaults
 	windowState->cursor.invisibleCursor = 0;
 	windowState->cursor.cursorEnabled = true;
 
 	fpl__X11SetupWindowManagerHints(window, x11Api, initSettings, currentWindowSettings, windowState);
-	fpl__X11InitInputMethod(x11Api, windowState);
-	fpl__X11BuildKeyMap(x11Api, appState, windowState);
+	if (window->isMain) {
+		fpl__X11InitInputMethod(x11Api, windowState);
+		fpl__X11BuildKeyMap(x11Api, appState, windowState);
+	} else {
+		// The input method belongs to the connection, every window has an input context of its own
+		fpl__X11_XIM mainInputMethod = mainWindowState->im.xim;
+		if (mainInputMethod != 0) {
+			fpl__X11CreateInputContext(x11Api, windowState, mainInputMethod, false);
+		}
+		// The keyboard layout is the same for all windows
+		fpl__PlatformWindowState *platformWindow = window->state;
+		const size_t keyMapSize = sizeof(platformWindow->keyMap);
+		fplMemoryCopy(appState->window.keyMap, keyMapSize, platformWindow->keyMap);
+	}
 
 	fplWindowState initialState = fpl__GetInitialWindowState(&initSettings->window);
 	if (initSettings->window.initialVisibility == fplWindowVisibilityState_Hide) {
@@ -31599,20 +31676,32 @@ fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings 
 		fpl__X11Window_SetState(window, initialState);
 	}
 
-	appState->window.isRunning = true;
+	window->state->isRunning = true;
 
 	return true;
 }
 
-// @TODO(final/X11): Additional windows share the display connection of the main window (multi window plan, bite H4)
 fpl_internal bool fpl__X11Window_Create(fplWindowHandle *window) {
-	FPL__UNUSED(window);
-	FPL__ERROR(FPL__MODULE_X11, "Additional windows are not supported on X11 yet");
-	return(false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__X11SubplatformState *subplatform = &appState->x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
+	// An additional window starts from the settings of the platform with its own window settings, it has no video
+	fplSettings windowInitSettings = appState->initSettings;
+	windowInitSettings.window = *window->settings;
+	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	bool result = fpl__X11InitWindow(window, &windowInitSettings, window->settings, appState, subplatform, windowState, &setupCallbacks);
+	if (!result) {
+		fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
+	}
+	return(result);
 }
 
 fpl_internal void fpl__X11Window_Destroy(fplWindowHandle *window) {
-	FPL__UNUSED(window);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
+	// Events of the window that are still in the queue find no window anymore and are dropped
+	fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
 }
 
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
@@ -32196,7 +32285,9 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (x11Api->XEventsQueued(x11WinState->display, FPL__X11_QueuedAfterReading)) {
 				fpl__X11_XEvent nextEvent;
 				x11Api->XPeekEvent(x11WinState->display, &nextEvent);
-				if ((nextEvent.type == FPL__X11_KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
+				// A press of the same key in another window is no repeat, the focus moved in between
+				bool isSameWindow = nextEvent.xkey.window == ev->xkey.window;
+				if ((nextEvent.type == FPL__X11_KeyPress) && isSameWindow && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
 					// Delete the peeked event, which is a key-repeat
 					x11Api->XNextEvent(x11WinState->display, ev);
 					isRepeat = true;
@@ -32525,16 +32616,23 @@ fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState);
 #endif
 fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
 
-fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
-	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
-	fpl__PlatformWindowState *winState = &appState->window;
+fpl_internal void fpl__X11CallEventCallback(fplWindowHandle *window, fpl__X11_XEvent *ev) {
+	const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+	if (callbacks->eventCallback != fpl_null) {
+		fplPlatformType platformType = fplGetPlatformType();
+		fpl__X11WindowState *windowState = &window->state->x11;
+		callbacks->eventCallback(platformType, windowState, ev, callbacks->eventUserData);
+	}
+}
+
+fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fplWindowHandle *window, fpl__X11_XEvent *ev) {
+	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (window != fpl_null) && (ev != fpl_null));
+	fpl__PlatformWindowState *winState = window->state;
 	fpl__X11WindowState *x11WinState = &winState->x11;
 	fpl__X11WindowStateInfo *lastX11WinInfo = &x11WinState->lastWindowStateInfo;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 
-	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
-	}
+	fpl__X11CallEventCallback(window, ev);
 
 	// Let the input method consume events it needs (dead keys, compose sequences).
 	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
@@ -32562,7 +32660,8 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ConfigureNotify:
 		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
+			// The software back buffer belongs to the main window
+			if (window->isMain && appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if (appState->initSettings.video.isAutoSize) {
 					uint32_t w = (uint32_t)ev->xconfigure.width;
 					uint32_t h = (uint32_t)ev->xconfigure.height;
@@ -32595,10 +32694,12 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				const fpl__X11_Atom protocol = (fpl__X11_Atom)ev->xclient.data.l[0];
 				if (protocol != FPL__X11_None) {
 					if (protocol == x11WinState->wm.wmDeleteWindow) {
-						// Window asked for closing
+						// Window asked for closing, an additional window stays until the application destroys it with fplWindowDestroy()
 						winState->isRunning = false;
 						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Closed);
-						fpl__UpdateInputGrab(appState);
+						if (window->isMain) {
+							fpl__UpdateInputGrab(appState);
+						}
 					} else if (protocol == x11WinState->netWM.netWMPing) {
 						// Window manager asks us if we are still alive
 						fpl__X11_XEvent reply = *ev;
@@ -32862,8 +32963,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_Expose:
 		{
 			// Repaint
-			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
-				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.exposedUserData);
+			const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+			if (callbacks->exposedCallback != fpl_null) {
+				fplPlatformType platformType = fplGetPlatformType();
+				callbacks->exposedCallback(platformType, x11WinState, ev, callbacks->exposedUserData);
 			}
 		} break;
 
@@ -32881,9 +32984,15 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
+			// The input method composes for the window that has the focus
+			if (x11WinState->im.xic != 0 && x11Api->XSetICFocus != fpl_null) {
+				x11Api->XSetICFocus(x11WinState->im.xic);
+			}
 			fpl__HandleWindowFocusChanged(winState->handle, true);
 #if !defined(FPL_NO_X11_XINPUT2)
-			fpl__X11UpdateRawMediaKeys(appState);
+			if (window->isMain) {
+				fpl__X11UpdateRawMediaKeys(appState);
+			}
 #endif
 		} break;
 
@@ -32894,9 +33003,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
+			if (x11WinState->im.xic != 0 && x11Api->XUnsetICFocus != fpl_null) {
+				x11Api->XUnsetICFocus(x11WinState->im.xic);
+			}
 			fpl__HandleWindowFocusChanged(winState->handle, false);
 #if !defined(FPL_NO_X11_XINPUT2)
-			fpl__X11UpdateRawMediaKeys(appState);
+			if (window->isMain) {
+				fpl__X11UpdateRawMediaKeys(appState);
+			}
 #endif
 		} break;
 
@@ -32912,7 +33026,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
-			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !appState->window.isHidden) {
+			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !winState->isHidden) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
@@ -32952,6 +33066,46 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	}
 }
 
+// The FPL window an X11 event belongs to, null for a window FPL did not create
+fpl_internal fplWindowHandle *fpl__X11FindEventWindow(const fpl__PlatformAppState *appState, const fpl__X11_XEvent *ev) {
+	fplWindowHandle *mainWindow = appState->firstWindow;
+	// XInput2 and the other extension events have no window at the place of the core events, they belong to the main window
+	if (ev->type == FPL__X11_GenericEvent || ev->type >= FPL__X11_LASTEvent) {
+		return(mainWindow);
+	}
+	// SelectionRequest and SelectionClear name the owner there, SelectionNotify the requestor
+	fpl__X11_Window eventWindow = ev->xany.window;
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		if (window->state->x11.core.window == eventWindow) {
+			return(window);
+		}
+	}
+	// The receiver of a chunked clipboard transfer asks for the next chunk on its own window, the main window serves the clipboard
+	if (ev->type == FPL__X11_PropertyNotify) {
+		return(mainWindow);
+	}
+	return(fpl_null);
+}
+
+// Hands an X11 event to its window. An event of another window only goes to the event callback of the main window and the input method,
+// it may be a late one of a destroyed window that must not reach the main window.
+fpl_internal void fpl__X11DispatchEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
+	fplWindowHandle *window = fpl__X11FindEventWindow(appState, ev);
+	if (window != fpl_null) {
+		fpl__X11HandleEvent(subplatform, appState, window, ev);
+		return;
+	}
+	fplWindowHandle *mainWindow = appState->firstWindow;
+	if (mainWindow != fpl_null) {
+		fpl__X11CallEventCallback(mainWindow, ev);
+	}
+	// The input method of Xlib talks through windows of its own
+	const fpl__X11Api *x11Api = &subplatform->api;
+	if (x11Api->XFilterEvent != fpl_null) {
+		x11Api->XFilterEvent(ev, FPL__X11_None);
+	}
+}
+
 fpl_platform_api void fplWindowShutdown(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -32979,7 +33133,7 @@ fpl_internal bool fpl__X11ProcessNextEvent(const fpl__X11SubplatformState *subpl
 	if (x11Api->XPending(windowState->display)) {
 		fpl__X11_XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 		result = true;
 	}
 	return(result);
@@ -33029,7 +33183,7 @@ fpl_platform_api void fplPollEvents(void) {
 	while (x11Api->XPending(windowState->display)) {
 		fpl__X11_XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 	}
 	fpl__ClearInternalEvents();
 	fpl__RetryInputGrab(appState);
@@ -34407,7 +34561,7 @@ fpl_internal bool fpl__X11WaitForClipboardEvent(const fpl__X11SubplatformState *
 			*outEvent = ev;
 			return(true);
 		}
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 	}
 	return(false);
 }
@@ -34426,12 +34580,12 @@ fpl_internal void fpl__X11DiscardStaleClipboardEvents(const fpl__X11SubplatformS
 	fpl__X11_XEvent ev = fplZeroInit;
 	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_PropertyNotify, &ev)) {
 		if (ev.xproperty.atom != selectionProperty) {
-			fpl__X11HandleEvent(subplatform, appState, &ev);
+			fpl__X11DispatchEvent(subplatform, appState, &ev);
 		}
 	}
 	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
 		if (ev.xselection.property != selectionProperty && ev.xselection.property != FPL__X11_None) {
-			fpl__X11HandleEvent(subplatform, appState, &ev);
+			fpl__X11DispatchEvent(subplatform, appState, &ev);
 		}
 	}
 }
