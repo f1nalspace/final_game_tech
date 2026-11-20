@@ -366,6 +366,9 @@ SOFTWARE.
 	- Changed: The window functions report an error when there is no window
 	- New: Added field windowHandle to fplEvent, the window the event belongs to
 	- Changed: [Win32] Closing the window pushes fplWindowEventType_Closed like on X11
+	- New: Added fplWindowCreate() and fplWindowDestroy() for additional windows
+	- Changed: [Win32] The focus events come from WM_SETFOCUS/WM_KILLFOCUS of each window instead of WM_ACTIVATEAPP
+	- Changed: [Win32] fplPollEvent() dispatches the messages of all windows of the thread
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -11204,6 +11207,25 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outMo
 fpl_common_api fplWindowHandle *fplWindowGetMain(void);
 
 /**
+* @brief Creates an additional window next to the main window.
+* @param[in] settings The @ref fplWindowSettings of the new window, null for the defaults of @ref fplSetDefaultWindowSettings().
+* @return Returns the handle of the new window, null when there is no main window or the window could not be created.
+* @note The settings for the screen saver and the monitor power apply to the application, they are taken from the main window only.
+* @note Closing an additional window pushes @ref fplWindowEventType_Closed with its handle and @ref fplWindowIsRunningMulti() returns false, but the window stays until @ref fplWindowDestroy() is called. Closing the main window ends the application as before.
+* @note The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp are only available for the main window.
+* @note All additional windows are destroyed by @ref fplPlatformRelease().
+*/
+fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *settings);
+
+/**
+* @brief Destroys an additional window, the handle is invalid afterwards.
+* @param[in] window The @ref fplWindowHandle from @ref fplWindowCreate().
+* @return Returns true when the window was destroyed, false for an invalid handle or the main window (use @ref fplWindowShutdown() for that).
+* @note Events of the window that are still in the queue keep the old handle, compare it only.
+*/
+fpl_common_api bool fplWindowDestroy(fplWindowHandle *window);
+
+/**
 * @brief Gets the running state of the given window.
 * @param[in] window The @ref fplWindowHandle of the window.
 * @return Returns true while the window is running, false after it was closed.
@@ -13327,6 +13349,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 
 // Win32 unicode dependend stuff
 #define FPL__WIN32_CLASSNAME L"FPLWindowClassW"
+// The class name of an additional window, with a number that counts up
+#define FPL__WIN32_ADDITIONAL_CLASSNAME_FORMAT "FPLWindowClassW_%u"
 #define FPL__WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
 #define FPL__WIN32_UNNAMED_CONSOLE L"Unnamed FPL Unicode Console"
 #if defined(FPL_ARCH_X64)
@@ -13351,6 +13375,8 @@ typedef struct fpl__Win32InitState {
 
 typedef struct fpl__Win32AppState {
 	fpl__Win32Api winApi;
+	// Counts the classes of the additional windows, each one gets a class name of its own
+	uint32_t additionalWindowClassCount;
 } fpl__Win32AppState;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -15075,6 +15101,8 @@ struct fplWindowHandle {
 	fplWindowHandle *nextWindow;
 	// The window fplPlatformInit() created
 	fpl_b32 isMain;
+	// Set while an additional window is destroyed, the messages of the destruction push no events anymore
+	fpl_b32 isDestroying;
 };
 
 #endif // FPL__ENABLE_WINDOW
@@ -15248,10 +15276,17 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	return true;
 }
 
-// Returns false when the queue is full and the event was dropped
+// Returns false when the event was dropped, because the queue is full or its window is being destroyed
 fpl_internal bool fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->eventQueue;
+
+#if defined(FPL__ENABLE_WINDOW)
+	// The application destroyed the window, it gets no events of the destruction (focus loss, released keys)
+	if (event->windowHandle != fpl_null && event->windowHandle->isDestroying) {
+		return(false);
+	}
+#endif
 
 	size_t currentPush;
 	size_t currentPop;
@@ -15796,6 +15831,10 @@ typedef struct fpl__SetupWindowCallbacks {
 #endif
 
 #if defined(FPL__HAS_WINDOW_PLATFORM)
+// Creates the platform window of an additional window, its state and settings are set up already. On failure it releases what it created.
+fpl_internal bool fpl__PlatformWindow(Create)(fplWindowHandle *window);
+// Destroys the platform window of an additional window
+fpl_internal void fpl__PlatformWindow(Destroy)(fplWindowHandle *window);
 fpl_internal bool fpl__PlatformWindow(SetCursorEnabled)(fplWindowHandle *window, const bool value);
 fpl_internal bool fpl__PlatformWindow(GetSize)(fplWindowHandle *window, fplWindowSize *outSize);
 fpl_internal bool fpl__PlatformWindow(SetSize)(fplWindowHandle *window, const uint32_t width, const uint32_t height);
@@ -18199,6 +18238,101 @@ fpl_common_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo) {
 	bool result = fplWindowGetDisplayMulti(mainWindow, outInfo);
 	return(result);
 }
+
+//
+// Additional windows
+//
+
+// One memory block per additional window, the handle comes first so the handle is the address to release
+typedef struct fpl__AdditionalWindowMemory {
+	fplWindowHandle handle;
+	fpl__PlatformWindowState state;
+	fplWindowSettings settings;
+} fpl__AdditionalWindowMemory;
+
+#define FPL__ADDITIONAL_WINDOW_MEMORY_ALIGNMENT 16
+
+fpl_internal void fpl__RemoveWindowFromList(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fplWindowHandle *previous = appState->firstWindow;
+	while (previous != fpl_null && previous->nextWindow != window) {
+		previous = previous->nextWindow;
+	}
+	if (previous != fpl_null) {
+		previous->nextWindow = window->nextWindow;
+	}
+	window->nextWindow = fpl_null;
+}
+
+// The platform window is destroyed while the window is still in the list, so the messages of the destruction still find it
+fpl_internal void fpl__DestroyAdditionalWindow(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	window->isDestroying = true;
+	fpl__PlatformWindow(Destroy)(window);
+	fpl__RemoveWindowFromList(appState, window);
+	fpl__ReleaseDynamicMemory(window);
+}
+
+// Destroys every additional window, the platform release calls it before the video and the main window are released
+fpl_internal void fpl__ReleaseAdditionalWindows(fpl__PlatformAppState *appState) {
+	if (appState->firstWindow == fpl_null) {
+		return;
+	}
+	while (appState->firstWindow->nextWindow != fpl_null) {
+		fplWindowHandle *window = appState->firstWindow->nextWindow;
+		fpl__DestroyAdditionalWindow(appState, window);
+	}
+}
+
+fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *settings) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState->firstWindow == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "An additional window needs the main window, initialize the platform with fplInitFlags_Window");
+		return(fpl_null);
+	}
+	const size_t memorySize = sizeof(fpl__AdditionalWindowMemory);
+	fpl__AdditionalWindowMemory *memory = (fpl__AdditionalWindowMemory *)fpl__AllocateDynamicMemory(memorySize, FPL__ADDITIONAL_WINDOW_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "Failed allocating '%zu' bytes for an additional window", memorySize);
+		return(fpl_null);
+	}
+	// A custom allocator may hand out memory that is not cleared
+	fplMemoryClear(memory, memorySize);
+	if (settings != fpl_null) {
+		memory->settings = *settings;
+	} else {
+		fplSetDefaultWindowSettings(&memory->settings);
+	}
+	fplWindowHandle *window = &memory->handle;
+	window->state = &memory->state;
+	window->settings = &memory->settings;
+	window->isMain = false;
+	window->state->handle = window;
+
+	// The window is in the list before it is created, the platform uses the window functions to apply its start state
+	fplWindowHandle *lastWindow = appState->firstWindow;
+	while (lastWindow->nextWindow != fpl_null) {
+		lastWindow = lastWindow->nextWindow;
+	}
+	lastWindow->nextWindow = window;
+
+	bool isCreated = fpl__PlatformWindow(Create)(window);
+	if (!isCreated) {
+		fpl__RemoveWindowFromList(appState, window);
+		fpl__ReleaseDynamicMemory(memory);
+		return(fpl_null);
+	}
+	return(window);
+}
+
+fpl_common_api bool fplWindowDestroy(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	if (window->isMain) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "The main window is not destroyed by fplWindowDestroy(), use fplWindowShutdown() or fplPlatformRelease()");
+		return(false);
+	}
+	fpl__DestroyAdditionalWindow(fpl__global__AppState, window);
+	return(true);
+}
 #endif // FPL__HAS_WINDOW_PLATFORM
 
 //
@@ -18381,9 +18515,9 @@ fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState
 #endif
 }
 
-// The platforms call this instead of pushing the focus events themselves
-fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState, const bool hasFocus) {
-	fpl__PlatformWindowState *windowState = &appState->window;
+// The platforms call this instead of pushing the focus events themselves. Only the main window has a grab.
+fpl_internal void fpl__HandleWindowFocusChanged(fplWindowHandle *window, const bool hasFocus) {
+	fpl__PlatformWindowState *windowState = window->state;
 	if (!hasFocus) {
 		fpl__ReleaseAllPressedButtons(windowState);
 	}
@@ -18391,13 +18525,17 @@ fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState,
 	// The cursor may have moved anywhere while another window had the focus
 	windowState->inputGrab.hasLastMove = false;
 	fplWindowEventType eventType = hasFocus ? fplWindowEventType_GotFocus : fplWindowEventType_LostFocus;
-	fpl__PushWindowStateEvent(windowState->handle, eventType);
-	fpl__UpdateInputGrab(appState);
+	fpl__PushWindowStateEvent(window, eventType);
+	if (window->isMain) {
+		fpl__UpdateInputGrab(fpl__global__AppState);
+	}
 }
 
-fpl_internal void fpl__HandleWindowMinimizedChanged(fpl__PlatformAppState *appState, const bool isMinimized) {
-	appState->window.isMinimized = isMinimized;
-	fpl__UpdateInputGrab(appState);
+fpl_internal void fpl__HandleWindowMinimizedChanged(fplWindowHandle *window, const bool isMinimized) {
+	window->state->isMinimized = isMinimized;
+	if (window->isMain) {
+		fpl__UpdateInputGrab(fpl__global__AppState);
+	}
 }
 
 fpl_common_api bool fplSetWindowMouseGrab(const bool enabled) {
@@ -20234,10 +20372,32 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT_WIN32
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
-	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		fplPlatformType platformType = fplGetPlatformType();
-		appState->currentSettings.window.callbacks.eventCallback(platformType, windowState, msg, appState->currentSettings.window.callbacks.eventUserData);
+// The FPL window of a native window, null for windows FPL did not create and for thread messages
+fpl_internal fplWindowHandle *fpl__Win32FindWindow(const fpl__PlatformAppState *appState, const HWND windowHandle) {
+	if (windowHandle == fpl_null) {
+		return(fpl_null);
+	}
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		if (window->state->win32.windowHandle == windowHandle) {
+			return(window);
+		}
+	}
+	return(fpl_null);
+}
+
+fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, MSG *msg) {
+	// Thread messages and messages of windows FPL did not create go to the callback of the main window
+	fplWindowHandle *window = fpl__Win32FindWindow(appState, msg->hwnd);
+	if (window == fpl_null) {
+		window = appState->firstWindow;
+	}
+	if (window != fpl_null) {
+		const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+		if (callbacks->eventCallback != fpl_null) {
+			fplPlatformType platformType = fplGetPlatformType();
+			fpl__Win32WindowState *windowState = &window->state->win32;
+			callbacks->eventCallback(platformType, windowState, msg, callbacks->eventUserData);
+		}
 	}
 	wapi->user.TranslateMessage(msg);
 	wapi->user.DispatchMessageW(msg);
@@ -20849,18 +21009,18 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 	for (;;) {
 		MSG message;
 		while (wapi->user.PeekMessageW(&message, 0, 0, 0, PM_REMOVE)) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &message);
+			fpl__Win32HandleMessage(wapi, appState, &message);
 		}
 		SwitchToFiber(appState->window.win32.mainFiber);
 	}
 }
 
-fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fplWindowHandle *window) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	// The click that activated the window may be on the title bar or on a frame button, the mouse is locked once its buttons are released
 	windowState->isActivationClickPending = fpl__Win32IsAnyClickButtonDown(wapi);
-	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
-	fpl__HandleWindowFocusChanged(appState, true);
+	window->state->isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(window, true);
 	if (!windowState->isCursorActive) {
 		fpl__Win32HideCursor(wapi, windowState);
 	}
@@ -20870,14 +21030,14 @@ fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32
 	return true;
 }
 
-fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fplWindowHandle *window) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	if (!windowState->isCursorActive) {
 		fpl__Win32ShowCursor(wapi, windowState);
 	}
-	fpl__PlatformAppState *appState = fpl__global__AppState;
 	windowState->isActivationClickPending = false;
-	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
-	fpl__HandleWindowFocusChanged(appState, false);
+	window->state->isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(window, false);
 	return true;
 }
 
@@ -20886,12 +21046,16 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	fplAssert(appState != fpl_null);
 
 	fpl__Win32AppState *win32State = &appState->win32;
-	fpl__Win32WindowState *win32Window = &appState->window.win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
 
-	if (!win32Window->windowHandle) {
+	// Messages that arrive while CreateWindowExW() runs, before the window knows its handle, go the default way
+	fplWindowHandle *window = fpl__Win32FindWindow(appState, hwnd);
+	if (window == fpl_null) {
 		return wapi->user.DefWindowProcW(hwnd, msg, wParam, lParam);
 	}
+	fpl__PlatformWindowState *platformWindow = window->state;
+	fpl__Win32WindowState *win32Window = &platformWindow->win32;
+	const fplWindowSettings *windowSettings = window->settings;
 
 	LRESULT result = 0;
 	switch (msg) {
@@ -20907,10 +21071,15 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			// The close request is reported like on X11, the destruction that follows it is no second close
 			if (msg == WM_CLOSE) {
-				fpl__PushWindowStateEvent(appState->window.handle, fplWindowEventType_Closed);
+				fpl__PushWindowStateEvent(window, fplWindowEventType_Closed);
 			}
-			appState->window.isRunning = false;
-			fpl__UpdateInputGrab(appState);
+			platformWindow->isRunning = false;
+			if (window->isMain) {
+				fpl__UpdateInputGrab(appState);
+			} else if (msg == WM_CLOSE) {
+				// An additional window stays until the application destroys it with fplWindowDestroy()
+				return 0;
+			}
 		} break;
 
 		case WM_SIZE:
@@ -20918,26 +21087,27 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			DWORD newWidth = LOWORD(lParam);
 			DWORD newHeight = HIWORD(lParam);
 			if (wParam == SIZE_MAXIMIZED) {
-				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Maximized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Maximized, newWidth, newHeight);
 			} else if (wParam == SIZE_MINIMIZED) {
-				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Minimized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Minimized, newWidth, newHeight);
 			} else if (wParam == SIZE_RESTORED) {
-				fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Restored, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Restored, newWidth, newHeight);
 			}
 			bool isMinimized = wParam == SIZE_MINIMIZED;
-			if (isMinimized != (appState->window.isMinimized != 0)) {
-				fpl__HandleWindowMinimizedChanged(appState, isMinimized);
+			if (isMinimized != (platformWindow->isMinimized != 0)) {
+				fpl__HandleWindowMinimizedChanged(window, isMinimized);
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
+			// The software back buffer belongs to the main window
+			if (window->isMain && appState->currentSettings.video.backend == fplVideoBackendType_Software) {
 				if (appState->initSettings.video.isAutoSize) {
 					fplResizeVideoBackBuffer(newWidth, newHeight);
 				}
 			}
 #			endif
 
-			fpl__PushWindowSizeEvent(appState->window.handle, fplWindowEventType_Resized, newWidth, newHeight);
+			fpl__PushWindowSizeEvent(window, fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
 		} break;
@@ -20973,7 +21143,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplMemoryBlock memory = fplZeroInit;
 				memory.size = filesMemorySize;
 				memory.base = filesTableMemory;
-				fpl__PushWindowDropFilesEvent(appState->window.handle, fileBufferA, fileCount, (const char **)filesTable, &memory);
+				fpl__PushWindowDropFilesEvent(window, fileBufferA, fileCount, (const char **)filesTable, &memory);
 			}
 			// Releases the memory the system allocated for the drop
 			wapi->shell.DragFinish(dropHandle);
@@ -20996,12 +21166,12 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
-			ev.window = appState->window.handle;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			// With the keyboard grab F10 and Alt+Space do not open the menus, the keys belong to the application
 			bool isSystemKey = msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
-			if (isSystemKey && appState->window.inputGrab.appliedKeyboardGrab) {
+			if (isSystemKey && platformWindow->inputGrab.appliedKeyboardGrab) {
 				return 0;
 			}
 		} break;
@@ -21024,7 +21194,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
-			ev.window = appState->window.handle;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			return 0;
@@ -21053,17 +21223,18 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
-		case WM_ACTIVATEAPP:
+		// The keyboard focus of each window, WM_ACTIVATEAPP only tells about the whole application and goes to all of its windows
+		case WM_SETFOCUS:
 		{
-			if (wParam == 1) {
-				if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
-					break;
-				}
-			} else {
-				if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
-					break;
-				}
+			if (!fpl__Win32WindowGotFocus(wapi, window)) {
+				break;
 			}
+			return 0;
+		} break;
+
+		case WM_KILLFOCUS:
+		{
+			fpl__Win32WindowLostFocus(wapi, window);
 			return 0;
 		} break;
 
@@ -21076,7 +21247,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 			// Moving, sizing and the menus need the cursor outside of the client area
 			++win32Window->modalLoopDepth;
-			fpl__Win32UpdateMouseLockSuspension(appState);
+			if (window->isMain) {
+				fpl__Win32UpdateMouseLockSuspension(appState);
+			}
 		} break;
 
 		case WM_EXITSIZEMOVE:
@@ -21088,13 +21261,15 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (win32Window->modalLoopDepth > 0) {
 				--win32Window->modalLoopDepth;
 			}
-			fpl__Win32UpdateMouseLockSuspension(appState);
+			if (window->isMain) {
+				fpl__Win32UpdateMouseLockSuspension(appState);
+			}
 		} break;
 
 		case WM_WINDOWPOSCHANGED:
 		{
 			// The clip rectangle is in screen coordinates and does not follow the window by itself
-			fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+			fpl__MouseLockState appliedMouseLock = platformWindow->inputGrab.appliedMouseLock;
 			if (appliedMouseLock != fpl__MouseLockState_Free) {
 				fpl__Win32ApplyClipRect(wapi, win32Window, appliedMouseLock);
 			}
@@ -21125,7 +21300,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (msg == WM_MOUSELEAVE) {
 				win32Window->isTrackingMouseLeave = false;
 				// The cursor comes back somewhere else, its first move must not count the way outside as movement
-				appState->window.inputGrab.hasLastMove = false;
+				platformWindow->inputGrab.hasLastMove = false;
 			}
 			if (msg == WM_MOUSEMOVE && !win32Window->isTrackingMouseLeave) {
 				TRACKMOUSEEVENT trackMouseEvent = fplZeroInit;
@@ -21143,7 +21318,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
-			ev.window = appState->window.handle;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 		} break;
@@ -21158,15 +21333,17 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_PAINT:
 		{
-			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
+			if (windowSettings->callbacks.exposedCallback != fpl_null) {
 				MSG msgData = fplZeroInit;
 				msgData.message = msg;
 				msgData.hwnd = hwnd;
 				msgData.wParam = wParam;
 				msgData.lParam = lParam;
-				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), win32Window, &msgData, appState->currentSettings.window.callbacks.exposedUserData);
+				fplPlatformType platformType = fplGetPlatformType();
+				windowSettings->callbacks.exposedCallback(platformType, win32Window, &msgData, windowSettings->callbacks.exposedUserData);
 			} else {
-				if (appState->currentSettings.video.backend == fplVideoBackendType_None) {
+				// An additional window has no video yet, it is painted like a window without video
+				if (!window->isMain || appState->currentSettings.video.backend == fplVideoBackendType_None) {
 					PAINTSTRUCT ps;
 					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
 					wapi->user.EndPaint(hwnd, &ps);
@@ -21179,7 +21356,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			// Prevent erasing of the background always, but only if a video backend is being used
 			// @NOTE(tspaete): Do not prevent the erasing of the backend for software video output, otherwise we will get weird flickering issue at startup
-			if (appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
+			if (window->isMain && appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
 				return 1;
 			}
 		} break;
@@ -21188,7 +21365,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			WPARAM masked = wParam & 0xFFF0;
 			// The keyboard menu (Alt, F10, Alt+Space) stays closed while the keyboard is grabbed
-			if (masked == SC_KEYMENU && appState->window.inputGrab.appliedKeyboardGrab) {
+			if (masked == SC_KEYMENU && platformWindow->inputGrab.appliedKeyboardGrab) {
 				return 0;
 			}
 			switch (masked) {
@@ -21559,21 +21736,28 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 	const fpl__Win32Api *wapi = &appState->winApi;
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
-	// Init keymap
-	fplClearStruct(platAppState->window.keyMap);
-	for (int i = 0; i < 256; ++i) {
-		int vk = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
-		if (vk == 0) {
-			vk = i;
+	fpl__PlatformWindowState *platformWindow = window->state;
+	if (window->isMain) {
+		// Init keymap
+		fplClearStruct(platformWindow->keyMap);
+		for (int i = 0; i < 256; ++i) {
+			int vk = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
+			if (vk == 0) {
+				vk = i;
+			}
+			platformWindow->keyMap[i] = fpl__Win32TranslateVirtualKey(wapi, vk);
 		}
-		platAppState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(wapi, vk);
-	}
 
-	// Hint for windows to know, that the application is in use always
-	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
-		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+		// Hint for windows to know, that the application is in use always
+		if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
+			SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+		} else {
+			SetThreadExecutionState(ES_CONTINUOUS);
+		}
 	} else {
-		SetThreadExecutionState(ES_CONTINUOUS);
+		// The keyboard layout is the same for all windows, the screen saver and the monitor power belong to the application
+		const size_t keyMapSize = sizeof(platformWindow->keyMap);
+		fplMemoryCopy(platAppState->window.keyMap, keyMapSize, platformWindow->keyMap);
 	}
 
 	// Presetup window
@@ -21601,10 +21785,19 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
 	windowClass.hIconSm = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[0]);
 	windowClass.hIcon = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[1]);
-	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
+	if (window->isMain) {
+		lstrcpynW(windowState->windowClass, FPL__WIN32_CLASSNAME, fplArrayCount(windowState->windowClass));
+	} else {
+		// The icons and the background belong to the class, so every additional window has a class of its own
+		char classNameBuffer[FPL_MAX_NAME_LENGTH];
+		uint32_t classNumber = ++appState->additionalWindowClassCount;
+		fplStringFormat(classNameBuffer, fplArrayCount(classNameBuffer), FPL__WIN32_ADDITIONAL_CLASSNAME_FORMAT, classNumber);
+		size_t classNameLength = fplGetStringLength(classNameBuffer);
+		fplUTF8StringToWideString(classNameBuffer, classNameLength, windowState->windowClass, fplArrayCount(windowState->windowClass));
+	}
+	windowClass.lpszClassName = windowState->windowClass;
 	windowClass.lpfnWndProc = fpl__Win32MessageProc;
 	windowClass.style |= CS_OWNDC;
-	lstrcpynW(windowState->windowClass, windowClass.lpszClassName, fplArrayCount(windowState->windowClass));
 	if (wapi->user.RegisterClassExW(&windowClass) == 0) {
 		FPL__ERROR(FPL__MODULE_WINDOW, "Failed registering window class '%s'", windowState->windowClass);
 		return false;
@@ -21621,9 +21814,11 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 	wchar_t *windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
 
-	// Create Fibers
-	windowState->mainFiber = ConvertThreadToFiber(0);
-	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+	// Create Fibers, they belong to the thread and keep all windows responsive while one of them is moved or resized
+	if (window->isMain) {
+		windowState->mainFiber = ConvertThreadToFiber(0);
+		windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+	}
 
 	// Prepare window style, size and position
 	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
@@ -21723,13 +21918,13 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 		windowState->isShownWithoutActivation = false;
 
 		// The activation pushed its fplWindowEventType_GotFocus already, but the first fplWindowUpdate() clears the event queue
-		windowState->isFocusEventPending = platAppState->window.hasFocus;
+		windowState->isFocusEventPending = platformWindow->hasFocus;
 	}
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
 	windowState->isCursorActive = true;
-	platAppState->window.isRunning = true;
+	platformWindow->isRunning = true;
 
 	return true;
 }
@@ -21743,7 +21938,11 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 	if (windowState->windowHandle != fpl_null) {
 		wapi->user.DestroyWindow(windowState->windowHandle);
 		windowState->windowHandle = fpl_null;
+	}
+	// A class that was registered for a window that could not be created is released too
+	if (windowState->windowClass[0] != 0) {
 		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
+		windowState->windowClass[0] = 0;
 	}
 	if (windowState->backgroundBrush != fpl_null) {
 		wapi->gdi.DeleteObject(windowState->backgroundBrush);
@@ -21757,6 +21956,28 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		ConvertFiberToThread();
 		windowState->mainFiber = fpl_null;
 	}
+}
+
+fpl_internal bool fpl__Win32Window_Create(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	// An additional window starts from the settings of the platform with its own window settings, it has no video
+	fplSettings windowInitSettings = appState->initSettings;
+	windowInitSettings.window = *window->settings;
+	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	bool result = fpl__Win32InitWindow(window, &windowInitSettings, window->settings, appState, &appState->win32, windowState, &setupCallbacks);
+	if (!result) {
+		fpl__Win32ReleaseWindow(initState, &appState->win32, windowState);
+	}
+	return(result);
+}
+
+fpl_internal void fpl__Win32Window_Destroy(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	fpl__Win32ReleaseWindow(initState, &appState->win32, windowState);
 }
 
 #endif // FPL__ENABLE_WINDOW
@@ -22690,9 +22911,8 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 #define FPL__WIN32_KEY_DOWN_FLAG 0x8000
 
 // Reports the release of a key that is still down for FPL while the key state of the thread has it up already, as of the message that was retrieved last
-fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, const uint32_t scanCode, const int sideVirtualKey) {
+fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState, const uint32_t scanCode, const int sideVirtualKey) {
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	fpl__PlatformWindowState *windowState = &appState->window;
 	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)sideVirtualKey);
 	if (windowState->keyStates[keySlot] == fplButtonState_Release) {
 		return;
@@ -22704,27 +22924,28 @@ fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *a
 	}
 	uint64_t keyCode = windowState->keyCodes[keySlot];
 	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
-	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
+	// The keyboard hook only exists for the main window
+	fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
 	uint64_t time = GetTickCount();
 	fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
 }
 
 // Windows loses the release of the Shift key that is let go first while both are down, only the one let go last gets its WM_KEYUP.
 // The key state of the thread knows it is up as of the key message that was just handled, so a Shift that is still down for FPL gets its release right after that message, like SDL does it.
-fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState) {
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
+fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState) {
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
 }
 
 // Windows sends no WM_KEYUP for the Win key when the system takes a shortcut like Win+Space or Win+G, only the key state of the thread knows it is up.
 // No other message has to follow, so it is checked before every key message (the release comes before the next key) and when the message queue is empty, like SDL does it.
 // While the keyboard grab is on, the hook reports Win itself and keeps it away from the system, so the thread never has it down.
-fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState) {
+fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState) {
 	if (appState->window.win32.keyboardHook != fpl_null) {
 		return;
 	}
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
 }
 
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
@@ -22759,9 +22980,9 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
-			fpl__Win32ReleaseLostWinKeys(appState);
+			fpl__Win32ReleaseLostWinKeys(appState, windowState);
 			fpl__HandleKeyboardButtonEvent(windowState, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
-			fpl__Win32ReleaseLostShiftKeys(appState);
+			fpl__Win32ReleaseLostShiftKeys(appState, windowState);
 			return true;
 		}
 
@@ -25437,8 +25658,9 @@ fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__Pla
 	bool result = false;
 	if (windowState->windowHandle != 0) {
 		MSG msg;
-		if (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE) == TRUE) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+		// The messages of all windows of the thread, the additional windows have their own
+		if (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE) == TRUE) {
+			fpl__Win32HandleMessage(wapi, appState, &msg);
 			result = true;
 		}
 	}
@@ -25454,7 +25676,9 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
 	// Polled before the next fplWindowUpdate(), the fplWindowEventType_GotFocus of the show is still in the queue
-	windowState->isFocusEventPending = false;
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		window->state->win32.isFocusEventPending = false;
+	}
 
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
@@ -25465,7 +25689,9 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
 		// A lost release is returned right away, the next fplWindowUpdate() would clear it
 #	if defined(FPL__ENABLE_INPUT_WIN32)
-		fpl__Win32ReleaseLostWinKeys(appState);
+		for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+			fpl__Win32ReleaseLostWinKeys(appState, window->state);
+		}
 #	endif
 		// Queue is empty, we have no events left
 		if (!fpl__HasInternalEvents()) {
@@ -25496,8 +25722,8 @@ fpl_platform_api void fplPollEvents(void) {
 			SwitchToFiber(windowState->messageFiber);
 		} else {
 			MSG msg;
-			while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
-				fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+			while (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE)) {
+				fpl__Win32HandleMessage(wapi, appState, &msg);
 			}
 		}
 	}
@@ -25508,13 +25734,15 @@ fpl_platform_api void fplPollEvents(void) {
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	bool isFocusEventPending = windowState->isFocusEventPending != 0;
-	windowState->isFocusEventPending = false;
 	fpl__ClearInternalEvents();
-	// The window was activated while it was shown, that event was cleared with the queue just now
-	if (isFocusEventPending && appState->window.hasFocus) {
-		fpl__PushWindowStateEvent(appState->window.handle, fplWindowEventType_GotFocus);
+	// A window that was activated while it was shown pushed its fplWindowEventType_GotFocus before, that event was cleared with the queue just now
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		fpl__PlatformWindowState *platformWindow = window->state;
+		bool isFocusEventPending = platformWindow->win32.isFocusEventPending != 0;
+		platformWindow->win32.isFocusEventPending = false;
+		if (isFocusEventPending && platformWindow->hasFocus) {
+			fpl__PushWindowStateEvent(window, fplWindowEventType_GotFocus);
+		}
 	}
 	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
@@ -31376,6 +31604,17 @@ fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings 
 	return true;
 }
 
+// @TODO(final/X11): Additional windows share the display connection of the main window (multi window plan, bite H4)
+fpl_internal bool fpl__X11Window_Create(fplWindowHandle *window) {
+	FPL__UNUSED(window);
+	FPL__ERROR(FPL__MODULE_X11, "Additional windows are not supported on X11 yet");
+	return(false);
+}
+
+fpl_internal void fpl__X11Window_Destroy(fplWindowHandle *window) {
+	FPL__UNUSED(window);
+}
+
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
 	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
 	if (fplIsMaskSet(state, FPL__X11_ShiftMask)) {
@@ -32642,7 +32881,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__HandleWindowFocusChanged(appState, true);
+			fpl__HandleWindowFocusChanged(winState->handle, true);
 #if !defined(FPL_NO_X11_XINPUT2)
 			fpl__X11UpdateRawMediaKeys(appState);
 #endif
@@ -32655,7 +32894,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__HandleWindowFocusChanged(appState, false);
+			fpl__HandleWindowFocusChanged(winState->handle, false);
 #if !defined(FPL_NO_X11_XINPUT2)
 			fpl__X11UpdateRawMediaKeys(appState);
 #endif
@@ -32701,7 +32940,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 				bool isMinimized = nextWindowStateInfo.state == fplWindowState_Iconify;
 				if (isMinimized != (winState->isMinimized != 0)) {
-					fpl__HandleWindowMinimizedChanged(appState, isMinimized);
+					fpl__HandleWindowMinimizedChanged(winState->handle, isMinimized);
 				}
 				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
 				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
@@ -47136,6 +47375,14 @@ fpl_internal size_t fpl__WaitForRunningThreads(const uint32_t timeoutMillisecond
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
+
+	// Release the additional windows first, they use the input system and the video context of the main window
+#	if defined(FPL__HAS_WINDOW_PLATFORM)
+	if (appState != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release additional windows");
+		fpl__ReleaseAdditionalWindows(appState);
+	}
+#	endif
 
 	// Release input (reverse-order init: input released before audio)
 #	if defined(FPL__ENABLE_INPUT)
