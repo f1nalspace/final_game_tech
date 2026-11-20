@@ -359,6 +359,7 @@ SOFTWARE.
 	- Fixed: [Win32] Every dropped file was reported as the first one
 	- Fixed: [Win32] Each file drop leaked the drop handle of the system
 	- Fixed: [Win32] Dropped file paths with many non-ASCII characters were cut off
+	- Fixed: [Win32] The window event callback got a MSG** instead of a MSG*
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -19588,7 +19589,8 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
 	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), windowState, &msg, appState->currentSettings.window.callbacks.eventUserData);
+		fplPlatformType platformType = fplGetPlatformType();
+		appState->currentSettings.window.callbacks.eventCallback(platformType, windowState, msg, appState->currentSettings.window.callbacks.eventUserData);
 	}
 	wapi->user.TranslateMessage(msg);
 	wapi->user.DispatchMessageW(msg);
