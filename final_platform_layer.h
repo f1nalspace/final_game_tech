@@ -361,6 +361,9 @@ SOFTWARE.
 	- Fixed: [Win32] Dropped file paths with many non-ASCII characters were cut off
 	- Fixed: [Win32] The window event callback got a MSG** instead of a MSG*
 	- Fixed: [X11] The first move of the window also reported a fplWindowEventType_Resized
+	- New: Added fplWindowHandle and fplWindowGetMain()
+	- New: Added Multi variants of the window functions that take a fplWindowHandle (e.g. fplWindowGetSizeMulti())
+	- Changed: The window functions report an error when there is no window
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -7135,6 +7138,13 @@ typedef struct fplWindowSettings {
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
 
 /**
+* @struct fplWindowHandle
+* @brief The opaque handle of a window, used by the Multi variants of the window functions (e.g. @ref fplWindowGetSizeMulti()).
+* @note The window that @ref fplPlatformInit() creates has one too, see @ref fplWindowGetMain(). The window functions without a handle always use that main window.
+*/
+typedef struct fplWindowHandle fplWindowHandle;
+
+/**
 * @struct fplConsoleSettings
 * @brief Stores the title and options for the console.
 */
@@ -10827,7 +10837,7 @@ fpl_platform_api void fplPollEvents(void);
 * @brief Gets the window running state as a boolean.
 * @return Returns true when the window is running, false otherwise.
 */
-fpl_platform_api bool fplIsWindowRunning(void);
+fpl_common_api bool fplIsWindowRunning(void);
 
 /**
 * @brief Closes the window and stops the event loop.
@@ -10844,57 +10854,57 @@ fpl_platform_api bool fplWindowUpdate(void);
 * @brief Enables or disables the window cursor.
 * @param[in] value The new cursor visibility state.
 */
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
+fpl_common_api void fplSetWindowCursorEnabled(const bool value);
 
 /**
 * @brief Retrieves the inner window size.
 * @param[out] outSize Reference to the window size structure.
 * @return Returns true when we got the inner size from the current window, false otherwise.
 */
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize);
+fpl_common_api bool fplGetWindowSize(fplWindowSize *outSize);
 
 /**
 * @brief Resizes the window to fit the inner size based on the given size.
 * @param[in] width The width in screen units.
 * @param[in] height The height in screen units.
 */
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
+fpl_common_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
 
 /**
 * @brief Gets the window resizable state as boolean.
 * @return Returns true when the window is resizable, false otherwise.
 */
-fpl_platform_api bool fplIsWindowResizable(void);
+fpl_common_api bool fplIsWindowResizable(void);
 
 /**
 * @brief Enables or disables the ability to resize the window.
 * @param[in] value The new resizable state.
 */
-fpl_platform_api void fplSetWindowResizeable(const bool value);
+fpl_common_api void fplSetWindowResizeable(const bool value);
 
 /**
 * @brief Gets the window decorated state as boolean.
 * @return Returns true when the window is decorated, false otherwise.
 */
-fpl_platform_api bool fplIsWindowDecorated(void);
+fpl_common_api bool fplIsWindowDecorated(void);
 
 /**
 * @brief Enables or disables the window decoration (Titlebar, Border, etc.).
 * @param[in] value The new decorated state.
 */
-fpl_platform_api void fplSetWindowDecorated(const bool value);
+fpl_common_api void fplSetWindowDecorated(const bool value);
 
 /**
 * @brief Gets the window floating state as boolean.
 * @return Returns true when the window is floating, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFloating(void);
+fpl_common_api bool fplIsWindowFloating(void);
 
 /**
 * @brief Enables or disables the window floating (Top-most).
 * @param[in] value The new floating state.
 */
-fpl_platform_api void fplSetWindowFloating(const bool value);
+fpl_common_api void fplSetWindowFloating(const bool value);
 
 /**
 * @brief Enables or disables fullscreen mode based on the given size and the current display.
@@ -10906,7 +10916,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value);
 * @attention This may alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+fpl_common_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 
 /**
 * @brief Enables or disables fullscreen mode based on the given rectangle.
@@ -10919,7 +10929,7 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+fpl_common_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 
 /**
 * @brief Enables fullscreen mode on the nearest display.
@@ -10927,7 +10937,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplEnableWindowFullscreen(void);
+fpl_common_api bool fplEnableWindowFullscreen(void);
 
 /**
 * @brief Switches the window back to window mode.
@@ -10935,33 +10945,33 @@ fpl_platform_api bool fplEnableWindowFullscreen(void);
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplDisableWindowFullscreen(void);
+fpl_common_api bool fplDisableWindowFullscreen(void);
 
 /**
 * @brief Gets the window fullscreen state as boolean.
 * @return Returns true when the window is in fullscreen mode, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFullscreen(void);
+fpl_common_api bool fplIsWindowFullscreen(void);
 
 /**
 * @brief Retrieves the absolute window position.
 * @param[out] outPos Reference to the window position structure @ref fplWindowPosition.
 * @return Returns true when we got the position, false otherwise.
 */
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
+fpl_common_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 
 /**
 * @brief Changes the window absolute position to the given coordinates.
 * @param[in] left The left position in screen units.
 * @param[in] top The top position in screen units.
 */
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
+fpl_common_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 
 /**
 * @brief Changes the window title to the given string.
 * @param[in] title The title string.
 */
-fpl_platform_api void fplSetWindowTitle(const char *title);
+fpl_common_api void fplSetWindowTitle(const char *title);
 
 /**
 * @brief Retrieves the window title and writes it into the output string.
@@ -10976,7 +10986,7 @@ fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitle
 * @return Returns the current window state.
 * @note For a hidden window this is the state it gets when it is shown again.
 */
-fpl_platform_api fplWindowState fplGetWindowState(void);
+fpl_common_api fplWindowState fplGetWindowState(void);
 
 /**
 * @brief Changes the current window state.
@@ -10984,14 +10994,14 @@ fpl_platform_api fplWindowState fplGetWindowState(void);
 * @return Returns true when the window state was changed, false otherwise.
 * @note A hidden window only remembers the new state, it is applied when the window is shown with @ref fplSetWindowVisibility().
 */
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+fpl_common_api bool fplSetWindowState(const fplWindowState newState);
 
 /**
 * @brief Gets the current visibility of the window.
 * @return Returns @ref fplWindowVisibilityState_Show when the window is shown, @ref fplWindowVisibilityState_Hide when it is hidden.
 * @note A minimized window still counts as shown.
 */
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
+fpl_common_api fplWindowVisibilityState fplGetWindowVisibility(void);
 
 /**
 * @brief Shows or hides the window.
@@ -11001,7 +11011,7 @@ fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
 * @note Showing a hidden window brings it to the foreground and gives it the focus, the system may refuse that (see @ref fplWindowSettings.isFocusedOnStart). The first show of a window that started hidden is its start: it takes the focus only when @ref fplWindowSettings.isFocusedOnStart is set and it is not shown minimized. [X11] A window shown minimized never takes the focus.
 * @note Pushes a @ref fplWindowEventType_Shown or @ref fplWindowEventType_Hidden event when the visibility changes.
 */
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
+fpl_common_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
 
 /**
 * @brief Enables or disables the input events for the window entirely.
@@ -11144,7 +11154,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t
 * @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
 * @return Returns true when the display for the window was found, false otherwise.
 */
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
+fpl_common_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
 
 /**
 * @brief Gets information about the primary display.
@@ -11170,6 +11180,241 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 * @return Returns the number of found display modes.
 */
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
+* @defgroup WindowMulti Window functions for a given window
+* @brief This category contains the Multi variants of the window functions, they take the @ref fplWindowHandle of the window to work on
+* @note Every handle works, also the one of the main window from @ref fplWindowGetMain(). The functions without a handle are the same as their Multi variant with the main window.
+* @note An invalid or destroyed handle is reported as an error and the function returns false, zero or the unknown state. A function also returns false when the window system does not support what it is asked for.
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+/**
+* @brief Gets the handle of the main window, the window that @ref fplPlatformInit() created with @ref fplInitFlags_Window.
+* @return Returns the handle of the main window, null when there is no window.
+*/
+fpl_common_api fplWindowHandle *fplWindowGetMain(void);
+
+/**
+* @brief Gets the running state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true while the window is running, false after it was closed.
+* @see fplIsWindowRunning()
+*/
+fpl_common_api bool fplWindowIsRunningMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the cursor of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new cursor visibility state.
+* @return Returns true when the cursor state was set.
+* @see fplSetWindowCursorEnabled()
+*/
+fpl_common_api bool fplWindowSetCursorEnabledMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Retrieves the inner size of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outSize Reference to the window size structure.
+* @return Returns true when the size was retrieved.
+* @see fplGetWindowSize()
+*/
+fpl_common_api bool fplWindowGetSizeMulti(fplWindowHandle *window, fplWindowSize *outSize);
+
+/**
+* @brief Resizes the inner area of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] width The new width in screen units.
+* @param[in] height The new height in screen units.
+* @return Returns true when the resize was requested.
+* @see fplSetWindowSize()
+*/
+fpl_common_api bool fplWindowSetSizeMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height);
+
+/**
+* @brief Gets the resizable state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is resizable.
+* @see fplIsWindowResizable()
+*/
+fpl_common_api bool fplWindowIsResizableMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the ability to resize the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new resizable state.
+* @return Returns true when the state was applied, false while the window is in fullscreen ([Win32] or not decorated).
+* @see fplSetWindowResizeable()
+*/
+fpl_common_api bool fplWindowSetResizableMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Gets the decorated state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is decorated.
+* @see fplIsWindowDecorated()
+*/
+fpl_common_api bool fplWindowIsDecoratedMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the decoration (titlebar, border, etc.) of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new decorated state.
+* @return Returns true when the state was applied, false while the window is in fullscreen ([Win32]).
+* @see fplSetWindowDecorated()
+*/
+fpl_common_api bool fplWindowSetDecoratedMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Gets the floating state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is floating (always on top).
+* @see fplIsWindowFloating()
+*/
+fpl_common_api bool fplWindowIsFloatingMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the given window being always on top.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new floating state.
+* @return Returns true when the state was applied or requested, false while the window is in fullscreen ([Win32]).
+* @see fplSetWindowFloating()
+*/
+fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Enables or disables fullscreen mode of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new fullscreen state.
+* @param[in] fullscreenWidth The fullscreen width in screen units. When set to zero, the desktop default is used.
+* @param[in] fullscreenHeight The fullscreen height in screen units. When set to zero, the desktop default is used.
+* @param[in] refreshRate The refresh rate in Hz. When set to zero, the desktop default is used.
+* @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
+* @see fplSetWindowFullscreenSize()
+*/
+fpl_common_api bool fplWindowSetFullscreenSizeMulti(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+
+/**
+* @brief Enables or disables fullscreen mode of the given window, based on the given rectangle.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new fullscreen state.
+* @param[in] x The left position in virtual screen coordinates.
+* @param[in] y The top position in virtual screen coordinates.
+* @param[in] width The width in virtual screen coordinates.
+* @param[in] height The height in virtual screen coordinates.
+* @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
+* @see fplSetWindowFullscreenRect()
+*/
+fpl_common_api bool fplWindowSetFullscreenRectMulti(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+
+/**
+* @brief Enables fullscreen mode of the given window on the nearest display.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window was changed to fullscreen mode, false otherwise.
+* @see fplEnableWindowFullscreen()
+*/
+fpl_common_api bool fplWindowEnableFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Switches the given window back to window mode.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window was changed to window mode, false otherwise.
+* @see fplDisableWindowFullscreen()
+*/
+fpl_common_api bool fplWindowDisableFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Gets the fullscreen state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is in fullscreen mode.
+* @see fplIsWindowFullscreen()
+*/
+fpl_common_api bool fplWindowIsFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Retrieves the absolute position of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outPos Reference to the window position structure.
+* @return Returns true when the position was retrieved.
+* @see fplGetWindowPosition()
+*/
+fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos);
+
+/**
+* @brief Changes the absolute position of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] left The left position in screen units.
+* @param[in] top The top position in screen units.
+* @return Returns true when the move was requested ([Win32] only while the window is shown normally).
+* @see fplSetWindowPosition()
+*/
+fpl_common_api bool fplWindowSetPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top);
+
+/**
+* @brief Changes the title of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] title The new title as UTF-8 string.
+* @return Returns true when the title was set.
+* @see fplSetWindowTitle()
+*/
+fpl_common_api bool fplWindowSetTitleMulti(fplWindowHandle *window, const char *title);
+
+/**
+* @brief Retrieves the title of the given window as UTF-8 string.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outTitle Pointer to the output title buffer, may be null to query the required size.
+* @param[in] maxOutTitleLength Maximum number of characters for the output buffer.
+* @return Returns the number of characters of the title, zero on errors.
+* @see fplGetWindowTitle()
+*/
+fpl_common_api size_t fplWindowGetTitleMulti(fplWindowHandle *window, char *outTitle, const size_t maxOutTitleLength);
+
+/**
+* @brief Gets the state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the @ref fplWindowState of the window.
+* @see fplGetWindowState()
+*/
+fpl_common_api fplWindowState fplWindowGetStateMulti(fplWindowHandle *window);
+
+/**
+* @brief Changes the state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] newState The new @ref fplWindowState.
+* @return Returns true when the state was changed or remembered for a hidden window, false otherwise.
+* @see fplSetWindowState()
+*/
+fpl_common_api bool fplWindowSetStateMulti(fplWindowHandle *window, const fplWindowState newState);
+
+/**
+* @brief Gets the visibility state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the @ref fplWindowVisibilityState of the window.
+* @see fplGetWindowVisibility()
+*/
+fpl_common_api fplWindowVisibilityState fplWindowGetVisibilityMulti(fplWindowHandle *window);
+
+/**
+* @brief Hides or shows the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] newVisibility The new @ref fplWindowVisibilityState.
+* @return Returns true when the window has the requested visibility, false for an unknown visibility state.
+* @see fplSetWindowVisibility()
+*/
+fpl_common_api bool fplWindowSetVisibilityMulti(fplWindowHandle *window, const fplWindowVisibilityState newVisibility);
+
+/**
+* @brief Gets information about the display the given window is on.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
+* @return Returns true when the display for the window was found, false otherwise.
+* @see fplGetWindowDisplay()
+*/
+fpl_common_api bool fplWindowGetDisplayMulti(fplWindowHandle *window, fplDisplayInfo *outInfo);
 
 /** @} */
 
@@ -14814,6 +15059,18 @@ typedef struct {
 #endif
 } fpl__PlatformWindowState;
 
+// The window behind a fplWindowHandle, the one of the main window points into the platform app state
+struct fplWindowHandle {
+	// Platform state of the window
+	fpl__PlatformWindowState *state;
+	// Current settings of the window
+	fplWindowSettings *settings;
+	// Next window in the window list of the platform app state, the main window comes first
+	fplWindowHandle *nextWindow;
+	// The window fplPlatformInit() created
+	fpl_b32 isMain;
+};
+
 #endif // FPL__ENABLE_WINDOW
 
 //
@@ -14888,6 +15145,10 @@ struct fpl__PlatformAppState {
 	// Window/video/audio
 #if defined(FPL__ENABLE_WINDOW)
 	fpl__PlatformWindowState window;
+	// The handle of the main window, its state is the window field and its settings are currentSettings.window
+	fplWindowHandle mainWindow;
+	// All windows, starting with the main window, null while there is no window
+	fplWindowHandle *firstWindow;
 #endif
 #if defined(FPL__ENABLE_VIDEO)
 	fpl__PlatformBackendState video;
@@ -15505,6 +15766,35 @@ typedef struct fpl__SetupWindowCallbacks {
 	callback_PreSetupWindow *preSetup;
 	callback_PostSetupWindow *postSetup;
 } fpl__SetupWindowCallbacks;
+
+// The window functions each window platform implements as fpl__Win32Window_<name> or fpl__X11Window_<name>, the common code calls them through fpl__PlatformWindow(<name>).
+// The window handle is always valid when they are called, the public functions check it.
+#if defined(FPL_PLATFORM_WINDOWS)
+#	define FPL__HAS_WINDOW_PLATFORM
+#	define fpl__PlatformWindow(name) fpl__Win32Window_##name
+#elif defined(FPL_SUBPLATFORM_X11)
+#	define FPL__HAS_WINDOW_PLATFORM
+#	define fpl__PlatformWindow(name) fpl__X11Window_##name
+#endif
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+fpl_internal bool fpl__PlatformWindow(SetCursorEnabled)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(GetSize)(fplWindowHandle *window, fplWindowSize *outSize);
+fpl_internal bool fpl__PlatformWindow(SetSize)(fplWindowHandle *window, const uint32_t width, const uint32_t height);
+fpl_internal bool fpl__PlatformWindow(SetResizable)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(SetDecorated)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(IsFloating)(fplWindowHandle *window);
+fpl_internal bool fpl__PlatformWindow(SetFloating)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(SetFullscreenSize)(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+fpl_internal bool fpl__PlatformWindow(SetFullscreenRect)(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+fpl_internal bool fpl__PlatformWindow(GetPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
+fpl_internal bool fpl__PlatformWindow(SetPosition)(fplWindowHandle *window, const int32_t left, const int32_t top);
+fpl_internal bool fpl__PlatformWindow(SetTitle)(fplWindowHandle *window, const char *title);
+fpl_internal fplWindowState fpl__PlatformWindow(GetState)(fplWindowHandle *window);
+fpl_internal bool fpl__PlatformWindow(SetState)(fplWindowHandle *window, const fplWindowState newState);
+fpl_internal bool fpl__PlatformWindow(SetVisibility)(fplWindowHandle *window, const fplWindowVisibilityState newVisibility);
+fpl_internal bool fpl__PlatformWindow(GetDisplay)(fplWindowHandle *window, fplDisplayInfo *outDisplay);
+#endif // FPL__HAS_WINDOW_PLATFORM
 #endif // FPL__ENABLE_WINDOW
 
 #endif // FPL__PLATFORM_STATES_DEFINED
@@ -17479,10 +17769,45 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
 
+// Whether the handle belongs to an existing window, the main window or one created later
+fpl_internal bool fpl__IsKnownWindow(const fpl__PlatformAppState *appState, const fplWindowHandle *window) {
+	for (const fplWindowHandle *current = appState->firstWindow; current != fpl_null; current = current->nextWindow) {
+		if (current == window) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// Checks the platform and the window handle of a public window function, the platform window functions rely on both
+#define FPL__CheckWindowHandle(window, ret) \
+	FPL__CheckPlatform(ret); \
+	FPL__CheckArgumentNull(window, ret); \
+	if (!fpl__IsKnownWindow(fpl__global__AppState, window)) { \
+		FPL__ERROR(FPL__MODULE_WINDOW, "[%s] The window '%p' does not exist", FPL_FUNCTION_NAME, (const void *)(window)); \
+		return (ret); \
+	}
+
+fpl_common_api fplWindowHandle *fplWindowGetMain(void) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowHandle *result = fpl_null;
+	if (appState->firstWindow != fpl_null) {
+		result = &appState->mainWindow;
+	}
+	return(result);
+}
+
+fpl_common_api size_t fplWindowGetTitleMulti(fplWindowHandle *window, char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckWindowHandle(window, 0);
+	size_t result = fplCopyString(window->settings->title, outTitle, maxOutTitleLength);
+	return(result);
+}
+
 fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
 	FPL__CheckPlatform(0);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	size_t result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	size_t result = fplWindowGetTitleMulti(mainWindow, outTitle, maxOutTitleLength);
 	return(result);
 }
 
@@ -17520,39 +17845,343 @@ fpl_internal bool fpl__IsWindowFocusedOnStart(const fplWindowSettings *windowSet
 }
 
 // A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown and that first show is its start
-fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
-	appState->window.isHidden = true;
-	appState->window.isStartShowPending = true;
-	appState->window.pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
-	currentWindowSettings->isFullscreen = false;
-}
-
-// Applies the state a hidden window was given, right after it was shown
-fpl_internal void fpl__ApplyPendingWindowState(fpl__PlatformAppState *appState) {
-	fplWindowState pendingState = appState->window.pendingState;
-	appState->window.pendingState = fplWindowState_Unknown;
-	if (pendingState == fplWindowState_Fullscreen) {
-		const fplWindowSettings *windowSettings = &appState->currentSettings.window;
-		if (!windowSettings->isFullscreen) {
-			fplSetWindowFullscreenSize(true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
-		}
-	} else if (pendingState != fplWindowState_Unknown) {
-		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
-		if (pendingState == fplWindowState_Normal && appState->currentSettings.window.isFullscreen) {
-			fplSetWindowFullscreenSize(false, 0, 0, 0);
-		}
-		fplSetWindowState(pendingState);
-	}
+fpl_internal void fpl__DeferInitialWindowState(fplWindowHandle *window, const fplWindowState initialState) {
+	fpl__PlatformWindowState *windowState = window->state;
+	windowState->isHidden = true;
+	windowState->isStartShowPending = true;
+	windowState->pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
+	window->settings->isFullscreen = false;
 }
 
 // The fullscreen functions would show a hidden window on Win32 and are ignored by X11 window managers, so they fail while the window is hidden
-fpl_internal bool fpl__IsFullscreenChangeAllowed(const fpl__PlatformAppState *appState) {
-	if (appState->window.isHidden) {
+fpl_internal bool fpl__IsFullscreenChangeAllowed(const fplWindowHandle *window) {
+	if (window->state->isHidden) {
 		FPL__WARNING(FPL__MODULE_WINDOW, "Fullscreen can not be changed while the window is hidden, show the window first or use fplSetWindowState(fplWindowState_Fullscreen)");
 		return(false);
 	}
 	return(true);
 }
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+// Applies the state a hidden window was given, right after it was shown
+fpl_internal void fpl__ApplyPendingWindowState(fplWindowHandle *window) {
+	fpl__PlatformWindowState *windowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
+	fplWindowState pendingState = windowState->pendingState;
+	windowState->pendingState = fplWindowState_Unknown;
+	if (pendingState == fplWindowState_Fullscreen) {
+		if (!windowSettings->isFullscreen) {
+			fpl__PlatformWindow(SetFullscreenSize)(window, true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
+		}
+	} else if (pendingState != fplWindowState_Unknown) {
+		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
+		if (pendingState == fplWindowState_Normal && windowSettings->isFullscreen) {
+			fpl__PlatformWindow(SetFullscreenSize)(window, false, 0, 0, 0);
+		}
+		fpl__PlatformWindow(SetState)(window, pendingState);
+	}
+}
+
+//
+// Window functions: the Multi variants work on the given window, the functions without a handle on the main window
+//
+fpl_common_api bool fplWindowIsRunningMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->state->isRunning != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowRunning(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsRunningMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetCursorEnabledMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetCursorEnabled)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowCursorEnabled(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetCursorEnabledMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowGetSizeMulti(fplWindowHandle *window, fplWindowSize *outSize) {
+	FPL__CheckArgumentNull(outSize, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetSize)(window, outSize);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowSize(fplWindowSize *outSize) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetSizeMulti(mainWindow, outSize);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetSizeMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetSize)(window, width, height);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetSizeMulti(mainWindow, width, height);
+}
+
+fpl_common_api bool fplWindowIsResizableMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isResizable != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowResizable(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsResizableMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetResizableMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetResizable)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowResizeable(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetResizableMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowIsDecoratedMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isDecorated != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowDecorated(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsDecoratedMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetDecoratedMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetDecorated)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowDecorated(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetDecoratedMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowIsFloatingMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(IsFloating)(window);
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowFloating(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsFloatingMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFloating)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowFloating(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetFloatingMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowSetFullscreenSizeMulti(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, value, fullscreenWidth, fullscreenHeight, refreshRate);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetFullscreenSizeMulti(mainWindow, value, fullscreenWidth, fullscreenHeight, refreshRate);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetFullscreenRectMulti(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenRect)(window, value, x, y, width, height);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetFullscreenRectMulti(mainWindow, value, x, y, width, height);
+	return(result);
+}
+
+// Without a size the platforms keep the desktop resolution, the same as entering fullscreen without a size
+fpl_common_api bool fplWindowEnableFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, true, 0, 0, 0);
+	return(result);
+}
+
+fpl_common_api bool fplEnableWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowEnableFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowDisableFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, false, 0, 0, 0);
+	return(result);
+}
+
+fpl_common_api bool fplDisableWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowDisableFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowIsFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isFullscreen != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos) {
+	FPL__CheckArgumentNull(outPos, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetPosition)(window, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetPositionMulti(mainWindow, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetPosition)(window, left, top);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetPositionMulti(mainWindow, left, top);
+}
+
+fpl_common_api bool fplWindowSetTitleMulti(fplWindowHandle *window, const char *title) {
+	FPL__CheckArgumentNull(title, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetTitle)(window, title);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowTitle(const char *title) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetTitleMulti(mainWindow, title);
+}
+
+fpl_common_api fplWindowState fplWindowGetStateMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fplWindowState_Unknown);
+	fplWindowState result = fpl__PlatformWindow(GetState)(window);
+	return(result);
+}
+
+fpl_common_api fplWindowState fplGetWindowState(void) {
+	FPL__CheckPlatform(fplWindowState_Unknown);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowState result = fplWindowGetStateMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetStateMulti(fplWindowHandle *window, const fplWindowState newState) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetState)(window, newState);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowState(const fplWindowState newState) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetStateMulti(mainWindow, newState);
+	return(result);
+}
+
+fpl_common_api fplWindowVisibilityState fplWindowGetVisibilityMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fplWindowVisibilityState_Unknown);
+	fplWindowVisibilityState result = window->state->isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_common_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowVisibilityState result = fplWindowGetVisibilityMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetVisibilityMulti(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetVisibility)(window, newVisibility);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetVisibilityMulti(mainWindow, newVisibility);
+	return(result);
+}
+
+fpl_common_api bool fplWindowGetDisplayMulti(fplWindowHandle *window, fplDisplayInfo *outInfo) {
+	FPL__CheckArgumentNull(outInfo, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetDisplay)(window, outInfo);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetDisplayMulti(mainWindow, outInfo);
+	return(result);
+}
+#endif // FPL__HAS_WINDOW_PLATFORM
 
 //
 // Focus handling and input grab (mouse grab, relative mouse mode, keyboard grab)
@@ -19331,13 +19960,13 @@ fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const 
 	}
 }
 
-fpl_internal bool fpl__Win32LeaveFullscreen(void) {
+fpl_internal bool fpl__Win32LeaveFullscreen(fplWindowHandle *window) {
 	const fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	const fpl__Win32AppState *win32State = &platState->win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	const fpl__Win32WindowState *win32Window = &platState->window.win32;
+	const fplWindowSettings *settings = window->settings;
+	const fpl__Win32WindowState *win32Window = &window->state->win32;
 	const fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
 	HWND windowHandle = win32Window->windowHandle;
 	bool isShownWithoutActivation = win32Window->isShownWithoutActivation != 0;
@@ -19351,13 +19980,13 @@ fpl_internal bool fpl__Win32LeaveFullscreen(void) {
 	return(result);
 }
 
-fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
+fpl_internal bool fpl__Win32EnterFullscreen(fplWindowHandle *window, const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
 	fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	fpl__Win32AppState *win32State = &platState->win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	fpl__Win32WindowState *win32Window = &platState->window.win32;
+	const fplWindowSettings *settings = window->settings;
+	fpl__Win32WindowState *win32Window = &window->state->win32;
 	fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
 
 	HWND windowHandle = win32Window->windowHandle;
@@ -19439,15 +20068,14 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 	return(result);
 }
 
-fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32SetWindowFullscreen(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	fplWindowSettings *windowSettings = &appState->currentSettings.window;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	fplWindowSettings *windowSettings = window->settings;
 	fpl__Win32LastWindowInfo *fullscreenState = &windowState->lastFullscreenInfo;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
@@ -19465,12 +20093,12 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 
 	if (value) {
 		// Enter fullscreen mode or fallback to window mode
-		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(x, y, w, h, refreshRate, 0, allowResolutionChange);
+		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(window, x, y, w, h, refreshRate, 0, allowResolutionChange);
 		if (!windowSettings->isFullscreen) {
-			fpl__Win32LeaveFullscreen();
+			fpl__Win32LeaveFullscreen(window);
 		}
 	} else {
-		fpl__Win32LeaveFullscreen();
+		fpl__Win32LeaveFullscreen(window);
 		windowSettings->isFullscreen = false;
 	}
 	bool result = windowSettings->isFullscreen != 0;
@@ -20901,7 +21529,7 @@ fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, con
 	}
 }
 
-fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert(appState != fpl_null);
 	const fpl__Win32Api *wapi = &appState->winApi;
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
@@ -21043,14 +21671,14 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	}
 
 	if (!isShownOnStart) {
-		fpl__DeferInitialWindowState(platAppState, currentWindowSettings, initialState);
+		fpl__DeferInitialWindowState(window, initialState);
 	} else {
 		windowState->isShownWithoutActivation = isShownWithoutActivation;
 
 		// Enter fullscreen if needed, the flag is cleared first, otherwise the window placement to return to is never saved
 		if (initialState == fplWindowState_Fullscreen) {
 			currentWindowSettings->isFullscreen = false;
-			fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
+			fpl__Win32Window_SetFullscreenSize(window, true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
 		}
 
 		// Show window, without activation when it does not take the focus: a minimized one stays minimized, a maximized one was created maximized
@@ -24425,11 +25053,9 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 // Win32 Window
 //
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
-	FPL__CheckArgumentNull(outSize, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetSize(fplWindowHandle *window, fplWindowSize *outSize) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	RECT windowRect;
@@ -24441,11 +25067,11 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetSize(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	bool result = false;
 	RECT clientRect, windowRect;
 	if (wapi->user.GetClientRect(windowState->windowHandle, &clientRect) &&
 		wapi->user.GetWindowRect(windowState->windowHandle, &windowRect)) {
@@ -24453,22 +25079,16 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 		int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 		int newWidth = width + borderWidth;
 		int newHeight = height + borderHeight;
-		wapi->user.SetWindowPos(windowState->windowHandle, fpl_null, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+		result = wapi->user.SetWindowPos(windowState->windowHandle, fpl_null, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE) != 0;
 	}
-}
-
-fpl_platform_api bool fplIsWindowResizable(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isResizable != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isDecorated) {
+fpl_internal bool fpl__Win32Window_SetResizable(fplWindowHandle *window, const bool value) {
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	bool result = false;
+	if (!windowSettings->isFullscreen && windowSettings->isDecorated) {
 		DWORD style = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_STYLE);
 		DWORD exStyle = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_EXSTYLE);
 		if (value) {
@@ -24477,30 +25097,26 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 			style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
 		}
 		fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
-		appState->currentSettings.window.isResizable = value;
+		windowSettings->isResizable = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowDecorated(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isDecorated != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetDecorated(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	if (!appState->currentSettings.window.isFullscreen) {
+	bool result = false;
+	if (!windowSettings->isFullscreen) {
 		HWND windowHandle = windowState->windowHandle;
 		DWORD style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
 		DWORD exStyle = fpl__win32_GetWindowLong(windowHandle, GWL_EXSTYLE);
 		if (value) {
 			style &= ~WS_POPUP;
 			style |= WS_OVERLAPPEDWINDOW;
-			if (!appState->currentSettings.window.isResizable) {
+			if (!windowSettings->isResizable) {
 				style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
 			}
 		} else {
@@ -24509,65 +25125,48 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 		}
 		fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, style);
 		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-		appState->currentSettings.window.isDecorated = value;
+		windowSettings->isDecorated = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowFloating(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFloating != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowFloating(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_IsFloating(fplWindowHandle *window) {
+	bool result = window->settings->isFloating != 0;
+	return(result);
+}
+
+fpl_internal bool fpl__Win32Window_SetFloating(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	if (!appState->currentSettings.window.isFullscreen) {
+	bool result = false;
+	if (!windowSettings->isFullscreen) {
 		if (value) {
 			wapi->user.SetWindowPos(windowState->windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		} else {
 			wapi->user.SetWindowPos(windowState->windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		}
-		appState->currentSettings.window.isFloating = value;
+		windowSettings->isFloating = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowFullscreen(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFullscreen != 0;
 	return(result);
 }
 
-
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	bool result = fpl__Win32SetWindowFullscreen(value, INT32_MAX, INT32_MAX, fullscreenWidth, fullscreenHeight, refreshRate, true);
+fpl_internal bool fpl__Win32Window_SetFullscreenSize(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	bool result = fpl__Win32SetWindowFullscreen(window, value, INT32_MAX, INT32_MAX, fullscreenWidth, fullscreenHeight, refreshRate, true);
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	bool result = fpl__Win32SetWindowFullscreen(value, x, y, width, height, 0, false);
+fpl_internal bool fpl__Win32Window_SetFullscreenRect(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	bool result = fpl__Win32SetWindowFullscreen(window, value, x, y, width, height, 0, false);
 	return(result);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen(void) {
-	bool result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
-	return(result);
-}
-
-fpl_platform_api bool fplDisableWindowFullscreen(void) {
-	bool result = fpl__Win32SetWindowFullscreen(false, 0, 0, 0, 0, 0, false);
-	return(result);
-}
-
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
-	FPL__CheckArgumentNull(outPos, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	WINDOWPLACEMENT placement = fplZeroInit;
@@ -24595,24 +25194,24 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
-	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal bool fpl__Win32Window_SetTitle(fplWindowHandle *window, const char *title) {
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND handle = windowState->windowHandle;
-	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
+	fplCopyString(title, windowSettings->title, fplArrayCount(windowSettings->title));
 	wchar_t titleWide[FPL_MAX_BUFFER_LENGTH];
 	fplUTF8StringToWideString(title, fplGetStringLength(title), titleWide, fplArrayCount(titleWide));
-	wapi->user.SetWindowTextW(handle, titleWide);
+	bool result = wapi->user.SetWindowTextW(handle, titleWide) != 0;
+	return(result);
 }
 
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	bool result = false;
 	WINDOWPLACEMENT placement = fplZeroInit;
 	placement.length = sizeof(WINDOWPLACEMENT);
 	RECT windowRect;
@@ -24626,23 +25225,24 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 				placement.rcNormalPosition.top = top;
 				placement.rcNormalPosition.right = placement.rcNormalPosition.left + (windowRect.right - windowRect.left);
 				placement.rcNormalPosition.bottom = placement.rcNormalPosition.top + (windowRect.bottom - windowRect.top);
-				wapi->user.SetWindowPlacement(windowState->windowHandle, &placement);
+				result = wapi->user.SetWindowPlacement(windowState->windowHandle, &placement) != 0;
 			} break;
 		}
 	}
+	return(result);
 }
 
-fpl_platform_api fplWindowState fplGetWindowState(void) {
-	FPL__CheckPlatform(fplWindowState_Unknown);
+fpl_internal fplWindowState fpl__Win32Window_GetState(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformWindowState *platformWindowState = window->state;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	fplWindowState result;
-	if (appState->window.isHidden && appState->window.pendingState != fplWindowState_Unknown) {
-		result = appState->window.pendingState;
-	} else if (appState->currentSettings.window.isFullscreen) {
+	if (platformWindowState->isHidden && platformWindowState->pendingState != fplWindowState_Unknown) {
+		result = platformWindowState->pendingState;
+	} else if (window->settings->isFullscreen) {
 		result = fplWindowState_Fullscreen;
 	} else {
 		bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
@@ -24658,16 +25258,17 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_SetState(fplWindowHandle *window, const fplWindowState newState) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	// SC_MINIMIZE/SC_MAXIMIZE would show a hidden window, so the state is applied when it gets shown
-	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
-		appState->window.pendingState = newState;
+	if (platformWindowState->isHidden && newState != fplWindowState_Unknown) {
+		platformWindowState->pendingState = newState;
 		return(true);
 	}
 	bool result = false;
@@ -24680,7 +25281,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Maximize:
 		{
-			if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isResizable) {
+			if (!windowSettings->isFullscreen && windowSettings->isResizable) {
 				wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 				result = true;
 			}
@@ -24694,10 +25295,11 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Fullscreen:
 		{
-			if (!appState->currentSettings.window.isFullscreen)
-				result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
-			else
+			if (!windowSettings->isFullscreen) {
+				result = fpl__Win32SetWindowFullscreen(window, true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
+			} else {
 				result = true;
+			}
 		} break;
 
 		case fplWindowState_Unknown:
@@ -24707,25 +25309,19 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(result);
 }
 
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
-	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
-	return(result);
-}
-
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
-	bool isHidden = appState->window.isHidden != 0;
+	bool isHidden = platformWindowState->isHidden != 0;
 	if (newVisibility == fplWindowVisibilityState_Hide) {
 		if (!isHidden) {
 			wapi->user.ShowWindow(windowHandle, SW_HIDE);
-			appState->window.isHidden = true;
+			platformWindowState->isHidden = true;
 			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
@@ -24734,20 +25330,20 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	if (newVisibility == fplWindowVisibilityState_Show) {
 		if (isHidden) {
 			// Like at the start, fullscreen is entered or left before the window is shown and minimized and maximized go into ShowWindow() directly
-			fplWindowState pendingState = appState->window.pendingState;
-			int showCommand = fpl__Win32GetShowCommand(pendingState, &appState->currentSettings.window);
-			bool isFullscreen = appState->currentSettings.window.isFullscreen != 0;
+			fplWindowState pendingState = platformWindowState->pendingState;
+			int showCommand = fpl__Win32GetShowCommand(pendingState, windowSettings);
+			bool isFullscreen = windowSettings->isFullscreen != 0;
 			bool leavesFullscreen = pendingState == fplWindowState_Normal && isFullscreen;
 			// The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so. Every later show takes it.
-			bool isStartShow = appState->window.isStartShowPending != 0;
-			bool isFocusedOnShow = !isStartShow || fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
-			appState->window.isStartShowPending = false;
-			appState->window.isHidden = false;
+			bool isStartShow = platformWindowState->isStartShowPending != 0;
+			bool isFocusedOnShow = !isStartShow || fpl__IsWindowFocusedOnFirstShow(windowSettings, pendingState);
+			platformWindowState->isStartShowPending = false;
+			platformWindowState->isHidden = false;
 			windowState->isShownWithoutActivation = !isFocusedOnShow;
 			if (pendingState == fplWindowState_Fullscreen || leavesFullscreen) {
-				fpl__ApplyPendingWindowState(appState);
+				fpl__ApplyPendingWindowState(window);
 			} else if (showCommand != SW_SHOW) {
-				appState->window.pendingState = fplWindowState_Unknown;
+				platformWindowState->pendingState = fplWindowState_Unknown;
 			}
 			if (!isFocusedOnShow) {
 				// Like at the start: a minimized window stays minimized, one created maximized is shown as it is and SW_SHOWNOACTIVATE restores one that was set to normal while it was hidden.
@@ -24757,7 +25353,7 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 					showCommand = SW_SHOWMINNOACTIVE;
 				} else if (pendingState == fplWindowState_Normal) {
 					showCommand = SW_SHOWNOACTIVATE;
-					appState->window.pendingState = fplWindowState_Unknown;
+					platformWindowState->pendingState = fplWindowState_Unknown;
 				} else if (showCommand != SW_SHOWMAXIMIZED || isMaximized) {
 					showCommand = SW_SHOWNA;
 				}
@@ -24769,9 +25365,9 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 			}
 			windowState->isShownWithoutActivation = false;
 			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
-			windowState->isFocusEventPending = appState->window.hasFocus;
+			windowState->isFocusEventPending = platformWindowState->hasFocus;
 			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
-			fpl__ApplyPendingWindowState(appState);
+			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -24779,10 +25375,10 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	return(false);
 }
 
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	FPL__CheckPlatformNoRet();
-	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+fpl_internal bool fpl__Win32Window_SetCursorEnabled(fplWindowHandle *window, const bool value) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	windowState->isCursorActive = value;
+	return(true);
 }
 
 fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
@@ -24900,12 +25496,6 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	}
 #	endif
 	bool result = appState->window.isRunning != 0;
-	return(result);
-}
-
-fpl_platform_api bool fplIsWindowRunning(void) {
-	FPL__CheckPlatform(false);
-	bool result = fpl__global__AppState->window.isRunning != 0;
 	return(result);
 }
 
@@ -25113,11 +25703,9 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	FPL__CheckArgumentNull(outDisplay, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetDisplay(fplWindowHandle *window, fplDisplayInfo *outDisplay) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	HMONITOR foundMonitor = wapi->user.MonitorFromWindow(windowState->windowHandle, MONITOR_DEFAULTTONULL);
 	bool result = false;
@@ -30501,7 +31089,7 @@ fpl_internal void fpl__X11PrepareFocusOnMap(const fpl__X11Api *x11Api, fpl__X11W
 	}
 }
 
-fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
+fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
 		fpl__X11_Atom protocols[] = {
@@ -30525,7 +31113,7 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 	}
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->core.window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
-	fplSetWindowTitle(nameBuffer);
+	fpl__X11Window_SetTitle(window, nameBuffer);
 
 	// Set WM_CLASS so EWMH window managers can identify the application.
 	// Without WM_CLASS, GNOME/mutter treats the window as an orphan and shows a generic icon and "Unknown" as its name.
@@ -30717,7 +31305,7 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	}
 }
 
-fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
 
@@ -30743,17 +31331,17 @@ fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowS
 	windowState->cursor.invisibleCursor = 0;
 	windowState->cursor.cursorEnabled = true;
 
-	fpl__X11SetupWindowManagerHints(x11Api, initSettings, currentWindowSettings, windowState);
+	fpl__X11SetupWindowManagerHints(window, x11Api, initSettings, currentWindowSettings, windowState);
 	fpl__X11InitInputMethod(x11Api, windowState);
 	fpl__X11BuildKeyMap(x11Api, appState, windowState);
 
 	fplWindowState initialState = fpl__GetInitialWindowState(&initSettings->window);
 	if (initSettings->window.initialVisibility == fplWindowVisibilityState_Hide) {
-		fpl__DeferInitialWindowState(appState, currentWindowSettings, initialState);
+		fpl__DeferInitialWindowState(window, initialState);
 	} else if (initialState == fplWindowState_Fullscreen) {
-		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+		fpl__X11Window_SetFullscreenSize(window, true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
 	} else if (initialState == fplWindowState_Iconify || initialState == fplWindowState_Maximize) {
-		fplSetWindowState(initialState);
+		fpl__X11Window_SetState(window, initialState);
 	}
 
 	appState->window.isRunning = true;
@@ -32095,12 +32683,6 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	}
 }
 
-fpl_platform_api bool fplIsWindowRunning(void) {
-	FPL__CheckPlatform(false);
-	bool result = fpl__global__AppState->window.isRunning;
-	return(result);
-}
-
 fpl_platform_api void fplWindowShutdown(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -32221,12 +32803,11 @@ fpl_internal fpl__X11_Cursor fpl__X11GetInvisibleCursor(const fpl__X11Api *x11Ap
 	return(windowState->cursor.invisibleCursor);
 }
 
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetCursorEnabled(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
 	if (value) {
 		x11Api->XUndefineCursor(windowState->display, windowState->core.window);
 	} else {
@@ -32237,6 +32818,7 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	}
 	x11Api->XFlush(windowState->display);
 	windowState->cursor.cursorEnabled = value;
+	return(true);
 }
 
 // Moves the pointer to a position in window coordinates. A source window of None warps from anywhere, the zero sized source rectangle is ignored then.
@@ -32695,13 +33277,11 @@ fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState
 	return(false);
 }
 
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
-	FPL__CheckArgumentNull(outSize, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_GetSize(fplWindowHandle *window, fplWindowSize *outSize) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11_XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outSize->width = attribs.width;
@@ -32709,35 +33289,28 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	return(true);
 }
 
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
+fpl_internal bool fpl__X11Window_SetSize(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	FPL__CheckPlatformNoRet();
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	x11Api->XResizeWindow(windowState->display, windowState->core.window, width, height);
 	x11Api->XFlush(windowState->display);
+	return(true);
 }
 
-fpl_platform_api bool fplIsWindowResizable(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isResizable != 0;
-	return(result);
-}
-
-fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetResizable(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	if (appState->currentSettings.window.isFullscreen) {
-		return;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (windowSettings->isFullscreen) {
+		return(false);
 	}
 	fpl__X11_XSizeHints *hints = x11Api->XAllocSizeHints();
 	if (hints == fpl_null) {
-		return;
+		return(false);
 	}
 	if (value) {
 		hints->flags = 0;
@@ -32753,14 +33326,8 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
 	x11Api->XFree(hints);
 	x11Api->XFlush(windowState->display);
-	appState->currentSettings.window.isResizable = value;
-}
-
-fpl_platform_api bool fplIsWindowDecorated(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isDecorated;
-	return(result);
+	windowSettings->isResizable = value;
+	return(true);
 }
 
 #define FPL__MWM_HINTS_DECORATIONS (1L << 1)
@@ -32776,12 +33343,11 @@ typedef struct {
 	unsigned long status;
 } fpl__MotifWMHints;
 
-fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetDecorated(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
 	fpl__MotifWMHints hints = fplZeroInit;
 	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
@@ -32795,7 +33361,8 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 		(unsigned char *)&hints,
 		FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
 
-	appState->currentSettings.window.isDecorated = value;
+	window->settings->isDecorated = value;
+	return(true);
 }
 
 #define FPL__NET_WM_STATE_REMOVE 0L
@@ -32839,37 +33406,36 @@ fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X
 	return(result);
 }
 
-fpl_platform_api bool fplIsWindowFloating(void) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_IsFloating(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateAbove);
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowFloating(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetFloating(fplWindowHandle *window, const bool value) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
-	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
+	bool result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
+	return(result);
 }
 
-fpl_platform_api fplWindowState fplGetWindowState(void) {
-	FPL__CheckPlatform(fplWindowState_Unknown);
+fpl_internal fplWindowState fpl__X11Window_GetState(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformWindowState *platformWindowState = window->state;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &platformWindowState->x11;
 	// A withdrawn window has no states, it gets the remembered one when it is shown
-	if (appState->window.isHidden) {
-		return(appState->window.pendingState != fplWindowState_Unknown ? appState->window.pendingState : fplWindowState_Normal);
+	if (platformWindowState->isHidden) {
+		return(platformWindowState->pendingState != fplWindowState_Unknown ? platformWindowState->pendingState : fplWindowState_Normal);
 	}
-	if (appState->currentSettings.window.isFullscreen) {
+	if (window->settings->isFullscreen) {
 		return(fplWindowState_Fullscreen);
 	}
 	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateFullscreen)) {
@@ -32891,15 +33457,16 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	return(fplWindowState_Unknown);
 }
 
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetState(fplWindowHandle *window, const fplWindowState newState) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &platformWindowState->x11;
 	// Window managers ignore state changes of a withdrawn window and fplWindowState_Normal would map it, so the state is applied when it gets shown
-	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
-		appState->window.pendingState = newState;
+	if (platformWindowState->isHidden && newState != fplWindowState_Unknown) {
+		platformWindowState->pendingState = newState;
 		return(true);
 	}
 	bool result = false;
@@ -32912,7 +33479,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Maximize:
 		{
-			if (!appState->currentSettings.window.isFullscreen) {
+			if (!windowSettings->isFullscreen) {
 				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
 			}
 		} break;
@@ -32928,8 +33495,8 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Fullscreen:
 		{
-			if (!appState->currentSettings.window.isFullscreen) {
-				result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+			if (!windowSettings->isFullscreen) {
+				result = fpl__X11Window_SetFullscreenSize(window, true, 0, 0, 0);
 			} else {
 				result = true;
 			}
@@ -32942,32 +33509,26 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(result);
 }
 
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
-	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
-	return(result);
-}
-
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11WindowState *windowState = &appState->window.x11;
-	bool isHidden = appState->window.isHidden != 0;
+	fpl__X11WindowState *windowState = &platformWindowState->x11;
+	bool isHidden = platformWindowState->isHidden != 0;
 	if (newVisibility == fplWindowVisibilityState_Hide) {
 		if (!isHidden) {
 			// The window manager removes all states of a withdrawn window, so the current one is applied again when the window is shown
-			fplWindowState currentState = fplGetWindowState();
-			if (appState->window.pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
-				appState->window.pendingState = currentState;
+			fplWindowState currentState = fpl__X11Window_GetState(window);
+			if (platformWindowState->pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
+				platformWindowState->pendingState = currentState;
 			}
-			appState->currentSettings.window.isFullscreen = false;
+			windowSettings->isFullscreen = false;
 			// Unlike XUnmapWindow, XWithdrawWindow also tells the window manager to forget the window (ICCCM 4.1.4)
 			x11Api->XWithdrawWindow(windowState->display, windowState->core.window, windowState->screen);
 			x11Api->XFlush(windowState->display);
-			appState->window.isHidden = true;
+			platformWindowState->isHidden = true;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
 			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
@@ -32978,20 +33539,20 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 		if (isHidden) {
 			// Like on Win32 the window takes the focus. The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so.
 			// A window shown minimized does not take it, the activation would restore it.
-			fplWindowState pendingState = appState->window.pendingState;
-			bool isStartShow = appState->window.isStartShowPending != 0;
+			fplWindowState pendingState = platformWindowState->pendingState;
+			bool isStartShow = platformWindowState->isStartShowPending != 0;
 			bool isFocusedOnShow = pendingState != fplWindowState_Iconify;
 			if (isStartShow) {
-				isFocusedOnShow = fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
+				isFocusedOnShow = fpl__IsWindowFocusedOnFirstShow(windowSettings, pendingState);
 			}
-			appState->window.isStartShowPending = false;
+			platformWindowState->isStartShowPending = false;
 			fpl__X11PrepareFocusOnMap(x11Api, windowState, isFocusedOnShow);
 			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
-			appState->window.isHidden = false;
+			platformWindowState->isHidden = false;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
 			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
-			fpl__ApplyPendingWindowState(appState);
+			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -33261,13 +33822,11 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	FPL__CheckArgumentNull(outDisplay, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_GetDisplay(fplWindowHandle *window, fplDisplayInfo *outDisplay) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	int rootX = 0;
@@ -33390,15 +33949,14 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetFullscreenSize(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
 	// https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 	fpl__X11_XEvent xev = fplZeroInit;
@@ -33414,22 +33972,22 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 
 	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	if (result) {
-		appState->currentSettings.window.isFullscreen = value;
+		window->settings->isFullscreen = value;
 	}
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetFullscreenRect(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	if (!value) {
-		return(fplSetWindowFullscreenSize(false, 0, 0, 0));
+		bool leaveResult = fpl__X11Window_SetFullscreenSize(window, false, 0, 0, 0);
+		return(leaveResult);
 	}
 	// X11 has no pixel-rect fullscreen, snap to monitor span via _NET_WM_FULLSCREEN_MONITORS (Xinerama indices).
 	if (subplatform->xinerama.libHandle != fpl_null && subplatform->xinerama.XineramaIsActive(windowState->display)) {
@@ -33482,34 +34040,15 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			x11Api->XFlush(windowState->display);
 		}
 	}
-	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+	bool result = fpl__X11Window_SetFullscreenSize(window, true, 0, 0, 0);
 	return(result);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen(void) {
-	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
-	return(result);
-}
-
-fpl_platform_api bool fplDisableWindowFullscreen(void) {
-	bool result = fplSetWindowFullscreenSize(false, 0, 0, 0);
-	return(result);
-}
-
-fpl_platform_api bool fplIsWindowFullscreen(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFullscreen;
-	return(result);
-}
-
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
-	FPL__CheckArgumentNull(outPos, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_GetPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11_XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outPos->left = attribs.x;
@@ -33517,13 +34056,13 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	return(true);
 }
 
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
+	return(true);
 }
 
 // Sets WM_NAME and WM_ICON_NAME as STRING or COMPOUND_TEXT (like GLFW), or as UTF8_STRING when Xlib cannot convert the title without loss (like SDL)
@@ -33547,18 +34086,17 @@ fpl_internal void fpl__X11SetICCCMWindowTitle(const fpl__X11Api *x11Api, const f
 	}
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_internal bool fpl__X11Window_SetTitle(fplWindowHandle *window, const char *title) {
 	// @NOTE(final/X11): The title is set as _NET_WM_NAME / _NET_WM_ICON_NAME (EWMH) and as WM_NAME / WM_ICON_NAME (ICCCM, e.g. xprop, "xdotool search --name").
 	// GNOME requires WM_CLASS (set in fpl__X11InitWindow) to associate the window with an application name.
 
-	FPL__CheckArgumentNullNoRet(title);
-	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
-	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
+	fplCopyString(title, windowSettings->title, fplArrayCount(windowSettings->title));
 
 	x11Api->XChangeProperty(windowState->display, windowState->core.window,
 		windowState->netWM.netWMName, windowState->wm.utf8String, 8,
@@ -33573,6 +34111,7 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 	fpl__X11SetICCCMWindowTitle(x11Api, windowState, title);
 
 	x11Api->XFlush(windowState->display);
+	return(true);
 }
 
 // Waits for one answer of the selection owner, while every event that is not part of this conversation
@@ -45594,16 +46133,25 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
+		appState->firstWindow = fpl_null;
+		fplClearStruct(&appState->mainWindow);
 	}
 }
 
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	bool result = false;
 	if (appState != fpl_null) {
+		// The main window is in the window list before it is created, the platform uses the window functions to apply its start state
+		fplWindowHandle *mainWindow = &appState->mainWindow;
+		fplClearStruct(mainWindow);
+		mainWindow->state = &appState->window;
+		mainWindow->settings = currentWindowSettings;
+		mainWindow->isMain = true;
+		appState->firstWindow = mainWindow;
 #	if defined(FPL_PLATFORM_WINDOWS)
-		result = fpl__Win32InitWindow(initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
+		result = fpl__Win32InitWindow(mainWindow, initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
 #	elif defined(FPL_SUBPLATFORM_X11)
-		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
+		result = fpl__X11InitWindow(mainWindow, initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
 	}
 	return (result);
