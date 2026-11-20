@@ -360,6 +360,7 @@ SOFTWARE.
 	- Fixed: [Win32] Each file drop leaked the drop handle of the system
 	- Fixed: [Win32] Dropped file paths with many non-ASCII characters were cut off
 	- Fixed: [Win32] The window event callback got a MSG** instead of a MSG*
+	- Fixed: [X11] The first move of the window also reported a fplWindowEventType_Resized
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -30459,8 +30460,8 @@ fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSetti
 
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
 	windowState->lastWindowStateInfo.visibility = initSettings->window.initialVisibility == fplWindowVisibilityState_Hide ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
-	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowWidth, windowHeight);
-	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowX, (uint32_t)windowY);
+	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowX, windowY);
+	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowWidth, (uint32_t)windowHeight);
 
 	fpl__X11_Visual *visual = windowState->core.visual;
 	int colorDepth = windowState->colorDepth;
