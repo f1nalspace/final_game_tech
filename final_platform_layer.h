@@ -180,6 +180,7 @@ SOFTWARE.
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
+	- Additional windows next to the main window, with Multi variants of the window functions and OpenGL in every window
 	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
 	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
 	- Windows XP support
@@ -2150,6 +2151,8 @@ SOFTWARE.
 	- No unix gamepad support implemented (fd is planned)
 	- [Vulkan] The debug messenger message-type filter (GENERAL/VALIDATION/PERFORMANCE) is hardcoded to all types - fplVulkanSettings only exposes severity filtering, not message-type filtering
 	- [Vulkan] When FPL creates the Vulkan instance itself, fplVulkanSettings (appName/engineName/versions/apiVersion) are passed through without validation - invalid values surface later as a raw vkCreateInstance VkResult instead of an early FPL error
+	- [Window] The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp work on the main window only, not on additional windows
+	- [Video] The software and the Vulkan video backend draw into the main window only, not into additional windows
 
 	@section section_support_status_unsupported Not Supported
 
@@ -6200,7 +6203,7 @@ typedef enum fplInitFlags {
 	fplInitFlags_None = 0,
 	//! Create a console window.
 	fplInitFlags_Console = 1 << 0,
-	//! Create a single window.
+	//! Create the main window, additional windows come from @ref fplWindowCreate().
 	fplInitFlags_Window = 1 << 1,
 	//! Use a video backbuffer (This flag ensures that @ref fplInitFlags_Window is included always).
 	fplInitFlags_Video = 1 << 2,

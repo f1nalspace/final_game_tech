@@ -45,7 +45,7 @@
 	@subsection subsection_intro_whatisfpl What is FPL?
 
 	Final Platform Layer is a Single-Header-File cross-platform <b>C99</b>/<b>C++</b> development library designed to abstract the underlying platform to a very simple and easy-to-use API - providing low level access to:<br>
-	- Single Window creation and handling
+	- Window creation and handling, a main window and additional windows
 	- Graphics Software or Hardware Rendering initialization.
 	- Asynchronous Playback of Audio Samples
 	- Accessing Input Devices (Keyboard, Mouse, Gamepad)
@@ -97,7 +97,7 @@
 		- OS detection
 		- Runtime/Static Linking Support
 	- Window
-		- Create and handle a Single Window
+		- Create and handle the main window and additional windows
 		- Fullscreen toggling
 		- Event handling
 		- Clipboard string reading and writing
@@ -318,6 +318,7 @@
 	@subpage page_category_window_basics <br>
 	@subpage page_category_window_events <br>
 	@subpage page_category_window_style <br>
+	@subpage page_category_window_multi <br>
 
 	@section section_category_input Input
 	@subpage page_category_input_events <br>
@@ -1713,6 +1714,172 @@
 	@section section_category_window_style_notes Notes
 
 	@note Use @ref fplSetDefaultWindowSettings() to initialize a @ref fplWindowSettings to a default state.<br>
+*/
+
+/*!
+	@page page_category_window_multi Multiple windows
+	@tableofcontents
+
+	@section section_category_window_multi_overview Overview
+
+	The window that @ref fplPlatformInit() creates with @ref fplInitFlags_Window is the main window. Additional windows are created and destroyed at runtime with @ref fplWindowCreate() and @ref fplWindowDestroy().<br>
+	Each window is identified by its @ref fplWindowHandle, the handle of the main window comes from @ref fplWindowGetMain().<br>
+	<br>
+	Every window function has a Multi variant that takes the handle as its first parameter, like @ref fplWindowSetTitleMulti() for @ref fplSetWindowTitle().<br>
+	The functions without a handle work on the main window as before, so an application with one window does not change.<br>
+	See @ref WindowMulti for all Multi variants.
+
+	@section section_category_window_multi_create Creating and destroying a window
+
+	@ref fplWindowCreate() takes the same @ref fplWindowSettings as the main window, null uses the defaults of @ref fplSetDefaultWindowSettings().<br>
+	It needs the main window, so call it after @ref fplPlatformInit().
+
+	@code{.c}
+	const uint32_t toolWindowWidth = 400;
+	const uint32_t toolWindowHeight = 300;
+	const int32_t toolWindowLeft = 100;
+	const int32_t toolWindowTop = 100;
+
+	fplWindowSettings toolSettings;
+	fplSetDefaultWindowSettings(&toolSettings);
+	fplCopyString("Tools", toolSettings.title, fplArrayCount(toolSettings.title));
+	toolSettings.windowSize.width = toolWindowWidth;
+	toolSettings.windowSize.height = toolWindowHeight;
+	fplWindowHandle *toolWindow = fplWindowCreate(&toolSettings);
+	if (toolWindow != fpl_null) {
+		fplWindowSetPositionMulti(toolWindow, toolWindowLeft, toolWindowTop);
+	}
+
+	// ... later
+	fplWindowDestroy(toolWindow);
+	@endcode
+
+	@note The handle is invalid after @ref fplWindowDestroy(). @ref fplPlatformRelease() destroys all additional windows that are still open.
+	@note The main window cannot be destroyed with @ref fplWindowDestroy(), use @ref fplWindowShutdown() to end the application.
+	@note A Multi function reports an unknown or destroyed handle as an error and returns false, zero or the unknown state instead of crashing.
+	@note The event and expose callbacks in @ref fplWindowSettings.callbacks belong to their window, every window calls the callbacks of its own settings.
+
+	@section section_category_window_multi_events Events of a window
+
+	All windows share one event queue, so the main loop stays the same: @ref fplWindowUpdate() and @ref fplPollEvent() deliver the events of every window.<br>
+	The field @ref fplEvent.windowHandle tells the window an event belongs to. Gamepad events have no window, their handle is null.
+
+	@code{.c}
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	while (fplWindowUpdate()) {
+		fplEvent ev;
+		while (fplPollEvent(&ev)) {
+			if (ev.windowHandle == toolWindow) {
+				// ... An event of the tool window
+			} else if (ev.windowHandle == mainWindow) {
+				// ... An event of the main window
+			}
+		}
+	}
+	@endcode
+
+	@note Only compare the handle of an event: an event that is still in the queue can belong to a window that was destroyed meanwhile. After @ref fplWindowDestroy() no new event of that window comes.
+
+	@section section_category_window_multi_close Closing a window
+
+	Closing the main window ends the application as before, @ref fplWindowUpdate() returns false.<br>
+	Closing an additional window (the close button or Alt+F4) destroys nothing: the window pushes a @ref fplWindowEventType_Closed event with its handle, and @ref fplWindowIsRunningMulti() returns false from then on.<br>
+	The application decides whether it destroys the window or keeps it.
+
+	@code{.c}
+	bool isToolWindowClosed = ev.type == fplEventType_Window && ev.window.type == fplWindowEventType_Closed && ev.windowHandle == toolWindow;
+	if (isToolWindowClosed) {
+		fplWindowDestroy(toolWindow);
+		toolWindow = fpl_null;
+	}
+	@endcode
+
+	@section section_category_window_multi_opengl Rendering with OpenGL
+
+	With the OpenGL video backend all windows share the rendering context of the main window, so textures, buffers and shaders are available in every window.<br>
+	@ref fplVideoMakeCurrentMulti() selects the window the rendering goes into, @ref fplVideoFlipMulti() presents the frame of a window.<br>
+	Each window has its own size, so set the viewport from @ref fplWindowGetSizeMulti() after switching.
+
+	@code{.c}
+	// The additional windows first
+	fplVideoMakeCurrentMulti(toolWindow);
+	RenderToolWindow();
+	fplVideoFlipMulti(toolWindow);
+
+	// The main window last, its flip waits for the vertical synchronisation
+	fplVideoMakeCurrentMulti(mainWindow);
+	RenderMainWindow();
+	fplVideoFlip();
+	@endcode
+
+	@note Only the main window waits for the vertical synchronisation (fplVideoSettings.isVSync), the additional windows never do. Otherwise every window would wait for its own refresh and three windows would get a third of the frame rate. Render the main window last, so its flip paces the whole frame.
+	@note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
+	@note Destroying the window that is current makes the main window current again.
+	@note @ref fplVideoGetSurfaceMulti() gives the video surface of a window, with the handles of that window and the rendering context of the main window.
+
+	@section section_category_window_multi_limits Limitations
+
+	- The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp are only available for the main window.
+	- @ref fplPollMouseState() reports the cursor position relative to the main window, also while the cursor is over another window. The mouse events carry the position inside their own window.
+	- The settings for the screen saver and the monitor power apply to the whole application, they are taken from the main window.
+	- The software and the Vulkan video backend draw into the main window only. For an additional window @ref fplVideoMakeCurrentMulti(), @ref fplVideoFlipMulti() and @ref fplVideoGetSurfaceMulti() fail there, and the window shows its background color (@ref fplWindowSettings.background).
+	- All windows belong to the main thread, like every window function.
+	- There are no child windows and no windows owned by another window (dialogs).
+
+	@section section_category_window_multi_example Example
+
+	A main window and a tool window, both drawing with legacy OpenGL. Closing the tool window destroys it, closing the main window ends the program.<br>
+	The demo FPL_MultiWindow shows more: creating windows at runtime, the events of every window and a rotating quad per window.
+
+	@code{.c}
+	#define FPL_IMPLEMENTATION
+	#include "final_platform_layer.h"
+
+	// You have to include GL.h yourself or use any other OpenGL loader you want.
+	#include <GL/gl.h>
+
+	static const float mainWindowColor[3] = { 0.39f, 0.58f, 0.93f };
+	static const float toolWindowColor[3] = { 0.63f, 0.16f, 0.16f };
+
+	static void RenderWindow(fplWindowHandle *window, const float color[3]) {
+		bool isCurrent = fplVideoMakeCurrentMulti(window);
+		fplWindowSize size;
+		bool hasSize = fplWindowGetSizeMulti(window, &size);
+		if (isCurrent && hasSize) {
+			glViewport(0, 0, (GLsizei)size.width, (GLsizei)size.height);
+			glClearColor(color[0], color[1], color[2], 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			fplVideoFlipMulti(window);
+		}
+	}
+
+	int main(int argc, char **argv) {
+		fplSettings settings = fplMakeDefaultSettings();
+		settings.video.backend = fplVideoBackendType_OpenGL;
+		settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+		if (!fplPlatformInit(fplInitFlags_Video, &settings)) {
+			return(-1);
+		}
+		fplWindowHandle *mainWindow = fplWindowGetMain();
+		fplWindowHandle *toolWindow = fplWindowCreate(fpl_null);
+		while (fplWindowUpdate()) {
+			fplEvent ev;
+			while (fplPollEvent(&ev)) {
+				bool isToolWindowClosed = ev.type == fplEventType_Window && ev.window.type == fplWindowEventType_Closed && ev.windowHandle == toolWindow;
+				if (isToolWindowClosed) {
+					fplWindowDestroy(toolWindow);
+					toolWindow = fpl_null;
+				}
+			}
+			if (toolWindow != fpl_null) {
+				RenderWindow(toolWindow, toolWindowColor);
+			}
+			RenderWindow(mainWindow, mainWindowColor);
+		}
+		fplPlatformRelease();
+		return(0);
+	}
+	@endcode
 */
 
 /*!

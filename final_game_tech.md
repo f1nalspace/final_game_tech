@@ -48,6 +48,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FPL_ImGui/                  # ImGui integration demo
 │   ├── FPL_Input/                  # Visual input display demo
 │   ├── FPL_MiniAudio/              # miniaudio.h integration demo
+│   ├── FPL_MultiWindow/            # Additional windows next to the main window
 │   ├── FPL_NBodySimulation/        # 2D fluid simulation with benchmarking
 │   ├── FPL_NoCRT/                  # FPL without C Runtime Library (MSVC/Windows)
 │   ├── FPL_NoPlatformIncludes/     # FPL without platform headers
@@ -94,7 +95,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ## Core Library: final_platform_layer.h
 
 The main platform abstraction layer that provides:
-- Cross-platform window management
+- Cross-platform window management, a main window and additional windows
 - Video/Graphics rendering context setup
 - Asyncronous Audio samples playback
 - Input handling (keyboard, mouse, gamepads)
@@ -271,6 +272,11 @@ Hello-World console application demonstrating basic FPL console I/O
 
 #### FPL_Window
 Minimal demo showing window initialization and event handling
+
+#### FPL_MultiWindow
+Demo for additional windows next to the main window:
+- Creates and destroys windows at runtime, every event tells the window it belongs to
+- Every window draws a rotating quad with OpenGL, all windows share one rendering context
 
 #### FPL_Process
 Console demo that starts and controls child processes:
