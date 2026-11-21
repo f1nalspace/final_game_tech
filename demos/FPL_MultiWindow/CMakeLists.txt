@@ -18,6 +18,7 @@ set(MY_INCLUDE_DIRS
 
 set(MY_HEADER_FILES
 	"../../final_platform_layer.h"
+	"../../final_dynamic_opengl.h"
 	)
 
 set(MY_TRANSLATION_UNITS

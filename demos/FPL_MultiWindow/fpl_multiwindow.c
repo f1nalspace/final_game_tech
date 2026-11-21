@@ -6,6 +6,7 @@ Name:
 Description:
 	Shows the additional windows of FPL: the main window comes from fplPlatformInit(), every other window from fplWindowCreate().
 	Each event tells the window it belongs to. Closing an additional window destroys it, closing the main window ends the demo.
+	Every window draws a rotating quad in its own color with OpenGL, all windows share the rendering context of the main window.
 	Hotkeys (in every window):
 	  N          Create an additional window
 	  T          Change the title of the window
@@ -14,15 +15,20 @@ Description:
 	  --windows=<n>  Create this many additional windows at the start
 	  --frames=<n>   Quit by itself after this many frames, for tests
 	  --quiet        Do not write the mouse move events
+	  --novideo      Run without video, the windows show their background color
 
 Requirements:
 	- C99 Compiler
 	- Final Platform Layer
+	- Final Dynamic OpenGL
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## 2026-11-21
+	- Every window draws a rotating quad with OpenGL, --novideo runs without video
+
 	## 2026-11-20
 	- Initial version, the windows have no video yet
 
@@ -34,9 +40,12 @@ License:
 
 #define FPL_IMPLEMENTATION
 #define FPL_NO_VIDEO_VULKAN
-#define FPL_NO_VIDEO_OPENGL
+#define FPL_NO_VIDEO_SOFTWARE
 #define FPL_NO_AUDIO
 #include <final_platform_layer.h>
+
+#define FGL_IMPLEMENTATION
+#include <final_dynamic_opengl.h>
 
 #define MAX_WINDOW_COUNT 16
 #define MAX_TITLE_LENGTH 128
@@ -49,6 +58,11 @@ static const uint32_t additionalWindowHeight = 260;
 static const int32_t firstWindowOffset = 80;
 static const int32_t windowOffsetStep = 40;
 static const uint8_t colorOpaque = 255;
+static const float colorComponentMax = 255.0f;
+static const float quadHalfSize = 0.5f;
+static const float quadWhiteBlend = 0.5f;
+static const float rotationDegreesPerFrame = 2.0f;
+static const float rotationStartDegreesPerWindow = 15.0f;
 
 typedef struct DemoWindow {
 	fplWindowHandle *handle;
@@ -60,6 +74,7 @@ typedef struct DemoOptions {
 	int startWindowCount;
 	int frameLimit;
 	bool isQuiet;
+	bool isVideoDisabled;
 } DemoOptions;
 
 typedef struct DemoState {
@@ -67,6 +82,7 @@ typedef struct DemoState {
 	DemoOptions options;
 	int windowCount;
 	int nextNumber;
+	bool hasVideo;
 } DemoState;
 
 static fplColor32 GetWindowColor(const int number) {
@@ -151,6 +167,63 @@ static void ToggleTitle(DemoWindow *window, const char *name) {
 		fplStringFormat(title, fplArrayCount(title), "FPL Demo - %s", name);
 	}
 	fplWindowSetTitleMulti(window->handle, title);
+}
+
+// The quad is the window color halfway to white
+static float GetQuadColorComponent(const uint8_t backgroundComponent) {
+	float background = (float)backgroundComponent / colorComponentMax;
+	float result = background + (1.0f - background) * quadWhiteBlend;
+	return(result);
+}
+
+static void RenderWindow(const DemoWindow *window, const int frameIndex) {
+	fplWindowSize size;
+	bool hasSize = fplWindowGetSizeMulti(window->handle, &size);
+	if (!hasSize || size.width == 0 || size.height == 0) {
+		return;
+	}
+	fplColor32 color = GetWindowColor(window->number);
+	float red = (float)color.components.r / colorComponentMax;
+	float green = (float)color.components.g / colorComponentMax;
+	float blue = (float)color.components.b / colorComponentMax;
+	float quadRed = GetQuadColorComponent(color.components.r);
+	float quadGreen = GetQuadColorComponent(color.components.g);
+	float quadBlue = GetQuadColorComponent(color.components.b);
+	float aspect = (float)size.width / (float)size.height;
+	float rotationStart = rotationStartDegreesPerWindow * (float)window->number;
+	float rotation = rotationStart + rotationDegreesPerFrame * (float)frameIndex;
+
+	glViewport(0, 0, (GLsizei)size.width, (GLsizei)size.height);
+	glClearColor(red, green, blue, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(-aspect, aspect, -1.0, 1.0, -1.0, 1.0);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glRotatef(rotation, 0.0f, 0.0f, 1.0f);
+
+	glColor3f(quadRed, quadGreen, quadBlue);
+	glBegin(GL_QUADS);
+	glVertex2f(-quadHalfSize, -quadHalfSize);
+	glVertex2f(quadHalfSize, -quadHalfSize);
+	glVertex2f(quadHalfSize, quadHalfSize);
+	glVertex2f(-quadHalfSize, quadHalfSize);
+	glEnd();
+}
+
+// The additional windows first, the main window last: only the main window waits for the vertical synchronisation
+static void RenderAllWindows(const DemoState *state, const int frameIndex) {
+	for (int windowIndex = state->windowCount - 1; windowIndex >= 0; --windowIndex) {
+		const DemoWindow *window = &state->windows[windowIndex];
+		bool isCurrent = fplVideoMakeCurrentMulti(window->handle);
+		if (!isCurrent) {
+			continue;
+		}
+		RenderWindow(window, frameIndex);
+		fplVideoFlipMulti(window->handle);
+	}
 }
 
 static const char *GetWindowEventName(const fplWindowEventType type) {
@@ -252,6 +325,8 @@ static void ParseOptions(const int argCount, char **args, DemoOptions *outOption
 			outOptions->frameLimit = fplStringToS32(value);
 		} else if (fplIsStringEqual(arg, "--quiet")) {
 			outOptions->isQuiet = true;
+		} else if (fplIsStringEqual(arg, "--novideo")) {
+			outOptions->isVideoDisabled = true;
 		}
 	}
 }
@@ -265,8 +340,24 @@ int main(int argCount, char **args) {
 	settings.window.windowSize.width = mainWindowWidth;
 	settings.window.windowSize.height = mainWindowHeight;
 	settings.window.background = GetWindowColor(0);
-	if (!fplPlatformInit(fplInitFlags_Window | fplInitFlags_Input | fplInitFlags_Console, &settings)) {
+	settings.video.backend = fplVideoBackendType_OpenGL;
+	settings.video.graphics.opengl.compatibilityFlags = fplOpenGLCompatibilityFlags_Legacy;
+	settings.video.isVSync = true;
+	fplInitFlags initFlags = fplInitFlags_Window | fplInitFlags_Input | fplInitFlags_Console;
+	if (!state.options.isVideoDisabled) {
+		initFlags |= fplInitFlags_Video;
+	}
+	if (!fplPlatformInit(initFlags, &settings)) {
 		return(-1);
+	}
+
+	// All windows share the rendering context of the main window, so the functions are loaded once
+	if (!state.options.isVideoDisabled) {
+		const bool loadFunctions = true;
+		state.hasVideo = fglLoadOpenGL(loadFunctions);
+		if (!state.hasVideo) {
+			fplConsoleFormatOut("Failed loading OpenGL, the windows show their background color\n");
+		}
 	}
 
 	DemoWindow *mainWindow = &state.windows[0];
@@ -288,6 +379,12 @@ int main(int argCount, char **args) {
 				isRunning = false;
 			}
 		}
+		if (!isRunning) {
+			break;
+		}
+		if (state.hasVideo) {
+			RenderAllWindows(&state, frameIndex);
+		}
 		frameIndex++;
 		if (state.options.frameLimit > 0 && frameIndex >= state.options.frameLimit) {
 			break;
@@ -296,6 +393,9 @@ int main(int argCount, char **args) {
 	}
 
 	fplConsoleFormatOut("Done after %d frames, %d windows open\n", frameIndex, state.windowCount);
+	if (state.hasVideo) {
+		fglUnloadOpenGL();
+	}
 	fplPlatformRelease();
 	return(0);
 }
