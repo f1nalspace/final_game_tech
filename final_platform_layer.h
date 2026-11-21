@@ -376,6 +376,7 @@ SOFTWARE.
 	- New: Added fields fallbackVersions and fallbackVersionCount to fplOpenGLSettings, tried in order before the legacy fallback
 	- New: Added field isLegacyFallbackDisabled to fplOpenGLSettings
 	- New: Added fields versionIndex and contextFlags to fplVideoSurfaceOpenGL
+	- New: Added fplVideoMakeCurrentMulti(), fplVideoFlipMulti() and fplVideoGetSurfaceMulti(), OpenGL draws into additional windows
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
@@ -11217,6 +11218,7 @@ fpl_common_api fplWindowHandle *fplWindowGetMain(void);
 * @note Closing an additional window pushes @ref fplWindowEventType_Closed with its handle and @ref fplWindowIsRunningMulti() returns false, but the window stays until @ref fplWindowDestroy() is called. Closing the main window ends the application as before.
 * @note The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp are only available for the main window.
 * @note All additional windows are destroyed by @ref fplPlatformRelease().
+* @note With the OpenGL video backend the rendering context of the main window draws into the new window too, see @ref fplVideoMakeCurrentMulti(). Only the main window waits for the vertical synchronisation. The other video backends draw into the main window only.
 */
 fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *settings);
 
@@ -11693,8 +11695,30 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 
 /**
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
+* @see fplVideoFlipMulti()
 */
 fpl_common_api void fplVideoFlip(void);
+
+/**
+* @brief Forces the given window to be redrawn or to swap its back/front buffer.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the frame was presented, false for an unknown window, without video or when the video backend does not draw into the window.
+* @note The OpenGL video backend draws into every window, the other video backends draw into the main window only.
+* @note A window that is not current is made current for the swap, see @ref fplVideoMakeCurrentMulti().
+* @see fplVideoFlip()
+*/
+fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window);
+
+/**
+* @brief Makes the rendering context current for the given window, rendering goes into that window until another window is made current.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the rendering goes into the window, false for an unknown window, without video or when the video backend does not draw into the window.
+* @note All windows share one OpenGL rendering context, so textures, buffers and shaders are available in every window. The rendering goes into the main window, until this function picks another one.
+* @note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
+* @note Destroying the window that is current makes the main window current again.
+* @note The video backends without a rendering context to switch draw into the main window only, for the main window this function does nothing and returns true.
+*/
+fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window);
 
 /**
 * @brief Gets the procedure by the specified name from the active video backend.
@@ -11706,8 +11730,18 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 /**
 * @brief Gets the current video surface that stores all handles used for the active video backend.
 * @return The resulting video surface reference @ref fplVideoSurface.
+* @see fplVideoGetSurfaceMulti()
 */
 fpl_common_api const fplVideoSurface *fplGetVideoSurface(void);
+
+/**
+* @brief Gets the video surface of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the video surface @ref fplVideoSurface, null for an unknown window, without video or when the video backend does not draw into the window.
+* @note The surface of an additional window has its own window handles, the OpenGL rendering context is the one of the main window.
+* @see fplGetVideoSurface()
+*/
+fpl_common_api const fplVideoSurface *fplVideoGetSurfaceMulti(fplWindowHandle *window);
 
 /**
 * @brief Gets the video requirements for the specified video backend.
@@ -15106,6 +15140,12 @@ struct fplWindowHandle {
 	fpl_b32 isMain;
 	// Set while an additional window is destroyed, the messages of the destruction push no events anymore
 	fpl_b32 isDestroying;
+	// An additional window the video backend draws into too, the main window does not use it
+	fpl_b32 hasVideo;
+#if defined(FPL__ENABLE_VIDEO)
+	// Video surface of an additional window: the surface of the main window with the fields of this window
+	fplVideoSurface videoSurface;
+#endif
 };
 
 #endif // FPL__ENABLE_WINDOW
@@ -15811,17 +15851,21 @@ fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *window
 #endif // FPL__ENABLE_INPUT_WIN32 || FPL__ENABLE_INPUT_X11
 
 // @NOTE(final): Callback used for setup a window before it is created
-#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, fplWindowHandle *window, const fplInitFlags initFlags, const fplSettings *initSettings)
 typedef FPL__FUNC_PREPARE_VIDEO_WINDOW(callback_PreSetupWindow);
 
 // @NOTE(final): Callback used for setup a window after it was created
-#define FPL__FUNC_FINALIZE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+#define FPL__FUNC_FINALIZE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, fplWindowHandle *window, const fplInitFlags initFlags, const fplSettings *initSettings)
 typedef FPL__FUNC_FINALIZE_VIDEO_WINDOW(callback_PostSetupWindow);
 
 typedef struct fpl__SetupWindowCallbacks {
 	callback_PreSetupWindow *preSetup;
 	callback_PostSetupWindow *postSetup;
 } fpl__SetupWindowCallbacks;
+
+// The video setup of every window, the main window and the additional ones, implemented with the video system
+fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault);
+fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault);
 
 // The window functions each window platform implements as fpl__Win32Window_<name> or fpl__X11Window_<name>, the common code calls them through fpl__PlatformWindow(<name>).
 // The window handle is always valid when they are called, the public functions check it.
@@ -15854,6 +15898,13 @@ fpl_internal fplWindowState fpl__PlatformWindow(GetState)(fplWindowHandle *windo
 fpl_internal bool fpl__PlatformWindow(SetState)(fplWindowHandle *window, const fplWindowState newState);
 fpl_internal bool fpl__PlatformWindow(SetVisibility)(fplWindowHandle *window, const fplWindowVisibilityState newVisibility);
 fpl_internal bool fpl__PlatformWindow(GetDisplay)(fplWindowHandle *window, fplDisplayInfo *outDisplay);
+
+#	if defined(FPL__ENABLE_VIDEO)
+// Lets the video backend draw into an additional window after it was created, false when the backend can but fails
+fpl_internal bool fpl__SetupAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window);
+// Takes the rendering away from an additional window before it is destroyed
+fpl_internal void fpl__ReleaseAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window);
+#	endif
 #endif // FPL__HAS_WINDOW_PLATFORM
 #endif // FPL__ENABLE_WINDOW
 
@@ -18269,6 +18320,9 @@ fpl_internal void fpl__RemoveWindowFromList(fpl__PlatformAppState *appState, fpl
 // The platform window is destroyed while the window is still in the list, so the messages of the destruction still find it
 fpl_internal void fpl__DestroyAdditionalWindow(fpl__PlatformAppState *appState, fplWindowHandle *window) {
 	window->isDestroying = true;
+#if defined(FPL__ENABLE_VIDEO)
+	fpl__ReleaseAdditionalWindowVideo(appState, window);
+#endif
 	fpl__PlatformWindow(Destroy)(window);
 	fpl__RemoveWindowFromList(appState, window);
 	fpl__ReleaseDynamicMemory(window);
@@ -18324,6 +18378,16 @@ fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *setting
 		fpl__ReleaseDynamicMemory(memory);
 		return(fpl_null);
 	}
+
+#if defined(FPL__ENABLE_VIDEO)
+	// A window the video backend cannot draw into although it draws into additional windows is useless to the app
+	bool isVideoReady = fpl__SetupAdditionalWindowVideo(appState, window);
+	if (!isVideoReady) {
+		fpl__DestroyAdditionalWindow(appState, window);
+		return(fpl_null);
+	}
+#endif
+
 	return(window);
 }
 
@@ -21345,8 +21409,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplPlatformType platformType = fplGetPlatformType();
 				windowSettings->callbacks.exposedCallback(platformType, win32Window, &msgData, windowSettings->callbacks.exposedUserData);
 			} else {
-				// An additional window has no video yet, it is painted like a window without video
-				if (!window->isMain || appState->currentSettings.video.backend == fplVideoBackendType_None) {
+				// An additional window the video backend does not draw into is painted like a window without video
+				bool isVideoWindow = window->isMain || window->hasVideo;
+				if (!isVideoWindow || appState->currentSettings.video.backend == fplVideoBackendType_None) {
 					PAINTSTRUCT ps;
 					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
 					wapi->user.EndPaint(hwnd, &ps);
@@ -21359,7 +21424,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			// Prevent erasing of the background always, but only if a video backend is being used
 			// @NOTE(tspaete): Do not prevent the erasing of the backend for software video output, otherwise we will get weird flickering issue at startup
-			if (window->isMain && appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
+			bool isVideoWindow = window->isMain || window->hasVideo;
+			if (isVideoWindow && appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
 				return 1;
 			}
 		} break;
@@ -21765,7 +21831,7 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 
 	// Presetup window
 	if (setupCallbacks->preSetup != fpl_null) {
-		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
+		setupCallbacks->preSetup(platAppState, window, platAppState->initFlags, &platAppState->initSettings);
 	}
 
 	// Register window class
@@ -21890,7 +21956,7 @@ fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSetting
 
 	// Call post window setup callback
 	if (setupCallbacks->postSetup != fpl_null) {
-		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
+		setupCallbacks->postSetup(platAppState, window, platAppState->initFlags, initSettings);
 	}
 
 	if (!isShownOnStart) {
@@ -21965,10 +22031,12 @@ fpl_internal bool fpl__Win32Window_Create(fplWindowHandle *window) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
 	fpl__Win32WindowState *windowState = &window->state->win32;
-	// An additional window starts from the settings of the platform with its own window settings, it has no video
+	// An additional window starts from the settings of the platform with its own window settings, the video backend decides whether it draws into it
 	fplSettings windowInitSettings = appState->initSettings;
 	windowInitSettings.window = *window->settings;
 	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	setupCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
+	setupCallbacks.postSetup = fpl__FinalizeVideoWindowDefault;
 	bool result = fpl__Win32InitWindow(window, &windowInitSettings, window->settings, appState, &appState->win32, windowState, &setupCallbacks);
 	if (!result) {
 		fpl__Win32ReleaseWindow(initState, &appState->win32, windowState);
@@ -31620,15 +31688,17 @@ fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings 
 		if (!fpl__X11OpenDisplay(x11Api, windowState)) {
 			return false;
 		}
-		if (setupCallbacks->preSetup != fpl_null) {
-			FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
-			setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
-		}
 	} else {
 		// An additional window uses the connection of the main window, so its events come in the same queue
 		windowState->display = mainWindowState->display;
 		windowState->screen = mainWindowState->screen;
 		windowState->core.root = mainWindowState->core.root;
+	}
+
+	// The video backend picks the visual, an additional window gets the one of the main window
+	if (setupCallbacks->preSetup != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
+		setupCallbacks->preSetup(appState, window, appState->initFlags, initSettings);
 	}
 
 	fpl__X11SetupVisualAndColormap(x11Api, windowState);
@@ -31685,10 +31755,12 @@ fpl_internal bool fpl__X11Window_Create(fplWindowHandle *window) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__X11SubplatformState *subplatform = &appState->x11;
 	fpl__X11WindowState *windowState = &window->state->x11;
-	// An additional window starts from the settings of the platform with its own window settings, it has no video
+	// An additional window starts from the settings of the platform with its own window settings, the video backend decides whether it draws into it
 	fplSettings windowInitSettings = appState->initSettings;
 	windowInitSettings.window = *window->settings;
 	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	setupCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
+	setupCallbacks.postSetup = fpl__FinalizeVideoWindowDefault;
 	bool result = fpl__X11InitWindow(window, &windowInitSettings, window->settings, appState, subplatform, windowState, &setupCallbacks);
 	if (!result) {
 		fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
@@ -36146,6 +36218,14 @@ typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure)
 #define FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(name) bool name(fplVideoRequirements *requirements)
 typedef FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__func_VideoBackendGetRequirements);
 
+// Makes the rendering context current for the window, rendering goes into that window from now on
+#define FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__func_VideoBackendMakeCurrent);
+
+// An additional window was created with the pixel format or visual of the main window: sets it up for rendering and fills its surface, the rendering context may be current for it afterwards
+#define FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend, fplVideoSurface *outSurface)
+typedef FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__func_VideoBackendSetupAdditionalWindow);
+
 typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
@@ -36157,6 +36237,9 @@ typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendPresent *presentFunc;
 	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
 	fpl__func_VideoBackendGetRequirements *getRequirementsFunc;
+	// Both are null when the backend draws into the main window only
+	fpl__func_VideoBackendMakeCurrent *makeCurrentFunc;
+	fpl__func_VideoBackendSetupAdditionalWindow *setupAdditionalWindowFunc;
 	fpl_b32 recreateOnResize;
 } fpl__VideoContext;
 
@@ -36474,6 +36557,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 	const fpl__Win32Api *wapi = &nativeAppState->winApi;
 	fpl__Win32WindowState *nativeWindowState = &windowState->win32;
 
+	// An additional window takes the pixel format of the main window, so the rendering context of the main window draws into it too
+	if (!windowState->handle->isMain) {
+		const fpl__Win32WindowState *mainWindowState = &appState->window.win32;
+		nativeWindowState->pixelFormat = mainWindowState->pixelFormat;
+		return(true);
+	}
+
 	nativeWindowState->pixelFormat = 0;
 
 	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
@@ -36592,6 +36682,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Win32OpenG
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 			return false;
 		}
+		// Additional windows take this pixel format
+		nativeWindowState->pixelFormat = pixelFormat;
 	}
 	return true;
 }
@@ -36771,11 +36863,44 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32OpenGL_Present) {
+	FPL__UNUSED(backend);
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32WindowState *win32WindowState = &windowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
-	const fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
 	wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__VideoBackend_Win32OpenGL_MakeCurrent) {
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+	const fpl__VideoBackendWin32OpenGL *nativeBackend = (const fpl__VideoBackendWin32OpenGL *)backend;
+	const fpl__Win32OpenGLApi *glapi = &nativeBackend->api;
+	HDC deviceContext = nativeWindowState->deviceContext;
+	HGLRC renderingContext = nativeBackend->renderingContext;
+	if (!glapi->wglMakeCurrent(deviceContext, renderingContext)) {
+		FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed activating rendering context '%p' for DC '%p'", (const void *)renderingContext, (const void *)deviceContext);
+		return(false);
+	}
+	// Some drivers keep the swap interval per context instead of per window, so the interval of the window is set again
+	if (glapi->wglSwapIntervalEXT != fpl_null) {
+		const bool isVSync = windowState->handle->isMain && appState->currentSettings.video.isVSync;
+		const int swapInterval = isVSync ? 1 : 0;
+		glapi->wglSwapIntervalEXT(swapInterval);
+	}
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Win32OpenGL_SetupAdditionalWindow) {
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+
+	// Making it current gives the window swap interval 0: only the main window waits for the vertical blank, otherwise every additional window would divide the frame rate
+	if (!fpl__VideoBackend_Win32OpenGL_MakeCurrent(appState, windowState, backend)) {
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.win32.deviceContext = nativeWindowState->deviceContext;
+	outSurface->window.win32.windowHandle = nativeWindowState->windowHandle;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
@@ -36788,6 +36913,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
 	result.prepareWindowFunc = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
 	result.finalizeWindowFunc = fpl__VideoBackend_Win32OpenGL_FinalizeWindow;
 	result.presentFunc = fpl__VideoBackend_Win32OpenGL_Present;
+	result.makeCurrentFunc = fpl__VideoBackend_Win32OpenGL_MakeCurrent;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Win32OpenGL_SetupAdditionalWindow;
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
@@ -37003,6 +37130,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 	fpl__X11WindowState *nativeWindowState = &windowState->x11;
 	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	// An additional window takes the visual of the main window, so the rendering context of the main window draws into it too
+	if (!windowState->handle->isMain) {
+		const fpl__X11WindowState *mainWindowState = &appState->window.x11;
+		nativeWindowState->core.visual = mainWindowState->core.visual;
+		nativeWindowState->colorDepth = mainWindowState->colorDepth;
+		return(true);
+	}
 
 	fpl__X11_Display *display = nativeWindowState->display;
 	fpl__X11_Window window = nativeWindowState->core.window;
@@ -37454,10 +37589,56 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present) {
+	FPL__UNUSED(appState);
 	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
-	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11WindowState *x11WinState = &windowState->x11;
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 	glApi->glXSwapBuffers(x11WinState->display, x11WinState->core.window);
+}
+
+// Sets the swap interval of the current drawable again with the swap control fpl__X11SetGLXSwapInterval() picked, without logging
+fpl_internal void fpl__X11ReapplyGLXSwapInterval(const fpl__X11VideoOpenGLApi *glApi, fpl__X11_Display *display, GLXDrawable drawable, const int swapInterval) {
+	if (glApi->glXSwapIntervalEXT != fpl_null) {
+		glApi->glXSwapIntervalEXT(display, drawable, swapInterval);
+	} else if (glApi->glXSwapIntervalMESA != fpl_null) {
+		glApi->glXSwapIntervalMESA((unsigned int)swapInterval);
+	} else if (glApi->glXSwapIntervalSGI != fpl_null && swapInterval > 0) {
+		glApi->glXSwapIntervalSGI(swapInterval);
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__VideoBackend_X11OpenGL_MakeCurrent) {
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	GLXContext context = nativeBackend->context;
+	if (!glApi->glXMakeCurrent(display, (GLXDrawable)window, context)) {
+		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX rendering context '%p' on display '%p' and window '%d'", (const void *)context, (const void *)display, (int)window);
+		return(false);
+	}
+	// Mesa releases the drawable of a window that is no longer current and creates it anew with the default swap interval of the driver, so the interval of the window is set again
+	const bool isVSync = windowState->handle->isMain && appState->currentSettings.video.isVSync;
+	const int swapInterval = isVSync ? 1 : 0;
+	fpl__X11ReapplyGLXSwapInterval(glApi, display, (GLXDrawable)window, swapInterval);
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow) {
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+
+	// Making it current gives the window swap interval 0 with the swap control the main window picked: only the main window waits for the vertical blank, otherwise every additional window would divide the frame rate
+	if (!fpl__VideoBackend_X11OpenGL_MakeCurrent(appState, windowState, backend)) {
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.x11.display = nativeWindowState->display;
+	outSurface->window.x11.window = nativeWindowState->core.window;
+	outSurface->window.x11.visual = nativeWindowState->core.visual;
+	outSurface->window.x11.screen = nativeWindowState->screen;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
@@ -37469,6 +37650,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
 	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
 	result.prepareWindowFunc = fpl__VideoBackend_X11OpenGL_PrepareWindow;
 	result.presentFunc = fpl__VideoBackend_X11OpenGL_Present;
+	result.makeCurrentFunc = fpl__VideoBackend_X11OpenGL_MakeCurrent;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow;
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
@@ -46369,6 +46552,8 @@ typedef struct fpl__VideoState {
 	fpl__VideoData data;
 	fplVideoBackendType backendType;
 	fpl__ActiveVideoBackend activeBackend;
+	// The window fplVideoMakeCurrentMulti() made current, null for the main window
+	fplWindowHandle *currentWindow;
 } fpl__VideoState;
 
 fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
@@ -46502,6 +46687,63 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendT
 		} break;
 	}
 }
+
+// Whether the video backend draws into the window: into the main window always, into an additional window only when the backend supports additional windows
+fpl_internal bool fpl__CheckVideoWindow(const fpl__VideoState *videoState, const fplWindowHandle *window) {
+	if (window->isMain || window->hasVideo) {
+		return(true);
+	}
+	const char *backendName = fplGetVideoBackendName(videoState->backendType);
+	FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' does not draw into the additional window '%p'", backendName, (const void *)window);
+	return(false);
+}
+
+// The window the rendering goes into, the main window unless fplVideoMakeCurrentMulti() picked another one
+fpl_internal fplWindowHandle *fpl__GetCurrentVideoWindow(fpl__PlatformAppState *appState, const fpl__VideoState *videoState) {
+	fplWindowHandle *result = videoState->currentWindow != fpl_null ? videoState->currentWindow : &appState->mainWindow;
+	return(result);
+}
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+fpl_internal bool fpl__SetupAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(true);
+	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	// A backend that draws into the main window only leaves the window without video
+	if (ctx->setupAdditionalWindowFunc == fpl_null) {
+		return(true);
+	}
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	bool result = ctx->setupAdditionalWindowFunc(appState, window->state, backend, &window->videoSurface);
+	// The setup may have switched the rendering to the new window, it goes back to the window the app picked
+	fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
+	ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	if (!result) {
+		const char *backendName = fplGetVideoBackendName(videoState->backendType);
+		FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' failed drawing into the additional window '%p'", backendName, (const void *)window);
+		return(false);
+	}
+	window->hasVideo = true;
+	return(true);
+}
+
+fpl_internal void fpl__ReleaseAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || !window->hasVideo) {
+		return;
+	}
+	// The rendering must not stay with a destroyed window, it goes back to the main window
+	if (videoState->currentWindow == window) {
+		const fpl__VideoContext *ctx = &videoState->context;
+		fplWindowHandle *mainWindow = &appState->mainWindow;
+		ctx->makeCurrentFunc(appState, mainWindow->state, &videoState->activeBackend.base);
+		videoState->currentWindow = fpl_null;
+	}
+	window->hasVideo = false;
+}
+#endif // FPL__HAS_WINDOW_PLATFORM
 #endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -46520,11 +46762,15 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 #	if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		if (videoState->context.prepareWindowFunc != fpl_null) {
-			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+		// An additional window gets video only from a backend that draws into additional windows
+		bool isVideoWindow = window->isMain || videoState->context.setupAdditionalWindowFunc != fpl_null;
+		if (isVideoWindow && videoState->context.prepareWindowFunc != fpl_null) {
+			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, window->state, &videoState->activeBackend.base);
 			return(result);
 		}
 	}
+#	else
+	FPL__UNUSED(window);
 #	endif // FPL__ENABLE_VIDEO
 
 	return(true);
@@ -46536,11 +46782,14 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 #if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		if (videoState->context.finalizeWindowFunc != fpl_null) {
-			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+		bool isVideoWindow = window->isMain || videoState->context.setupAdditionalWindowFunc != fpl_null;
+		if (isVideoWindow && videoState->context.finalizeWindowFunc != fpl_null) {
+			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, window->state, &videoState->activeBackend.base);
 			return(result);
 		}
 	}
+#else
+	FPL__UNUSED(window);
 #endif // FPL__ENABLE_VIDEO
 
 	return true;
@@ -47208,14 +47457,63 @@ fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_
 	return (result);
 }
 
-fpl_common_api void fplVideoFlip(void) {
-	FPL__CheckPlatformNoRet();
+fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	if (videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
-		fplAssert(videoState->context.presentFunc != fpl_null);
-		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->activeBackend.base);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(false);
 	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	const fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	// Mesa releases the drawable of a window that is no longer current, its swap would go to the X server and fail there. So the window is current for its swap.
+	fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
+	bool isSwitchNeeded = ctx->makeCurrentFunc != fpl_null && window != currentWindow;
+	if (isSwitchNeeded) {
+		bool isCurrent = ctx->makeCurrentFunc(appState, window->state, backend);
+		if (!isCurrent) {
+			return(false);
+		}
+	}
+	fplAssert(ctx->presentFunc != fpl_null);
+	ctx->presentFunc(appState, window->state, &videoState->data, backend);
+	if (isSwitchNeeded) {
+		ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	}
+	return(true);
+}
+
+fpl_common_api void fplVideoFlip(void) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	if (mainWindow != fpl_null) {
+		fplVideoFlipMulti(mainWindow);
+	}
+}
+
+fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(false);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	// A backend without a rendering context to switch draws into the main window only, there is nothing to switch
+	const fpl__VideoContext *ctx = &videoState->context;
+	bool result = true;
+	if (ctx->makeCurrentFunc != fpl_null) {
+		result = ctx->makeCurrentFunc(appState, window->state, &videoState->activeBackend.base);
+	}
+	if (result) {
+		videoState->currentWindow = window->isMain ? fpl_null : window;
+	}
+	return(result);
 }
 
 fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
@@ -47230,13 +47528,26 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	return(result);
 }
 
-fpl_common_api const fplVideoSurface *fplGetVideoSurface(void) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api const fplVideoSurface *fplVideoGetSurfaceMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(fpl_null);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(fpl_null);
+	}
+	const fplVideoSurface *result = window->isMain ? &videoState->activeBackend.base.surface : &window->videoSurface;
+	return(result);
+}
+
+fpl_common_api const fplVideoSurface *fplGetVideoSurface(void) {
+	FPL__CheckPlatform(fpl_null);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
 	const fplVideoSurface *result = fpl_null;
-	if (videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
-		result = &videoState->activeBackend.base.surface;
+	if (mainWindow != fpl_null) {
+		result = fplVideoGetSurfaceMulti(mainWindow);
 	}
 	return(result);
 }
