@@ -209,6 +209,8 @@ License:
 #include "imageloader_heif.h"
 #define IMAGE_LOADER_ICNS_IMPLEMENTATION
 #include "imageloader_icns.h"
+#define IMAGE_LOADER_GIF_IMPLEMENTATION
+#include "imageloader_gif.h"
 
 #include <string.h>
 
@@ -2310,7 +2312,7 @@ static void LogLoaderMessage(const char* message) {
 // stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned.
 // WebP is registered even without libwebp, its files then show why they cannot be read.
 static bool RegisterLoaders(ImageLoaderRegistry* registry) {
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet(), ImageLoaderGifGet() };
 	ImageLoaderRegistryInit(registry);
 	registry->log = LogLoaderMessage;
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
