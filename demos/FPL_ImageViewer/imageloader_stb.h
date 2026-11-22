@@ -36,7 +36,7 @@ extern const ImageLoader *ImageLoaderStbGet(void);
 #include <stdio.h>
 #include <string.h>
 
-static const char *const ImageLoaderStbExtensions[] = { ".jpg", ".jpeg", ".png", ".bmp", ".tga", NULL };
+static const char *const ImageLoaderStbExtensions[] = { ".jpg", ".jpeg", ".jfif", ".png", ".bmp", ".tga", NULL };
 static const uint8_t ImageLoaderStbJpegSignature[] = { 0xFF, 0xD8, 0xFF };
 static const uint8_t ImageLoaderStbPngSignature[] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 static const uint8_t ImageLoaderStbBmpSignature[] = { 'B', 'M' };

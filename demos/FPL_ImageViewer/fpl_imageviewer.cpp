@@ -29,6 +29,7 @@ Changelog:
 	## v0.6.2
 	- New: HEIC, HEIF and AVIF loader (imageloader_heif.h) through the system libheif loaded at runtime
 	- New: ICNS loader (imageloader_icns.h) for PNG, ARGB and packed RGB icons
+	- New: .jfif is read as JPEG
 
 	## v0.6.1
 	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
