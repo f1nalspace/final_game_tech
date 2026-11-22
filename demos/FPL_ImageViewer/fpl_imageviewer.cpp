@@ -18,6 +18,7 @@ Requirements:
 	- Final Dynamic OpenGL
 	- OpenGL 3.3 core profile
 	- STB_image (the default loader, others are optional)
+	- libwebp 1.0 or newer at runtime for WebP (optional, loaded when present)
 	- STB_truetype, final_ui.h and from demos/additions: fui_backend_gl3.h, fui_input_fpl.h, fui_font_stbtt.h, final_fonts.h
 
 Author:
@@ -35,6 +36,8 @@ Changelog:
 	- Changed: Logs only with --log (log.txt in the home folder) or --log=<file>, every run starts a new log
 	- New: Pictures are sorted inside each folder, by default naturally (case ignored, numbers by value); --sort=natural|name|date|size|none, --sort-reverse, S cycles the order and Shift + S reverses it
 	- New: --no-recursive reads only the folder itself, also for dropped folders
+	- New: TGA through stb_image, picked by its extension
+	- New: WebP loader (imageloader_webp.h) for lossy and lossless WebP with alpha, through the system libwebp loaded at runtime
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
@@ -189,6 +192,8 @@ License:
 #include "imageloader_pnm.h"
 #define IMAGE_LOADER_BMP_IMPLEMENTATION
 #include "imageloader_bmp.h"
+#define IMAGE_LOADER_WEBP_IMPLEMENTATION
+#include "imageloader_webp.h"
 
 #include <string.h>
 
@@ -1859,9 +1864,10 @@ static void LogLoaderMessage(const char* message) {
 	flogWrite("%s", message);
 }
 
-// stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned
+// stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned.
+// WebP is registered even without libwebp, its files then show why they cannot be read.
 static bool RegisterLoaders(ImageLoaderRegistry* registry) {
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet() };
 	ImageLoaderRegistryInit(registry);
 	registry->log = LogLoaderMessage;
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
@@ -1946,7 +1952,7 @@ static void PrintLoaders(const ImageLoaderRegistry* registry) {
 			fplStringAppend(" ", extensions, fplArrayCount(extensions));
 		}
 		const char* threadText = (loader->flags & ImageLoaderFlags_NotThreadSafe) ? "serialized" : "thread-safe";
-		fplConsoleFormatOut("  %u. %-14s %-5s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
+		fplConsoleFormatOut("  %u. %-14s %-7s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
 	}
 	if (registry->globalPinIndex >= 0) {
 		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->globalPinIndex);

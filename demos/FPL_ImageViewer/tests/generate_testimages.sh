@@ -306,6 +306,29 @@ for orientation in 1 2 3 4 5 6 7 8; do
 done
 rm orientation_stored.jpg
 
+# --- TGA and WebP ----------------------------------------------------------------------------------------------------------
+
+# The upright motif must show upright from both TGA origins: bottom-left stores the bottom row first, so it is flipped before writing
+step "tga24_bottomleft.tga, tga32_topleft_rle.tga, tga_palette8.tga"
+magick orientation_upright.png -flip -orient BottomLeft -strip -type TrueColor -compress None TGA:tga24_bottomleft.tga
+tgaAlphaSize=256
+magick alpha_disk.png -resize "${tgaAlphaSize}x${tgaAlphaSize}" -orient TopLeft -strip -compress RLE TGA:tga32_topleft_rle.tga
+tgaPaletteSize=64
+tgaPaletteColors=200
+magick -size "${tgaPaletteSize}x${tgaPaletteSize}" -define gradient:direction=East gradient:red-blue +dither -colors $tgaPaletteColors -strip -compress None TGA:tga_palette8.tga
+
+# Lossy (VP8), lossless with alpha (VP8L), lossy with alpha (VP8X) and animated (VP8X with ANIM), which the loader rejects for now
+webpQuality=90
+step "webp_lossy.webp, webp_lossless_alpha.webp, webp_lossy_alpha.webp, webp_animated.webp, webp_truncated.webp"
+magick orientation_upright.png -strip -quality $webpQuality WEBP:webp_lossy.webp
+magick alpha_disk.png -strip -define webp:lossless=true WEBP:webp_lossless_alpha.webp
+magick alpha_disk.png -strip -quality $webpQuality WEBP:webp_lossy_alpha.webp
+webpFrameDelay=50
+magick -delay $webpFrameDelay orientation_upright.png \( orientation_upright.png -negate \) -loop 0 -strip WEBP:webp_animated.webp
+# A valid header with half of the data, libwebp must reject it
+webpTruncatedSize=$(( $(stat -c %s webp_lossy_alpha.webp) / 2 ))
+head -c $webpTruncatedSize webp_lossy_alpha.webp > webp_truncated.webp
+
 # --- Broken files ----------------------------------------------------------------------------------------------------------
 
 step "truncated.jpg, empty.png"

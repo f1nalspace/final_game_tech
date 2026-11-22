@@ -3,8 +3,9 @@ Name:
 	FPL_ImageViewer | stb_image loader
 
 Description:
-	The default loader: JPEG, PNG and BMP through stb_image. A look at the file header adds what stb_image does not report:
-	the bit depth and palette of PNG and BMP files and the EXIF orientation of JPEG files.
+	The default loader: JPEG, PNG, BMP and TGA through stb_image. A look at the file header adds what stb_image does not report:
+	the bit depth and palette of PNG, BMP and TGA files and the EXIF orientation of JPEG files.
+	TGA has no signature, it is picked by its extension.
 	stb_image keeps global switches, they are set once in ImageLoaderStbGet(). Its failure reason is thread-local (STBI_THREAD_LOCAL, stb_image 2.26 or newer),
 	so the loader is thread-safe.
 
@@ -35,7 +36,7 @@ extern const ImageLoader *ImageLoaderStbGet(void);
 #include <stdio.h>
 #include <string.h>
 
-static const char *const ImageLoaderStbExtensions[] = { ".jpg", ".jpeg", ".png", ".bmp", NULL };
+static const char *const ImageLoaderStbExtensions[] = { ".jpg", ".jpeg", ".png", ".bmp", ".tga", NULL };
 static const uint8_t ImageLoaderStbJpegSignature[] = { 0xFF, 0xD8, 0xFF };
 static const uint8_t ImageLoaderStbPngSignature[] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 static const uint8_t ImageLoaderStbBmpSignature[] = { 'B', 'M' };
@@ -54,12 +55,24 @@ static const uint32_t ImageLoaderStbBmpLargestPaletteBits = 8;
 static const uint32_t ImageLoaderStbBitsPerChannel = 8;
 static const uint32_t ImageLoaderStbBitsPerWideChannel = 16;
 static const int ImageLoaderStbRequestedComponents = 4;
+// TGA: the 18 byte header, the same fields stb_image tests before it reads a TGA
+static const size_t ImageLoaderStbTgaHeaderSize = 18;
+static const size_t ImageLoaderStbTgaColorMapTypeOffset = 1;
+static const size_t ImageLoaderStbTgaImageTypeOffset = 2;
+static const size_t ImageLoaderStbTgaPixelDepthOffset = 16;
+static const uint8_t ImageLoaderStbTgaImageTypePalette = 1;
+static const uint8_t ImageLoaderStbTgaImageTypeTrueColor = 2;
+static const uint8_t ImageLoaderStbTgaImageTypeGray = 3;
+// Run length encoded variants are the plain types plus this
+static const uint8_t ImageLoaderStbTgaImageTypeRleOffset = 8;
+static const uint8_t ImageLoaderStbTgaColorMapPresent = 1;
 
 typedef enum ImageLoaderStbFormat {
 	ImageLoaderStbFormat_Unknown = 0,
 	ImageLoaderStbFormat_Jpeg,
 	ImageLoaderStbFormat_Png,
 	ImageLoaderStbFormat_Bmp,
+	ImageLoaderStbFormat_Tga,
 } ImageLoaderStbFormat;
 
 static bool ImageLoaderStbStartsWith(const uint8_t *header, const size_t headerSize, const uint8_t *signature, const size_t signatureSize) {
@@ -78,6 +91,31 @@ static ImageLoaderStbFormat ImageLoaderStbDetect(const uint8_t *header, const si
 		return(ImageLoaderStbFormat_Bmp);
 	}
 	return(ImageLoaderStbFormat_Unknown);
+}
+
+// The base image type of a TGA header (palette, true color or gray), 0 when the header is no TGA stb_image reads
+static uint8_t ImageLoaderStbTgaBaseImageType(const uint8_t *header, const size_t headerSize) {
+	if (headerSize < ImageLoaderStbTgaHeaderSize) {
+		return(0);
+	}
+	uint8_t colorMapType = header[ImageLoaderStbTgaColorMapTypeOffset];
+	uint8_t imageType = header[ImageLoaderStbTgaImageTypeOffset];
+	uint8_t baseImageType = imageType > ImageLoaderStbTgaImageTypeRleOffset ? (uint8_t)(imageType - ImageLoaderStbTgaImageTypeRleOffset) : imageType;
+	bool isKnownType = baseImageType == ImageLoaderStbTgaImageTypePalette || baseImageType == ImageLoaderStbTgaImageTypeTrueColor || baseImageType == ImageLoaderStbTgaImageTypeGray;
+	bool isPaletteType = baseImageType == ImageLoaderStbTgaImageTypePalette;
+	// A palette image needs a color map, the other types may only carry an unused one
+	bool isColorMapValid = isPaletteType ? colorMapType == ImageLoaderStbTgaColorMapPresent : colorMapType <= ImageLoaderStbTgaColorMapPresent;
+	bool result = isKnownType && isColorMapValid;
+	return(result ? baseImageType : 0);
+}
+
+// Signatures first; without one, a TGA header counts only for a file stb_image was picked for by its extension
+static ImageLoaderStbFormat ImageLoaderStbDetectWithTga(const uint8_t *header, const size_t headerSize) {
+	ImageLoaderStbFormat format = ImageLoaderStbDetect(header, headerSize);
+	if (format == ImageLoaderStbFormat_Unknown && ImageLoaderStbTgaBaseImageType(header, headerSize) != 0) {
+		format = ImageLoaderStbFormat_Tga;
+	}
+	return(format);
 }
 
 // stb_image reads a whole PNG before it inflates it, so reading counts for this share of the progress and the rest is reported as indeterminate
@@ -210,7 +248,7 @@ static ImageLoadResult ImageLoaderStbReadInfo(const ImageLoader *loader, ImageSo
 	uint8_t header[IMAGE_LOADER_PROBE_SIZE];
 	source->seek(source, 0);
 	size_t headerSize = source->read(source, header, sizeof(header));
-	ImageLoaderStbFormat format = ImageLoaderStbDetect(header, headerSize);
+	ImageLoaderStbFormat format = ImageLoaderStbDetectWithTga(header, headerSize);
 	switch (format) {
 		case ImageLoaderStbFormat_Jpeg:
 		{
@@ -239,6 +277,14 @@ static ImageLoadResult ImageLoaderStbReadInfo(const ImageLoader *loader, ImageSo
 				outInfo->bitsPerPixel = bitCount;
 				outInfo->isPalette = bitCount <= ImageLoaderStbBmpLargestPaletteBits;
 			}
+		} break;
+		case ImageLoaderStbFormat_Tga:
+		{
+			// The stored depth: 16 for 5-5-5-1 pixels, the index size for a palette image
+			outInfo->formatName = "TGA";
+			outInfo->bitsPerPixel = header[ImageLoaderStbTgaPixelDepthOffset];
+			uint8_t baseImageType = ImageLoaderStbTgaBaseImageType(header, headerSize);
+			outInfo->isPalette = baseImageType == ImageLoaderStbTgaImageTypePalette;
 		} break;
 		default:
 		{
