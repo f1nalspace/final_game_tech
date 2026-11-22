@@ -39,7 +39,7 @@ Changelog:
 	- New: Exactly 100 % copies the pixels without any filter, so Mitchell and the other kernels that do not interpolate no longer blur at 100 %, the window title shows 1:1
 	- New: Zoom: the mouse wheel zooms around the mouse (1.2 per notch, snapping to fit and 100 %), + and - step through 1/8 ... 32 with fit as a step of its own, 0 fits, 1 shows 100 %, 2 shows 200 % (also with Ctrl and on the keypad), a double click toggles between 100 % at the mouse and fit
 	- New: Dragging with the left or middle button or Shift + arrow keys moves a picture that is larger than the window, it never shows a border; left and right still page while zoomed
-	- New: K keeps the view over picture changes: reset, relative to the fit size or absolute, also --keep-view=reset|relative|absolute; W or --wheel=zoom|navigate lets the wheel page (Ctrl + wheel still zooms); --center=<x>,<y> sets the start center
+	- New: K keeps the view over picture changes and dropped folders: reset, relative to the fit size or absolute, also --keep-view=reset|relative|absolute; W or --wheel=zoom|navigate lets the wheel page (Ctrl + wheel still zooms); --center=<x>,<y> sets the start center
 	- Changed: The window title shows the zoom, the center of a picture that can be moved and the view and wheel modes
 	- New: Auto Nearest for pixel inspection: from a zoom of --nearest-from=<percent> on (at least 100) upscaling uses Nearest, A turns it on at 400 % (or the --nearest-from value) and off again, off by default
 	- New: Background behind transparent pictures: checker board, black or gray, B or --background=checker|black|gray
@@ -3476,13 +3476,16 @@ int main(int argc, char** argv) {
 						case fplEventType_Window:
 						{
 							if (ev.window.type == fplWindowEventType_DroppedFiles) {
+								// A new folder carries the view over like a picture change, from the picture shown before the drop, LoadPicturesPath releases it
+								ViewSize previousPictureSize = fplZeroInit;
+								GetActivePictureSize(state, &previousPictureSize);
+								ViewState droppedFolderView = ComputeViewForNextPicture(&state->view, state->persistence, &state->startView, previousPictureSize, state->viewportSize);
 								size_t startPicIndex = 0;
 								for (size_t fileIndex = 0; fileIndex < ev.window.dropFiles.fileCount; ++fileIndex) {
 									const char* filePath = ev.window.dropFiles.files[fileIndex];
 									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
 									if (LoadPicturesPath(state, filePath, true, &startPicIndex)) {
-										// A new folder starts with the start view
-										state->view = state->startView;
+										state->view = droppedFolderView;
 										state->activeFileIndex = (int)startPicIndex;
 										ChangeViewPicture(state, 0, true);
 									}
