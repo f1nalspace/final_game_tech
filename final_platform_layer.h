@@ -282,6 +282,7 @@ SOFTWARE.
 	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() skip "." and ".." now, like on Win32
 	- Fixed: [Win32] fplDirectoryListBegin()/fplDirectoryListNext() kept the search handle open when nothing was left to list
 	- Fixed[#184]: [Win32] fplDirectoriesCreate() does not create parent sub-directories, an existing directory counts as success like on POSIX
+	- Fixed: [POSIX] fplDirectoryListBegin()/fplDirectoryListNext() left the time stamps of an entry at zero
 	- Fixed: [POSIX] fplPathNormalize() overflowed the stack for resolved paths of 2048 characters or more
 	- Fixed: [Win32] fplPathNormalize() read past its buffer for long paths, it has no length limit now
 
@@ -27994,6 +27995,7 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 	entry->attributes = fplFileAttributeFlags_None;
 	entry->size = 0;
 	entry->permissions.umask = 0;
+	fplClearStruct(&entry->timeStamps);
 	char fullPath[FPL_MAX_PATH_LENGTH];
 	fplCopyString(entry->internalRoot.rootPath, fullPath, fplArrayCount(fullPath));
 	fplEnforcePathSeparatorLen(fullPath, fplArrayCount(fullPath));
@@ -28006,6 +28008,9 @@ fpl_internal void fpl__PosixFillFileEntry(struct dirent *dp, fplFileEntry *entry
 			entry->type = fplFileEntryType_File;
 		}
 		entry->size = (size_t)sb.st_size;
+		entry->timeStamps.creationTime = fpl__PosixConvertTimeToUnixTimeStamp(sb.st_ctime);
+		entry->timeStamps.lastAccessTime = fpl__PosixConvertTimeToUnixTimeStamp(sb.st_atime);
+		entry->timeStamps.lastModifyTime = fpl__PosixConvertTimeToUnixTimeStamp(sb.st_mtime);
 		if (dp->d_name[0] == '.') {
 			// @NOTE(final): Any filename starting with dot is hidden in POSIX
 			entry->attributes |= fplFileAttributeFlags_Hidden;
