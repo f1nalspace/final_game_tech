@@ -32,6 +32,7 @@ Changelog:
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
 	- New: FINALIMAGEVIEWER_APP (CMake option) builds the standalone app finalimageviewer: executable, window class and log in ~/.finalimageviewer
+	- Changed: Logs only with --log (log.txt in the home folder) or --log=<file>, every run starts a new log
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
@@ -395,10 +396,14 @@ typedef struct ViewerParameters {
 	const char* selfTestFolder;
 	const char* benchLevelsPath;
 	const char* writePyramidFolder;
+	// File of --log=<file>, null for log.txt in the home folder of the viewer
+	const char* logFilePath;
 	SimdLevel simdLevel;
 	ImagePyramidKernel levelKernel;
 	bool isLoaderFallbackDisabled;
 	bool listLoaders;
+	// Without --log nothing is logged
+	bool isLogEnabled;
 	bool recursive;
 	bool preview;
 	// The info line at the top, I and --no-info
@@ -1514,6 +1519,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* levelSourceValue = MatchLongParameter(argument, "--lod-source");
 			const char* benchLevelsValue = MatchLongParameter(argument, "--bench-lod");
 			const char* writePyramidValue = MatchLongParameter(argument, "--write-pyramid");
+			const char* logValue = MatchLongParameter(argument, "--log");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1586,6 +1592,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (writePyramidValue != fpl_null) {
 				params->writePyramidFolder = writePyramidValue;
 				isValid = *writePyramidValue != 0;
+			} else if (logValue != fpl_null) {
+				params->isLogEnabled = true;
+				params->logFilePath = *logValue != 0 ? logValue : fpl_null;
 			} else {
 				isValid = false;
 			}
@@ -3283,26 +3292,31 @@ static void LogCallbackFunc(const char* funcName, const int lineNumber, fplLogLe
 	flogWrite("%s", message);
 }
 
-int main(int argc, char** argv) {
-	// Initialize logging
-	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
-		char logFilePath[FPL_MAX_PATH_LENGTH];
+// --log alone writes log.txt into the home folder of the viewer, --log=<file> into that file; the platform log goes there as well
+static void StartLog(const char* customLogFilePath) {
+	char logFilePath[FPL_MAX_PATH_LENGTH];
+	if (customLogFilePath != fpl_null) {
+		fplCopyString(customLogFilePath, logFilePath, fplArrayCount(logFilePath));
+	} else {
+		if (!fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			return;
+		}
 		fplGetHomePath(logFilePath, fplArrayCount(logFilePath));
 		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, HOME_FOLDER_NAME);
 		fplDirectoriesCreate(logFilePath);
 		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, "log.txt");
-		flogInit(logFilePath);
 		fplPlatformRelease();
 	}
+	flogInit(logFilePath);
 
 	fplLogSettings logSettings = fplZeroInit;
 	logSettings.maxLevel = fplLogLevel_All;
 	logSettings.writers[0].flags = fplLogWriterFlags_Custom;
 	logSettings.writers[0].custom.callback = LogCallbackFunc;
 	fplSetLogSettings(&logSettings);
+}
 
-	flogWrite("Startup %s", VER_PRODUCTNAME_STR);
-
+int main(int argc, char** argv) {
 	ViewerState* state = (ViewerState*)fplMemoryAllocate(sizeof(ViewerState));
 	ViewerParameters defaultParams = fplZeroInit;
 	defaultParams.preview = true;
@@ -3323,6 +3337,12 @@ int main(int argc, char** argv) {
 			return(RenderToFileResult_InvalidParameters);
 		}
 	}
+
+	// No log at all without --log
+	if (state->params.isLogEnabled) {
+		StartLog(state->params.logFilePath);
+	}
+	flogWrite("Startup %s", VER_PRODUCTNAME_STR);
 
 	// The lookup tables of the level chain, before any load thread runs
 	ImagePyramidInitialize();

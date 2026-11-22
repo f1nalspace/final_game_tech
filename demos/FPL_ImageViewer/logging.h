@@ -23,7 +23,7 @@ typedef struct flogLogState {
 	bool isInitialized;
 } flogLogState;
 
-// Copies the path, so a temporary buffer is fine
+// Starts a new, empty log file. Copies the path, so a temporary buffer is fine.
 extern void flogInit(const char *filePath);
 // Thread-safe, each call appends exactly one line
 extern void flogWrite(const char *format, ...);
@@ -43,6 +43,13 @@ extern void flogInit(const char *filePath) {
 		return;
 	}
 	memcpy(state->filePath, filePath, filePathLength + 1);
+	// Every run starts a new log, so the file never grows across runs
+	FILE *file = fopen(state->filePath, "w");
+	if(file == NULL) {
+		state->isInitialized = false;
+		return;
+	}
+	fclose(file);
 	state->isInitialized = true;
 }
 
