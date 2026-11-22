@@ -1817,12 +1817,35 @@
 	@note Destroying the window that is current makes the main window current again.
 	@note @ref fplVideoGetSurfaceMulti() gives the video surface of a window, with the handles of that window and the rendering context of the main window.
 
+	@section section_category_window_multi_software Rendering with the software backend
+
+	With the software video backend every window has its own backbuffer: @ref fplVideoGetBackBufferMulti() gives it, @ref fplVideoFlipMulti() shows it in its window.<br>
+	The backbuffer starts with the background color of the window (@ref fplWindowSettings.background). With @ref fplVideoSettings.isAutoSize it follows the size of its window, @ref fplVideoResizeBackBufferMulti() resizes it by hand.
+
+	@code{.c}
+	const uint32_t toolColor = 0xFF2040C0;
+
+	fplVideoBackBuffer *toolBackBuffer = fplVideoGetBackBufferMulti(toolWindow);
+	if (toolBackBuffer != fpl_null) {
+		for (uint32_t y = 0; y < toolBackBuffer->height; ++y) {
+			uint32_t *row = (uint32_t *)((uint8_t *)toolBackBuffer->pixels + y * toolBackBuffer->lineWidth);
+			for (uint32_t x = 0; x < toolBackBuffer->width; ++x) {
+				row[x] = toolColor;
+			}
+		}
+		fplVideoFlipMulti(toolWindow);
+	}
+	@endcode
+
+	@note A resize builds the backbuffer anew, so get it again after @ref fplWindowUpdate() or @ref fplPollEvent() instead of keeping the pointer.
+	@note @ref fplVideoMakeCurrentMulti() does nothing with the software backend, every window draws its own backbuffer.
+
 	@section section_category_window_multi_limits Limitations
 
 	- The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp are only available for the main window.
 	- @ref fplPollMouseState() reports the cursor position relative to the main window, also while the cursor is over another window. The mouse events carry the position inside their own window.
 	- The settings for the screen saver and the monitor power apply to the whole application, they are taken from the main window.
-	- The software and the Vulkan video backend draw into the main window only. For an additional window @ref fplVideoMakeCurrentMulti(), @ref fplVideoFlipMulti() and @ref fplVideoGetSurfaceMulti() fail there, and the window shows its background color (@ref fplWindowSettings.background).
+	- The Vulkan video backend draws into the main window only. For an additional window @ref fplVideoMakeCurrentMulti(), @ref fplVideoFlipMulti() and @ref fplVideoGetSurfaceMulti() fail there, and the window shows its background color (@ref fplWindowSettings.background).
 	- All windows belong to the main thread, like every window function.
 	- There are no child windows and no windows owned by another window (dialogs).
 

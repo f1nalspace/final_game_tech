@@ -180,7 +180,7 @@ SOFTWARE.
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
-	- Additional windows next to the main window, with Multi variants of the window functions and OpenGL in every window
+	- Additional windows next to the main window, with Multi variants of the window functions, OpenGL and software video in every window
 	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
 	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
 	- Windows XP support
@@ -378,6 +378,7 @@ SOFTWARE.
 	- New: Added field isLegacyFallbackDisabled to fplOpenGLSettings
 	- New: Added fields versionIndex and contextFlags to fplVideoSurfaceOpenGL
 	- New: Added fplVideoMakeCurrentMulti(), fplVideoFlipMulti() and fplVideoGetSurfaceMulti(), OpenGL draws into additional windows
+	- New: Added fplVideoGetBackBufferMulti() and fplVideoResizeBackBufferMulti(), the software backend draws into additional windows
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
@@ -2152,7 +2153,7 @@ SOFTWARE.
 	- [Vulkan] The debug messenger message-type filter (GENERAL/VALIDATION/PERFORMANCE) is hardcoded to all types - fplVulkanSettings only exposes severity filtering, not message-type filtering
 	- [Vulkan] When FPL creates the Vulkan instance itself, fplVulkanSettings (appName/engineName/versions/apiVersion) are passed through without validation - invalid values surface later as a raw vkCreateInstance VkResult instead of an early FPL error
 	- [Window] The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp work on the main window only, not on additional windows
-	- [Video] The software and the Vulkan video backend draw into the main window only, not into additional windows
+	- [Video] The Vulkan video backend draws into the main window only, not into additional windows
 
 	@section section_support_status_unsupported Not Supported
 
@@ -11685,16 +11686,41 @@ fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendTyp
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current video backbuffer @ref fplVideoBackBuffer.
 * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+* @see fplVideoGetBackBufferMulti()
 */
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void);
+
+/**
+* @brief Retrieves the pointer to the video backbuffer of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the pointer to the video backbuffer @ref fplVideoBackBuffer of the window, null for an unknown window, without video or when the video backend has no backbuffer.
+* @note Every window has its own backbuffer with the software video backend, @ref fplVideoFlipMulti() shows it in its window.
+* @note A resize builds the backbuffer anew, so get the pointer again after @ref fplWindowUpdate() or @ref fplPollEvent().
+* @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+* @see fplGetVideoBackBuffer()
+*/
+fpl_common_api fplVideoBackBuffer *fplVideoGetBackBufferMulti(fplWindowHandle *window);
 
 /**
 * @brief Resizes the current video backbuffer.
 * @param[in] width The width in pixels.
 * @param[in] height The height in pixels.
 * @return Returns true when the video backbuffer could be resized, false otherwise.
+* @see fplVideoResizeBackBufferMulti()
 */
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
+
+/**
+* @brief Resizes the video backbuffer of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] width The width in pixels.
+* @param[in] height The height in pixels.
+* @return Returns true when the video backbuffer could be resized, false for an unknown window, without video, when the video backend has no backbuffer or the size is empty.
+* @note With @ref fplVideoSettings::isAutoSize the backbuffer of every window follows the size of its window by itself.
+* @note The resized backbuffer is filled with the background color of the window. An additional window keeps its backbuffer when the size does not change, and when the new one cannot be allocated.
+* @see fplResizeVideoBackBuffer()
+*/
+fpl_common_api bool fplVideoResizeBackBufferMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height);
 
 /**
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
@@ -11706,8 +11732,9 @@ fpl_common_api void fplVideoFlip(void);
 * @brief Forces the given window to be redrawn or to swap its back/front buffer.
 * @param[in] window The @ref fplWindowHandle of the window.
 * @return Returns true when the frame was presented, false for an unknown window, without video or when the video backend does not draw into the window.
-* @note The OpenGL video backend draws into every window, the other video backends draw into the main window only.
+* @note The OpenGL and software video backends draw into every window, the Vulkan video backend draws into the main window only.
 * @note A window that is not current is made current for the swap, see @ref fplVideoMakeCurrentMulti().
+* @note The software video backend shows the backbuffer of the window, see @ref fplVideoGetBackBufferMulti().
 * @see fplVideoFlip()
 */
 fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window);
@@ -11719,7 +11746,7 @@ fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window);
 * @note All windows share one OpenGL rendering context, so textures, buffers and shaders are available in every window. The rendering goes into the main window, until this function picks another one.
 * @note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
 * @note Destroying the window that is current makes the main window current again.
-* @note The video backends without a rendering context to switch draw into the main window only, for the main window this function does nothing and returns true.
+* @note The video backends without a rendering context to switch do nothing here and return true: the software video backend for every window, the Vulkan video backend for the main window, it draws into the main window only.
 */
 fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window);
 
@@ -13999,6 +14026,8 @@ typedef FPL__FUNC_X11_XMaxRequestSize(fpl__func_x11_XMaxRequestSize);
 typedef FPL__FUNC_X11_XMatchVisualInfo(fpl__func_x11_XMatchVisualInfo);
 #define FPL__FUNC_X11_XCreateGC(name) fpl__X11_GC name(fpl__X11_Display* display, fpl__X11_Drawable d, unsigned long valuemask, fpl__X11_XGCValues* values)
 typedef FPL__FUNC_X11_XCreateGC(fpl__func_x11_XCreateGC);
+#define FPL__FUNC_X11_XFreeGC(name) int name(fpl__X11_Display* display, fpl__X11_GC gc)
+typedef FPL__FUNC_X11_XFreeGC(fpl__func_x11_XFreeGC);
 #define FPL__FUNC_X11_XGetImage(name) fpl__X11_XImage *name(fpl__X11_Display* display, fpl__X11_Drawable d, int x, int y, unsigned int width, unsigned int height, unsigned long plane_mask, int format)
 typedef FPL__FUNC_X11_XGetImage(fpl__func_x11_XGetImage);
 #define FPL__FUNC_X11_XCreateImage(name) fpl__X11_XImage *name(fpl__X11_Display *display, fpl__X11_Visual *visual, unsigned int depth, int format, int offset, char *data, unsigned int width, unsigned int height, int bitmap_pad, int bytes_per_line)
@@ -14123,6 +14152,7 @@ extern FPL__FUNC_X11_XFlush(XFlush);
 extern FPL__FUNC_X11_XFree(XFree);
 extern FPL__FUNC_X11_XFreeColormap(XFreeColormap);
 extern FPL__FUNC_X11_XFreeCursor(XFreeCursor);
+extern FPL__FUNC_X11_XFreeGC(XFreeGC);
 extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
 extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
@@ -14228,6 +14258,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XSendEvent *XSendEvent;
 	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
 	fpl__func_x11_XCreateGC *XCreateGC;
+	fpl__func_x11_XFreeGC *XFreeGC;
 	fpl__func_x11_XGetImage *XGetImage;
 	fpl__func_x11_XPutImage *XPutImage;
 	fpl__func_x11_XMapRaised *XMapRaised;
@@ -14341,6 +14372,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeGC, XFreeGC);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetImage, XGetImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XPutImage, XPutImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMapRaised, XMapRaised);
@@ -15131,6 +15163,22 @@ typedef struct {
 #endif
 } fpl__PlatformWindowState;
 
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+// Software video output of an additional window, the main window keeps its output in the video backend
+typedef struct fpl__VideoSoftwareWindow {
+	// Back buffer of the window, the common video code allocates and releases it
+	fplVideoBackBuffer backbuffer;
+#	if defined(FPL_PLATFORM_WINDOWS)
+	BITMAPINFO bitmapInfo;
+#	endif
+#	if defined(FPL_SUBPLATFORM_X11)
+	fpl__X11_GC graphicsContext;
+	// Points to the pixels of the back buffer
+	fpl__X11_XImage *image;
+#	endif
+} fpl__VideoSoftwareWindow;
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
+
 // The window behind a fplWindowHandle, the one of the main window points into the platform app state
 struct fplWindowHandle {
 	// Platform state of the window
@@ -15148,6 +15196,10 @@ struct fplWindowHandle {
 #if defined(FPL__ENABLE_VIDEO)
 	// Video surface of an additional window: the surface of the main window with the fields of this window
 	fplVideoSurface videoSurface;
+#endif
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	// Software video output of an additional window, the main window does not use it
+	fpl__VideoSoftwareWindow videoSoftware;
 #endif
 };
 
@@ -21169,10 +21221,13 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			// The software back buffer belongs to the main window
-			if (window->isMain && appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-				if (appState->initSettings.video.isAutoSize) {
+			// The software back buffer follows the size of its window, an additional window keeps its back buffer while it is minimized
+			if (appState->currentSettings.video.backend == fplVideoBackendType_Software && appState->initSettings.video.isAutoSize) {
+				bool hasClientArea = newWidth > 0 && newHeight > 0;
+				if (window->isMain) {
 					fplResizeVideoBackBuffer(newWidth, newHeight);
+				} else if (window->hasVideo && hasClientArea) {
+					fplVideoResizeBackBufferMulti(window, newWidth, newHeight);
 				}
 			}
 #			endif
@@ -32735,12 +32790,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ConfigureNotify:
 		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			// The software back buffer belongs to the main window
-			if (window->isMain && appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-				if (appState->initSettings.video.isAutoSize) {
-					uint32_t w = (uint32_t)ev->xconfigure.width;
-					uint32_t h = (uint32_t)ev->xconfigure.height;
+			// The software back buffer follows the size of its window
+			if (appState->currentSettings.video.backend == fplVideoBackendType_Software && appState->initSettings.video.isAutoSize) {
+				uint32_t w = (uint32_t)ev->xconfigure.width;
+				uint32_t h = (uint32_t)ev->xconfigure.height;
+				if (window->isMain) {
 					fplResizeVideoBackBuffer(w, h);
+				} else if (window->hasVideo) {
+					fplVideoResizeBackBufferMulti(window, w, h);
 				}
 			}
 #		endif
@@ -36229,6 +36286,10 @@ typedef FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__func_VideoBackendMakeCurrent);
 #define FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend, fplVideoSurface *outSurface)
 typedef FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__func_VideoBackendSetupAdditionalWindow);
 
+// Releases what the setup created for an additional window, before the window is destroyed or its back buffer is resized
+#define FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__func_VideoBackendReleaseAdditionalWindow);
+
 typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
@@ -36240,9 +36301,12 @@ typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendPresent *presentFunc;
 	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
 	fpl__func_VideoBackendGetRequirements *getRequirementsFunc;
-	// Both are null when the backend draws into the main window only
+	// Null when the backend has no rendering context to switch
 	fpl__func_VideoBackendMakeCurrent *makeCurrentFunc;
+	// Null when the backend draws into the main window only
 	fpl__func_VideoBackendSetupAdditionalWindow *setupAdditionalWindowFunc;
+	// Null when the setup of an additional window creates nothing to release
+	fpl__func_VideoBackendReleaseAdditionalWindow *releaseAdditionalWindowFunc;
 	fpl_b32 recreateOnResize;
 } fpl__VideoContext;
 
@@ -37735,11 +37799,73 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Unload
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Present) {
 	const fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
-	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11WindowState *x11WinState = &windowState->x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fplWindowHandle *window = windowState->handle;
+	// The main window shows the back buffer of the video backend, an additional window its own
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	fpl__X11_GC graphicsContext = nativeBackend->graphicsContext;
+	fpl__X11_XImage *image = nativeBackend->buffer;
+	if (!window->isMain) {
+		const fpl__VideoSoftwareWindow *softwareWindow = &window->videoSoftware;
+		backbuffer = &softwareWindow->backbuffer;
+		graphicsContext = softwareWindow->graphicsContext;
+		image = softwareWindow->image;
+	}
+	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, graphicsContext, image, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(x11WinState->display, FPL__X11_False);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_X11Software_ReleaseAdditionalWindow) {
+	FPL__UNUSED(backend);
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	if (softwareWindow->image != fpl_null) {
+		// The pixels belong to the back buffer, XDestroyImage would release them too, XFree releases the image structure only
+		x11Api->XFree(softwareWindow->image);
+		softwareWindow->image = fpl_null;
+	}
+	if (softwareWindow->graphicsContext != fpl_null) {
+		x11Api->XFreeGC(nativeWindowState->display, softwareWindow->graphicsContext);
+		softwareWindow->graphicsContext = fpl_null;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11Software_SetupAdditionalWindow) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	const fplVideoBackBuffer *backbuffer = &softwareWindow->backbuffer;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	fpl__X11_Visual *visual = nativeWindowState->core.visual;
+
+	const unsigned long noValueMask = 0;
+	softwareWindow->graphicsContext = x11Api->XCreateGC(display, window, noValueMask, fpl_null);
+	if (softwareWindow->graphicsContext == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed creating the graphics context of the X11 window '%d'", (int)window);
+		return(false);
+	}
+
+	// Same image layout as the main window: 24 bit depth in 32 bit pixels
+	const unsigned int imageDepth = 24;
+	const int imageOffset = 0;
+	const int imageBitmapPad = 32;
+	int bytesPerLine = (int)backbuffer->lineWidth;
+	softwareWindow->image = x11Api->XCreateImage(display, visual, imageDepth, FPL__X11_ZPixmap, imageOffset, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, imageBitmapPad, bytesPerLine);
+	if (softwareWindow->image == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed creating the image of %u x %u pixels for the X11 window '%d'", backbuffer->width, backbuffer->height, (int)window);
+		fpl__VideoBackend_X11Software_ReleaseAdditionalWindow(appState, windowState, backend);
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.x11.display = display;
+	outSurface->window.x11.window = window;
+	outSurface->window.x11.visual = visual;
+	outSurface->window.x11.screen = nativeWindowState->screen;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct(void) {
@@ -37749,6 +37875,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct(void) {
 	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
 	result.presentFunc = fpl__VideoBackend_X11Software_Present;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_X11Software_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_X11Software_ReleaseAdditionalWindow;
 	result.recreateOnResize = true;
 	return(result);
 }
@@ -37771,10 +37899,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Win32Software_Sh
 	fplClearStruct(bitmapInfo);
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_Initialize) {
-	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
-	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+// Describes the back buffer as a top-down bitmap with 32 bits per pixel
+fpl_internal void fpl__Win32SetupSoftwareBitmapInfo(const fplVideoBackBuffer *backbuffer, BITMAPINFO *bitmapInfo) {
 	fplClearStruct(bitmapInfo);
 	bitmapInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	bitmapInfo->bmiHeader.biWidth = (LONG)backbuffer->width;
@@ -37784,6 +37910,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_
 	bitmapInfo->bmiHeader.biCompression = BI_RGB;
 	bitmapInfo->bmiHeader.biPlanes = 1;
 	bitmapInfo->bmiHeader.biSizeImage = (DWORD)(backbuffer->height * backbuffer->lineWidth);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_Initialize) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	fpl__Win32SetupSoftwareBitmapInfo(backbuffer, bitmapInfo);
 	return true;
 }
 
@@ -37801,12 +37934,20 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32Software_Load) 
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Present) {
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32WindowState *win32WindowState = &windowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	const fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	fplWindowHandle *window = windowState->handle;
+	// The main window shows the back buffer of the video backend, an additional window its own
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	const BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	if (!window->isMain) {
+		const fpl__VideoSoftwareWindow *softwareWindow = &window->videoSoftware;
+		backbuffer = &softwareWindow->backbuffer;
+		bitmapInfo = &softwareWindow->bitmapInfo;
+	}
 	fplWindowSize area;
-	if (fplGetWindowSize(&area)) {
+	if (fplWindowGetSizeMulti(window, &area)) {
 		int32_t targetX = 0;
 		int32_t targetY = 0;
 		int32_t targetWidth = area.width;
@@ -37820,8 +37961,27 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Pre
 			targetHeight = backbuffer->outputRect.height;
 			wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
 		}
-		wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &nativeBackend->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+		wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_Win32Software_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	FPL__UNUSED(backend);
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	BITMAPINFO *bitmapInfo = &softwareWindow->bitmapInfo;
+	fplClearStruct(bitmapInfo);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Win32Software_SetupAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	fpl__Win32SetupSoftwareBitmapInfo(&softwareWindow->backbuffer, &softwareWindow->bitmapInfo);
+	*outSurface = backend->surface;
+	outSurface->window.win32.deviceContext = nativeWindowState->deviceContext;
+	outSurface->window.win32.windowHandle = nativeWindowState->windowHandle;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
@@ -37831,6 +37991,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 	result.initializeFunc = fpl__VideoBackend_Win32Software_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_Win32Software_Shutdown;
 	result.presentFunc = fpl__VideoBackend_Win32Software_Present;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Win32Software_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_Win32Software_ReleaseAdditionalWindow;
 	result.recreateOnResize = true;
 	return(result);
 }
@@ -46588,6 +46750,42 @@ fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, fpl__Vi
 	return(result);
 }
 
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+fpl_internal void fpl__ReleaseVideoBackBuffer(fplVideoBackBuffer *backbuffer) {
+	if (backbuffer->pixels != fpl_null) {
+		fpl__ReleaseDynamicMemory(backbuffer->pixels);
+	}
+	fplClearStruct(backbuffer);
+}
+
+// Allocates the pixels of the back buffer and fills them with the background color of the window, black when the background is zero
+fpl_internal bool fpl__AllocateVideoBackBuffer(fplVideoBackBuffer *backbuffer, const uint32_t width, const uint32_t height, const fplColor32 background) {
+	const size_t pixelAlignment = 4;
+	const uint32_t defaultColor = 0xFF000000;
+	backbuffer->width = width;
+	backbuffer->height = height;
+	backbuffer->pixelStride = sizeof(uint32_t);
+	backbuffer->lineWidth = backbuffer->width * backbuffer->pixelStride;
+	size_t size = backbuffer->lineWidth * backbuffer->height;
+	backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, pixelAlignment);
+	if (backbuffer->pixels == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %zu bytes", size);
+		return false;
+	}
+
+	// Clear to black by default
+	// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
+	uint32_t *p = backbuffer->pixels;
+	uint32_t color = background.value == 0 ? defaultColor : background.value;
+	for (uint32_t y = 0; y < backbuffer->height; ++y) {
+		for (uint32_t x = 0; x < backbuffer->width; ++x) {
+			*p++ = color;
+		}
+	}
+	return true;
+}
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
+
 fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	fplAssert(appState != fpl_null);
 	if (videoState != fpl_null) {
@@ -46596,11 +46794,7 @@ fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl
 		ctx->shutdownFunc(appState, &appState->window, &videoState->activeBackend.base);
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
-		if (backbuffer->pixels != fpl_null) {
-			fpl__ReleaseDynamicMemory(backbuffer->pixels);
-		}
-		fplClearStruct(backbuffer);
+		fpl__ReleaseVideoBackBuffer(&videoState->data.backbuffer);
 #	endif
 	}
 }
@@ -46616,26 +46810,9 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType backendT
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	if (backendType == fplVideoBackendType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
-		backbuffer->width = windowWidth;
-		backbuffer->height = windowHeight;
-		backbuffer->pixelStride = sizeof(uint32_t);
-		backbuffer->lineWidth = backbuffer->width * backbuffer->pixelStride;
-		size_t size = backbuffer->lineWidth * backbuffer->height;
-		backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, 4);
-		if (backbuffer->pixels == fpl_null) {
-			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
+		if (!fpl__AllocateVideoBackBuffer(backbuffer, windowWidth, windowHeight, appState->initSettings.window.background)) {
 			fpl__ShutdownVideoBackend(appState, videoState);
 			return false;
-		}
-
-		// Clear to black by default
-		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-		uint32_t *p = backbuffer->pixels;
-		uint32_t color = appState->initSettings.window.background.value == 0 ? 0xFF000000 : appState->initSettings.window.background.value;
-		for (uint32_t y = 0; y < backbuffer->height; ++y) {
-			for (uint32_t x = 0; x < backbuffer->width; ++x) {
-				*p++ = color;
-			}
 		}
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
@@ -46719,11 +46896,30 @@ fpl_internal bool fpl__SetupAdditionalWindowVideo(fpl__PlatformAppState *appStat
 		return(true);
 	}
 	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	// The software backend draws the own back buffer of the window, it starts in the size of the window
+	fplVideoBackBuffer *backbuffer = &window->videoSoftware.backbuffer;
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		const uint32_t minimumBackBufferSize = 1;
+		fplWindowSize windowSize = fplZeroInit;
+		fplWindowGetSizeMulti(window, &windowSize);
+		uint32_t width = fplMax(windowSize.width, minimumBackBufferSize);
+		uint32_t height = fplMax(windowSize.height, minimumBackBufferSize);
+		if (!fpl__AllocateVideoBackBuffer(backbuffer, width, height, window->settings->background)) {
+			return(false);
+		}
+	}
+#	endif
 	bool result = ctx->setupAdditionalWindowFunc(appState, window->state, backend, &window->videoSurface);
 	// The setup may have switched the rendering to the new window, it goes back to the window the app picked
-	fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
-	ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	if (ctx->makeCurrentFunc != fpl_null) {
+		fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
+		ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	}
 	if (!result) {
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		fpl__ReleaseVideoBackBuffer(backbuffer);
+#	endif
 		const char *backendName = fplGetVideoBackendName(videoState->backendType);
 		FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' failed drawing into the additional window '%p'", backendName, (const void *)window);
 		return(false);
@@ -46737,16 +46933,68 @@ fpl_internal void fpl__ReleaseAdditionalWindowVideo(fpl__PlatformAppState *appSt
 	if (videoState == fpl_null || !window->hasVideo) {
 		return;
 	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
 	// The rendering must not stay with a destroyed window, it goes back to the main window
 	if (videoState->currentWindow == window) {
-		const fpl__VideoContext *ctx = &videoState->context;
-		fplWindowHandle *mainWindow = &appState->mainWindow;
-		ctx->makeCurrentFunc(appState, mainWindow->state, &videoState->activeBackend.base);
+		if (ctx->makeCurrentFunc != fpl_null) {
+			fplWindowHandle *mainWindow = &appState->mainWindow;
+			ctx->makeCurrentFunc(appState, mainWindow->state, backend);
+		}
 		videoState->currentWindow = fpl_null;
 	}
+	if (ctx->releaseAdditionalWindowFunc != fpl_null) {
+		ctx->releaseAdditionalWindowFunc(appState, window->state, backend);
+	}
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fpl__ReleaseVideoBackBuffer(&window->videoSoftware.backbuffer);
+#	endif
 	window->hasVideo = false;
 }
 #endif // FPL__HAS_WINDOW_PLATFORM
+
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+// Builds the back buffer of an additional window anew, filled with the background color of the window. The old back buffer stays when the new one cannot be allocated.
+fpl_internal bool fpl__ResizeAdditionalWindowBackBuffer(fpl__PlatformAppState *appState, fpl__VideoState *videoState, fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	fplVideoBackBuffer *backbuffer = &window->videoSoftware.backbuffer;
+	if (width == 0 || height == 0) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "The back buffer size %u x %u of the additional window '%p' is empty", width, height, (const void *)window);
+		return(false);
+	}
+	// Moving or restacking a window reports the same size again, the back buffer keeps its content then
+	if (backbuffer->width == width && backbuffer->height == height) {
+		return(true);
+	}
+	fplVideoBackBuffer resizedBackBuffer = fplZeroInit;
+	if (!fpl__AllocateVideoBackBuffer(&resizedBackBuffer, width, height, window->settings->background)) {
+		return(false);
+	}
+	// The output rectangle belongs to the app, it survives the resize
+	resizedBackBuffer.outputRect = backbuffer->outputRect;
+	resizedBackBuffer.useOutputRect = backbuffer->useOutputRect;
+
+	const fpl__VideoContext *ctx = &videoState->context;
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	if (ctx->releaseAdditionalWindowFunc != fpl_null) {
+		ctx->releaseAdditionalWindowFunc(appState, window->state, backend);
+	}
+	fpl__ReleaseVideoBackBuffer(backbuffer);
+	*backbuffer = resizedBackBuffer;
+	bool isReady = ctx->setupAdditionalWindowFunc(appState, window->state, backend, &window->videoSurface);
+	if (!isReady) {
+		// Without its output the window gets no video anymore, the flip fails instead of drawing a released image
+		fpl__ReleaseVideoBackBuffer(backbuffer);
+		window->hasVideo = false;
+		if (videoState->currentWindow == window) {
+			videoState->currentWindow = fpl_null;
+		}
+		const char *backendName = fplGetVideoBackendName(videoState->backendType);
+		FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' failed resizing the back buffer of the additional window '%p'", backendName, (const void *)window);
+		return(false);
+	}
+	return(true);
+}
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
 #endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -47430,32 +47678,66 @@ fpl_common_api fplVideoBackendType fplGetVideoBackendType(void) {
 	return(fplVideoBackendType_None);
 }
 
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api fplVideoBackBuffer *fplVideoGetBackBufferMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	fplVideoBackBuffer *result = fpl_null;
-	if (videoState != fpl_null) {
-#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-			result = &videoState->data.backbuffer;
-		}
-#endif
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(fpl_null);
 	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(fpl_null);
+	}
+	fplVideoBackBuffer *result = fpl_null;
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		result = window->isMain ? &videoState->data.backbuffer : &window->videoSoftware.backbuffer;
+	}
+#endif
+	return(result);
+}
+
+fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void) {
+	FPL__CheckPlatform(fpl_null);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplVideoBackBuffer *result = fpl_null;
+	if (mainWindow != fpl_null) {
+		result = fplVideoGetBackBufferMulti(mainWindow);
+	}
+	return(result);
+}
+
+fpl_common_api bool fplVideoResizeBackBufferMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None || !videoState->context.recreateOnResize) {
+		return(false);
+	}
+	// The main window builds the video backend anew, as it always did
+	if (window->isMain) {
+		fpl__ShutdownVideoBackend(appState, videoState);
+		bool result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
+		return(result);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	bool result = false;
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		result = fpl__ResizeAdditionalWindowBackBuffer(appState, videoState, window, width, height);
+	}
+#endif
 	return(result);
 }
 
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
 	bool result = false;
-	if (videoState != fpl_null) {
-		fplVideoBackendType backendType = videoState->backendType;
-		if (backendType != fplVideoBackendType_None && videoState->context.recreateOnResize) {
-			fpl__ShutdownVideoBackend(appState, videoState);
-			result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
-		}
+	if (mainWindow != fpl_null) {
+		result = fplVideoResizeBackBufferMulti(mainWindow, width, height);
 	}
 	return (result);
 }
