@@ -2,6 +2,7 @@
 # Generates the synthetic test images for the FPL_ImageViewer scaling, loader and orientation tests.
 # The images are checked in under tests/images, this script documents how they were made and rebuilds them.
 # Requires ImageMagick 7 (magick) with the DejaVu Sans font, output is deterministic (no timestamps, no random numbers).
+# HEIC and AVIF need heif-enc (libheif with x265) and avifenc (libavif with aom), ICNS needs python3 for make_icns.py next to this script.
 #
 # Usage: generate_testimages.sh [output directory]   (default: images next to this script)
 
@@ -328,6 +329,56 @@ magick -delay $webpFrameDelay orientation_upright.png \( orientation_upright.png
 # A valid header with half of the data, libwebp must reject it
 webpTruncatedSize=$(( $(stat -c %s webp_lossy_alpha.webp) / 2 ))
 head -c $webpTruncatedSize webp_lossy_alpha.webp > webp_truncated.webp
+
+# --- JFIF, HEIC, HEIF, AVIF and ICNS ---------------------------------------------------------------------------------------
+
+step "jfif_upright.jfif"
+magick orientation_upright.png "${jpegOptions[@]}" JPEG:jfif_upright.jfif
+
+# HEIC through x265; the rotated file stores the motif turned counterclockwise and irot turns it back, so it must show upright
+heicQuality=90
+step "heic_upright.heic, heic_rotated.heic, heif_generic.heif, heic_truncated.heic"
+heif-enc --quality $heicQuality -o heic_upright.heic orientation_upright.png > /dev/null
+magick orientation_upright.png -rotate -90 heic_rotated_stored.png
+heif-enc --quality $heicQuality --rotate-cw 90 -o heic_rotated.heic heic_rotated_stored.png > /dev/null
+rm heic_rotated_stored.png
+# The same HEVC picture with the generic HEIF brands only: every heic brand in the ftyp box becomes mif1
+python3 -c 'import sys; data = open(sys.argv[1], "rb").read(); size = int.from_bytes(data[0:4], "big"); open(sys.argv[2], "wb").write(data[:size].replace(b"heic", b"mif1") + data[size:])' heic_upright.heic heif_generic.heif
+# The boxes are complete, half of the coded picture is missing
+heicTruncatedSize=$(( $(stat -c %s heic_upright.heic) * 3 / 4 ))
+head -c $heicTruncatedSize heic_upright.heic > heic_truncated.heic
+
+# AVIF through aom: lossy 8 bit, 10 bit with alpha, and lossless with irot and imir, stored so that both bring the motif upright again
+avifQuality=90
+avifAlphaSize=256
+step "avif_upright.avif, avif_10bit_alpha.avif, avif_irot_imir.avif"
+avifenc --qcolor $avifQuality orientation_upright.png avif_upright.avif > /dev/null
+magick alpha_disk.png -resize "${avifAlphaSize}x${avifAlphaSize}" "${pngOptions[@]}" PNG32:avif_alpha_source.png
+avifenc --depth 10 --qcolor $avifQuality avif_alpha_source.png avif_10bit_alpha.avif > /dev/null
+rm avif_alpha_source.png
+magick orientation_upright.png -flop -rotate 90 "${pngOptions[@]}" PNG24:avif_irot_stored.png
+avifenc --lossless --irot 1 --imir 1 avif_irot_stored.png avif_irot_imir.avif > /dev/null
+rm avif_irot_stored.png
+
+# ICNS: PNG icons (the largest one wins), packed RGB with masks, packed ARGB, and a JPEG 2000 icon the loader skips for the PNG below it.
+# The square motif is the upright one squeezed, with the alpha of the disk, so channel order, orientation and mask all show.
+step "icns_png.icns, icns_packed.icns, icns_argb.icns, icns_jp2_skipped.icns"
+makeIcns="python3 $scriptDirectory/make_icns.py"
+icns_motif() {
+	local side="$1" target="$2"
+	magick \( orientation_upright.png -resize "${side}x${side}!" \) \( alpha_disk.png -resize "${side}x${side}" -alpha extract \) -compose CopyOpacity -composite "$target"
+}
+for side in 16 32 128 256 512; do
+	icns_motif $side "PNG32:icns_motif_$side.png"
+	icns_motif $side "RGBA:icns_motif_$side.rgba"
+done
+$makeIcns icns_png.icns ic07=icns_motif_128.png ic08=icns_motif_256.png
+$makeIcns icns_packed.icns is32=icns_motif_16.rgba il32=icns_motif_32.rgba it32=icns_motif_128.rgba
+$makeIcns icns_argb.icns ic04=icns_motif_16.rgba ic05=icns_motif_32.rgba
+icnsJp2Quality=20
+magick icns_motif_512.png -quality $icnsJp2Quality JP2:icns_motif_512.jp2
+$makeIcns icns_jp2_skipped.icns ic09=icns_motif_512.jp2 ic07=icns_motif_128.png
+rm icns_motif_*.png icns_motif_*.rgba icns_motif_512.jp2
 
 # --- Broken files ----------------------------------------------------------------------------------------------------------
 

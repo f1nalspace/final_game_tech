@@ -2,7 +2,7 @@
 # Builds FPL_ImageViewer as the standalone app finalimageviewer (CMake option FINALIMAGEVIEWER_APP) into demos/build/finalimageviewer/finalimageviewer-<version>-x86_64.AppImage.
 # The version is taken from version.h. The binary links libc, libm and libdl only (libstdc++ and libgcc are linked statically), X11 and OpenGL are loaded at runtime,
 # the fonts are compiled in, so the AppImage carries nothing but the binary, its desktop file and its icon.
-# libwebp is not bundled either, the one of the system is loaded at runtime when present; without it WebP files cannot be read.
+# libwebp and libheif are not bundled either, those of the system are loaded at runtime when present; without them WebP, HEIC, HEIF and AVIF files cannot be read.
 set -euo pipefail
 
 scriptDirectory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
