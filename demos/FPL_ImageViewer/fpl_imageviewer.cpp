@@ -27,6 +27,7 @@ Author:
 Changelog:
 	## v0.6.1
 	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
+	- Changed: A single picture opens its folder without the subfolders, only a folder is read recursively
 
 	## v0.6.0
 	- New: Info line at the top with picture number of count, file name, size, bpp and zoom, already while loading; I or --no-info hides it
@@ -436,6 +437,7 @@ typedef struct ViewerParameters {
 	bool listLoaders;
 	// Without --log nothing is logged
 	bool isLogEnabled;
+	// Reads an opened folder with its subfolders, a single picture always opens its folder without them
 	bool recursive;
 	bool preview;
 	// The info line at the top, I and --no-info
@@ -2400,8 +2402,10 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 		*startIndex = 0;
 	} else if (fplFileExists(path)) {
 		if (IsPictureFile(state, path)) {
+			// A single picture opens its own folder without the subfolders
+			const bool isFolderRecursive = false;
 			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
-			AddPicturesFromPath(state, state->rootPath, recursive);
+			AddPicturesFromPath(state, state->rootPath, isFolderRecursive);
 			SortPictureFiles(state);
 			if (!FindPictureIndexByPath(state, path, startIndex)) {
 				*startIndex = 0;
