@@ -31,6 +31,7 @@ Changelog:
 	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits, the window it needs for OpenGL stays hidden
 	- New: --zoom=fit|100|<percent> sets the start zoom (fit also upscales small pictures)
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
+	- New: FINALIMAGEVIEWER_APP (CMake option) builds the standalone app finalimageviewer: executable, window class and log in ~/.finalimageviewer
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
@@ -434,6 +435,17 @@ typedef enum RenderToFileResult {
 // Oldest OpenGL version the viewer runs on, always as core profile
 #define REQUIRED_OPENGL_MAJOR_VERSION 3
 #define REQUIRED_OPENGL_MINOR_VERSION 3
+
+// FINALIMAGEVIEWER_APP builds the standalone app instead of the demo.
+// FPL takes the X11 window class from the first window title, so the app title matches StartupWMClass of its desktop file.
+// The log goes into a folder in the home path, for the app a hidden one like ~/.finalgit.
+#if defined(FINALIMAGEVIEWER_APP)
+#define INITIAL_WINDOW_TITLE "finalimageviewer"
+#define HOME_FOLDER_NAME ".finalimageviewer"
+#else
+#define INITIAL_WINDOW_TITLE "FPL Demo - Image Viewer"
+#define HOME_FOLDER_NAME VER_INTERNALNAME_STR
+#endif
 
 // Filters of -f=<number> in the numbering before the Box and Mitchell kernels existed
 static const ResampleKernel LegacyFilterNumberKernels[] = {
@@ -3276,7 +3288,7 @@ int main(int argc, char** argv) {
 	if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
 		char logFilePath[FPL_MAX_PATH_LENGTH];
 		fplGetHomePath(logFilePath, fplArrayCount(logFilePath));
-		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, VER_INTERNALNAME_STR);
+		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, HOME_FOLDER_NAME);
 		fplDirectoriesCreate(logFilePath);
 		fplPathCombine(logFilePath, fplArrayCount(logFilePath), 2, logFilePath, "log.txt");
 		flogInit(logFilePath);
@@ -3418,7 +3430,7 @@ int main(int argc, char** argv) {
 	settings.video.graphics.opengl.majorVersion = REQUIRED_OPENGL_MAJOR_VERSION;
 	settings.video.graphics.opengl.minorVersion = REQUIRED_OPENGL_MINOR_VERSION;
 	settings.video.graphics.opengl.multiSamplingCount = 0;
-	fplCopyString("FPL Demo - Image Viewer", settings.window.title, fplArrayCount(settings.window.title));
+	fplCopyString(INITIAL_WINDOW_TITLE, settings.window.title, fplArrayCount(settings.window.title));
 	if (isRenderToFile) {
 		// Hidden: the window manager never sees it, so a render cannot run into a reused X window id of the previous one
 		settings.window.windowSize.width = RENDER_TO_FILE_WINDOW_SIZE;

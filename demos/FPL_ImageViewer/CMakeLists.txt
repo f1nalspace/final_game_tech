@@ -44,6 +44,12 @@ set(MY_TRANSLATION_UNITS
 
 set(MY_DEFINES "")
 
+# Builds the standalone app finalimageviewer instead of the demo: executable name, window class and home folder
+option(FINALIMAGEVIEWER_APP "Build the standalone app finalimageviewer" OFF)
+if(FINALIMAGEVIEWER_APP)
+	list(APPEND MY_DEFINES "FINALIMAGEVIEWER_APP")
+endif()
+
 # -----------------------------------------------------------------------------
 #
 # Do not change the following lines
@@ -153,6 +159,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE ${MY_DEFINES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${MY_INCLUDE_DIRS})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
+
+# The standalone app gets its own executable name
+if(FINALIMAGEVIEWER_APP)
+	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "finalimageviewer")
+endif()
 
 # Post-build copy of resource folder
 if(DEFINED MY_RESOURCE_FOLDER AND NOT "${MY_RESOURCE_FOLDER}" STREQUAL "")
