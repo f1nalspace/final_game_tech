@@ -28,6 +28,7 @@ Changelog:
 	## v0.6.1
 	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
 	- Changed: A single picture opens its folder without the subfolders, only a folder is read recursively
+	- New: The settings of K, W, T, B, A, S, P, I and N and the kept view are stored in config.txt in the home folder, parameters override them for one run, --no-config ignores the file, fullscreen is never stored
 
 	## v0.6.0
 	- New: Info line at the top with picture number of count, file name, size, bpp and zoom, already while loading; I or --no-info hides it
@@ -398,6 +399,33 @@ typedef enum SortMode {
 	SortMode_Count,
 } SortMode;
 
+// Settings of the user config (config.txt in the home folder): what the keys change, written right away, and the kept view, written on close.
+// Fullscreen is never stored. The keys in the file are the long parameters, which override the file for one run.
+typedef enum UserSetting {
+	UserSetting_KeepView = 0,
+	UserSetting_Wheel,
+	UserSetting_DownFilter,
+	UserSetting_UpFilter,
+	UserSetting_Background,
+	UserSetting_AutoNearest,
+	UserSetting_Sort,
+	UserSetting_SortReverse,
+	UserSetting_Preview,
+	UserSetting_Info,
+	UserSetting_RelativePath,
+	// Zoom and center the first picture of the next run starts with, while the view is kept over picture changes
+	UserSetting_ViewZoom,
+	UserSetting_ViewCenter,
+	UserSetting_Count,
+} UserSetting;
+
+#define USER_SETTING_VALUE_CAPACITY 64
+
+// The values as the user config stores them, an empty value is not in the file and leaves the default
+typedef struct UserConfig {
+	char values[UserSetting_Count][USER_SETTING_VALUE_CAPACITY];
+} UserConfig;
+
 typedef struct ViewerParameters {
 	const char* path;
 	const char* renderToFilePath;
@@ -410,6 +438,9 @@ typedef struct ViewerParameters {
 	// Normalized picture point at the viewport center of the start view (--center)
 	float centerX;
 	float centerY;
+	// View of the last run from the user config, the first picture starts with it while the view is kept; --zoom and --center replace it
+	ViewState keptView;
+	bool hasKeptView;
 	ViewPersistence persistence;
 	WheelMode wheelMode;
 	SortMode sortMode;
@@ -437,6 +468,8 @@ typedef struct ViewerParameters {
 	bool listLoaders;
 	// Without --log nothing is logged
 	bool isLogEnabled;
+	// --no-config neither reads nor writes the user config
+	bool isUserConfigDisabled;
 	// Reads an opened folder with its subfolders, a single picture always opens its folder without them
 	bool recursive;
 	bool preview;
@@ -505,6 +538,21 @@ static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
 // Command line keys of --sort and how the window title shows the order, which it leaves out for natural and not reversed
 static const char* SortModeKeys[SortMode_Count] = { "natural", "name", "date", "size", "none" };
 static const char* SortModeTitles[SortMode_Count] = { "natural order", "name order", "date order", "size order", "unsorted" };
+
+// Keys of the user config in the order of UserSetting
+static const char* UserSettingKeys[UserSetting_Count] = { "keep-view", "wheel", "down-filter", "up-filter", "background", "auto-nearest", "sort", "sort-reverse", "preview", "info", "relative-path", "view-zoom", "view-center" };
+// Values of the switches in the user config, off first
+static const char* SwitchKeys[] = { "off", "on" };
+// Zoom values of the kept view besides the percentages: shrink and fit as the zoom modes, fit*<factor> for a scale kept relative to the fit scale
+static const char* KeptViewShrinkKey = "shrink";
+static const char* KeptViewFitKey = "fit";
+static const char* KeptViewActualSizeKey = "100";
+static const char* KeptViewRelativePrefix = "fit*";
+#define USER_CONFIG_FILE_NAME "config.txt"
+#define USER_CONFIG_HEADER "# " VER_PRODUCTNAME_STR " settings, written by the viewer when a key changes one. The keys are the long parameters, which override them for one run.\n"
+// A user config has one short line per setting, a larger file is none
+#define USER_CONFIG_MAX_FILE_SIZE 65536
+#define USER_CONFIG_TEXT_CAPACITY 4096
 
 // Both defaults decided with the comparison crops of iteration 2 and 5 (plan section 2.2)
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
@@ -649,6 +697,8 @@ typedef struct ViewerState {
 	// Size of the window client area, updated every frame
 	ViewSize viewportSize;
 	char windowTitle[FPL_MAX_BUFFER_LENGTH];
+	// File of the user config, empty while it is not used (--no-config, --render-to and the tools without window)
+	char userConfigPath[FPL_MAX_PATH_LENGTH];
 } ViewerState;
 
 static void InitQueue(LoadQueue* queue, const size_t queueCount) {
@@ -1738,6 +1788,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* sortValue = MatchLongParameter(argument, "--sort");
 			const char* sortReverseValue = MatchLongParameter(argument, "--sort-reverse");
 			const char* noRecursiveValue = MatchLongParameter(argument, "--no-recursive");
+			const char* noConfigValue = MatchLongParameter(argument, "--no-config");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1745,6 +1796,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = ParseSizeValue(windowValue, &params->windowWidth, &params->windowHeight);
 			} else if (zoomValue != fpl_null) {
 				isValid = ParseZoomValue(zoomValue, &params->zoomMode, &params->zoomScale);
+				params->hasKeptView = false;
 			} else if (noPreviewValue != fpl_null) {
 				params->preview = false;
 				isValid = *noPreviewValue == 0;
@@ -1767,6 +1819,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 				isValid = ParseNearestFromValue(nearestFromValue, &params->nearestFromScale);
 			} else if (centerValue != fpl_null) {
 				isValid = ParseCenterValue(centerValue, &params->centerX, &params->centerY);
+				params->hasKeptView = false;
 			} else if (keepViewValue != fpl_null) {
 				int persistenceIndex = 0;
 				isValid = FindKeyIndex(keepViewValue, ViewPersistenceKeys, ViewPersistence_Count, &persistenceIndex);
@@ -1823,6 +1876,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (noRecursiveValue != fpl_null) {
 				params->recursive = false;
 				isValid = *noRecursiveValue == 0;
+			} else if (noConfigValue != fpl_null) {
+				params->isUserConfigDisabled = true;
+				isValid = *noConfigValue == 0;
 			} else {
 				isValid = false;
 			}
@@ -1863,6 +1919,378 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 		return(false);
 	}
 	return(true);
+}
+
+// The user config only serves the interactive viewer, --render-to and the tools without window stay reproducible
+static bool IsUserConfigUsed(const ViewerParameters* params) {
+	bool isTool = params->renderToFilePath != fpl_null || params->runSelfTest || params->listLoaders || params->decodeAllPath != fpl_null || params->benchLevelsPath != fpl_null || params->writePyramidFolder != fpl_null;
+	bool result = !isTool && !params->isUserConfigDisabled;
+	return(result);
+}
+
+static uint32_t GetUserSettingBit(const UserSetting setting) {
+	uint32_t result = 1u << (uint32_t)setting;
+	return(result);
+}
+
+// Parses on or off
+static bool ParseSwitchValue(const char* text, bool* outValue) {
+	int switchCount = (int)fplArrayCount(SwitchKeys);
+	int switchIndex = 0;
+	if (!FindKeyIndex(text, SwitchKeys, switchCount, &switchIndex)) {
+		return(false);
+	}
+	*outValue = switchIndex != 0;
+	return(true);
+}
+
+static const char* GetSwitchKey(const bool isOn) {
+	const char* result = isOn ? SwitchKeys[1] : SwitchKeys[0];
+	return(result);
+}
+
+// Parses the zoom of the kept view: shrink, fit, 100, any other percentage or fit*<factor>
+static bool ParseKeptViewZoomValue(const char* text, ViewState* view) {
+	if (CompareStringIgnoreCase(text, KeptViewShrinkKey) == 0) {
+		view->zoomMode = ViewZoomMode_ShrinkToFit;
+		view->pendingRelativeScale = 0.0f;
+		return(true);
+	}
+	size_t relativePrefixLength = fplGetStringLength(KeptViewRelativePrefix);
+	if (strncmp(text, KeptViewRelativePrefix, relativePrefixLength) == 0) {
+		const char* factorText = text + relativePrefixLength;
+		char* end = fpl_null;
+		double factor = strtod(factorText, &end);
+		if (end == factorText || *end != 0 || factor <= 0.0) {
+			return(false);
+		}
+		view->zoomMode = ViewZoomMode_Custom;
+		view->pendingRelativeScale = (float)factor;
+		return(true);
+	}
+	ViewZoomMode zoomMode = ViewZoomMode_ShrinkToFit;
+	float scale = 0.0f;
+	if (!ParseZoomValue(text, &zoomMode, &scale)) {
+		return(false);
+	}
+	view->zoomMode = zoomMode;
+	view->customScale = scale;
+	view->pendingRelativeScale = 0.0f;
+	return(true);
+}
+
+static void FormatKeptViewZoomValue(const ViewState* view, char* buffer, const size_t bufferSize) {
+	const float percentPerScale = 100.0f;
+	if (view->zoomMode == ViewZoomMode_ShrinkToFit) {
+		fplCopyString(KeptViewShrinkKey, buffer, bufferSize);
+	} else if (view->zoomMode == ViewZoomMode_Fit) {
+		fplCopyString(KeptViewFitKey, buffer, bufferSize);
+	} else if (view->zoomMode == ViewZoomMode_ActualSize) {
+		fplCopyString(KeptViewActualSizeKey, buffer, bufferSize);
+	} else if (view->pendingRelativeScale > 0.0f) {
+		fplStringFormat(buffer, bufferSize, "%s%g", KeptViewRelativePrefix, view->pendingRelativeScale);
+	} else {
+		float percent = view->customScale * percentPerScale;
+		fplStringFormat(buffer, bufferSize, "%g", percent);
+	}
+}
+
+// Applies one value of the user config onto the parameters, false when the value is invalid
+static bool ApplyUserSettingValue(const UserSetting setting, const char* value, ViewerParameters* params) {
+	bool result = false;
+	int keyIndex = 0;
+	switch (setting) {
+		case UserSetting_KeepView:
+		{
+			result = FindKeyIndex(value, ViewPersistenceKeys, ViewPersistence_Count, &keyIndex);
+			if (result) {
+				params->persistence = (ViewPersistence)keyIndex;
+			}
+		} break;
+		case UserSetting_Wheel:
+		{
+			result = FindKeyIndex(value, WheelModeKeys, WheelMode_Count, &keyIndex);
+			if (result) {
+				params->wheelMode = (WheelMode)keyIndex;
+			}
+		} break;
+		case UserSetting_DownFilter:
+			result = ParseFilterValue(value, false, &params->downKernel);
+			break;
+		case UserSetting_UpFilter:
+			result = ParseFilterValue(value, false, &params->upKernel);
+			break;
+		case UserSetting_Background:
+			result = ResampleFindBackground(value, &params->background);
+			break;
+		case UserSetting_AutoNearest:
+		{
+			bool isOn = false;
+			result = ParseSwitchValue(value, &isOn);
+			if (result) {
+				params->nearestFromScale = isOn ? DEFAULT_NEAREST_FROM_SCALE : 0.0f;
+			}
+		} break;
+		case UserSetting_Sort:
+		{
+			result = FindKeyIndex(value, SortModeKeys, SortMode_Count, &keyIndex);
+			if (result) {
+				params->sortMode = (SortMode)keyIndex;
+			}
+		} break;
+		case UserSetting_SortReverse:
+			result = ParseSwitchValue(value, &params->isSortReversed);
+			break;
+		case UserSetting_Preview:
+			result = ParseSwitchValue(value, &params->preview);
+			break;
+		case UserSetting_Info:
+			result = ParseSwitchValue(value, &params->showInfo);
+			break;
+		case UserSetting_RelativePath:
+			result = ParseSwitchValue(value, &params->showRelativePath);
+			break;
+		case UserSetting_ViewZoom:
+		{
+			result = ParseKeptViewZoomValue(value, &params->keptView);
+			if (result) {
+				params->hasKeptView = true;
+			}
+		} break;
+		case UserSetting_ViewCenter:
+		{
+			result = ParseCenterValue(value, &params->keptView.centerX, &params->keptView.centerY);
+			if (result) {
+				params->hasKeptView = true;
+			}
+		} break;
+		default:
+			break;
+	}
+	return(result);
+}
+
+static bool IsConfigWhitespace(const char c) {
+	bool result = c == ' ' || c == '\t' || c == '\r';
+	return(result);
+}
+
+// Cuts the whitespace off both ends, in place
+static char* TrimConfigWhitespace(char* text) {
+	while (IsConfigWhitespace(*text)) {
+		++text;
+	}
+	size_t length = fplGetStringLength(text);
+	while (length > 0 && IsConfigWhitespace(text[length - 1])) {
+		--length;
+		text[length] = 0;
+	}
+	return(text);
+}
+
+// Reads the lines <key>=<value> of the user config, # starts a comment. An unknown key or an invalid value is left out and reported when isReported is set.
+static bool LoadUserConfig(const char* filePath, const bool isReported, UserConfig* config) {
+	fplClearStruct(config);
+	if (!fplFileExists(filePath)) {
+		return(false);
+	}
+	size_t fileSize = fplFileGetSizeFromPath(filePath);
+	if (fileSize == 0 || fileSize > USER_CONFIG_MAX_FILE_SIZE) {
+		return(false);
+	}
+	fplFileHandle file;
+	if (!fplFileOpenBinary(filePath, &file)) {
+		return(false);
+	}
+	size_t textCapacity = fileSize + 1;
+	char* text = (char*)fplMemoryAllocate(textCapacity);
+	uint32_t readSize = fplFileReadBlock32(&file, (uint32_t)fileSize, text, (uint32_t)fileSize);
+	fplFileClose(&file);
+	text[readSize] = 0;
+
+	// Each value is checked on parameters of its own, the caller applies the values after loading
+	ViewerParameters validationParams = fplZeroInit;
+	uint32_t lineNumber = 0;
+	char* lineStart = text;
+	while (*lineStart != 0) {
+		char* lineEnd = lineStart;
+		while (*lineEnd != 0 && *lineEnd != '\n') {
+			++lineEnd;
+		}
+		bool isLastLine = *lineEnd == 0;
+		*lineEnd = 0;
+		++lineNumber;
+		char* line = TrimConfigWhitespace(lineStart);
+		bool isComment = *line == '#';
+		if (*line != 0 && !isComment) {
+			bool isValid = false;
+			char* separator = strchr(line, '=');
+			if (separator != fpl_null) {
+				*separator = 0;
+				char* key = TrimConfigWhitespace(line);
+				char* value = TrimConfigWhitespace(separator + 1);
+				size_t valueLength = fplGetStringLength(value);
+				int settingIndex = 0;
+				bool isKnownKey = FindKeyIndex(key, UserSettingKeys, UserSetting_Count, &settingIndex);
+				if (isKnownKey && valueLength < USER_SETTING_VALUE_CAPACITY) {
+					isValid = ApplyUserSettingValue((UserSetting)settingIndex, value, &validationParams);
+				}
+				if (isValid) {
+					fplCopyString(value, config->values[settingIndex], USER_SETTING_VALUE_CAPACITY);
+				}
+			}
+			if (!isValid && isReported) {
+				fplConsoleFormatError("Ignored invalid line %u of the user config '%s'\n", lineNumber, filePath);
+				flogWrite("Ignored invalid line %u of the user config '%s'", lineNumber, filePath);
+			}
+		}
+		lineStart = isLastLine ? lineEnd : lineEnd + 1;
+	}
+	fplMemoryFree(text);
+	return(true);
+}
+
+static bool WriteUserConfig(const char* filePath, const UserConfig* config) {
+	char text[USER_CONFIG_TEXT_CAPACITY];
+	fplCopyString(USER_CONFIG_HEADER, text, fplArrayCount(text));
+	for (int settingIndex = 0; settingIndex < UserSetting_Count; ++settingIndex) {
+		const char* value = config->values[settingIndex];
+		if (*value != 0) {
+			char line[FPL_MAX_NAME_LENGTH];
+			fplStringFormat(line, fplArrayCount(line), "%s=%s\n", UserSettingKeys[settingIndex], value);
+			fplStringAppend(line, text, fplArrayCount(text));
+		}
+	}
+	fplFileHandle file;
+	if (!fplFileCreateBinary(filePath, &file)) {
+		return(false);
+	}
+	uint32_t textLength = (uint32_t)fplGetStringLength(text);
+	uint32_t writtenSize = fplFileWriteBlock32(&file, text, textLength);
+	fplFileClose(&file);
+	bool result = writtenSize == textLength;
+	return(result);
+}
+
+// Applies every value of the user config onto the parameters the command line starts from
+static void ApplyUserConfig(const UserConfig* config, ViewerParameters* params) {
+	for (int settingIndex = 0; settingIndex < UserSetting_Count; ++settingIndex) {
+		const char* value = config->values[settingIndex];
+		if (*value != 0) {
+			ApplyUserSettingValue((UserSetting)settingIndex, value, params);
+		}
+	}
+}
+
+// Path of a file in the home folder of the viewer, the platform must be initialized
+static void GetHomeFilePath(const char* fileName, char* buffer, const size_t bufferSize) {
+	fplGetHomePath(buffer, bufferSize);
+	fplPathCombine(buffer, bufferSize, 3, buffer, HOME_FOLDER_NAME, fileName);
+}
+
+// The view the next run starts with: carried over from the active picture as a picture change does
+static ViewState ComputeKeptView(ViewerState* state) {
+	ViewSize pictureSize = fplZeroInit;
+	GetActivePictureSize(state, &pictureSize);
+	ViewState result = ComputeViewForNextPicture(&state->view, state->persistence, &state->startView, pictureSize, state->viewportSize);
+	return(result);
+}
+
+// The current value of a setting as the user config stores it
+static void FormatUserSettingValue(ViewerState* state, const UserSetting setting, char* buffer, const size_t bufferSize) {
+	const char* key = fpl_null;
+	switch (setting) {
+		case UserSetting_KeepView:
+			key = ViewPersistenceKeys[state->persistence];
+			break;
+		case UserSetting_Wheel:
+			key = WheelModeKeys[state->wheelMode];
+			break;
+		case UserSetting_DownFilter:
+		{
+			const ResampleKernelDefinition* definition = ResampleGetKernelDefinition(state->downKernel);
+			key = definition->key;
+		} break;
+		case UserSetting_UpFilter:
+		{
+			const ResampleKernelDefinition* definition = ResampleGetKernelDefinition(state->upKernel);
+			key = definition->key;
+		} break;
+		case UserSetting_Background:
+		{
+			const ResampleBackgroundDefinition* definition = ResampleGetBackgroundDefinition(state->background);
+			key = definition->key;
+		} break;
+		case UserSetting_AutoNearest:
+		{
+			bool isAutoNearestOn = state->nearestFromScale > 0.0f;
+			key = GetSwitchKey(isAutoNearestOn);
+		} break;
+		case UserSetting_Sort:
+			key = SortModeKeys[state->sortMode];
+			break;
+		case UserSetting_SortReverse:
+			key = GetSwitchKey(state->isSortReversed);
+			break;
+		case UserSetting_Preview:
+			key = GetSwitchKey(state->params.preview);
+			break;
+		case UserSetting_Info:
+			key = GetSwitchKey(state->params.showInfo);
+			break;
+		case UserSetting_RelativePath:
+			key = GetSwitchKey(state->params.showRelativePath);
+			break;
+		case UserSetting_ViewZoom:
+		{
+			ViewState keptView = ComputeKeptView(state);
+			FormatKeptViewZoomValue(&keptView, buffer, bufferSize);
+		} break;
+		case UserSetting_ViewCenter:
+		{
+			// --center only takes values between 0 and 1
+			const float lowestCenter = 0.0f;
+			const float highestCenter = 1.0f;
+			ViewState keptView = ComputeKeptView(state);
+			float centerX = fplMax(fplMin(keptView.centerX, highestCenter), lowestCenter);
+			float centerY = fplMax(fplMin(keptView.centerY, highestCenter), lowestCenter);
+			fplStringFormat(buffer, bufferSize, "%g,%g", centerX, centerY);
+		} break;
+		default:
+			break;
+	}
+	if (key != fpl_null) {
+		fplCopyString(key, buffer, bufferSize);
+	}
+}
+
+// Writes the current values of the settings in the mask into the user config.
+// The file is read again first, so the settings another running viewer changed in the meantime stay.
+static void SaveUserSettings(ViewerState* state, const uint32_t settingMask) {
+	if (fplGetStringLength(state->userConfigPath) == 0) {
+		return;
+	}
+	const bool isReported = false;
+	UserConfig config;
+	LoadUserConfig(state->userConfigPath, isReported, &config);
+	for (int settingIndex = 0; settingIndex < UserSetting_Count; ++settingIndex) {
+		uint32_t settingBit = GetUserSettingBit((UserSetting)settingIndex);
+		if ((settingMask & settingBit) != 0) {
+			FormatUserSettingValue(state, (UserSetting)settingIndex, config.values[settingIndex], USER_SETTING_VALUE_CAPACITY);
+		}
+	}
+	char folderPath[FPL_MAX_PATH_LENGTH];
+	fplExtractFilePath(state->userConfigPath, folderPath, fplArrayCount(folderPath));
+	fplDirectoriesCreate(folderPath);
+	if (!WriteUserConfig(state->userConfigPath, &config)) {
+		fplConsoleFormatError("Failed to write the user config '%s'\n", state->userConfigPath);
+		flogWrite("Failed to write the user config '%s'", state->userConfigPath);
+	}
+}
+
+static void SaveUserSetting(ViewerState* state, const UserSetting setting) {
+	uint32_t settingMask = GetUserSettingBit(setting);
+	SaveUserSettings(state, settingMask);
 }
 
 static void LogLoaderMessage(const char* message) {
@@ -2540,6 +2968,11 @@ static bool Init(ViewerState* state) {
 	// Before the first picture change, which already applies the view persistence
 	state->startView = ViewMakeState(state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
 	state->view = state->startView;
+	// The view of the last run from the user config, kept as over a picture change
+	bool isViewKept = state->params.persistence != ViewPersistence_Reset;
+	if (isViewKept && state->params.hasKeptView) {
+		state->view = state->params.keptView;
+	}
 	state->persistence = state->params.persistence;
 	state->wheelMode = state->params.wheelMode;
 	state->sortMode = state->params.sortMode;
@@ -3229,7 +3662,8 @@ static void SwitchActivePictureLoader(ViewerState* state) {
 }
 
 // Steps the kernel of the direction that is in effect, the down kernel while no picture is shown
-static void CycleActiveKernel(ViewerState* state, const int step) {
+// Returns the setting of the filter that changed
+static UserSetting CycleActiveKernel(ViewerState* state, const int step) {
 	ViewTransform transform;
 	bool isDownscaling = true;
 	if (GetActivePictureTransform(state, &transform)) {
@@ -3239,6 +3673,8 @@ static void CycleActiveKernel(ViewerState* state, const int step) {
 	int kernelCount = (int)ResampleKernel_Count;
 	int next = ((int)*kernel + step + kernelCount) % kernelCount;
 	*kernel = (ResampleKernel)next;
+	UserSetting result = isDownscaling ? UserSetting_DownFilter : UserSetting_UpFilter;
+	return(result);
 }
 
 // Zooms so that the picture point under the viewport point stays there, while no picture is shown only the zoom mode and scale change
@@ -3586,9 +4022,12 @@ int main(int argc, char** argv) {
 	defaultParams.simdLevel = SimdLevel_Best;
 	defaultParams.levelKernel = DEFAULT_LEVEL_KERNEL;
 	defaultParams.threadCount = fplMax(fplMin(fplCPUGetCoreCount(), MAX_LOAD_THREAD_COUNT), 1);
+	defaultParams.keptView = ViewMakeState(defaultParams.zoomMode, defaultParams.zoomScale, defaultParams.centerX, defaultParams.centerY);
 	state->params = defaultParams;
+	int parameterCount = argc - 1;
+	char** parameterValues = argv + 1;
 	if (argc >= 2) {
-		if (!ParseParameters(&state->params, &defaultParams, argc - 1, argv + 1)) {
+		if (!ParseParameters(&state->params, &defaultParams, parameterCount, parameterValues)) {
 			fplMemoryFree(state);
 			return(RenderToFileResult_InvalidParameters);
 		}
@@ -3599,6 +4038,24 @@ int main(int argc, char** argv) {
 		StartLog(state->params.logFilePath);
 	}
 	flogWrite("Startup %s", VER_PRODUCTNAME_STR);
+
+	// The user config replaces the defaults the parameters start from, so the parameters still override it for this run
+	if (IsUserConfigUsed(&state->params)) {
+		UserConfig userConfig = fplZeroInit;
+		if (fplPlatformInit(fplInitFlags_None, fpl_null)) {
+			const bool isReported = true;
+			GetHomeFilePath(USER_CONFIG_FILE_NAME, state->userConfigPath, fplArrayCount(state->userConfigPath));
+			bool isUserConfigLoaded = LoadUserConfig(state->userConfigPath, isReported, &userConfig);
+			flogWrite("User config: %s%s", state->userConfigPath, (isUserConfigLoaded ? "" : " (not found)"));
+			fplPlatformRelease();
+		}
+		ViewerParameters configParams = defaultParams;
+		ApplyUserConfig(&userConfig, &configParams);
+		if (!ParseParameters(&state->params, &configParams, parameterCount, parameterValues)) {
+			fplMemoryFree(state);
+			return(RenderToFileResult_InvalidParameters);
+		}
+	}
 
 	// The lookup tables of the level chain, before any load thread runs
 	ImagePyramidInitialize();
@@ -3829,15 +4286,18 @@ int main(int argc, char** argv) {
 									} else if (ev.keyboard.mappedKey == fplKey_T && isFirstPress) {
 										// Filter of the direction in effect, backwards with shift. On press, because shift is often let go before the key.
 										int step = isShiftDown ? -1 : 1;
-										CycleActiveKernel(state, step);
+										UserSetting changedFilterSetting = CycleActiveKernel(state, step);
+										SaveUserSetting(state, changedFilterSetting);
 									} else if (key == fplKey_S && isFirstPress) {
 										// Next order, reversed with shift; on press like T
 										if (isShiftDown) {
 											ChangeSortOrder(state, state->sortMode, !state->isSortReversed);
+											SaveUserSetting(state, UserSetting_SortReverse);
 										} else {
 											int sortModeCount = (int)SortMode_Count;
 											int nextSortMode = ((int)state->sortMode + 1) % sortModeCount;
 											ChangeSortOrder(state, (SortMode)nextSortMode, state->isSortReversed);
+											SaveUserSetting(state, UserSetting_Sort);
 										}
 									} else if (key == fplKey_OemPlus || key == fplKey_Add) {
 										// Zoom steps repeat while the key is held, Ctrl makes no difference
@@ -3878,12 +4338,14 @@ int main(int argc, char** argv) {
 										int nextPersistence = ((int)state->persistence + 1) % persistenceCount;
 										state->persistence = (ViewPersistence)nextPersistence;
 										flogWrite("View on picture change: %s", ViewPersistenceKeys[state->persistence]);
+										SaveUserSetting(state, UserSetting_KeepView);
 									} else if (ev.keyboard.mappedKey == fplKey_W) {
 										int wheelModeCount = (int)WheelMode_Count;
 										int nextWheelMode = ((int)state->wheelMode + 1) % wheelModeCount;
 										state->wheelMode = (WheelMode)nextWheelMode;
 										state->pointer.navigateWheelNotches = 0.0f;
 										flogWrite("Mouse wheel: %s", WheelModeKeys[state->wheelMode]);
+										SaveUserSetting(state, UserSetting_Wheel);
 									} else if (ev.keyboard.mappedKey == fplKey_PageDown) {
 										if (state->activeFileIndex < ((int)state->pictureFileCount - PAGE_INCREMENT_COUNT)) {
 											ChangeViewPicture(state, PAGE_INCREMENT_COUNT, false);
@@ -3899,9 +4361,11 @@ int main(int argc, char** argv) {
 										int delta = (int)state->pictureFileCount - state->activeFileIndex;
 										ChangeViewPicture(state, delta, true);
 									} else if (ev.keyboard.mappedKey == fplKey_F) {
+										// Fullscreen is the only toggle the user config never stores
 										fplSetWindowFullscreenSize(!fplIsWindowFullscreen(), 0, 0, 0);
 									} else if (ev.keyboard.mappedKey == fplKey_P) {
 										state->params.preview = !state->params.preview;
+										SaveUserSetting(state, UserSetting_Preview);
 									} else if (ev.keyboard.mappedKey == fplKey_R) {
 										ChangeViewPicture(state, 0, true);
 									} else if (ev.keyboard.mappedKey == fplKey_L) {
@@ -3910,14 +4374,18 @@ int main(int argc, char** argv) {
 										int backgroundCount = (int)ResampleBackground_Count;
 										int nextBackground = ((int)state->background + 1) % backgroundCount;
 										state->background = (ResampleBackground)nextBackground;
+										SaveUserSetting(state, UserSetting_Background);
 									} else if (ev.keyboard.mappedKey == fplKey_A) {
 										bool isAutoNearestOn = state->nearestFromScale > 0.0f;
 										state->nearestFromScale = isAutoNearestOn ? 0.0f : state->nearestFromToggleScale;
 										flogWrite("Auto Nearest %s", (isAutoNearestOn ? "off" : "on"));
+										SaveUserSetting(state, UserSetting_AutoNearest);
 									} else if (ev.keyboard.mappedKey == fplKey_I) {
 										state->params.showInfo = !state->params.showInfo;
+										SaveUserSetting(state, UserSetting_Info);
 									} else if (ev.keyboard.mappedKey == fplKey_N) {
 										state->params.showRelativePath = !state->params.showRelativePath;
+										SaveUserSetting(state, UserSetting_RelativePath);
 									}
 								}
 							}
@@ -3959,6 +4427,13 @@ int main(int argc, char** argv) {
 				} else {
 					fplThreadSleep(IDLE_SLEEP_MILLISECONDS);
 				}
+			}
+
+			// The kept view goes into the user config for the next run, while the pictures are still there
+			if (state->persistence != ViewPersistence_Reset) {
+				uint32_t zoomSettingBit = GetUserSettingBit(UserSetting_ViewZoom);
+				uint32_t centerSettingBit = GetUserSettingBit(UserSetting_ViewCenter);
+				SaveUserSettings(state, zoomSettingBit | centerSettingBit);
 			}
 
 			Kill(state);
