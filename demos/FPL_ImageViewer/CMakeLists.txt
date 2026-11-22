@@ -161,9 +161,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${MY_INCLUDE_DIRS})
 
 target_link_libraries(${PROJECT_NAME} ${MY_EXTERNAL_LIBS} ${CMAKE_DL_LIBS})
 
-# The standalone app gets its own executable name
+# The standalone app gets its own executable name; libstdc++ and libgcc are linked in, so the AppImage runs on systems with an older libstdc++
 if(FINALIMAGEVIEWER_APP)
 	set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "finalimageviewer")
+	if(NOT MSVC)
+		target_link_libraries(${PROJECT_NAME} -static-libstdc++ -static-libgcc)
+	endif()
 endif()
 
 # Post-build copy of resource folder
