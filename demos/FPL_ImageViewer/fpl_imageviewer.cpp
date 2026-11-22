@@ -28,6 +28,7 @@ Author:
 Changelog:
 	## v0.6.2
 	- New: HEIC, HEIF and AVIF loader (imageloader_heif.h) through the system libheif loaded at runtime
+	- New: ICNS loader (imageloader_icns.h) for PNG, ARGB and packed RGB icons
 
 	## v0.6.1
 	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
@@ -205,6 +206,8 @@ License:
 #include "imageloader_webp.h"
 #define IMAGE_LOADER_HEIF_IMPLEMENTATION
 #include "imageloader_heif.h"
+#define IMAGE_LOADER_ICNS_IMPLEMENTATION
+#include "imageloader_icns.h"
 
 #include <string.h>
 
@@ -2306,7 +2309,7 @@ static void LogLoaderMessage(const char* message) {
 // stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned.
 // WebP is registered even without libwebp, its files then show why they cannot be read.
 static bool RegisterLoaders(ImageLoaderRegistry* registry) {
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
 	ImageLoaderRegistryInit(registry);
 	registry->log = LogLoaderMessage;
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {

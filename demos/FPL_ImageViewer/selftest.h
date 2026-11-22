@@ -27,6 +27,7 @@ License:
 #include "imageloader_bmp.h"
 #include "imageloader_webp.h"
 #include "imageloader_heif.h"
+#include "imageloader_icns.h"
 #include "imagepyramid.h"
 
 typedef struct SelfTest {
@@ -469,8 +470,8 @@ static void SelfTestOrientation(SelfTest* test) {
 
 static void SelfTestLoaderIds(SelfTest* test) {
 	test->groupName = "Loader ids";
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet() };
-	const char* idTexts[] = { IMAGE_LOADER_STB_ID_TEXT, IMAGE_LOADER_PNM_ID_TEXT, IMAGE_LOADER_BMP_ID_TEXT, IMAGE_LOADER_WEBP_ID_TEXT, IMAGE_LOADER_HEIF_ID_TEXT };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
+	const char* idTexts[] = { IMAGE_LOADER_STB_ID_TEXT, IMAGE_LOADER_PNM_ID_TEXT, IMAGE_LOADER_BMP_ID_TEXT, IMAGE_LOADER_WEBP_ID_TEXT, IMAGE_LOADER_HEIF_ID_TEXT, IMAGE_LOADER_ICNS_ID_TEXT };
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
 		ImageLoaderId parsed;
 		bool isParsed = ImageLoaderIdParse(idTexts[loaderIndex], &parsed);
@@ -939,7 +940,7 @@ static bool SelfTestIsPyramidBitIdentical(const ImagePyramidRowFunctions* functi
 static void SelfTestPyramidFolder(SelfTest* test, const char* folderPath, const fplCPUCapabilities* capabilities) {
 	ImageLoaderRegistry registry;
 	ImageLoaderRegistryInit(&registry);
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
 	for (uint32_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
 		char message[IMAGE_LOADER_MESSAGE_SIZE];
 		ImageLoaderRegistryAdd(&registry, loaders[loaderIndex], message, sizeof(message));
