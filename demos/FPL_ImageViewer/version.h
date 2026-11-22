@@ -2,15 +2,15 @@
 #define VERSION_H
 
 #if defined(FINALIMAGEVIEWER_APP)
-// The standalone app, executable and product share the name
+// The standalone app: the window title shows the product name, executable, window class and home folder keep the internal name
 #define VER_INTERNALNAME_STR		"finalimageviewer"
-#define VER_PRODUCTNAME_STR			"finalimageviewer"
+#define VER_PRODUCTNAME_STR			"Final Image Viewer"
 #else
 #define VER_INTERNALNAME_STR		"FPL_ImageViewer"
 #define VER_PRODUCTNAME_STR			"FPL ImageViewer"
 #endif
-#define VER_PRODUCTVERSION          0,6,0,0
-#define VER_PRODUCTVERSION_STR      "0.6.0\0"
+#define VER_PRODUCTVERSION          0,6,1,0
+#define VER_PRODUCTVERSION_STR      "0.6.1\0"
 
 #define VER_FILEVERSION             VER_PRODUCTVERSION
 #define VER_FILEVERSION_STR         VER_PRODUCTVERSION_STR

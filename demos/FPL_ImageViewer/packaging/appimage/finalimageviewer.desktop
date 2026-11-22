@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=finalimageviewer
+Name=Final Image Viewer
 GenericName=Image Viewer
 Comment=Image viewer with exact scaling for JPEG, PNG, BMP, TGA, WebP and PNM
 Exec=finalimageviewer %f

@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.6.0 (version.h)
+	v0.6.1 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -25,6 +25,9 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.6.1
+	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
+
 	## v0.6.0
 	- New: Info line at the top with picture number of count, file name, size, bpp and zoom, already while loading; I or --no-info hides it
 	- New: N or --relative-path shows the path relative to the opened folder, shortened at the front when too long
