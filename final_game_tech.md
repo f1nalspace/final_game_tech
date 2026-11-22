@@ -277,6 +277,7 @@ Minimal demo showing window initialization and event handling
 Demo for additional windows next to the main window:
 - Creates and destroys windows at runtime, every event tells the window it belongs to
 - Every window draws a rotating quad with OpenGL, all windows share one rendering context
+- With --software every window draws the quad into its own back buffer
 
 #### FPL_Process
 Console demo that starts and controls child processes:
