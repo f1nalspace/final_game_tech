@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.6.2 (version.h)
+	v0.6.3 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -26,6 +26,10 @@ Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.6.3
+	- New: GIF loader (imageloader_gif.h) with animations, the active picture plays them and Space pauses, the info line shows the frame
+	- New: Loaders can open animations that compose one frame after the other (imageloader.h)
+
 	## v0.6.2
 	- New: HEIC, HEIF and AVIF loader (imageloader_heif.h) through the system libheif loaded at runtime
 	- New: ICNS loader (imageloader_icns.h) for PNG, ARGB and packed RGB icons
@@ -316,6 +320,13 @@ typedef struct ImageData {
 	uint32_t levelCount;
 	// Levels before this one are larger than GL_MAX_TEXTURE_SIZE and have no texture
 	uint32_t firstUploadedLevel;
+	// Animation of a picture with more than one frame, owned by the loader in loaderEntry, null otherwise.
+	// An animated picture has level 0 only, every frame replaces its texture.
+	void* animation;
+	ImageAnimationInfo animationInfo;
+	// Frame the level 0 texture shows and how long it stays
+	uint32_t shownFrameIndex;
+	uint32_t shownFrameMilliseconds;
 } ImageData;
 
 typedef struct ViewPicture {
@@ -324,8 +335,10 @@ typedef struct ViewPicture {
 	PictureInfo info;
 	// Scaled into its preview block, main thread only
 	ResampleResult thumbnail;
-	// Changes with every upload, the texture name alone may be reused by OpenGL
+	// Changes with every upload and every animation frame, the texture name alone may be reused by OpenGL
 	uint64_t uploadSerial;
+	// The upload serial of the load, it stays while the animation frames change the upload serial
+	uint64_t loadSerial;
 	// 0..1, only grows while a picture loads (plan section 2.9)
 	volatile float progress;
 	// The loader works on without knowing how far it is, the bar shows a running animation after progress
@@ -629,6 +642,19 @@ typedef struct SupportedFeatures {
 	bool srgbFrameBuffer;
 } SupportedFeatures;
 
+// Only the active picture plays its animation, from the first frame whenever it becomes the active one; main thread only
+typedef struct AnimationPlayback {
+	// Load serial of the picture that plays, 0 while none plays
+	uint64_t loadSerial;
+	fplMilliseconds nextFrameTime;
+	// Plays of the whole animation that ended
+	uint32_t completedPlayCount;
+	// Space pauses and continues
+	bool isPaused;
+	// The play count of the file is reached, the last frame stays until Space starts it again
+	bool isFinished;
+} AnimationPlayback;
+
 // Mouse input between events: dragging, double click detection and wheel notches that page
 typedef struct PointerState {
 	fplMilliseconds lastClickTime;
@@ -668,6 +694,7 @@ typedef struct ViewerState {
 	SortMode sortMode;
 	bool isSortReversed;
 	PointerState pointer;
+	AnimationPlayback playback;
 
 	LoadQueue loadQueue;
 	size_t loadQueueCapacity;
@@ -1050,13 +1077,22 @@ static void ReleasePictureTextures(ImageData* image) {
 	}
 }
 
-// Frees the decoded pixels through the loader that owns them and the reduced levels. Load threads pass noTextures, textures belong to the main thread.
+// The picture keeps the frame its texture shows
+static void ClosePictureAnimation(ImageLoaderRegistry* registry, ImageData* image) {
+	if (image->animation != fpl_null) {
+		ImageLoaderRegistryCloseAnimation(registry, image->loaderEntry, image->animation);
+		image->animation = fpl_null;
+	}
+}
+
+// Frees the decoded pixels through the loader that owns them, the reduced levels and the animation. Load threads pass noTextures, textures belong to the main thread.
 static void ClearPictureData(ImageLoaderRegistry* registry, ViewPicture* viewPicture, bool noTextures) {
 	ImageData* image = &viewPicture->image;
 	ImagePyramidRelease(&image->pyramid);
 	if (image->pixels.pixels != fpl_null) {
 		ImageLoaderRegistryReleasePixels(registry, image->loaderEntry, &image->pixels);
 	}
+	ClosePictureAnimation(registry, image);
 	if (!noTextures) {
 		ReleasePictureTextures(image);
 	}
@@ -1133,6 +1169,42 @@ static void PublishPictureInfo(void* userData, const PictureInfo* info) {
 	fplMutexUnlock(&state->pictureInfoMutex);
 }
 
+// Opens the animation of a picture whose loader has animations and composes its first frame, which the decoded pixels show already.
+// Null for a picture with a single frame and whenever the animation fails, the picture then stays as it was decoded.
+static void* OpenPictureAnimation(ImageLoaderRegistry* registry, const char* filePath, const int32_t loaderEntry, const ImagePixels* pixels, volatile bool* cancelFlag, ImageAnimationInfo* outInfo, uint32_t* outFirstFrameMilliseconds) {
+	if (!ImageLoaderRegistryHasAnimation(registry, loaderEntry)) {
+		return(fpl_null);
+	}
+	ImageFileSource fileSource;
+	if (!ImageFileSourceOpen(&fileSource, filePath, cancelFlag, fpl_null, fpl_null)) {
+		return(fpl_null);
+	}
+	void* animation = fpl_null;
+	char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+	ImageLoadResult openResult = ImageLoaderRegistryOpenAnimation(registry, loaderEntry, &fileSource.source, &animation, outInfo, message, sizeof(message));
+	ImageFileSourceClose(&fileSource);
+	if (openResult != ImageLoadResult_Success) {
+		// Unsupported is the usual single frame and not worth a line
+		if (openResult != ImageLoadResult_Unsupported) {
+			const char* openResultName = ImageLoadResultGetName(openResult);
+			flogWrite("Animation of '%s' cannot be opened: %s (%s)", filePath, openResultName, message);
+		}
+		return(fpl_null);
+	}
+	const uint32_t firstFrameIndex = 0;
+	ImageFrame firstFrame = fplZeroInit;
+	ImageLoadResult frameResult = ImageLoaderRegistryDecodeFrame(registry, loaderEntry, animation, firstFrameIndex, &firstFrame, message, sizeof(message));
+	bool isMatchingPicture = frameResult == ImageLoadResult_Success && firstFrame.pixels.width == pixels->width && firstFrame.pixels.height == pixels->height;
+	if (!isMatchingPicture) {
+		const char* frameResultName = ImageLoadResultGetName(frameResult);
+		flogWrite("Animation of '%s' does not match the picture: %s (%s)", filePath, frameResultName, message);
+		ImageLoaderRegistryCloseAnimation(registry, loaderEntry, animation);
+		return(fpl_null);
+	}
+	*outFirstFrameMilliseconds = firstFrame.durationMilliseconds;
+	return(animation);
+}
+
 static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 	PictureLoadThread* loadThread = (PictureLoadThread*)data;
 	ViewerState* state = loadThread->state;
@@ -1187,9 +1259,32 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			result = ImageLoadResult_Canceled;
 		}
 
-		// The level chain, from the decoded pixels in this thread
-		ImagePyramid pyramid = fplZeroInit;
+		// The main thread composes the other frames of an animation later, the decoded pixels are its first frame
+		void* animation = fpl_null;
+		ImageAnimationInfo animationInfo = fplZeroInit;
+		uint32_t firstFrameMilliseconds = 0;
 		if (result == ImageLoadResult_Success) {
+			animation = OpenPictureAnimation(&state->loaderRegistry, loadedPic->filePath, loaderEntry, &pixels, &loadThread->context.canceled, &animationInfo, &firstFrameMilliseconds);
+			isCanceled = loadThread->shutdown || loadThread->context.canceled;
+			if (isCanceled) {
+				if (animation != fpl_null) {
+					ImageLoaderRegistryCloseAnimation(&state->loaderRegistry, loaderEntry, animation);
+					animation = fpl_null;
+				}
+				ImageLoaderRegistryReleasePixels(&state->loaderRegistry, loaderEntry, &pixels);
+				fplCopyString("canceled while opening the animation", message, fplArrayCount(message));
+				result = ImageLoadResult_Canceled;
+			}
+		}
+
+		// The level chain, from the decoded pixels in this thread; an animated picture keeps level 0 only, its frames replace it
+		ImagePyramid pyramid = fplZeroInit;
+		if (result == ImageLoadResult_Success && animation != fpl_null) {
+			RaisePictureProgress(loadedPic, ProgressDecodeEnd);
+			loadedPic->isProgressIndeterminate = false;
+			pyramid.levels[0] = fplStructInit(ImagePyramidLevel, (uint8_t*)pixels.pixels, pixels.width, pixels.height, pixels.stride);
+			pyramid.levelCount = 1;
+		} else if (result == ImageLoadResult_Success) {
 			const double millisecondsPerSecond = 1000.0;
 			RaisePictureProgress(loadedPic, ProgressDecodeEnd);
 			loadedPic->isProgressIndeterminate = false;
@@ -1228,6 +1323,13 @@ static void LoadPictureThreadProc(const fplThreadHandle* thread, void* data) {
 			image->width = pixels.width;
 			image->height = pixels.height;
 			image->levelCount = pyramid.levelCount;
+			image->animation = animation;
+			image->animationInfo = animationInfo;
+			image->shownFrameIndex = 0;
+			image->shownFrameMilliseconds = firstFrameMilliseconds;
+			if (animation != fpl_null) {
+				flogWrite("Animation of '%s' [%zu]: %u frames, play count %u (0 is forever)", loadedPic->filePath, loadedPic->fileIndex, animationInfo.frameCount, animationInfo.playCount);
+			}
 			fplMutexLock(&state->pictureInfoMutex);
 			loadedPic->info = info;
 			loadedPic->hasInfo = true;
@@ -3120,6 +3222,13 @@ static bool UploadPictureLevels(ViewerState* state, ViewPicture* picture) {
 		flogWrite("Uploaded '%s': %u levels, %.1f MB in %.1f ms", pictureFileName, image->levelCount, uploadedMegabytes, uploadMilliseconds);
 	}
 
+	// The frames of an animation replace the level 0 texture, a picture shown from a smaller level stays at its first frame
+	bool isAnimationShown = result && image->firstUploadedLevel == 0;
+	if (image->animation != fpl_null && !isAnimationShown) {
+		flogWrite("Animation of '%s' stops at its first frame, it has no texture of its full size", pictureFileName);
+		ClosePictureAnimation(&state->loaderRegistry, image);
+	}
+
 	ImagePyramidRelease(&image->pyramid);
 	ImageLoaderRegistryReleasePixels(&state->loaderRegistry, image->loaderEntry, &image->pixels);
 	return(result);
@@ -3159,6 +3268,7 @@ static bool UpdatePictures(ViewerState* state) {
 				fplDebugFormatOut("Release textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
 				ReleasePictureTextures(image);
 			}
+			ClosePictureAnimation(&state->loaderRegistry, image);
 			ResampleResultRelease(&loadedPic->thumbnail);
 			fplAtomicStoreS32(&loadedPic->state, LoadedPictureState_Unloaded);
 			isChanging = true;
@@ -3174,6 +3284,7 @@ static bool UpdatePictures(ViewerState* state) {
 			fplDebugFormatOut("Allocate textures '%s'[%zu]\n", loadedPic->filePath, loadedPic->fileIndex);
 			bool isUploaded = UploadPictureLevels(state, loadedPic);
 			loadedPic->uploadSerial = ++state->nextUploadSerial;
+			loadedPic->loadSerial = loadedPic->uploadSerial;
 
 			LoadedPictureState uploadedState = isUploaded ? LoadedPictureState_Ready : LoadedPictureState_Error;
 			RaisePictureProgress(loadedPic, ProgressComplete);
@@ -3209,6 +3320,125 @@ static bool UpdatePictures(ViewerState* state) {
 	CheckGLError("UpdatePictures", __FILE__, __LINE__);
 
 	return(isChanging);
+}
+
+// Replaces the pixels of a texture of the same size, e.g. with the next frame of an animation
+static void UpdateTexturePixels(const GLuint textureId, const ImagePixels* pixels) {
+	const uint32_t bytesPerPixel = 4;
+	GLint rowLength = (GLint)(pixels->stride / bytesPerPixel);
+	glBindTexture(GL_TEXTURE_2D, textureId);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)pixels->width, (GLsizei)pixels->height, GL_RGBA, GL_UNSIGNED_BYTE, pixels->pixels);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+// The active picture while it is shown and has an animation, null otherwise
+static ViewPicture* GetActiveAnimatedPicture(ViewerState* state) {
+	bool hasActivePicture = state->pictureFileCount > 0 && state->viewPictureIndex > -1 && state->viewPictureIndex < (int)state->viewPicturesCapacity;
+	if (!hasActivePicture) {
+		return(fpl_null);
+	}
+	ViewPicture* picture = &state->viewPictures[state->viewPictureIndex];
+	LoadedPictureState pictureState = fplAtomicLoadS32(&picture->state);
+	bool isAnimated = pictureState == LoadedPictureState_Ready && picture->image.animation != fpl_null;
+	ViewPicture* result = isAnimated ? picture : fpl_null;
+	return(result);
+}
+
+// Composes a frame of the animation into the level 0 texture, the scaled picture and its preview follow through the upload serial.
+// A frame that cannot be composed ends the animation, the picture keeps the frame it shows.
+static bool ShowAnimationFrame(ViewerState* state, ViewPicture* picture, const uint32_t frameIndex) {
+	ImageData* image = &picture->image;
+	ImageFrame frame = fplZeroInit;
+	char message[IMAGE_LOADER_MESSAGE_SIZE] = fplZeroInit;
+	ImageLoadResult result = ImageLoaderRegistryDecodeFrame(&state->loaderRegistry, image->loaderEntry, image->animation, frameIndex, &frame, message, sizeof(message));
+	bool isMatchingPicture = result == ImageLoadResult_Success && frame.pixels.width == image->width && frame.pixels.height == image->height;
+	if (!isMatchingPicture) {
+		const char* resultName = ImageLoadResultGetName(result);
+		flogWrite("Animation of '%s' stops at frame %u: %s (%s)", picture->filePath, frameIndex, resultName, message);
+		ClosePictureAnimation(&state->loaderRegistry, image);
+		return(false);
+	}
+	const ImageLevelTexture* levelTexture = &image->levels[0];
+	UpdateTexturePixels(levelTexture->textureId, &frame.pixels);
+	image->shownFrameIndex = frameIndex;
+	image->shownFrameMilliseconds = frame.durationMilliseconds;
+	picture->uploadSerial = ++state->nextUploadSerial;
+	CheckGLError("ShowAnimationFrame", __FILE__, __LINE__);
+	return(true);
+}
+
+// Plays the animation of the active picture, returns true when another frame is shown
+static bool UpdateAnimation(ViewerState* state) {
+	AnimationPlayback* playback = &state->playback;
+	ViewPicture* picture = GetActiveAnimatedPicture(state);
+	if (picture == fpl_null) {
+		playback->loadSerial = 0;
+		return(false);
+	}
+	ImageData* image = &picture->image;
+	fplMilliseconds now = fplMillisecondsQuery();
+
+	// Every picture that becomes the active one plays from its first frame
+	if (playback->loadSerial != picture->loadSerial) {
+		const uint32_t firstFrameIndex = 0;
+		fplClearStruct(playback);
+		playback->loadSerial = picture->loadSerial;
+		bool isFirstFrameShown = image->shownFrameIndex == firstFrameIndex;
+		if (!isFirstFrameShown) {
+			ShowAnimationFrame(state, picture, firstFrameIndex);
+		}
+		playback->nextFrameTime = now + image->shownFrameMilliseconds;
+		return(!isFirstFrameShown);
+	}
+
+	bool isWaiting = playback->isPaused || playback->isFinished || now < playback->nextFrameTime;
+	if (isWaiting) {
+		return(false);
+	}
+	uint32_t nextFrameIndex = image->shownFrameIndex + 1;
+	if (nextFrameIndex >= image->animationInfo.frameCount) {
+		++playback->completedPlayCount;
+		uint32_t playCount = image->animationInfo.playCount;
+		bool isPlayCountReached = playCount > 0 && playback->completedPlayCount >= playCount;
+		if (isPlayCountReached) {
+			playback->isFinished = true;
+			return(false);
+		}
+		nextFrameIndex = 0;
+	}
+	ShowAnimationFrame(state, picture, nextFrameIndex);
+	// The frames keep their rhythm, after a stall (a slow frame, a minimized window) the next frame counts from now
+	fplMilliseconds nextFrameTime = playback->nextFrameTime + image->shownFrameMilliseconds;
+	playback->nextFrameTime = nextFrameTime > now ? nextFrameTime : now + image->shownFrameMilliseconds;
+	return(true);
+}
+
+// Space: pauses and continues the animation of the active picture, after its last play it starts again
+static void ToggleAnimationPause(ViewerState* state) {
+	AnimationPlayback* playback = &state->playback;
+	ViewPicture* picture = GetActiveAnimatedPicture(state);
+	if (picture == fpl_null || playback->loadSerial != picture->loadSerial) {
+		return;
+	}
+	ImageData* image = &picture->image;
+	fplMilliseconds now = fplMillisecondsQuery();
+	if (playback->isFinished) {
+		const uint32_t firstFrameIndex = 0;
+		playback->isFinished = false;
+		playback->isPaused = false;
+		playback->completedPlayCount = 0;
+		ShowAnimationFrame(state, picture, firstFrameIndex);
+		playback->nextFrameTime = now + image->shownFrameMilliseconds;
+		flogWrite("Animation starts again");
+		return;
+	}
+	playback->isPaused = !playback->isPaused;
+	// The frame shown at the pause gets its whole time again
+	playback->nextFrameTime = now + image->shownFrameMilliseconds;
+	flogWrite("Animation %s at frame %u", (playback->isPaused ? "paused" : "continued"), image->shownFrameIndex);
 }
 
 static Vec4f GetPreviewBlockColor(const LoadedPictureState loadState) {
@@ -3439,6 +3669,15 @@ static void BuildInfoLineDetails(ViewerState* state, char* buffer, const size_t 
 		AppendInfoLinePart(sizeText, buffer, bufferSize);
 		AppendInfoLinePart(depthText, buffer, bufferSize);
 	}
+	const ViewPicture* animatedPicture = GetActiveAnimatedPicture(state);
+	if (animatedPicture != fpl_null) {
+		const ImageData* image = &animatedPicture->image;
+		uint32_t frameNumber = image->shownFrameIndex + 1;
+		const char* pausedText = state->playback.isPaused ? " paused" : "";
+		char frameText[FPL_MAX_NAME_LENGTH];
+		fplStringFormat(frameText, fplArrayCount(frameText), "frame %u / %u%s", frameNumber, image->animationInfo.frameCount, pausedText);
+		AppendInfoLinePart(frameText, buffer, bufferSize);
+	}
 	if (isFailed) {
 		AppendInfoLinePart("cannot be read", buffer, bufferSize);
 	}
@@ -3543,7 +3782,9 @@ static void RenderFrame(ViewerState* state, const ViewSize viewportSize) {
 		visibleRect = IntersectWithViewport(transform.imageRect, viewportSize);
 		char timerLabel[FPL_MAX_BUFFER_LENGTH];
 		fplStringFormat(timerLabel, fplArrayCount(timerLabel), "'%s' level %u (%u x %u) -> %u x %u of %u x %u (%s)", pictureFileName, sourceLevel, levelTexture->width, levelTexture->height, (uint32_t)visibleRect.width, (uint32_t)visibleRect.height, (uint32_t)transform.imageRect.width, (uint32_t)transform.imageRect.height, kernelDefinition->name);
-		UpdatePictureResult(state, activePicture, &transform, visibleRect, &state->viewResult, timerLabel);
+		// Every frame of an animation is scaled again, its times would flood the log
+		const char* resultTimerLabel = activePicture->image.animation != fpl_null ? fpl_null : timerLabel;
+		UpdatePictureResult(state, activePicture, &transform, visibleRect, &state->viewResult, resultTimerLabel);
 	}
 
 	glViewport(0, 0, (GLsizei)viewportSize.width, (GLsizei)viewportSize.height);
@@ -4398,6 +4639,8 @@ int main(int argc, char** argv) {
 									} else if (ev.keyboard.mappedKey == fplKey_N) {
 										state->params.showRelativePath = !state->params.showRelativePath;
 										SaveUserSetting(state, UserSetting_RelativePath);
+									} else if (ev.keyboard.mappedKey == fplKey_Space) {
+										ToggleAnimationPause(state);
 									}
 								}
 							}
@@ -4425,12 +4668,14 @@ int main(int argc, char** argv) {
 
 				state->viewportSize = viewportSize;
 				bool arePicturesChanging = UpdatePictures(state);
+				// Animation frames are only composed while they can be seen
+				bool isViewportEmpty = viewportSize.width == 0 || viewportSize.height == 0;
+				bool isAnimationChanging = !isViewportEmpty && UpdateAnimation(state);
 				UpdateWindowTitle(state);
 				LogResampleTimer(state);
 
 				// Draw only when something changed, otherwise idle, and never into an empty (minimized) viewport
-				bool isViewportEmpty = viewportSize.width == 0 || viewportSize.height == 0;
-				bool needsFrame = !hasDrawnFrame || hasEvents || isViewportChanged || arePicturesChanging;
+				bool needsFrame = !hasDrawnFrame || hasEvents || isViewportChanged || arePicturesChanging || isAnimationChanging;
 				if (needsFrame && !isViewportEmpty) {
 					RenderFrame(state, viewportSize);
 					RenderUserInterface(state, viewportSize);
