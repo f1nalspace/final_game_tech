@@ -34,6 +34,7 @@ Changelog:
 	- New: FINALIMAGEVIEWER_APP (CMake option) builds the standalone app finalimageviewer: executable, window class and log in ~/.finalimageviewer
 	- Changed: Logs only with --log (log.txt in the home folder) or --log=<file>, every run starts a new log
 	- New: Pictures are sorted inside each folder, by default naturally (case ignored, numbers by value); --sort=natural|name|date|size|none, --sort-reverse, S cycles the order and Shift + S reverses it
+	- New: --no-recursive reads only the folder itself, also for dropped folders
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
@@ -1726,6 +1727,7 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* logValue = MatchLongParameter(argument, "--log");
 			const char* sortValue = MatchLongParameter(argument, "--sort");
 			const char* sortReverseValue = MatchLongParameter(argument, "--sort-reverse");
+			const char* noRecursiveValue = MatchLongParameter(argument, "--no-recursive");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1808,6 +1810,9 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (sortReverseValue != fpl_null) {
 				params->isSortReversed = true;
 				isValid = *sortReverseValue == 0;
+			} else if (noRecursiveValue != fpl_null) {
+				params->recursive = false;
+				isValid = *noRecursiveValue == 0;
 			} else {
 				isValid = false;
 			}
@@ -3766,7 +3771,7 @@ int main(int argc, char** argv) {
 								for (size_t fileIndex = 0; fileIndex < ev.window.dropFiles.fileCount; ++fileIndex) {
 									const char* filePath = ev.window.dropFiles.files[fileIndex];
 									// @TODO(final): LoadPicturesPath clears the picture files always, so we basically can only load one folder at a time
-									if (LoadPicturesPath(state, filePath, true, &startPicIndex)) {
+									if (LoadPicturesPath(state, filePath, state->params.recursive, &startPicIndex)) {
 										state->view = droppedFolderView;
 										state->activeFileIndex = (int)startPicIndex;
 										ChangeViewPicture(state, 0, true);
