@@ -15,6 +15,9 @@ Description:
 
 	The interface is plain C with interfaceVersion and structSize, so a loader can later come from a shared library without changes.
 
+	A loader for a format with animations (GIF) can also open an animation: it keeps what it needs of the file and composes one frame after the other,
+	decode stays the first frame. The animation functions came after the first interface, a loader with a structSize that ends before them has none.
+
 	Also here: a bounds checked EXIF reader for the orientation tag of JPEG files, shared by all JPEG loaders.
 
 Usage:
@@ -114,6 +117,21 @@ typedef struct ImagePixels {
 	ImagePixelFormat format;
 } ImagePixels;
 
+// How an animation plays, as the file declares it
+typedef struct ImageAnimationInfo {
+	uint32_t frameCount;
+	// How often the whole animation plays, 0 plays it forever
+	uint32_t playCount;
+} ImageAnimationInfo;
+
+// One frame of an animation: the whole picture as it is shown at that point, owned by the animation and valid until its next decodeFrame or its close
+typedef struct ImageFrame {
+	ImagePixels pixels;
+	uint32_t frameIndex;
+	// How long the frame is shown
+	uint32_t durationMilliseconds;
+} ImageFrame;
+
 typedef struct ImageSource ImageSource;
 struct ImageSource {
 	// Reads up to size bytes and returns how many were read, 0 at the end or on errors
@@ -139,6 +157,11 @@ typedef ImageLoaderMatch ImageLoaderProbeFunction(const ImageLoader *loader, con
 typedef ImageLoadResult ImageLoaderReadInfoFunction(const ImageLoader *loader, ImageSource *source, PictureInfo *outInfo, char *message, size_t messageSize);
 typedef ImageLoadResult ImageLoaderDecodeFunction(const ImageLoader *loader, ImageSource *source, ImagePixels *outPixels, char *message, size_t messageSize);
 typedef void ImageLoaderReleaseFunction(const ImageLoader *loader, ImagePixels *pixels);
+// Reads everything the animation needs from the source, which may be closed afterwards; Unsupported for a file with a single picture
+typedef ImageLoadResult ImageLoaderOpenAnimationFunction(const ImageLoader *loader, ImageSource *source, void **outAnimation, ImageAnimationInfo *outInfo, char *message, size_t messageSize);
+// Composes the frame frameIndex. The frame after the last composed one is the fast case, any earlier frame starts again from the first one.
+typedef ImageLoadResult ImageLoaderDecodeFrameFunction(const ImageLoader *loader, void *animation, uint32_t frameIndex, ImageFrame *outFrame, char *message, size_t messageSize);
+typedef void ImageLoaderCloseAnimationFunction(const ImageLoader *loader, void *animation);
 
 struct ImageLoader {
 	// IMAGE_LOADER_INTERFACE_VERSION the loader was built against
@@ -159,6 +182,10 @@ struct ImageLoader {
 	ImageLoaderDecodeFunction *decode;
 	ImageLoaderReleaseFunction *releasePixels;
 	void *userData;
+	// Optional, all three or none; only read when structSize covers them
+	ImageLoaderOpenAnimationFunction *openAnimation;
+	ImageLoaderDecodeFrameFunction *decodeFrame;
+	ImageLoaderCloseAnimationFunction *closeAnimation;
 };
 
 typedef void ImageLoaderLogFunction(const char *message);
@@ -256,6 +283,13 @@ extern void ImageLoaderRegistryReleasePixels(ImageLoaderRegistry *registry, cons
 // The optional info function gets the info of every candidate that read it, before that candidate decodes.
 extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, ImageSource *source, const char *fileExtension, const int32_t forcedEntry, ImageLoaderInfoFunction *infoFunction, void *infoUserData, int32_t *outEntry, PictureInfo *outInfo, ImagePixels *outPixels, char *message, const size_t messageSize);
 
+// True when the loader of this entry has the animation functions
+extern bool ImageLoaderRegistryHasAnimation(const ImageLoaderRegistry *registry, const int32_t entryIndex);
+// An animation belongs to the loader of the entry that opened it. For a loader that is not thread-safe every call waits for its other calls.
+extern ImageLoadResult ImageLoaderRegistryOpenAnimation(ImageLoaderRegistry *registry, const int32_t entryIndex, ImageSource *source, void **outAnimation, ImageAnimationInfo *outInfo, char *message, const size_t messageSize);
+extern ImageLoadResult ImageLoaderRegistryDecodeFrame(ImageLoaderRegistry *registry, const int32_t entryIndex, void *animation, const uint32_t frameIndex, ImageFrame *outFrame, char *message, const size_t messageSize);
+extern void ImageLoaderRegistryCloseAnimation(ImageLoaderRegistry *registry, const int32_t entryIndex, void *animation);
+
 #endif // IMAGE_LOADER_H
 
 #if defined(IMAGE_LOADER_IMPLEMENTATION) && !defined(IMAGE_LOADER_IMPLEMENTED)
@@ -291,6 +325,10 @@ static const uint16_t ImageTiffTypeShort = 3;
 static const size_t ImageTiffHeaderSize = 8;
 static const size_t ImageTiffEntrySize = 12;
 static const size_t ImageTiffEntryCountSize = 2;
+
+// A loader of the first interface ends before the animation functions, a loader with them covers all three
+static const size_t ImageLoaderSmallestStructSize = offsetof(ImageLoader, openAnimation);
+static const size_t ImageLoaderAnimationStructSize = offsetof(ImageLoader, closeAnimation) + sizeof(ImageLoaderCloseAnimationFunction *);
 
 // --- Ids -------------------------------------------------------------------------------------------------------------------
 
@@ -740,13 +778,21 @@ extern bool ImageLoaderRegistryAdd(ImageLoaderRegistry *registry, const ImageLoa
 		ImageLoaderSetMessage(message, messageSize, "unknown interface version");
 		return(false);
 	}
-	if (loader->structSize < sizeof(ImageLoader)) {
+	if (loader->structSize < ImageLoaderSmallestStructSize) {
 		ImageLoaderSetMessage(message, messageSize, "loader struct is too small");
 		return(false);
 	}
 	if (loader->probe == NULL || loader->readInfo == NULL || loader->decode == NULL || loader->releasePixels == NULL) {
 		ImageLoaderSetMessage(message, messageSize, "loader function missing");
 		return(false);
+	}
+	if (loader->structSize >= ImageLoaderAnimationStructSize) {
+		bool hasAnyAnimationFunction = loader->openAnimation != NULL || loader->decodeFrame != NULL || loader->closeAnimation != NULL;
+		bool hasAllAnimationFunctions = loader->openAnimation != NULL && loader->decodeFrame != NULL && loader->closeAnimation != NULL;
+		if (hasAnyAnimationFunction && !hasAllAnimationFunctions) {
+			ImageLoaderSetMessage(message, messageSize, "animation function missing");
+			return(false);
+		}
 	}
 	if (registry->count >= IMAGE_LOADER_MAX_COUNT) {
 		ImageLoaderSetMessage(message, messageSize, "too many loaders");
@@ -1041,6 +1087,52 @@ extern ImageLoadResult ImageLoaderRegistryLoad(ImageLoaderRegistry *registry, Im
 		}
 	}
 	return(result);
+}
+
+extern bool ImageLoaderRegistryHasAnimation(const ImageLoaderRegistry *registry, const int32_t entryIndex) {
+	if (!ImageLoaderIsValidEntry(registry, entryIndex)) {
+		return(false);
+	}
+	const ImageLoader *loader = registry->entries[entryIndex].loader;
+	bool result = loader->structSize >= ImageLoaderAnimationStructSize && loader->openAnimation != NULL;
+	return(result);
+}
+
+extern ImageLoadResult ImageLoaderRegistryOpenAnimation(ImageLoaderRegistry *registry, const int32_t entryIndex, ImageSource *source, void **outAnimation, ImageAnimationInfo *outInfo, char *message, const size_t messageSize) {
+	*outAnimation = NULL;
+	memset(outInfo, 0, sizeof(*outInfo));
+	if (!ImageLoaderRegistryHasAnimation(registry, entryIndex) || !source->seek(source, 0)) {
+		ImageLoaderSetMessage(message, messageSize, "no animation loader or invalid source");
+		return(ImageLoadResult_Unsupported);
+	}
+	const ImageLoader *loader = registry->entries[entryIndex].loader;
+	ImageLoaderLock(registry, entryIndex);
+	ImageLoadResult result = loader->openAnimation(loader, source, outAnimation, outInfo, message, messageSize);
+	ImageLoaderUnlock(registry, entryIndex);
+	return(result);
+}
+
+extern ImageLoadResult ImageLoaderRegistryDecodeFrame(ImageLoaderRegistry *registry, const int32_t entryIndex, void *animation, const uint32_t frameIndex, ImageFrame *outFrame, char *message, const size_t messageSize) {
+	memset(outFrame, 0, sizeof(*outFrame));
+	if (!ImageLoaderRegistryHasAnimation(registry, entryIndex) || animation == NULL) {
+		ImageLoaderSetMessage(message, messageSize, "no animation");
+		return(ImageLoadResult_Unsupported);
+	}
+	const ImageLoader *loader = registry->entries[entryIndex].loader;
+	ImageLoaderLock(registry, entryIndex);
+	ImageLoadResult result = loader->decodeFrame(loader, animation, frameIndex, outFrame, message, messageSize);
+	ImageLoaderUnlock(registry, entryIndex);
+	return(result);
+}
+
+extern void ImageLoaderRegistryCloseAnimation(ImageLoaderRegistry *registry, const int32_t entryIndex, void *animation) {
+	if (!ImageLoaderRegistryHasAnimation(registry, entryIndex) || animation == NULL) {
+		return;
+	}
+	const ImageLoader *loader = registry->entries[entryIndex].loader;
+	ImageLoaderLock(registry, entryIndex);
+	loader->closeAnimation(loader, animation);
+	ImageLoaderUnlock(registry, entryIndex);
 }
 
 #endif // IMAGE_LOADER_IMPLEMENTATION

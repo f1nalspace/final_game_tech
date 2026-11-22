@@ -28,6 +28,7 @@ License:
 #include "imageloader_webp.h"
 #include "imageloader_heif.h"
 #include "imageloader_icns.h"
+#include "imageloader_gif.h"
 #include "imagepyramid.h"
 
 typedef struct SelfTest {
@@ -470,8 +471,8 @@ static void SelfTestOrientation(SelfTest* test) {
 
 static void SelfTestLoaderIds(SelfTest* test) {
 	test->groupName = "Loader ids";
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
-	const char* idTexts[] = { IMAGE_LOADER_STB_ID_TEXT, IMAGE_LOADER_PNM_ID_TEXT, IMAGE_LOADER_BMP_ID_TEXT, IMAGE_LOADER_WEBP_ID_TEXT, IMAGE_LOADER_HEIF_ID_TEXT, IMAGE_LOADER_ICNS_ID_TEXT };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet(), ImageLoaderGifGet() };
+	const char* idTexts[] = { IMAGE_LOADER_STB_ID_TEXT, IMAGE_LOADER_PNM_ID_TEXT, IMAGE_LOADER_BMP_ID_TEXT, IMAGE_LOADER_WEBP_ID_TEXT, IMAGE_LOADER_HEIF_ID_TEXT, IMAGE_LOADER_ICNS_ID_TEXT, IMAGE_LOADER_GIF_ID_TEXT };
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
 		ImageLoaderId parsed;
 		bool isParsed = ImageLoaderIdParse(idTexts[loaderIndex], &parsed);
@@ -559,6 +560,17 @@ static void SelfTestLoaderSelection(SelfTest* test) {
 	wrongVersion.interfaceVersion = IMAGE_LOADER_INTERFACE_VERSION + 1;
 	ImageLoaderIdParse("00000000-0000-4000-8000-000000000002", &wrongVersion.id);
 	SelfTestCheck(test, !ImageLoaderRegistryAdd(&registry, &wrongVersion, message, sizeof(message)), "An unknown interface version is rejected");
+	// A loader of the first interface ends before the animation functions, whatever lies behind its struct is never read
+	ImageLoader firstInterface = *ImageLoaderGifGet();
+	firstInterface.structSize = (uint32_t)offsetof(ImageLoader, openAnimation);
+	ImageLoaderIdParse("00000000-0000-4000-8000-000000000003", &firstInterface.id);
+	bool isFirstInterfaceAdded = ImageLoaderRegistryAdd(&registry, &firstInterface, message, sizeof(message));
+	int32_t firstInterfaceEntry = (int32_t)registry.count - 1;
+	SelfTestCheck(test, isFirstInterfaceAdded && !ImageLoaderRegistryHasAnimation(&registry, firstInterfaceEntry), "A loader of the first interface registers without animations");
+	ImageLoader partialAnimation = *ImageLoaderGifGet();
+	partialAnimation.decodeFrame = fpl_null;
+	ImageLoaderIdParse("00000000-0000-4000-8000-000000000004", &partialAnimation.id);
+	SelfTestCheck(test, !ImageLoaderRegistryAdd(&registry, &partialAnimation, message, sizeof(message)), "A loader with only some animation functions is rejected");
 	ImageLoaderRegistryRelease(&registry);
 }
 
@@ -672,6 +684,101 @@ static void SelfTestLoaders(SelfTest* test) {
 	bmp8[bitCountOffset] = 8;
 	SelfTestDecode(bmp, bmp8, sizeof(bmp8), &pixels, &result);
 	SelfTestCheck(test, result == ImageLoadResult_Unsupported, "An 8 bit BMP is unsupported by the reference loader");
+}
+
+// tests/images/gif_selftest.gif, written by ImageMagick: 4 x 8, every frame interlaced, NETSCAPE loop count 1.
+// Frame 0 rows red, green, blue, white, twice (disposal none, 50 ms); frame 1 black 2 x 2 at 1,1 (background, delay 0);
+// frame 2 yellow 2 x 2 at 2,4 with a transparent pixel at 3,5 (previous, delay 1/100 s); frame 3 black 1 x 1 at 0,7 (none, 200 ms)
+static const uint8_t SelfTestGifAnimation[] = {
+	0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x04, 0x00, 0x08, 0x00, 0xf1, 0x03, 0x00, 0xff, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff,
+	0xff, 0x21, 0xff, 0x0b, 0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30, 0x03, 0x01, 0x01, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x04,
+	0x05, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x08, 0x00, 0x40, 0x02, 0x0a, 0x84, 0x6f, 0xa2, 0xab, 0xe1, 0x31, 0xe2, 0x78,
+	0x50, 0x16, 0x00, 0x21, 0xf9, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x01, 0x00, 0x01, 0x00, 0x02, 0x00, 0x02, 0x00, 0xc0, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x02, 0x02, 0x84, 0x51, 0x00, 0x21, 0xf9, 0x04, 0x0d, 0x01, 0x00, 0x00, 0x00, 0x2c, 0x02, 0x00, 0x04, 0x00, 0x02, 0x00, 0x02,
+	0x00, 0xc0, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x02, 0x02, 0x8c, 0x51, 0x00, 0x21, 0xf9, 0x04, 0x04, 0x14, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00,
+	0x07, 0x00, 0x01, 0x00, 0x01, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b,
+};
+
+// Opens the animation of a GIF in memory through a registry with the GIF loader alone
+static ImageLoadResult SelfTestOpenGifAnimation(ImageLoaderRegistry* registry, const uint8_t* data, const size_t dataSize, void** outAnimation, ImageAnimationInfo* outInfo) {
+	const int32_t gifEntry = 0;
+	ImageMemorySource memorySource;
+	ImageMemorySourceInit(&memorySource, data, dataSize);
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+	ImageLoadResult result = ImageLoaderRegistryOpenAnimation(registry, gifEntry, &memorySource.source, outAnimation, outInfo, message, sizeof(message));
+	return(result);
+}
+
+static bool SelfTestGifFrameIs(ImageLoaderRegistry* registry, void* animation, const uint32_t frameIndex, const uint32_t expectedMilliseconds, ImageFrame* outFrame) {
+	const int32_t gifEntry = 0;
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+	ImageLoadResult result = ImageLoaderRegistryDecodeFrame(registry, gifEntry, animation, frameIndex, outFrame, message, sizeof(message));
+	bool isFrame = result == ImageLoadResult_Success && outFrame->frameIndex == frameIndex && outFrame->durationMilliseconds == expectedMilliseconds;
+	return(isFrame);
+}
+
+static void SelfTestGif(SelfTest* test) {
+	test->groupName = "GIF";
+	const ImageLoader* gif = ImageLoaderGifGet();
+	const uint8_t opaque = 255;
+	const uint8_t full = 255;
+	ImagePixels pixels;
+	ImageLoadResult result;
+
+	bool isDecoded = SelfTestDecode(gif, SelfTestGifAnimation, sizeof(SelfTestGifAnimation), &pixels, &result);
+	bool areRowsInPlace = isDecoded && SelfTestPixelIs(&pixels, 0, 0, full, 0, 0, opaque) && SelfTestPixelIs(&pixels, 0, 1, 0, full, 0, opaque) && SelfTestPixelIs(&pixels, 0, 2, 0, 0, full, opaque) && SelfTestPixelIs(&pixels, 3, 7, full, full, full, opaque);
+	SelfTestCheck(test, areRowsInPlace, "decode gives the first frame with its interlaced rows in place");
+	free(pixels.pixels);
+	// Cut inside the data of the first frame: the rows of the first two passes are there, the others stay transparent
+	const size_t firstFrameCutSize = 68;
+	bool isCutDecoded = SelfTestDecode(gif, SelfTestGifAnimation, firstFrameCutSize, &pixels, &result);
+	SelfTestCheck(test, isCutDecoded && SelfTestPixelIs(&pixels, 0, 4, full, 0, 0, opaque) && SelfTestPixelIs(&pixels, 0, 1, 0, 0, 0, 0), "A first frame cut off by the end of the file shows the rows it has");
+	free(pixels.pixels);
+	const uint8_t notGif[] = { 'G', 'I', 'F', '8', '8', 'a', 1, 0, 1, 0, 0, 0, 0 };
+	SelfTestDecode(gif, notGif, sizeof(notGif), &pixels, &result);
+	SelfTestCheck(test, result == ImageLoadResult_Unsupported, "An unknown GIF version is unsupported");
+
+	ImageLoaderRegistry registry;
+	ImageLoaderRegistryInit(&registry);
+	char message[IMAGE_LOADER_MESSAGE_SIZE];
+	ImageLoaderRegistryAdd(&registry, gif, message, sizeof(message));
+	SelfTestCheck(test, ImageLoaderRegistryHasAnimation(&registry, 0), "The GIF loader has animations");
+	void* animation = fpl_null;
+	ImageAnimationInfo info;
+	const uint32_t expectedFrameCount = 4;
+	const uint32_t expectedPlayCount = 2;
+	ImageLoadResult openResult = SelfTestOpenGifAnimation(&registry, SelfTestGifAnimation, sizeof(SelfTestGifAnimation), &animation, &info);
+	SelfTestCheck(test, openResult == ImageLoadResult_Success && info.frameCount == expectedFrameCount && info.playCount == expectedPlayCount, "4 frames, loop count 1 plays the animation twice");
+	if (openResult == ImageLoadResult_Success) {
+		const uint32_t firstMilliseconds = 50;
+		const uint32_t shortDelayMilliseconds = 100;
+		const uint32_t lastMilliseconds = 200;
+		ImageFrame frame;
+		bool isFirst = SelfTestGifFrameIs(&registry, animation, 0, firstMilliseconds, &frame) && SelfTestPixelIs(&frame.pixels, 0, 1, 0, full, 0, opaque);
+		SelfTestCheck(test, isFirst, "Frame 0 lasts 50 ms");
+		bool isSecond = SelfTestGifFrameIs(&registry, animation, 1, shortDelayMilliseconds, &frame) && SelfTestPixelIs(&frame.pixels, 1, 1, 0, 0, 0, opaque) && SelfTestPixelIs(&frame.pixels, 0, 0, full, 0, 0, opaque);
+		SelfTestCheck(test, isSecond, "Frame 1 is drawn at its offset, a delay of 0 lasts 100 ms");
+		bool isThird = SelfTestGifFrameIs(&registry, animation, 2, shortDelayMilliseconds, &frame) && SelfTestPixelIs(&frame.pixels, 1, 1, 0, 0, 0, 0) && SelfTestPixelIs(&frame.pixels, 2, 4, full, full, 0, opaque) && SelfTestPixelIs(&frame.pixels, 3, 5, 0, full, 0, opaque);
+		SelfTestCheck(test, isThird, "Disposal to the background clears to transparent, the transparent index keeps the canvas");
+		bool isFourth = SelfTestGifFrameIs(&registry, animation, 3, lastMilliseconds, &frame) && SelfTestPixelIs(&frame.pixels, 2, 4, full, 0, 0, opaque) && SelfTestPixelIs(&frame.pixels, 1, 1, 0, 0, 0, 0) && SelfTestPixelIs(&frame.pixels, 0, 7, 0, 0, 0, opaque);
+		SelfTestCheck(test, isFourth, "Disposal to previous restores the area under the frame");
+		bool isSecondAgain = SelfTestGifFrameIs(&registry, animation, 1, shortDelayMilliseconds, &frame) && SelfTestPixelIs(&frame.pixels, 1, 1, 0, 0, 0, opaque) && SelfTestPixelIs(&frame.pixels, 2, 4, full, 0, 0, opaque);
+		SelfTestCheck(test, isSecondAgain, "An earlier frame is composed again from the first one");
+		ImageLoadResult behindResult = ImageLoaderRegistryDecodeFrame(&registry, 0, animation, expectedFrameCount, &frame, message, sizeof(message));
+		SelfTestCheck(test, behindResult == ImageLoadResult_Unsupported, "A frame behind the last one is rejected");
+		ImageLoaderRegistryCloseAnimation(&registry, 0, animation);
+	}
+	// Cut inside the data of the last frame: the animation ends with the frame before
+	const size_t lastFrameCutSize = sizeof(SelfTestGifAnimation) - 3;
+	const uint32_t completeFrameCount = 3;
+	openResult = SelfTestOpenGifAnimation(&registry, SelfTestGifAnimation, lastFrameCutSize, &animation, &info);
+	SelfTestCheck(test, openResult == ImageLoadResult_Success && info.frameCount == completeFrameCount, "A file cut inside the last frame keeps the complete frames");
+	if (openResult == ImageLoadResult_Success) {
+		ImageLoaderRegistryCloseAnimation(&registry, 0, animation);
+	}
+	openResult = SelfTestOpenGifAnimation(&registry, SelfTestGifAnimation, firstFrameCutSize, &animation, &info);
+	SelfTestCheck(test, openResult == ImageLoadResult_Unsupported && animation == fpl_null, "Without a second complete frame there is no animation");
+	ImageLoaderRegistryRelease(&registry);
 }
 
 // --- Image pyramid -----------------------------------------------------------------------------------------------------------
@@ -940,7 +1047,7 @@ static bool SelfTestIsPyramidBitIdentical(const ImagePyramidRowFunctions* functi
 static void SelfTestPyramidFolder(SelfTest* test, const char* folderPath, const fplCPUCapabilities* capabilities) {
 	ImageLoaderRegistry registry;
 	ImageLoaderRegistryInit(&registry);
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet(), ImageLoaderIcnsGet(), ImageLoaderGifGet() };
 	for (uint32_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
 		char message[IMAGE_LOADER_MESSAGE_SIZE];
 		ImageLoaderRegistryAdd(&registry, loaders[loaderIndex], message, sizeof(message));
@@ -1195,6 +1302,7 @@ static int RunSelfTest(const char* imageFolder) {
 	SelfTestLoaderSelection(&test);
 	SelfTestExif(&test);
 	SelfTestLoaders(&test);
+	SelfTestGif(&test);
 	SelfTestPyramidTables(&test);
 	SelfTestPyramidLevels(&test);
 	SelfTestPyramidSimd(&test, imageFolder);

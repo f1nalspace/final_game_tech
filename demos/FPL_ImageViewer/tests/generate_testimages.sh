@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generates the synthetic test images for the FPL_ImageViewer scaling, loader and orientation tests.
+# Generates the synthetic test images for the FPL_ImageViewer scaling, loader, orientation and animation tests.
 # The images are checked in under tests/images, this script documents how they were made and rebuilds them.
 # Requires ImageMagick 7 (magick) with the DejaVu Sans font, output is deterministic (no timestamps, no random numbers).
 # HEIC and AVIF need heif-enc (libheif with x265) and avifenc (libavif with aom), ICNS needs python3 for make_icns.py next to this script.
@@ -379,6 +379,70 @@ icnsJp2Quality=20
 magick icns_motif_512.png -quality $icnsJp2Quality JP2:icns_motif_512.jp2
 $makeIcns icns_jp2_skipped.icns ic09=icns_motif_512.jp2 ic07=icns_motif_128.png
 rm icns_motif_*.png icns_motif_*.rgba icns_motif_512.jp2
+
+# --- GIF -------------------------------------------------------------------------------------------------------------------
+
+# Still pictures: GIF87a with interlaced rows (the motif comes in four passes and must show upright), the disk with a transparent index,
+# and the disk with a logical screen of 0 x 0, so the canvas takes the size of the first frame
+gifMotifColors=32
+gifDiskSize=128
+gifDiskColors=64
+step "gif87_interlaced.gif, gif_transparent.gif, gif_zero_screen.gif"
+magick orientation_upright.png +dither -colors $gifMotifColors -interlace GIF GIF87:gif87_interlaced.gif
+magick alpha_disk.png -resize "${gifDiskSize}x${gifDiskSize}" +dither -colors $gifDiskColors GIF:gif_transparent.gif
+python3 -c 'import sys; data = bytearray(open(sys.argv[1], "rb").read()); data[6:10] = bytes(4); open(sys.argv[2], "wb").write(data)' gif_transparent.gif gif_zero_screen.gif
+
+# Every disposal on frames with offsets, 300 ms each, forever: white stays (none), the red square is cleared to transparent (background),
+# the blue square with a transparent hole is taken back to white (previous), the green and the yellow square stay
+gifCanvasSize=96
+gifSquareSize=32
+gifHoleSize=16
+gifFrameDelay=30
+step "gif_disposal.gif"
+gif_square() {
+	local size="$1" color="$2" left="$3" top="$4" disposal="$5"
+	echo "( -size ${size}x${size} xc:$color -set dispose $disposal -repage ${gifCanvasSize}x${gifCanvasSize}+$left+$top )"
+}
+# shellcheck disable=SC2046
+magick \( -size "${gifCanvasSize}x${gifCanvasSize}" xc:white -set dispose None \) \
+	$(gif_square $gifSquareSize red 8 8 Background) \
+	\( -size "${gifSquareSize}x${gifSquareSize}" xc:blue -alpha set \( -size "${gifHoleSize}x${gifHoleSize}" xc:none \) -geometry +8+8 -compose Copy -composite -set dispose Previous -repage "${gifCanvasSize}x${gifCanvasSize}+40+40" \) \
+	$(gif_square $gifSquareSize green 56 8 None) \
+	$(gif_square $gifHoleSize yellow 40 40 None) \
+	-set delay $gifFrameDelay -loop 0 GIF:gif_disposal.gif
+
+# Local color tables: a red and a blue gradient
+gifGradientSize=64
+gifGradientDelay=50
+step "gif_local_palettes.gif"
+magick -delay $gifGradientDelay -size "${gifGradientSize}x${gifGradientSize}" -define gradient:direction=East gradient:black-red gradient:black-blue -loop 0 GIF:gif_local_palettes.gif
+
+# The digits 1, 2, 3 three times, then 3 stays. ImageMagick writes -loop n as the NETSCAPE2.0 loop count n - 1, which repeats the animation n - 1 times after the first play.
+gifDigitSize=64
+gifDigitPointSize=40
+gifDigitDelay=50
+gifDigitPlayCount=3
+gifDigitColors=16
+step "gif_plays_three_times.gif"
+for digit in 1 2 3; do
+	magick -size "${gifDigitSize}x${gifDigitSize}" -background white -fill black -font DejaVu-Sans -pointsize $gifDigitPointSize -gravity center "label:$digit" "${pngOptions[@]}" "PNG24:gif_digit_$digit.png"
+done
+magick -delay $gifDigitDelay gif_digit_1.png gif_digit_2.png gif_digit_3.png +dither -colors $gifDigitColors -loop $gifDigitPlayCount GIF:gif_plays_three_times.gif
+rm gif_digit_*.png
+
+# Cut off: the disposal animation without the end of its last frame keeps its complete frames, the interlaced motif without its second half shows the passes it has
+gifCutBytes=8
+step "gif_truncated_animation.gif, gif_truncated_first_frame.gif"
+head -c $(( $(stat -c %s gif_disposal.gif) - gifCutBytes )) gif_disposal.gif > gif_truncated_animation.gif
+head -c $(( $(stat -c %s gif87_interlaced.gif) / 2 )) gif87_interlaced.gif > gif_truncated_first_frame.gif
+
+# The bytes of the GIF self test (selftest.h): 4 x 8, interlaced, every disposal, delays 5, 0, 1 and 20, loop count 1
+step "gif_selftest.gif"
+magick \( -size 4x1 xc:red "xc:rgb(0,255,0)" xc:blue xc:white xc:red "xc:rgb(0,255,0)" xc:blue xc:white -append -set dispose None -set delay 5 -repage 4x8+0+0 \) \
+	\( -size 2x2 xc:black -set dispose Background -set delay 0 -repage 4x8+1+1 \) \
+	\( \( -size 1x1 xc:yellow xc:yellow +append \) \( -size 1x1 xc:yellow xc:none +append \) -append -set dispose Previous -set delay 1 -repage 4x8+2+4 \) \
+	\( -size 1x1 xc:black -set dispose None -set delay 20 -repage 4x8+0+7 \) \
+	-interlace GIF -loop 2 GIF:gif_selftest.gif
 
 # --- Broken files ----------------------------------------------------------------------------------------------------------
 

@@ -21,6 +21,7 @@ project "FPL_ImageViewer"
 		"imageloader_webp.h",
 		"imageloader_heif.h",
 		"imageloader_icns.h",
+		"imageloader_gif.h",
 		"selftest.h",
 		"imageresources.h",
 		"fpl_imageviewer.cpp",
