@@ -180,7 +180,7 @@ SOFTWARE.
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
-	- Additional windows next to the main window, with Multi variants of the window functions, OpenGL and software video in every window
+	- Additional windows next to the main window, with Multi variants of the window functions and video in every window
 	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
 	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
 	- Windows XP support
@@ -379,6 +379,7 @@ SOFTWARE.
 	- New: Added fields versionIndex and contextFlags to fplVideoSurfaceOpenGL
 	- New: Added fplVideoMakeCurrentMulti(), fplVideoFlipMulti() and fplVideoGetSurfaceMulti(), OpenGL draws into additional windows
 	- New: Added fplVideoGetBackBufferMulti() and fplVideoResizeBackBufferMulti(), the software backend draws into additional windows
+	- New: [Vulkan] Every additional window gets its own surface, see fplVideoGetSurfaceMulti()
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
@@ -2153,7 +2154,6 @@ SOFTWARE.
 	- [Vulkan] The debug messenger message-type filter (GENERAL/VALIDATION/PERFORMANCE) is hardcoded to all types - fplVulkanSettings only exposes severity filtering, not message-type filtering
 	- [Vulkan] When FPL creates the Vulkan instance itself, fplVulkanSettings (appName/engineName/versions/apiVersion) are passed through without validation - invalid values surface later as a raw vkCreateInstance VkResult instead of an early FPL error
 	- [Window] The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp work on the main window only, not on additional windows
-	- [Video] The Vulkan video backend draws into the main window only, not into additional windows
 
 	@section section_support_status_unsupported Not Supported
 
@@ -11732,7 +11732,7 @@ fpl_common_api void fplVideoFlip(void);
 * @brief Forces the given window to be redrawn or to swap its back/front buffer.
 * @param[in] window The @ref fplWindowHandle of the window.
 * @return Returns true when the frame was presented, false for an unknown window, without video or when the video backend does not draw into the window.
-* @note The OpenGL and software video backends draw into every window, the Vulkan video backend draws into the main window only.
+* @note Every video backend draws into every window. With Vulkan the application presents by itself, this function does nothing then and returns true.
 * @note A window that is not current is made current for the swap, see @ref fplVideoMakeCurrentMulti().
 * @note The software video backend shows the backbuffer of the window, see @ref fplVideoGetBackBufferMulti().
 * @see fplVideoFlip()
@@ -11746,7 +11746,7 @@ fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window);
 * @note All windows share one OpenGL rendering context, so textures, buffers and shaders are available in every window. The rendering goes into the main window, until this function picks another one.
 * @note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
 * @note Destroying the window that is current makes the main window current again.
-* @note The video backends without a rendering context to switch do nothing here and return true: the software video backend for every window, the Vulkan video backend for the main window, it draws into the main window only.
+* @note The software and the Vulkan video backend have no rendering context to switch, this function does nothing there and returns true.
 */
 fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window);
 
@@ -11769,6 +11769,7 @@ fpl_common_api const fplVideoSurface *fplGetVideoSurface(void);
 * @param[in] window The @ref fplWindowHandle of the window.
 * @return Returns the video surface @ref fplVideoSurface, null for an unknown window, without video or when the video backend does not draw into the window.
 * @note The surface of an additional window has its own window handles, the OpenGL rendering context is the one of the main window.
+* @note With Vulkan every window has its own surface (VkSurfaceKHR) of the same instance. The surface of an additional window is destroyed with the window, so destroy the swap chain of the window before @ref fplWindowDestroy().
 * @see fplGetVideoSurface()
 */
 fpl_common_api const fplVideoSurface *fplVideoGetSurfaceMulti(fplWindowHandle *window);
@@ -38607,6 +38608,10 @@ fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *setti
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_PrepareWindow) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	// An additional window uses the instance of the main window, it only gets its own surface
+	if (!windowState->handle->isMain) {
+		return(true);
+	}
 	if (videoSettings->graphics.vulkan.instanceHandle == fpl_null) {
 
 		const fpl__VulkanApi *api = &nativeBackend->api;
@@ -38742,26 +38747,27 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Vulkan_Fin
 	return(true);
 }
 
+fpl_internal void fpl__VulkanDestroySurface(fpl__VideoBackendVulkan *nativeBackend, const fpl__VkSurfaceKHR surfaceHandle) {
+	const fpl__VulkanApi *api = &nativeBackend->api;
+	fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
+	fplAssert(destroyProc != fpl_null);
+
+	void *surfaceAddress = (void *)(uintptr_t)surfaceHandle;
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", surfaceAddress);
+	destroyProc(nativeBackend->instanceHandle, surfaceHandle, nativeBackend->allocator);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 
-	const fpl__VulkanApi *api = &nativeBackend->api;
-
 	if (nativeBackend->surfaceHandle != FPL__VK_NULL_HANDLE) {
-		fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
-		fplAssert(destroyProc != fpl_null);
-
-		void *surfaceAddress = (void *)(uintptr_t)nativeBackend->surfaceHandle;
-		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", surfaceAddress);
-		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
-
+		fpl__VulkanDestroySurface(nativeBackend, nativeBackend->surfaceHandle);
 		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
 	}
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
-	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
-
+// Creates a surface for the window with the instance of the backend
+fpl_internal bool fpl__VulkanCreateSurface(const fpl__VideoBackendVulkan *nativeBackend, const fpl__PlatformWindowState *windowState, fpl__VkSurfaceKHR *outSurfaceHandle) {
 	const fpl__VulkanApi *api = &nativeBackend->api;
 
 	if (nativeBackend->instanceHandle == FPL__VK_NULL_HANDLE) {
@@ -38815,21 +38821,73 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 #endif
 
 	fplAssert(surfaceHandle != FPL__VK_NULL_HANDLE);
+	*outSurfaceHandle = surfaceHandle;
+	return(true);
+}
+
+// Fills the window fields of a video surface
+fpl_internal void fpl__VulkanFillSurfaceWindow(const fpl__PlatformWindowState *windowState, fplVideoSurface *surface) {
+#if defined(FPL_PLATFORM_WINDOWS)
+	surface->window.win32.windowHandle = windowState->win32.windowHandle;
+	surface->window.win32.deviceContext = windowState->win32.deviceContext;
+#elif defined(FPL_SUBPLATFORM_X11)
+	surface->window.x11.display = (fpl__X11_Display *)windowState->x11.display;
+	surface->window.x11.window = windowState->x11.core.window;
+	surface->window.x11.screen = windowState->x11.screen;
+	surface->window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
+#else
+	FPL__UNUSED(windowState);
+	FPL__UNUSED(surface);
+#endif
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+	if (!fpl__VulkanCreateSurface(nativeBackend, windowState, &surfaceHandle)) {
+		return(false);
+	}
 	nativeBackend->surfaceHandle = surfaceHandle;
 
 	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
 	backend->surface.vulkan.surfaceKHR = (uint64_t)nativeBackend->surfaceHandle;
+	fpl__VulkanFillSurfaceWindow(windowState, &backend->surface);
 
-#if defined(FPL_PLATFORM_WINDOWS)
-	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
-	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
-#elif defined(FPL_SUBPLATFORM_X11)
-	backend->surface.window.x11.display = (fpl__X11_Display *)windowState->x11.display;
-	backend->surface.window.x11.window = windowState->x11.core.window;
-	backend->surface.window.x11.screen = windowState->x11.screen;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
+	return(true);
+}
+
+// The surface of an additional window is kept as the 64-bit value of its video surface, the handle is a pointer on 64-bit platforms only
+fpl_internal fpl__VkSurfaceKHR fpl__VulkanSurfaceFromValue(const uint64_t value) {
+#if defined(FPL_CPU_64BIT)
+	fpl__VkSurfaceKHR result = (fpl__VkSurfaceKHR)(uintptr_t)value;
+#else
+	fpl__VkSurfaceKHR result = (fpl__VkSurfaceKHR)value;
 #endif
+	return(result);
+}
 
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_Vulkan_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	fplVideoSurface *surface = &windowState->handle->videoSurface;
+	if (surface->vulkan.surfaceKHR != 0) {
+		fpl__VkSurfaceKHR surfaceHandle = fpl__VulkanSurfaceFromValue(surface->vulkan.surfaceKHR);
+		fpl__VulkanDestroySurface(nativeBackend, surfaceHandle);
+		surface->vulkan.surfaceKHR = 0;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Vulkan_SetupAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+	if (!fpl__VulkanCreateSurface(nativeBackend, windowState, &surfaceHandle)) {
+		return(false);
+	}
+	*outSurface = backend->surface;
+	outSurface->vulkan.surfaceKHR = (uint64_t)surfaceHandle;
+	fpl__VulkanFillSurfaceWindow(windowState, outSurface);
 	return(true);
 }
 
@@ -38892,6 +38950,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct(void) {
 	result.destroyedWindowFunc = fpl__VideoBackend_Vulkan_DestroyedWindow;
 	result.presentFunc = fpl__VideoBackend_Vulkan_Present;
 	result.getRequirementsFunc = fpl__VideoBackend_Vulkan_GetRequirements;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Vulkan_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_Vulkan_ReleaseAdditionalWindow;
 	return(result);
 }
 
