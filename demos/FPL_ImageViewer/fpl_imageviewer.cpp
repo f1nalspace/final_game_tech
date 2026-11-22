@@ -33,6 +33,7 @@ Changelog:
 	- New: --window=<W>x<H> sets the initial window size, --no-preview hides the preview strip
 	- New: FINALIMAGEVIEWER_APP (CMake option) builds the standalone app finalimageviewer: executable, window class and log in ~/.finalimageviewer
 	- Changed: Logs only with --log (log.txt in the home folder) or --log=<file>, every run starts a new log
+	- New: Pictures are sorted inside each folder, by default naturally (case ignored, numbers by value); --sort=natural|name|date|size|none, --sort-reverse, S cycles the order and Shift + S reverses it
 	- New: --selftest checks the view math and the resample tap ranges without window and OpenGL
 	- New: Correct downscaling: the GPU resample pipeline (resamplepipeline.h) scales in two separable passes in linear light with premultiplied alpha and widens the kernel by the reduction factor, the same math as ImageMagick -resize
 	- New: Box and Mitchell kernels, separate filters for downscaling (default Mitchell) and upscaling (default Catmull-Rom), T and Shift+T step the filter of the direction in effect, the window title shows it
@@ -251,6 +252,11 @@ static int CompareStringIgnoreCase(const char* a, const char* b) {
 
 typedef struct PictureFile {
 	char filePath[FPL_MAX_PATH_LENGTH];
+	// What the sorting compares: the folder is filePath up to fileNameOffset, listIndex is the position in the directory listing
+	uint64_t modifyTime;
+	uint64_t fileSize;
+	size_t fileNameOffset;
+	size_t listIndex;
 	// Loader entry the L key chose for this file, -1 lets the registry select
 	int32_t forcedLoaderEntry;
 } PictureFile;
@@ -367,6 +373,21 @@ typedef enum WheelMode {
 	WheelMode_Count,
 } WheelMode;
 
+// Order of the pictures inside each folder, the folders themselves are always in natural order
+typedef enum SortMode {
+	// By name, ignoring case, with numbers compared by their value: "img2" before "img10"
+	SortMode_Natural = 0,
+	// By the bytes of the name, like ls in the C locale
+	SortMode_Name,
+	// By modification time, oldest first
+	SortMode_Date,
+	// By file size, smallest first
+	SortMode_Size,
+	// As the directory listing returns them
+	SortMode_None,
+	SortMode_Count,
+} SortMode;
+
 typedef struct ViewerParameters {
 	const char* path;
 	const char* renderToFilePath;
@@ -381,6 +402,8 @@ typedef struct ViewerParameters {
 	float centerY;
 	ViewPersistence persistence;
 	WheelMode wheelMode;
+	SortMode sortMode;
+	bool isSortReversed;
 	ResampleKernel downKernel;
 	ResampleKernel upKernel;
 	ResampleBackground background;
@@ -468,6 +491,9 @@ static const char* ViewPersistenceKeys[ViewPersistence_Count] = { "reset", "rela
 static const char* ViewPersistenceTitles[ViewPersistence_Count] = { "", "keep relative", "keep absolute" };
 static const char* WheelModeKeys[WheelMode_Count] = { "zoom", "navigate" };
 static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
+// Command line keys of --sort and how the window title shows the order, which it leaves out for natural and not reversed
+static const char* SortModeKeys[SortMode_Count] = { "natural", "name", "date", "size", "none" };
+static const char* SortModeTitles[SortMode_Count] = { "natural order", "name order", "date order", "size order", "unsorted" };
 
 // Both defaults decided with the comparison crops of iteration 2 and 5 (plan section 2.2)
 #define DEFAULT_DOWN_KERNEL ResampleKernel_Mitchell
@@ -567,6 +593,9 @@ typedef struct ViewerState {
 	ViewState startView;
 	ViewPersistence persistence;
 	WheelMode wheelMode;
+	// S cycles the order, Shift + S reverses it
+	SortMode sortMode;
+	bool isSortReversed;
 	PointerState pointer;
 
 	LoadQueue loadQueue;
@@ -687,7 +716,7 @@ static void ClearPictureFiles(ViewerState* state) {
 	state->folderCount = 0;
 }
 
-static void AddPictureFile(ViewerState* state, const char* filePath) {
+static void AddPictureFile(ViewerState* state, const char* filePath, const fplFileEntry* entry) {
 	fplAssert(state->pictureFileCount <= state->pictureFileCapacity);
 	if (state->pictureFileCapacity == 0) {
 		state->pictureFileCapacity = 1;
@@ -696,8 +725,14 @@ static void AddPictureFile(ViewerState* state, const char* filePath) {
 		state->pictureFileCapacity *= 2;
 		state->pictureFiles = (PictureFile*)realloc(state->pictureFiles, sizeof(PictureFile) * state->pictureFileCapacity);
 	}
-	PictureFile* pictureFile = &state->pictureFiles[state->pictureFileCount++];
+	size_t listIndex = state->pictureFileCount++;
+	PictureFile* pictureFile = &state->pictureFiles[listIndex];
+	pictureFile->listIndex = listIndex;
 	fplCopyString(filePath, pictureFile->filePath, fplArrayCount(pictureFile->filePath));
+	const char* fileName = fplExtractFileName(pictureFile->filePath);
+	pictureFile->fileNameOffset = (size_t)(fileName - pictureFile->filePath);
+	pictureFile->modifyTime = entry->timeStamps.lastModifyTime;
+	pictureFile->fileSize = entry->size;
 	pictureFile->forcedLoaderEntry = -1;
 }
 
@@ -712,7 +747,7 @@ static void AddPicturesFromPath(ViewerState* state, const char* path, const bool
 		fplPathCombine(fullPath, fplArrayCount(fullPath), 2, path, entry.name);
 		if (entry.type == fplFileEntryType_File) {
 			if (IsPictureFile(state, fullPath)) {
-				AddPictureFile(state, fullPath);
+				AddPictureFile(state, fullPath, &entry);
 				++addedPics;
 			}
 		} else if (recursive && entry.type == fplFileEntryType_Directory) {
@@ -722,6 +757,166 @@ static void AddPicturesFromPath(ViewerState* state, const char* path, const bool
 	if (addedPics > 0) {
 		++state->folderCount;
 	}
+}
+
+static bool IsAsciiDigit(const char c) {
+	bool result = c >= '0' && c <= '9';
+	return(result);
+}
+
+static int ToLowerAscii(const unsigned char c) {
+	const int caseOffset = 'a' - 'A';
+	int result = (c >= 'A' && c <= 'Z') ? c + caseOffset : c;
+	return(result);
+}
+
+// Ignores the case of ASCII letters and compares runs of digits by their value, so "img2" comes before "img10"; numbers with leading zeros equal the same number without them
+static int CompareNatural(const char* a, const size_t lengthA, const char* b, const size_t lengthB) {
+	size_t indexA = 0;
+	size_t indexB = 0;
+	while (indexA < lengthA && indexB < lengthB) {
+		if (IsAsciiDigit(a[indexA]) && IsAsciiDigit(b[indexB])) {
+			while (indexA < lengthA && a[indexA] == '0') {
+				++indexA;
+			}
+			while (indexB < lengthB && b[indexB] == '0') {
+				++indexB;
+			}
+			size_t digitsEndA = indexA;
+			while (digitsEndA < lengthA && IsAsciiDigit(a[digitsEndA])) {
+				++digitsEndA;
+			}
+			size_t digitsEndB = indexB;
+			while (digitsEndB < lengthB && IsAsciiDigit(b[digitsEndB])) {
+				++digitsEndB;
+			}
+			// Without leading zeros the longer number is the larger one, equally long ones compare digit by digit
+			size_t digitCountA = digitsEndA - indexA;
+			size_t digitCountB = digitsEndB - indexB;
+			if (digitCountA != digitCountB) {
+				return(digitCountA < digitCountB ? -1 : 1);
+			}
+			int digitsCompare = memcmp(a + indexA, b + indexB, digitCountA);
+			if (digitsCompare != 0) {
+				return(digitsCompare);
+			}
+			indexA = digitsEndA;
+			indexB = digitsEndB;
+			continue;
+		}
+		int lowerA = ToLowerAscii((unsigned char)a[indexA]);
+		int lowerB = ToLowerAscii((unsigned char)b[indexB]);
+		if (lowerA != lowerB) {
+			return(lowerA < lowerB ? -1 : 1);
+		}
+		++indexA;
+		++indexB;
+	}
+	bool hasRestA = indexA < lengthA;
+	bool hasRestB = indexB < lengthB;
+	int result = hasRestA ? 1 : (hasRestB ? -1 : 0);
+	return(result);
+}
+
+static int CompareUnsigned(const uint64_t a, const uint64_t b) {
+	int result = a < b ? -1 : (a > b ? 1 : 0);
+	return(result);
+}
+
+// The folder first, so the pictures of a folder stay together; then the key of the sort mode inside the folder, ties by natural name and at last by the bytes of the path.
+// SortMode_None restores the order of the directory listing.
+static int ComparePictureFiles(const PictureFile* a, const PictureFile* b, const SortMode mode, const bool isReversed) {
+	if (mode == SortMode_None) {
+		int listCompare = CompareUnsigned(a->listIndex, b->listIndex);
+		int listResult = isReversed ? -listCompare : listCompare;
+		return(listResult);
+	}
+	int folderCompare = CompareNatural(a->filePath, a->fileNameOffset, b->filePath, b->fileNameOffset);
+	if (folderCompare != 0) {
+		return(folderCompare);
+	}
+	const char* nameA = a->filePath + a->fileNameOffset;
+	const char* nameB = b->filePath + b->fileNameOffset;
+	int keyCompare;
+	switch (mode) {
+		case SortMode_Name:
+			keyCompare = strcmp(nameA, nameB);
+			break;
+		case SortMode_Date:
+			keyCompare = CompareUnsigned(a->modifyTime, b->modifyTime);
+			break;
+		case SortMode_Size:
+			keyCompare = CompareUnsigned(a->fileSize, b->fileSize);
+			break;
+		default:
+			keyCompare = 0;
+			break;
+	}
+	if (keyCompare == 0) {
+		size_t nameLengthA = fplGetStringLength(nameA);
+		size_t nameLengthB = fplGetStringLength(nameB);
+		keyCompare = CompareNatural(nameA, nameLengthA, nameB, nameLengthB);
+	}
+	if (keyCompare == 0) {
+		keyCompare = strcmp(a->filePath, b->filePath);
+	}
+	int result = isReversed ? -keyCompare : keyCompare;
+	return(result);
+}
+
+// Sorts in place: the array stays where it is, so a load thread that still reads a path from it never touches freed memory
+static void SortPictureFiles(ViewerState* state) {
+	size_t count = state->pictureFileCount;
+	if (count < 2) {
+		return;
+	}
+
+	// Bottom-up merge sort of indices, the entries are large and only moved once at the end
+	size_t* order = (size_t*)malloc(sizeof(size_t) * count);
+	size_t* merged = (size_t*)malloc(sizeof(size_t) * count);
+	PictureFile* sorted = (PictureFile*)malloc(sizeof(PictureFile) * count);
+	if (order == fpl_null || merged == fpl_null || sorted == fpl_null) {
+		free(sorted);
+		free(merged);
+		free(order);
+		return;
+	}
+	for (size_t i = 0; i < count; ++i) {
+		order[i] = i;
+	}
+	const size_t runPairFactor = 2;
+	for (size_t runLength = 1; runLength < count; runLength *= runPairFactor) {
+		for (size_t left = 0; left < count; left += runLength * runPairFactor) {
+			size_t middle = fplMin(left + runLength, count);
+			size_t right = fplMin(left + runLength * runPairFactor, count);
+			size_t indexA = left;
+			size_t indexB = middle;
+			size_t output = left;
+			while (indexA < middle && indexB < right) {
+				const PictureFile* fileA = &state->pictureFiles[order[indexA]];
+				const PictureFile* fileB = &state->pictureFiles[order[indexB]];
+				// Only a strictly smaller right entry goes first, so the sort is stable
+				bool isRightFirst = ComparePictureFiles(fileB, fileA, state->sortMode, state->isSortReversed) < 0;
+				merged[output++] = isRightFirst ? order[indexB++] : order[indexA++];
+			}
+			while (indexA < middle) {
+				merged[output++] = order[indexA++];
+			}
+			while (indexB < right) {
+				merged[output++] = order[indexB++];
+			}
+		}
+		size_t* swap = order;
+		order = merged;
+		merged = swap;
+	}
+	for (size_t i = 0; i < count; ++i) {
+		sorted[i] = state->pictureFiles[order[i]];
+	}
+	fplMemoryCopy(sorted, sizeof(PictureFile) * count, state->pictureFiles);
+	free(sorted);
+	free(merged);
+	free(order);
 }
 
 static void ReleaseTexture(GLuint* target) {
@@ -1286,6 +1481,15 @@ static void UpdateWindowTitle(ViewerState* state) {
 		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
 		fplStringAppend(wheelModeTitle, viewText, fplArrayCount(viewText));
 	}
+	bool isDefaultSortOrder = state->sortMode == SortMode_Natural && !state->isSortReversed;
+	if (!isDefaultSortOrder) {
+		const char* sortModeTitle = SortModeTitles[state->sortMode];
+		fplStringAppend(titleSeparator, viewText, fplArrayCount(viewText));
+		fplStringAppend(sortModeTitle, viewText, fplArrayCount(viewText));
+		if (state->isSortReversed) {
+			fplStringAppend(" reversed", viewText, fplArrayCount(viewText));
+		}
+	}
 
 	// The loader that read the active picture, once it is shown
 	char loaderText[FPL_MAX_NAME_LENGTH] = fplZeroInit;
@@ -1520,6 +1724,8 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			const char* benchLevelsValue = MatchLongParameter(argument, "--bench-lod");
 			const char* writePyramidValue = MatchLongParameter(argument, "--write-pyramid");
 			const char* logValue = MatchLongParameter(argument, "--log");
+			const char* sortValue = MatchLongParameter(argument, "--sort");
+			const char* sortReverseValue = MatchLongParameter(argument, "--sort-reverse");
 			if (renderToValue != fpl_null) {
 				params->renderToFilePath = renderToValue;
 				isValid = *renderToValue != 0;
@@ -1595,6 +1801,13 @@ static bool ParseParameters(ViewerParameters *params, const ViewerParameters *de
 			} else if (logValue != fpl_null) {
 				params->isLogEnabled = true;
 				params->logFilePath = *logValue != 0 ? logValue : fpl_null;
+			} else if (sortValue != fpl_null) {
+				int sortModeIndex = 0;
+				isValid = FindKeyIndex(sortValue, SortModeKeys, SortMode_Count, &sortModeIndex);
+				params->sortMode = (SortMode)sortModeIndex;
+			} else if (sortReverseValue != fpl_null) {
+				params->isSortReversed = true;
+				isValid = *sortReverseValue == 0;
 			} else {
 				isValid = false;
 			}
@@ -2168,12 +2381,14 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 	if (fplDirectoryExists(path)) {
 		fplCopyString(path, state->rootPath, fplArrayCount(state->rootPath));
 		AddPicturesFromPath(state, state->rootPath, recursive);
+		SortPictureFiles(state);
 		result = state->pictureFileCount > 0;
 		*startIndex = 0;
 	} else if (fplFileExists(path)) {
 		if (IsPictureFile(state, path)) {
 			fplExtractFilePath(path, state->rootPath, fplArrayCount(state->rootPath));
 			AddPicturesFromPath(state, state->rootPath, recursive);
+			SortPictureFiles(state);
 			if (!FindPictureIndexByPath(state, path, startIndex)) {
 				*startIndex = 0;
 			}
@@ -2181,6 +2396,27 @@ static bool LoadPicturesPath(ViewerState* state, const char* path, const bool re
 		}
 	}
 	return(result);
+}
+
+// S and Shift + S: the active picture stays the active one at its new position, the pictures around it are loaded again
+static void ChangeSortOrder(ViewerState* state, const SortMode mode, const bool isReversed) {
+	state->sortMode = mode;
+	state->isSortReversed = isReversed;
+	flogWrite("Sort order: %s%s", SortModeKeys[mode], (isReversed ? " reversed" : ""));
+	if (state->pictureFileCount == 0) {
+		UpdateWindowTitle(state);
+		return;
+	}
+	// The load threads read the list, they drop their jobs before it changes
+	ShutdownQueue(&state->loadQueue);
+	StopLoadingInThreads(state);
+	char activeFilePath[FPL_MAX_PATH_LENGTH];
+	fplCopyString(state->pictureFiles[state->activeFileIndex].filePath, activeFilePath, fplArrayCount(activeFilePath));
+	SortPictureFiles(state);
+	size_t activeIndex = 0;
+	FindPictureIndexByPath(state, activeFilePath, &activeIndex);
+	state->activeFileIndex = (int)activeIndex;
+	ChangeViewPicture(state, 0, true);
 }
 
 static void ReleaseUserInterface(ViewerState* state) {
@@ -2288,6 +2524,8 @@ static bool Init(ViewerState* state) {
 	state->view = state->startView;
 	state->persistence = state->params.persistence;
 	state->wheelMode = state->params.wheelMode;
+	state->sortMode = state->params.sortMode;
+	state->isSortReversed = state->params.isSortReversed;
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &state->maxTextureSize);
 	flogWrite("Largest texture size: %d", state->maxTextureSize);
@@ -3424,6 +3662,7 @@ int main(int argc, char** argv) {
 	flogWrite("Preview enabled: %s", (state->params.preview ? "yes" : "no"));
 	flogWrite("Info line: %s", (state->params.showInfo ? (state->params.showRelativePath ? "relative path" : "file name") : "off"));
 	flogWrite("Recursive enabled: %s", (state->params.recursive ? "yes" : "no"));
+	flogWrite("Sort order: %s%s", SortModeKeys[state->params.sortMode], (state->params.isSortReversed ? " reversed" : ""));
 	flogWrite("Window size: %u x %u", state->params.windowWidth, state->params.windowHeight);
 	flogWrite("Zoom mode: %d, scale: %f, center: %.3f, %.3f", (int)state->params.zoomMode, state->params.zoomScale, state->params.centerX, state->params.centerY);
 	flogWrite("View on picture change: %s, wheel: %s", ViewPersistenceKeys[state->params.persistence], WheelModeKeys[state->params.wheelMode]);
@@ -3573,6 +3812,15 @@ int main(int argc, char** argv) {
 										// Filter of the direction in effect, backwards with shift. On press, because shift is often let go before the key.
 										int step = isShiftDown ? -1 : 1;
 										CycleActiveKernel(state, step);
+									} else if (key == fplKey_S && isFirstPress) {
+										// Next order, reversed with shift; on press like T
+										if (isShiftDown) {
+											ChangeSortOrder(state, state->sortMode, !state->isSortReversed);
+										} else {
+											int sortModeCount = (int)SortMode_Count;
+											int nextSortMode = ((int)state->sortMode + 1) % sortModeCount;
+											ChangeSortOrder(state, (SortMode)nextSortMode, state->isSortReversed);
+										}
 									} else if (key == fplKey_OemPlus || key == fplKey_Add) {
 										// Zoom steps repeat while the key is held, Ctrl makes no difference
 										StepActivePictureZoom(state, 1);
