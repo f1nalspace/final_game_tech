@@ -25,7 +25,7 @@ Author:
 
 Changelog:
 	## v0.6.0
-	- New: Info line at the top with file name, size, bpp and zoom, already while loading; I or --no-info hides it
+	- New: Info line at the top with picture number of count, file name, size, bpp and zoom, already while loading; I or --no-info hides it
 	- New: N or --relative-path shows the path relative to the opened folder, shortened at the front when too long
 	- New: final_ui.h draws the interface through the new OpenGL 3.3 backend fui_backend_gl3.h
 	- New: --render-to=<file.pam> --window=<W>x<H> renders one picture offscreen into a framebuffer of exactly that size, writes it as PAM and exits, the window it needs for OpenGL stays hidden
@@ -468,12 +468,14 @@ static const char* WheelModeTitles[WheelMode_Count] = { "", "wheel pages" };
 // Kernel of the 2:1 reductions of the level chain (plan section 2.3)
 #define DEFAULT_LEVEL_KERNEL ImagePyramidKernel_Mitchell
 
-// Info line (plan section 2.8): a translucent bar over the full width at the top, the file name on the left, size, bpp and zoom on the right
+// Info line (plan section 2.8): a translucent bar over the full width at the top, the picture counter and the file name on the left, size, bpp and zoom on the right
 static const float InfoLineTextPixelHeight = 16.0f;
 static const float InfoLinePaddingX = 8.0f;
 static const float InfoLinePaddingY = 5.0f;
 // Smallest space between the file name and the right part
 static const float InfoLineSeparationWidth = 24.0f;
+// Space between the picture counter and the file name
+static const float InfoLineCounterSeparationWidth = 12.0f;
 // Over a white picture the bar is still dark enough for the gray details, about 5:1
 static const float InfoLineBackgroundOpacity = 0.7f;
 static const float InfoLineNameBrightness = 1.0f;
@@ -2740,7 +2742,7 @@ static float GetInfoLineHeight(const ViewerState* state) {
 	return(result);
 }
 
-// Over the full width at the top: the file name on the left, shortened at the front when space runs out, the details right aligned and never shortened
+// Over the full width at the top: the picture counter and the file name on the left, the name shortened at the front when space runs out, the details right aligned and never shortened
 static void DrawInfoLine(ViewerState* state, const ViewSize viewportSize) {
 	float barHeight = GetInfoLineHeight(state);
 	if (barHeight <= 0.0f) {
@@ -2765,13 +2767,22 @@ static void DrawInfoLine(ViewerState* state, const ViewSize viewportSize) {
 	fuiColor detailsColor = fuiColorRGB(InfoLineDetailBrightness, InfoLineDetailBrightness, InfoLineDetailBrightness);
 	fuiDrawText(ui, detailsText, 0, detailsPosition, InfoLineTextPixelHeight, detailsColor);
 
+	// Which picture of how many, like the window title, never shortened
+	char counterText[FPL_MAX_NAME_LENGTH];
+	int activePictureNumber = state->activeFileIndex + 1;
+	fplStringFormat(counterText, fplArrayCount(counterText), "%d / %zu", activePictureNumber, state->pictureFileCount);
+	fuiVec2 counterSize = fuiMeasureText(ui, counterText, 0, InfoLineTextPixelHeight);
+	fuiVec2 counterPosition = fuiV2(InfoLinePaddingX, textTop);
+	fuiDrawText(ui, counterText, 0, counterPosition, InfoLineTextPixelHeight, detailsColor);
+
 	bool hasDetails = detailsText[0] != 0;
+	float nameLeft = ceilf(InfoLinePaddingX + counterSize.x + InfoLineCounterSeparationWidth);
 	float nameRight = hasDetails ? detailsLeft - InfoLineSeparationWidth : viewportWidth - InfoLinePaddingX;
-	float nameMaxWidth = nameRight - InfoLinePaddingX;
+	float nameMaxWidth = nameRight - nameLeft;
 	const char* displayPath = GetActivePictureDisplayPath(state);
 	char nameText[FPL_MAX_PATH_LENGTH];
 	TruncatePathFrontToWidth(ui, displayPath, nameMaxWidth, InfoLineTextPixelHeight, nameText, fplArrayCount(nameText));
-	fuiVec2 namePosition = fuiV2(InfoLinePaddingX, textTop);
+	fuiVec2 namePosition = fuiV2(nameLeft, textTop);
 	fuiColor nameColor = fuiColorRGB(InfoLineNameBrightness, InfoLineNameBrightness, InfoLineNameBrightness);
 	fuiDrawText(ui, nameText, 0, namePosition, InfoLineTextPixelHeight, nameColor);
 }
