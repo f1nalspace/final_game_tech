@@ -36,6 +36,7 @@ set(MY_HEADER_FILES
 	"imageloader_pnm.h"
 	"imageloader_bmp.h"
 	"imageloader_webp.h"
+	"imageloader_heif.h"
 	"selftest.h"
 	)
 

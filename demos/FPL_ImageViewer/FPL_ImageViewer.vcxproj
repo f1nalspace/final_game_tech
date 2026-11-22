@@ -210,6 +210,7 @@
     <ClInclude Include="imageloader_pnm.h" />
     <ClInclude Include="imageloader_stb.h" />
     <ClInclude Include="imageloader_webp.h" />
+    <ClInclude Include="imageloader_heif.h" />
     <ClInclude Include="imagepyramid.h" />
     <ClInclude Include="imagepyramid_x86.h" />
     <ClInclude Include="imageresources.h" />

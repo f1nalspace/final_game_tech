@@ -2,10 +2,10 @@
 Type=Application
 Name=Final Image Viewer
 GenericName=Image Viewer
-Comment=Image viewer with exact scaling for JPEG, PNG, BMP, TGA, WebP and PNM
+Comment=Image viewer with exact scaling for JPEG, PNG, BMP, TGA, WebP, HEIC, AVIF and PNM
 Exec=finalimageviewer %f
 Icon=finalimageviewer
 Terminal=false
 Categories=Graphics;Viewer;
-MimeType=image/jpeg;image/png;image/bmp;image/x-tga;image/webp;image/x-portable-anymap;image/x-portable-graymap;image/x-portable-pixmap;
+MimeType=image/jpeg;image/png;image/bmp;image/x-tga;image/webp;image/heif;image/heic;image/avif;image/x-portable-anymap;image/x-portable-graymap;image/x-portable-pixmap;
 StartupWMClass=finalimageviewer

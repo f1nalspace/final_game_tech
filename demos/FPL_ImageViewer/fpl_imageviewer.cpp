@@ -4,7 +4,7 @@ Name:
 	FPL-Demo | ImageViewer
 
 Version:
-	v0.6.1 (version.h)
+	v0.6.2 (version.h)
 
 Description:
 	Very simple opengl based image viewer.
@@ -19,12 +19,16 @@ Requirements:
 	- OpenGL 3.3 core profile
 	- STB_image (the default loader, others are optional)
 	- libwebp 1.0 or newer at runtime for WebP (optional, loaded when present)
+	- libheif with its codec plugins at runtime for HEIC, HEIF and AVIF (optional, loaded when present)
 	- STB_truetype, final_ui.h and from demos/additions: fui_backend_gl3.h, fui_input_fpl.h, fui_font_stbtt.h, final_fonts.h
 
 Author:
 	Torsten Spaete
 
 Changelog:
+	## v0.6.2
+	- New: HEIC, HEIF and AVIF loader (imageloader_heif.h) through the system libheif loaded at runtime
+
 	## v0.6.1
 	- Changed: The app is named Final Image Viewer, executable, window class and home folder stay finalimageviewer
 	- Changed: A single picture opens its folder without the subfolders, only a folder is read recursively
@@ -199,6 +203,8 @@ License:
 #include "imageloader_bmp.h"
 #define IMAGE_LOADER_WEBP_IMPLEMENTATION
 #include "imageloader_webp.h"
+#define IMAGE_LOADER_HEIF_IMPLEMENTATION
+#include "imageloader_heif.h"
 
 #include <string.h>
 
@@ -2300,7 +2306,7 @@ static void LogLoaderMessage(const char* message) {
 // stb_image first, it is the default; the reference BMP loader stays behind it and changes nothing unless it is pinned.
 // WebP is registered even without libwebp, its files then show why they cannot be read.
 static bool RegisterLoaders(ImageLoaderRegistry* registry) {
-	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet() };
+	const ImageLoader* loaders[] = { ImageLoaderStbGet(), ImageLoaderPnmGet(), ImageLoaderBmpGet(), ImageLoaderWebpGet(), ImageLoaderHeifGet() };
 	ImageLoaderRegistryInit(registry);
 	registry->log = LogLoaderMessage;
 	for (size_t loaderIndex = 0; loaderIndex < fplArrayCount(loaders); ++loaderIndex) {
@@ -2385,7 +2391,7 @@ static void PrintLoaders(const ImageLoaderRegistry* registry) {
 			fplStringAppend(" ", extensions, fplArrayCount(extensions));
 		}
 		const char* threadText = (loader->flags & ImageLoaderFlags_NotThreadSafe) ? "serialized" : "thread-safe";
-		fplConsoleFormatOut("  %u. %-14s %-7s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
+		fplConsoleFormatOut("  %u. %-14s %-16s %s  %-11s %s\n", orderIndex + 1, loader->name, loader->version, idText, threadText, extensions);
 	}
 	if (registry->globalPinIndex >= 0) {
 		const ImageLoader* loader = ImageLoaderRegistryGet(registry, registry->globalPinIndex);
