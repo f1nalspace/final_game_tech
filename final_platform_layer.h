@@ -404,6 +404,7 @@ SOFTWARE.
 	- Fixed: A chunked clipboard transfer kept the property events of the receiving window selected
 	- Fixed: fplWindowShutdown() sent the close request to the root window instead of the own window
 	- Fixed: Changes of position, decoration and fullscreen were not flushed to the server
+	- Changed: The keyboard mapping is read with one request instead of one per keycode
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -31477,6 +31478,36 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 	}
 }
 
+// Fills a table keycode -> fplKey for the keycodes of the server, with one request for all of them
+fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display *display, fplKey *keyMap, const int keyMapCount) {
+	int minKeycode = 0;
+	int maxKeycode = 0;
+	x11Api->XDisplayKeycodes(display, &minKeycode, &maxKeycode);
+	const int lastTableKeycode = keyMapCount - 1;
+	if (maxKeycode > lastTableKeycode) {
+		maxKeycode = lastTableKeycode;
+	}
+	if (minKeycode < 0 || maxKeycode < minKeycode) {
+		return;
+	}
+	const int keycodeCount = maxKeycode - minKeycode + 1;
+	int keySymsPerKeycode = 0;
+	fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(display, (fpl__X11_KeyCode)minKeycode, keycodeCount, &keySymsPerKeycode);
+	if (keySyms == fpl_null) {
+		FPL__WARNING(FPL__MODULE_X11, "Failed getting the keyboard mapping for the keycodes %d to %d", minKeycode, maxKeycode);
+		return;
+	}
+	if (keySymsPerKeycode > 0) {
+		for (int keycodeIndex = 0; keycodeIndex < keycodeCount; ++keycodeIndex) {
+			// The first keysym of a keycode is the one without modifiers
+			const int keyCode = minKeycode + keycodeIndex;
+			const fpl__X11_KeySym keySym = keySyms[keycodeIndex * keySymsPerKeycode];
+			keyMap[keyCode] = fpl__X11TranslateKeySymbol(keySym);
+		}
+	}
+	x11Api->XFree(keySyms);
+}
+
 #if defined(FPL__ENABLE_WINDOW)
 fpl_internal void fpl__X11LoadWindowIcon(const fpl__X11Api *x11Api, fpl__X11WindowState *x11WinState, fplWindowSettings *windowSettings) {
 	// @NOTE(final/X11): The icon is published via _NET_WM_ICON. EWMH window managers (KDE/XFCE/GNOME) pick it up.
@@ -31954,23 +31985,10 @@ fpl_internal uint32_t fpl__X11GetScanCode(const uint64_t keyCode) {
 }
 
 fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11WindowState *windowState) {
-	fplAssert(fplArrayCount(appState->window.keyMap) >= 256);
-
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Build X11 Keymap");
 	fplClearStruct(appState->window.keyMap);
-
-	// @NOTE(final): Init key range to 8 to 255, but note that these may be overritten by XDisplayKeycodes()
-	int minKeycode=8, maxKeycode=255;
-	x11Api->XDisplayKeycodes(windowState->display, &minKeycode, &maxKeycode);
-
-	for (int keyCode = minKeycode; keyCode <= maxKeycode; ++keyCode) {
-		int dummy = 0;
-		fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(windowState->display, (fpl__X11_KeyCode)keyCode, 1, &dummy);
-		fpl__X11_KeySym keySym = keySyms[0];
-		fplKey mappedKey = fpl__X11TranslateKeySymbol(keySym);
-		appState->window.keyMap[keyCode] = mappedKey;
-		x11Api->XFree(keySyms);
-	}
+	const int keyMapCount = (int)fplArrayCount(appState->window.keyMap);
+	fpl__X11FillKeyMap(x11Api, windowState->display, appState->window.keyMap, keyMapCount);
 }
 
 fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
@@ -32454,14 +32472,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend,
 		backend->root = x11Api->XRootWindow(display, screen);
 		backend->ownsDisplay = true;
 		// Build a backend-local keycode -> fplKey map (no user window provides one in detached mode).
-		for (int keyCode = 8; keyCode <= 255; ++keyCode) {
-			int dummy = 0;
-			fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(display, (fpl__X11_KeyCode)keyCode, 1, &dummy);
-			if (keySyms != fpl_null) {
-				backend->detachedKeyMap[keyCode] = fpl__X11TranslateKeySymbol(keySyms[0]);
-				x11Api->XFree(keySyms);
-			}
-		}
+		const int detachedKeyMapCount = (int)fplArrayCount(backend->detachedKeyMap);
+		fpl__X11FillKeyMap(x11Api, display, backend->detachedKeyMap, detachedKeyMapCount);
 	}
 	backend->detached = detached;
 	backend->isInitialized = true;
