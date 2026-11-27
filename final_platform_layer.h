@@ -414,6 +414,7 @@ SOFTWARE.
 	- Fixed: Minimizing and restoring pushed fplWindowEventType_Hidden and fplWindowEventType_Shown, a minimized window counts as shown like on Win32
 	- Fixed: Focus events of a child window or of the pointer window counted as focus changes, without a window manager the window started with fplWindowEventType_LostFocus
 	- Fixed: fplSetWindowDecorated(false) also took moving, resizing and closing through the window manager away
+	- Fixed: The keypad keys follow NumLock like on Win32, KP-Enter, Menu, NumLock and ScrollLock are mapped, Print is fplKey_Snapshot like on Win32
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -4116,6 +4117,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_FocusChangeMask FocusChangeMask
 #define FPL__X11_PropertyChangeMask PropertyChangeMask
 #define FPL__X11_ShiftMask ShiftMask
+#define FPL__X11_LockMask LockMask
 #define FPL__X11_ControlMask ControlMask
 #define FPL__X11_Mod1Mask Mod1Mask
 #define FPL__X11_Mod4Mask Mod4Mask
@@ -4210,6 +4212,22 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XK_KP_Divide XK_KP_Divide
 #define FPL__X11_XK_KP_Multiply XK_KP_Multiply
 #define FPL__X11_XK_KP_Subtract XK_KP_Subtract
+#define FPL__X11_XK_KP_Home XK_KP_Home
+#define FPL__X11_XK_KP_Left XK_KP_Left
+#define FPL__X11_XK_KP_Up XK_KP_Up
+#define FPL__X11_XK_KP_Right XK_KP_Right
+#define FPL__X11_XK_KP_Down XK_KP_Down
+#define FPL__X11_XK_KP_Page_Up XK_KP_Page_Up
+#define FPL__X11_XK_KP_Page_Down XK_KP_Page_Down
+#define FPL__X11_XK_KP_End XK_KP_End
+#define FPL__X11_XK_KP_Begin XK_KP_Begin
+#define FPL__X11_XK_KP_Insert XK_KP_Insert
+#define FPL__X11_XK_KP_Enter XK_KP_Enter
+#define FPL__X11_XK_KP_Separator XK_KP_Separator
+#define FPL__X11_XK_KP_Decimal XK_KP_Decimal
+#define FPL__X11_XK_Menu XK_Menu
+#define FPL__X11_XK_Num_Lock XK_Num_Lock
+#define FPL__X11_XK_Scroll_Lock XK_Scroll_Lock
 #define FPL__X11_XK_l XK_l
 #define FPL__X11_XK_Left XK_Left
 #define FPL__X11_XK_m XK_m
@@ -4689,6 +4707,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_FocusChangeMask (1L<<21)
 #define FPL__X11_PropertyChangeMask (1L<<22)
 #define FPL__X11_ShiftMask (1<<0)
+#define FPL__X11_LockMask (1<<1)
 #define FPL__X11_ControlMask (1<<2)
 #define FPL__X11_Mod1Mask (1<<3)
 #define FPL__X11_Mod4Mask (1<<6)
@@ -4783,6 +4802,22 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XK_KP_Divide 0xffaf
 #define FPL__X11_XK_KP_Multiply 0xffaa
 #define FPL__X11_XK_KP_Subtract 0xffad
+#define FPL__X11_XK_KP_Home 0xff95
+#define FPL__X11_XK_KP_Left 0xff96
+#define FPL__X11_XK_KP_Up 0xff97
+#define FPL__X11_XK_KP_Right 0xff98
+#define FPL__X11_XK_KP_Down 0xff99
+#define FPL__X11_XK_KP_Page_Up 0xff9a
+#define FPL__X11_XK_KP_Page_Down 0xff9b
+#define FPL__X11_XK_KP_End 0xff9c
+#define FPL__X11_XK_KP_Begin 0xff9d
+#define FPL__X11_XK_KP_Insert 0xff9e
+#define FPL__X11_XK_KP_Enter 0xff8d
+#define FPL__X11_XK_KP_Separator 0xffac
+#define FPL__X11_XK_KP_Decimal 0xffae
+#define FPL__X11_XK_Menu 0xff67
+#define FPL__X11_XK_Num_Lock 0xff7f
+#define FPL__X11_XK_Scroll_Lock 0xff14
 #define FPL__X11_XK_l 0x006c
 #define FPL__X11_XK_Left 0xff51
 #define FPL__X11_XK_m 0x006d
@@ -14898,6 +14933,8 @@ typedef struct fpl__X11SubplatformState {
 #endif
 	// Opened by the first display or cursor query of an application without fplInitFlags_Window, closed with the subplatform
 	fpl__X11DisplayConnection windowlessConnection;
+	// The key codes of the keypad keys that have a number with NumLock, their key follows NumLock at every key event
+	bool isKeypadNumberKey[256];
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -31336,8 +31373,9 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 			return fplKey_Right;
 		case FPL__X11_XK_Down:
 			return fplKey_Down;
+		// The Print Screen key, Win32 reports it as VK_SNAPSHOT
 		case FPL__X11_XK_Print:
-			return fplKey_Print;
+			return fplKey_Snapshot;
 		case FPL__X11_XK_Insert:
 			return fplKey_Insert;
 		case FPL__X11_XK_Delete:
@@ -31448,10 +31486,43 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 			return fplKey_Add;
 		case FPL__X11_XK_KP_Subtract:
 			return fplKey_Substract;
-		case FPL__X11_XK_KP_Delete:
+		case FPL__X11_XK_KP_Decimal:
 			return fplKey_Decimal;
+		case FPL__X11_XK_KP_Separator:
+			return fplKey_Separator;
 		case FPL__X11_XK_KP_Divide:
 			return fplKey_Divide;
+		// The keypad without NumLock, like the virtual keys on Win32
+		case FPL__X11_XK_KP_Home:
+			return fplKey_Home;
+		case FPL__X11_XK_KP_Left:
+			return fplKey_Left;
+		case FPL__X11_XK_KP_Up:
+			return fplKey_Up;
+		case FPL__X11_XK_KP_Right:
+			return fplKey_Right;
+		case FPL__X11_XK_KP_Down:
+			return fplKey_Down;
+		case FPL__X11_XK_KP_Page_Up:
+			return fplKey_PageUp;
+		case FPL__X11_XK_KP_Page_Down:
+			return fplKey_PageDown;
+		case FPL__X11_XK_KP_End:
+			return fplKey_End;
+		case FPL__X11_XK_KP_Begin:
+			return fplKey_Clear;
+		case FPL__X11_XK_KP_Insert:
+			return fplKey_Insert;
+		case FPL__X11_XK_KP_Delete:
+			return fplKey_Delete;
+		case FPL__X11_XK_KP_Enter:
+			return fplKey_Return;
+		case FPL__X11_XK_Menu:
+			return fplKey_Apps;
+		case FPL__X11_XK_Num_Lock:
+			return fplKey_NumLock;
+		case FPL__X11_XK_Scroll_Lock:
+			return fplKey_Scroll;
 		case FPL__X11_XK_F1:
 			return fplKey_F1;
 		case FPL__X11_XK_F2:
@@ -31552,7 +31623,15 @@ fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
 }
 
 // Fills a table keycode -> fplKey for the keycodes of the server, with one request for all of them
-fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display *display, fplKey *keyMap, const int keyMapCount) {
+// The keysyms a keypad key has with NumLock
+fpl_internal bool fpl__X11IsKeypadNumberKeySymbol(const fpl__X11_KeySym keySym) {
+	bool isDigit = keySym >= FPL__X11_XK_KP_0 && keySym <= FPL__X11_XK_KP_9;
+	bool result = isDigit || keySym == FPL__X11_XK_KP_Decimal || keySym == FPL__X11_XK_KP_Separator;
+	return(result);
+}
+
+// isKeypadNumberKey is optional, it gets the key codes whose second keysym is a number of the keypad
+fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display *display, fplKey *keyMap, bool *isKeypadNumberKey, const int keyMapCount) {
 	int minKeycode = 0;
 	int maxKeycode = 0;
 	x11Api->XDisplayKeycodes(display, &minKeycode, &maxKeycode);
@@ -31576,6 +31655,10 @@ fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display
 			const int keyCode = minKeycode + keycodeIndex;
 			const fpl__X11_KeySym keySym = keySyms[keycodeIndex * keySymsPerKeycode];
 			keyMap[keyCode] = fpl__X11TranslateKeySymbol(keySym);
+			if (isKeypadNumberKey != fpl_null && keySymsPerKeycode > 1) {
+				const fpl__X11_KeySym numLockKeySym = keySyms[keycodeIndex * keySymsPerKeycode + 1];
+				isKeypadNumberKey[keyCode] = fpl__X11IsKeypadNumberKeySymbol(numLockKeySym);
+			}
 		}
 	}
 	x11Api->XFree(keySyms);
@@ -32068,7 +32151,8 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Build X11 Keymap");
 	fplClearStruct(appState->window.keyMap);
 	const int keyMapCount = (int)fplArrayCount(appState->window.keyMap);
-	fpl__X11FillKeyMap(x11Api, windowState->display, appState->window.keyMap, keyMapCount);
+	fplClearStruct(appState->x11.isKeypadNumberKey);
+	fpl__X11FillKeyMap(x11Api, windowState->display, appState->window.keyMap, appState->x11.isKeypadNumberKey, keyMapCount);
 }
 
 fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
@@ -32546,7 +32630,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend,
 		backend->ownsDisplay = true;
 		// Build a backend-local keycode -> fplKey map (no user window provides one in detached mode).
 		const int detachedKeyMapCount = (int)fplArrayCount(backend->detachedKeyMap);
-		fpl__X11FillKeyMap(x11Api, display, backend->detachedKeyMap, detachedKeyMapCount);
+		fpl__X11FillKeyMap(x11Api, display, backend->detachedKeyMap, fpl_null, detachedKeyMapCount);
 	}
 	backend->detached = detached;
 	backend->isInitialized = true;
@@ -32632,6 +32716,40 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *bac
 }
 
 #if defined(FPL__ENABLE_WINDOW)
+// The keysym of a key event for the given modifier state
+fpl_internal fpl__X11_KeySym fpl__X11LookupKeySymbol(const fpl__X11Api *x11Api, const fpl__X11_XKeyEvent *keyEvent, const unsigned int state) {
+	fpl__X11_XKeyEvent lookupEvent = *keyEvent;
+	lookupEvent.state = state;
+	char text[8] = fplZeroInit;
+	fpl__X11_KeySym result = 0;
+	x11Api->XLookupString(&lookupEvent, text, (int)sizeof(text), &result, fpl_null);
+	return(result);
+}
+
+// A keypad key is a number while NumLock is on and Shift is not held, otherwise a navigation key, like the virtual keys on Win32.
+// The key map of the window gets the key of the current state. The keysym without Shift tells whether NumLock is on,
+// Shift is applied here because X11 handles it different from Win32 unless XKB has the option numpad:microsoft.
+fpl_internal void fpl__X11UpdateKeypadKey(const fpl__X11Api *x11Api, const fpl__X11SubplatformState *subplatform, fpl__PlatformWindowState *winState, const fpl__X11_XKeyEvent *keyEvent) {
+	const uint32_t keyCode = keyEvent->keycode;
+	if (keyCode >= fplArrayCount(subplatform->isKeypadNumberKey) || !subplatform->isKeypadNumberKey[keyCode]) {
+		return;
+	}
+	const unsigned int shiftMasks = FPL__X11_ShiftMask | FPL__X11_LockMask;
+	const unsigned int stateWithoutShift = keyEvent->state & ~shiftMasks;
+	const unsigned int stateWithoutModifiers = 0;
+	fpl__X11_KeySym keySymWithoutShift = fpl__X11LookupKeySymbol(x11Api, keyEvent, stateWithoutShift);
+	bool isNumLock = fpl__X11IsKeypadNumberKeySymbol(keySymWithoutShift);
+	bool isShift = (keyEvent->state & FPL__X11_ShiftMask) != 0;
+	fpl__X11_KeySym keySym = keySymWithoutShift;
+	if (!isNumLock || isShift) {
+		keySym = fpl__X11LookupKeySymbol(x11Api, keyEvent, stateWithoutModifiers);
+	}
+	fplKey key = fpl__X11TranslateKeySymbol(keySym);
+	if (key != fplKey_None) {
+		winState->keyMap[keyCode] = key;
+	}
+}
+
 // The media and volume keys, the keys desktops take as global shortcuts
 fpl_internal bool fpl__IsMediaKey(const fplKey key) {
 	switch (key) {
@@ -32705,6 +32823,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			bool isLaterPress = timeSinceLastPress > 0 && timeSinceLastPress < FPL__X11_TIME_HALF_RANGE;
 			if (diffTime == keyTime || isLaterPress) {
 				if (keyCode) {
+					fpl__X11UpdateKeypadKey(x11Api, &appState->x11, winState, &ev->xkey);
 					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
 					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
 					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keySlot, keyCode, scanCode, modifiers, fplButtonState_Press, false);
@@ -32744,6 +32863,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 					isRepeat = true;
 				}
 			}
+			fpl__X11UpdateKeypadKey(x11Api, &appState->x11, winState, &ev->xkey);
 			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
 			uint32_t keySlot = (uint32_t)keyCode;
