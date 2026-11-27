@@ -950,6 +950,10 @@ int main(int argc, char **args) {
 		while (fplPollEvent(&ev)) {
 			state.platform.HandleEvent(ev);
 		}
+		// On Win32 the main window is destroyed with its close already, ImGui would see a main window of zero size and give every ImGui window its own window
+		if (!fplIsWindowRunning()) {
+			break;
+		}
 
 		state.UpdateAndRender(lastDeltaTime);
 
