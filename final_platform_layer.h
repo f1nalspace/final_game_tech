@@ -411,6 +411,7 @@ SOFTWARE.
 	- Changed: The keyboard mapping is read with one request instead of one per keycode
 	- Fixed: fplIsWindowFullscreen() stayed true when the window manager left fullscreen
 	- Fixed: Minimizing and restoring pushed fplWindowEventType_Hidden and fplWindowEventType_Shown, a minimized window counts as shown like on Win32
+	- Fixed: Focus events of a child window or of the pointer window counted as focus changes, without a window manager the window started with fplWindowEventType_LostFocus
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -4056,6 +4057,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_NotifyGrab NotifyGrab
 #define FPL__X11_NotifyUngrab NotifyUngrab
 #define FPL__X11_NotifyInferior NotifyInferior
+#define FPL__X11_NotifyPointer NotifyPointer
 #define FPL__X11_GrabModeAsync GrabModeAsync
 #define FPL__X11_GrabSuccess GrabSuccess
 #define FPL__X11_AlreadyGrabbed AlreadyGrabbed
@@ -4628,6 +4630,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_NotifyGrab 1
 #define FPL__X11_NotifyUngrab 2
 #define FPL__X11_NotifyInferior 2
+#define FPL__X11_NotifyPointer 5
 #define FPL__X11_GrabModeAsync 1
 #define FPL__X11_GrabSuccess 0
 #define FPL__X11_AlreadyGrabbed 1
@@ -33501,6 +33504,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
+			// No focus change of the window: the focus of a child window, or the window under the pointer while the root has the focus (without a window manager)
+			if (ev->xfocus.detail == FPL__X11_NotifyInferior || ev->xfocus.detail == FPL__X11_NotifyPointer) {
+				return;
+			}
 			// The input method composes for the window that has the focus
 			if (x11WinState->im.xic != 0 && x11Api->XSetICFocus != fpl_null) {
 				x11Api->XSetICFocus(x11WinState->im.xic);
@@ -33518,6 +33525,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			// Ignore focus events from popup indicator windows, window menu
 			// key chords and window dragging
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
+				return;
+			}
+			// No focus change of the window: the focus of a child window, or the window under the pointer while the root has the focus (without a window manager)
+			if (ev->xfocus.detail == FPL__X11_NotifyInferior || ev->xfocus.detail == FPL__X11_NotifyPointer) {
 				return;
 			}
 			if (x11WinState->im.xic != 0 && x11Api->XUnsetICFocus != fpl_null) {
