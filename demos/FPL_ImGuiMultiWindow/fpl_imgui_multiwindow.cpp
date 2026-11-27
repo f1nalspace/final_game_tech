@@ -8,6 +8,8 @@ Description:
 	An ImGui window that is dragged out of the main window gets its own window from fplWindowCreate().
 	All windows share the OpenGL context of the main window, the OpenGL2 backend of ImGui renders them.
 	The platform backend for ImGui is part of this demo, see the struct FplPlatformBackend.
+	The demo window of ImGui shows the docking: drag a window by its title bar onto another window to dock it there,
+	its menu Examples > Dockspace docks into the main window, its section Configuration has the options for docking and viewports.
 	Parameters:
 	  --frames=<n>      Quit by itself after this many frames, for tests
 	  --no-viewports    Keep all ImGui windows inside the main window
@@ -698,6 +700,8 @@ struct DemoState {
 		ImGui::Checkbox("Displays", &showDisplaysWindow);
 		ImGui::Checkbox("Audio Devices", &showAudioDevicesWindow);
 		ImGui::Checkbox("Viewports", &showViewportsWindow);
+		ImGui::TextUnformatted("Docking: drag a window by its title bar onto another window.");
+		ImGui::TextUnformatted("Demo window > Examples > Dockspace docks into the main window.");
 		if (ImGui::Button("Toggle app floating")) {
 			bool isFloating = fplIsWindowFloating();
 			fplSetWindowFloating(!isFloating);
@@ -813,15 +817,14 @@ struct DemoState {
 		platform.NewFrame(deltaTime);
 		ImGui::NewFrame();
 
-		// The central node lets the clear color through, the other windows can dock to the sides of the main window
-		ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
-
+		// The demo window comes first like in the examples of ImGui, its Examples > Dockspace must be submitted before the other windows.
+		// The demo has no dockspace of its own, a second one over the main window would have the same ID as the one of Examples > Dockspace.
+		if (showDemoWindow) {
+			ImGui::ShowDemoWindow(&showDemoWindow);
+		}
 		ShowMainControls();
 		if (showAnotherWindow) {
 			ShowAnotherWindow();
-		}
-		if (showDemoWindow) {
-			ImGui::ShowDemoWindow(&showDemoWindow);
 		}
 		if (showDisplaysWindow) {
 			ShowDisplaysWindow();
