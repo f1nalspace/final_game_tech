@@ -398,6 +398,7 @@ SOFTWARE.
 	- New: The clipboard releases the text it owns when another application takes the selection away
 	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
 	- Fixed: XDisplayKeycodes was declared with the wrong return type
+	- Fixed: fplPollEvent(), fplPollEvents(), fplQueryCursorPosition() and the display functions crashed without fplInitFlags_Window
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -14862,6 +14863,13 @@ fpl_internal bool fpl__LoadXInput2Api(fpl__XInput2Api *xinput2Api) {
 }
 #endif // !FPL_NO_X11_XINPUT2
 
+// Display connection for the display and cursor queries, see fpl__X11GetDisplayConnection()
+typedef struct fpl__X11DisplayConnection {
+	fpl__X11_Display *display;
+	fpl__X11_Window root;
+	int screen;
+} fpl__X11DisplayConnection;
+
 typedef struct fpl__X11SubplatformState {
 	fpl__X11Api api;
 	fpl__XrandRApi xrandr;
@@ -14869,6 +14877,8 @@ typedef struct fpl__X11SubplatformState {
 #if !defined(FPL_NO_X11_XINPUT2)
 	fpl__XInput2Api xinput2;
 #endif
+	// Opened by the first display or cursor query of an application without fplInitFlags_Window, closed with the subplatform
+	fpl__X11DisplayConnection windowlessConnection;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -19702,6 +19712,27 @@ fpl_common_api bool fplUpdateInputDevices(void) {
 	return true;
 }
 
+#if !defined(FPL__ENABLE_WINDOW) || defined(FPL_SUBPLATFORM_X11)
+// Event pump without a window: the input system pushes the events of its devices into the internal queue (gamepads, detached keyboard and mouse)
+fpl_internal bool fpl__PollEventWithoutWindow(fpl__PlatformAppState *appState, fplEvent *ev) {
+	if (fpl__PollInternalEvent(ev)) {
+		return(true);
+	}
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	bool result = fpl__PollInternalEvent(ev);
+	return(result);
+}
+
+fpl_internal void fpl__PollEventsWithoutWindow(fpl__PlatformAppState *appState) {
+	if (!appState->currentSettings.input.disabledEvents) {
+		fpl__InputSystem_Update(&appState->input);
+	}
+	fpl__ClearInternalEvents();
+}
+#endif // !FPL__ENABLE_WINDOW || FPL_SUBPLATFORM_X11
+
 // No-window event pump. The platform-specific fplPollEvent/fplPollEvents in the FPL__ENABLE_WINDOW
 // blocks drain the OS message queue (Win32 PeekMessage / X11 XNextEvent). When no window is enabled,
 // those impls don't compile and we provide a common version that drives fpl__InputSystem_Update and
@@ -19713,21 +19744,15 @@ fpl_common_api bool fplPollEvent(fplEvent *ev) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
-	if (fpl__PollInternalEvent(ev)) return true;
-	if (!appState->currentSettings.input.disabledEvents) {
-		fpl__InputSystem_Update(&appState->input);
-	}
-	return fpl__PollInternalEvent(ev);
+	bool result = fpl__PollEventWithoutWindow(appState, ev);
+	return(result);
 }
 
 fpl_common_api void fplPollEvents(void) {
 	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return;
-	if (!appState->currentSettings.input.disabledEvents) {
-		fpl__InputSystem_Update(&appState->input);
-	}
-	fpl__ClearInternalEvents();
+	fpl__PollEventsWithoutWindow(appState);
 }
 #endif // !FPL__ENABLE_WINDOW
 #endif // FPL__ENABLE_INPUT
@@ -31063,6 +31088,10 @@ fpl_platform_api char fplConsoleWaitForCharInput(void) {
 
 fpl_internal void fpl__X11ReleaseSubplatform(fpl__X11SubplatformState *subplatform) {
 	fplAssert(subplatform != fpl_null);
+	if (subplatform->windowlessConnection.display != fpl_null) {
+		subplatform->api.XCloseDisplay(subplatform->windowlessConnection.display);
+		fplClearStruct(&subplatform->windowlessConnection);
+	}
 #if !defined(FPL_NO_X11_XINPUT2)
 	fpl__UnloadXInput2Api(&subplatform->xinput2);
 #endif
@@ -33527,6 +33556,16 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 
+	// Without fplInitFlags_Window there is no display to read from, the input system is the only source of events
+	if (windowState->display == fpl_null) {
+#	if defined(FPL__ENABLE_INPUT)
+		bool result = fpl__PollEventWithoutWindow(appState, ev);
+#	else
+		bool result = fpl__PollInternalEvent(ev);
+#	endif
+		return(result);
+	}
+
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
 		return(true);
@@ -33561,6 +33600,15 @@ fpl_platform_api void fplPollEvents(void) {
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
+	// Without fplInitFlags_Window there is no display to read from, the input system is the only source of events
+	if (windowState->display == fpl_null) {
+#	if defined(FPL__ENABLE_INPUT)
+		fpl__PollEventsWithoutWindow(appState);
+#	else
+		fpl__ClearInternalEvents();
+#	endif
+		return;
+	}
 	while (x11Api->XPending(windowState->display)) {
 		fpl__X11_XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
@@ -34457,20 +34505,50 @@ fpl_internal bool fpl__X11RectContains(int rx, int ry, int rw, int rh, int px, i
 	return(px >= rx && px < rx + rw && py >= ry && py < ry + rh);
 }
 
+// The connection for the display and cursor queries: the one of the main window, without fplInitFlags_Window a connection of its own that stays open until the platform is released
+fpl_internal bool fpl__X11GetDisplayConnection(fpl__PlatformAppState *appState, fpl__X11DisplayConnection *outConnection) {
+	const fpl__X11WindowState *mainWindowState = &appState->window.x11;
+	if (mainWindowState->display != fpl_null) {
+		outConnection->display = mainWindowState->display;
+		outConnection->root = mainWindowState->core.root;
+		outConnection->screen = mainWindowState->screen;
+		return(true);
+	}
+	fpl__X11SubplatformState *subplatform = &appState->x11;
+	fpl__X11DisplayConnection *windowlessConnection = &subplatform->windowlessConnection;
+	if (windowlessConnection->display == fpl_null) {
+		const fpl__X11Api *x11Api = &subplatform->api;
+		fpl__X11_Display *display = x11Api->XOpenDisplay(fpl_null);
+		if (display == fpl_null) {
+			FPL__ERROR(FPL__MODULE_X11, "Failed opening a X11 display for the display queries without a window");
+			return(false);
+		}
+		const int screen = x11Api->XDefaultScreen(display);
+		windowlessConnection->display = display;
+		windowlessConnection->screen = screen;
+		windowlessConnection->root = x11Api->XRootWindow(display, screen);
+	}
+	*outConnection = *windowlessConnection;
+	return(true);
+}
+
 fpl_platform_api size_t fplGetDisplayCount(void) {
 	FPL__CheckPlatform(0);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(0);
+	}
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, connection.display);
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
 			for (int i = 0; i < res->noutput; ++i) {
-				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, res->outputs[i]);
 				if (outInfo != fpl_null) {
 					if (outInfo->connection == 0 && outInfo->crtc != 0) {
 						++result;
@@ -34482,7 +34560,7 @@ fpl_platform_api size_t fplGetDisplayCount(void) {
 		}
 	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
 		int count = 0;
-		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(connection.display, &count);
 		if (screens != fpl_null) {
 			result = (size_t)count;
 			x11Api->XFree(screens);
@@ -34497,23 +34575,26 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 	FPL__CheckArgumentNull(displays, 0);
 	FPL__CheckArgumentZero(maxDisplayCount, 0);
 	FPL__CheckPlatform(0);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(0);
+	}
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, connection.display);
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection.display, connection.root);
 			for (int i = 0; i < res->noutput && result < maxDisplayCount; ++i) {
 				fpl__RROutput outId = res->outputs[i];
-				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, outId);
 				if (outInfo != fpl_null) {
 					if (outInfo->connection == 0 && outInfo->crtc != 0) {
-						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(connection.display, res, outInfo->crtc);
 						if (crtc != fpl_null) {
 							bool isPrimary = (outId == primary);
 							fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, isPrimary, displays + result);
@@ -34528,7 +34609,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 		}
 	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
 		int count = 0;
-		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(connection.display, &count);
 		if (screens != fpl_null) {
 			for (int i = 0; i < count && result < maxDisplayCount; ++i) {
 				bool isPrimary = fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, 0, 0);
@@ -34538,7 +34619,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, displays);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, connection.display, connection.root, displays);
 		result = 1;
 	}
 	return(result);
@@ -34547,22 +34628,25 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	FPL__CheckArgumentNull(display, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(false);
+	}
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, connection.display);
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection.display, connection.root);
 			if (primary != 0) {
-				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, primary);
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, primary);
 				if (outInfo != fpl_null) {
 					if (outInfo->crtc != 0) {
-						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(connection.display, res, outInfo->crtc);
 						if (crtc != fpl_null) {
 							fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, true, display);
 							xrr->XRRFreeCrtcInfo(crtc);
@@ -34576,7 +34660,7 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 		}
 	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
 		int count = 0;
-		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(connection.display, &count);
 		if (screens != fpl_null && count > 0) {
 			int chosen = 0;
 			for (int i = 0; i < count; ++i) {
@@ -34593,27 +34677,27 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 		}
 	}
 	if (!result) {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, display);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, connection.display, connection.root, display);
 		result = true;
 	}
 	return(result);
 }
 
-fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *subplatform, const fpl__X11WindowState *windowState, int32_t x, int32_t y, fplDisplayInfo *outDisplay) {
+fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *subplatform, const fpl__X11DisplayConnection *connection, int32_t x, int32_t y, fplDisplayInfo *outDisplay) {
 	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, connection->display);
 	bool result = false;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection->display, connection->root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(windowState->display, windowState->core.root);
+			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection->display, connection->root);
 			for (int i = 0; i < res->noutput && !result; ++i) {
 				fpl__RROutput outId = res->outputs[i];
-				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, outId);
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection->display, res, outId);
 				if (outInfo != fpl_null) {
 					if (outInfo->connection == 0 && outInfo->crtc != 0) {
-						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(windowState->display, res, outInfo->crtc);
+						fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(connection->display, res, outInfo->crtc);
 						if (crtc != fpl_null) {
 							if (fpl__X11RectContains(crtc->x, crtc->y, (int)crtc->width, (int)crtc->height, x, y)) {
 								fpl__X11FillDisplayInfoFromCrtc(outInfo->name, outInfo->nameLen, crtc, outId == primary, outDisplay);
@@ -34629,7 +34713,7 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 		}
 	} else if (backend == fpl__X11DisplayBackend_Xinerama) {
 		int count = 0;
-		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+		fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(connection->display, &count);
 		if (screens != fpl_null) {
 			for (int i = 0; i < count; ++i) {
 				if (fpl__X11RectContains(screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height, x, y)) {
@@ -34642,7 +34726,7 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 			x11Api->XFree(screens);
 		}
 	} else {
-		fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, outDisplay);
+		fpl__X11FillDisplayInfoFromRoot(x11Api, connection->display, connection->root, outDisplay);
 		result = fpl__X11RectContains(0, 0, outDisplay->virtualSize.width, outDisplay->virtualSize.height, x, y);
 	}
 	return(result);
@@ -34661,7 +34745,11 @@ fpl_internal bool fpl__X11Window_GetDisplay(fplWindowHandle *window, fplDisplayI
 	x11Api->XTranslateCoordinates(windowState->display, windowState->core.window, windowState->core.root, 0, 0, &rootX, &rootY, &child);
 	int centerX = rootX + attribs.width / 2;
 	int centerY = rootY + attribs.height / 2;
-	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, centerX, centerY, outDisplay);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	connection.display = windowState->display;
+	connection.root = windowState->core.root;
+	connection.screen = windowState->screen;
+	bool result = fpl__X11FindDisplayAtPoint(subplatform, &connection, centerX, centerY, outDisplay);
 	if (!result) {
 		result = fplGetPrimaryDisplay(outDisplay);
 	}
@@ -34671,29 +34759,35 @@ fpl_internal bool fpl__X11Window_GetDisplay(fplWindowHandle *window, fplDisplayI
 fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y, fplDisplayInfo *outDisplay) {
 	FPL__CheckArgumentNull(outDisplay, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	bool result = fpl__X11FindDisplayAtPoint(subplatform, windowState, x, y, outDisplay);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(false);
+	}
+	bool result = fpl__X11FindDisplayAtPoint(subplatform, &connection, x, y, outDisplay);
 	return(result);
 }
 
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes, const size_t maxDisplayModeCount) {
 	FPL__CheckArgumentNull(id, 0);
 	FPL__CheckPlatform(0);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, windowState->display);
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(0);
+	}
+	fpl__X11DisplayBackend backend = fpl__X11ResolveDisplayBackend(subplatform, connection.display);
 	size_t result = 0;
 	if (backend == fpl__X11DisplayBackend_RandR) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
-		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(windowState->display, windowState->core.root);
+		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
 			fpl__XRROutputInfo *match = fpl_null;
 			for (int i = 0; i < res->noutput; ++i) {
-				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(windowState->display, res, res->outputs[i]);
+				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, res->outputs[i]);
 				if (outInfo != fpl_null) {
 					if (outInfo->name != fpl_null && outInfo->nameLen > 0 && (size_t)outInfo->nameLen == fplGetStringLength(id) && fplIsStringEqualLen(outInfo->name, outInfo->nameLen, id, outInfo->nameLen)) {
 						match = outInfo;
@@ -34703,7 +34797,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 				}
 			}
 			if (match != fpl_null) {
-				int colorBits = x11Api->XDefaultDepth(windowState->display, windowState->screen);
+				int colorBits = x11Api->XDefaultDepth(connection.display, connection.screen);
 				for (int i = 0; i < match->nmode; ++i) {
 					fpl__RRMode mid = match->modes[i];
 					for (int j = 0; j < res->nmode; ++j) {
@@ -34741,7 +34835,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 		FPL__UNUSED(total);
 		if (backend == fpl__X11DisplayBackend_Xinerama) {
 			int count = 0;
-			fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(windowState->display, &count);
+			fpl__XineramaScreenInfo *screens = subplatform->xinerama.XineramaQueryScreens(connection.display, &count);
 			if (screens != fpl_null) {
 				for (int i = 0; i < count; ++i) {
 					char tmp[FPL_MAX_NAME_LENGTH];
@@ -34757,7 +34851,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 			}
 		} else {
 			if (fplIsStringEqual("default", id)) {
-				fpl__X11FillDisplayInfoFromRoot(x11Api, windowState->display, windowState->core.root, &info);
+				fpl__X11FillDisplayInfoFromRoot(x11Api, connection.display, connection.root, &info);
 				found = true;
 			}
 		}
@@ -34766,7 +34860,7 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 				fplClearStruct(modes);
 				modes[0].width = info.virtualSize.width;
 				modes[0].height = info.virtualSize.height;
-				modes[0].colorBits = (uint32_t)x11Api->XDefaultDepth(windowState->display, windowState->screen);
+				modes[0].colorBits = (uint32_t)x11Api->XDefaultDepth(connection.display, connection.screen);
 				modes[0].refreshRate = 0;
 			}
 			result = 1;
@@ -35277,10 +35371,13 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	FPL__CheckArgumentNull(outX, false);
 	FPL__CheckArgumentNull(outY, false);
 	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11DisplayConnection connection = fplZeroInit;
+	if (!fpl__X11GetDisplayConnection(appState, &connection)) {
+		return(false);
+	}
 	fpl__X11_Window rootRet = 0;
 	fpl__X11_Window childRet = 0;
 	int rootX = 0;
@@ -35288,7 +35385,7 @@ fpl_platform_api bool fplQueryCursorPosition(int32_t *outX, int32_t *outY) {
 	int winX = 0;
 	int winY = 0;
 	unsigned int mask = 0;
-	if (x11Api->XQueryPointer(windowState->display, windowState->core.window, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
+	if (x11Api->XQueryPointer(connection.display, connection.root, &rootRet, &childRet, &rootX, &rootY, &winX, &winY, &mask)) {
 		*outX = rootX;
 		*outY = rootY;
 		return(true);
