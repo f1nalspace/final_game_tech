@@ -374,6 +374,7 @@ SOFTWARE.
 	- New: Added fplWindowGetClientPositionMulti() and fplWindowSetClientPositionMulti(), the position of the client area in screen coordinates
 	- Fixed: [X11] fplGetWindowPosition() and fplWindowEventType_PositionChanged gave the position relative to the frame of the window manager, both give the position of the frame on the screen now like on Win32
 	- Fixed: [X11] A position set before the window is shown is kept, the window manager placed the window itself
+	- Fixed: [X11] isDecorated, isResizable and isFloating of fplWindowSettings were ignored when the window was created, only the functions that change them at runtime worked
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -31645,6 +31646,23 @@ fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const
 		wmHints.flags = FPL__X11_InputHint;
 		wmHints.input = FPL__X11_True;
 		x11Api->XSetWMHints(windowState->display, windowState->core.window, &wmHints);
+	}
+
+	// The window manager reads the style when it maps the window, so the style Win32 gives the window at its creation is set before
+	const fplWindowSettings *startSettings = &initSettings->window;
+	if (!startSettings->isDecorated) {
+		fpl__X11Window_SetDecorated(window, false);
+	}
+	if (!startSettings->isResizable) {
+		fpl__X11Window_SetResizable(window, false);
+	}
+	if (startSettings->isFloating) {
+		// The client message of fpl__X11Window_SetFloating() only reaches the window manager for a mapped window, before that the window sets _NET_WM_STATE itself (EWMH)
+		const fpl__X11_Atom aboveState = windowState->netWM.netWMStateAbove;
+		const int atomFormat = 32;
+		const int atomCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMState, FPL__X11_XA_ATOM, atomFormat, FPL__X11_PropModeReplace, (const unsigned char *)&aboveState, atomCount);
+		currentWindowSettings->isFloating = true;
 	}
 
 	// A window that is shown at the start takes the focus or leaves it where it is, one that starts hidden decides that when fplSetWindowVisibility() shows it
