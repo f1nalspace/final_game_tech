@@ -377,6 +377,8 @@ SOFTWARE.
 	- Fixed: [X11] A position set before the window is shown is kept, the window manager placed the window itself
 	- Fixed: [X11] isDecorated, isResizable and isFloating of fplWindowSettings were ignored when the window was created, only the functions that change them at runtime worked
 	- New: Added fplWindowSetParentMulti() and fplWindowGetParentMulti(), an additional window stays in front of its parent
+	- Fixed: [Win32] fplPollEvent() and fplPollEvents() did not update the input devices without fplInitFlags_Window
+	- Changed: [Win32] fplClipboardGetText() and fplClipboardSetText() fail without fplInitFlags_Window like on X11
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -11531,6 +11533,7 @@ fpl_common_api bool fplWindowGetDisplayMulti(fplWindowHandle *window, fplDisplay
 * @return Returns the number of characters required, excluding the null-terminator, or zero when the clipboard has no text, the buffer is too small or the transfer failed.
 * @note This follows the output buffer contract described in the file header - pass fpl_null as destination to get the size first and then call it a second time with a buffer of that size plus one.
 * @note The clipboard is read from the system on every call, so the size query and the actual read never disagree when another application changes the clipboard in between.
+* @note Without @ref fplInitFlags_Window there is no clipboard and zero is returned.
 */
 fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen);
 
@@ -11540,6 +11543,7 @@ fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen)
 * @param[in] textLen The number of characters to take from the text, excluding the null-terminator.
 * @return Returns true when the text in the clipboard was changed, false otherwise.
 * @note There is no size limit, the text is stored in dynamically allocated memory and served in chunks when the system requires it.
+* @note Without @ref fplInitFlags_Window there is no clipboard and false is returned.
 */
 fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t textLen);
 
@@ -19719,7 +19723,7 @@ fpl_common_api bool fplUpdateInputDevices(void) {
 	return true;
 }
 
-#if !defined(FPL__ENABLE_WINDOW) || defined(FPL_SUBPLATFORM_X11)
+#if !defined(FPL__ENABLE_WINDOW) || defined(FPL_SUBPLATFORM_X11) || defined(FPL_PLATFORM_WINDOWS)
 // Event pump without a window: the input system pushes the events of its devices into the internal queue (gamepads, detached keyboard and mouse)
 fpl_internal bool fpl__PollEventWithoutWindow(fpl__PlatformAppState *appState, fplEvent *ev) {
 	if (fpl__PollInternalEvent(ev)) {
@@ -19738,7 +19742,7 @@ fpl_internal void fpl__PollEventsWithoutWindow(fpl__PlatformAppState *appState) 
 	}
 	fpl__ClearInternalEvents();
 }
-#endif // !FPL__ENABLE_WINDOW || FPL_SUBPLATFORM_X11
+#endif // !FPL__ENABLE_WINDOW || FPL_SUBPLATFORM_X11 || FPL_PLATFORM_WINDOWS
 
 // No-window event pump. The platform-specific fplPollEvent/fplPollEvents in the FPL__ENABLE_WINDOW
 // blocks drain the OS message queue (Win32 PeekMessage / X11 XNextEvent). When no window is enabled,
@@ -26014,6 +26018,16 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
+	// Without fplInitFlags_Window there is no window message to read, the input system is the only source of events, the same as on X11
+	if (windowState->windowHandle == fpl_null) {
+#	if defined(FPL__ENABLE_INPUT)
+		bool result = fpl__PollEventWithoutWindow(appState, ev);
+#	else
+		bool result = fpl__PollInternalEvent(ev);
+#	endif
+		return(result);
+	}
+
 	// Polled before the next fplWindowUpdate(), the fplWindowEventType_GotFocus of the show is still in the queue
 	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
 		window->state->win32.isFocusEventPending = false;
@@ -26056,14 +26070,21 @@ fpl_platform_api void fplPollEvents(void) {
 	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32InitState *win32InitState = &fpl__global__InitState.win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
-	if (windowState->windowHandle != 0) {
-		if (windowState->mainFiber != fpl_null && windowState->messageFiber != fpl_null) {
-			SwitchToFiber(windowState->messageFiber);
-		} else {
-			MSG msg;
-			while (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE)) {
-				fpl__Win32HandleMessage(wapi, appState, &msg);
-			}
+	// Without fplInitFlags_Window there is no window message to read, the input system is the only source of events, the same as on X11
+	if (windowState->windowHandle == fpl_null) {
+#	if defined(FPL__ENABLE_INPUT)
+		fpl__PollEventsWithoutWindow(appState);
+#	else
+		fpl__ClearInternalEvents();
+#	endif
+		return;
+	}
+	if (windowState->mainFiber != fpl_null && windowState->messageFiber != fpl_null) {
+		SwitchToFiber(windowState->messageFiber);
+	} else {
+		MSG msg;
+		while (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE)) {
+			fpl__Win32HandleMessage(wapi, appState, &msg);
 		}
 	}
 	fpl__ClearInternalEvents();
@@ -26110,6 +26131,10 @@ fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen)
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	// Without fplInitFlags_Window there is no clipboard, the same as on X11 where the window owns the selection
+	if (windowState->windowHandle == fpl_null) {
+		return(0);
+	}
 	size_t result = 0;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		if (wapi->user.IsClipboardFormatAvailable(CF_UNICODETEXT)) {
@@ -26138,6 +26163,10 @@ fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t text
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
 	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	// Without fplInitFlags_Window there is no clipboard, the same as on X11 where the window owns the selection
+	if (windowState->windowHandle == fpl_null) {
+		return(false);
+	}
 	bool result = false;
 	if (wapi->user.OpenClipboard(windowState->windowHandle)) {
 		const size_t requiredWideLen = (textLen > 0) ? fplUTF8StringToWideString(text, textLen, fpl_null, 0) : 0;
