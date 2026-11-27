@@ -8,6 +8,7 @@ Description:
 	An ImGui window that is dragged out of the main window gets its own window from fplWindowCreate().
 	All windows share the OpenGL context of the main window, the OpenGL2 backend of ImGui renders them.
 	The platform backend for ImGui is part of this demo, see the struct FplPlatformBackend.
+	Every additional window has the main window as parent (io.ConfigViewportsNoDefaultParent = false) and stays in front of it.
 	The demo window of ImGui shows the docking: drag a window by its title bar onto another window to dock it there,
 	its menu Examples > Dockspace docks into the main window, its section Configuration has the options for docking and viewports.
 	Parameters:
@@ -254,6 +255,25 @@ struct FplPlatformBackend {
 		}
 	}
 
+	// The window of the parent viewport becomes the parent of the window, so it stays in front of it
+	static void UpdateViewportParent(ImGuiViewport *viewport) {
+		FplViewportData *viewportData = FplViewportData::Get(viewport);
+		if (viewportData == nullptr || !viewportData->isOwned || viewportData->window == fpl_null) {
+			return;
+		}
+		fplWindowHandle *parentWindow = fpl_null;
+		if (viewport->ParentViewportId != 0) {
+			ImGuiViewport *parentViewport = ImGui::FindViewportByID(viewport->ParentViewportId);
+			if (parentViewport != nullptr) {
+				parentWindow = GetViewportWindow(parentViewport);
+			}
+		}
+		fplWindowHandle *currentParentWindow = fplWindowGetParentMulti(viewportData->window);
+		if (parentWindow != currentParentWindow) {
+			fplWindowSetParentMulti(viewportData->window, parentWindow);
+		}
+	}
+
 	static void CreateViewportWindow(ImGuiViewport *viewport) {
 		const bool hasNoDecoration = (viewport->Flags & ImGuiViewportFlags_NoDecoration) != 0;
 		const bool isTopMost = (viewport->Flags & ImGuiViewportFlags_TopMost) != 0;
@@ -281,6 +301,8 @@ struct FplPlatformBackend {
 			return;
 		}
 
+		// The parent is set before the window is shown, some window managers read it only then
+		UpdateViewportParent(viewport);
 		const int32_t left = (int32_t)viewport->Pos.x;
 		const int32_t top = (int32_t)viewport->Pos.y;
 		viewportData->ignorePositionEventFrame = ImGui::GetFrameCount();
@@ -383,7 +405,10 @@ struct FplPlatformBackend {
 		if (viewportData == nullptr || !viewportData->isOwned || viewportData->window == fpl_null) {
 			return;
 		}
-		// FPL has no taskbar icon and no parent for a window, so ImGuiViewportFlags_NoTaskBarIcon and io.ConfigViewportsNoDefaultParent have no effect
+		// ImGui changes the parent viewport at runtime, e.g. with io.ConfigViewportsNoDefaultParent
+		UpdateViewportParent(viewport);
+
+		// FPL has no taskbar icon for a window, so ImGuiViewportFlags_NoTaskBarIcon has no effect
 		const ImGuiViewportFlags styleFlags = ImGuiViewportFlags_NoDecoration | ImGuiViewportFlags_TopMost;
 		const ImGuiViewportFlags changedFlags = (viewport->Flags ^ viewportData->windowFlags) & styleFlags;
 		if (changedFlags == 0) {
@@ -444,6 +469,7 @@ struct FplPlatformBackend {
 		io.BackendPlatformUserData = this;
 		io.BackendPlatformName = "imgui_impl_fpl";
 		io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+		io.BackendFlags |= ImGuiBackendFlags_HasParentViewport;
 
 		ImGuiPlatformIO &platformIO = ImGui::GetPlatformIO();
 		platformIO.Platform_GetClipboardTextFn = GetClipboardText;
@@ -495,6 +521,7 @@ struct FplPlatformBackend {
 		io.BackendPlatformName = nullptr;
 		io.BackendPlatformUserData = nullptr;
 		io.BackendFlags &= ~ImGuiBackendFlags_PlatformHasViewports;
+		io.BackendFlags &= ~ImGuiBackendFlags_HasParentViewport;
 	}
 
 	void NewFrame(const float deltaTime) {
@@ -929,6 +956,9 @@ int main(int argc, char **args) {
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 	}
 	io.ConfigViewportsNoAutoMerge = state.options.isOwnWindowForEach;
+	// The main window is the parent of every additional window, ImGui makes them top-level windows by default.
+	// KWin would put a window that ImGui creates while dragging (shown without the focus) behind the active main window.
+	io.ConfigViewportsNoDefaultParent = false;
 
 	ImGui::StyleColorsDark();
 	if (state.options.isViewportsEnabled) {
