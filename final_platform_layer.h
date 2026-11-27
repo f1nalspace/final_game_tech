@@ -416,6 +416,7 @@ SOFTWARE.
 	- Fixed: fplSetWindowDecorated(false) also took moving, resizing and closing through the window manager away
 	- Fixed: The keypad keys follow NumLock like on Win32, KP-Enter, Menu, NumLock and ScrollLock are mapped, Print is fplKey_Snapshot like on Win32
 	- Fixed: The key modifiers have left and right apart, the lock states and the state after the key like on Win32
+	- Fixed: Text input delivered only the first character of a committed text and nothing of a text over 31 bytes
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -4035,6 +4036,7 @@ typedef XModifierKeymap fpl__X11_XModifierKeymap;
 #define FPL__X11_XLookupChars XLookupChars
 #define FPL__X11_XLookupKeySym XLookupKeySym
 #define FPL__X11_XLookupBoth XLookupBoth
+#define FPL__X11_XBufferOverflow XBufferOverflow
 #define FPL__X11_XStdICCTextStyle XStdICCTextStyle
 #define FPL__X11_XIMPreeditNothing XIMPreeditNothing
 #define FPL__X11_XIMStatusNothing XIMStatusNothing
@@ -4630,6 +4632,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XLookupChars 2
 #define FPL__X11_XLookupKeySym 3
 #define FPL__X11_XLookupBoth 4
+#define FPL__X11_XBufferOverflow (-1)
 #define FPL__X11_XStdICCTextStyle 3
 #define FPL__X11_XIMPreeditNothing 0x0008L
 #define FPL__X11_XIMStatusNothing 0x0400L
@@ -32558,9 +32561,12 @@ fpl_internal void *fpl__X11ParseUriPaths(const char *text, size_t *size, int *co
 	return filesTableMemory;
 }
 
+// Delivers the text of a key event, every character on its own. An input method commits a whole word at once, a text longer than the buffer is asked for again with one that fits.
 fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__PlatformWindowState *winState, const uint64_t keyCode, fpl__X11_XEvent *ev) {
-	char buf[32] = fplZeroInit;
-	const int maxTextLen = (int)sizeof(buf) - 1;   // reserve one byte for the NUL terminator
+	const size_t largeTextAlignment = 16;
+	char smallText[32] = fplZeroInit;
+	char *text = smallText;
+	char *largeText = fpl_null;
 	fpl__X11_KeySym keysym = 0;
 	int textLen = 0;
 	bool isUtf8 = false;
@@ -32568,37 +32574,52 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 	fpl__X11WindowState *x11WinState = &winState->x11;
 	if (x11WinState->im.xic != 0 && x11Api->Xutf8LookupString != fpl_null) {
 		fpl__X11_Status status = 0;
-		textLen = x11Api->Xutf8LookupString(x11WinState->im.xic, &ev->xkey, buf, maxTextLen, &keysym, &status);
-		// status tells us what buf holds; only XLookupChars / XLookupBoth yield committed text
+		textLen = x11Api->Xutf8LookupString(x11WinState->im.xic, &ev->xkey, smallText, (int)sizeof(smallText), &keysym, &status);
+		// On an overflow the length is the size the text needs, the same event gives the same text again
+		if (status == FPL__X11_XBufferOverflow && textLen > 0) {
+			const size_t largeTextCapacity = (size_t)textLen;
+			largeText = (char *)fpl__AllocateTemporaryMemory(largeTextCapacity, largeTextAlignment);
+			if (largeText != fpl_null) {
+				textLen = x11Api->Xutf8LookupString(x11WinState->im.xic, &ev->xkey, largeText, (int)largeTextCapacity, &keysym, &status);
+				text = largeText;
+			}
+		}
+		// status tells what the buffer holds, only XLookupChars and XLookupBoth have committed text
 		if (status == FPL__X11_XLookupChars || status == FPL__X11_XLookupBoth) {
 			isUtf8 = true;
 		} else {
-			textLen = 0;   // XLookupKeySym / XLookupNone / XBufferOverflow -> no committed text
+			textLen = 0;
 		}
 	} else {
 		// Fallback: no input method. XLookupString returns locale/Latin-1 bytes, not UTF-8.
-		int n = x11Api->XLookupString(&ev->xkey, buf, maxTextLen, &keysym, fpl_null);
+		int n = x11Api->XLookupString(&ev->xkey, smallText, (int)sizeof(smallText), &keysym, fpl_null);
 		if (n > 0) {
 			textLen = n;
 			isUtf8 = false;
 		}
 	}
 
-	if (textLen <= 0) {
-		return;
+	// Xutf8LookupString always returns UTF-8 regardless of the C locale, so it is decoded directly. The Latin-1 bytes of the fallback are code points in 0..255.
+	size_t offset = 0;
+	const size_t textLength = textLen > 0 ? (size_t)textLen : 0;
+	while (offset < textLength) {
+		uint32_t textCode = 0;
+		size_t consumed = 1;
+		if (isUtf8) {
+			consumed = fpl__DecodeUTF8CodePoint(text + offset, textLength - offset, &textCode);
+			if (consumed == 0) {
+				break;
+			}
+		} else {
+			textCode = (uint32_t)(unsigned char)text[offset];
+		}
+		offset += consumed;
+		if (textCode > 0) {
+			fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+		}
 	}
-	buf[textLen] = '\0';
-
-	// Xutf8LookupString always returns UTF-8 regardless of the C locale, so decode it directly.
-	uint32_t textCode = 0;
-	if (isUtf8) {
-		fpl__DecodeUTF8CodePoint(buf, (size_t)textLen, &textCode);
-	} else {
-		// Latin-1 fallback: each returned byte is a Unicode code point in 0..255 directly.
-		textCode = (uint32_t)(unsigned char)buf[0];
-	}
-	if (textCode > 0) {
-		fpl__HandleKeyboardInputEvent(winState, keyCode, textCode);
+	if (largeText != fpl_null) {
+		fpl__ReleaseTemporaryMemory(largeText);
 	}
 }
 #endif // FPL__ENABLE_WINDOW
