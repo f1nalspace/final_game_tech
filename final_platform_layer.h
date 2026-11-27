@@ -371,6 +371,9 @@ SOFTWARE.
 	- Changed: [Win32] The focus events come from WM_SETFOCUS/WM_KILLFOCUS of each window instead of WM_ACTIVATEAPP
 	- Changed: [Win32] fplPollEvent() dispatches the messages of all windows of the thread
 	- Changed: [X11] The input context follows the window focus
+	- New: Added fplWindowGetClientPositionMulti() and fplWindowSetClientPositionMulti(), the position of the client area in screen coordinates
+	- Fixed: [X11] fplGetWindowPosition() and fplWindowEventType_PositionChanged gave the position relative to the frame of the window manager, both give the position of the frame on the screen now like on Win32
+	- Fixed: [X11] A position set before the window is shown is kept, the window manager placed the window itself
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -4071,6 +4074,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_Button3 Button3
 #define FPL__X11_Button4 Button4
 #define FPL__X11_Button5 Button5
+#define FPL__X11_PPosition PPosition
 #define FPL__X11_PMinSize PMinSize
 #define FPL__X11_PMaxSize PMaxSize
 #define FPL__X11_InputHint InputHint
@@ -4641,6 +4645,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_Button3 3
 #define FPL__X11_Button4 4
 #define FPL__X11_Button5 5
+#define FPL__X11_PPosition (1L << 2)
 #define FPL__X11_PMinSize (1L << 4)
 #define FPL__X11_PMaxSize (1L << 5)
 #define FPL__X11_InputHint (1L << 0)
@@ -10970,9 +10975,10 @@ fpl_common_api bool fplDisableWindowFullscreen(void);
 fpl_common_api bool fplIsWindowFullscreen(void);
 
 /**
-* @brief Retrieves the absolute window position.
+* @brief Retrieves the absolute window position, the top-left corner of the frame on the screen.
 * @param[out] outPos Reference to the window position structure @ref fplWindowPosition.
 * @return Returns true when we got the position, false otherwise.
+* @note The client area starts below the title bar and inside the border of the frame, @ref fplWindowGetClientPositionMulti() gives its position.
 */
 fpl_common_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 
@@ -11372,11 +11378,12 @@ fpl_common_api bool fplWindowDisableFullscreenMulti(fplWindowHandle *window);
 fpl_common_api bool fplWindowIsFullscreenMulti(fplWindowHandle *window);
 
 /**
-* @brief Retrieves the absolute position of the given window.
+* @brief Retrieves the absolute position of the given window, the top-left corner of the frame on the screen.
 * @param[in] window The @ref fplWindowHandle of the window.
 * @param[out] outPos Reference to the window position structure.
 * @return Returns true when the position was retrieved.
 * @see fplGetWindowPosition()
+* @see fplWindowGetClientPositionMulti()
 */
 fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos);
 
@@ -11389,6 +11396,28 @@ fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindow
 * @see fplSetWindowPosition()
 */
 fpl_common_api bool fplWindowSetPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top);
+
+/**
+* @brief Retrieves the position of the client area of the given window in screen coordinates, without the frame and the title bar of the system.
+* @param[in] window The @ref fplWindowHandle of the window, @ref fplWindowGetMain() for the main window.
+* @param[out] outPos Reference to the window position structure.
+* @return Returns true when the position was retrieved.
+* @note The position of a mouse event plus this position is the position of the cursor on the screen, also for a window that is moved while the cursor is on it.
+* @see fplWindowSetClientPositionMulti()
+*/
+fpl_common_api bool fplWindowGetClientPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos);
+
+/**
+* @brief Moves the given window so that its client area starts at the given position in screen coordinates.
+* @param[in] window The @ref fplWindowHandle of the window, @ref fplWindowGetMain() for the main window.
+* @param[in] left The left position of the client area in screen units.
+* @param[in] top The top position of the client area in screen units.
+* @return Returns true when the move was requested ([Win32] not while the window is minimized).
+* @note The move does not show, activate or raise the window, a hidden window gets the position when it is shown.
+* @note [X11] The window manager decides the final position. Before it framed a decorated window the first time, the size of the frame is not known, the window may end up lower by the height of the title bar then.
+* @see fplWindowGetClientPositionMulti()
+*/
+fpl_common_api bool fplWindowSetClientPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top);
 
 /**
 * @brief Changes the title of the given window.
@@ -14858,6 +14887,7 @@ typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netActiveWindow;
 	fpl__X11_Atom netSupportingWMCheck;
 	fpl__X11_Atom netSupported;
+	fpl__X11_Atom netFrameExtents;
 } fpl__X11NetWMAtoms;
 
 // Drag and drop runtime state + atoms
@@ -15954,6 +15984,8 @@ fpl_internal bool fpl__PlatformWindow(SetFullscreenSize)(fplWindowHandle *window
 fpl_internal bool fpl__PlatformWindow(SetFullscreenRect)(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 fpl_internal bool fpl__PlatformWindow(GetPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
 fpl_internal bool fpl__PlatformWindow(SetPosition)(fplWindowHandle *window, const int32_t left, const int32_t top);
+fpl_internal bool fpl__PlatformWindow(GetClientPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
+fpl_internal bool fpl__PlatformWindow(SetClientPosition)(fplWindowHandle *window, const int32_t left, const int32_t top);
 fpl_internal bool fpl__PlatformWindow(SetTitle)(fplWindowHandle *window, const char *title);
 fpl_internal fplWindowState fpl__PlatformWindow(GetState)(fplWindowHandle *window);
 fpl_internal bool fpl__PlatformWindow(SetState)(fplWindowHandle *window, const fplWindowState newState);
@@ -18273,6 +18305,19 @@ fpl_common_api void fplSetWindowPosition(const int32_t left, const int32_t top) 
 	FPL__CheckPlatformNoRet();
 	fplWindowHandle *mainWindow = fplWindowGetMain();
 	fplWindowSetPositionMulti(mainWindow, left, top);
+}
+
+fpl_common_api bool fplWindowGetClientPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos) {
+	FPL__CheckArgumentNull(outPos, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetClientPosition)(window, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetClientPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetClientPosition)(window, left, top);
+	return(result);
 }
 
 fpl_common_api bool fplWindowSetTitleMulti(fplWindowHandle *window, const char *title) {
@@ -25615,6 +25660,42 @@ fpl_internal bool fpl__Win32Window_SetPosition(fplWindowHandle *window, const in
 	return(result);
 }
 
+fpl_internal bool fpl__Win32Window_GetClientPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT clientOrigin = fplZeroInit;
+	if (!wapi->user.ClientToScreen(windowState->windowHandle, &clientOrigin)) {
+		return(false);
+	}
+	outPos->left = clientOrigin.x;
+	outPos->top = clientOrigin.y;
+	return(true);
+}
+
+// SetWindowPos() moves the frame, the client area keeps its offset inside it. Unlike SetWindowPlacement() it does not show a hidden window.
+fpl_internal bool fpl__Win32Window_SetClientPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	HWND handle = windowState->windowHandle;
+	if (wapi->user.IsIconic(handle)) {
+		return(false);
+	}
+	RECT windowRect = fplZeroInit;
+	POINT clientOrigin = fplZeroInit;
+	if (!wapi->user.GetWindowRect(handle, &windowRect) || !wapi->user.ClientToScreen(handle, &clientOrigin)) {
+		return(false);
+	}
+	const int frameLeft = clientOrigin.x - windowRect.left;
+	const int frameTop = clientOrigin.y - windowRect.top;
+	const int windowLeft = (int)left - frameLeft;
+	const int windowTop = (int)top - frameTop;
+	const UINT flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+	bool result = wapi->user.SetWindowPos(handle, fpl_null, windowLeft, windowTop, 0, 0, flags) != 0;
+	return(result);
+}
+
 fpl_internal fplWindowState fpl__Win32Window_GetState(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__PlatformWindowState *platformWindowState = window->state;
@@ -31378,6 +31459,7 @@ fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11Wi
 	windowState->netWM.netActiveWindow = x11Api->XInternAtom(windowState->display, "_NET_ACTIVE_WINDOW", FPL__X11_False);
 	windowState->netWM.netSupportingWMCheck = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTING_WM_CHECK", FPL__X11_False);
 	windowState->netWM.netSupported = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTED", FPL__X11_False);
+	windowState->netWM.netFrameExtents = x11Api->XInternAtom(windowState->display, "_NET_FRAME_EXTENTS", FPL__X11_False);
 }
 
 fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -32761,6 +32843,43 @@ fpl_internal void fpl__X11CallEventCallback(fplWindowHandle *window, fpl__X11_XE
 	}
 }
 
+// The frame the window manager put around the window, _NET_FRAME_EXTENTS left and top. Zero without a window manager, for a window without decoration and before the window manager framed the window.
+fpl_internal void fpl__X11GetFrameExtents(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, int32_t *outLeft, int32_t *outTop) {
+	*outLeft = 0;
+	*outTop = 0;
+	fpl__X11_Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	const long extentCount = 4;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->netWM.netFrameExtents, 0L, extentCount, FPL__X11_False, FPL__X11_XA_CARDINAL, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	const int cardinalFormat = 32;
+	if (status == FPL__X11_Success && data != fpl_null && actualFormat == cardinalFormat && itemCount >= (unsigned long)extentCount) {
+		// Format 32 comes as long values: left, right, top, bottom
+		const long *extents = (const long *)data;
+		*outLeft = (int32_t)extents[0];
+		*outTop = (int32_t)extents[2];
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+}
+
+// The position of the client area in root coordinates. XGetWindowAttributes() and a real ConfigureNotify give it relative to the parent, which is the frame of the window manager.
+fpl_internal bool fpl__X11GetClientRootPosition(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, int32_t *outLeft, int32_t *outTop) {
+	int rootX = 0;
+	int rootY = 0;
+	fpl__X11_Window child = 0;
+	fpl__X11_Bool isTranslated = x11Api->XTranslateCoordinates(windowState->display, windowState->core.window, windowState->core.root, 0, 0, &rootX, &rootY, &child);
+	if (!isTranslated) {
+		return(false);
+	}
+	*outLeft = (int32_t)rootX;
+	*outTop = (int32_t)rootY;
+	return(true);
+}
+
 fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fplWindowHandle *window, fpl__X11_XEvent *ev) {
 	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (window != fpl_null) && (ev != fpl_null));
 	fpl__PlatformWindowState *winState = window->state;
@@ -32818,11 +32937,21 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				lastX11WinInfo->size.height = (int32_t)ev->xconfigure.height;
 			}
 
-			// Window moved
-			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
-				fpl__PushWindowPositionEvent(winState->handle, fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
-				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x;
-				lastX11WinInfo->position.top = (int32_t)ev->xconfigure.y;
+			// Window moved, reported as the position of the frame like fplGetWindowPosition(). A real ConfigureNotify is relative to the parent (the frame of the window manager), a synthetic one from the window manager is in root coordinates (ICCCM).
+			int32_t clientLeft = (int32_t)ev->xconfigure.x;
+			int32_t clientTop = (int32_t)ev->xconfigure.y;
+			if (!ev->xconfigure.send_event) {
+				fpl__X11GetClientRootPosition(x11Api, x11WinState, &clientLeft, &clientTop);
+			}
+			int32_t frameLeft = 0;
+			int32_t frameTop = 0;
+			fpl__X11GetFrameExtents(x11Api, x11WinState, &frameLeft, &frameTop);
+			const int32_t windowLeft = clientLeft - frameLeft;
+			const int32_t windowTop = clientTop - frameTop;
+			if (windowLeft != lastX11WinInfo->position.left || windowTop != lastX11WinInfo->position.top) {
+				fpl__PushWindowPositionEvent(winState->handle, fplWindowEventType_PositionChanged, windowLeft, windowTop);
+				lastX11WinInfo->position.left = windowLeft;
+				lastX11WinInfo->position.top = windowTop;
 			}
 		} break;
 
@@ -34605,24 +34734,86 @@ fpl_internal bool fpl__X11Window_SetFullscreenRect(fplWindowHandle *window, cons
 	return(result);
 }
 
+// A window that is not shown yet keeps the position the application gave it, most window managers place it themselves otherwise (like GLFW)
+fpl_internal void fpl__X11RequestProgramPosition(const fpl__X11Api *x11Api, const fplWindowHandle *window) {
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (!window->state->isHidden) {
+		return;
+	}
+	fpl__X11_XSizeHints *hints = x11Api->XAllocSizeHints();
+	if (hints == fpl_null) {
+		return;
+	}
+	long suppliedFlags = 0;
+	if (!x11Api->XGetWMNormalHints(windowState->display, windowState->core.window, hints, &suppliedFlags)) {
+		hints->flags = 0;
+	}
+	hints->flags |= FPL__X11_PPosition;
+	// The position fields of the hints are obsolete, the window position is what counts
+	hints->x = 0;
+	hints->y = 0;
+	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
+	x11Api->XFree(hints);
+}
+
+// The position of the frame like on Win32: the position of the client area without the frame of the window manager
 fpl_internal bool fpl__X11Window_GetPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &window->state->x11;
-	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
-	outPos->left = attribs.x;
-	outPos->top = attribs.y;
+	int32_t clientLeft = 0;
+	int32_t clientTop = 0;
+	if (!fpl__X11GetClientRootPosition(x11Api, windowState, &clientLeft, &clientTop)) {
+		return(false);
+	}
+	int32_t frameLeft = 0;
+	int32_t frameTop = 0;
+	fpl__X11GetFrameExtents(x11Api, windowState, &frameLeft, &frameTop);
+	outPos->left = clientLeft - frameLeft;
+	outPos->top = clientTop - frameTop;
 	return(true);
 }
 
+// The window manager places the frame at the requested position (ICCCM, the window has NorthWestGravity)
 fpl_internal bool fpl__X11Window_SetPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &window->state->x11;
+	fpl__X11RequestProgramPosition(x11Api, window);
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
+	return(true);
+}
+
+fpl_internal bool fpl__X11Window_GetClientPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	int32_t clientLeft = 0;
+	int32_t clientTop = 0;
+	if (!fpl__X11GetClientRootPosition(x11Api, windowState, &clientLeft, &clientTop)) {
+		return(false);
+	}
+	outPos->left = clientLeft;
+	outPos->top = clientTop;
+	return(true);
+}
+
+// The frame goes to the requested position, so the frame is moved by its extents to put the client area there. Before the window manager framed the window the extents are not known yet.
+fpl_internal bool fpl__X11Window_SetClientPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	int32_t frameLeft = 0;
+	int32_t frameTop = 0;
+	fpl__X11GetFrameExtents(x11Api, windowState, &frameLeft, &frameTop);
+	fpl__X11RequestProgramPosition(x11Api, window);
+	const int32_t windowLeft = left - frameLeft;
+	const int32_t windowTop = top - frameTop;
+	x11Api->XMoveWindow(windowState->display, windowState->core.window, windowLeft, windowTop);
 	return(true);
 }
 

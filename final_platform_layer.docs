@@ -1794,6 +1794,26 @@
 	}
 	@endcode
 
+	@section section_category_window_multi_position Placing windows next to each other
+
+	@ref fplWindowGetPositionMulti() and @ref fplWindowSetPositionMulti() work with the position of the frame, like @ref fplGetWindowPosition().<br>
+	To place a window relative to the content of another one, use the position of the client area: @ref fplWindowGetClientPositionMulti() and @ref fplWindowSetClientPositionMulti() work in screen coordinates without the frame and the title bar of the system.<br>
+	The position of a mouse event plus the client position of its window is the position of the cursor on the screen, for example for a user interface that moves its panels into windows of their own (like the viewports of Dear ImGui, see the demo FPL_ImGuiMultiWindow).
+
+	@code{.c}
+	const int32_t toolWindowGap = 10;
+
+	// Puts the tool window right of the client area of the main window
+	fplWindowPosition mainClientPosition;
+	fplWindowSize mainClientSize;
+	if (fplWindowGetClientPositionMulti(mainWindow, &mainClientPosition) && fplWindowGetSizeMulti(mainWindow, &mainClientSize)) {
+		int32_t toolClientLeft = mainClientPosition.left + (int32_t)mainClientSize.width + toolWindowGap;
+		fplWindowSetClientPositionMulti(toolWindow, toolClientLeft, mainClientPosition.top);
+	}
+	@endcode
+
+	@note A window that starts hidden (@ref fplWindowSettings.initialVisibility) gets its position before it is shown: the move does not show it, and it appears at that position.
+
 	@section section_category_window_multi_opengl Rendering with OpenGL
 
 	With the OpenGL video backend all windows share the rendering context of the main window, so textures, buffers and shaders are available in every window.<br>
