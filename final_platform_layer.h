@@ -419,6 +419,7 @@ SOFTWARE.
 	- Fixed: Text input delivered only the first character of a committed text and nothing of a text over 31 bytes
 	- Fixed: The repeats of a held key bypassed the input method and the event callback, XKB detectable auto repeat is used when the server has it
 	- Fixed: The key map was not rebuilt when the keyboard layout changed
+	- Fixed: Key events differed from Win32: the text of a repeat came first, Delete had a character and a key released twice pushed two releases
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -32661,6 +32662,11 @@ fpl_internal void fpl__X11HandleTextInputEvent(const fpl__X11Api *x11Api, fpl__P
 		}
 	}
 
+	// Like on Win32 the Delete key has no character, X11 gives it 0x7F
+	if (keysym == FPL__X11_XK_Delete || keysym == FPL__X11_XK_KP_Delete) {
+		textLen = 0;
+	}
+
 	// Xutf8LookupString always returns UTF-8 regardless of the C locale, so it is decoded directly. The Latin-1 bytes of the fallback are code points in 0..255.
 	size_t offset = 0;
 	const size_t textLength = textLen > 0 ? (size_t)textLen : 0;
@@ -33114,11 +33120,12 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			uint32_t scanCode = fpl__X11GetScanCode(keyCode);
 			// A repeat keeps the key down
 			fplKeyboardModifierFlags modifiers = fpl__X11GetKeyModifiers(x11Api, &appState->x11, winState, &ev->xkey, isRepeat);
+			// Like on Win32 the key event comes before its text, and a key that was not pressed in the window, or was released at the loss of the focus, has no release
 			if (isRepeat) {
-				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
+				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 			} else {
-				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, true);
+				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
 			}
 			return true;
 		}
