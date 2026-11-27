@@ -11339,7 +11339,7 @@ fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const boo
 * @return Returns true when the parent was set, false for the main window, an unknown parent or a parent that is the window itself or one of its children.
 * @note Without a parent the window manager decides whether a window shown without the focus comes in front of the active window, KWin puts it behind.
 * @note [Win32] The parent is the owner of the window, the window is minimized and restored together with it.
-* @note [X11] The parent is set as WM_TRANSIENT_FOR.
+* @note [X11] The parent is set as WM_TRANSIENT_FOR and the window becomes a utility window (_NET_WM_WINDOW_TYPE_UTILITY), window managers like KWin show and close it without a fade animation. A parent set after the window is shown comes too late for the fade-in.
 * @note Destroying the parent removes it from its children, the children stay.
 * @see fplWindowGetParentMulti()
 */
@@ -14912,6 +14912,8 @@ typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netSupportingWMCheck;
 	fpl__X11_Atom netSupported;
 	fpl__X11_Atom netFrameExtents;
+	fpl__X11_Atom netWMWindowType;
+	fpl__X11_Atom netWMWindowTypeUtility;
 } fpl__X11NetWMAtoms;
 
 // Drag and drop runtime state + atoms
@@ -31548,6 +31550,8 @@ fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11Wi
 	windowState->netWM.netSupportingWMCheck = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTING_WM_CHECK", FPL__X11_False);
 	windowState->netWM.netSupported = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTED", FPL__X11_False);
 	windowState->netWM.netFrameExtents = x11Api->XInternAtom(windowState->display, "_NET_FRAME_EXTENTS", FPL__X11_False);
+	windowState->netWM.netWMWindowType = x11Api->XInternAtom(windowState->display, "_NET_WM_WINDOW_TYPE", FPL__X11_False);
+	windowState->netWM.netWMWindowTypeUtility = x11Api->XInternAtom(windowState->display, "_NET_WM_WINDOW_TYPE_UTILITY", FPL__X11_False);
 }
 
 fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -34230,8 +34234,13 @@ fpl_internal bool fpl__X11Window_SetParent(fplWindowHandle *window, fplWindowHan
 		const fpl__X11_Window parentWindow = parentState->core.window;
 		const int parentCount = 1;
 		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR, FPL__X11_XA_WINDOW, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&parentWindow, parentCount);
+		// A transient window without a type is a dialog, which window managers fade in and out, a utility window like a Win32 owned window appears and goes at once
+		const fpl__X11_Atom windowType = windowState->netWM.netWMWindowTypeUtility;
+		const int windowTypeCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMWindowType, FPL__X11_XA_ATOM, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (const unsigned char *)&windowType, windowTypeCount);
 	} else {
 		x11Api->XDeleteProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR);
+		x11Api->XDeleteProperty(windowState->display, windowState->core.window, windowState->netWM.netWMWindowType);
 	}
 	x11Api->XFlush(windowState->display);
 	return(true);

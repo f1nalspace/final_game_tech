@@ -1825,7 +1825,7 @@
 	@endcode
 
 	@note [Win32] The parent is the owner of the window, the window is minimized and restored together with its parent.
-	@note [X11] The parent is set as WM_TRANSIENT_FOR, how the window manager shows such a window (for example in the taskbar) is up to it.
+	@note [X11] The parent is set as WM_TRANSIENT_FOR and the window becomes a utility window (_NET_WM_WINDOW_TYPE_UTILITY), so window managers like KWin show and close it without a fade animation, like a Win32 owned window. How the window manager shows such a window otherwise (for example in the taskbar) is up to it.
 	@note Destroying the parent removes it from its children, they stay open without a parent.
 
 	@section section_category_window_multi_opengl Rendering with OpenGL
