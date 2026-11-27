@@ -402,6 +402,8 @@ SOFTWARE.
 	- Fixed: fplClipboardGetText() failed or reserved too much memory when the owner announced a huge INCR size
 	- Fixed: A drag source that was gone or made up ended the process
 	- Fixed: A chunked clipboard transfer kept the property events of the receiving window selected
+	- Fixed: fplWindowShutdown() sent the close request to the root window instead of the own window
+	- Fixed: Changes of position, decoration and fullscreen were not flushed to the server
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -33591,7 +33593,9 @@ fpl_platform_api void fplWindowShutdown(void) {
 		ev.xclient.format = 32;
 		ev.xclient.data.l[0] = windowState->wm.wmDeleteWindow;
 		ev.xclient.data.l[1] = 0;
-		x11Api->XSendEvent(windowState->display, windowState->core.root, FPL__X11_False, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &ev);
+		// A client message without event mask goes to the client that created the window, so the event loop sees the close
+		x11Api->XSendEvent(windowState->display, windowState->core.window, FPL__X11_False, FPL__X11_NoEventMask, &ev);
+		x11Api->XFlush(windowState->display);
 	}
 }
 
@@ -34271,6 +34275,7 @@ fpl_internal bool fpl__X11Window_SetDecorated(fplWindowHandle *window, const boo
 		FPL__X11_PropModeReplace,
 		(unsigned char *)&hints,
 		FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
+	x11Api->XFlush(windowState->display);
 
 	window->settings->isDecorated = value;
 	return(true);
@@ -34950,6 +34955,7 @@ fpl_internal bool fpl__X11Window_SetFullscreenSize(fplWindowHandle *window, cons
 	// @TODO(final/X11): Support for changing the display resolution + refresh rate in X11
 
 	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
+	x11Api->XFlush(windowState->display);
 	if (result) {
 		window->settings->isFullscreen = value;
 	}
@@ -35072,6 +35078,7 @@ fpl_internal bool fpl__X11Window_SetPosition(fplWindowHandle *window, const int3
 	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11RequestProgramPosition(x11Api, window);
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
+	x11Api->XFlush(windowState->display);
 	return(true);
 }
 
@@ -35103,6 +35110,7 @@ fpl_internal bool fpl__X11Window_SetClientPosition(fplWindowHandle *window, cons
 	const int32_t windowLeft = left - frameLeft;
 	const int32_t windowTop = top - frameTop;
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, windowLeft, windowTop);
+	x11Api->XFlush(windowState->display);
 	return(true);
 }
 
