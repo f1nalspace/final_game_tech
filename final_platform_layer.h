@@ -422,6 +422,7 @@ SOFTWARE.
 	- Fixed: Key events differed from Win32: the text of a repeat came first, Delete had a character and a key released twice pushed two releases
 	- Fixed: An invalid percent escape in a dropped file path became the byte 0xFF where char is unsigned (ARM)
 	- Fixed: Without a primary RandR output fplGetPrimaryDisplay() returned the whole screen without display modes, the output at the origin is the primary display now
+	- Fixed: The default title and class name of a window was "Unnamed FPL X11 fpl__X11_Window"
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -32023,7 +32024,7 @@ fpl_internal void fpl__X11PrepareFocusOnMap(const fpl__X11Api *x11Api, fpl__X11W
 	}
 }
 
-#define FPL__X11_UNNAMED_WINDOW "Unnamed FPL X11 fpl__X11_Window"
+#define FPL__X11_UNNAMED_WINDOW "Unnamed FPL X11 Window"
 
 // The title a window starts with, it is also the class name of the application (WM_CLASS)
 fpl_internal void fpl__X11GetWindowName(const fplWindowSettings *windowSettings, char *outName, const size_t maxNameLength) {
