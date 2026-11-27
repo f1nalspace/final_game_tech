@@ -415,6 +415,7 @@ SOFTWARE.
 	- Fixed: Focus events of a child window or of the pointer window counted as focus changes, without a window manager the window started with fplWindowEventType_LostFocus
 	- Fixed: fplSetWindowDecorated(false) also took moving, resizing and closing through the window manager away
 	- Fixed: The keypad keys follow NumLock like on Win32, KP-Enter, Menu, NumLock and ScrollLock are mapped, Print is fplKey_Snapshot like on Win32
+	- Fixed: The key modifiers have left and right apart, the lock states and the state after the key like on Win32
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -4020,6 +4021,7 @@ typedef XICCEncodingStyle fpl__X11_XICCEncodingStyle;
 typedef XClassHint fpl__X11_XClassHint;
 typedef XGCValues fpl__X11_XGCValues;
 typedef XColor fpl__X11_XColor;
+typedef XModifierKeymap fpl__X11_XModifierKeymap;
 
 #define FPL__X11_None None
 #define FPL__X11_True True
@@ -4542,6 +4544,11 @@ typedef struct fpl__X11_XWindowAttributes {
 	fpl__X11_Bool override_redirect;
 	fpl__X11_Screen *screen;
 } fpl__X11_XWindowAttributes;
+
+typedef struct fpl__X11_XModifierKeymap {
+	int max_keypermod;
+	fpl__X11_KeyCode *modifiermap;
+} fpl__X11_XModifierKeymap;
 
 typedef struct fpl__X11_XVisualInfo {
 	fpl__X11_Visual *visual;
@@ -14110,6 +14117,10 @@ typedef FPL__FUNC_X11_XDisplayKeycodes(fpl__func_x11_XDisplayKeycodes);
 typedef FPL__FUNC_X11_XGetKeyboardMapping(fpl__func_x11_XGetKeyboardMapping);
 #define FPL__FUNC_X11_XLookupString(name) int name(fpl__X11_XKeyEvent* event_struct, char* buffer_return, int bytes_buffer, fpl__X11_KeySym* keysym_return, fpl__X11_XComposeStatus* status_in_out)
 typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
+#define FPL__FUNC_X11_XGetModifierMapping(name) fpl__X11_XModifierKeymap *name(fpl__X11_Display *display)
+typedef FPL__FUNC_X11_XGetModifierMapping(fpl__func_x11_XGetModifierMapping);
+#define FPL__FUNC_X11_XFreeModifiermap(name) int name(fpl__X11_XModifierKeymap *modmap)
+typedef FPL__FUNC_X11_XFreeModifiermap(fpl__func_x11_XFreeModifiermap);
 #define FPL__FUNC_X11_XOpenIM(name) fpl__X11_XIM name(fpl__X11_Display *display, void *rdb, char *res_name, char *res_class)
 typedef FPL__FUNC_X11_XOpenIM(fpl__func_x11_XOpenIM);
 #define FPL__FUNC_X11_XCloseIM(name) fpl__X11_Status name(fpl__X11_XIM im)
@@ -14268,6 +14279,8 @@ extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
 extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
 extern FPL__FUNC_X11_XGetKeyboardMapping(XGetKeyboardMapping);
+extern FPL__FUNC_X11_XGetModifierMapping(XGetModifierMapping);
+extern FPL__FUNC_X11_XFreeModifiermap(XFreeModifiermap);
 extern FPL__FUNC_X11_XGetSelectionOwner(XGetSelectionOwner);
 extern FPL__FUNC_X11_XGetWMNormalHints(XGetWMNormalHints);
 extern FPL__FUNC_X11_XGetWindowAttributes(XGetWindowAttributes);
@@ -14356,6 +14369,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XMoveWindow *XMoveWindow;
 	fpl__func_x11_XDisplayKeycodes* XDisplayKeycodes;
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
+	fpl__func_x11_XGetModifierMapping *XGetModifierMapping;
+	fpl__func_x11_XFreeModifiermap *XFreeModifiermap;
 	fpl__func_x11_XLookupString *XLookupString;
 	fpl__func_x11_XOpenIM *XOpenIM;
 	fpl__func_x11_XCloseIM *XCloseIM;
@@ -14470,6 +14485,8 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMoveWindow, XMoveWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XDisplayKeycodes, XDisplayKeycodes);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetModifierMapping, XGetModifierMapping);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeModifiermap, XFreeModifiermap);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseIM, XCloseIM);
@@ -14935,6 +14952,9 @@ typedef struct fpl__X11SubplatformState {
 	fpl__X11DisplayConnection windowlessConnection;
 	// The key codes of the keypad keys that have a number with NumLock, their key follows NumLock at every key event
 	bool isKeypadNumberKey[256];
+	// The modifier masks NumLock and ScrollLock are bound to, the layout decides them (ScrollLock mostly has none, it is never reported then)
+	unsigned int numLockMask;
+	unsigned int scrollLockMask;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -15122,6 +15142,8 @@ typedef struct fpl__X11WindowState {
 	fpl__X11ClipboardState clipboard;
 	fpl__X11CursorState cursor;
 	fpl__X11IMState im;
+	// The lock states after the last press of a lock key, its release reports them, the state of a release still has a lock that the release turns off
+	fplKeyboardModifierFlags lockModifiersOfPress;
 	fpl__X11StartFocusState startFocus;
 	int screen;
 	int colorDepth;
@@ -31630,6 +31652,47 @@ fpl_internal bool fpl__X11IsKeypadNumberKeySymbol(const fpl__X11_KeySym keySym) 
 	return(result);
 }
 
+// Finds the modifiers NumLock and ScrollLock are bound to, through the keys of the key map
+fpl_internal void fpl__X11UpdateLockMasks(const fpl__X11Api *x11Api, fpl__X11_Display *display, const fplKey *keyMap, const int keyMapCount, fpl__X11SubplatformState *subplatform) {
+	const int modifierCount = 8;
+	subplatform->numLockMask = 0;
+	subplatform->scrollLockMask = 0;
+	fpl__X11_XModifierKeymap *modifierMap = x11Api->XGetModifierMapping(display);
+	if (modifierMap == fpl_null) {
+		return;
+	}
+	for (int modifierIndex = 0; modifierIndex < modifierCount; ++modifierIndex) {
+		for (int keyIndex = 0; keyIndex < modifierMap->max_keypermod; ++keyIndex) {
+			const int keyCode = modifierMap->modifiermap[modifierIndex * modifierMap->max_keypermod + keyIndex];
+			if (keyCode <= 0 || keyCode >= keyMapCount) {
+				continue;
+			}
+			const unsigned int modifierMask = 1u << modifierIndex;
+			if (keyMap[keyCode] == fplKey_NumLock) {
+				subplatform->numLockMask |= modifierMask;
+			} else if (keyMap[keyCode] == fplKey_Scroll) {
+				subplatform->scrollLockMask |= modifierMask;
+			}
+		}
+	}
+	x11Api->XFreeModifiermap(modifierMap);
+}
+
+// The lock states in the modifier state of an event or of the pointer
+fpl_internal fplKeyboardModifierFlags fpl__X11GetLockModifiers(const fpl__X11SubplatformState *subplatform, const unsigned int state) {
+	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
+	if ((state & FPL__X11_LockMask) != 0) {
+		result |= fplKeyboardModifierFlags_CapsLock;
+	}
+	if (subplatform->numLockMask != 0 && (state & subplatform->numLockMask) != 0) {
+		result |= fplKeyboardModifierFlags_NumLock;
+	}
+	if (subplatform->scrollLockMask != 0 && (state & subplatform->scrollLockMask) != 0) {
+		result |= fplKeyboardModifierFlags_ScrollLock;
+	}
+	return(result);
+}
+
 // isKeypadNumberKey is optional, it gets the key codes whose second keysym is a number of the keypad
 fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display *display, fplKey *keyMap, bool *isKeypadNumberKey, const int keyMapCount) {
 	int minKeycode = 0;
@@ -32153,6 +32216,7 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	const int keyMapCount = (int)fplArrayCount(appState->window.keyMap);
 	fplClearStruct(appState->x11.isKeypadNumberKey);
 	fpl__X11FillKeyMap(x11Api, windowState->display, appState->window.keyMap, appState->x11.isKeypadNumberKey, keyMapCount);
+	fpl__X11UpdateLockMasks(x11Api, windowState->display, appState->window.keyMap, keyMapCount, &appState->x11);
 }
 
 fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
@@ -32250,27 +32314,6 @@ fpl_internal void fpl__X11Window_Destroy(fplWindowHandle *window) {
 	fpl__X11WindowState *windowState = &window->state->x11;
 	// Events of the window that are still in the queue find no window anymore and are dropped
 	fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
-}
-
-fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
-	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
-	if (fplIsMaskSet(state, FPL__X11_ShiftMask)) {
-		result |= fplKeyboardModifierFlags_LShift;
-		result |= fplKeyboardModifierFlags_RShift;
-	}
-	if (fplIsMaskSet(state, FPL__X11_ControlMask)) {
-		result |= fplKeyboardModifierFlags_LCtrl;
-		result |= fplKeyboardModifierFlags_RCtrl;
-	}
-	if (fplIsMaskSet(state, FPL__X11_Mod1Mask)) {
-		result |= fplKeyboardModifierFlags_LAlt;
-		result |= fplKeyboardModifierFlags_RAlt;
-	}
-	if (fplIsMaskSet(state, FPL__X11_Mod4Mask)) {
-		result |= fplKeyboardModifierFlags_LSuper;
-		result |= fplKeyboardModifierFlags_RSuper;
-	}
-	return(result);
 }
 
 fpl_internal unsigned long fpl__X11GetWindowProperty(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11_Window window, fpl__X11_Atom prop, fpl__X11_Atom type, unsigned char **value) {
@@ -32631,6 +32674,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_Init(fpl__InputBackendX11Kbm *backend,
 		// Build a backend-local keycode -> fplKey map (no user window provides one in detached mode).
 		const int detachedKeyMapCount = (int)fplArrayCount(backend->detachedKeyMap);
 		fpl__X11FillKeyMap(x11Api, display, backend->detachedKeyMap, fpl_null, detachedKeyMapCount);
+		fpl__X11UpdateLockMasks(x11Api, display, backend->detachedKeyMap, detachedKeyMapCount, &appState->x11);
 	}
 	backend->detached = detached;
 	backend->isInitialized = true;
@@ -32659,7 +32703,6 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *
 	fpl__X11_Display *display;
 	fpl__X11_Window window;
 	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
-	FPL__UNUSED(window);
 	char keysReturn[32] = fplZeroInit;
 	if (!x11Api->XQueryKeymap(display, keysReturn)) return false;
 	fplClearStruct(outState);
@@ -32688,6 +32731,17 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *
 	if (outState->buttonStatesMapped[fplKey_RightAlt] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RAlt;
 	if (outState->buttonStatesMapped[fplKey_LeftSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_LSuper;
 	if (outState->buttonStatesMapped[fplKey_RightSuper] == fplButtonState_Press) outState->modifiers |= fplKeyboardModifierFlags_RSuper;
+	// The lock states like on Win32, the modifier state of the pointer has them
+	fpl__X11_Window pointerRoot = 0;
+	fpl__X11_Window pointerChild = 0;
+	int rootX = 0;
+	int rootY = 0;
+	int windowX = 0;
+	int windowY = 0;
+	unsigned int pointerState = 0;
+	if (x11Api->XQueryPointer(display, window, &pointerRoot, &pointerChild, &rootX, &rootY, &windowX, &windowY, &pointerState)) {
+		outState->modifiers |= fpl__X11GetLockModifiers(&appState->x11, pointerState);
+	}
 	return true;
 }
 
@@ -32716,6 +32770,95 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollMouse(fpl__InputBackendX11Kbm *bac
 }
 
 #if defined(FPL__ENABLE_WINDOW)
+typedef struct fpl__X11ModifierKey {
+	fplKey key;
+	fplKeyboardModifierFlags flag;
+	// Both sides of the modifier and the X11 modifier state it is in
+	fplKeyboardModifierFlags bothSides;
+	unsigned int stateMask;
+} fpl__X11ModifierKey;
+
+// The modifiers of a key event like on Win32: left and right apart, the lock states, and the state after the event instead of before it.
+// The pressed keys of the window tell left from right. A modifier held before the window got the focus is only in the state of the event, the keys of the server tell its side then.
+fpl_internal fplKeyboardModifierFlags fpl__X11GetKeyModifiers(const fpl__X11Api *x11Api, const fpl__X11SubplatformState *subplatform, fpl__PlatformWindowState *winState, const fpl__X11_XKeyEvent *keyEvent, const bool isDown) {
+	const fpl__X11ModifierKey modifierKeys[] = {
+		{ fplKey_LeftShift, fplKeyboardModifierFlags_LShift, fplKeyboardModifierFlags_LShift | fplKeyboardModifierFlags_RShift, FPL__X11_ShiftMask },
+		{ fplKey_RightShift, fplKeyboardModifierFlags_RShift, fplKeyboardModifierFlags_LShift | fplKeyboardModifierFlags_RShift, FPL__X11_ShiftMask },
+		{ fplKey_LeftControl, fplKeyboardModifierFlags_LCtrl, fplKeyboardModifierFlags_LCtrl | fplKeyboardModifierFlags_RCtrl, FPL__X11_ControlMask },
+		{ fplKey_RightControl, fplKeyboardModifierFlags_RCtrl, fplKeyboardModifierFlags_LCtrl | fplKeyboardModifierFlags_RCtrl, FPL__X11_ControlMask },
+		{ fplKey_LeftAlt, fplKeyboardModifierFlags_LAlt, fplKeyboardModifierFlags_LAlt | fplKeyboardModifierFlags_RAlt, FPL__X11_Mod1Mask },
+		{ fplKey_RightAlt, fplKeyboardModifierFlags_RAlt, fplKeyboardModifierFlags_LAlt | fplKeyboardModifierFlags_RAlt, FPL__X11_Mod1Mask },
+		{ fplKey_LeftSuper, fplKeyboardModifierFlags_LSuper, fplKeyboardModifierFlags_LSuper | fplKeyboardModifierFlags_RSuper, FPL__X11_Mod4Mask },
+		{ fplKey_RightSuper, fplKeyboardModifierFlags_RSuper, fplKeyboardModifierFlags_LSuper | fplKeyboardModifierFlags_RSuper, FPL__X11_Mod4Mask },
+	};
+	const uint32_t eventKeyCode = keyEvent->keycode;
+	const uint32_t keyCodeCount = fplArrayCount(winState->keyMap);
+	const fplKey eventKey = eventKeyCode < keyCodeCount ? winState->keyMap[eventKeyCode] : fplKey_None;
+	fplKeyboardModifierFlags result = fplKeyboardModifierFlags_None;
+	fplKeyboardModifierFlags eventKeySides = fplKeyboardModifierFlags_None;
+	for (uint32_t keyCode = 0; keyCode < keyCodeCount; ++keyCode) {
+		const fplKey key = winState->keyMap[keyCode];
+		for (size_t modifierIndex = 0; modifierIndex < fplArrayCount(modifierKeys); ++modifierIndex) {
+			const fpl__X11ModifierKey *modifierKey = &modifierKeys[modifierIndex];
+			if (key != modifierKey->key) {
+				continue;
+			}
+			bool isKeyDown = winState->keyStates[keyCode] >= fplButtonState_Press;
+			if (keyCode == eventKeyCode) {
+				isKeyDown = isDown;
+				eventKeySides = modifierKey->bothSides;
+			}
+			if (isKeyDown) {
+				result |= modifierKey->flag;
+			}
+		}
+	}
+	// A modifier in the state of the event that no pressed key of the window explains was held before the window got the focus.
+	// The keys of the server are a bitmap, one bit per key code.
+	const uint32_t bitsPerByte = 8;
+	char serverKeys[32] = fplZeroInit;
+	bool hasServerKeys = false;
+	for (size_t modifierIndex = 0; modifierIndex < fplArrayCount(modifierKeys); ++modifierIndex) {
+		const fpl__X11ModifierKey *modifierKey = &modifierKeys[modifierIndex];
+		bool isInState = (keyEvent->state & modifierKey->stateMask) != 0;
+		bool isExplained = (result & modifierKey->bothSides) != 0 || eventKeySides == modifierKey->bothSides;
+		if (!isInState || isExplained) {
+			continue;
+		}
+		if (!hasServerKeys) {
+			hasServerKeys = x11Api->XQueryKeymap(keyEvent->display, serverKeys) != 0;
+		}
+		for (uint32_t keyCode = 0; keyCode < keyCodeCount && hasServerKeys; ++keyCode) {
+			const uint32_t byteIndex = keyCode / bitsPerByte;
+			const uint32_t bitIndex = keyCode % bitsPerByte;
+			bool isServerKeyDown = (serverKeys[byteIndex] & (1 << bitIndex)) != 0;
+			if (isServerKeyDown && winState->keyMap[keyCode] == modifierKey->key) {
+				result |= modifierKey->flag;
+			}
+		}
+	}
+	// A lock key changes its state with the press like on Win32, the X11 state of the event is the one before
+	fplKeyboardModifierFlags lockModifiers = fpl__X11GetLockModifiers(subplatform, keyEvent->state);
+	fplKeyboardModifierFlags eventLockFlag = fplKeyboardModifierFlags_None;
+	if (eventKey == fplKey_CapsLock) {
+		eventLockFlag = fplKeyboardModifierFlags_CapsLock;
+	} else if (eventKey == fplKey_NumLock) {
+		eventLockFlag = fplKeyboardModifierFlags_NumLock;
+	} else if (eventKey == fplKey_Scroll) {
+		eventLockFlag = fplKeyboardModifierFlags_ScrollLock;
+	}
+	if (eventLockFlag != fplKeyboardModifierFlags_None) {
+		if (isDown) {
+			lockModifiers ^= eventLockFlag;
+			winState->x11.lockModifiersOfPress = lockModifiers;
+		} else {
+			lockModifiers = (lockModifiers & ~eventLockFlag) | (winState->x11.lockModifiersOfPress & eventLockFlag);
+		}
+	}
+	result |= lockModifiers;
+	return(result);
+}
+
 // The keysym of a key event for the given modifier state
 fpl_internal fpl__X11_KeySym fpl__X11LookupKeySymbol(const fpl__X11Api *x11Api, const fpl__X11_XKeyEvent *keyEvent, const unsigned int state) {
 	fpl__X11_XKeyEvent lookupEvent = *keyEvent;
@@ -32825,7 +32968,7 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				if (keyCode) {
 					fpl__X11UpdateKeypadKey(x11Api, &appState->x11, winState, &ev->xkey);
 					uint32_t scanCode = fpl__X11GetScanCode(keyCode);
-					fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
+					fplKeyboardModifierFlags modifiers = fpl__X11GetKeyModifiers(x11Api, &appState->x11, winState, &ev->xkey, true);
 					fpl__HandleKeyboardButtonEvent(winState, (uint64_t)keyTime, keySlot, keyCode, scanCode, modifiers, fplButtonState_Press, false);
 					if (isFilteredKeyEvent) {
 						inputMethod->filteredPressTimes[keyCode] = keyTime;
@@ -32864,11 +33007,11 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 				}
 			}
 			fpl__X11UpdateKeypadKey(x11Api, &appState->x11, winState, &ev->xkey);
-			int keyState = ev->xkey.state;
 			uint64_t keyCode = (uint64_t)ev->xkey.keycode;
 			uint32_t keySlot = (uint32_t)keyCode;
 			uint32_t scanCode = fpl__X11GetScanCode(keyCode);
-			fplKeyboardModifierFlags modifiers = fpl__X11TranslateModifierFlags(keyState);
+			// A repeat keeps the key down
+			fplKeyboardModifierFlags modifiers = fpl__X11GetKeyModifiers(x11Api, &appState->x11, winState, &ev->xkey, isRepeat);
 			if (isRepeat) {
 				fpl__X11HandleTextInputEvent(x11Api, winState, keyCode, ev);
 				fpl__HandleKeyboardButtonEvent(winState, (uint64_t)ev->xkey.time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Repeat, false);
