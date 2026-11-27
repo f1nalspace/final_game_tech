@@ -410,6 +410,7 @@ SOFTWARE.
 	- Fixed: Undefined behavior in the background pixel of the window
 	- Changed: The keyboard mapping is read with one request instead of one per keycode
 	- Fixed: fplIsWindowFullscreen() stayed true when the window manager left fullscreen
+	- Fixed: Minimizing and restoring pushed fplWindowEventType_Hidden and fplWindowEventType_Shown, a minimized window counts as shown like on Win32
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -14896,7 +14897,6 @@ typedef struct fpl__X11SubplatformState {
 
 typedef struct fpl__X11WindowStateInfo {
 	fplWindowState state;
-	fplWindowVisibilityState visibility;
 	// _NET_WM_STATE_FULLSCREEN on its own, a minimized window keeps it
 	bool isFullscreen;
 	fplWindowPosition position;
@@ -31756,7 +31756,6 @@ fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSetti
 	}
 
 	windowState->lastWindowStateInfo.state = fplWindowState_Normal;
-	windowState->lastWindowStateInfo.visibility = initSettings->window.initialVisibility == fplWindowVisibilityState_Hide ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
 	windowState->lastWindowStateInfo.position = fplStructInit(fplWindowPosition, windowX, windowY);
 	windowState->lastWindowStateInfo.size = fplStructInit(fplWindowSize, (uint32_t)windowWidth, (uint32_t)windowHeight);
 
@@ -32222,11 +32221,6 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Ap
 	} else if (state == FPL__X11_IconicState) {
 		result.state = fplWindowState_Iconify;
 	}
-	// reset visibility to default
-	result.visibility = fplWindowVisibilityState_Show;
-	if (fplIsMaskSet(flags, fpl__X11NetWMStateHiddenFlag)) {
-		result.visibility = fplWindowVisibilityState_Hide;
-	}
 	result.isFullscreen = fplIsMaskSet(flags, fpl__X11NetWMStateFullscreenFlag);
 	if (result.isFullscreen) {
 		result.state = fplWindowState_Fullscreen;
@@ -32240,9 +32234,6 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 	fpl__X11WindowStateInfo change = fplZeroInit;
 	if (last->state != next->state) {
 		change.state = next->state;
-	}
-	if (last->visibility != next->visibility) {
-		change.visibility = next->visibility;
 	}
 	return change;
 }
@@ -33556,20 +33547,11 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (!isOwnWindow) {
 				break;
 			}
-			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
+			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself.
+			// A minimized window still counts as shown, like on Win32 the _NET_WM_STATE_HIDDEN of a minimized window is no visibility change.
 			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !winState->isHidden) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
-				switch (changedWindowStateInfo.visibility) {
-					case fplWindowVisibilityState_Hide:
-						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Hidden);
-						break;
-					case fplWindowVisibilityState_Show:
-						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Shown);
-						break;
-					default:
-						break;
-				}
 				switch (changedWindowStateInfo.state) {
 					case fplWindowState_Iconify:
 						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Minimized);
@@ -33594,7 +33576,6 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 				x11WinState->lastWindowStateInfo.isFullscreen = nextWindowStateInfo.isFullscreen;
 				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
-				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
 			}
 		} break;
 
@@ -34533,7 +34514,6 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XWithdrawWindow(windowState->display, windowState->core.window, windowState->screen);
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = true;
-			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
 			windowState->lastWindowStateInfo.isFullscreen = false;
 			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
@@ -34555,7 +34535,6 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = false;
-			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
 			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
