@@ -409,6 +409,7 @@ SOFTWARE.
 	- Fixed: Changes of position, decoration and fullscreen were not flushed to the server
 	- Fixed: Undefined behavior in the background pixel of the window
 	- Changed: The keyboard mapping is read with one request instead of one per keycode
+	- Fixed: fplIsWindowFullscreen() stayed true when the window manager left fullscreen
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -14896,6 +14897,8 @@ typedef struct fpl__X11SubplatformState {
 typedef struct fpl__X11WindowStateInfo {
 	fplWindowState state;
 	fplWindowVisibilityState visibility;
+	// _NET_WM_STATE_FULLSCREEN on its own, a minimized window keeps it
+	bool isFullscreen;
 	fplWindowPosition position;
 	fplWindowSize size;
 } fpl__X11WindowStateInfo;
@@ -32224,7 +32227,8 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11GetWindowStateInfo(const fpl__X11Ap
 	if (fplIsMaskSet(flags, fpl__X11NetWMStateHiddenFlag)) {
 		result.visibility = fplWindowVisibilityState_Hide;
 	}
-	if (fplIsMaskSet(flags, fpl__X11NetWMStateFullscreenFlag)) {
+	result.isFullscreen = fplIsMaskSet(flags, fpl__X11NetWMStateFullscreenFlag);
+	if (result.isFullscreen) {
 		result.state = fplWindowState_Fullscreen;
 	} else if (state != FPL__X11_IconicState && fplIsMaskSet(flags, fpl__X11NetWMStateMaximizedFlag)) {
 		result.state = fplWindowState_Maximize;
@@ -33583,6 +33587,12 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				if (isMinimized != (winState->isMinimized != 0)) {
 					fpl__HandleWindowMinimizedChanged(winState->handle, isMinimized);
 				}
+				// The window manager enters or leaves fullscreen by itself too (a shortcut). Only a change counts,
+				// so an older property event does not undo a fullscreen request that is still on its way.
+				if (nextWindowStateInfo.isFullscreen != x11WinState->lastWindowStateInfo.isFullscreen) {
+					window->settings->isFullscreen = nextWindowStateInfo.isFullscreen;
+				}
+				x11WinState->lastWindowStateInfo.isFullscreen = nextWindowStateInfo.isFullscreen;
 				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
 				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
 			}
@@ -34524,6 +34534,7 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = true;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
+			windowState->lastWindowStateInfo.isFullscreen = false;
 			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
