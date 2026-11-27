@@ -418,6 +418,7 @@ SOFTWARE.
 	- Fixed: The key modifiers have left and right apart, the lock states and the state after the key like on Win32
 	- Fixed: Text input delivered only the first character of a committed text and nothing of a text over 31 bytes
 	- Fixed: The repeats of a held key bypassed the input method and the event callback, XKB detectable auto repeat is used when the server has it
+	- Fixed: The key map was not rebuilt when the keyboard layout changed
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -4008,6 +4009,7 @@ typedef XSelectionEvent fpl__X11_XSelectionEvent;
 typedef XSelectionRequestEvent fpl__X11_XSelectionRequestEvent;
 typedef XSelectionClearEvent fpl__X11_XSelectionClearEvent;
 typedef XClientMessageEvent fpl__X11_XClientMessageEvent;
+typedef XMappingEvent fpl__X11_XMappingEvent;
 typedef XErrorEvent fpl__X11_XErrorEvent;
 typedef XErrorHandler fpl__X11_XErrorHandler;
 typedef XComposeStatus fpl__X11_XComposeStatus;
@@ -4093,6 +4095,8 @@ typedef XModifierKeymap fpl__X11_XModifierKeymap;
 #define FPL__X11_SelectionNotify SelectionNotify
 #define FPL__X11_ClientMessage ClientMessage
 #define FPL__X11_MappingNotify MappingNotify
+#define FPL__X11_MappingModifier MappingModifier
+#define FPL__X11_MappingKeyboard MappingKeyboard
 #define FPL__X11_GenericEvent GenericEvent
 #define FPL__X11_LASTEvent LASTEvent
 #define FPL__X11_Button1 Button1
@@ -4464,6 +4468,17 @@ typedef struct fpl__X11_XClientMessageEvent {
 	} data;
 } fpl__X11_XClientMessageEvent;
 
+typedef struct fpl__X11_XMappingEvent {
+	int type;
+	unsigned long serial;
+	fpl__X11_Bool send_event;
+	fpl__X11_Display *display;
+	fpl__X11_Window window;
+	int request;
+	int first_keycode;
+	int count;
+} fpl__X11_XMappingEvent;
+
 typedef struct fpl__X11_XGenericEventCookie {
 	int type;
 	unsigned long serial;
@@ -4490,6 +4505,7 @@ typedef union fpl__X11_XEvent {
 	fpl__X11_XSelectionRequestEvent xselectionrequest;
 	fpl__X11_XSelectionClearEvent xselectionclear;
 	fpl__X11_XClientMessageEvent xclient;
+	fpl__X11_XMappingEvent xmapping;
 	fpl__X11_XGenericEventCookie xcookie;
 	long pad[24];
 } fpl__X11_XEvent;
@@ -4689,6 +4705,8 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_SelectionNotify 31
 #define FPL__X11_ClientMessage 33
 #define FPL__X11_MappingNotify 34
+#define FPL__X11_MappingModifier 0
+#define FPL__X11_MappingKeyboard 1
 #define FPL__X11_GenericEvent 35
 #define FPL__X11_LASTEvent 36
 #define FPL__X11_Button1 1
@@ -14125,6 +14143,8 @@ typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
 typedef FPL__FUNC_X11_XGetModifierMapping(fpl__func_x11_XGetModifierMapping);
 #define FPL__FUNC_X11_XFreeModifiermap(name) int name(fpl__X11_XModifierKeymap *modmap)
 typedef FPL__FUNC_X11_XFreeModifiermap(fpl__func_x11_XFreeModifiermap);
+#define FPL__FUNC_X11_XRefreshKeyboardMapping(name) int name(fpl__X11_XMappingEvent *event_map)
+typedef FPL__FUNC_X11_XRefreshKeyboardMapping(fpl__func_x11_XRefreshKeyboardMapping);
 #define FPL__FUNC_X11_XkbSetDetectableAutoRepeat(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_Bool detectable, fpl__X11_Bool *supported_rtrn)
 typedef FPL__FUNC_X11_XkbSetDetectableAutoRepeat(fpl__func_x11_XkbSetDetectableAutoRepeat);
 #define FPL__FUNC_X11_XOpenIM(name) fpl__X11_XIM name(fpl__X11_Display *display, void *rdb, char *res_name, char *res_class)
@@ -14287,6 +14307,7 @@ extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
 extern FPL__FUNC_X11_XGetKeyboardMapping(XGetKeyboardMapping);
 extern FPL__FUNC_X11_XGetModifierMapping(XGetModifierMapping);
 extern FPL__FUNC_X11_XFreeModifiermap(XFreeModifiermap);
+extern FPL__FUNC_X11_XRefreshKeyboardMapping(XRefreshKeyboardMapping);
 extern FPL__FUNC_X11_XGetSelectionOwner(XGetSelectionOwner);
 extern FPL__FUNC_X11_XGetWMNormalHints(XGetWMNormalHints);
 extern FPL__FUNC_X11_XGetWindowAttributes(XGetWindowAttributes);
@@ -14377,6 +14398,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XGetModifierMapping *XGetModifierMapping;
 	fpl__func_x11_XFreeModifiermap *XFreeModifiermap;
+	fpl__func_x11_XRefreshKeyboardMapping *XRefreshKeyboardMapping;
 	// Optional, without it a held key is told by the release and press pair the server sends
 	fpl__func_x11_XkbSetDetectableAutoRepeat *XkbSetDetectableAutoRepeat;
 	fpl__func_x11_XLookupString *XLookupString;
@@ -14495,6 +14517,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetModifierMapping, XGetModifierMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeModifiermap, XFreeModifiermap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XRefreshKeyboardMapping, XRefreshKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XkbSetDetectableAutoRepeat, XkbSetDetectableAutoRepeat);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
@@ -31716,6 +31739,15 @@ fpl_internal void fpl__X11FillKeyMap(const fpl__X11Api *x11Api, fpl__X11_Display
 	if (minKeycode < 0 || maxKeycode < minKeycode) {
 		return;
 	}
+	// Xlib selects the mapping events of the server only after it has loaded the keyboard description, the first keysym lookup loads it.
+	// Without it a connection that never looked up a key event, like the own one of the detached mode, misses a change of the keyboard layout.
+	fpl__X11_XKeyEvent loadEvent = fplZeroInit;
+	loadEvent.type = FPL__X11_KeyPress;
+	loadEvent.display = display;
+	loadEvent.keycode = (unsigned int)minKeycode;
+	char loadText[8] = fplZeroInit;
+	fpl__X11_KeySym loadKeySym = 0;
+	x11Api->XLookupString(&loadEvent, loadText, (int)sizeof(loadText), &loadKeySym, fpl_null);
 	const int keycodeCount = maxKeycode - minKeycode + 1;
 	int keySymsPerKeycode = 0;
 	fpl__X11_KeySym *keySyms = x11Api->XGetKeyboardMapping(display, (fpl__X11_KeyCode)minKeycode, keycodeCount, &keySymsPerKeycode);
@@ -32230,6 +32262,22 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	fpl__X11UpdateLockMasks(x11Api, windowState->display, appState->window.keyMap, keyMapCount, &appState->x11);
 }
 
+// A new keyboard layout or modifier mapping: Xlib forgets its copy of the old one and every window gets the new key map
+fpl_internal void fpl__X11HandleMappingNotify(const fpl__X11Api *x11Api, fpl__PlatformAppState *appState, fpl__X11_XMappingEvent *mappingEvent) {
+	x11Api->XRefreshKeyboardMapping(mappingEvent);
+	if (mappingEvent->request != FPL__X11_MappingKeyboard && mappingEvent->request != FPL__X11_MappingModifier) {
+		return;
+	}
+	fpl__X11BuildKeyMap(x11Api, appState, &appState->window.x11);
+	const size_t keyMapSize = sizeof(appState->window.keyMap);
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		fpl__PlatformWindowState *platformWindow = window->state;
+		if (platformWindow != &appState->window) {
+			fplMemoryCopy(appState->window.keyMap, keyMapSize, platformWindow->keyMap);
+		}
+	}
+}
+
 fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
@@ -32738,6 +32786,24 @@ fpl_internal bool fpl__InputBackendX11Kbm_PollKeyboard(fpl__InputBackendX11Kbm *
 	fpl__X11_Display *display;
 	fpl__X11_Window window;
 	if (!fpl__InputBackendX11Kbm_ResolveTarget(backend, &display, &window)) return false;
+	// The own connection of the detached mode only gets the mapping events, a new keyboard layout rebuilds its key map
+	if (backend->ownsDisplay) {
+		bool isMappingChanged = false;
+		while (x11Api->XPending(display)) {
+			fpl__X11_XEvent ev;
+			x11Api->XNextEvent(display, &ev);
+			if (ev.type == FPL__X11_MappingNotify) {
+				x11Api->XRefreshKeyboardMapping(&ev.xmapping);
+				isMappingChanged = true;
+			}
+		}
+		if (isMappingChanged) {
+			const int detachedKeyMapCount = (int)fplArrayCount(backend->detachedKeyMap);
+			fplClearStruct(backend->detachedKeyMap);
+			fpl__X11FillKeyMap(x11Api, display, backend->detachedKeyMap, fpl_null, detachedKeyMapCount);
+			fpl__X11UpdateLockMasks(x11Api, display, backend->detachedKeyMap, detachedKeyMapCount, &appState->x11);
+		}
+	}
 	char keysReturn[32] = fplZeroInit;
 	if (!x11Api->XQueryKeymap(display, keysReturn)) return false;
 	fplClearStruct(outState);
@@ -33949,6 +34015,10 @@ fpl_internal fplWindowHandle *fpl__X11FindEventWindow(const fpl__PlatformAppStat
 // Hands an X11 event to its window. An event of another window only goes to the event callback of the main window and the input method,
 // it may be a late one of a destroyed window that must not reach the main window.
 fpl_internal void fpl__X11DispatchEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
+	// The mapping event names no window, it goes to every client
+	if (ev->type == FPL__X11_MappingNotify) {
+		fpl__X11HandleMappingNotify(&subplatform->api, appState, &ev->xmapping);
+	}
 	fplWindowHandle *window = fpl__X11FindEventWindow(appState, ev);
 	if (window != fpl_null) {
 		fpl__X11HandleEvent(subplatform, appState, window, ev);
