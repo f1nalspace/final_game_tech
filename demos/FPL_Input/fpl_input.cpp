@@ -462,7 +462,7 @@ public:
 		AddKeyDef(fplKey_F10, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1028, 286)), 1, MakeKeyChar(L"F10"));
 		AddKeyDef(fplKey_F11, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1103, 286)), 1, MakeKeyChar(L"F11"));
 		AddKeyDef(fplKey_F12, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1178, 286)), 1, MakeKeyChar(L"F12"));
-		AddKeyDef(fplKey_Print, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
+		AddKeyDef(fplKey_Snapshot, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
 		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
 		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
 
@@ -593,7 +593,7 @@ public:
 		AddKeyDef(fplKey_F10, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1028, 286)), 1, MakeKeyChar(L"F10"));
 		AddKeyDef(fplKey_F11, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1103, 286)), 1, MakeKeyChar(L"F11"));
 		AddKeyDef(fplKey_F12, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1178, 286)), 1, MakeKeyChar(L"F12"));
-		AddKeyDef(fplKey_Print, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
+		AddKeyDef(fplKey_Snapshot, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1313, 286)), 1, MakeKeyChar(L"Print"));
 		AddKeyDef(fplKey_Scroll, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1388, 286)), 2, MakeKeyChar(L"Scroll", V2f(0.0f, 0.4f)), MakeKeyChar(L"Lock", V2f(0.0f, -0.4f)));
 		AddKeyDef(fplKey_Pause, UVRectFromPos(KeyboardImageS, KeyboardSmallKeyS, V2i(1464, 286)), 1, MakeKeyChar(L"Pause"));
 
