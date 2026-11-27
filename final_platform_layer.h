@@ -399,6 +399,7 @@ SOFTWARE.
 	- New: XInput2 (libXi) is loaded at runtime when it is available, it gives the raw movement of the relative mouse mode - without it the mode warps the cursor back to the window center
 	- Fixed: XDisplayKeycodes was declared with the wrong return type
 	- Fixed: fplPollEvent(), fplPollEvents(), fplQueryCursorPosition() and the display functions crashed without fplInitFlags_Window
+	- Fixed: fplClipboardGetText() failed or reserved too much memory when the owner announced a huge INCR size
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -35206,14 +35207,16 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 
 	// Anything larger comes in chunks: the first property only carries a lower bound of the total size, and
 	// deleting it is the signal to the owner that the next chunk may be written.
-	size_t capacity = 0;
+	// The announced size comes from another application, so it is only a hint for the first buffer: Xlib sign extends the 32 bit value into a long,
+	// and a huge announcement must not reserve that much memory up front. The buffer grows with the chunks anyway.
+	const size_t smallestReceiveCapacity = 4096;
+	const size_t largestAnnouncedCapacity = 16 * 1024 * 1024;
+	size_t capacity = smallestReceiveCapacity;
 	if (itemCount > 0 && actualFormat == 32) {
 		const unsigned long *lowerBoundOfTotalSize = (const unsigned long *)data;
-		capacity = (size_t)(*lowerBoundOfTotalSize);
-	}
-	const size_t smallestReceiveCapacity = 4096;
-	if (capacity < smallestReceiveCapacity) {
-		capacity = smallestReceiveCapacity;
+		const uint32_t announcedSize = (uint32_t)(*lowerBoundOfTotalSize);
+		const size_t announcedCapacity = fplMin((size_t)announcedSize, largestAnnouncedCapacity);
+		capacity = fplMax(announcedCapacity, smallestReceiveCapacity);
 	}
 	x11Api->XFree(data);
 	data = fpl_null;
@@ -35260,10 +35263,17 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 				// An empty chunk is the end of the transfer.
 				isComplete = true;
 			} else {
-				if ((textLength + chunkLength) > capacity) {
-					size_t newCapacity = (capacity > 0) ? capacity : smallestReceiveCapacity;
-					while (newCapacity < (textLength + chunkLength)) {
-						newCapacity *= 2;
+				// Doubling stops below half of the address range, so neither the capacity nor the terminator can overflow
+				const size_t largestCapacity = FPL__SIZE_MAX / 2;
+				const bool isTooLarge = chunkLength > (largestCapacity - textLength);
+				if (isTooLarge) {
+					FPL__WARNING(FPL__MODULE_X11, "Chunked clipboard transfer is too large after %zu bytes", textLength);
+					hasFailed = true;
+				} else if ((textLength + chunkLength) > capacity) {
+					const size_t requiredCapacity = textLength + chunkLength;
+					size_t newCapacity = capacity;
+					while (newCapacity < requiredCapacity) {
+						newCapacity = (newCapacity > largestCapacity / 2) ? largestCapacity : newCapacity * 2;
 					}
 					char *grownResult = (char *)fpl__AllocateDynamicMemory(newCapacity + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
 					if (grownResult == fpl_null) {
