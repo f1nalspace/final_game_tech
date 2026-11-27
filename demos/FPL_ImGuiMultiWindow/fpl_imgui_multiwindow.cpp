@@ -69,6 +69,8 @@ struct FplViewportData {
 	// Position and size events that the backend caused itself are ignored until the next frame, like the GLFW backend of ImGui does
 	int ignorePositionEventFrame;
 	int ignoreSizeEventFrame;
+	// Viewport flags that the window has, ImGui changes them at runtime, e.g. with io.ConfigViewportsNoDecoration
+	ImGuiViewportFlags windowFlags;
 
 	static FplViewportData *Get(const ImGuiViewport *viewport) {
 		FplViewportData *result = (FplViewportData *)viewport->PlatformUserData;
@@ -82,6 +84,7 @@ struct FplViewportData {
 		result->isFocused = false;
 		result->ignorePositionEventFrame = -1;
 		result->ignoreSizeEventFrame = -1;
+		result->windowFlags = 0;
 		return(result);
 	}
 };
@@ -270,6 +273,7 @@ struct FplPlatformBackend {
 
 		fplWindowHandle *window = fplWindowCreate(&settings);
 		FplViewportData *viewportData = FplViewportData::Make(window, true);
+		viewportData->windowFlags = viewport->Flags;
 		viewport->PlatformUserData = viewportData;
 		viewport->PlatformHandle = window;
 		if (window == fpl_null) {
@@ -374,6 +378,42 @@ struct FplPlatformBackend {
 		}
 	}
 
+	static void UpdateViewportWindow(ImGuiViewport *viewport) {
+		FplViewportData *viewportData = FplViewportData::Get(viewport);
+		if (viewportData == nullptr || !viewportData->isOwned || viewportData->window == fpl_null) {
+			return;
+		}
+		// FPL has no taskbar icon and no parent for a window, so ImGuiViewportFlags_NoTaskBarIcon and io.ConfigViewportsNoDefaultParent have no effect
+		const ImGuiViewportFlags styleFlags = ImGuiViewportFlags_NoDecoration | ImGuiViewportFlags_TopMost;
+		const ImGuiViewportFlags changedFlags = (viewport->Flags ^ viewportData->windowFlags) & styleFlags;
+		if (changedFlags == 0) {
+			return;
+		}
+		fplWindowHandle *window = viewportData->window;
+		const bool hasNoDecoration = (viewport->Flags & ImGuiViewportFlags_NoDecoration) != 0;
+		const bool isTopMost = (viewport->Flags & ImGuiViewportFlags_TopMost) != 0;
+		if (changedFlags & ImGuiViewportFlags_NoDecoration) {
+			fplWindowSetDecoratedMulti(window, !hasNoDecoration);
+		}
+		if (changedFlags & ImGuiViewportFlags_TopMost) {
+			fplWindowSetFloatingMulti(window, isTopMost);
+		}
+		viewportData->windowFlags = viewport->Flags;
+
+		// A frame that comes or goes moves the client area, so it is put back where ImGui has the viewport
+		const int frameCount = ImGui::GetFrameCount();
+		const int32_t left = (int32_t)viewport->Pos.x;
+		const int32_t top = (int32_t)viewport->Pos.y;
+		const uint32_t width = (uint32_t)viewport->Size.x;
+		const uint32_t height = (uint32_t)viewport->Size.y;
+		viewportData->ignorePositionEventFrame = frameCount;
+		viewportData->ignoreSizeEventFrame = frameCount;
+		fplWindowSetSizeMulti(window, width, height);
+		fplWindowSetClientPositionMulti(window, left, top);
+		const char *decorationText = hasNoDecoration ? "without" : "with";
+		fplConsoleFormatOut("Viewport %08X: window %s decoration, top most %d\n", viewport->ID, decorationText, isTopMost);
+	}
+
 	static void RenderViewportWindow(ImGuiViewport *viewport, void *) {
 		// All windows share the OpenGL context of the main window, so the window only becomes the target
 		fplWindowHandle *window = GetViewportWindow(viewport);
@@ -419,6 +459,7 @@ struct FplPlatformBackend {
 		platformIO.Platform_GetWindowFocus = GetViewportFocus;
 		platformIO.Platform_GetWindowMinimized = GetViewportMinimized;
 		platformIO.Platform_SetWindowTitle = SetViewportTitle;
+		platformIO.Platform_UpdateWindow = UpdateViewportWindow;
 		platformIO.Platform_RenderWindow = RenderViewportWindow;
 		platformIO.Platform_SwapBuffers = SwapViewportBuffers;
 		// Platform_SetWindowFocus stays empty, FPL cannot move a window to the front and focus it
