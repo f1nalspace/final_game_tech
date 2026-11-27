@@ -1814,6 +1814,20 @@
 
 	@note A window that starts hidden (@ref fplWindowSettings.initialVisibility) gets its position before it is shown: the move does not show it, and it appears at that position.
 
+	@section section_category_window_multi_parent Keeping a window in front of another
+
+	A window that is shown without the focus (@ref fplWindowSettings.isFocusedOnStart) may appear behind the active window, KWin for example puts it there.<br>
+	@ref fplWindowSetParentMulti() gives an additional window a parent, the window then always stays in front of it. Set the parent before the window is shown, so it appears in front right away.
+
+	@code{.c}
+	// The tool window stays in front of the main window, also while the main window has the focus
+	fplWindowSetParentMulti(toolWindow, mainWindow);
+	@endcode
+
+	@note [Win32] The parent is the owner of the window, the window is minimized and restored together with its parent.
+	@note [X11] The parent is set as WM_TRANSIENT_FOR, how the window manager shows such a window (for example in the taskbar) is up to it.
+	@note Destroying the parent removes it from its children, they stay open without a parent.
+
 	@section section_category_window_multi_opengl Rendering with OpenGL
 
 	With the OpenGL video backend all windows share the rendering context of the main window, so textures, buffers and shaders are available in every window.<br>

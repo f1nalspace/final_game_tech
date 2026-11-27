@@ -375,6 +375,7 @@ SOFTWARE.
 	- Fixed: [X11] fplGetWindowPosition() and fplWindowEventType_PositionChanged gave the position relative to the frame of the window manager, both give the position of the frame on the screen now like on Win32
 	- Fixed: [X11] A position set before the window is shown is kept, the window manager placed the window itself
 	- Fixed: [X11] isDecorated, isResizable and isFloating of fplWindowSettings were ignored when the window was created, only the functions that change them at runtime worked
+	- New: Added fplWindowSetParentMulti() and fplWindowGetParentMulti(), an additional window stays in front of its parent
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -4112,6 +4113,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XA_ATOM XA_ATOM
 #define FPL__X11_XA_CARDINAL XA_CARDINAL
 #define FPL__X11_XA_WINDOW XA_WINDOW
+#define FPL__X11_XA_WM_TRANSIENT_FOR XA_WM_TRANSIENT_FOR
 #define FPL__X11_XA_STRING XA_STRING
 #define FPL__X11_XA_WM_ICON_NAME XA_WM_ICON_NAME
 #define FPL__X11_XA_WM_NAME XA_WM_NAME
@@ -4684,6 +4686,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XA_CARDINAL ((fpl__X11_Atom)6)
 #define FPL__X11_XA_STRING ((fpl__X11_Atom)31)
 #define FPL__X11_XA_WINDOW ((fpl__X11_Atom)33)
+#define FPL__X11_XA_WM_TRANSIENT_FOR ((fpl__X11_Atom)68)
 #define FPL__X11_XA_WM_ICON_NAME ((fpl__X11_Atom)37)
 #define FPL__X11_XA_WM_NAME ((fpl__X11_Atom)39)
 
@@ -11330,6 +11333,26 @@ fpl_common_api bool fplWindowIsFloatingMulti(fplWindowHandle *window);
 fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const bool value);
 
 /**
+* @brief Sets the parent of an additional window, the window stays in front of its parent.
+* @param[in] window The @ref fplWindowHandle of an additional window.
+* @param[in] parent The @ref fplWindowHandle of the parent, the main window or another additional window, null removes the parent.
+* @return Returns true when the parent was set, false for the main window, an unknown parent or a parent that is the window itself or one of its children.
+* @note Without a parent the window manager decides whether a window shown without the focus comes in front of the active window, KWin puts it behind.
+* @note [Win32] The parent is the owner of the window, the window is minimized and restored together with it.
+* @note [X11] The parent is set as WM_TRANSIENT_FOR.
+* @note Destroying the parent removes it from its children, the children stay.
+* @see fplWindowGetParentMulti()
+*/
+fpl_common_api bool fplWindowSetParentMulti(fplWindowHandle *window, fplWindowHandle *parent);
+
+/**
+* @brief Gets the parent of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the parent set with @ref fplWindowSetParentMulti(), null when the window has none.
+*/
+fpl_common_api fplWindowHandle *fplWindowGetParentMulti(fplWindowHandle *window);
+
+/**
 * @brief Enables or disables fullscreen mode of the given window.
 * @param[in] window The @ref fplWindowHandle of the window.
 * @param[in] value The new fullscreen state.
@@ -15220,6 +15243,8 @@ struct fplWindowHandle {
 	fplWindowSettings *settings;
 	// Next window in the window list of the platform app state, the main window comes first
 	fplWindowHandle *nextWindow;
+	// Parent from fplWindowSetParentMulti(), the window stays in front of it
+	fplWindowHandle *parent;
 	// The window fplPlatformInit() created
 	fpl_b32 isMain;
 	// Set while an additional window is destroyed, the messages of the destruction push no events anymore
@@ -15981,6 +16006,8 @@ fpl_internal bool fpl__PlatformWindow(SetResizable)(fplWindowHandle *window, con
 fpl_internal bool fpl__PlatformWindow(SetDecorated)(fplWindowHandle *window, const bool value);
 fpl_internal bool fpl__PlatformWindow(IsFloating)(fplWindowHandle *window);
 fpl_internal bool fpl__PlatformWindow(SetFloating)(fplWindowHandle *window, const bool value);
+// Sets or removes (null) the parent of an additional window, the common code checks the parent
+fpl_internal bool fpl__PlatformWindow(SetParent)(fplWindowHandle *window, fplWindowHandle *parent);
 fpl_internal bool fpl__PlatformWindow(SetFullscreenSize)(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 fpl_internal bool fpl__PlatformWindow(SetFullscreenRect)(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 fpl_internal bool fpl__PlatformWindow(GetPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
@@ -18216,6 +18243,39 @@ fpl_common_api void fplSetWindowFloating(const bool value) {
 	fplWindowSetFloatingMulti(mainWindow, value);
 }
 
+fpl_common_api bool fplWindowSetParentMulti(fplWindowHandle *window, fplWindowHandle *parent) {
+	FPL__CheckWindowHandle(window, false);
+	if (window->isMain) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "The main window cannot have a parent");
+		return(false);
+	}
+	if (parent != fpl_null) {
+		const fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (!fpl__IsKnownWindow(appState, parent)) {
+			FPL__ERROR(FPL__MODULE_WINDOW, "The parent window '%p' does not exist", (const void *)parent);
+			return(false);
+		}
+		// Two windows that are in front of each other have no order
+		for (const fplWindowHandle *ancestor = parent; ancestor != fpl_null; ancestor = ancestor->parent) {
+			if (ancestor == window) {
+				FPL__ERROR(FPL__MODULE_WINDOW, "The parent '%p' is the window '%p' itself or one of its children", (const void *)parent, (const void *)window);
+				return(false);
+			}
+		}
+	}
+	bool result = fpl__PlatformWindow(SetParent)(window, parent);
+	if (result) {
+		window->parent = parent;
+	}
+	return(result);
+}
+
+fpl_common_api fplWindowHandle *fplWindowGetParentMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
+	fplWindowHandle *result = window->parent;
+	return(result);
+}
+
 fpl_common_api bool fplWindowSetFullscreenSizeMulti(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	FPL__CheckWindowHandle(window, false);
 	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, value, fullscreenWidth, fullscreenHeight, refreshRate);
@@ -18425,8 +18485,19 @@ fpl_internal void fpl__RemoveWindowFromList(fpl__PlatformAppState *appState, fpl
 }
 
 // The platform window is destroyed while the window is still in the list, so the messages of the destruction still find it
+// Removes the parent from all children of a window that goes away, the children stay ([Win32] an owner destroys its owned windows with it)
+fpl_internal void fpl__DetachChildWindows(fpl__PlatformAppState *appState, fplWindowHandle *parent) {
+	for (fplWindowHandle *child = appState->firstWindow; child != fpl_null; child = child->nextWindow) {
+		if (child->parent == parent) {
+			fpl__PlatformWindow(SetParent)(child, fpl_null);
+			child->parent = fpl_null;
+		}
+	}
+}
+
 fpl_internal void fpl__DestroyAdditionalWindow(fpl__PlatformAppState *appState, fplWindowHandle *window) {
 	window->isDestroying = true;
+	fpl__DetachChildWindows(appState, window);
 #if defined(FPL__ENABLE_VIDEO)
 	fpl__ReleaseAdditionalWindowVideo(appState, window);
 #endif
@@ -21249,6 +21320,10 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 			platformWindow->isRunning = false;
 			if (window->isMain) {
+				if (msg == WM_CLOSE) {
+					// DefWindowProcW() destroys the main window now, the additional windows it owns stay until the application destroys them
+					fpl__DetachChildWindows(appState, window);
+				}
 				fpl__UpdateInputGrab(appState);
 			} else if (msg == WM_CLOSE) {
 				// An additional window stays until the application destroys it with fplWindowDestroy()
@@ -25581,6 +25656,18 @@ fpl_internal bool fpl__Win32Window_SetFloating(fplWindowHandle *window, const bo
 		result = true;
 	}
 	return(result);
+}
+
+fpl_internal bool fpl__Win32Window_SetParent(fplWindowHandle *window, fplWindowHandle *parent) {
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	HWND ownerHandle = fpl_null;
+	if (parent != fpl_null) {
+		const fpl__Win32WindowState *parentState = &parent->state->win32;
+		ownerHandle = parentState->windowHandle;
+	}
+	// GWLP_HWNDPARENT changes the owner of a top-level window, SetParent() would make it a child window inside the parent
+	fpl__win32_SetWindowLongPtr(windowState->windowHandle, GWLP_HWNDPARENT, (LONG_PTR)ownerHandle);
+	return(true);
 }
 
 fpl_internal bool fpl__Win32Window_SetFullscreenSize(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
@@ -34131,6 +34218,23 @@ fpl_internal bool fpl__X11Window_SetFloating(fplWindowHandle *window, const bool
 	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
 	bool result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
 	return(result);
+}
+
+fpl_internal bool fpl__X11Window_SetParent(fplWindowHandle *window, fplWindowHandle *parent) {
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (parent != fpl_null) {
+		const fpl__X11WindowState *parentState = &parent->state->x11;
+		const fpl__X11_Window parentWindow = parentState->core.window;
+		const int parentCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR, FPL__X11_XA_WINDOW, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&parentWindow, parentCount);
+	} else {
+		x11Api->XDeleteProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR);
+	}
+	x11Api->XFlush(windowState->display);
+	return(true);
 }
 
 fpl_internal fplWindowState fpl__X11Window_GetState(fplWindowHandle *window) {
