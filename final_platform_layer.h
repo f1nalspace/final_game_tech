@@ -379,6 +379,7 @@ SOFTWARE.
 	- New: Added fplWindowSetParentMulti() and fplWindowGetParentMulti(), an additional window stays in front of its parent
 	- Fixed: [Win32] fplPollEvent() and fplPollEvents() did not update the input devices without fplInitFlags_Window
 	- Changed: [Win32] fplClipboardGetText() and fplClipboardSetText() fail without fplInitFlags_Window like on X11
+	- Fixed: [Win32] fplClipboardSetText() returned true and leaked the text when the system refused it
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -26182,8 +26183,13 @@ fpl_platform_api bool fplClipboardSetTextLen(const char *text, const size_t text
 				}
 				GlobalUnlock(handle);
 				wapi->user.EmptyClipboard();
-				wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
-				result = true;
+				HANDLE clipboardData = wapi->user.SetClipboardData(CF_UNICODETEXT, handle);
+				// The system owns the memory only when the data was set
+				if (clipboardData != fpl_null) {
+					result = true;
+				} else {
+					GlobalFree(handle);
+				}
 			} else {
 				GlobalFree(handle);
 			}
