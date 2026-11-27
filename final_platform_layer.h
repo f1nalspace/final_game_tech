@@ -424,6 +424,7 @@ SOFTWARE.
 	- Fixed: Without a primary RandR output fplGetPrimaryDisplay() returned the whole screen without display modes, the output at the origin is the primary display now
 	- Fixed: The default title and class name of a window was "Unnamed FPL X11 fpl__X11_Window"
 	- Fixed: The clipboard served UTF-8 for the Latin-1 target STRING and could not read from an owner that only has STRING
+	- Fixed: FPL_NO_INPUT with a window did not compile
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -34475,7 +34476,13 @@ fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState) {
 	fpl__X11WindowState *windowState = &appState->window.x11;
 	const fpl__X11RelativeMouseState *relativeMouse = &windowState->relativeMouse;
 	const int grabbedRawKeysMinorVersion = 1;
+#if defined(FPL__ENABLE_INPUT)
 	bool isWanted = appState->window.hasFocus && fpl__X11IsXInput2Available(appState) && relativeMouse->xinput2MinorVersion >= grabbedRawKeysMinorVersion;
+#else
+	// Without the input system no key event reaches the application, like on Win32
+	FPL__UNUSED(grabbedRawKeysMinorVersion);
+	bool isWanted = false;
+#endif
 	if (isWanted == windowState->isRawMediaKeysSelected) {
 		return;
 	}
@@ -34485,6 +34492,7 @@ fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState) {
 
 // XI_RawKeyPress, XI_RawKeyRelease: only media keys are taken from them, every other key comes as a core event to the focused window
 fpl_internal void fpl__X11HandleRawKey(fpl__PlatformAppState *appState, const fpl__X11_XIRawEvent *rawEvent, const bool isPress) {
+#if defined(FPL__ENABLE_INPUT)
 	fpl__PlatformWindowState *winState = &appState->window;
 	if (!winState->hasFocus) {
 		return;
@@ -34492,11 +34500,9 @@ fpl_internal void fpl__X11HandleRawKey(fpl__PlatformAppState *appState, const fp
 	if (appState->currentSettings.input.disabledEvents != 0) {
 		return;
 	}
-#if defined(FPL__ENABLE_INPUT)
 	if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) {
 		return;
 	}
-#endif
 	uint64_t keyCode = (uint64_t)rawEvent->detail;
 	fplKey mappedKey = fpl__GetMappedKey(winState, keyCode);
 	if (!fpl__IsMediaKey(mappedKey)) {
@@ -34508,6 +34514,12 @@ fpl_internal void fpl__X11HandleRawKey(fpl__PlatformAppState *appState, const fp
 	fplButtonState buttonState = isPress ? fplButtonState_Press : fplButtonState_Release;
 	bool isForced = !isPress;
 	fpl__HandleKeyboardButtonEvent(winState, (uint64_t)rawEvent->time, keySlot, keyCode, scanCode, fplKeyboardModifierFlags_None, buttonState, isForced);
+#else
+	// Without the input system the raw keys are never selected, see fpl__X11UpdateRawMediaKeys()
+	FPL__UNUSED(appState);
+	FPL__UNUSED(rawEvent);
+	FPL__UNUSED(isPress);
+#endif
 }
 #endif // !FPL_NO_X11_XINPUT2
 
