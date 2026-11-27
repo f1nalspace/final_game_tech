@@ -421,6 +421,7 @@ SOFTWARE.
 	- Fixed: The key map was not rebuilt when the keyboard layout changed
 	- Fixed: Key events differed from Win32: the text of a repeat came first, Delete had a character and a key released twice pushed two releases
 	- Fixed: An invalid percent escape in a dropped file path became the byte 0xFF where char is unsigned (ARM)
+	- Fixed: Without a primary RandR output fplGetPrimaryDisplay() returned the whole screen without display modes, the output at the origin is the primary display now
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -35064,6 +35065,42 @@ fpl_internal bool fpl__X11GetDisplayConnection(fpl__PlatformAppState *appState, 
 	return(true);
 }
 
+// The primary output of RandR. Without one set (no xrandr --primary, Xvfb) the active output at the origin is the primary one, like the primary display on Win32 and the Xinerama screen at the origin,
+// otherwise the first active output.
+fpl_internal fpl__RROutput fpl__X11GetPrimaryOutput(const fpl__XrandRApi *xrr, const fpl__X11DisplayConnection *connection, fpl__XRRScreenResources *res) {
+	fpl__RROutput result = xrr->XRRGetOutputPrimary(connection->display, connection->root);
+	if (result != 0) {
+		return(result);
+	}
+	const int originX = 0;
+	const int originY = 0;
+	fpl__RROutput firstActiveOutput = 0;
+	for (int outputIndex = 0; outputIndex < res->noutput && result == 0; ++outputIndex) {
+		fpl__RROutput outputId = res->outputs[outputIndex];
+		fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection->display, res, outputId);
+		if (outInfo == fpl_null) {
+			continue;
+		}
+		if (outInfo->connection == 0 && outInfo->crtc != 0) {
+			fpl__XRRCrtcInfo *crtc = xrr->XRRGetCrtcInfo(connection->display, res, outInfo->crtc);
+			if (crtc != fpl_null) {
+				if (firstActiveOutput == 0) {
+					firstActiveOutput = outputId;
+				}
+				if (fpl__X11RectContains(crtc->x, crtc->y, (int)crtc->width, (int)crtc->height, originX, originY)) {
+					result = outputId;
+				}
+				xrr->XRRFreeCrtcInfo(crtc);
+			}
+		}
+		xrr->XRRFreeOutputInfo(outInfo);
+	}
+	if (result == 0) {
+		result = firstActiveOutput;
+	}
+	return(result);
+}
+
 fpl_platform_api size_t fplGetDisplayCount(void) {
 	FPL__CheckPlatform(0);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
@@ -35120,7 +35157,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *displays, const size_t ma
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
 		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection.display, connection.root);
+			fpl__RROutput primary = fpl__X11GetPrimaryOutput(xrr, &connection, res);
 			for (int i = 0; i < res->noutput && result < maxDisplayCount; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, outId);
@@ -35173,7 +35210,7 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
 		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection.display, connection.root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection.display, connection.root);
+			fpl__RROutput primary = fpl__X11GetPrimaryOutput(xrr, &connection, res);
 			if (primary != 0) {
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection.display, res, primary);
 				if (outInfo != fpl_null) {
@@ -35223,7 +35260,7 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 		const fpl__XrandRApi *xrr = &subplatform->xrandr;
 		fpl__XRRScreenResources *res = xrr->XRRGetScreenResourcesCurrent(connection->display, connection->root);
 		if (res != fpl_null) {
-			fpl__RROutput primary = xrr->XRRGetOutputPrimary(connection->display, connection->root);
+			fpl__RROutput primary = fpl__X11GetPrimaryOutput(xrr, connection, res);
 			for (int i = 0; i < res->noutput && !result; ++i) {
 				fpl__RROutput outId = res->outputs[i];
 				fpl__XRROutputInfo *outInfo = xrr->XRRGetOutputInfo(connection->display, res, outId);
