@@ -423,6 +423,7 @@ SOFTWARE.
 	- Fixed: An invalid percent escape in a dropped file path became the byte 0xFF where char is unsigned (ARM)
 	- Fixed: Without a primary RandR output fplGetPrimaryDisplay() returned the whole screen without display modes, the output at the origin is the primary display now
 	- Fixed: The default title and class name of a window was "Unnamed FPL X11 fpl__X11_Window"
+	- Fixed: The clipboard served UTF-8 for the Latin-1 target STRING and could not read from an owner that only has STRING
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -33275,6 +33276,37 @@ fpl_internal void fpl__X11SendXdndMessage(const fpl__X11Api *x11Api, fpl__X11Win
 }
 
 // Number of bytes one XChangeProperty may carry, anything larger has to be split into chunks (INCR protocol)
+// The clipboard target STRING is ISO Latin-1 (ICCCM), a requestor that asks for it reads every byte as one character.
+// A character above 0xFF has no Latin-1 byte and becomes a question mark. The Latin-1 text is never longer than the UTF-8 one.
+fpl_internal size_t fpl__X11ConvertUTF8ToLatin1(const char *utf8Text, const size_t utf8Length, char *outLatin1Text) {
+	const uint32_t largestLatin1CodePoint = 0xFF;
+	const char missingCharacter = '?';
+	size_t latin1Length = 0;
+	size_t offset = 0;
+	while (offset < utf8Length) {
+		uint32_t codePoint = 0;
+		size_t consumed = fpl__DecodeUTF8CodePoint(utf8Text + offset, utf8Length - offset, &codePoint);
+		if (consumed == 0) {
+			// A broken sequence counts as one unknown character
+			codePoint = largestLatin1CodePoint + 1;
+			consumed = 1;
+		}
+		offset += consumed;
+		outLatin1Text[latin1Length++] = codePoint <= largestLatin1CodePoint ? (char)codePoint : missingCharacter;
+	}
+	return(latin1Length);
+}
+
+// The Latin-1 text of an owner that only has STRING, every byte is its code point. The UTF-8 text needs at most two bytes per byte.
+fpl_internal size_t fpl__X11ConvertLatin1ToUTF8(const char *latin1Text, const size_t latin1Length, char *outUtf8Text) {
+	size_t utf8Length = 0;
+	for (size_t index = 0; index < latin1Length; ++index) {
+		const uint32_t codePoint = (uint32_t)(unsigned char)latin1Text[index];
+		utf8Length += fpl__EncodeUTF8CodePoint(codePoint, outUtf8Text + utf8Length);
+	}
+	return(utf8Length);
+}
+
 fpl_internal size_t fpl__X11GetClipboardMaxChunkSize(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
 	// XMaxRequestSize answers in units of four bytes and covers the whole request, so the protocol header
 	// and the property arguments have to come off the top before the rest may be filled with data.
@@ -33757,9 +33789,24 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				} else if (req->target == x11WinState->wm.utf8String || req->target == FPL__X11_XA_STRING) {
 					fpl__X11ClipboardState *clipboard = &x11WinState->clipboard;
 					const char *outgoingText = (clipboard->outgoingText != fpl_null) ? clipboard->outgoingText : "";
-					const size_t outgoingLength = clipboard->outgoingLength;
+					size_t outgoingLength = clipboard->outgoingLength;
 					const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, x11WinState->display);
-					if (outgoingLength <= maxChunkSize) {
+					// Only UTF8_STRING gets the text as it is, STRING is Latin-1
+					char *latin1Text = fpl_null;
+					bool isTextReady = true;
+					if (req->target == FPL__X11_XA_STRING && outgoingLength > 0) {
+						latin1Text = (char *)fpl__AllocateTemporaryMemory(outgoingLength, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+						if (latin1Text != fpl_null) {
+							outgoingLength = fpl__X11ConvertUTF8ToLatin1(outgoingText, outgoingLength, latin1Text);
+							outgoingText = latin1Text;
+						} else {
+							FPL__WARNING(FPL__MODULE_X11, "Failed allocating %zu bytes for the Latin-1 clipboard text", outgoingLength);
+							isTextReady = false;
+						}
+					}
+					if (!isTextReady) {
+						// Answering with no property is a refusal the receiver understands
+					} else if (outgoingLength <= maxChunkSize) {
 						x11Api->XChangeProperty(x11WinState->display, req->requestor, req->property, req->target, 8, FPL__X11_PropModeReplace, (const unsigned char *)outgoingText, (int)outgoingLength);
 						reply.xselection.property = req->property;
 					} else {
@@ -33795,6 +33842,9 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 							// understands, and it leaves whatever it had in its own clipboard alone.
 							FPL__WARNING(FPL__MODULE_X11, "Failed starting a chunked clipboard transfer of %zu bytes", outgoingLength);
 						}
+					}
+					if (latin1Text != fpl_null) {
+						fpl__ReleaseTemporaryMemory(latin1Text);
 					}
 				}
 			}
@@ -35723,7 +35773,8 @@ fpl_internal void fpl__X11DiscardStaleClipboardEvents(const fpl__X11SubplatformS
 }
 
 // Reads the whole selection, of any size, into freshly allocated memory the caller has to release
-fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, size_t *outLength) {
+// Asks the owner of the clipboard for its text in the given target. outIsRefused tells that the owner has no such target, outType is the type of the text it sent.
+fpl_internal char *fpl__X11ReceiveClipboardTarget(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, const fpl__X11_Atom target, fpl__X11_Atom *outType, bool *outIsRefused, size_t *outLength) {
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 	fpl__X11_Display *display = windowState->display;
@@ -35731,10 +35782,12 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 	const fpl__X11_Atom selectionProperty = windowState->clipboard.selectionPropAtom;
 
 	*outLength = 0;
+	*outType = FPL__X11_None;
+	*outIsRefused = false;
 
 	fpl__X11DiscardStaleClipboardEvents(subplatform, appState);
 
-	x11Api->XConvertSelection(display, windowState->clipboard.clipboardAtom, windowState->wm.utf8String, selectionProperty, window, FPL__X11_CurrentTime);
+	x11Api->XConvertSelection(display, windowState->clipboard.clipboardAtom, target, selectionProperty, window, FPL__X11_CurrentTime);
 	x11Api->XFlush(display);
 
 	// The property state belongs to a PropertyNotify and says nothing about the answer of the owner.
@@ -35744,6 +35797,7 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 		return(fpl_null);
 	}
 	if (selectionEvent.xselection.property == FPL__X11_None) {
+		*outIsRefused = true;
 		return(fpl_null);
 	}
 
@@ -35772,6 +35826,7 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 			}
 			result[textLength] = 0;
 			*outLength = textLength;
+			*outType = actualType;
 		}
 		x11Api->XFree(data);
 		return(result);
@@ -35862,6 +35917,7 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 				if (!hasFailed) {
 					fplMemoryCopy(data, chunkLength, result + textLength);
 					textLength += chunkLength;
+					*outType = actualType;
 				}
 			}
 		}
@@ -35879,6 +35935,34 @@ fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *
 	result[textLength] = 0;
 	*outLength = textLength;
 	return(result);
+}
+
+// The text of the clipboard as UTF-8. An owner without UTF8_STRING is asked for STRING, the target every owner has (ICCCM), its Latin-1 text is converted.
+fpl_internal char *fpl__X11ReceiveClipboardText(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, size_t *outLength) {
+	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const size_t utf8BytesPerLatin1Byte = 2;
+	fpl__X11_Atom textType = FPL__X11_None;
+	bool isRefused = false;
+	char *text = fpl__X11ReceiveClipboardTarget(subplatform, appState, windowState->wm.utf8String, &textType, &isRefused, outLength);
+	if (text == fpl_null && isRefused) {
+		text = fpl__X11ReceiveClipboardTarget(subplatform, appState, FPL__X11_XA_STRING, &textType, &isRefused, outLength);
+	}
+	if (text == fpl_null || textType != FPL__X11_XA_STRING) {
+		return(text);
+	}
+	const size_t latin1Length = *outLength;
+	char *utf8Text = (char *)fpl__AllocateDynamicMemory(latin1Length * utf8BytesPerLatin1Byte + 1, FPL__X11_CLIPBOARD_MEMORY_ALIGNMENT);
+	if (utf8Text == fpl_null) {
+		FPL__WARNING(FPL__MODULE_X11, "Failed allocating the UTF-8 text for %zu Latin-1 clipboard bytes", latin1Length);
+		fpl__ReleaseDynamicMemory(text);
+		*outLength = 0;
+		return(fpl_null);
+	}
+	const size_t utf8Length = fpl__X11ConvertLatin1ToUTF8(text, latin1Length, utf8Text);
+	utf8Text[utf8Length] = 0;
+	fpl__ReleaseDynamicMemory(text);
+	*outLength = utf8Length;
+	return(utf8Text);
 }
 
 fpl_platform_api size_t fplClipboardGetText(char *dest, const size_t maxDestLen) {
