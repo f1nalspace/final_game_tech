@@ -417,6 +417,7 @@ SOFTWARE.
 	- Fixed: The keypad keys follow NumLock like on Win32, KP-Enter, Menu, NumLock and ScrollLock are mapped, Print is fplKey_Snapshot like on Win32
 	- Fixed: The key modifiers have left and right apart, the lock states and the state after the key like on Win32
 	- Fixed: Text input delivered only the first character of a committed text and nothing of a text over 31 bytes
+	- Fixed: The repeats of a held key bypassed the input method and the event callback, XKB detectable auto repeat is used when the server has it
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -14124,6 +14125,8 @@ typedef FPL__FUNC_X11_XLookupString(fpl__func_x11_XLookupString);
 typedef FPL__FUNC_X11_XGetModifierMapping(fpl__func_x11_XGetModifierMapping);
 #define FPL__FUNC_X11_XFreeModifiermap(name) int name(fpl__X11_XModifierKeymap *modmap)
 typedef FPL__FUNC_X11_XFreeModifiermap(fpl__func_x11_XFreeModifiermap);
+#define FPL__FUNC_X11_XkbSetDetectableAutoRepeat(name) fpl__X11_Bool name(fpl__X11_Display *display, fpl__X11_Bool detectable, fpl__X11_Bool *supported_rtrn)
+typedef FPL__FUNC_X11_XkbSetDetectableAutoRepeat(fpl__func_x11_XkbSetDetectableAutoRepeat);
 #define FPL__FUNC_X11_XOpenIM(name) fpl__X11_XIM name(fpl__X11_Display *display, void *rdb, char *res_name, char *res_class)
 typedef FPL__FUNC_X11_XOpenIM(fpl__func_x11_XOpenIM);
 #define FPL__FUNC_X11_XCloseIM(name) fpl__X11_Status name(fpl__X11_XIM im)
@@ -14374,6 +14377,8 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XGetKeyboardMapping *XGetKeyboardMapping;
 	fpl__func_x11_XGetModifierMapping *XGetModifierMapping;
 	fpl__func_x11_XFreeModifiermap *XFreeModifiermap;
+	// Optional, without it a held key is told by the release and press pair the server sends
+	fpl__func_x11_XkbSetDetectableAutoRepeat *XkbSetDetectableAutoRepeat;
 	fpl__func_x11_XLookupString *XLookupString;
 	fpl__func_x11_XOpenIM *XOpenIM;
 	fpl__func_x11_XCloseIM *XCloseIM;
@@ -14490,6 +14495,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetKeyboardMapping, XGetKeyboardMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetModifierMapping, XGetModifierMapping);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeModifiermap, XFreeModifiermap);
+			FPL__POSIX_GET_FUNCTION_ADDRESS_OPTIONAL(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XkbSetDetectableAutoRepeat, XkbSetDetectableAutoRepeat);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XLookupString, XLookupString);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XOpenIM, XOpenIM);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCloseIM, XCloseIM);
@@ -14958,6 +14964,8 @@ typedef struct fpl__X11SubplatformState {
 	// The modifier masks NumLock and ScrollLock are bound to, the layout decides them (ScrollLock mostly has none, it is never reported then)
 	unsigned int numLockMask;
 	unsigned int scrollLockMask;
+	// The server sends a held key as presses without releases in between, every press goes through XFilterEvent and the event callback
+	bool isDetectableAutoRepeat;
 } fpl__X11SubplatformState;
 
 typedef struct fpl__X11WindowStateInfo {
@@ -32231,6 +32239,12 @@ fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings 
 		if (!fpl__X11OpenDisplay(x11Api, windowState)) {
 			return false;
 		}
+		subplatform->isDetectableAutoRepeat = false;
+		if (x11Api->XkbSetDetectableAutoRepeat != fpl_null) {
+			fpl__X11_Bool isSupported = FPL__X11_False;
+			x11Api->XkbSetDetectableAutoRepeat(windowState->display, FPL__X11_True, &isSupported);
+			subplatform->isDetectableAutoRepeat = isSupported != FPL__X11_False;
+		}
 	} else {
 		// An additional window uses the connection of the main window, so its events come in the same queue
 		windowState->display = mainWindowState->display;
@@ -33016,7 +33030,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (!fpl__InputSystem_IsEnabled(&appState->input, fplInputSourceType_Keyboard)) return true;
 			if (fpl__X11IsMediaKeyFromRawEvents(appState, (uint64_t)ev->xkey.keycode)) return true;
 			bool isRepeat = false;
-			if (x11Api->XEventsQueued(x11WinState->display, FPL__X11_QueuedAfterReading)) {
+			// Without detectable auto repeat the server sends a held key as a release and a press with the same time
+			if (!appState->x11.isDetectableAutoRepeat && x11Api->XEventsQueued(x11WinState->display, FPL__X11_QueuedAfterReading)) {
 				fpl__X11_XEvent nextEvent;
 				x11Api->XPeekEvent(x11WinState->display, &nextEvent);
 				// A press of the same key in another window is no repeat, the focus moved in between
