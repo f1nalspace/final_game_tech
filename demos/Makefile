@@ -37,6 +37,7 @@ endif
 
 ifeq ($(config),debug_winx86)
   FPL_ImGui_config = debug_winx86
+  FPL_ImGuiMultiWindow_config = debug_winx86
   FPL_MiniAudio_config = debug_winx86
   FPL_FFMpeg_config = debug_winx86
   FPL_ImageViewer_config = debug_winx86
@@ -69,6 +70,7 @@ ifeq ($(config),debug_winx86)
 
 else ifeq ($(config),debug_winx64)
   FPL_ImGui_config = debug_winx64
+  FPL_ImGuiMultiWindow_config = debug_winx64
   FPL_MiniAudio_config = debug_winx64
   FPL_FFMpeg_config = debug_winx64
   FPL_ImageViewer_config = debug_winx64
@@ -101,6 +103,7 @@ else ifeq ($(config),debug_winx64)
 
 else ifeq ($(config),debug_linuxx86)
   FPL_ImGui_config = debug_linuxx86
+  FPL_ImGuiMultiWindow_config = debug_linuxx86
   FPL_MiniAudio_config = debug_linuxx86
   FPL_FFMpeg_config = debug_linuxx86
   FPL_ImageViewer_config = debug_linuxx86
@@ -133,6 +136,7 @@ else ifeq ($(config),debug_linuxx86)
 
 else ifeq ($(config),debug_linuxx64)
   FPL_ImGui_config = debug_linuxx64
+  FPL_ImGuiMultiWindow_config = debug_linuxx64
   FPL_MiniAudio_config = debug_linuxx64
   FPL_FFMpeg_config = debug_linuxx64
   FPL_ImageViewer_config = debug_linuxx64
@@ -165,6 +169,7 @@ else ifeq ($(config),debug_linuxx64)
 
 else ifeq ($(config),debug_linuxarm32)
   FPL_ImGui_config = debug_linuxarm32
+  FPL_ImGuiMultiWindow_config = debug_linuxarm32
   FPL_MiniAudio_config = debug_linuxarm32
   FPL_FFMpeg_config = debug_linuxarm32
   FPL_ImageViewer_config = debug_linuxarm32
@@ -197,6 +202,7 @@ else ifeq ($(config),debug_linuxarm32)
 
 else ifeq ($(config),debug_linuxarm64)
   FPL_ImGui_config = debug_linuxarm64
+  FPL_ImGuiMultiWindow_config = debug_linuxarm64
   FPL_MiniAudio_config = debug_linuxarm64
   FPL_FFMpeg_config = debug_linuxarm64
   FPL_ImageViewer_config = debug_linuxarm64
@@ -229,6 +235,7 @@ else ifeq ($(config),debug_linuxarm64)
 
 else ifeq ($(config),debug_unixx86)
   FPL_ImGui_config = debug_unixx86
+  FPL_ImGuiMultiWindow_config = debug_unixx86
   FPL_MiniAudio_config = debug_unixx86
   FPL_FFMpeg_config = debug_unixx86
   FPL_ImageViewer_config = debug_unixx86
@@ -261,6 +268,7 @@ else ifeq ($(config),debug_unixx86)
 
 else ifeq ($(config),debug_unixx64)
   FPL_ImGui_config = debug_unixx64
+  FPL_ImGuiMultiWindow_config = debug_unixx64
   FPL_MiniAudio_config = debug_unixx64
   FPL_FFMpeg_config = debug_unixx64
   FPL_ImageViewer_config = debug_unixx64
@@ -293,6 +301,7 @@ else ifeq ($(config),debug_unixx64)
 
 else ifeq ($(config),debug_unixarm32)
   FPL_ImGui_config = debug_unixarm32
+  FPL_ImGuiMultiWindow_config = debug_unixarm32
   FPL_MiniAudio_config = debug_unixarm32
   FPL_FFMpeg_config = debug_unixarm32
   FPL_ImageViewer_config = debug_unixarm32
@@ -325,6 +334,7 @@ else ifeq ($(config),debug_unixarm32)
 
 else ifeq ($(config),debug_unixarm64)
   FPL_ImGui_config = debug_unixarm64
+  FPL_ImGuiMultiWindow_config = debug_unixarm64
   FPL_MiniAudio_config = debug_unixarm64
   FPL_FFMpeg_config = debug_unixarm64
   FPL_ImageViewer_config = debug_unixarm64
@@ -357,6 +367,7 @@ else ifeq ($(config),debug_unixarm64)
 
 else ifeq ($(config),release_winx86)
   FPL_ImGui_config = release_winx86
+  FPL_ImGuiMultiWindow_config = release_winx86
   FPL_MiniAudio_config = release_winx86
   FPL_FFMpeg_config = release_winx86
   FPL_ImageViewer_config = release_winx86
@@ -389,6 +400,7 @@ else ifeq ($(config),release_winx86)
 
 else ifeq ($(config),release_winx64)
   FPL_ImGui_config = release_winx64
+  FPL_ImGuiMultiWindow_config = release_winx64
   FPL_MiniAudio_config = release_winx64
   FPL_FFMpeg_config = release_winx64
   FPL_ImageViewer_config = release_winx64
@@ -421,6 +433,7 @@ else ifeq ($(config),release_winx64)
 
 else ifeq ($(config),release_linuxx86)
   FPL_ImGui_config = release_linuxx86
+  FPL_ImGuiMultiWindow_config = release_linuxx86
   FPL_MiniAudio_config = release_linuxx86
   FPL_FFMpeg_config = release_linuxx86
   FPL_ImageViewer_config = release_linuxx86
@@ -453,6 +466,7 @@ else ifeq ($(config),release_linuxx86)
 
 else ifeq ($(config),release_linuxx64)
   FPL_ImGui_config = release_linuxx64
+  FPL_ImGuiMultiWindow_config = release_linuxx64
   FPL_MiniAudio_config = release_linuxx64
   FPL_FFMpeg_config = release_linuxx64
   FPL_ImageViewer_config = release_linuxx64
@@ -485,6 +499,7 @@ else ifeq ($(config),release_linuxx64)
 
 else ifeq ($(config),release_linuxarm32)
   FPL_ImGui_config = release_linuxarm32
+  FPL_ImGuiMultiWindow_config = release_linuxarm32
   FPL_MiniAudio_config = release_linuxarm32
   FPL_FFMpeg_config = release_linuxarm32
   FPL_ImageViewer_config = release_linuxarm32
@@ -517,6 +532,7 @@ else ifeq ($(config),release_linuxarm32)
 
 else ifeq ($(config),release_linuxarm64)
   FPL_ImGui_config = release_linuxarm64
+  FPL_ImGuiMultiWindow_config = release_linuxarm64
   FPL_MiniAudio_config = release_linuxarm64
   FPL_FFMpeg_config = release_linuxarm64
   FPL_ImageViewer_config = release_linuxarm64
@@ -549,6 +565,7 @@ else ifeq ($(config),release_linuxarm64)
 
 else ifeq ($(config),release_unixx86)
   FPL_ImGui_config = release_unixx86
+  FPL_ImGuiMultiWindow_config = release_unixx86
   FPL_MiniAudio_config = release_unixx86
   FPL_FFMpeg_config = release_unixx86
   FPL_ImageViewer_config = release_unixx86
@@ -581,6 +598,7 @@ else ifeq ($(config),release_unixx86)
 
 else ifeq ($(config),release_unixx64)
   FPL_ImGui_config = release_unixx64
+  FPL_ImGuiMultiWindow_config = release_unixx64
   FPL_MiniAudio_config = release_unixx64
   FPL_FFMpeg_config = release_unixx64
   FPL_ImageViewer_config = release_unixx64
@@ -613,6 +631,7 @@ else ifeq ($(config),release_unixx64)
 
 else ifeq ($(config),release_unixarm32)
   FPL_ImGui_config = release_unixarm32
+  FPL_ImGuiMultiWindow_config = release_unixarm32
   FPL_MiniAudio_config = release_unixarm32
   FPL_FFMpeg_config = release_unixarm32
   FPL_ImageViewer_config = release_unixarm32
@@ -645,6 +664,7 @@ else ifeq ($(config),release_unixarm32)
 
 else ifeq ($(config),release_unixarm64)
   FPL_ImGui_config = release_unixarm64
+  FPL_ImGuiMultiWindow_config = release_unixarm64
   FPL_MiniAudio_config = release_unixarm64
   FPL_FFMpeg_config = release_unixarm64
   FPL_ImageViewer_config = release_unixarm64
@@ -679,7 +699,7 @@ else
   $(error "invalid configuration $(config)")
 endif
 
-PROJECTS := FPL_ImGui FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_InputGrab FPL_ConsoleInput FPL_Window FPL_MultiWindow FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
+PROJECTS := FPL_ImGui FPL_ImGuiMultiWindow FPL_MiniAudio FPL_FFMpeg FPL_ImageViewer FPL_NBodySimulation FPL_Raytracer FPL_Emulator FPL_Console FPL_AudioPlayer FPL_SimpleAudio FPL_WaveAudio FPL_Crackout FPL_Towadev FPL_GameTemplate FPL_OpenGL FPL_Vulkan FPL_Software FPL_Input FPL_InputGrab FPL_ConsoleInput FPL_Window FPL_MultiWindow FPL_Test FPL_NoPlatformIncludes FPL_NoRuntimeLinking FPL_DynamicLib_Host FPL_DynamicLib_Client FPL_StaticLib_Host FPL_StaticLib_Client FPL_NoCRT
 
 .PHONY: all clean help $(PROJECTS) Apps Audio Compatibility Console Games Graphics Input Test ThirdParty Window
 
@@ -701,7 +721,7 @@ Input: FPL_ConsoleInput FPL_Input FPL_InputGrab
 
 Test: FPL_Test
 
-ThirdParty: FPL_ImGui FPL_MiniAudio
+ThirdParty: FPL_ImGui FPL_ImGuiMultiWindow FPL_MiniAudio
 
 Window: FPL_MultiWindow FPL_Window
 
@@ -709,6 +729,12 @@ FPL_ImGui:
 ifneq (,$(FPL_ImGui_config))
 	@echo "==== Building FPL_ImGui ($(FPL_ImGui_config)) ===="
 	@${MAKE} --no-print-directory -C FPL_ImGui -f Makefile config=$(FPL_ImGui_config)
+endif
+
+FPL_ImGuiMultiWindow:
+ifneq (,$(FPL_ImGuiMultiWindow_config))
+	@echo "==== Building FPL_ImGuiMultiWindow ($(FPL_ImGuiMultiWindow_config)) ===="
+	@${MAKE} --no-print-directory -C FPL_ImGuiMultiWindow -f Makefile config=$(FPL_ImGuiMultiWindow_config)
 endif
 
 FPL_MiniAudio:
@@ -887,6 +913,7 @@ endif
 
 clean:
 	@${MAKE} --no-print-directory -C FPL_ImGui -f Makefile clean
+	@${MAKE} --no-print-directory -C FPL_ImGuiMultiWindow -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_MiniAudio -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_FFMpeg -f Makefile clean
 	@${MAKE} --no-print-directory -C FPL_ImageViewer -f Makefile clean
@@ -946,6 +973,7 @@ help:
 	@echo "   all (default)"
 	@echo "   clean"
 	@echo "   FPL_ImGui"
+	@echo "   FPL_ImGuiMultiWindow"
 	@echo "   FPL_MiniAudio"
 	@echo "   FPL_FFMpeg"
 	@echo "   FPL_ImageViewer"
