@@ -412,6 +412,7 @@ SOFTWARE.
 	- Fixed: fplIsWindowFullscreen() stayed true when the window manager left fullscreen
 	- Fixed: Minimizing and restoring pushed fplWindowEventType_Hidden and fplWindowEventType_Shown, a minimized window counts as shown like on Win32
 	- Fixed: Focus events of a child window or of the pointer window counted as focus changes, without a window manager the window started with fplWindowEventType_LostFocus
+	- Fixed: fplSetWindowDecorated(false) also took moving, resizing and closing through the window manager away
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -34304,8 +34305,7 @@ fpl_internal bool fpl__X11Window_SetResizable(fplWindowHandle *window, const boo
 }
 
 #define FPL__MWM_HINTS_DECORATIONS (1L << 1)
-#define FPL__MWM_HINTS_FUNCTIONS (1L << 0)
-#define FPL__MWM_FUNC_ALL (1L<<0)
+#define FPL__MWM_DECOR_ALL (1L << 0)
 #define FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT 5
 
 typedef struct {
@@ -34322,10 +34322,10 @@ fpl_internal bool fpl__X11Window_SetDecorated(fplWindowHandle *window, const boo
 	const fpl__X11Api *x11Api = &subplatform->api;
 	const fpl__X11WindowState *windowState = &window->state->x11;
 
+	// Only the decorations, a window without them can still be moved, resized and closed through the window manager
 	fpl__MotifWMHints hints = fplZeroInit;
-	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
-	hints.decorations = value ? 1 : 0;
-	hints.functions = value ? FPL__MWM_FUNC_ALL : 0;
+	hints.flags = FPL__MWM_HINTS_DECORATIONS;
+	hints.decorations = value ? FPL__MWM_DECOR_ALL : 0;
 
 	x11Api->XChangeProperty(windowState->display, windowState->core.window,
 		windowState->wm.motifWMHints,
