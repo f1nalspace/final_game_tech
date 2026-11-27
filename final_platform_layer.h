@@ -384,6 +384,7 @@ SOFTWARE.
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
 	- Fixed: [Vulkan] 32-bit builds used pointers for the 64-bit surface and debug messenger handles
+	- Fixed: [GLX] With Mesa a window lost its drawn image when another window became current before the swap, every window draws into a GLXWindow now
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -15201,6 +15202,10 @@ struct fplWindowHandle {
 #if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	// Software video output of an additional window, the main window does not use it
 	fpl__VideoSoftwareWindow videoSoftware;
+#endif
+#if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
+	// GLXWindow drawable of the window for OpenGL, also of the main window, zero when it draws into the plain X window
+	fpl__X11_XID glxWindow;
 #endif
 };
 
@@ -37052,6 +37057,8 @@ typedef FPL__FUNC_GLX_glXGetVisualFromFBConfig(fpl__func_glx_glXGetVisualFromFBC
 typedef FPL__FUNC_GLX_glXGetFBConfigAttrib(fpl__func_glx_glXGetFBConfigAttrib);
 #define FPL__FUNC_GLX_glXCreateWindow(name) GLXWindow name(fpl__X11_Display *dpy, GLXFBConfig config, fpl__X11_Window win,  const int *attrib_list)
 typedef FPL__FUNC_GLX_glXCreateWindow(fpl__func_glx_glXCreateWindow);
+#define FPL__FUNC_GLX_glXDestroyWindow(name) void name(fpl__X11_Display *dpy, GLXWindow win)
+typedef FPL__FUNC_GLX_glXDestroyWindow(fpl__func_glx_glXDestroyWindow);
 #define FPL__FUNC_GLX_glXQueryExtension(name) fpl__X11_Bool name(fpl__X11_Display *dpy, int *errorBase, int *eventBase)
 typedef FPL__FUNC_GLX_glXQueryExtension(fpl__func_glx_glXQueryExtension);
 #define FPL__FUNC_GLX_glXQueryExtensionsString(name) const char *name(fpl__X11_Display *dpy, int screen)
@@ -37088,6 +37095,7 @@ extern FPL__FUNC_GLX_glXCreateContext(glXCreateContext);
 extern FPL__FUNC_GLX_glXCreateContextAttribsARB(glXCreateContextAttribsARB);
 extern FPL__FUNC_GLX_glXCreateNewContext(glXCreateNewContext);
 extern FPL__FUNC_GLX_glXCreateWindow(glXCreateWindow);
+extern FPL__FUNC_GLX_glXDestroyWindow(glXDestroyWindow);
 extern FPL__FUNC_GLX_glXDestroyContext(glXDestroyContext);
 extern FPL__FUNC_GLX_glXGetFBConfigAttrib(glXGetFBConfigAttrib);
 extern FPL__FUNC_GLX_glXGetFBConfigs(glXGetFBConfigs);
@@ -37115,6 +37123,7 @@ typedef struct fpl__X11VideoOpenGLApi {
 	fpl__func_glx_glXGetVisualFromFBConfig *glXGetVisualFromFBConfig;
 	fpl__func_glx_glXGetFBConfigAttrib *glXGetFBConfigAttrib;
 	fpl__func_glx_glXCreateWindow *glXCreateWindow;
+	fpl__func_glx_glXDestroyWindow *glXDestroyWindow;
 	fpl__func_glx_glXQueryExtension *glXQueryExtension;
 	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
 	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
@@ -37162,6 +37171,7 @@ fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char 
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetVisualFromFBConfig, glXGetVisualFromFBConfig);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetFBConfigAttrib, glXGetFBConfigAttrib);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXCreateWindow, glXCreateWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXDestroyWindow, glXDestroyWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtension, glXQueryExtension);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtensionsString, glXQueryExtensionsString);
 			api->libHandle = libHandle;
@@ -37410,6 +37420,15 @@ fpl_internal void fpl__X11SetGLXSwapInterval(fpl__X11VideoOpenGLApi *glApi, fpl_
 	FPL_LOG_WARN(FPL__MODULE_GLX, "No swap control extension on display '%p' and screen '%d', the swap interval stays at the default of the driver", display, screen);
 }
 
+fpl_internal void fpl__X11DestroyGLXWindow(const fpl__X11VideoOpenGLApi *glApi, const fpl__PlatformWindowState *windowState) {
+	fplWindowHandle *handle = windowState->handle;
+	if (handle->glxWindow != 0) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX window '%d' on display '%p'", (int)handle->glxWindow, windowState->x11.display);
+		glApi->glXDestroyWindow(windowState->x11.display, (GLXWindow)handle->glxWindow);
+		handle->glxWindow = 0;
+	}
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdown) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
 	const fpl__X11Api *x11Api = &nativeAppState->api;
@@ -37429,6 +37448,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdo
 		glApi->glXDestroyContext(nativeWindowState->display, nativeBackend->context);
 		nativeBackend->context = fpl_null;
 	}
+
+	fpl__X11DestroyGLXWindow(glApi, windowState);
 
 	if (nativeBackend->visualInfo != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", nativeBackend->visualInfo);
@@ -37469,6 +37490,45 @@ fpl_internal GLXContext fpl__X11CreateModernGLXContext(const fpl__X11Api *x11Api
 	return(result);
 }
 
+// Mesa releases the drawable of a plain X window together with its back buffer as soon as another window is current, a window drawn but not yet swapped loses its image then. A GLXWindow stays until it is destroyed.
+fpl_internal void fpl__X11CreateGLXWindow(const fpl__X11Api *x11Api, const fpl__X11VideoOpenGLApi *glApi, GLXFBConfig fbConfig, const fpl__PlatformWindowState *windowState) {
+	fplWindowHandle *handle = windowState->handle;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	handle->glxWindow = 0;
+	if (fbConfig == fpl_null) {
+		return;
+	}
+	// The same error handler as the context creation, a window the driver rejects keeps drawing into the plain X window
+	fpl__global__GLXContextCreationHadError = false;
+	fpl__X11_XErrorHandler previousErrorHandler = fpl_null;
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		previousErrorHandler = x11Api->XSetErrorHandler(fpl__GLXContextCreationErrorHandler);
+	}
+	GLXWindow glxWindow = glApi->glXCreateWindow(display, fbConfig, window, fpl_null);
+	x11Api->XSync(display, FPL__X11_False);
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		x11Api->XSetErrorHandler(previousErrorHandler);
+	}
+	if (fpl__global__GLXContextCreationHadError || glxWindow == 0) {
+		if (glxWindow != 0) {
+			glApi->glXDestroyWindow(display, glxWindow);
+		}
+		FPL__WARNING(FPL__MODULE_GLX, "Failed creating a GLX window for window '%d' on display '%p', OpenGL draws into the X window", (int)window, display);
+		return;
+	}
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Created GLX window '%d' for window '%d' on display '%p'", (int)glxWindow, (int)window, display);
+	handle->glxWindow = (fpl__X11_XID)glxWindow;
+}
+
+// The drawable OpenGL draws into: the GLXWindow of the window, or the plain X window when there is none
+fpl_internal GLXDrawable fpl__X11GetGLXDrawable(const fpl__PlatformWindowState *windowState) {
+	const fplWindowHandle *handle = windowState->handle;
+	GLXDrawable result = (handle->glxWindow != 0) ? (GLXDrawable)handle->glxWindow : (GLXDrawable)windowState->x11.core.window;
+	return(result);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Initialize) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
 	const fpl__X11Api *x11Api = &nativeAppState->api;
@@ -37479,6 +37539,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	fpl__X11_Display *display = nativeWindowState->display;
 	fpl__X11_Window window = nativeWindowState->core.window;
+
+	// The window was created with the visual of the frame buffer config, so it can have a GLXWindow before the first context is made current on it
+	fpl__X11CreateGLXWindow(x11Api, glApi, nativeBackend->fbConfig, windowState);
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
 
 	// Declared before the first jump to the failure label, C++ forbids jumping over an initialization
 	const fplOpenGLSettings *glSettings = &videoSettings->graphics.opengl;
@@ -37514,7 +37578,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	// Activate legacy context
 	//
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
-	if (!glApi->glXMakeCurrent(display, window, legacyRenderingContext)) {
+	if (!glApi->glXMakeCurrent(display, drawable, legacyRenderingContext)) {
 		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 		goto failed_x11_glx;
 	} else {
@@ -37564,7 +37628,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 				FPL__WARNING(FPL__MODULE_GLX, "Failed creating OpenGL %u.%u %s rendering context on display '%p'", version.majorVersion, version.minorVersion, profileName, display);
 				continue;
 			}
-			if (!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
+			if (!glApi->glXMakeCurrent(display, drawable, modernRenderingContext)) {
 				FPL__WARNING(FPL__MODULE_GLX, "Failed activating OpenGL %u.%u %s rendering context '%p' on display '%p' and window '%d'", version.majorVersion, version.minorVersion, profileName, modernRenderingContext, display, (int)window);
 				glApi->glXDestroyContext(display, modernRenderingContext);
 				continue;
@@ -37583,7 +37647,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 		legacyRenderingContext = fpl_null;
 	} else if (glSettings->compatibilityFlags == fplOpenGLCompatibilityFlags_Legacy) {
 		// Caller wants legacy context
-		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, drawable, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 	} else if (glSettings->isLegacyFallbackDisabled) {
 		FPL__ERROR(FPL__MODULE_GLX, "No modern OpenGL rendering context could be created on display '%p' and the legacy fallback is disabled", display);
@@ -37592,7 +37656,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 		FPL__ERROR(FPL__MODULE_GLX, "Warning: No modern OpenGL rendering context could be created on display '%p' -> Fallback to legacy context", display);
 
 		// Fallback to legacy rendering context
-		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, drawable, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 		activeVersionIndex = FPL_OPENGL_VERSION_INDEX_LEGACY_FALLBACK;
 	}
@@ -37604,7 +37668,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	nativeBackend->isActiveContext = true;
 
 	// Set vertical synchronisation if available
-	fpl__X11SetGLXSwapInterval(glApi, display, nativeWindowState->screen, (GLXDrawable)window, videoSettings->isVSync);
+	fpl__X11SetGLXSwapInterval(glApi, display, nativeWindowState->screen, drawable, videoSettings->isVSync);
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)display;
 	backend->surface.window.x11.window = (fpl__X11_Window)window;
@@ -37661,7 +37725,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present
 	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
 	const fpl__X11WindowState *x11WinState = &windowState->x11;
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
-	glApi->glXSwapBuffers(x11WinState->display, x11WinState->core.window);
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
+	glApi->glXSwapBuffers(x11WinState->display, drawable);
 }
 
 // Sets the swap interval of the current drawable again with the swap control fpl__X11SetGLXSwapInterval() picked, without logging
@@ -37681,20 +37746,26 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__VideoBackend_X11OpenGL_Mak
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
 	fpl__X11_Display *display = nativeWindowState->display;
 	fpl__X11_Window window = nativeWindowState->core.window;
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
 	GLXContext context = nativeBackend->context;
-	if (!glApi->glXMakeCurrent(display, (GLXDrawable)window, context)) {
+	if (!glApi->glXMakeCurrent(display, drawable, context)) {
 		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX rendering context '%p' on display '%p' and window '%d'", (const void *)context, (const void *)display, (int)window);
 		return(false);
 	}
-	// Mesa releases the drawable of a window that is no longer current and creates it anew with the default swap interval of the driver, so the interval of the window is set again
+	// Mesa releases the drawable of a plain X window that is no longer current and creates it anew with the default swap interval of the driver, so the interval of the window is set again (a GLXWindow keeps it, setting it again does no harm)
 	const bool isVSync = windowState->handle->isMain && appState->currentSettings.video.isVSync;
 	const int swapInterval = isVSync ? 1 : 0;
-	fpl__X11ReapplyGLXSwapInterval(glApi, display, (GLXDrawable)window, swapInterval);
+	fpl__X11ReapplyGLXSwapInterval(glApi, display, drawable, swapInterval);
 	return(true);
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow) {
 	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+
+	// Like the main window the window gets a GLXWindow before it is made current the first time
+	fpl__X11CreateGLXWindow(x11Api, &nativeBackend->api, nativeBackend->fbConfig, windowState);
 
 	// Making it current gives the window swap interval 0 with the swap control the main window picked: only the main window waits for the vertical blank, otherwise every additional window would divide the frame rate
 	if (!fpl__VideoBackend_X11OpenGL_MakeCurrent(appState, windowState, backend)) {
@@ -37709,6 +37780,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11
 	return(true);
 }
 
+// The rendering went back to the main window before, so the GLXWindow is no longer current and goes right away
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_X11OpenGL_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11DestroyGLXWindow(&nativeBackend->api, windowState);
+}
+
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
 	fpl__VideoContext result = fpl__StubVideoContext();
 	result.loadFunc = fpl__VideoBackend_X11OpenGL_Load;
@@ -37720,6 +37798,7 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
 	result.presentFunc = fpl__VideoBackend_X11OpenGL_Present;
 	result.makeCurrentFunc = fpl__VideoBackend_X11OpenGL_MakeCurrent;
 	result.setupAdditionalWindowFunc = fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_X11OpenGL_ReleaseAdditionalWindow;
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11

@@ -1813,7 +1813,7 @@
 	@endcode
 
 	@note Only the main window waits for the vertical synchronisation (fplVideoSettings.isVSync), the additional windows never do. Otherwise every window would wait for its own refresh and three windows would get a third of the frame rate. Render the main window last, so its flip paces the whole frame.
-	@note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
+	@note A window keeps what was rendered into it until its flip, also when another window is made current in between. So all windows can be rendered first and flipped afterwards, like Dear ImGui does with its viewports. [GLX] Every window draws into a GLXWindow for that, Mesa drops the back buffer of a plain X window that is no longer current.
 	@note Destroying the window that is current makes the main window current again.
 	@note @ref fplVideoGetSurfaceMulti() gives the video surface of a window, with the handles of that window and the rendering context of the main window.
 
