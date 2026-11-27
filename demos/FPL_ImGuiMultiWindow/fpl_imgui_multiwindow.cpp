@@ -9,6 +9,7 @@ Description:
 	All windows share the OpenGL context of the main window, the OpenGL2 backend of ImGui renders them.
 	The platform backend for ImGui is part of this demo, see the struct FplPlatformBackend.
 	Every additional window has the main window as parent (io.ConfigViewportsNoDefaultParent = false) and stays in front of it.
+	The window of a destroyed viewport stays two more frames, so a window that is dragged back into the main window does not vanish for a moment.
 	The demo window of ImGui shows the docking: drag a window by its title bar onto another window to dock it there,
 	its menu Examples > Dockspace docks into the main window, its section Configuration has the options for docking and viewports.
 	Parameters:
@@ -58,6 +59,8 @@ constexpr size_t MaxDisplayCount = 16;
 constexpr size_t MaxAudioDeviceCount = 16;
 constexpr float DefaultDeltaTime = 1.0f / 60.0f;
 constexpr int MouseButtonCount = ImGuiMouseButton_COUNT;
+// Frames the window of a destroyed viewport stays, until the main window shows its content for sure, see FplPlatformBackend::RetireWindow()
+constexpr int RetiredWindowFrameCount = 2;
 constexpr const char *ViewportWindowTitle = "ImGui Viewport";
 
 // Per viewport data of the FPL platform backend, ImGui keeps it in ImGuiViewport::PlatformUserData
@@ -90,10 +93,18 @@ struct FplViewportData {
 	}
 };
 
+// Window of a destroyed viewport that waits for its destroy
+struct FplRetiredWindow {
+	fplWindowHandle *window;
+	// Frame count of ImGui from which on the window is destroyed
+	int destroyFrame;
+};
+
 // Platform backend of ImGui for FPL: input, clipboard, monitors and one FPL window per ImGui viewport
 struct FplPlatformBackend {
 	fplWindowHandle *mainWindow;
 	fplWindowHandle *mouseWindow;
+	ImVector<FplRetiredWindow> retiredWindows;
 	// Frame in which the mouse counts as gone, zero when no leave is pending
 	int mouseLeaveFrame;
 	// One bit per mouse button that is held down
@@ -310,16 +321,43 @@ struct FplPlatformBackend {
 		fplConsoleFormatOut("Viewport %08X: created window at %d, %d with %u x %u\n", viewport->ID, left, top, settings.windowSize.width, settings.windowSize.height);
 	}
 
+	// The main window flips with V-Sync, so a compositor shows its frame up to a few refreshes later, but the destroy of a window takes effect at once.
+	// A window that ImGui merges back into the main window would vanish for a moment, so the window of a destroyed viewport stays a few frames longer.
+	void RetireWindow(fplWindowHandle *window) {
+		const int frameCount = ImGui::GetFrameCount();
+		FplRetiredWindow retiredWindow;
+		retiredWindow.window = window;
+		retiredWindow.destroyFrame = frameCount + RetiredWindowFrameCount;
+		retiredWindows.push_back(retiredWindow);
+	}
+
+	void DestroyRetiredWindows(const bool isAll) {
+		const int frameCount = ImGui::GetFrameCount();
+		int keptCount = 0;
+		for (int retiredIndex = 0; retiredIndex < retiredWindows.Size; ++retiredIndex) {
+			const FplRetiredWindow retiredWindow = retiredWindows[retiredIndex];
+			const bool isDue = isAll || frameCount >= retiredWindow.destroyFrame;
+			if (!isDue) {
+				retiredWindows[keptCount] = retiredWindow;
+				++keptCount;
+				continue;
+			}
+			if (mouseWindow == retiredWindow.window) {
+				mouseWindow = fpl_null;
+			}
+			fplWindowDestroy(retiredWindow.window);
+			fplConsoleFormatOut("Destroyed retired window\n");
+		}
+		retiredWindows.resize(keptCount);
+	}
+
 	static void DestroyViewportWindow(ImGuiViewport *viewport) {
 		FplViewportData *viewportData = FplViewportData::Get(viewport);
 		if (viewportData != nullptr) {
 			if (viewportData->isOwned && viewportData->window != fpl_null) {
 				FplPlatformBackend *backend = Get();
-				if (backend->mouseWindow == viewportData->window) {
-					backend->mouseWindow = fpl_null;
-				}
-				fplWindowDestroy(viewportData->window);
-				fplConsoleFormatOut("Viewport %08X: destroyed window\n", viewport->ID);
+				backend->RetireWindow(viewportData->window);
+				fplConsoleFormatOut("Viewport %08X: retired window\n", viewport->ID);
 			}
 			viewportData->window = fpl_null;
 			IM_DELETE(viewportData);
@@ -502,6 +540,9 @@ struct FplPlatformBackend {
 
 	void Shutdown() {
 		ImGui::DestroyPlatformWindows();
+		const bool isAllRetiredWindows = true;
+		DestroyRetiredWindows(isAllRetiredWindows);
+		retiredWindows.clear();
 
 		ImGuiViewport *mainViewport = ImGui::GetMainViewport();
 		FplViewportData *mainViewportData = FplViewportData::Get(mainViewport);
@@ -531,6 +572,9 @@ struct FplPlatformBackend {
 		io.DisplaySize = ImVec2((float)mainWindowSize.width, (float)mainWindowSize.height);
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 		io.DeltaTime = deltaTime > 0.0f ? deltaTime : DefaultDeltaTime;
+
+		const bool isAllRetiredWindows = false;
+		DestroyRetiredWindows(isAllRetiredWindows);
 
 		// A leave takes effect one frame later and only without a held button, see HandleMouseEvent()
 		const int frameCount = ImGui::GetFrameCount();
