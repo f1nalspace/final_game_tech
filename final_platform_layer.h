@@ -380,6 +380,7 @@ SOFTWARE.
 	- Fixed: [Win32] fplPollEvent() and fplPollEvents() did not update the input devices without fplInitFlags_Window
 	- Changed: [Win32] fplClipboardGetText() and fplClipboardSetText() fail without fplInitFlags_Window like on X11
 	- Fixed: [Win32] fplClipboardSetText() returned true and leaked the text when the system refused it
+	- Fixed: The fplWindowEventType_Shown and fplWindowEventType_Hidden of fplSetWindowVisibility() after the poll loop were cleared by the next fplWindowUpdate()
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
@@ -15240,6 +15241,8 @@ typedef struct {
 	fplWindowState pendingState;
 	// Set while a window that started hidden was not shown yet, its first show by fplSetWindowVisibility() is its start (fplWindowSettings.isFocusedOnStart)
 	fpl_b32 isStartShowPending;
+	// The Shown or Hidden of fplSetWindowVisibility() that no poll has delivered yet, fplWindowUpdate() pushes it again after it cleared the queue
+	fplWindowEventType pendingVisibilityEvent;
 	// The handle of this window, every event of the window carries it
 	fplWindowHandle *handle;
 
@@ -15829,6 +15832,30 @@ fpl_internal void fpl__PushWindowStateEvent(fplWindowHandle *window, const fplWi
 	newEvent.window.type = windowType;
 	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
+}
+
+// fplSetWindowVisibility() pushes Shown or Hidden right away, mostly after the poll loop of a frame, so the event is kept for the next fplWindowUpdate()
+fpl_internal void fpl__PushWindowVisibilityEvent(fplWindowHandle *window, const fplWindowEventType windowType) {
+	fpl__PushWindowStateEvent(window, windowType);
+	window->state->pendingVisibilityEvent = windowType;
+}
+
+// A poll delivers the events of fplSetWindowVisibility() from the queue, they are not pushed again
+fpl_internal void fpl__ForgetPendingWindowEvents(fpl__PlatformAppState *appState) {
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		window->state->pendingVisibilityEvent = fplWindowEventType_None;
+	}
+}
+
+// fplWindowUpdate() clears the queue, an event of fplSetWindowVisibility() that no poll has delivered yet is pushed again
+fpl_internal void fpl__PushPendingWindowEvents(fpl__PlatformAppState *appState) {
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		fplWindowEventType pendingEvent = window->state->pendingVisibilityEvent;
+		window->state->pendingVisibilityEvent = fplWindowEventType_None;
+		if (pendingEvent != fplWindowEventType_None) {
+			fpl__PushWindowStateEvent(window, pendingEvent);
+		}
+	}
 }
 
 fpl_internal void fpl__PushWindowSizeEvent(fplWindowHandle *window, const fplWindowEventType windowType, uint32_t w, uint32_t h) {
@@ -25921,7 +25948,7 @@ fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const 
 		if (!isHidden) {
 			wapi->user.ShowWindow(windowHandle, SW_HIDE);
 			platformWindowState->isHidden = true;
-			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
+			fpl__PushWindowVisibilityEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -25965,7 +25992,7 @@ fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const 
 			windowState->isShownWithoutActivation = false;
 			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
 			windowState->isFocusEventPending = platformWindowState->hasFocus;
-			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
+			fpl__PushWindowVisibilityEvent(window, fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
@@ -26040,6 +26067,7 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
 		window->state->win32.isFocusEventPending = false;
 	}
+	fpl__ForgetPendingWindowEvents(appState);
 
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
@@ -26096,6 +26124,7 @@ fpl_platform_api void fplPollEvents(void) {
 		}
 	}
 	fpl__ClearInternalEvents();
+	fpl__ForgetPendingWindowEvents(appState);
 	fpl__Win32RefreshInputGrab(appState);
 }
 
@@ -26103,6 +26132,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__ClearInternalEvents();
+	fpl__PushPendingWindowEvents(appState);
 	// A window that was activated while it was shown pushed its fplWindowEventType_GotFocus before, that event was cleared with the queue just now
 	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
 		fpl__PlatformWindowState *platformWindow = window->state;
@@ -33688,6 +33718,8 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 		return(result);
 	}
 
+	fpl__ForgetPendingWindowEvents(appState);
+
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
 		return(true);
@@ -33737,6 +33769,7 @@ fpl_platform_api void fplPollEvents(void) {
 		fpl__X11DispatchEvent(subplatform, appState, &ev);
 	}
 	fpl__ClearInternalEvents();
+	fpl__ForgetPendingWindowEvents(appState);
 	fpl__RetryInputGrab(appState);
 }
 
@@ -33748,6 +33781,7 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	const fpl__X11WindowState *windowState = &appState->window.x11;
 
 	fpl__ClearInternalEvents();
+	fpl__PushPendingWindowEvents(appState);
 	fpl__RetryInputGrab(appState);
 
 #if defined(FPL__ENABLE_INPUT)
@@ -34526,7 +34560,7 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = true;
 			windowState->lastWindowStateInfo.isFullscreen = false;
-			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
+			fpl__PushWindowVisibilityEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -34546,7 +34580,7 @@ fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fp
 			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
 			platformWindowState->isHidden = false;
-			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
+			fpl__PushWindowVisibilityEvent(window, fplWindowEventType_Shown);
 			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
