@@ -401,6 +401,7 @@ SOFTWARE.
 	- Fixed: fplPollEvent(), fplPollEvents(), fplQueryCursorPosition() and the display functions crashed without fplInitFlags_Window
 	- Fixed: fplClipboardGetText() failed or reserved too much memory when the owner announced a huge INCR size
 	- Fixed: A drag source that was gone or made up ended the process
+	- Fixed: A chunked clipboard transfer kept the property events of the receiving window selected
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -32867,8 +32868,22 @@ fpl_internal fpl__X11ClipboardSend *fpl__X11FindClipboardSend(fpl__X11ClipboardS
 	return(fpl_null);
 }
 
+// The property events of a receiver were selected for its transfer, they are deselected when no other transfer goes to that window.
+// The receiver may be gone already, the guard keeps that from ending the process.
+fpl_internal void fpl__X11EndClipboardSendEvents(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11ClipboardState *clipboard, const fpl__X11_Window requestor) {
+	for (size_t sendIndex = 0; sendIndex < fplArrayCount(clipboard->sends); ++sendIndex) {
+		const fpl__X11ClipboardSend *otherSend = &clipboard->sends[sendIndex];
+		if (otherSend->isActive && otherSend->requestor == requestor) {
+			return;
+		}
+	}
+	fpl__X11BeginForeignWindowGuard(x11Api);
+	x11Api->XSelectInput(display, requestor, FPL__X11_NoEventMask);
+	fpl__X11EndForeignWindowGuard(x11Api, display);
+}
+
 // Writes the next chunk of a transfer, the final empty one included, and gives the slot back when it is done
-fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11ClipboardSend *send) {
+fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl__X11_Display *display, fpl__X11ClipboardState *clipboard, fpl__X11ClipboardSend *send) {
 	const size_t maxChunkSize = fpl__X11GetClipboardMaxChunkSize(x11Api, display);
 	size_t remaining = send->textLength - send->sentLength;
 	size_t chunkSize = (remaining > maxChunkSize) ? maxChunkSize : remaining;
@@ -32888,7 +32903,9 @@ fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl_
 
 	// An empty chunk is what ends the transfer, so the slot is only free after that one went out.
 	if (chunkSize == 0) {
+		const fpl__X11_Window requestor = send->requestor;
 		fpl__X11ReleaseClipboardSend(send);
+		fpl__X11EndClipboardSendEvents(x11Api, display, clipboard, requestor);
 	}
 }
 
@@ -33468,9 +33485,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xproperty.state == FPL__X11_PropertyDelete) {
 				fpl__X11ClipboardSend *send = fpl__X11FindClipboardSend(&x11WinState->clipboard, ev->xproperty.window, ev->xproperty.atom);
 				if (send != fpl_null) {
-					fpl__X11SendNextClipboardChunk(x11Api, x11WinState->display, send);
+					fpl__X11SendNextClipboardChunk(x11Api, x11WinState->display, &x11WinState->clipboard, send);
 					break;
 				}
+			}
+			// The receiver of a chunked clipboard transfer reports its property changes to the main window, only the states of the own window count
+			const bool isOwnWindow = ev->xproperty.window == x11WinState->core.window;
+			if (!isOwnWindow) {
+				break;
 			}
 			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
 			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !winState->isHidden) {
