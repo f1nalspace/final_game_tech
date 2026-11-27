@@ -310,6 +310,7 @@ endif
 -- Projects sorted into groups
 group "ThirdParty"
 	include "FPL_ImGui/premake5";
+	include "FPL_ImGuiMultiWindow/premake5";
 	include "FPL_MiniAudio/premake5";
 
 group "Apps"
@@ -345,6 +346,7 @@ group "Input"
 
 group "Window"
 	include "FPL_Window/premake5";
+	include "FPL_MultiWindow/premake5";
 	
 group "Test"
 	include "FPL_Test/premake5";

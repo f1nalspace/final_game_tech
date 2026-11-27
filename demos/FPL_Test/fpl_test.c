@@ -234,7 +234,8 @@ static void TestSizes(void) {
 #if defined(FT_ARCH_X64)
 	ftAssertSizeEquals(32, sizeof(fplKeyboardEvent));
 	ftAssertSizeEquals(112, sizeof(fplGamepadEvent));
-	ftAssertSizeEquals(120, sizeof(fplEvent));
+	// Type and union plus the window handle at the end
+	ftAssertSizeEquals(128, sizeof(fplEvent));
 #endif
 }
 

@@ -46,8 +46,10 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 │   ├── FPL_GameTemplate/           # Game template demo
 │   ├── FPL_ImageViewer/            # Image viewer with multi-threading
 │   ├── FPL_ImGui/                  # ImGui integration demo
+│   ├── FPL_ImGuiMultiWindow/       # ImGui with docking, panels in windows of their own
 │   ├── FPL_Input/                  # Visual input display demo
 │   ├── FPL_MiniAudio/              # miniaudio.h integration demo
+│   ├── FPL_MultiWindow/            # Additional windows next to the main window
 │   ├── FPL_NBodySimulation/        # 2D fluid simulation with benchmarking
 │   ├── FPL_NoCRT/                  # FPL without C Runtime Library (MSVC/Windows)
 │   ├── FPL_NoPlatformIncludes/     # FPL without platform headers
@@ -94,7 +96,7 @@ Core library is the Final Platform Layer (FPL) library that contains various dem
 ## Core Library: final_platform_layer.h
 
 The main platform abstraction layer that provides:
-- Cross-platform window management
+- Cross-platform window management, a main window and additional windows
 - Video/Graphics rendering context setup
 - Asyncronous Audio samples playback
 - Input handling (keyboard, mouse, gamepads)
@@ -233,6 +235,12 @@ FFmpeg video player demo showing:
 #### FPL_ImGui
 Example demo that has a full FPL implementation for ImGui
 
+#### FPL_ImGuiMultiWindow
+The docking version of ImGui with multiple viewports on top of the additional windows of FPL:
+- An ImGui window dragged out of the main window gets its own FPL window, dragged back it merges again
+- Platform backend for ImGui inside the demo: input, clipboard, monitors, one FPL window per viewport
+- All windows share the OpenGL context of the main window, the OpenGL2 backend of ImGui renders them
+
 #### FPL_MiniAudio
 Example demo that uses miniaudio.h in a FPL console application
 
@@ -271,6 +279,12 @@ Hello-World console application demonstrating basic FPL console I/O
 
 #### FPL_Window
 Minimal demo showing window initialization and event handling
+
+#### FPL_MultiWindow
+Demo for additional windows next to the main window:
+- Creates and destroys windows at runtime, every event tells the window it belongs to
+- Every window draws a rotating quad with OpenGL, all windows share one rendering context
+- With --software every window draws the quad into its own back buffer
 
 #### FPL_Process
 Console demo that starts and controls child processes:

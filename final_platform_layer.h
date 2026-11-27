@@ -180,6 +180,7 @@ SOFTWARE.
 	- UTF8 decode and encode is now culture-invariant
 	- The clipboard has no size limit anymore, in neither direction
 	- A window can start hidden, minimized, maximized or in fullscreen, and can be hidden and shown at runtime
+	- Additional windows next to the main window, with Multi variants of the window functions and video in every window
 	- Keyboard grab, mouse grab, cursor warp and a relative mouse mode with raw deltas, for games and virtual machine displays
 	- Physical key codes (scan codes), the horizontal mouse wheel, the side mouse buttons on X11 and mouse enter/leave events
 	- Windows XP support
@@ -362,16 +363,34 @@ SOFTWARE.
 	- Fixed: [Win32] Dropped file paths with many non-ASCII characters were cut off
 	- Fixed: [Win32] The window event callback got a MSG** instead of a MSG*
 	- Fixed: [X11] The first move of the window also reported a fplWindowEventType_Resized
+	- New: Added fplWindowHandle and fplWindowGetMain()
+	- New: Added Multi variants of the window functions that take a fplWindowHandle (e.g. fplWindowGetSizeMulti())
+	- Changed: The window functions report an error when there is no window
+	- New: Added field windowHandle to fplEvent, the window the event belongs to
+	- Changed: [Win32] Closing the window pushes fplWindowEventType_Closed like on X11
+	- New: Added fplWindowCreate() and fplWindowDestroy() for additional windows
+	- Changed: [Win32] The focus events come from WM_SETFOCUS/WM_KILLFOCUS of each window instead of WM_ACTIVATEAPP
+	- Changed: [Win32] fplPollEvent() dispatches the messages of all windows of the thread
+	- Changed: [X11] The input context follows the window focus
+	- New: Added fplWindowGetClientPositionMulti() and fplWindowSetClientPositionMulti(), the position of the client area in screen coordinates
+	- Fixed: [X11] fplGetWindowPosition() and fplWindowEventType_PositionChanged gave the position relative to the frame of the window manager, both give the position of the frame on the screen now like on Win32
+	- Fixed: [X11] A position set before the window is shown is kept, the window manager placed the window itself
+	- Fixed: [X11] isDecorated, isResizable and isFloating of fplWindowSettings were ignored when the window was created, only the functions that change them at runtime worked
+	- New: Added fplWindowSetParentMulti() and fplWindowGetParentMulti(), an additional window stays in front of its parent
 
 	#### Video
 	- New: Added field contextFlags to fplOpenGLSettings for debug and no error contexts (fplOpenGLContextFlags)
 	- New: Added fields fallbackVersions and fallbackVersionCount to fplOpenGLSettings, tried in order before the legacy fallback
 	- New: Added field isLegacyFallbackDisabled to fplOpenGLSettings
 	- New: Added fields versionIndex and contextFlags to fplVideoSurfaceOpenGL
+	- New: Added fplVideoMakeCurrentMulti(), fplVideoFlipMulti() and fplVideoGetSurfaceMulti(), OpenGL draws into additional windows
+	- New: Added fplVideoGetBackBufferMulti() and fplVideoResizeBackBufferMulti(), the software backend draws into additional windows
+	- New: [Vulkan] Every additional window gets its own surface, see fplVideoGetSurfaceMulti()
 	- Fixed: [GLX] A context version the driver rejects ended the process with an X error
 	- Fixed: [GLX] An uninitialized context was destroyed when neither a visual nor a frame buffer config was found
 	- Fixed: [WGL] The legacy context leaked when no modern context could be requested
 	- Fixed: [Vulkan] 32-bit builds used pointers for the 64-bit surface and debug messenger handles
+	- Fixed: [GLX] With Mesa a window lost its drawn image when another window became current before the swap, every window draws into a GLXWindow now
 
 	#### X11
 	- Changed: Refactored internal X11 states into separate structs
@@ -2141,6 +2160,7 @@ SOFTWARE.
 	- No unix gamepad support implemented (fd is planned)
 	- [Vulkan] The debug messenger message-type filter (GENERAL/VALIDATION/PERFORMANCE) is hardcoded to all types - fplVulkanSettings only exposes severity filtering, not message-type filtering
 	- [Vulkan] When FPL creates the Vulkan instance itself, fplVulkanSettings (appName/engineName/versions/apiVersion) are passed through without validation - invalid values surface later as a raw vkCreateInstance VkResult instead of an early FPL error
+	- [Window] The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp work on the main window only, not on additional windows
 
 	@section section_support_status_unsupported Not Supported
 
@@ -4051,11 +4071,13 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_ClientMessage ClientMessage
 #define FPL__X11_MappingNotify MappingNotify
 #define FPL__X11_GenericEvent GenericEvent
+#define FPL__X11_LASTEvent LASTEvent
 #define FPL__X11_Button1 Button1
 #define FPL__X11_Button2 Button2
 #define FPL__X11_Button3 Button3
 #define FPL__X11_Button4 Button4
 #define FPL__X11_Button5 Button5
+#define FPL__X11_PPosition PPosition
 #define FPL__X11_PMinSize PMinSize
 #define FPL__X11_PMaxSize PMaxSize
 #define FPL__X11_InputHint InputHint
@@ -4092,6 +4114,7 @@ typedef XColor fpl__X11_XColor;
 #define FPL__X11_XA_ATOM XA_ATOM
 #define FPL__X11_XA_CARDINAL XA_CARDINAL
 #define FPL__X11_XA_WINDOW XA_WINDOW
+#define FPL__X11_XA_WM_TRANSIENT_FOR XA_WM_TRANSIENT_FOR
 #define FPL__X11_XA_STRING XA_STRING
 #define FPL__X11_XA_WM_ICON_NAME XA_WM_ICON_NAME
 #define FPL__X11_XA_WM_NAME XA_WM_NAME
@@ -4620,11 +4643,13 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_ClientMessage 33
 #define FPL__X11_MappingNotify 34
 #define FPL__X11_GenericEvent 35
+#define FPL__X11_LASTEvent 36
 #define FPL__X11_Button1 1
 #define FPL__X11_Button2 2
 #define FPL__X11_Button3 3
 #define FPL__X11_Button4 4
 #define FPL__X11_Button5 5
+#define FPL__X11_PPosition (1L << 2)
 #define FPL__X11_PMinSize (1L << 4)
 #define FPL__X11_PMaxSize (1L << 5)
 #define FPL__X11_InputHint (1L << 0)
@@ -4662,6 +4687,7 @@ typedef struct fpl__X11_XColor {
 #define FPL__X11_XA_CARDINAL ((fpl__X11_Atom)6)
 #define FPL__X11_XA_STRING ((fpl__X11_Atom)31)
 #define FPL__X11_XA_WINDOW ((fpl__X11_Atom)33)
+#define FPL__X11_XA_WM_TRANSIENT_FOR ((fpl__X11_Atom)68)
 #define FPL__X11_XA_WM_ICON_NAME ((fpl__X11_Atom)37)
 #define FPL__X11_XA_WM_NAME ((fpl__X11_Atom)39)
 
@@ -6189,7 +6215,7 @@ typedef enum fplInitFlags {
 	fplInitFlags_None = 0,
 	//! Create a console window.
 	fplInitFlags_Console = 1 << 0,
-	//! Create a single window.
+	//! Create the main window, additional windows come from @ref fplWindowCreate().
 	fplInitFlags_Window = 1 << 1,
 	//! Use a video backbuffer (This flag ensures that @ref fplInitFlags_Window is included always).
 	fplInitFlags_Video = 1 << 2,
@@ -7134,6 +7160,13 @@ typedef struct fplWindowSettings {
 * @see @ref section_category_window_style_notes
 */
 fpl_common_api void fplSetDefaultWindowSettings(fplWindowSettings *window);
+
+/**
+* @struct fplWindowHandle
+* @brief The opaque handle of a window, used by the Multi variants of the window functions (e.g. @ref fplWindowGetSizeMulti()).
+* @note The window that @ref fplPlatformInit() creates has one too, see @ref fplWindowGetMain(). The window functions without a handle always use that main window.
+*/
+typedef struct fplWindowHandle fplWindowHandle;
 
 /**
 * @struct fplConsoleSettings
@@ -10797,6 +10830,8 @@ typedef struct fplEvent {
 		//! Gamepad event data.
 		fplGamepadEvent gamepad;
 	};
+	//! The window the event belongs to (see @ref fplWindowGetMain()), null for events without a window like the gamepad events. Only compare it, it may belong to a window that does not exist anymore.
+	fplWindowHandle *windowHandle;
 } fplEvent;
 
 /**
@@ -10828,7 +10863,7 @@ fpl_platform_api void fplPollEvents(void);
 * @brief Gets the window running state as a boolean.
 * @return Returns true when the window is running, false otherwise.
 */
-fpl_platform_api bool fplIsWindowRunning(void);
+fpl_common_api bool fplIsWindowRunning(void);
 
 /**
 * @brief Closes the window and stops the event loop.
@@ -10845,57 +10880,57 @@ fpl_platform_api bool fplWindowUpdate(void);
 * @brief Enables or disables the window cursor.
 * @param[in] value The new cursor visibility state.
 */
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value);
+fpl_common_api void fplSetWindowCursorEnabled(const bool value);
 
 /**
 * @brief Retrieves the inner window size.
 * @param[out] outSize Reference to the window size structure.
 * @return Returns true when we got the inner size from the current window, false otherwise.
 */
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize);
+fpl_common_api bool fplGetWindowSize(fplWindowSize *outSize);
 
 /**
 * @brief Resizes the window to fit the inner size based on the given size.
 * @param[in] width The width in screen units.
 * @param[in] height The height in screen units.
 */
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
+fpl_common_api void fplSetWindowSize(const uint32_t width, const uint32_t height);
 
 /**
 * @brief Gets the window resizable state as boolean.
 * @return Returns true when the window is resizable, false otherwise.
 */
-fpl_platform_api bool fplIsWindowResizable(void);
+fpl_common_api bool fplIsWindowResizable(void);
 
 /**
 * @brief Enables or disables the ability to resize the window.
 * @param[in] value The new resizable state.
 */
-fpl_platform_api void fplSetWindowResizeable(const bool value);
+fpl_common_api void fplSetWindowResizeable(const bool value);
 
 /**
 * @brief Gets the window decorated state as boolean.
 * @return Returns true when the window is decorated, false otherwise.
 */
-fpl_platform_api bool fplIsWindowDecorated(void);
+fpl_common_api bool fplIsWindowDecorated(void);
 
 /**
 * @brief Enables or disables the window decoration (Titlebar, Border, etc.).
 * @param[in] value The new decorated state.
 */
-fpl_platform_api void fplSetWindowDecorated(const bool value);
+fpl_common_api void fplSetWindowDecorated(const bool value);
 
 /**
 * @brief Gets the window floating state as boolean.
 * @return Returns true when the window is floating, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFloating(void);
+fpl_common_api bool fplIsWindowFloating(void);
 
 /**
 * @brief Enables or disables the window floating (Top-most).
 * @param[in] value The new floating state.
 */
-fpl_platform_api void fplSetWindowFloating(const bool value);
+fpl_common_api void fplSetWindowFloating(const bool value);
 
 /**
 * @brief Enables or disables fullscreen mode based on the given size and the current display.
@@ -10907,7 +10942,7 @@ fpl_platform_api void fplSetWindowFloating(const bool value);
 * @attention This may alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+fpl_common_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
 
 /**
 * @brief Enables or disables fullscreen mode based on the given rectangle.
@@ -10920,7 +10955,7 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+fpl_common_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
 
 /**
 * @brief Enables fullscreen mode on the nearest display.
@@ -10928,7 +10963,7 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplEnableWindowFullscreen(void);
+fpl_common_api bool fplEnableWindowFullscreen(void);
 
 /**
 * @brief Switches the window back to window mode.
@@ -10936,33 +10971,34 @@ fpl_platform_api bool fplEnableWindowFullscreen(void);
 * @attention This will not alter the display resolution or the refresh rate.
 * @note Fails while the window is hidden, use @ref fplSetWindowState() with @ref fplWindowState_Fullscreen instead.
 */
-fpl_platform_api bool fplDisableWindowFullscreen(void);
+fpl_common_api bool fplDisableWindowFullscreen(void);
 
 /**
 * @brief Gets the window fullscreen state as boolean.
 * @return Returns true when the window is in fullscreen mode, false otherwise.
 */
-fpl_platform_api bool fplIsWindowFullscreen(void);
+fpl_common_api bool fplIsWindowFullscreen(void);
 
 /**
-* @brief Retrieves the absolute window position.
+* @brief Retrieves the absolute window position, the top-left corner of the frame on the screen.
 * @param[out] outPos Reference to the window position structure @ref fplWindowPosition.
 * @return Returns true when we got the position, false otherwise.
+* @note The client area starts below the title bar and inside the border of the frame, @ref fplWindowGetClientPositionMulti() gives its position.
 */
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos);
+fpl_common_api bool fplGetWindowPosition(fplWindowPosition *outPos);
 
 /**
 * @brief Changes the window absolute position to the given coordinates.
 * @param[in] left The left position in screen units.
 * @param[in] top The top position in screen units.
 */
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top);
+fpl_common_api void fplSetWindowPosition(const int32_t left, const int32_t top);
 
 /**
 * @brief Changes the window title to the given string.
 * @param[in] title The title string.
 */
-fpl_platform_api void fplSetWindowTitle(const char *title);
+fpl_common_api void fplSetWindowTitle(const char *title);
 
 /**
 * @brief Retrieves the window title and writes it into the output string.
@@ -10977,7 +11013,7 @@ fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitle
 * @return Returns the current window state.
 * @note For a hidden window this is the state it gets when it is shown again.
 */
-fpl_platform_api fplWindowState fplGetWindowState(void);
+fpl_common_api fplWindowState fplGetWindowState(void);
 
 /**
 * @brief Changes the current window state.
@@ -10985,14 +11021,14 @@ fpl_platform_api fplWindowState fplGetWindowState(void);
 * @return Returns true when the window state was changed, false otherwise.
 * @note A hidden window only remembers the new state, it is applied when the window is shown with @ref fplSetWindowVisibility().
 */
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState);
+fpl_common_api bool fplSetWindowState(const fplWindowState newState);
 
 /**
 * @brief Gets the current visibility of the window.
 * @return Returns @ref fplWindowVisibilityState_Show when the window is shown, @ref fplWindowVisibilityState_Hide when it is hidden.
 * @note A minimized window still counts as shown.
 */
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
+fpl_common_api fplWindowVisibilityState fplGetWindowVisibility(void);
 
 /**
 * @brief Shows or hides the window.
@@ -11002,7 +11038,7 @@ fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void);
 * @note Showing a hidden window brings it to the foreground and gives it the focus, the system may refuse that (see @ref fplWindowSettings.isFocusedOnStart). The first show of a window that started hidden is its start: it takes the focus only when @ref fplWindowSettings.isFocusedOnStart is set and it is not shown minimized. [X11] A window shown minimized never takes the focus.
 * @note Pushes a @ref fplWindowEventType_Shown or @ref fplWindowEventType_Hidden event when the visibility changes.
 */
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
+fpl_common_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility);
 
 /**
 * @brief Enables or disables the input events for the window entirely.
@@ -11145,7 +11181,7 @@ fpl_platform_api size_t fplGetDisplays(fplDisplayInfo *outDisplays, const size_t
 * @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
 * @return Returns true when the display for the window was found, false otherwise.
 */
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
+fpl_common_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo);
 
 /**
 * @brief Gets information about the primary display.
@@ -11171,6 +11207,304 @@ fpl_platform_api bool fplGetDisplayFromPosition(const int32_t x, const int32_t y
 * @return Returns the number of found display modes.
 */
 fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *outModes, const size_t maxDisplayModeCount);
+
+/** @} */
+
+// ----------------------------------------------------------------------------
+/**
+* @defgroup WindowMulti Window functions for a given window
+* @brief This category contains the Multi variants of the window functions, they take the @ref fplWindowHandle of the window to work on
+* @note Every handle works, also the one of the main window from @ref fplWindowGetMain(). The functions without a handle are the same as their Multi variant with the main window.
+* @note An invalid or destroyed handle is reported as an error and the function returns false, zero or the unknown state. A function also returns false when the window system does not support what it is asked for.
+* @{
+*/
+// ----------------------------------------------------------------------------
+
+/**
+* @brief Gets the handle of the main window, the window that @ref fplPlatformInit() created with @ref fplInitFlags_Window.
+* @return Returns the handle of the main window, null when there is no window.
+*/
+fpl_common_api fplWindowHandle *fplWindowGetMain(void);
+
+/**
+* @brief Creates an additional window next to the main window.
+* @param[in] settings The @ref fplWindowSettings of the new window, null for the defaults of @ref fplSetDefaultWindowSettings().
+* @return Returns the handle of the new window, null when there is no main window or the window could not be created.
+* @note The settings for the screen saver and the monitor power apply to the application, they are taken from the main window only.
+* @note Closing an additional window pushes @ref fplWindowEventType_Closed with its handle and @ref fplWindowIsRunningMulti() returns false, but the window stays until @ref fplWindowDestroy() is called. Closing the main window ends the application as before.
+* @note The mouse grab, the relative mouse mode, the keyboard grab and the cursor warp are only available for the main window.
+* @note All additional windows are destroyed by @ref fplPlatformRelease().
+* @note With the OpenGL video backend the rendering context of the main window draws into the new window too, see @ref fplVideoMakeCurrentMulti(). Only the main window waits for the vertical synchronisation. The other video backends draw into the main window only.
+*/
+fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *settings);
+
+/**
+* @brief Destroys an additional window, the handle is invalid afterwards.
+* @param[in] window The @ref fplWindowHandle from @ref fplWindowCreate().
+* @return Returns true when the window was destroyed, false for an invalid handle or the main window (use @ref fplWindowShutdown() for that).
+* @note Events of the window that are still in the queue keep the old handle, compare it only.
+*/
+fpl_common_api bool fplWindowDestroy(fplWindowHandle *window);
+
+/**
+* @brief Gets the running state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true while the window is running, false after it was closed.
+* @see fplIsWindowRunning()
+*/
+fpl_common_api bool fplWindowIsRunningMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the cursor of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new cursor visibility state.
+* @return Returns true when the cursor state was set.
+* @see fplSetWindowCursorEnabled()
+*/
+fpl_common_api bool fplWindowSetCursorEnabledMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Retrieves the inner size of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outSize Reference to the window size structure.
+* @return Returns true when the size was retrieved.
+* @see fplGetWindowSize()
+*/
+fpl_common_api bool fplWindowGetSizeMulti(fplWindowHandle *window, fplWindowSize *outSize);
+
+/**
+* @brief Resizes the inner area of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] width The new width in screen units.
+* @param[in] height The new height in screen units.
+* @return Returns true when the resize was requested.
+* @see fplSetWindowSize()
+*/
+fpl_common_api bool fplWindowSetSizeMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height);
+
+/**
+* @brief Gets the resizable state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is resizable.
+* @see fplIsWindowResizable()
+*/
+fpl_common_api bool fplWindowIsResizableMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the ability to resize the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new resizable state.
+* @return Returns true when the state was applied, false while the window is in fullscreen ([Win32] or not decorated).
+* @see fplSetWindowResizeable()
+*/
+fpl_common_api bool fplWindowSetResizableMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Gets the decorated state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is decorated.
+* @see fplIsWindowDecorated()
+*/
+fpl_common_api bool fplWindowIsDecoratedMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the decoration (titlebar, border, etc.) of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new decorated state.
+* @return Returns true when the state was applied, false while the window is in fullscreen ([Win32]).
+* @see fplSetWindowDecorated()
+*/
+fpl_common_api bool fplWindowSetDecoratedMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Gets the floating state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is floating (always on top).
+* @see fplIsWindowFloating()
+*/
+fpl_common_api bool fplWindowIsFloatingMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables the given window being always on top.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new floating state.
+* @return Returns true when the state was applied or requested, false while the window is in fullscreen ([Win32]).
+* @see fplSetWindowFloating()
+*/
+fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const bool value);
+
+/**
+* @brief Sets the parent of an additional window, the window stays in front of its parent.
+* @param[in] window The @ref fplWindowHandle of an additional window.
+* @param[in] parent The @ref fplWindowHandle of the parent, the main window or another additional window, null removes the parent.
+* @return Returns true when the parent was set, false for the main window, an unknown parent or a parent that is the window itself or one of its children.
+* @note Without a parent the window manager decides whether a window shown without the focus comes in front of the active window, KWin puts it behind.
+* @note [Win32] The parent is the owner of the window, the window is minimized and restored together with it.
+* @note [X11] The parent is set as WM_TRANSIENT_FOR and the window becomes a utility window (_NET_WM_WINDOW_TYPE_UTILITY), window managers like KWin show and close it without a fade animation. A parent set after the window is shown comes too late for the fade-in.
+* @note Destroying the parent removes it from its children, the children stay.
+* @see fplWindowGetParentMulti()
+*/
+fpl_common_api bool fplWindowSetParentMulti(fplWindowHandle *window, fplWindowHandle *parent);
+
+/**
+* @brief Gets the parent of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the parent set with @ref fplWindowSetParentMulti(), null when the window has none.
+*/
+fpl_common_api fplWindowHandle *fplWindowGetParentMulti(fplWindowHandle *window);
+
+/**
+* @brief Enables or disables fullscreen mode of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new fullscreen state.
+* @param[in] fullscreenWidth The fullscreen width in screen units. When set to zero, the desktop default is used.
+* @param[in] fullscreenHeight The fullscreen height in screen units. When set to zero, the desktop default is used.
+* @param[in] refreshRate The refresh rate in Hz. When set to zero, the desktop default is used.
+* @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
+* @see fplSetWindowFullscreenSize()
+*/
+fpl_common_api bool fplWindowSetFullscreenSizeMulti(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+
+/**
+* @brief Enables or disables fullscreen mode of the given window, based on the given rectangle.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] value The new fullscreen state.
+* @param[in] x The left position in virtual screen coordinates.
+* @param[in] y The top position in virtual screen coordinates.
+* @param[in] width The width in virtual screen coordinates.
+* @param[in] height The height in virtual screen coordinates.
+* @return Returns true when the window was changed to the desired fullscreen mode, false otherwise.
+* @see fplSetWindowFullscreenRect()
+*/
+fpl_common_api bool fplWindowSetFullscreenRectMulti(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+
+/**
+* @brief Enables fullscreen mode of the given window on the nearest display.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window was changed to fullscreen mode, false otherwise.
+* @see fplEnableWindowFullscreen()
+*/
+fpl_common_api bool fplWindowEnableFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Switches the given window back to window mode.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window was changed to window mode, false otherwise.
+* @see fplDisableWindowFullscreen()
+*/
+fpl_common_api bool fplWindowDisableFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Gets the fullscreen state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the window is in fullscreen mode.
+* @see fplIsWindowFullscreen()
+*/
+fpl_common_api bool fplWindowIsFullscreenMulti(fplWindowHandle *window);
+
+/**
+* @brief Retrieves the absolute position of the given window, the top-left corner of the frame on the screen.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outPos Reference to the window position structure.
+* @return Returns true when the position was retrieved.
+* @see fplGetWindowPosition()
+* @see fplWindowGetClientPositionMulti()
+*/
+fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos);
+
+/**
+* @brief Changes the absolute position of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] left The left position in screen units.
+* @param[in] top The top position in screen units.
+* @return Returns true when the move was requested ([Win32] only while the window is shown normally).
+* @see fplSetWindowPosition()
+*/
+fpl_common_api bool fplWindowSetPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top);
+
+/**
+* @brief Retrieves the position of the client area of the given window in screen coordinates, without the frame and the title bar of the system.
+* @param[in] window The @ref fplWindowHandle of the window, @ref fplWindowGetMain() for the main window.
+* @param[out] outPos Reference to the window position structure.
+* @return Returns true when the position was retrieved.
+* @note The position of a mouse event plus this position is the position of the cursor on the screen, also for a window that is moved while the cursor is on it.
+* @see fplWindowSetClientPositionMulti()
+*/
+fpl_common_api bool fplWindowGetClientPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos);
+
+/**
+* @brief Moves the given window so that its client area starts at the given position in screen coordinates.
+* @param[in] window The @ref fplWindowHandle of the window, @ref fplWindowGetMain() for the main window.
+* @param[in] left The left position of the client area in screen units.
+* @param[in] top The top position of the client area in screen units.
+* @return Returns true when the move was requested ([Win32] not while the window is minimized).
+* @note The move does not show, activate or raise the window, a hidden window gets the position when it is shown.
+* @note [X11] The window manager decides the final position. Before it framed a decorated window the first time, the size of the frame is not known, the window may end up lower by the height of the title bar then.
+* @see fplWindowGetClientPositionMulti()
+*/
+fpl_common_api bool fplWindowSetClientPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top);
+
+/**
+* @brief Changes the title of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] title The new title as UTF-8 string.
+* @return Returns true when the title was set.
+* @see fplSetWindowTitle()
+*/
+fpl_common_api bool fplWindowSetTitleMulti(fplWindowHandle *window, const char *title);
+
+/**
+* @brief Retrieves the title of the given window as UTF-8 string.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outTitle Pointer to the output title buffer, may be null to query the required size.
+* @param[in] maxOutTitleLength Maximum number of characters for the output buffer.
+* @return Returns the number of characters of the title, zero on errors.
+* @see fplGetWindowTitle()
+*/
+fpl_common_api size_t fplWindowGetTitleMulti(fplWindowHandle *window, char *outTitle, const size_t maxOutTitleLength);
+
+/**
+* @brief Gets the state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the @ref fplWindowState of the window.
+* @see fplGetWindowState()
+*/
+fpl_common_api fplWindowState fplWindowGetStateMulti(fplWindowHandle *window);
+
+/**
+* @brief Changes the state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] newState The new @ref fplWindowState.
+* @return Returns true when the state was changed or remembered for a hidden window, false otherwise.
+* @see fplSetWindowState()
+*/
+fpl_common_api bool fplWindowSetStateMulti(fplWindowHandle *window, const fplWindowState newState);
+
+/**
+* @brief Gets the visibility state of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the @ref fplWindowVisibilityState of the window.
+* @see fplGetWindowVisibility()
+*/
+fpl_common_api fplWindowVisibilityState fplWindowGetVisibilityMulti(fplWindowHandle *window);
+
+/**
+* @brief Hides or shows the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] newVisibility The new @ref fplWindowVisibilityState.
+* @return Returns true when the window has the requested visibility, false for an unknown visibility state.
+* @see fplSetWindowVisibility()
+*/
+fpl_common_api bool fplWindowSetVisibilityMulti(fplWindowHandle *window, const fplWindowVisibilityState newVisibility);
+
+/**
+* @brief Gets information about the display the given window is on.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[out] outInfo Reference to the display information structure @ref fplDisplayInfo.
+* @return Returns true when the display for the window was found, false otherwise.
+* @see fplGetWindowDisplay()
+*/
+fpl_common_api bool fplWindowGetDisplayMulti(fplWindowHandle *window, fplDisplayInfo *outInfo);
 
 /** @} */
 
@@ -11407,21 +11741,69 @@ fpl_common_api const char *fplGetVideoBackendName(fplVideoBackendType backendTyp
 * @brief Retrieves the pointer to the current video backbuffer.
 * @return Returns the pointer to the current video backbuffer @ref fplVideoBackBuffer.
 * @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+* @see fplVideoGetBackBufferMulti()
 */
 fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void);
+
+/**
+* @brief Retrieves the pointer to the video backbuffer of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the pointer to the video backbuffer @ref fplVideoBackBuffer of the window, null for an unknown window, without video or when the video backend has no backbuffer.
+* @note Every window has its own backbuffer with the software video backend, @ref fplVideoFlipMulti() shows it in its window.
+* @note A resize builds the backbuffer anew, so get the pointer again after @ref fplWindowUpdate() or @ref fplPollEvent().
+* @warning Do not release this memory by any means, otherwise you will corrupt heap memory!
+* @see fplGetVideoBackBuffer()
+*/
+fpl_common_api fplVideoBackBuffer *fplVideoGetBackBufferMulti(fplWindowHandle *window);
 
 /**
 * @brief Resizes the current video backbuffer.
 * @param[in] width The width in pixels.
 * @param[in] height The height in pixels.
 * @return Returns true when the video backbuffer could be resized, false otherwise.
+* @see fplVideoResizeBackBufferMulti()
 */
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height);
 
 /**
+* @brief Resizes the video backbuffer of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @param[in] width The width in pixels.
+* @param[in] height The height in pixels.
+* @return Returns true when the video backbuffer could be resized, false for an unknown window, without video, when the video backend has no backbuffer or the size is empty.
+* @note With @ref fplVideoSettings::isAutoSize the backbuffer of every window follows the size of its window by itself.
+* @note The resized backbuffer is filled with the background color of the window. An additional window keeps its backbuffer when the size does not change, and when the new one cannot be allocated.
+* @see fplResizeVideoBackBuffer()
+*/
+fpl_common_api bool fplVideoResizeBackBufferMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height);
+
+/**
 * @brief Forces the window to be redrawn or to swap the back/front buffer.
+* @see fplVideoFlipMulti()
 */
 fpl_common_api void fplVideoFlip(void);
+
+/**
+* @brief Forces the given window to be redrawn or to swap its back/front buffer.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the frame was presented, false for an unknown window, without video or when the video backend does not draw into the window.
+* @note Every video backend draws into every window. With Vulkan the application presents by itself, this function does nothing then and returns true.
+* @note A window that is not current is made current for the swap, see @ref fplVideoMakeCurrentMulti().
+* @note The software video backend shows the backbuffer of the window, see @ref fplVideoGetBackBufferMulti().
+* @see fplVideoFlip()
+*/
+fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window);
+
+/**
+* @brief Makes the rendering context current for the given window, rendering goes into that window until another window is made current.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns true when the rendering goes into the window, false for an unknown window, without video or when the video backend does not draw into the window.
+* @note All windows share one OpenGL rendering context, so textures, buffers and shaders are available in every window. The rendering goes into the main window, until this function picks another one.
+* @note Render and flip a window before another window is made current: some drivers (Mesa) drop the back buffer of a window that is no longer current.
+* @note Destroying the window that is current makes the main window current again.
+* @note The software and the Vulkan video backend have no rendering context to switch, this function does nothing there and returns true.
+*/
+fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window);
 
 /**
 * @brief Gets the procedure by the specified name from the active video backend.
@@ -11433,8 +11815,19 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName);
 /**
 * @brief Gets the current video surface that stores all handles used for the active video backend.
 * @return The resulting video surface reference @ref fplVideoSurface.
+* @see fplVideoGetSurfaceMulti()
 */
 fpl_common_api const fplVideoSurface *fplGetVideoSurface(void);
+
+/**
+* @brief Gets the video surface of the given window.
+* @param[in] window The @ref fplWindowHandle of the window.
+* @return Returns the video surface @ref fplVideoSurface, null for an unknown window, without video or when the video backend does not draw into the window.
+* @note The surface of an additional window has its own window handles, the OpenGL rendering context is the one of the main window.
+* @note With Vulkan every window has its own surface (VkSurfaceKHR) of the same instance. The surface of an additional window is destroyed with the window, so destroy the swap chain of the window before @ref fplWindowDestroy().
+* @see fplGetVideoSurface()
+*/
+fpl_common_api const fplVideoSurface *fplVideoGetSurfaceMulti(fplWindowHandle *window);
 
 /**
 * @brief Gets the video requirements for the specified video backend.
@@ -13079,6 +13472,8 @@ fpl_internal bool fpl__Win32LoadApi(fpl__Win32Api *wapi) {
 
 // Win32 unicode dependend stuff
 #define FPL__WIN32_CLASSNAME L"FPLWindowClassW"
+// The class name of an additional window, with a number that counts up
+#define FPL__WIN32_ADDITIONAL_CLASSNAME_FORMAT "FPLWindowClassW_%u"
 #define FPL__WIN32_UNNAMED_WINDOW L"Unnamed FPL Unicode Window"
 #define FPL__WIN32_UNNAMED_CONSOLE L"Unnamed FPL Unicode Console"
 #if defined(FPL_ARCH_X64)
@@ -13103,6 +13498,8 @@ typedef struct fpl__Win32InitState {
 
 typedef struct fpl__Win32AppState {
 	fpl__Win32Api winApi;
+	// Counts the classes of the additional windows, each one gets a class name of its own
+	uint32_t additionalWindowClassCount;
 } fpl__Win32AppState;
 
 #if defined(FPL__ENABLE_WINDOW)
@@ -13685,6 +14082,8 @@ typedef FPL__FUNC_X11_XMaxRequestSize(fpl__func_x11_XMaxRequestSize);
 typedef FPL__FUNC_X11_XMatchVisualInfo(fpl__func_x11_XMatchVisualInfo);
 #define FPL__FUNC_X11_XCreateGC(name) fpl__X11_GC name(fpl__X11_Display* display, fpl__X11_Drawable d, unsigned long valuemask, fpl__X11_XGCValues* values)
 typedef FPL__FUNC_X11_XCreateGC(fpl__func_x11_XCreateGC);
+#define FPL__FUNC_X11_XFreeGC(name) int name(fpl__X11_Display* display, fpl__X11_GC gc)
+typedef FPL__FUNC_X11_XFreeGC(fpl__func_x11_XFreeGC);
 #define FPL__FUNC_X11_XGetImage(name) fpl__X11_XImage *name(fpl__X11_Display* display, fpl__X11_Drawable d, int x, int y, unsigned int width, unsigned int height, unsigned long plane_mask, int format)
 typedef FPL__FUNC_X11_XGetImage(fpl__func_x11_XGetImage);
 #define FPL__FUNC_X11_XCreateImage(name) fpl__X11_XImage *name(fpl__X11_Display *display, fpl__X11_Visual *visual, unsigned int depth, int format, int offset, char *data, unsigned int width, unsigned int height, int bitmap_pad, int bytes_per_line)
@@ -13809,6 +14208,7 @@ extern FPL__FUNC_X11_XFlush(XFlush);
 extern FPL__FUNC_X11_XFree(XFree);
 extern FPL__FUNC_X11_XFreeColormap(XFreeColormap);
 extern FPL__FUNC_X11_XFreeCursor(XFreeCursor);
+extern FPL__FUNC_X11_XFreeGC(XFreeGC);
 extern FPL__FUNC_X11_XFreePixmap(XFreePixmap);
 extern FPL__FUNC_X11_XGetImage(XGetImage);
 extern FPL__FUNC_X11_XDisplayKeycodes(XDisplayKeycodes);
@@ -13914,6 +14314,7 @@ typedef struct fpl__X11Api {
 	fpl__func_x11_XSendEvent *XSendEvent;
 	fpl__func_x11_XMatchVisualInfo *XMatchVisualInfo;
 	fpl__func_x11_XCreateGC *XCreateGC;
+	fpl__func_x11_XFreeGC *XFreeGC;
 	fpl__func_x11_XGetImage *XGetImage;
 	fpl__func_x11_XPutImage *XPutImage;
 	fpl__func_x11_XMapRaised *XMapRaised;
@@ -14027,6 +14428,7 @@ fpl_internal bool fpl__LoadX11Api(fpl__X11Api *x11Api) {
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XSendEvent, XSendEvent);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMatchVisualInfo, XMatchVisualInfo);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XCreateGC, XCreateGC);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XFreeGC, XFreeGC);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XGetImage, XGetImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XPutImage, XPutImage);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_X11, libHandle, libName, x11Api, fpl__func_x11_XMapRaised, XMapRaised);
@@ -14510,6 +14912,9 @@ typedef struct fpl__X11NetWMAtoms {
 	fpl__X11_Atom netActiveWindow;
 	fpl__X11_Atom netSupportingWMCheck;
 	fpl__X11_Atom netSupported;
+	fpl__X11_Atom netFrameExtents;
+	fpl__X11_Atom netWMWindowType;
+	fpl__X11_Atom netWMWindowTypeUtility;
 } fpl__X11NetWMAtoms;
 
 // Drag and drop runtime state + atoms
@@ -14806,6 +15211,8 @@ typedef struct {
 	fplWindowState pendingState;
 	// Set while a window that started hidden was not shown yet, its first show by fplSetWindowVisibility() is its start (fplWindowSettings.isFocusedOnStart)
 	fpl_b32 isStartShowPending;
+	// The handle of this window, every event of the window carries it
+	fplWindowHandle *handle;
 
 #if defined(FPL_PLATFORM_WINDOWS)
 	fpl__Win32WindowState win32;
@@ -14814,6 +15221,52 @@ typedef struct {
 	fpl__X11WindowState x11;
 #endif
 } fpl__PlatformWindowState;
+
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+// Software video output of an additional window, the main window keeps its output in the video backend
+typedef struct fpl__VideoSoftwareWindow {
+	// Back buffer of the window, the common video code allocates and releases it
+	fplVideoBackBuffer backbuffer;
+#	if defined(FPL_PLATFORM_WINDOWS)
+	BITMAPINFO bitmapInfo;
+#	endif
+#	if defined(FPL_SUBPLATFORM_X11)
+	fpl__X11_GC graphicsContext;
+	// Points to the pixels of the back buffer
+	fpl__X11_XImage *image;
+#	endif
+} fpl__VideoSoftwareWindow;
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
+
+// The window behind a fplWindowHandle, the one of the main window points into the platform app state
+struct fplWindowHandle {
+	// Platform state of the window
+	fpl__PlatformWindowState *state;
+	// Current settings of the window
+	fplWindowSettings *settings;
+	// Next window in the window list of the platform app state, the main window comes first
+	fplWindowHandle *nextWindow;
+	// Parent from fplWindowSetParentMulti(), the window stays in front of it
+	fplWindowHandle *parent;
+	// The window fplPlatformInit() created
+	fpl_b32 isMain;
+	// Set while an additional window is destroyed, the messages of the destruction push no events anymore
+	fpl_b32 isDestroying;
+	// An additional window the video backend draws into too, the main window does not use it
+	fpl_b32 hasVideo;
+#if defined(FPL__ENABLE_VIDEO)
+	// Video surface of an additional window: the surface of the main window with the fields of this window
+	fplVideoSurface videoSurface;
+#endif
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	// Software video output of an additional window, the main window does not use it
+	fpl__VideoSoftwareWindow videoSoftware;
+#endif
+#if defined(FPL__ENABLE_VIDEO_OPENGL) && defined(FPL_SUBPLATFORM_X11)
+	// GLXWindow drawable of the window for OpenGL, also of the main window, zero when it draws into the plain X window
+	fpl__X11_XID glxWindow;
+#endif
+};
 
 #endif // FPL__ENABLE_WINDOW
 
@@ -14835,6 +15288,8 @@ typedef enum fpl__NativeInputEventKind {
 typedef struct fpl__NativeInputEvent {
 	fpl__NativeInputEventKind kind;
 	void *payload;
+	// The window the native event arrived at, its state takes the key and button states and its handle goes into the events
+	fplWindowHandle *window;
 } fpl__NativeInputEvent;
 
 // Holds settings, tracks initialization, and embeds active backend instances.
@@ -14889,6 +15344,10 @@ struct fpl__PlatformAppState {
 	// Window/video/audio
 #if defined(FPL__ENABLE_WINDOW)
 	fpl__PlatformWindowState window;
+	// The handle of the main window, its state is the window field and its settings are currentSettings.window
+	fplWindowHandle mainWindow;
+	// All windows, starting with the main window, null while there is no window
+	fplWindowHandle *firstWindow;
 #endif
 #if defined(FPL__ENABLE_VIDEO)
 	fpl__PlatformBackendState video;
@@ -14980,10 +15439,17 @@ fpl_internal bool fpl__PollInternalEvent(fplEvent *ev) {
 	return true;
 }
 
-// Returns false when the queue is full and the event was dropped
+// Returns false when the event was dropped, because the queue is full or its window is being destroyed
 fpl_internal bool fpl__PushInternalEvent(const fplEvent *event) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__EventQueue *eventQueue = &appState->eventQueue;
+
+#if defined(FPL__ENABLE_WINDOW)
+	// The application destroyed the window, it gets no events of the destruction (focus loss, released keys)
+	if (event->windowHandle != fpl_null && event->windowHandle->isDestroying) {
+		return(false);
+	}
+#endif
 
 	size_t currentPush;
 	size_t currentPop;
@@ -15254,7 +15720,7 @@ fpl_internal void fpl__GamepadBuildSDLGuid(const uint16_t bus, const uint16_t vi
 // window-only block below) so the no-window input backends can push events directly without
 // requiring a window state. The window-only fpl__Handle*Event wrappers below add keymap lookup
 // + repeat tracking on top of these primitives.
-fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
+fpl_internal void fpl__PushKeyboardButtonEvent(fplWindowHandle *window, const uint64_t keyCode, const uint32_t scanCode, const fplKey mappedKey, const fplKeyboardModifierFlags modifiers, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Button;
@@ -15263,19 +15729,21 @@ fpl_internal void fpl__PushKeyboardButtonEvent(const uint64_t keyCode, const uin
 	newEvent.keyboard.modifiers = modifiers;
 	newEvent.keyboard.buttonState = buttonState;
 	newEvent.keyboard.mappedKey = mappedKey;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushKeyboardInputEvent(const uint32_t textCode, const fplKey mappedKey) {
+fpl_internal void fpl__PushKeyboardInputEvent(fplWindowHandle *window, const uint32_t textCode, const fplKey mappedKey) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Keyboard;
 	newEvent.keyboard.type = fplKeyboardEventType_Input;
 	newEvent.keyboard.keyCode = (uint64_t)textCode;
 	newEvent.keyboard.mappedKey = mappedKey;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
+fpl_internal void fpl__PushMouseButtonEvent(fplWindowHandle *window, const int32_t x, const int32_t y, const fplMouseButtonType mouseButton, const fplButtonState buttonState) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Button;
@@ -15283,10 +15751,11 @@ fpl_internal void fpl__PushMouseButtonEvent(const int32_t x, const int32_t y, co
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.mouseButton = mouseButton;
 	newEvent.mouse.buttonState = buttonState;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
+fpl_internal void fpl__PushMouseWheelEvent(fplWindowHandle *window, const fplMouseEventType wheelType, const int32_t x, const int32_t y, const float wheelDelta) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = wheelType;
@@ -15294,10 +15763,11 @@ fpl_internal void fpl__PushMouseWheelEvent(const fplMouseEventType wheelType, co
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.wheelDelta = wheelDelta;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y, const int32_t deltaX, const int32_t deltaY) {
+fpl_internal void fpl__PushMouseMoveEvent(fplWindowHandle *window, const int32_t x, const int32_t y, const int32_t deltaX, const int32_t deltaY) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = fplMouseEventType_Move;
@@ -15306,6 +15776,7 @@ fpl_internal void fpl__PushMouseMoveEvent(const int32_t x, const int32_t y, cons
 	newEvent.mouse.mouseY = y;
 	newEvent.mouse.deltaX = deltaX;
 	newEvent.mouse.deltaY = deltaY;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT
@@ -15323,38 +15794,42 @@ fpl_internal fplKey fpl__GetMappedKey(const fpl__PlatformWindowState *windowStat
 	return(result);
 }
 
-fpl_internal void fpl__PushWindowStateEvent(const fplWindowEventType windowType) {
+fpl_internal void fpl__PushWindowStateEvent(fplWindowHandle *window, const fplWindowEventType windowType) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowSizeEvent(const fplWindowEventType windowType, uint32_t w, uint32_t h) {
+fpl_internal void fpl__PushWindowSizeEvent(fplWindowHandle *window, const fplWindowEventType windowType, uint32_t w, uint32_t h) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
 	newEvent.window.size.width = w;
 	newEvent.window.size.height = h;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowPositionEvent(const fplWindowEventType windowType, int32_t x, int32_t y) {
+fpl_internal void fpl__PushWindowPositionEvent(fplWindowHandle *window, const fplWindowEventType windowType, int32_t x, int32_t y) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = windowType;
 	newEvent.window.position.left = x;
 	newEvent.window.position.top = y;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
-fpl_internal void fpl__PushWindowDropFilesEvent(const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
+fpl_internal void fpl__PushWindowDropFilesEvent(fplWindowHandle *window, const char *filePath, const size_t fileCount, const char **files, const fplMemoryBlock *memory) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Window;
 	newEvent.window.type = fplWindowEventType_DroppedFiles;
 	newEvent.window.dropFiles.fileCount = fileCount;
 	newEvent.window.dropFiles.files = files;
 	newEvent.window.dropFiles.internalMemory = *memory;
+	newEvent.windowHandle = window;
 	bool wasPushed = fpl__PushInternalEvent(&newEvent);
 	if (!wasPushed && memory->base != fpl_null) {
 		// The full queue dropped the event, so nobody else releases its memory
@@ -15411,12 +15886,12 @@ fpl_internal void fpl__HandleKeyboardButtonEvent(fpl__PlatformWindowState *windo
 		windowState->keyCodes[keySlot] = keyCode;
 		windowState->keyScanCodes[keySlot] = scanCode;
 	}
-	fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
+	fpl__PushKeyboardButtonEvent(windowState->handle, keyCode, scanCode, mappedKey, modifiers, repeat ? fplButtonState_Repeat : buttonState);
 }
 
 fpl_internal void fpl__HandleKeyboardInputEvent(fpl__PlatformWindowState *windowState, const uint64_t keyCode, const uint32_t textCode) {
 	fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
-	fpl__PushKeyboardInputEvent(textCode, mappedKey);
+	fpl__PushKeyboardInputEvent(windowState->handle, textCode, mappedKey);
 }
 
 // In the relative mode the cursor sits somewhere hidden, so the mouse events carry the position where the mode started
@@ -15438,7 +15913,7 @@ fpl_internal void fpl__HandleMouseButtonEvent(fpl__PlatformWindowState *windowSt
 	int32_t reportedX;
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
-	fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, buttonState);
+	fpl__PushMouseButtonEvent(windowState->handle, reportedX, reportedY, mouseButton, buttonState);
 }
 
 fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowState, const int32_t x, const int32_t y) {
@@ -15456,7 +15931,7 @@ fpl_internal void fpl__HandleMouseMoveEvent(fpl__PlatformWindowState *windowStat
 	inputGrab->lastMoveX = x;
 	inputGrab->lastMoveY = y;
 	inputGrab->hasLastMove = true;
-	fpl__PushMouseMoveEvent(x, y, deltaX, deltaY);
+	fpl__PushMouseMoveEvent(windowState->handle, x, y, deltaX, deltaY);
 }
 
 // The wheel type is fplMouseEventType_Wheel or fplMouseEventType_HorizontalWheel
@@ -15464,18 +15939,19 @@ fpl_internal void fpl__HandleMouseWheelEvent(fpl__PlatformWindowState *windowSta
 	int32_t reportedX;
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
-	fpl__PushMouseWheelEvent(wheelType, reportedX, reportedY, wheelDelta);
+	fpl__PushMouseWheelEvent(windowState->handle, wheelType, reportedX, reportedY, wheelDelta);
 }
 
 // Only the keyboard and mouse backends of the input system report the crossings
 #if defined(FPL__ENABLE_INPUT_WIN32) || defined(FPL__ENABLE_INPUT_X11)
-fpl_internal void fpl__PushMouseCrossingEvent(const fplMouseEventType type, const int32_t x, const int32_t y) {
+fpl_internal void fpl__PushMouseCrossingEvent(fplWindowHandle *window, const fplMouseEventType type, const int32_t x, const int32_t y) {
 	fplEvent newEvent = fplZeroInit;
 	newEvent.type = fplEventType_Mouse;
 	newEvent.mouse.type = type;
 	newEvent.mouse.mouseButton = fplMouseButtonType_None;
 	newEvent.mouse.mouseX = x;
 	newEvent.mouse.mouseY = y;
+	newEvent.windowHandle = window;
 	fpl__PushInternalEvent(&newEvent);
 }
 
@@ -15490,22 +15966,70 @@ fpl_internal void fpl__HandleMouseCrossingEvent(fpl__PlatformWindowState *window
 	int32_t reportedY;
 	fpl__GetReportedMousePosition(windowState, x, y, &reportedX, &reportedY);
 	fplMouseEventType type = isInside ? fplMouseEventType_Enter : fplMouseEventType_Leave;
-	fpl__PushMouseCrossingEvent(type, reportedX, reportedY);
+	fpl__PushMouseCrossingEvent(windowState->handle, type, reportedX, reportedY);
 }
 #endif // FPL__ENABLE_INPUT_WIN32 || FPL__ENABLE_INPUT_X11
 
 // @NOTE(final): Callback used for setup a window before it is created
-#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+#define FPL__FUNC_PREPARE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, fplWindowHandle *window, const fplInitFlags initFlags, const fplSettings *initSettings)
 typedef FPL__FUNC_PREPARE_VIDEO_WINDOW(callback_PreSetupWindow);
 
 // @NOTE(final): Callback used for setup a window after it was created
-#define FPL__FUNC_FINALIZE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, const fplInitFlags initFlags, const fplSettings *initSettings)
+#define FPL__FUNC_FINALIZE_VIDEO_WINDOW(name) bool name(fpl__PlatformAppState *appState, fplWindowHandle *window, const fplInitFlags initFlags, const fplSettings *initSettings)
 typedef FPL__FUNC_FINALIZE_VIDEO_WINDOW(callback_PostSetupWindow);
 
 typedef struct fpl__SetupWindowCallbacks {
 	callback_PreSetupWindow *preSetup;
 	callback_PostSetupWindow *postSetup;
 } fpl__SetupWindowCallbacks;
+
+// The video setup of every window, the main window and the additional ones, implemented with the video system
+fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault);
+fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault);
+
+// The window functions each window platform implements as fpl__Win32Window_<name> or fpl__X11Window_<name>, the common code calls them through fpl__PlatformWindow(<name>).
+// The window handle is always valid when they are called, the public functions check it.
+#if defined(FPL_PLATFORM_WINDOWS)
+#	define FPL__HAS_WINDOW_PLATFORM
+#	define fpl__PlatformWindow(name) fpl__Win32Window_##name
+#elif defined(FPL_SUBPLATFORM_X11)
+#	define FPL__HAS_WINDOW_PLATFORM
+#	define fpl__PlatformWindow(name) fpl__X11Window_##name
+#endif
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+// Creates the platform window of an additional window, its state and settings are set up already. On failure it releases what it created.
+fpl_internal bool fpl__PlatformWindow(Create)(fplWindowHandle *window);
+// Destroys the platform window of an additional window
+fpl_internal void fpl__PlatformWindow(Destroy)(fplWindowHandle *window);
+fpl_internal bool fpl__PlatformWindow(SetCursorEnabled)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(GetSize)(fplWindowHandle *window, fplWindowSize *outSize);
+fpl_internal bool fpl__PlatformWindow(SetSize)(fplWindowHandle *window, const uint32_t width, const uint32_t height);
+fpl_internal bool fpl__PlatformWindow(SetResizable)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(SetDecorated)(fplWindowHandle *window, const bool value);
+fpl_internal bool fpl__PlatformWindow(IsFloating)(fplWindowHandle *window);
+fpl_internal bool fpl__PlatformWindow(SetFloating)(fplWindowHandle *window, const bool value);
+// Sets or removes (null) the parent of an additional window, the common code checks the parent
+fpl_internal bool fpl__PlatformWindow(SetParent)(fplWindowHandle *window, fplWindowHandle *parent);
+fpl_internal bool fpl__PlatformWindow(SetFullscreenSize)(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate);
+fpl_internal bool fpl__PlatformWindow(SetFullscreenRect)(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height);
+fpl_internal bool fpl__PlatformWindow(GetPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
+fpl_internal bool fpl__PlatformWindow(SetPosition)(fplWindowHandle *window, const int32_t left, const int32_t top);
+fpl_internal bool fpl__PlatformWindow(GetClientPosition)(fplWindowHandle *window, fplWindowPosition *outPos);
+fpl_internal bool fpl__PlatformWindow(SetClientPosition)(fplWindowHandle *window, const int32_t left, const int32_t top);
+fpl_internal bool fpl__PlatformWindow(SetTitle)(fplWindowHandle *window, const char *title);
+fpl_internal fplWindowState fpl__PlatformWindow(GetState)(fplWindowHandle *window);
+fpl_internal bool fpl__PlatformWindow(SetState)(fplWindowHandle *window, const fplWindowState newState);
+fpl_internal bool fpl__PlatformWindow(SetVisibility)(fplWindowHandle *window, const fplWindowVisibilityState newVisibility);
+fpl_internal bool fpl__PlatformWindow(GetDisplay)(fplWindowHandle *window, fplDisplayInfo *outDisplay);
+
+#	if defined(FPL__ENABLE_VIDEO)
+// Lets the video backend draw into an additional window after it was created, false when the backend can but fails
+fpl_internal bool fpl__SetupAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window);
+// Takes the rendering away from an additional window before it is destroyed
+fpl_internal void fpl__ReleaseAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window);
+#	endif
+#endif // FPL__HAS_WINDOW_PLATFORM
 #endif // FPL__ENABLE_WINDOW
 
 #endif // FPL__PLATFORM_STATES_DEFINED
@@ -17480,10 +18004,45 @@ fpl_common_api size_t fplPathCombine(char *destPath, const size_t maxDestPathLen
 #if defined(FPL__ENABLE_WINDOW) && !defined(FPL__COMMON_WINDOW_DEFINED)
 #define FPL__COMMON_WINDOW_DEFINED
 
+// Whether the handle belongs to an existing window, the main window or one created later
+fpl_internal bool fpl__IsKnownWindow(const fpl__PlatformAppState *appState, const fplWindowHandle *window) {
+	for (const fplWindowHandle *current = appState->firstWindow; current != fpl_null; current = current->nextWindow) {
+		if (current == window) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+// Checks the platform and the window handle of a public window function, the platform window functions rely on both
+#define FPL__CheckWindowHandle(window, ret) \
+	FPL__CheckPlatform(ret); \
+	FPL__CheckArgumentNull(window, ret); \
+	if (!fpl__IsKnownWindow(fpl__global__AppState, window)) { \
+		FPL__ERROR(FPL__MODULE_WINDOW, "[%s] The window '%p' does not exist", FPL_FUNCTION_NAME, (const void *)(window)); \
+		return (ret); \
+	}
+
+fpl_common_api fplWindowHandle *fplWindowGetMain(void) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowHandle *result = fpl_null;
+	if (appState->firstWindow != fpl_null) {
+		result = &appState->mainWindow;
+	}
+	return(result);
+}
+
+fpl_common_api size_t fplWindowGetTitleMulti(fplWindowHandle *window, char *outTitle, const size_t maxOutTitleLength) {
+	FPL__CheckWindowHandle(window, 0);
+	size_t result = fplCopyString(window->settings->title, outTitle, maxOutTitleLength);
+	return(result);
+}
+
 fpl_common_api size_t fplGetWindowTitle(char *outTitle, const size_t maxOutTitleLength) {
 	FPL__CheckPlatform(0);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	size_t result = fplCopyString(appState->currentSettings.window.title, outTitle, maxOutTitleLength);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	size_t result = fplWindowGetTitleMulti(mainWindow, outTitle, maxOutTitleLength);
 	return(result);
 }
 
@@ -17521,39 +18080,508 @@ fpl_internal bool fpl__IsWindowFocusedOnStart(const fplWindowSettings *windowSet
 }
 
 // A window that starts hidden is neither shown nor in fullscreen, its initial state is applied when it gets shown and that first show is its start
-fpl_internal void fpl__DeferInitialWindowState(fpl__PlatformAppState *appState, fplWindowSettings *currentWindowSettings, const fplWindowState initialState) {
-	appState->window.isHidden = true;
-	appState->window.isStartShowPending = true;
-	appState->window.pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
-	currentWindowSettings->isFullscreen = false;
-}
-
-// Applies the state a hidden window was given, right after it was shown
-fpl_internal void fpl__ApplyPendingWindowState(fpl__PlatformAppState *appState) {
-	fplWindowState pendingState = appState->window.pendingState;
-	appState->window.pendingState = fplWindowState_Unknown;
-	if (pendingState == fplWindowState_Fullscreen) {
-		const fplWindowSettings *windowSettings = &appState->currentSettings.window;
-		if (!windowSettings->isFullscreen) {
-			fplSetWindowFullscreenSize(true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
-		}
-	} else if (pendingState != fplWindowState_Unknown) {
-		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
-		if (pendingState == fplWindowState_Normal && appState->currentSettings.window.isFullscreen) {
-			fplSetWindowFullscreenSize(false, 0, 0, 0);
-		}
-		fplSetWindowState(pendingState);
-	}
+fpl_internal void fpl__DeferInitialWindowState(fplWindowHandle *window, const fplWindowState initialState) {
+	fpl__PlatformWindowState *windowState = window->state;
+	windowState->isHidden = true;
+	windowState->isStartShowPending = true;
+	windowState->pendingState = initialState == fplWindowState_Normal ? fplWindowState_Unknown : initialState;
+	window->settings->isFullscreen = false;
 }
 
 // The fullscreen functions would show a hidden window on Win32 and are ignored by X11 window managers, so they fail while the window is hidden
-fpl_internal bool fpl__IsFullscreenChangeAllowed(const fpl__PlatformAppState *appState) {
-	if (appState->window.isHidden) {
+fpl_internal bool fpl__IsFullscreenChangeAllowed(const fplWindowHandle *window) {
+	if (window->state->isHidden) {
 		FPL__WARNING(FPL__MODULE_WINDOW, "Fullscreen can not be changed while the window is hidden, show the window first or use fplSetWindowState(fplWindowState_Fullscreen)");
 		return(false);
 	}
 	return(true);
 }
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+// Applies the state a hidden window was given, right after it was shown
+fpl_internal void fpl__ApplyPendingWindowState(fplWindowHandle *window) {
+	fpl__PlatformWindowState *windowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
+	fplWindowState pendingState = windowState->pendingState;
+	windowState->pendingState = fplWindowState_Unknown;
+	if (pendingState == fplWindowState_Fullscreen) {
+		if (!windowSettings->isFullscreen) {
+			fpl__PlatformWindow(SetFullscreenSize)(window, true, windowSettings->fullscreenSize.width, windowSettings->fullscreenSize.height, windowSettings->fullscreenRefreshRate);
+		}
+	} else if (pendingState != fplWindowState_Unknown) {
+		// fplSetWindowState(fplWindowState_Normal) keeps fullscreen, but a window that was hidden in fullscreen and set to normal is expected to come back as a normal window
+		if (pendingState == fplWindowState_Normal && windowSettings->isFullscreen) {
+			fpl__PlatformWindow(SetFullscreenSize)(window, false, 0, 0, 0);
+		}
+		fpl__PlatformWindow(SetState)(window, pendingState);
+	}
+}
+
+//
+// Window functions: the Multi variants work on the given window, the functions without a handle on the main window
+//
+fpl_common_api bool fplWindowIsRunningMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->state->isRunning != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowRunning(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsRunningMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetCursorEnabledMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetCursorEnabled)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowCursorEnabled(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetCursorEnabledMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowGetSizeMulti(fplWindowHandle *window, fplWindowSize *outSize) {
+	FPL__CheckArgumentNull(outSize, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetSize)(window, outSize);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowSize(fplWindowSize *outSize) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetSizeMulti(mainWindow, outSize);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetSizeMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetSize)(window, width, height);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetSizeMulti(mainWindow, width, height);
+}
+
+fpl_common_api bool fplWindowIsResizableMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isResizable != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowResizable(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsResizableMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetResizableMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetResizable)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowResizeable(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetResizableMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowIsDecoratedMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isDecorated != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowDecorated(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsDecoratedMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetDecoratedMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetDecorated)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowDecorated(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetDecoratedMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowIsFloatingMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(IsFloating)(window);
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowFloating(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsFloatingMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetFloatingMulti(fplWindowHandle *window, const bool value) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFloating)(window, value);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowFloating(const bool value) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetFloatingMulti(mainWindow, value);
+}
+
+fpl_common_api bool fplWindowSetParentMulti(fplWindowHandle *window, fplWindowHandle *parent) {
+	FPL__CheckWindowHandle(window, false);
+	if (window->isMain) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "The main window cannot have a parent");
+		return(false);
+	}
+	if (parent != fpl_null) {
+		const fpl__PlatformAppState *appState = fpl__global__AppState;
+		if (!fpl__IsKnownWindow(appState, parent)) {
+			FPL__ERROR(FPL__MODULE_WINDOW, "The parent window '%p' does not exist", (const void *)parent);
+			return(false);
+		}
+		// Two windows that are in front of each other have no order
+		for (const fplWindowHandle *ancestor = parent; ancestor != fpl_null; ancestor = ancestor->parent) {
+			if (ancestor == window) {
+				FPL__ERROR(FPL__MODULE_WINDOW, "The parent '%p' is the window '%p' itself or one of its children", (const void *)parent, (const void *)window);
+				return(false);
+			}
+		}
+	}
+	bool result = fpl__PlatformWindow(SetParent)(window, parent);
+	if (result) {
+		window->parent = parent;
+	}
+	return(result);
+}
+
+fpl_common_api fplWindowHandle *fplWindowGetParentMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
+	fplWindowHandle *result = window->parent;
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetFullscreenSizeMulti(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, value, fullscreenWidth, fullscreenHeight, refreshRate);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetFullscreenSizeMulti(mainWindow, value, fullscreenWidth, fullscreenHeight, refreshRate);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetFullscreenRectMulti(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenRect)(window, value, x, y, width, height);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetFullscreenRectMulti(mainWindow, value, x, y, width, height);
+	return(result);
+}
+
+// Without a size the platforms keep the desktop resolution, the same as entering fullscreen without a size
+fpl_common_api bool fplWindowEnableFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, true, 0, 0, 0);
+	return(result);
+}
+
+fpl_common_api bool fplEnableWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowEnableFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowDisableFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetFullscreenSize)(window, false, 0, 0, 0);
+	return(result);
+}
+
+fpl_common_api bool fplDisableWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowDisableFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowIsFullscreenMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = window->settings->isFullscreen != 0;
+	return(result);
+}
+
+fpl_common_api bool fplIsWindowFullscreen(void) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowIsFullscreenMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowGetPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos) {
+	FPL__CheckArgumentNull(outPos, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetPosition)(window, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetPositionMulti(mainWindow, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetPosition)(window, left, top);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetPositionMulti(mainWindow, left, top);
+}
+
+fpl_common_api bool fplWindowGetClientPositionMulti(fplWindowHandle *window, fplWindowPosition *outPos) {
+	FPL__CheckArgumentNull(outPos, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetClientPosition)(window, outPos);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetClientPositionMulti(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetClientPosition)(window, left, top);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetTitleMulti(fplWindowHandle *window, const char *title) {
+	FPL__CheckArgumentNull(title, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetTitle)(window, title);
+	return(result);
+}
+
+fpl_common_api void fplSetWindowTitle(const char *title) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowSetTitleMulti(mainWindow, title);
+}
+
+fpl_common_api fplWindowState fplWindowGetStateMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fplWindowState_Unknown);
+	fplWindowState result = fpl__PlatformWindow(GetState)(window);
+	return(result);
+}
+
+fpl_common_api fplWindowState fplGetWindowState(void) {
+	FPL__CheckPlatform(fplWindowState_Unknown);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowState result = fplWindowGetStateMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetStateMulti(fplWindowHandle *window, const fplWindowState newState) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetState)(window, newState);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowState(const fplWindowState newState) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetStateMulti(mainWindow, newState);
+	return(result);
+}
+
+fpl_common_api fplWindowVisibilityState fplWindowGetVisibilityMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fplWindowVisibilityState_Unknown);
+	fplWindowVisibilityState result = window->state->isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
+	return(result);
+}
+
+fpl_common_api fplWindowVisibilityState fplGetWindowVisibility(void) {
+	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplWindowVisibilityState result = fplWindowGetVisibilityMulti(mainWindow);
+	return(result);
+}
+
+fpl_common_api bool fplWindowSetVisibilityMulti(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(SetVisibility)(window, newVisibility);
+	return(result);
+}
+
+fpl_common_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowSetVisibilityMulti(mainWindow, newVisibility);
+	return(result);
+}
+
+fpl_common_api bool fplWindowGetDisplayMulti(fplWindowHandle *window, fplDisplayInfo *outInfo) {
+	FPL__CheckArgumentNull(outInfo, false);
+	FPL__CheckWindowHandle(window, false);
+	bool result = fpl__PlatformWindow(GetDisplay)(window, outInfo);
+	return(result);
+}
+
+fpl_common_api bool fplGetWindowDisplay(fplDisplayInfo *outInfo) {
+	FPL__CheckPlatform(false);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	bool result = fplWindowGetDisplayMulti(mainWindow, outInfo);
+	return(result);
+}
+
+//
+// Additional windows
+//
+
+// One memory block per additional window, the handle comes first so the handle is the address to release
+typedef struct fpl__AdditionalWindowMemory {
+	fplWindowHandle handle;
+	fpl__PlatformWindowState state;
+	fplWindowSettings settings;
+} fpl__AdditionalWindowMemory;
+
+#define FPL__ADDITIONAL_WINDOW_MEMORY_ALIGNMENT 16
+
+fpl_internal void fpl__RemoveWindowFromList(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fplWindowHandle *previous = appState->firstWindow;
+	while (previous != fpl_null && previous->nextWindow != window) {
+		previous = previous->nextWindow;
+	}
+	if (previous != fpl_null) {
+		previous->nextWindow = window->nextWindow;
+	}
+	window->nextWindow = fpl_null;
+}
+
+// The platform window is destroyed while the window is still in the list, so the messages of the destruction still find it
+// Removes the parent from all children of a window that goes away, the children stay ([Win32] an owner destroys its owned windows with it)
+fpl_internal void fpl__DetachChildWindows(fpl__PlatformAppState *appState, fplWindowHandle *parent) {
+	for (fplWindowHandle *child = appState->firstWindow; child != fpl_null; child = child->nextWindow) {
+		if (child->parent == parent) {
+			fpl__PlatformWindow(SetParent)(child, fpl_null);
+			child->parent = fpl_null;
+		}
+	}
+}
+
+fpl_internal void fpl__DestroyAdditionalWindow(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	window->isDestroying = true;
+	fpl__DetachChildWindows(appState, window);
+#if defined(FPL__ENABLE_VIDEO)
+	fpl__ReleaseAdditionalWindowVideo(appState, window);
+#endif
+	fpl__PlatformWindow(Destroy)(window);
+	fpl__RemoveWindowFromList(appState, window);
+	fpl__ReleaseDynamicMemory(window);
+}
+
+// Destroys every additional window, the platform release calls it before the video and the main window are released
+fpl_internal void fpl__ReleaseAdditionalWindows(fpl__PlatformAppState *appState) {
+	if (appState->firstWindow == fpl_null) {
+		return;
+	}
+	while (appState->firstWindow->nextWindow != fpl_null) {
+		fplWindowHandle *window = appState->firstWindow->nextWindow;
+		fpl__DestroyAdditionalWindow(appState, window);
+	}
+}
+
+fpl_common_api fplWindowHandle *fplWindowCreate(const fplWindowSettings *settings) {
+	FPL__CheckPlatform(fpl_null);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	if (appState->firstWindow == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "An additional window needs the main window, initialize the platform with fplInitFlags_Window");
+		return(fpl_null);
+	}
+	const size_t memorySize = sizeof(fpl__AdditionalWindowMemory);
+	fpl__AdditionalWindowMemory *memory = (fpl__AdditionalWindowMemory *)fpl__AllocateDynamicMemory(memorySize, FPL__ADDITIONAL_WINDOW_MEMORY_ALIGNMENT);
+	if (memory == fpl_null) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "Failed allocating '%zu' bytes for an additional window", memorySize);
+		return(fpl_null);
+	}
+	// A custom allocator may hand out memory that is not cleared
+	fplMemoryClear(memory, memorySize);
+	if (settings != fpl_null) {
+		memory->settings = *settings;
+	} else {
+		fplSetDefaultWindowSettings(&memory->settings);
+	}
+	fplWindowHandle *window = &memory->handle;
+	window->state = &memory->state;
+	window->settings = &memory->settings;
+	window->isMain = false;
+	window->state->handle = window;
+
+	// The window is in the list before it is created, the platform uses the window functions to apply its start state
+	fplWindowHandle *lastWindow = appState->firstWindow;
+	while (lastWindow->nextWindow != fpl_null) {
+		lastWindow = lastWindow->nextWindow;
+	}
+	lastWindow->nextWindow = window;
+
+	bool isCreated = fpl__PlatformWindow(Create)(window);
+	if (!isCreated) {
+		fpl__RemoveWindowFromList(appState, window);
+		fpl__ReleaseDynamicMemory(memory);
+		return(fpl_null);
+	}
+
+#if defined(FPL__ENABLE_VIDEO)
+	// A window the video backend cannot draw into although it draws into additional windows is useless to the app
+	bool isVideoReady = fpl__SetupAdditionalWindowVideo(appState, window);
+	if (!isVideoReady) {
+		fpl__DestroyAdditionalWindow(appState, window);
+		return(fpl_null);
+	}
+#endif
+
+	return(window);
+}
+
+fpl_common_api bool fplWindowDestroy(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	if (window->isMain) {
+		FPL__ERROR(FPL__MODULE_WINDOW, "The main window is not destroyed by fplWindowDestroy(), use fplWindowShutdown() or fplPlatformRelease()");
+		return(false);
+	}
+	fpl__DestroyAdditionalWindow(fpl__global__AppState, window);
+	return(true);
+}
+#endif // FPL__HAS_WINDOW_PLATFORM
 
 //
 // Focus handling and input grab (mouse grab, relative mouse mode, keyboard grab)
@@ -17567,7 +18595,7 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 			uint64_t keyCode = windowState->keyCodes[keySlot];
 			fplKey mappedKey = fpl__GetMappedKey(windowState, keyCode);
 			uint32_t scanCode = windowState->keyScanCodes[keySlot];
-			fpl__PushKeyboardButtonEvent(keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
+			fpl__PushKeyboardButtonEvent(windowState->handle, keyCode, scanCode, mappedKey, fplKeyboardModifierFlags_None, fplButtonState_Release);
 		}
 	}
 	const fpl__InputGrabState *inputGrab = &windowState->inputGrab;
@@ -17578,7 +18606,7 @@ fpl_internal void fpl__ReleaseAllPressedButtons(fpl__PlatformWindowState *window
 		if (windowState->mouseStates[buttonIndex] != fplButtonState_Release) {
 			windowState->mouseStates[buttonIndex] = fplButtonState_Release;
 			fplMouseButtonType mouseButton = (fplMouseButtonType)buttonIndex;
-			fpl__PushMouseButtonEvent(reportedX, reportedY, mouseButton, fplButtonState_Release);
+			fpl__PushMouseButtonEvent(windowState->handle, reportedX, reportedY, mouseButton, fplButtonState_Release);
 		}
 	}
 }
@@ -17726,7 +18754,7 @@ fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState
 	if (countX == 0 && countY == 0) {
 		return;
 	}
-	fpl__PushMouseMoveEvent(inputGrab->frozenX, inputGrab->frozenY, countX, countY);
+	fpl__PushMouseMoveEvent(appState->window.handle, inputGrab->frozenX, inputGrab->frozenY, countX, countY);
 #else
 	// Without the input system no mouse event reaches the application at all
 	FPL__UNUSED(appState);
@@ -17735,9 +18763,9 @@ fpl_internal void fpl__HandleRelativeMouseMotion(fpl__PlatformAppState *appState
 #endif
 }
 
-// The platforms call this instead of pushing the focus events themselves
-fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState, const bool hasFocus) {
-	fpl__PlatformWindowState *windowState = &appState->window;
+// The platforms call this instead of pushing the focus events themselves. Only the main window has a grab.
+fpl_internal void fpl__HandleWindowFocusChanged(fplWindowHandle *window, const bool hasFocus) {
+	fpl__PlatformWindowState *windowState = window->state;
 	if (!hasFocus) {
 		fpl__ReleaseAllPressedButtons(windowState);
 	}
@@ -17745,13 +18773,17 @@ fpl_internal void fpl__HandleWindowFocusChanged(fpl__PlatformAppState *appState,
 	// The cursor may have moved anywhere while another window had the focus
 	windowState->inputGrab.hasLastMove = false;
 	fplWindowEventType eventType = hasFocus ? fplWindowEventType_GotFocus : fplWindowEventType_LostFocus;
-	fpl__PushWindowStateEvent(eventType);
-	fpl__UpdateInputGrab(appState);
+	fpl__PushWindowStateEvent(window, eventType);
+	if (window->isMain) {
+		fpl__UpdateInputGrab(fpl__global__AppState);
+	}
 }
 
-fpl_internal void fpl__HandleWindowMinimizedChanged(fpl__PlatformAppState *appState, const bool isMinimized) {
-	appState->window.isMinimized = isMinimized;
-	fpl__UpdateInputGrab(appState);
+fpl_internal void fpl__HandleWindowMinimizedChanged(fplWindowHandle *window, const bool isMinimized) {
+	window->state->isMinimized = isMinimized;
+	if (window->isMain) {
+		fpl__UpdateInputGrab(fpl__global__AppState);
+	}
 }
 
 fpl_common_api bool fplSetWindowMouseGrab(const bool enabled) {
@@ -19332,13 +20364,13 @@ fpl_internal void fpl__Win32RestoreWindowState(const fpl__Win32Api *wapi, const 
 	}
 }
 
-fpl_internal bool fpl__Win32LeaveFullscreen(void) {
+fpl_internal bool fpl__Win32LeaveFullscreen(fplWindowHandle *window) {
 	const fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	const fpl__Win32AppState *win32State = &platState->win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	const fpl__Win32WindowState *win32Window = &platState->window.win32;
+	const fplWindowSettings *settings = window->settings;
+	const fpl__Win32WindowState *win32Window = &window->state->win32;
 	const fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
 	HWND windowHandle = win32Window->windowHandle;
 	bool isShownWithoutActivation = win32Window->isShownWithoutActivation != 0;
@@ -19352,13 +20384,13 @@ fpl_internal bool fpl__Win32LeaveFullscreen(void) {
 	return(result);
 }
 
-fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
+fpl_internal bool fpl__Win32EnterFullscreen(fplWindowHandle *window, const int32_t xpos, const int32_t ypos, const int32_t fullscreenWidth, const int32_t fullscreenHeight, const uint32_t refreshRate, const uint32_t colorBits, const bool allowResolutionChange) {
 	fpl__PlatformAppState *platState = fpl__global__AppState;
 	fplAssert(platState != fpl_null);
 	fpl__Win32AppState *win32State = &platState->win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
-	const fplWindowSettings *settings = &platState->currentSettings.window;
-	fpl__Win32WindowState *win32Window = &platState->window.win32;
+	const fplWindowSettings *settings = window->settings;
+	fpl__Win32WindowState *win32Window = &window->state->win32;
 	fpl__Win32LastWindowInfo *fullscreenInfo = &win32Window->lastFullscreenInfo;
 
 	HWND windowHandle = win32Window->windowHandle;
@@ -19440,15 +20472,14 @@ fpl_internal bool fpl__Win32EnterFullscreen(const int32_t xpos, const int32_t yp
 	return(result);
 }
 
-fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32SetWindowFullscreen(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t w, const int32_t h, const uint32_t refreshRate, const bool allowResolutionChange) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	fplWindowSettings *windowSettings = &appState->currentSettings.window;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	fplWindowSettings *windowSettings = window->settings;
 	fpl__Win32LastWindowInfo *fullscreenState = &windowState->lastFullscreenInfo;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
@@ -19466,12 +20497,12 @@ fpl_internal bool fpl__Win32SetWindowFullscreen(const bool value, const int32_t 
 
 	if (value) {
 		// Enter fullscreen mode or fallback to window mode
-		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(x, y, w, h, refreshRate, 0, allowResolutionChange);
+		windowSettings->isFullscreen = fpl__Win32EnterFullscreen(window, x, y, w, h, refreshRate, 0, allowResolutionChange);
 		if (!windowSettings->isFullscreen) {
-			fpl__Win32LeaveFullscreen();
+			fpl__Win32LeaveFullscreen(window);
 		}
 	} else {
-		fpl__Win32LeaveFullscreen();
+		fpl__Win32LeaveFullscreen(window);
 		windowSettings->isFullscreen = false;
 	}
 	bool result = windowSettings->isFullscreen != 0;
@@ -19589,10 +20620,32 @@ fpl_internal fplKeyboardModifierFlags fpl__Win32GetKeyboardModifiers(const fpl__
 #endif // FPL__ENABLE_WINDOW || FPL__ENABLE_INPUT_WIN32
 
 #if defined(FPL__ENABLE_WINDOW)
-fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, fpl__Win32WindowState *windowState, MSG *msg) {
-	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		fplPlatformType platformType = fplGetPlatformType();
-		appState->currentSettings.window.callbacks.eventCallback(platformType, windowState, msg, appState->currentSettings.window.callbacks.eventUserData);
+// The FPL window of a native window, null for windows FPL did not create and for thread messages
+fpl_internal fplWindowHandle *fpl__Win32FindWindow(const fpl__PlatformAppState *appState, const HWND windowHandle) {
+	if (windowHandle == fpl_null) {
+		return(fpl_null);
+	}
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		if (window->state->win32.windowHandle == windowHandle) {
+			return(window);
+		}
+	}
+	return(fpl_null);
+}
+
+fpl_internal void fpl__Win32HandleMessage(const fpl__Win32Api *wapi, fpl__PlatformAppState *appState, MSG *msg) {
+	// Thread messages and messages of windows FPL did not create go to the callback of the main window
+	fplWindowHandle *window = fpl__Win32FindWindow(appState, msg->hwnd);
+	if (window == fpl_null) {
+		window = appState->firstWindow;
+	}
+	if (window != fpl_null) {
+		const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+		if (callbacks->eventCallback != fpl_null) {
+			fplPlatformType platformType = fplGetPlatformType();
+			fpl__Win32WindowState *windowState = &window->state->win32;
+			callbacks->eventCallback(platformType, windowState, msg, callbacks->eventUserData);
+		}
 	}
 	wapi->user.TranslateMessage(msg);
 	wapi->user.DispatchMessageW(msg);
@@ -20204,18 +21257,18 @@ fpl_internal void CALLBACK fpl__Win32MessageFiberProc(struct fpl__PlatformAppSta
 	for (;;) {
 		MSG message;
 		while (wapi->user.PeekMessageW(&message, 0, 0, 0, PM_REMOVE)) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &message);
+			fpl__Win32HandleMessage(wapi, appState, &message);
 		}
 		SwitchToFiber(appState->window.win32.mainFiber);
 	}
 }
 
-fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fplWindowHandle *window) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	// The click that activated the window may be on the title bar or on a frame button, the mouse is locked once its buttons are released
 	windowState->isActivationClickPending = fpl__Win32IsAnyClickButtonDown(wapi);
-	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
-	fpl__HandleWindowFocusChanged(appState, true);
+	window->state->isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(window, true);
 	if (!windowState->isCursorActive) {
 		fpl__Win32HideCursor(wapi, windowState);
 	}
@@ -20225,14 +21278,14 @@ fpl_internal bool fpl__Win32WindowGotFocus(const fpl__Win32Api *wapi, fpl__Win32
 	return true;
 }
 
-fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fpl__Win32WindowState *windowState) {
+fpl_internal bool fpl__Win32WindowLostFocus(const fpl__Win32Api *wapi, fplWindowHandle *window) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	if (!windowState->isCursorActive) {
 		fpl__Win32ShowCursor(wapi, windowState);
 	}
-	fpl__PlatformAppState *appState = fpl__global__AppState;
 	windowState->isActivationClickPending = false;
-	appState->window.isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
-	fpl__HandleWindowFocusChanged(appState, false);
+	window->state->isMouseLockSuspended = fpl__Win32IsMouseLockSuspended(windowState);
+	fpl__HandleWindowFocusChanged(window, false);
 	return true;
 }
 
@@ -20241,12 +21294,16 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	fplAssert(appState != fpl_null);
 
 	fpl__Win32AppState *win32State = &appState->win32;
-	fpl__Win32WindowState *win32Window = &appState->window.win32;
 	const fpl__Win32Api *wapi = &win32State->winApi;
 
-	if (!win32Window->windowHandle) {
+	// Messages that arrive while CreateWindowExW() runs, before the window knows its handle, go the default way
+	fplWindowHandle *window = fpl__Win32FindWindow(appState, hwnd);
+	if (window == fpl_null) {
 		return wapi->user.DefWindowProcW(hwnd, msg, wParam, lParam);
 	}
+	fpl__PlatformWindowState *platformWindow = window->state;
+	fpl__Win32WindowState *win32Window = &platformWindow->win32;
+	const fplWindowSettings *windowSettings = window->settings;
 
 	LRESULT result = 0;
 	switch (msg) {
@@ -20260,8 +21317,21 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		case WM_DESTROY:
 		case WM_CLOSE:
 		{
-			appState->window.isRunning = false;
-			fpl__UpdateInputGrab(appState);
+			// The close request is reported like on X11, the destruction that follows it is no second close
+			if (msg == WM_CLOSE) {
+				fpl__PushWindowStateEvent(window, fplWindowEventType_Closed);
+			}
+			platformWindow->isRunning = false;
+			if (window->isMain) {
+				if (msg == WM_CLOSE) {
+					// DefWindowProcW() destroys the main window now, the additional windows it owns stay until the application destroys them
+					fpl__DetachChildWindows(appState, window);
+				}
+				fpl__UpdateInputGrab(appState);
+			} else if (msg == WM_CLOSE) {
+				// An additional window stays until the application destroys it with fplWindowDestroy()
+				return 0;
+			}
 		} break;
 
 		case WM_SIZE:
@@ -20269,26 +21339,30 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			DWORD newWidth = LOWORD(lParam);
 			DWORD newHeight = HIWORD(lParam);
 			if (wParam == SIZE_MAXIMIZED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Maximized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Maximized, newWidth, newHeight);
 			} else if (wParam == SIZE_MINIMIZED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Minimized, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Minimized, newWidth, newHeight);
 			} else if (wParam == SIZE_RESTORED) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Restored, newWidth, newHeight);
+				fpl__PushWindowSizeEvent(window, fplWindowEventType_Restored, newWidth, newHeight);
 			}
 			bool isMinimized = wParam == SIZE_MINIMIZED;
-			if (isMinimized != (appState->window.isMinimized != 0)) {
-				fpl__HandleWindowMinimizedChanged(appState, isMinimized);
+			if (isMinimized != (platformWindow->isMinimized != 0)) {
+				fpl__HandleWindowMinimizedChanged(window, isMinimized);
 			}
 
 #			if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-				if (appState->initSettings.video.isAutoSize) {
+			// The software back buffer follows the size of its window, an additional window keeps its back buffer while it is minimized
+			if (appState->currentSettings.video.backend == fplVideoBackendType_Software && appState->initSettings.video.isAutoSize) {
+				bool hasClientArea = newWidth > 0 && newHeight > 0;
+				if (window->isMain) {
 					fplResizeVideoBackBuffer(newWidth, newHeight);
+				} else if (window->hasVideo && hasClientArea) {
+					fplVideoResizeBackBufferMulti(window, newWidth, newHeight);
 				}
 			}
 #			endif
 
-			fpl__PushWindowSizeEvent(fplWindowEventType_Resized, newWidth, newHeight);
+			fpl__PushWindowSizeEvent(window, fplWindowEventType_Resized, newWidth, newHeight);
 
 			return 0;
 		} break;
@@ -20324,7 +21398,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				fplMemoryBlock memory = fplZeroInit;
 				memory.size = filesMemorySize;
 				memory.base = filesTableMemory;
-				fpl__PushWindowDropFilesEvent(fileBufferA, fileCount, (const char **)filesTable, &memory);
+				fpl__PushWindowDropFilesEvent(window, fileBufferA, fileCount, (const char **)filesTable, &memory);
 			}
 			// Releases the memory the system allocated for the drop
 			wapi->shell.DragFinish(dropHandle);
@@ -20347,11 +21421,12 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			// With the keyboard grab F10 and Alt+Space do not open the menus, the keys belong to the application
 			bool isSystemKey = msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
-			if (isSystemKey && appState->window.inputGrab.appliedKeyboardGrab) {
+			if (isSystemKey && platformWindow->inputGrab.appliedKeyboardGrab) {
 				return 0;
 			}
 		} break;
@@ -20374,6 +21449,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 			return 0;
@@ -20402,17 +21478,18 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 		} break;
 
-		case WM_ACTIVATEAPP:
+		// The keyboard focus of each window, WM_ACTIVATEAPP only tells about the whole application and goes to all of its windows
+		case WM_SETFOCUS:
 		{
-			if (wParam == 1) {
-				if (!fpl__Win32WindowGotFocus(wapi, win32Window)) {
-					break;
-				}
-			} else {
-				if (!fpl__Win32WindowLostFocus(wapi, win32Window)) {
-					break;
-				}
+			if (!fpl__Win32WindowGotFocus(wapi, window)) {
+				break;
 			}
+			return 0;
+		} break;
+
+		case WM_KILLFOCUS:
+		{
+			fpl__Win32WindowLostFocus(wapi, window);
 			return 0;
 		} break;
 
@@ -20425,7 +21502,9 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			}
 			// Moving, sizing and the menus need the cursor outside of the client area
 			++win32Window->modalLoopDepth;
-			fpl__Win32UpdateMouseLockSuspension(appState);
+			if (window->isMain) {
+				fpl__Win32UpdateMouseLockSuspension(appState);
+			}
 		} break;
 
 		case WM_EXITSIZEMOVE:
@@ -20437,13 +21516,15 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (win32Window->modalLoopDepth > 0) {
 				--win32Window->modalLoopDepth;
 			}
-			fpl__Win32UpdateMouseLockSuspension(appState);
+			if (window->isMain) {
+				fpl__Win32UpdateMouseLockSuspension(appState);
+			}
 		} break;
 
 		case WM_WINDOWPOSCHANGED:
 		{
 			// The clip rectangle is in screen coordinates and does not follow the window by itself
-			fpl__MouseLockState appliedMouseLock = appState->window.inputGrab.appliedMouseLock;
+			fpl__MouseLockState appliedMouseLock = platformWindow->inputGrab.appliedMouseLock;
 			if (appliedMouseLock != fpl__MouseLockState_Free) {
 				fpl__Win32ApplyClipRect(wapi, win32Window, appliedMouseLock);
 			}
@@ -20474,7 +21555,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			if (msg == WM_MOUSELEAVE) {
 				win32Window->isTrackingMouseLeave = false;
 				// The cursor comes back somewhere else, its first move must not count the way outside as movement
-				appState->window.inputGrab.hasLastMove = false;
+				platformWindow->inputGrab.hasLastMove = false;
 			}
 			if (msg == WM_MOUSEMOVE && !win32Window->isTrackingMouseLeave) {
 				TRACKMOUSEEVENT trackMouseEvent = fplZeroInit;
@@ -20492,6 +21573,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 			fpl__NativeInputEvent ev = fplZeroInit;
 			ev.kind = fpl__NativeInputEventKind_Win32Msg;
 			ev.payload = (void *)&forwarded;
+			ev.window = window;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &ev);
 #endif
 		} break;
@@ -20506,15 +21588,18 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 		case WM_PAINT:
 		{
-			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
+			if (windowSettings->callbacks.exposedCallback != fpl_null) {
 				MSG msgData = fplZeroInit;
 				msgData.message = msg;
 				msgData.hwnd = hwnd;
 				msgData.wParam = wParam;
 				msgData.lParam = lParam;
-				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), win32Window, &msgData, appState->currentSettings.window.callbacks.exposedUserData);
+				fplPlatformType platformType = fplGetPlatformType();
+				windowSettings->callbacks.exposedCallback(platformType, win32Window, &msgData, windowSettings->callbacks.exposedUserData);
 			} else {
-				if (appState->currentSettings.video.backend == fplVideoBackendType_None) {
+				// An additional window the video backend does not draw into is painted like a window without video
+				bool isVideoWindow = window->isMain || window->hasVideo;
+				if (!isVideoWindow || appState->currentSettings.video.backend == fplVideoBackendType_None) {
 					PAINTSTRUCT ps;
 					HDC hdc = wapi->user.BeginPaint(hwnd, &ps);
 					wapi->user.EndPaint(hwnd, &ps);
@@ -20527,7 +21612,8 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			// Prevent erasing of the background always, but only if a video backend is being used
 			// @NOTE(tspaete): Do not prevent the erasing of the backend for software video output, otherwise we will get weird flickering issue at startup
-			if (appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
+			bool isVideoWindow = window->isMain || window->hasVideo;
+			if (isVideoWindow && appState->currentSettings.video.backend != fplVideoBackendType_None && appState->currentSettings.video.backend != fplVideoBackendType_Software) {
 				return 1;
 			}
 		} break;
@@ -20536,7 +21622,7 @@ LRESULT CALLBACK fpl__Win32MessageProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		{
 			WPARAM masked = wParam & 0xFFF0;
 			// The keyboard menu (Alt, F10, Alt+Space) stays closed while the keyboard is grabbed
-			if (masked == SC_KEYMENU && appState->window.inputGrab.appliedKeyboardGrab) {
+			if (masked == SC_KEYMENU && platformWindow->inputGrab.appliedKeyboardGrab) {
 				return 0;
 			}
 			switch (masked) {
@@ -20902,31 +21988,38 @@ fpl_internal fplKey fpl__Win32TranslateVirtualKey(const fpl__Win32Api *wapi, con
 	}
 }
 
-fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__Win32InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *platAppState, fpl__Win32AppState *appState, fpl__Win32WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert(appState != fpl_null);
 	const fpl__Win32Api *wapi = &appState->winApi;
 	const fplWindowSettings *initWindowSettings = &initSettings->window;
 
-	// Init keymap
-	fplClearStruct(platAppState->window.keyMap);
-	for (int i = 0; i < 256; ++i) {
-		int vk = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
-		if (vk == 0) {
-			vk = i;
+	fpl__PlatformWindowState *platformWindow = window->state;
+	if (window->isMain) {
+		// Init keymap
+		fplClearStruct(platformWindow->keyMap);
+		for (int i = 0; i < 256; ++i) {
+			int vk = wapi->user.MapVirtualKeyW(MAPVK_VSC_TO_VK, i);
+			if (vk == 0) {
+				vk = i;
+			}
+			platformWindow->keyMap[i] = fpl__Win32TranslateVirtualKey(wapi, vk);
 		}
-		platAppState->window.keyMap[i] = fpl__Win32TranslateVirtualKey(wapi, vk);
-	}
 
-	// Hint for windows to know, that the application is in use always
-	if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
-		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+		// Hint for windows to know, that the application is in use always
+		if (initSettings->window.isMonitorPowerPrevented || initSettings->window.isScreenSaverPrevented) {
+			SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+		} else {
+			SetThreadExecutionState(ES_CONTINUOUS);
+		}
 	} else {
-		SetThreadExecutionState(ES_CONTINUOUS);
+		// The keyboard layout is the same for all windows, the screen saver and the monitor power belong to the application
+		const size_t keyMapSize = sizeof(platformWindow->keyMap);
+		fplMemoryCopy(platAppState->window.keyMap, keyMapSize, platformWindow->keyMap);
 	}
 
 	// Presetup window
 	if (setupCallbacks->preSetup != fpl_null) {
-		setupCallbacks->preSetup(platAppState, platAppState->initFlags, &platAppState->initSettings);
+		setupCallbacks->preSetup(platAppState, window, platAppState->initFlags, &platAppState->initSettings);
 	}
 
 	// Register window class
@@ -20949,10 +22042,19 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	windowClass.hCursor = fpl__win32_LoadCursor(windowClass.hInstance, IDC_ARROW);
 	windowClass.hIconSm = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[0]);
 	windowClass.hIcon = fpl__Win32LoadIconFromImageSource(wapi, windowClass.hInstance, &initWindowSettings->icons[1]);
-	windowClass.lpszClassName = FPL__WIN32_CLASSNAME;
+	if (window->isMain) {
+		lstrcpynW(windowState->windowClass, FPL__WIN32_CLASSNAME, fplArrayCount(windowState->windowClass));
+	} else {
+		// The icons and the background belong to the class, so every additional window has a class of its own
+		char classNameBuffer[FPL_MAX_NAME_LENGTH];
+		uint32_t classNumber = ++appState->additionalWindowClassCount;
+		fplStringFormat(classNameBuffer, fplArrayCount(classNameBuffer), FPL__WIN32_ADDITIONAL_CLASSNAME_FORMAT, classNumber);
+		size_t classNameLength = fplGetStringLength(classNameBuffer);
+		fplUTF8StringToWideString(classNameBuffer, classNameLength, windowState->windowClass, fplArrayCount(windowState->windowClass));
+	}
+	windowClass.lpszClassName = windowState->windowClass;
 	windowClass.lpfnWndProc = fpl__Win32MessageProc;
 	windowClass.style |= CS_OWNDC;
-	lstrcpynW(windowState->windowClass, windowClass.lpszClassName, fplArrayCount(windowState->windowClass));
 	if (wapi->user.RegisterClassExW(&windowClass) == 0) {
 		FPL__ERROR(FPL__MODULE_WINDOW, "Failed registering window class '%s'", windowState->windowClass);
 		return false;
@@ -20969,9 +22071,11 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 	wchar_t *windowTitle = windowTitleBuffer;
 	fplWideStringToUTF8String(windowTitle, lstrlenW(windowTitle), currentWindowSettings->title, fplArrayCount(currentWindowSettings->title));
 
-	// Create Fibers
-	windowState->mainFiber = ConvertThreadToFiber(0);
-	windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+	// Create Fibers, they belong to the thread and keep all windows responsive while one of them is moved or resized
+	if (window->isMain) {
+		windowState->mainFiber = ConvertThreadToFiber(0);
+		windowState->messageFiber = CreateFiber(0, (PFIBER_START_ROUTINE)fpl__Win32MessageFiberProc, platAppState);
+	}
 
 	// Prepare window style, size and position
 	DWORD style = fpl__Win32MakeWindowStyle(&initSettings->window);
@@ -21040,18 +22144,18 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 
 	// Call post window setup callback
 	if (setupCallbacks->postSetup != fpl_null) {
-		setupCallbacks->postSetup(platAppState, platAppState->initFlags, initSettings);
+		setupCallbacks->postSetup(platAppState, window, platAppState->initFlags, initSettings);
 	}
 
 	if (!isShownOnStart) {
-		fpl__DeferInitialWindowState(platAppState, currentWindowSettings, initialState);
+		fpl__DeferInitialWindowState(window, initialState);
 	} else {
 		windowState->isShownWithoutActivation = isShownWithoutActivation;
 
 		// Enter fullscreen if needed, the flag is cleared first, otherwise the window placement to return to is never saved
 		if (initialState == fplWindowState_Fullscreen) {
 			currentWindowSettings->isFullscreen = false;
-			fplSetWindowFullscreenSize(true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
+			fpl__Win32Window_SetFullscreenSize(window, true, initWindowSettings->fullscreenSize.width, initWindowSettings->fullscreenSize.height, initWindowSettings->fullscreenRefreshRate);
 		}
 
 		// Show window, without activation when it does not take the focus: a minimized one stays minimized, a maximized one was created maximized
@@ -21071,13 +22175,13 @@ fpl_internal bool fpl__Win32InitWindow(const fplSettings *initSettings, fplWindo
 		windowState->isShownWithoutActivation = false;
 
 		// The activation pushed its fplWindowEventType_GotFocus already, but the first fplWindowUpdate() clears the event queue
-		windowState->isFocusEventPending = platAppState->window.hasFocus;
+		windowState->isFocusEventPending = platformWindow->hasFocus;
 	}
 
 	// Cursor is visible at start
 	windowState->defaultCursor = windowClass.hCursor;
 	windowState->isCursorActive = true;
-	platAppState->window.isRunning = true;
+	platformWindow->isRunning = true;
 
 	return true;
 }
@@ -21091,7 +22195,11 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 	if (windowState->windowHandle != fpl_null) {
 		wapi->user.DestroyWindow(windowState->windowHandle);
 		windowState->windowHandle = fpl_null;
+	}
+	// A class that was registered for a window that could not be created is released too
+	if (windowState->windowClass[0] != 0) {
 		wapi->user.UnregisterClassW(windowState->windowClass, initState->appInstance);
+		windowState->windowClass[0] = 0;
 	}
 	if (windowState->backgroundBrush != fpl_null) {
 		wapi->gdi.DeleteObject(windowState->backgroundBrush);
@@ -21105,6 +22213,30 @@ fpl_internal void fpl__Win32ReleaseWindow(const fpl__Win32InitState *initState, 
 		ConvertFiberToThread();
 		windowState->mainFiber = fpl_null;
 	}
+}
+
+fpl_internal bool fpl__Win32Window_Create(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	// An additional window starts from the settings of the platform with its own window settings, the video backend decides whether it draws into it
+	fplSettings windowInitSettings = appState->initSettings;
+	windowInitSettings.window = *window->settings;
+	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	setupCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
+	setupCallbacks.postSetup = fpl__FinalizeVideoWindowDefault;
+	bool result = fpl__Win32InitWindow(window, &windowInitSettings, window->settings, appState, &appState->win32, windowState, &setupCallbacks);
+	if (!result) {
+		fpl__Win32ReleaseWindow(initState, &appState->win32, windowState);
+	}
+	return(result);
+}
+
+fpl_internal void fpl__Win32Window_Destroy(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__Win32InitState *initState = &fpl__global__InitState.win32;
+	fpl__Win32WindowState *windowState = &window->state->win32;
+	fpl__Win32ReleaseWindow(initState, &appState->win32, windowState);
 }
 
 #endif // FPL__ENABLE_WINDOW
@@ -22038,9 +23170,8 @@ fpl_internal bool fpl__InputBackendWin32_PollMouse(fpl__InputBackendWin32 *backe
 #define FPL__WIN32_KEY_DOWN_FLAG 0x8000
 
 // Reports the release of a key that is still down for FPL while the key state of the thread has it up already, as of the message that was retrieved last
-fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, const uint32_t scanCode, const int sideVirtualKey) {
+fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState, const uint32_t scanCode, const int sideVirtualKey) {
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	fpl__PlatformWindowState *windowState = &appState->window;
 	uint32_t keySlot = fpl__Win32GetKeyStateSlot(scanCode, (uint32_t)sideVirtualKey);
 	if (windowState->keyStates[keySlot] == fplButtonState_Release) {
 		return;
@@ -22052,27 +23183,28 @@ fpl_internal void fpl__Win32ReleaseKeyWhenThreadHasItUp(fpl__PlatformAppState *a
 	}
 	uint64_t keyCode = windowState->keyCodes[keySlot];
 	fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
-	fplKeyboardModifierFlags modifiers = systemModifiers | windowState->win32.hookedModifiers;
+	// The keyboard hook only exists for the main window
+	fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
 	uint64_t time = GetTickCount();
 	fpl__HandleKeyboardButtonEvent(windowState, time, keySlot, keyCode, scanCode, modifiers, fplButtonState_Release, false);
 }
 
 // Windows loses the release of the Shift key that is let go first while both are down, only the one let go last gets its WM_KEYUP.
 // The key state of the thread knows it is up as of the key message that was just handled, so a Shift that is still down for FPL gets its release right after that message, like SDL does it.
-fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState) {
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
+fpl_internal void fpl__Win32ReleaseLostShiftKeys(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState) {
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_LEFT_SHIFT, VK_LSHIFT);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_RIGHT_SHIFT, VK_RSHIFT);
 }
 
 // Windows sends no WM_KEYUP for the Win key when the system takes a shortcut like Win+Space or Win+G, only the key state of the thread knows it is up.
 // No other message has to follow, so it is checked before every key message (the release comes before the next key) and when the message queue is empty, like SDL does it.
 // While the keyboard grab is on, the hook reports Win itself and keeps it away from the system, so the thread never has it down.
-fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState) {
+fpl_internal void fpl__Win32ReleaseLostWinKeys(fpl__PlatformAppState *appState, fpl__PlatformWindowState *windowState) {
 	if (appState->window.win32.keyboardHook != fpl_null) {
 		return;
 	}
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
-	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_LEFT_WIN, VK_LWIN);
+	fpl__Win32ReleaseKeyWhenThreadHasItUp(appState, windowState, FPL__SCANCODE_RIGHT_WIN, VK_RWIN);
 }
 
 fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin32 *backend, const fpl__NativeInputEvent *ev) {
@@ -22084,6 +23216,8 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 	const MSG *msg = (const MSG *)ev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
+	// The window the message belongs to, the main window when the dispatcher did not say
+	fpl__PlatformWindowState *windowState = ev->window != fpl_null ? ev->window->state : &appState->window;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
 	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
 	switch (msg->message) {
@@ -22105,9 +23239,9 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			// The keyboard grab takes Win, Alt and Ctrl away from the system, so it does not know them as down, the hook keeps them itself
 			fplKeyboardModifierFlags systemModifiers = fpl__Win32GetKeyboardModifiers(wapi);
 			fplKeyboardModifierFlags modifiers = systemModifiers | appState->window.win32.hookedModifiers;
-			fpl__Win32ReleaseLostWinKeys(appState);
-			fpl__HandleKeyboardButtonEvent(&appState->window, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
-			fpl__Win32ReleaseLostShiftKeys(appState);
+			fpl__Win32ReleaseLostWinKeys(appState, windowState);
+			fpl__HandleKeyboardButtonEvent(windowState, GetTickCount(), keySlot, keyCode, scanCode, modifiers, keyState, false);
+			fpl__Win32ReleaseLostShiftKeys(appState, windowState);
 			return true;
 		}
 
@@ -22121,7 +23255,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if ((msg->message == WM_UNICHAR) && (msg->wParam == UNICODE_NOCHAR)) {
 				return true;
 			}
-			fpl__HandleKeyboardInputEvent(&appState->window, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
+			fpl__HandleKeyboardInputEvent(windowState, (uint64_t)msg->wParam, (uint32_t)msg->wParam);
 			return true;
 		}
 
@@ -22158,7 +23292,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (mouseButton != fplMouseButtonType_None) {
 				int32_t mouseX = GET_X_LPARAM(msg->lParam);
 				int32_t mouseY = GET_Y_LPARAM(msg->lParam);
-				fpl__HandleMouseButtonEvent(&appState->window, mouseX, mouseY, mouseButton, buttonState);
+				fpl__HandleMouseButtonEvent(windowState, mouseX, mouseY, mouseButton, buttonState);
 			}
 			return true;
 		}
@@ -22170,17 +23304,17 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			int32_t mouseX = GET_X_LPARAM(msg->lParam);
 			int32_t mouseY = GET_Y_LPARAM(msg->lParam);
 			// Windows has no message for the cursor coming in, it is the first move inside the client area after WM_MOUSELEAVE (a captured cursor moves outside too)
-			if (!appState->window.isMouseInside) {
+			if (!windowState->isMouseInside) {
 				RECT clientRect;
 				bool isInsideClientArea = false;
 				if (wapi->user.GetClientRect(msg->hwnd, &clientRect)) {
 					isInsideClientArea = mouseX >= clientRect.left && mouseX < clientRect.right && mouseY >= clientRect.top && mouseY < clientRect.bottom;
 				}
 				if (isInsideClientArea) {
-					fpl__HandleMouseCrossingEvent(&appState->window, mouseX, mouseY, true);
+					fpl__HandleMouseCrossingEvent(windowState, mouseX, mouseY, true);
 				}
 			}
-			fpl__HandleMouseMoveEvent(&appState->window, mouseX, mouseY);
+			fpl__HandleMouseMoveEvent(windowState, mouseX, mouseY);
 			return true;
 		}
 
@@ -22193,7 +23327,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			if (wapi->user.GetCursorPos(&cursorPosition)) {
 				wapi->user.ScreenToClient(msg->hwnd, &cursorPosition);
 			}
-			fpl__HandleMouseCrossingEvent(&appState->window, cursorPosition.x, cursorPosition.y, false);
+			fpl__HandleMouseCrossingEvent(windowState, cursorPosition.x, cursorPosition.y, false);
 			return true;
 		}
 
@@ -22209,7 +23343,7 @@ fpl_internal bool fpl__InputBackendWin32_HandleNativeEvent(fpl__InputBackendWin3
 			short wheelRotation = GET_WHEEL_DELTA_WPARAM(msg->wParam);
 			float wheelDelta = wheelRotation / (float)WHEEL_DELTA;
 			fplMouseEventType wheelType = (msg->message == FPL__WIN32_WM_MOUSEHWHEEL) ? fplMouseEventType_HorizontalWheel : fplMouseEventType_Wheel;
-			fpl__HandleMouseWheelEvent(&appState->window, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
+			fpl__HandleMouseWheelEvent(windowState, wheelType, cursorPosition.x, cursorPosition.y, wheelDelta);
 			return true;
 		}
 
@@ -24426,11 +25560,9 @@ fpl_platform_api void fplDynamicLibraryUnload(fplDynamicLibraryHandle *handle) {
 //
 // Win32 Window
 //
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
-	FPL__CheckArgumentNull(outSize, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetSize(fplWindowHandle *window, fplWindowSize *outSize) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	RECT windowRect;
@@ -24442,11 +25574,11 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetSize(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	bool result = false;
 	RECT clientRect, windowRect;
 	if (wapi->user.GetClientRect(windowState->windowHandle, &clientRect) &&
 		wapi->user.GetWindowRect(windowState->windowHandle, &windowRect)) {
@@ -24454,22 +25586,16 @@ fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t heig
 		int borderHeight = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
 		int newWidth = width + borderWidth;
 		int newHeight = height + borderHeight;
-		wapi->user.SetWindowPos(windowState->windowHandle, fpl_null, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+		result = wapi->user.SetWindowPos(windowState->windowHandle, fpl_null, 0, 0, newWidth, newHeight, SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE) != 0;
 	}
-}
-
-fpl_platform_api bool fplIsWindowResizable(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isResizable != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
-	if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isDecorated) {
+fpl_internal bool fpl__Win32Window_SetResizable(fplWindowHandle *window, const bool value) {
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	bool result = false;
+	if (!windowSettings->isFullscreen && windowSettings->isDecorated) {
 		DWORD style = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_STYLE);
 		DWORD exStyle = fpl__win32_GetWindowLong(windowState->windowHandle, GWL_EXSTYLE);
 		if (value) {
@@ -24478,30 +25604,26 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 			style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
 		}
 		fpl__win32_SetWindowLong(windowState->windowHandle, GWL_STYLE, style);
-		appState->currentSettings.window.isResizable = value;
+		windowSettings->isResizable = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowDecorated(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isDecorated != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetDecorated(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	if (!appState->currentSettings.window.isFullscreen) {
+	bool result = false;
+	if (!windowSettings->isFullscreen) {
 		HWND windowHandle = windowState->windowHandle;
 		DWORD style = fpl__win32_GetWindowLong(windowHandle, GWL_STYLE);
 		DWORD exStyle = fpl__win32_GetWindowLong(windowHandle, GWL_EXSTYLE);
 		if (value) {
 			style &= ~WS_POPUP;
 			style |= WS_OVERLAPPEDWINDOW;
-			if (!appState->currentSettings.window.isResizable) {
+			if (!windowSettings->isResizable) {
 				style &= ~(WS_MAXIMIZEBOX | WS_THICKFRAME);
 			}
 		} else {
@@ -24510,65 +25632,60 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 		}
 		fpl__win32_SetWindowLong(windowHandle, GWL_STYLE, style);
 		wapi->user.SetWindowPos(windowHandle, fpl_null, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-		appState->currentSettings.window.isDecorated = value;
+		windowSettings->isDecorated = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowFloating(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFloating != 0;
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowFloating(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_IsFloating(fplWindowHandle *window) {
+	bool result = window->settings->isFloating != 0;
+	return(result);
+}
+
+fpl_internal bool fpl__Win32Window_SetFloating(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	const fpl__Win32WindowState *windowState = &appState->window.win32;
+	fplWindowSettings *windowSettings = window->settings;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->win32.winApi;
-	if (!appState->currentSettings.window.isFullscreen) {
+	bool result = false;
+	if (!windowSettings->isFullscreen) {
 		if (value) {
 			wapi->user.SetWindowPos(windowState->windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		} else {
 			wapi->user.SetWindowPos(windowState->windowHandle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		}
-		appState->currentSettings.window.isFloating = value;
+		windowSettings->isFloating = value;
+		result = true;
 	}
-}
-
-fpl_platform_api bool fplIsWindowFullscreen(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFullscreen != 0;
 	return(result);
 }
 
+fpl_internal bool fpl__Win32Window_SetParent(fplWindowHandle *window, fplWindowHandle *parent) {
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	HWND ownerHandle = fpl_null;
+	if (parent != fpl_null) {
+		const fpl__Win32WindowState *parentState = &parent->state->win32;
+		ownerHandle = parentState->windowHandle;
+	}
+	// GWLP_HWNDPARENT changes the owner of a top-level window, SetParent() would make it a child window inside the parent
+	fpl__win32_SetWindowLongPtr(windowState->windowHandle, GWLP_HWNDPARENT, (LONG_PTR)ownerHandle);
+	return(true);
+}
 
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	bool result = fpl__Win32SetWindowFullscreen(value, INT32_MAX, INT32_MAX, fullscreenWidth, fullscreenHeight, refreshRate, true);
+fpl_internal bool fpl__Win32Window_SetFullscreenSize(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
+	bool result = fpl__Win32SetWindowFullscreen(window, value, INT32_MAX, INT32_MAX, fullscreenWidth, fullscreenHeight, refreshRate, true);
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	bool result = fpl__Win32SetWindowFullscreen(value, x, y, width, height, 0, false);
+fpl_internal bool fpl__Win32Window_SetFullscreenRect(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
+	bool result = fpl__Win32SetWindowFullscreen(window, value, x, y, width, height, 0, false);
 	return(result);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen(void) {
-	bool result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
-	return(result);
-}
-
-fpl_platform_api bool fplDisableWindowFullscreen(void) {
-	bool result = fpl__Win32SetWindowFullscreen(false, 0, 0, 0, 0, 0, false);
-	return(result);
-}
-
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
-	FPL__CheckArgumentNull(outPos, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	bool result = false;
 	WINDOWPLACEMENT placement = fplZeroInit;
@@ -24596,24 +25713,24 @@ fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
-	FPL__CheckPlatformNoRet();
-	fpl__PlatformAppState *appState = fpl__global__AppState;
+fpl_internal bool fpl__Win32Window_SetTitle(fplWindowHandle *window, const char *title) {
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND handle = windowState->windowHandle;
-	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
+	fplCopyString(title, windowSettings->title, fplArrayCount(windowSettings->title));
 	wchar_t titleWide[FPL_MAX_BUFFER_LENGTH];
 	fplUTF8StringToWideString(title, fplGetStringLength(title), titleWide, fplArrayCount(titleWide));
-	wapi->user.SetWindowTextW(handle, titleWide);
+	bool result = wapi->user.SetWindowTextW(handle, titleWide) != 0;
+	return(result);
 }
 
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__Win32Window_SetPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
+	bool result = false;
 	WINDOWPLACEMENT placement = fplZeroInit;
 	placement.length = sizeof(WINDOWPLACEMENT);
 	RECT windowRect;
@@ -24627,23 +25744,60 @@ fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top
 				placement.rcNormalPosition.top = top;
 				placement.rcNormalPosition.right = placement.rcNormalPosition.left + (windowRect.right - windowRect.left);
 				placement.rcNormalPosition.bottom = placement.rcNormalPosition.top + (windowRect.bottom - windowRect.top);
-				wapi->user.SetWindowPlacement(windowState->windowHandle, &placement);
+				result = wapi->user.SetWindowPlacement(windowState->windowHandle, &placement) != 0;
 			} break;
 		}
 	}
+	return(result);
 }
 
-fpl_platform_api fplWindowState fplGetWindowState(void) {
-	FPL__CheckPlatform(fplWindowState_Unknown);
+fpl_internal bool fpl__Win32Window_GetClientPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	POINT clientOrigin = fplZeroInit;
+	if (!wapi->user.ClientToScreen(windowState->windowHandle, &clientOrigin)) {
+		return(false);
+	}
+	outPos->left = clientOrigin.x;
+	outPos->top = clientOrigin.y;
+	return(true);
+}
+
+// SetWindowPos() moves the frame, the client area keeps its offset inside it. Unlike SetWindowPlacement() it does not show a hidden window.
+fpl_internal bool fpl__Win32Window_SetClientPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
+	const fpl__Win32Api *wapi = &appState->winApi;
+	HWND handle = windowState->windowHandle;
+	if (wapi->user.IsIconic(handle)) {
+		return(false);
+	}
+	RECT windowRect = fplZeroInit;
+	POINT clientOrigin = fplZeroInit;
+	if (!wapi->user.GetWindowRect(handle, &windowRect) || !wapi->user.ClientToScreen(handle, &clientOrigin)) {
+		return(false);
+	}
+	const int frameLeft = clientOrigin.x - windowRect.left;
+	const int frameTop = clientOrigin.y - windowRect.top;
+	const int windowLeft = (int)left - frameLeft;
+	const int windowTop = (int)top - frameTop;
+	const UINT flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+	bool result = wapi->user.SetWindowPos(handle, fpl_null, windowLeft, windowTop, 0, 0, flags) != 0;
+	return(result);
+}
+
+fpl_internal fplWindowState fpl__Win32Window_GetState(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformWindowState *platformWindowState = window->state;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	fplWindowState result;
-	if (appState->window.isHidden && appState->window.pendingState != fplWindowState_Unknown) {
-		result = appState->window.pendingState;
-	} else if (appState->currentSettings.window.isFullscreen) {
+	if (platformWindowState->isHidden && platformWindowState->pendingState != fplWindowState_Unknown) {
+		result = platformWindowState->pendingState;
+	} else if (window->settings->isFullscreen) {
 		result = fplWindowState_Fullscreen;
 	} else {
 		bool isMaximized = !!wapi->user.IsZoomed(windowHandle);
@@ -24659,16 +25813,17 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_SetState(fplWindowHandle *window, const fplWindowState newState) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
 	// SC_MINIMIZE/SC_MAXIMIZE would show a hidden window, so the state is applied when it gets shown
-	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
-		appState->window.pendingState = newState;
+	if (platformWindowState->isHidden && newState != fplWindowState_Unknown) {
+		platformWindowState->pendingState = newState;
 		return(true);
 	}
 	bool result = false;
@@ -24681,7 +25836,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Maximize:
 		{
-			if (!appState->currentSettings.window.isFullscreen && appState->currentSettings.window.isResizable) {
+			if (!windowSettings->isFullscreen && windowSettings->isResizable) {
 				wapi->user.SendMessageW(windowHandle, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
 				result = true;
 			}
@@ -24695,10 +25850,11 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Fullscreen:
 		{
-			if (!appState->currentSettings.window.isFullscreen)
-				result = fpl__Win32SetWindowFullscreen(true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
-			else
+			if (!windowSettings->isFullscreen) {
+				result = fpl__Win32SetWindowFullscreen(window, true, INT32_MAX, INT32_MAX, 0, 0, 0, false);
+			} else {
 				result = true;
+			}
 		} break;
 
 		case fplWindowState_Unknown:
@@ -24708,26 +25864,20 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(result);
 }
 
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
-	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
-	return(result);
-}
-
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_SetVisibility(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
+	fpl__Win32WindowState *windowState = &platformWindowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	HWND windowHandle = windowState->windowHandle;
-	bool isHidden = appState->window.isHidden != 0;
+	bool isHidden = platformWindowState->isHidden != 0;
 	if (newVisibility == fplWindowVisibilityState_Hide) {
 		if (!isHidden) {
 			wapi->user.ShowWindow(windowHandle, SW_HIDE);
-			appState->window.isHidden = true;
-			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			platformWindowState->isHidden = true;
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -24735,20 +25885,20 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	if (newVisibility == fplWindowVisibilityState_Show) {
 		if (isHidden) {
 			// Like at the start, fullscreen is entered or left before the window is shown and minimized and maximized go into ShowWindow() directly
-			fplWindowState pendingState = appState->window.pendingState;
-			int showCommand = fpl__Win32GetShowCommand(pendingState, &appState->currentSettings.window);
-			bool isFullscreen = appState->currentSettings.window.isFullscreen != 0;
+			fplWindowState pendingState = platformWindowState->pendingState;
+			int showCommand = fpl__Win32GetShowCommand(pendingState, windowSettings);
+			bool isFullscreen = windowSettings->isFullscreen != 0;
 			bool leavesFullscreen = pendingState == fplWindowState_Normal && isFullscreen;
 			// The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so. Every later show takes it.
-			bool isStartShow = appState->window.isStartShowPending != 0;
-			bool isFocusedOnShow = !isStartShow || fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
-			appState->window.isStartShowPending = false;
-			appState->window.isHidden = false;
+			bool isStartShow = platformWindowState->isStartShowPending != 0;
+			bool isFocusedOnShow = !isStartShow || fpl__IsWindowFocusedOnFirstShow(windowSettings, pendingState);
+			platformWindowState->isStartShowPending = false;
+			platformWindowState->isHidden = false;
 			windowState->isShownWithoutActivation = !isFocusedOnShow;
 			if (pendingState == fplWindowState_Fullscreen || leavesFullscreen) {
-				fpl__ApplyPendingWindowState(appState);
+				fpl__ApplyPendingWindowState(window);
 			} else if (showCommand != SW_SHOW) {
-				appState->window.pendingState = fplWindowState_Unknown;
+				platformWindowState->pendingState = fplWindowState_Unknown;
 			}
 			if (!isFocusedOnShow) {
 				// Like at the start: a minimized window stays minimized, one created maximized is shown as it is and SW_SHOWNOACTIVATE restores one that was set to normal while it was hidden.
@@ -24758,7 +25908,7 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 					showCommand = SW_SHOWMINNOACTIVE;
 				} else if (pendingState == fplWindowState_Normal) {
 					showCommand = SW_SHOWNOACTIVATE;
-					appState->window.pendingState = fplWindowState_Unknown;
+					platformWindowState->pendingState = fplWindowState_Unknown;
 				} else if (showCommand != SW_SHOWMAXIMIZED || isMaximized) {
 					showCommand = SW_SHOWNA;
 				}
@@ -24770,9 +25920,9 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 			}
 			windowState->isShownWithoutActivation = false;
 			// A window shown before the event loop, e.g. one that started hidden, would lose its fplWindowEventType_GotFocus with the next fplWindowUpdate()
-			windowState->isFocusEventPending = appState->window.hasFocus;
-			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
-			fpl__ApplyPendingWindowState(appState);
+			windowState->isFocusEventPending = platformWindowState->hasFocus;
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -24780,10 +25930,10 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 	return(false);
 }
 
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	FPL__CheckPlatformNoRet();
-	fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+fpl_internal bool fpl__Win32Window_SetCursorEnabled(fplWindowHandle *window, const bool value) {
+	fpl__Win32WindowState *windowState = &window->state->win32;
 	windowState->isCursorActive = value;
+	return(true);
 }
 
 fpl_platform_api bool fplWarpWindowCursor(const int32_t x, const int32_t y) {
@@ -24815,8 +25965,9 @@ fpl_internal bool fpl__Win32ProcessNextEvent(const fpl__Win32Api *wapi, fpl__Pla
 	bool result = false;
 	if (windowState->windowHandle != 0) {
 		MSG msg;
-		if (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE) == TRUE) {
-			fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+		// The messages of all windows of the thread, the additional windows have their own
+		if (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE) == TRUE) {
+			fpl__Win32HandleMessage(wapi, appState, &msg);
 			result = true;
 		}
 	}
@@ -24832,7 +25983,9 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 
 	// Polled before the next fplWindowUpdate(), the fplWindowEventType_GotFocus of the show is still in the queue
-	windowState->isFocusEventPending = false;
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		window->state->win32.isFocusEventPending = false;
+	}
 
 	// Poll next event from the internal queue first
 	if (fpl__PollInternalEvent(ev)) {
@@ -24843,7 +25996,9 @@ fpl_platform_api bool fplPollEvent(fplEvent *ev) {
 	if (!fpl__Win32ProcessNextEvent(wapi, appState, windowState)) {
 		// A lost release is returned right away, the next fplWindowUpdate() would clear it
 #	if defined(FPL__ENABLE_INPUT_WIN32)
-		fpl__Win32ReleaseLostWinKeys(appState);
+		for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+			fpl__Win32ReleaseLostWinKeys(appState, window->state);
+		}
 #	endif
 		// Queue is empty, we have no events left
 		if (!fpl__HasInternalEvents()) {
@@ -24874,8 +26029,8 @@ fpl_platform_api void fplPollEvents(void) {
 			SwitchToFiber(windowState->messageFiber);
 		} else {
 			MSG msg;
-			while (wapi->user.PeekMessageW(&msg, windowState->windowHandle, 0, 0, PM_REMOVE)) {
-				fpl__Win32HandleMessage(wapi, appState, windowState, &msg);
+			while (wapi->user.PeekMessageW(&msg, fpl_null, 0, 0, PM_REMOVE)) {
+				fpl__Win32HandleMessage(wapi, appState, &msg);
 			}
 		}
 	}
@@ -24886,13 +26041,15 @@ fpl_platform_api void fplPollEvents(void) {
 fpl_platform_api bool fplWindowUpdate(void) {
 	FPL__CheckPlatform(false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__Win32WindowState *windowState = &appState->window.win32;
-	bool isFocusEventPending = windowState->isFocusEventPending != 0;
-	windowState->isFocusEventPending = false;
 	fpl__ClearInternalEvents();
-	// The window was activated while it was shown, that event was cleared with the queue just now
-	if (isFocusEventPending && appState->window.hasFocus) {
-		fpl__PushWindowStateEvent(fplWindowEventType_GotFocus);
+	// A window that was activated while it was shown pushed its fplWindowEventType_GotFocus before, that event was cleared with the queue just now
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		fpl__PlatformWindowState *platformWindow = window->state;
+		bool isFocusEventPending = platformWindow->win32.isFocusEventPending != 0;
+		platformWindow->win32.isFocusEventPending = false;
+		if (isFocusEventPending && platformWindow->hasFocus) {
+			fpl__PushWindowStateEvent(window, fplWindowEventType_GotFocus);
+		}
 	}
 	fpl__Win32RefreshInputGrab(appState);
 #	if defined(FPL__ENABLE_INPUT)
@@ -24901,12 +26058,6 @@ fpl_platform_api bool fplWindowUpdate(void) {
 	}
 #	endif
 	bool result = appState->window.isRunning != 0;
-	return(result);
-}
-
-fpl_platform_api bool fplIsWindowRunning(void) {
-	FPL__CheckPlatform(false);
-	bool result = fpl__global__AppState->window.isRunning != 0;
 	return(result);
 }
 
@@ -25114,11 +26265,9 @@ fpl_platform_api bool fplGetPrimaryDisplay(fplDisplayInfo *display) {
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	FPL__CheckArgumentNull(outDisplay, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__Win32Window_GetDisplay(fplWindowHandle *window, fplDisplayInfo *outDisplay) {
 	const fpl__Win32AppState *appState = &fpl__global__AppState->win32;
-	const fpl__Win32WindowState *windowState = &fpl__global__AppState->window.win32;
+	const fpl__Win32WindowState *windowState = &window->state->win32;
 	const fpl__Win32Api *wapi = &appState->winApi;
 	HMONITOR foundMonitor = wapi->user.MonitorFromWindow(windowState->windowHandle, MONITOR_DEFAULTTONULL);
 	bool result = false;
@@ -30030,6 +31179,18 @@ fpl_internal void fpl__X11ReleaseWindow(const fpl__X11SubplatformState *subplatf
 	fpl__X11CloseDisplay(x11Api, windowState);
 	fplClearStruct(windowState);
 }
+
+// An additional window shares the display and the input method of the main window and never owns the clipboard, so only its own resources go
+fpl_internal void fpl__X11ReleaseAdditionalWindow(const fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState) {
+	fplAssert((subplatform != fpl_null) && (windowState != fpl_null));
+	const fpl__X11Api *x11Api = &subplatform->api;
+	fplAssert(windowState->im.xim == 0);
+	fpl__X11ReleaseInputMethod(x11Api, windowState);
+	fpl__X11ReleaseCursor(x11Api, windowState);
+	fpl__X11DestroyWindow(x11Api, windowState);
+	fpl__X11ReleaseColormap(x11Api, windowState);
+	fplClearStruct(windowState);
+}
 #endif // FPL__ENABLE_WINDOW
 
 fpl_internal fplKey fpl__X11TranslateKeySymbol(const fpl__X11_KeySym keySym) {
@@ -30393,6 +31554,9 @@ fpl_internal void fpl__X11InternNetWMAtoms(const fpl__X11Api *x11Api, fpl__X11Wi
 	windowState->netWM.netActiveWindow = x11Api->XInternAtom(windowState->display, "_NET_ACTIVE_WINDOW", FPL__X11_False);
 	windowState->netWM.netSupportingWMCheck = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTING_WM_CHECK", FPL__X11_False);
 	windowState->netWM.netSupported = x11Api->XInternAtom(windowState->display, "_NET_SUPPORTED", FPL__X11_False);
+	windowState->netWM.netFrameExtents = x11Api->XInternAtom(windowState->display, "_NET_FRAME_EXTENTS", FPL__X11_False);
+	windowState->netWM.netWMWindowType = x11Api->XInternAtom(windowState->display, "_NET_WM_WINDOW_TYPE", FPL__X11_False);
+	windowState->netWM.netWMWindowTypeUtility = x11Api->XInternAtom(windowState->display, "_NET_WM_WINDOW_TYPE_UTILITY", FPL__X11_False);
 }
 
 fpl_internal void fpl__X11InternXdndAtoms(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -30421,6 +31585,22 @@ fpl_internal void fpl__X11InternAtoms(const fpl__X11Api *x11Api, fpl__X11WindowS
 	fpl__X11InternNetWMAtoms(x11Api, windowState);
 	fpl__X11InternXdndAtoms(x11Api, windowState);
 	fpl__X11InternClipboardAtoms(x11Api, windowState);
+}
+
+// An additional window shares the connection of the main window, so it takes the atoms from there
+fpl_internal void fpl__X11CopyAtoms(const fpl__X11WindowState *mainWindowState, fpl__X11WindowState *windowState) {
+	windowState->wm = mainWindowState->wm;
+	windowState->netWM = mainWindowState->netWM;
+	// A drag belongs to one window, only the atoms of the main window are taken
+	windowState->xdnd = mainWindowState->xdnd;
+	windowState->xdnd.version = 0;
+	windowState->xdnd.source = FPL__X11_None;
+	windowState->xdnd.format = FPL__X11_None;
+	// The clipboard text belongs to the main window, only the atoms are taken
+	windowState->clipboard.clipboardAtom = mainWindowState->clipboard.clipboardAtom;
+	windowState->clipboard.targetsAtom = mainWindowState->clipboard.targetsAtom;
+	windowState->clipboard.incrAtom = mainWindowState->clipboard.incrAtom;
+	windowState->clipboard.selectionPropAtom = mainWindowState->clipboard.selectionPropAtom;
 }
 
 fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSettings *initSettings, fpl__X11WindowState *windowState) {
@@ -30506,7 +31686,18 @@ fpl_internal void fpl__X11PrepareFocusOnMap(const fpl__X11Api *x11Api, fpl__X11W
 	}
 }
 
-fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
+#define FPL__X11_UNNAMED_WINDOW "Unnamed FPL X11 fpl__X11_Window"
+
+// The title a window starts with, it is also the class name of the application (WM_CLASS)
+fpl_internal void fpl__X11GetWindowName(const fplWindowSettings *windowSettings, char *outName, const size_t maxNameLength) {
+	if (fplGetStringLength(windowSettings->title) > 0) {
+		fplCopyString(windowSettings->title, outName, maxNameLength);
+	} else {
+		fplCopyString(FPL__X11_UNNAMED_WINDOW, outName, maxNameLength);
+	}
+}
+
+fpl_internal void fpl__X11SetupWindowManagerHints(fplWindowHandle *window, const fpl__X11Api *x11Api, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__X11WindowState *windowState) {
 	// Register window manager protocols
 	{
 		fpl__X11_Atom protocols[] = {
@@ -30523,21 +31714,25 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 	}
 
 	char nameBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
-	if (fplGetStringLength(initSettings->window.title) > 0) {
-		fplCopyString(initSettings->window.title, nameBuffer, fplArrayCount(nameBuffer));
-	} else {
-		fplCopyString("Unnamed FPL X11 fpl__X11_Window", nameBuffer, fplArrayCount(nameBuffer));
-	}
+	fpl__X11GetWindowName(&initSettings->window, nameBuffer, fplArrayCount(nameBuffer));
 	FPL_LOG_DEBUG(FPL__MODULE_X11, "Show window '%d' on display '%p' with title '%s'", (int)windowState->core.window, windowState->display, nameBuffer);
 	fpl__X11LoadWindowIcon(x11Api, windowState, currentWindowSettings);
-	fplSetWindowTitle(nameBuffer);
+	fpl__X11Window_SetTitle(window, nameBuffer);
 
 	// Set WM_CLASS so EWMH window managers can identify the application.
 	// Without WM_CLASS, GNOME/mutter treats the window as an orphan and shows a generic icon and "Unknown" as its name.
+	// An additional window has the class of the main window, otherwise the window manager groups it as another application.
 	if (x11Api->XSetClassHint != fpl_null) {
+		char classBuffer[FPL_MAX_NAME_LENGTH] = fplZeroInit;
+		if (window->isMain) {
+			fplCopyString(nameBuffer, classBuffer, fplArrayCount(classBuffer));
+		} else {
+			const fpl__PlatformAppState *appState = fpl__global__AppState;
+			fpl__X11GetWindowName(&appState->initSettings.window, classBuffer, fplArrayCount(classBuffer));
+		}
 		fpl__X11_XClassHint classHint = fplZeroInit;
-		classHint.res_name = nameBuffer;
-		classHint.res_class = nameBuffer;
+		classHint.res_name = classBuffer;
+		classHint.res_class = classBuffer;
 		x11Api->XSetClassHint(windowState->display, windowState->core.window, &classHint);
 	}
 
@@ -30547,6 +31742,23 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 		wmHints.flags = FPL__X11_InputHint;
 		wmHints.input = FPL__X11_True;
 		x11Api->XSetWMHints(windowState->display, windowState->core.window, &wmHints);
+	}
+
+	// The window manager reads the style when it maps the window, so the style Win32 gives the window at its creation is set before
+	const fplWindowSettings *startSettings = &initSettings->window;
+	if (!startSettings->isDecorated) {
+		fpl__X11Window_SetDecorated(window, false);
+	}
+	if (!startSettings->isResizable) {
+		fpl__X11Window_SetResizable(window, false);
+	}
+	if (startSettings->isFloating) {
+		// The client message of fpl__X11Window_SetFloating() only reaches the window manager for a mapped window, before that the window sets _NET_WM_STATE itself (EWMH)
+		const fpl__X11_Atom aboveState = windowState->netWM.netWMStateAbove;
+		const int atomFormat = 32;
+		const int atomCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMState, FPL__X11_XA_ATOM, atomFormat, FPL__X11_PropModeReplace, (const unsigned char *)&aboveState, atomCount);
+		currentWindowSettings->isFloating = true;
 	}
 
 	// A window that is shown at the start takes the focus or leaves it where it is, one that starts hidden decides that when fplSetWindowVisibility() shows it
@@ -30570,6 +31782,24 @@ fpl_internal void fpl__X11SetupWindowManagerHints(const fpl__X11Api *x11Api, con
 	}
 }
 
+// Creates the input context of a window. The main window focuses it at once as before, an additional window with its first FocusIn, two focused contexts would confuse the input method.
+fpl_internal void fpl__X11CreateInputContext(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState, fpl__X11_XIM inputMethod, const bool isFocused) {
+	const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
+	fpl__X11_XIC xic = x11Api->XCreateIC(inputMethod,
+		FPL__X11_XNInputStyle, inputStyle,
+		FPL__X11_XNClientWindow, windowState->core.window,
+		FPL__X11_XNFocusWindow, windowState->core.window,
+		(void *)fpl_null);
+	if (xic == fpl_null) {
+		FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
+		return;
+	}
+	windowState->im.xic = xic;
+	if (isFocused && x11Api->XSetICFocus != fpl_null) {
+		x11Api->XSetICFocus(xic);
+	}
+}
+
 // Enables UTF-8 capable text input via X Input Method; silently falls back to XLookupString when unavailable.
 // XSetLocaleModifiers must run before XOpenIM, otherwise Xutf8LookupString can not produce correct UTF-8 for non-ASCII keys.
 fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState) {
@@ -30582,20 +31812,7 @@ fpl_internal void fpl__X11InitInputMethod(const fpl__X11Api *x11Api, fpl__X11Win
 		fpl__X11_XIM xim = x11Api->XOpenIM(windowState->display, fpl_null, fpl_null, fpl_null);
 		if (xim != fpl_null) {
 			windowState->im.xim = xim;
-			const long inputStyle = FPL__X11_XIMPreeditNothing | FPL__X11_XIMStatusNothing;
-			fpl__X11_XIC xic = x11Api->XCreateIC(xim,
-				FPL__X11_XNInputStyle, inputStyle,
-				FPL__X11_XNClientWindow, windowState->core.window,
-				FPL__X11_XNFocusWindow, windowState->core.window,
-				(void *)fpl_null);
-			if (xic != fpl_null) {
-				windowState->im.xic = xic;
-				if (x11Api->XSetICFocus != fpl_null) {
-					x11Api->XSetICFocus(xic);
-				}
-			} else {
-				FPL__WARNING(FPL__MODULE_X11, "Failed creating X11 input context (XIC); falling back to XLookupString");
-			}
+			fpl__X11CreateInputContext(x11Api, windowState, xim, true);
 		} else {
 			FPL__WARNING(FPL__MODULE_X11, "Failed opening X11 input method (XIM); falling back to XLookupString");
 		}
@@ -30722,48 +31939,101 @@ fpl_internal void fpl__X11BuildKeyMap(const fpl__X11Api *x11Api, fpl__PlatformAp
 	}
 }
 
-fpl_internal bool fpl__X11InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
+fpl_internal bool fpl__X11InitWindow(fplWindowHandle *window, const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, fpl__X11SubplatformState *subplatform, fpl__X11WindowState *windowState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	fplAssert((initSettings != fpl_null) && (currentWindowSettings != fpl_null) && (appState != fpl_null) && (subplatform != fpl_null) && (windowState != fpl_null) && (setupCallbacks != fpl_null));
 	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *mainWindowState = &appState->window.x11;
 
-	if (!fpl__X11OpenDisplay(x11Api, windowState)) {
-		return false;
+	if (window->isMain) {
+		if (!fpl__X11OpenDisplay(x11Api, windowState)) {
+			return false;
+		}
+	} else {
+		// An additional window uses the connection of the main window, so its events come in the same queue
+		windowState->display = mainWindowState->display;
+		windowState->screen = mainWindowState->screen;
+		windowState->core.root = mainWindowState->core.root;
 	}
 
+	// The video backend picks the visual, an additional window gets the one of the main window
 	if (setupCallbacks->preSetup != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_X11, "Call Pre-Setup for fpl__X11_Window");
-		setupCallbacks->preSetup(appState, appState->initFlags, initSettings);
+		setupCallbacks->preSetup(appState, window, appState->initFlags, initSettings);
 	}
 
 	fpl__X11SetupVisualAndColormap(x11Api, windowState);
 
 	if (!fpl__X11CreateWindow(x11Api, initSettings, windowState)) {
-		fpl__X11ReleaseWindow(subplatform, windowState);
+		// An additional window is released by its creator, the connection is not its own
+		if (window->isMain) {
+			fpl__X11ReleaseWindow(subplatform, windowState);
+		}
 		return false;
 	}
 
-	fpl__X11InternAtoms(x11Api, windowState);
+	if (window->isMain) {
+		fpl__X11InternAtoms(x11Api, windowState);
+	} else {
+		fpl__X11CopyAtoms(mainWindowState, windowState);
+	}
 
 	// Cursor defaults
 	windowState->cursor.invisibleCursor = 0;
 	windowState->cursor.cursorEnabled = true;
 
-	fpl__X11SetupWindowManagerHints(x11Api, initSettings, currentWindowSettings, windowState);
-	fpl__X11InitInputMethod(x11Api, windowState);
-	fpl__X11BuildKeyMap(x11Api, appState, windowState);
+	fpl__X11SetupWindowManagerHints(window, x11Api, initSettings, currentWindowSettings, windowState);
+	if (window->isMain) {
+		fpl__X11InitInputMethod(x11Api, windowState);
+		fpl__X11BuildKeyMap(x11Api, appState, windowState);
+	} else {
+		// The input method belongs to the connection, every window has an input context of its own
+		fpl__X11_XIM mainInputMethod = mainWindowState->im.xim;
+		if (mainInputMethod != 0) {
+			fpl__X11CreateInputContext(x11Api, windowState, mainInputMethod, false);
+		}
+		// The keyboard layout is the same for all windows
+		fpl__PlatformWindowState *platformWindow = window->state;
+		const size_t keyMapSize = sizeof(platformWindow->keyMap);
+		fplMemoryCopy(appState->window.keyMap, keyMapSize, platformWindow->keyMap);
+	}
 
 	fplWindowState initialState = fpl__GetInitialWindowState(&initSettings->window);
 	if (initSettings->window.initialVisibility == fplWindowVisibilityState_Hide) {
-		fpl__DeferInitialWindowState(appState, currentWindowSettings, initialState);
+		fpl__DeferInitialWindowState(window, initialState);
 	} else if (initialState == fplWindowState_Fullscreen) {
-		fplSetWindowFullscreenSize(true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
+		fpl__X11Window_SetFullscreenSize(window, true, initSettings->window.fullscreenSize.width, initSettings->window.fullscreenSize.height, initSettings->window.fullscreenRefreshRate);
 	} else if (initialState == fplWindowState_Iconify || initialState == fplWindowState_Maximize) {
-		fplSetWindowState(initialState);
+		fpl__X11Window_SetState(window, initialState);
 	}
 
-	appState->window.isRunning = true;
+	window->state->isRunning = true;
 
 	return true;
+}
+
+fpl_internal bool fpl__X11Window_Create(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__X11SubplatformState *subplatform = &appState->x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
+	// An additional window starts from the settings of the platform with its own window settings, the video backend decides whether it draws into it
+	fplSettings windowInitSettings = appState->initSettings;
+	windowInitSettings.window = *window->settings;
+	fpl__SetupWindowCallbacks setupCallbacks = fplZeroInit;
+	setupCallbacks.preSetup = fpl__PrepareVideoWindowDefault;
+	setupCallbacks.postSetup = fpl__FinalizeVideoWindowDefault;
+	bool result = fpl__X11InitWindow(window, &windowInitSettings, window->settings, appState, subplatform, windowState, &setupCallbacks);
+	if (!result) {
+		fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
+	}
+	return(result);
+}
+
+fpl_internal void fpl__X11Window_Destroy(fplWindowHandle *window) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
+	// Events of the window that are still in the queue find no window anymore and are dropped
+	fpl__X11ReleaseAdditionalWindow(subplatform, windowState);
 }
 
 fpl_internal fplKeyboardModifierFlags fpl__X11TranslateModifierFlags(const int state) {
@@ -31285,7 +32555,8 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	fpl__X11_XEvent *ev = (fpl__X11_XEvent *)nev->payload;
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	if (appState == fpl_null) return false;
-	fpl__PlatformWindowState *winState = &appState->window;
+	// The window the event belongs to, the main window when the dispatcher did not say
+	fpl__PlatformWindowState *winState = nev->window != fpl_null ? nev->window->state : &appState->window;
 	fpl__X11WindowState *x11WinState = &winState->x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 	const bool eventsDisabled = appState->currentSettings.input.disabledEvents != 0;
@@ -31346,7 +32617,9 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 			if (x11Api->XEventsQueued(x11WinState->display, FPL__X11_QueuedAfterReading)) {
 				fpl__X11_XEvent nextEvent;
 				x11Api->XPeekEvent(x11WinState->display, &nextEvent);
-				if ((nextEvent.type == FPL__X11_KeyPress) && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
+				// A press of the same key in another window is no repeat, the focus moved in between
+				bool isSameWindow = nextEvent.xkey.window == ev->xkey.window;
+				if ((nextEvent.type == FPL__X11_KeyPress) && isSameWindow && (nextEvent.xkey.time == ev->xkey.time) && (nextEvent.xkey.keycode == ev->xkey.keycode)) {
 					// Delete the peeked event, which is a key-repeat
 					x11Api->XNextEvent(x11WinState->display, ev);
 					isRepeat = true;
@@ -31675,16 +32948,60 @@ fpl_internal void fpl__X11UpdateRawMediaKeys(fpl__PlatformAppState *appState);
 #endif
 fpl_internal void fpl__X11HandleWarpRelativeMotion(fpl__PlatformAppState *appState, const fpl__X11_XMotionEvent *motionEvent);
 
-fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
-	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (ev != fpl_null));
-	fpl__PlatformWindowState *winState = &appState->window;
+fpl_internal void fpl__X11CallEventCallback(fplWindowHandle *window, fpl__X11_XEvent *ev) {
+	const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+	if (callbacks->eventCallback != fpl_null) {
+		fplPlatformType platformType = fplGetPlatformType();
+		fpl__X11WindowState *windowState = &window->state->x11;
+		callbacks->eventCallback(platformType, windowState, ev, callbacks->eventUserData);
+	}
+}
+
+// The frame the window manager put around the window, _NET_FRAME_EXTENTS left and top. Zero without a window manager, for a window without decoration and before the window manager framed the window.
+fpl_internal void fpl__X11GetFrameExtents(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, int32_t *outLeft, int32_t *outTop) {
+	*outLeft = 0;
+	*outTop = 0;
+	fpl__X11_Atom actualType = 0;
+	int actualFormat = 0;
+	unsigned long itemCount = 0;
+	unsigned long bytesAfter = 0;
+	unsigned char *data = fpl_null;
+	const long extentCount = 4;
+	int status = x11Api->XGetWindowProperty(windowState->display, windowState->core.window, windowState->netWM.netFrameExtents, 0L, extentCount, FPL__X11_False, FPL__X11_XA_CARDINAL, &actualType, &actualFormat, &itemCount, &bytesAfter, &data);
+	const int cardinalFormat = 32;
+	if (status == FPL__X11_Success && data != fpl_null && actualFormat == cardinalFormat && itemCount >= (unsigned long)extentCount) {
+		// Format 32 comes as long values: left, right, top, bottom
+		const long *extents = (const long *)data;
+		*outLeft = (int32_t)extents[0];
+		*outTop = (int32_t)extents[2];
+	}
+	if (data != fpl_null) {
+		x11Api->XFree(data);
+	}
+}
+
+// The position of the client area in root coordinates. XGetWindowAttributes() and a real ConfigureNotify give it relative to the parent, which is the frame of the window manager.
+fpl_internal bool fpl__X11GetClientRootPosition(const fpl__X11Api *x11Api, const fpl__X11WindowState *windowState, int32_t *outLeft, int32_t *outTop) {
+	int rootX = 0;
+	int rootY = 0;
+	fpl__X11_Window child = 0;
+	fpl__X11_Bool isTranslated = x11Api->XTranslateCoordinates(windowState->display, windowState->core.window, windowState->core.root, 0, 0, &rootX, &rootY, &child);
+	if (!isTranslated) {
+		return(false);
+	}
+	*outLeft = (int32_t)rootX;
+	*outTop = (int32_t)rootY;
+	return(true);
+}
+
+fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fplWindowHandle *window, fpl__X11_XEvent *ev) {
+	fplAssert((subplatform != fpl_null) && (appState != fpl_null) && (window != fpl_null) && (ev != fpl_null));
+	fpl__PlatformWindowState *winState = window->state;
 	fpl__X11WindowState *x11WinState = &winState->x11;
 	fpl__X11WindowStateInfo *lastX11WinInfo = &x11WinState->lastWindowStateInfo;
 	const fpl__X11Api *x11Api = &appState->x11.api;
 
-	if (appState->currentSettings.window.callbacks.eventCallback != fpl_null) {
-		appState->currentSettings.window.callbacks.eventCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.eventUserData);
-	}
+	fpl__X11CallEventCallback(window, ev);
 
 	// Let the input method consume events it needs (dead keys, compose sequences).
 	// With no XIM present XFilterEvent returns False, so nothing is swallowed.
@@ -31701,6 +33018,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11FilteredKeyEvent;
 			nev.payload = (void *)&filteredKeyEvent;
+			nev.window = winState->handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 		}
 #endif
@@ -31711,11 +33029,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_ConfigureNotify:
 		{
 #		if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-			if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-				if (appState->initSettings.video.isAutoSize) {
-					uint32_t w = (uint32_t)ev->xconfigure.width;
-					uint32_t h = (uint32_t)ev->xconfigure.height;
+			// The software back buffer follows the size of its window
+			if (appState->currentSettings.video.backend == fplVideoBackendType_Software && appState->initSettings.video.isAutoSize) {
+				uint32_t w = (uint32_t)ev->xconfigure.width;
+				uint32_t h = (uint32_t)ev->xconfigure.height;
+				if (window->isMain) {
 					fplResizeVideoBackBuffer(w, h);
+				} else if (window->hasVideo) {
+					fplVideoResizeBackBufferMulti(window, w, h);
 				}
 			}
 #		endif
@@ -31725,16 +33046,26 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 
 			// Window resized
 			if (ev->xconfigure.width != lastX11WinInfo->size.width || ev->xconfigure.height != lastX11WinInfo->size.height) {
-				fpl__PushWindowSizeEvent(fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
+				fpl__PushWindowSizeEvent(winState->handle, fplWindowEventType_Resized, (uint32_t)ev->xconfigure.width, (uint32_t)ev->xconfigure.height);
 				lastX11WinInfo->size.width = (int32_t)ev->xconfigure.width;
 				lastX11WinInfo->size.height = (int32_t)ev->xconfigure.height;
 			}
 
-			// Window moved
-			if (ev->xconfigure.x != lastX11WinInfo->position.left || ev->xconfigure.y != lastX11WinInfo->position.top) {
-				fpl__PushWindowPositionEvent(fplWindowEventType_PositionChanged, (int32_t)ev->xconfigure.x, (int32_t)ev->xconfigure.y);
-				lastX11WinInfo->position.left = (int32_t)ev->xconfigure.x;
-				lastX11WinInfo->position.top = (int32_t)ev->xconfigure.y;
+			// Window moved, reported as the position of the frame like fplGetWindowPosition(). A real ConfigureNotify is relative to the parent (the frame of the window manager), a synthetic one from the window manager is in root coordinates (ICCCM).
+			int32_t clientLeft = (int32_t)ev->xconfigure.x;
+			int32_t clientTop = (int32_t)ev->xconfigure.y;
+			if (!ev->xconfigure.send_event) {
+				fpl__X11GetClientRootPosition(x11Api, x11WinState, &clientLeft, &clientTop);
+			}
+			int32_t frameLeft = 0;
+			int32_t frameTop = 0;
+			fpl__X11GetFrameExtents(x11Api, x11WinState, &frameLeft, &frameTop);
+			const int32_t windowLeft = clientLeft - frameLeft;
+			const int32_t windowTop = clientTop - frameTop;
+			if (windowLeft != lastX11WinInfo->position.left || windowTop != lastX11WinInfo->position.top) {
+				fpl__PushWindowPositionEvent(winState->handle, fplWindowEventType_PositionChanged, windowLeft, windowTop);
+				lastX11WinInfo->position.left = windowLeft;
+				lastX11WinInfo->position.top = windowTop;
 			}
 		} break;
 
@@ -31744,10 +33075,12 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				const fpl__X11_Atom protocol = (fpl__X11_Atom)ev->xclient.data.l[0];
 				if (protocol != FPL__X11_None) {
 					if (protocol == x11WinState->wm.wmDeleteWindow) {
-						// Window asked for closing
+						// Window asked for closing, an additional window stays until the application destroys it with fplWindowDestroy()
 						winState->isRunning = false;
-						fpl__PushWindowStateEvent(fplWindowEventType_Closed);
-						fpl__UpdateInputGrab(appState);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Closed);
+						if (window->isMain) {
+							fpl__UpdateInputGrab(appState);
+						}
 					} else if (protocol == x11WinState->netWM.netWMPing) {
 						// Window manager asks us if we are still alive
 						fpl__X11_XEvent reply = *ev;
@@ -31946,7 +33279,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 						fplMemoryBlock memory = fplZeroInit;
 						memory.size = filesTableSize;
 						memory.base = filesTable;
-						fpl__PushWindowDropFilesEvent(NULL, fileCount, (const char **)filesTable, &memory);
+						fpl__PushWindowDropFilesEvent(winState->handle, NULL, fileCount, (const char **)filesTable, &memory);
 						isDropAccepted = true;
 					}
 				}
@@ -31998,6 +33331,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			fpl__NativeInputEvent nev = fplZeroInit;
 			nev.kind = fpl__NativeInputEventKind_X11Event;
 			nev.payload = (void *)ev;
+			nev.window = winState->handle;
 			fpl__InputSystem_HandleNativeEvent(&appState->input, &nev);
 #endif
 		} break;
@@ -32010,8 +33344,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_Expose:
 		{
 			// Repaint
-			if (appState->currentSettings.window.callbacks.exposedCallback != fpl_null) {
-				appState->currentSettings.window.callbacks.exposedCallback(fplGetPlatformType(), x11WinState, ev, appState->currentSettings.window.callbacks.exposedUserData);
+			const fplWindowCallbacks *callbacks = &window->settings->callbacks;
+			if (callbacks->exposedCallback != fpl_null) {
+				fplPlatformType platformType = fplGetPlatformType();
+				callbacks->exposedCallback(platformType, x11WinState, ev, callbacks->exposedUserData);
 			}
 		} break;
 
@@ -32029,9 +33365,15 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__HandleWindowFocusChanged(appState, true);
+			// The input method composes for the window that has the focus
+			if (x11WinState->im.xic != 0 && x11Api->XSetICFocus != fpl_null) {
+				x11Api->XSetICFocus(x11WinState->im.xic);
+			}
+			fpl__HandleWindowFocusChanged(winState->handle, true);
 #if !defined(FPL_NO_X11_XINPUT2)
-			fpl__X11UpdateRawMediaKeys(appState);
+			if (window->isMain) {
+				fpl__X11UpdateRawMediaKeys(appState);
+			}
 #endif
 		} break;
 
@@ -32042,9 +33384,14 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 			if (ev->xfocus.mode == FPL__X11_NotifyGrab || ev->xfocus.mode == FPL__X11_NotifyUngrab) {
 				return;
 			}
-			fpl__HandleWindowFocusChanged(appState, false);
+			if (x11WinState->im.xic != 0 && x11Api->XUnsetICFocus != fpl_null) {
+				x11Api->XUnsetICFocus(x11WinState->im.xic);
+			}
+			fpl__HandleWindowFocusChanged(winState->handle, false);
 #if !defined(FPL_NO_X11_XINPUT2)
-			fpl__X11UpdateRawMediaKeys(appState);
+			if (window->isMain) {
+				fpl__X11UpdateRawMediaKeys(appState);
+			}
 #endif
 		} break;
 
@@ -32060,35 +33407,35 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 			// Withdrawing a window removes its states, fplSetWindowVisibility() pushes the events for a hidden window itself
-			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !appState->window.isHidden) {
+			if ((ev->xproperty.atom == x11WinState->netWM.netWMState || ev->xproperty.atom == x11WinState->wm.wmState) && !winState->isHidden) {
 				fpl__X11WindowStateInfo nextWindowStateInfo = fpl__X11GetWindowStateInfo(x11Api, x11WinState);
 				fpl__X11WindowStateInfo changedWindowStateInfo = fpl__X11ReconcilWindowStateInfo(&x11WinState->lastWindowStateInfo, &nextWindowStateInfo);
 				switch (changedWindowStateInfo.visibility) {
 					case fplWindowVisibilityState_Hide:
-						fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Hidden);
 						break;
 					case fplWindowVisibilityState_Show:
-						fpl__PushWindowStateEvent(fplWindowEventType_Shown);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Shown);
 						break;
 					default:
 						break;
 				}
 				switch (changedWindowStateInfo.state) {
 					case fplWindowState_Iconify:
-						fpl__PushWindowStateEvent(fplWindowEventType_Minimized);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Minimized);
 						break;
 					case fplWindowState_Maximize:
-						fpl__PushWindowStateEvent(fplWindowEventType_Maximized);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Maximized);
 						break;
 					case fplWindowState_Normal:
-						fpl__PushWindowStateEvent(fplWindowEventType_Restored);
+						fpl__PushWindowStateEvent(winState->handle, fplWindowEventType_Restored);
 						break;
 					default:
 						break;
 				}
 				bool isMinimized = nextWindowStateInfo.state == fplWindowState_Iconify;
 				if (isMinimized != (winState->isMinimized != 0)) {
-					fpl__HandleWindowMinimizedChanged(appState, isMinimized);
+					fpl__HandleWindowMinimizedChanged(winState->handle, isMinimized);
 				}
 				x11WinState->lastWindowStateInfo.state = nextWindowStateInfo.state;
 				x11WinState->lastWindowStateInfo.visibility = nextWindowStateInfo.visibility;
@@ -32100,10 +33447,44 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 	}
 }
 
-fpl_platform_api bool fplIsWindowRunning(void) {
-	FPL__CheckPlatform(false);
-	bool result = fpl__global__AppState->window.isRunning;
-	return(result);
+// The FPL window an X11 event belongs to, null for a window FPL did not create
+fpl_internal fplWindowHandle *fpl__X11FindEventWindow(const fpl__PlatformAppState *appState, const fpl__X11_XEvent *ev) {
+	fplWindowHandle *mainWindow = appState->firstWindow;
+	// XInput2 and the other extension events have no window at the place of the core events, they belong to the main window
+	if (ev->type == FPL__X11_GenericEvent || ev->type >= FPL__X11_LASTEvent) {
+		return(mainWindow);
+	}
+	// SelectionRequest and SelectionClear name the owner there, SelectionNotify the requestor
+	fpl__X11_Window eventWindow = ev->xany.window;
+	for (fplWindowHandle *window = appState->firstWindow; window != fpl_null; window = window->nextWindow) {
+		if (window->state->x11.core.window == eventWindow) {
+			return(window);
+		}
+	}
+	// The receiver of a chunked clipboard transfer asks for the next chunk on its own window, the main window serves the clipboard
+	if (ev->type == FPL__X11_PropertyNotify) {
+		return(mainWindow);
+	}
+	return(fpl_null);
+}
+
+// Hands an X11 event to its window. An event of another window only goes to the event callback of the main window and the input method,
+// it may be a late one of a destroyed window that must not reach the main window.
+fpl_internal void fpl__X11DispatchEvent(const fpl__X11SubplatformState *subplatform, fpl__PlatformAppState *appState, fpl__X11_XEvent *ev) {
+	fplWindowHandle *window = fpl__X11FindEventWindow(appState, ev);
+	if (window != fpl_null) {
+		fpl__X11HandleEvent(subplatform, appState, window, ev);
+		return;
+	}
+	fplWindowHandle *mainWindow = appState->firstWindow;
+	if (mainWindow != fpl_null) {
+		fpl__X11CallEventCallback(mainWindow, ev);
+	}
+	// The input method of Xlib talks through windows of its own
+	const fpl__X11Api *x11Api = &subplatform->api;
+	if (x11Api->XFilterEvent != fpl_null) {
+		x11Api->XFilterEvent(ev, FPL__X11_None);
+	}
 }
 
 fpl_platform_api void fplWindowShutdown(void) {
@@ -32133,7 +33514,7 @@ fpl_internal bool fpl__X11ProcessNextEvent(const fpl__X11SubplatformState *subpl
 	if (x11Api->XPending(windowState->display)) {
 		fpl__X11_XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 		result = true;
 	}
 	return(result);
@@ -32183,7 +33564,7 @@ fpl_platform_api void fplPollEvents(void) {
 	while (x11Api->XPending(windowState->display)) {
 		fpl__X11_XEvent ev;
 		x11Api->XNextEvent(windowState->display, &ev);
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 	}
 	fpl__ClearInternalEvents();
 	fpl__RetryInputGrab(appState);
@@ -32226,12 +33607,11 @@ fpl_internal fpl__X11_Cursor fpl__X11GetInvisibleCursor(const fpl__X11Api *x11Ap
 	return(windowState->cursor.invisibleCursor);
 }
 
-fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetCursorEnabled(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11WindowState *windowState = &appState->window.x11;
+	fpl__X11WindowState *windowState = &window->state->x11;
 	if (value) {
 		x11Api->XUndefineCursor(windowState->display, windowState->core.window);
 	} else {
@@ -32242,6 +33622,7 @@ fpl_platform_api void fplSetWindowCursorEnabled(const bool value) {
 	}
 	x11Api->XFlush(windowState->display);
 	windowState->cursor.cursorEnabled = value;
+	return(true);
 }
 
 // Moves the pointer to a position in window coordinates. A source window of None warps from anywhere, the zero sized source rectangle is ignored then.
@@ -32700,13 +34081,11 @@ fpl_internal bool fpl__PlatformApplyKeyboardGrab(fpl__PlatformAppState *appState
 	return(false);
 }
 
-fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
-	FPL__CheckArgumentNull(outSize, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_GetSize(fplWindowHandle *window, fplWindowSize *outSize) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11_XWindowAttributes attribs;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	outSize->width = attribs.width;
@@ -32714,35 +34093,28 @@ fpl_platform_api bool fplGetWindowSize(fplWindowSize *outSize) {
 	return(true);
 }
 
-fpl_platform_api void fplSetWindowSize(const uint32_t width, const uint32_t height) {
+fpl_internal bool fpl__X11Window_SetSize(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	FPL__CheckPlatformNoRet();
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	x11Api->XResizeWindow(windowState->display, windowState->core.window, width, height);
 	x11Api->XFlush(windowState->display);
+	return(true);
 }
 
-fpl_platform_api bool fplIsWindowResizable(void) {
-	FPL__CheckPlatform(false);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isResizable != 0;
-	return(result);
-}
-
-fpl_platform_api void fplSetWindowResizeable(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetResizable(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	if (appState->currentSettings.window.isFullscreen) {
-		return;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (windowSettings->isFullscreen) {
+		return(false);
 	}
 	fpl__X11_XSizeHints *hints = x11Api->XAllocSizeHints();
 	if (hints == fpl_null) {
-		return;
+		return(false);
 	}
 	if (value) {
 		hints->flags = 0;
@@ -32758,14 +34130,8 @@ fpl_platform_api void fplSetWindowResizeable(const bool value) {
 	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
 	x11Api->XFree(hints);
 	x11Api->XFlush(windowState->display);
-	appState->currentSettings.window.isResizable = value;
-}
-
-fpl_platform_api bool fplIsWindowDecorated(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isDecorated;
-	return(result);
+	windowSettings->isResizable = value;
+	return(true);
 }
 
 #define FPL__MWM_HINTS_DECORATIONS (1L << 1)
@@ -32781,12 +34147,11 @@ typedef struct {
 	unsigned long status;
 } fpl__MotifWMHints;
 
-fpl_platform_api void fplSetWindowDecorated(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetDecorated(fplWindowHandle *window, const bool value) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
 	fpl__MotifWMHints hints = fplZeroInit;
 	hints.flags = FPL__MWM_HINTS_DECORATIONS | FPL__MWM_HINTS_FUNCTIONS;
@@ -32800,7 +34165,8 @@ fpl_platform_api void fplSetWindowDecorated(const bool value) {
 		(unsigned char *)&hints,
 		FPL__PROPERTY_MOTIF_WM_HINTS_ELEMENT_COUNT);
 
-	appState->currentSettings.window.isDecorated = value;
+	window->settings->isDecorated = value;
+	return(true);
 }
 
 #define FPL__NET_WM_STATE_REMOVE 0L
@@ -32844,37 +34210,58 @@ fpl_internal bool fpl__X11SendNetWMState(const fpl__X11Api *x11Api, const fpl__X
 	return(result);
 }
 
-fpl_platform_api bool fplIsWindowFloating(void) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_IsFloating(fplWindowHandle *window) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	bool result = fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateAbove);
 	return(result);
 }
 
-fpl_platform_api void fplSetWindowFloating(const bool value) {
-	FPL__CheckPlatformNoRet();
+fpl_internal bool fpl__X11Window_SetFloating(fplWindowHandle *window, const bool value) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	long action = value ? FPL__NET_WM_STATE_ADD : FPL__NET_WM_STATE_REMOVE;
-	fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
+	bool result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateAbove, 0, action);
+	return(result);
 }
 
-fpl_platform_api fplWindowState fplGetWindowState(void) {
-	FPL__CheckPlatform(fplWindowState_Unknown);
+fpl_internal bool fpl__X11Window_SetParent(fplWindowHandle *window, fplWindowHandle *parent) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	// A withdrawn window has no states, it gets the remembered one when it is shown
-	if (appState->window.isHidden) {
-		return(appState->window.pendingState != fplWindowState_Unknown ? appState->window.pendingState : fplWindowState_Normal);
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (parent != fpl_null) {
+		const fpl__X11WindowState *parentState = &parent->state->x11;
+		const fpl__X11_Window parentWindow = parentState->core.window;
+		const int parentCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR, FPL__X11_XA_WINDOW, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (unsigned char *)&parentWindow, parentCount);
+		// A transient window without a type is a dialog, which window managers fade in and out, a utility window like a Win32 owned window appears and goes at once
+		const fpl__X11_Atom windowType = windowState->netWM.netWMWindowTypeUtility;
+		const int windowTypeCount = 1;
+		x11Api->XChangeProperty(windowState->display, windowState->core.window, windowState->netWM.netWMWindowType, FPL__X11_XA_ATOM, FPL__X11_PROPERTY_FORMAT_32, FPL__X11_PropModeReplace, (const unsigned char *)&windowType, windowTypeCount);
+	} else {
+		x11Api->XDeleteProperty(windowState->display, windowState->core.window, FPL__X11_XA_WM_TRANSIENT_FOR);
+		x11Api->XDeleteProperty(windowState->display, windowState->core.window, windowState->netWM.netWMWindowType);
 	}
-	if (appState->currentSettings.window.isFullscreen) {
+	x11Api->XFlush(windowState->display);
+	return(true);
+}
+
+fpl_internal fplWindowState fpl__X11Window_GetState(fplWindowHandle *window) {
+	const fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__PlatformWindowState *platformWindowState = window->state;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &platformWindowState->x11;
+	// A withdrawn window has no states, it gets the remembered one when it is shown
+	if (platformWindowState->isHidden) {
+		return(platformWindowState->pendingState != fplWindowState_Unknown ? platformWindowState->pendingState : fplWindowState_Normal);
+	}
+	if (window->settings->isFullscreen) {
 		return(fplWindowState_Fullscreen);
 	}
 	if (fpl__X11HasNetWMStateAtom(x11Api, windowState, windowState->netWM.netWMStateFullscreen)) {
@@ -32896,15 +34283,16 @@ fpl_platform_api fplWindowState fplGetWindowState(void) {
 	return(fplWindowState_Unknown);
 }
 
-fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetState(fplWindowHandle *window, const fplWindowState newState) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	const fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &platformWindowState->x11;
 	// Window managers ignore state changes of a withdrawn window and fplWindowState_Normal would map it, so the state is applied when it gets shown
-	if (appState->window.isHidden && newState != fplWindowState_Unknown) {
-		appState->window.pendingState = newState;
+	if (platformWindowState->isHidden && newState != fplWindowState_Unknown) {
+		platformWindowState->pendingState = newState;
 		return(true);
 	}
 	bool result = false;
@@ -32917,7 +34305,7 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Maximize:
 		{
-			if (!appState->currentSettings.window.isFullscreen) {
+			if (!windowSettings->isFullscreen) {
 				result = fpl__X11SendNetWMState(x11Api, windowState, windowState->netWM.netWMStateMaximizedVert, windowState->netWM.netWMStateMaximizedHorz, FPL__NET_WM_STATE_ADD);
 			}
 		} break;
@@ -32933,8 +34321,8 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 
 		case fplWindowState_Fullscreen:
 		{
-			if (!appState->currentSettings.window.isFullscreen) {
-				result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+			if (!windowSettings->isFullscreen) {
+				result = fpl__X11Window_SetFullscreenSize(window, true, 0, 0, 0);
 			} else {
 				result = true;
 			}
@@ -32947,34 +34335,28 @@ fpl_platform_api bool fplSetWindowState(const fplWindowState newState) {
 	return(result);
 }
 
-fpl_platform_api fplWindowVisibilityState fplGetWindowVisibility(void) {
-	FPL__CheckPlatform(fplWindowVisibilityState_Unknown);
-	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	fplWindowVisibilityState result = appState->window.isHidden ? fplWindowVisibilityState_Hide : fplWindowVisibilityState_Show;
-	return(result);
-}
-
-fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newVisibility) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetVisibility(fplWindowHandle *window, const fplWindowVisibilityState newVisibility) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__PlatformWindowState *platformWindowState = window->state;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	fpl__X11WindowState *windowState = &appState->window.x11;
-	bool isHidden = appState->window.isHidden != 0;
+	fpl__X11WindowState *windowState = &platformWindowState->x11;
+	bool isHidden = platformWindowState->isHidden != 0;
 	if (newVisibility == fplWindowVisibilityState_Hide) {
 		if (!isHidden) {
 			// The window manager removes all states of a withdrawn window, so the current one is applied again when the window is shown
-			fplWindowState currentState = fplGetWindowState();
-			if (appState->window.pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
-				appState->window.pendingState = currentState;
+			fplWindowState currentState = fpl__X11Window_GetState(window);
+			if (platformWindowState->pendingState == fplWindowState_Unknown && currentState != fplWindowState_Normal) {
+				platformWindowState->pendingState = currentState;
 			}
-			appState->currentSettings.window.isFullscreen = false;
+			windowSettings->isFullscreen = false;
 			// Unlike XUnmapWindow, XWithdrawWindow also tells the window manager to forget the window (ICCCM 4.1.4)
 			x11Api->XWithdrawWindow(windowState->display, windowState->core.window, windowState->screen);
 			x11Api->XFlush(windowState->display);
-			appState->window.isHidden = true;
+			platformWindowState->isHidden = true;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Hide;
-			fpl__PushWindowStateEvent(fplWindowEventType_Hidden);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Hidden);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -32983,20 +34365,20 @@ fpl_platform_api bool fplSetWindowVisibility(const fplWindowVisibilityState newV
 		if (isHidden) {
 			// Like on Win32 the window takes the focus. The first show of a window that started hidden is its start, it takes the focus only when fplWindowSettings.isFocusedOnStart says so.
 			// A window shown minimized does not take it, the activation would restore it.
-			fplWindowState pendingState = appState->window.pendingState;
-			bool isStartShow = appState->window.isStartShowPending != 0;
+			fplWindowState pendingState = platformWindowState->pendingState;
+			bool isStartShow = platformWindowState->isStartShowPending != 0;
 			bool isFocusedOnShow = pendingState != fplWindowState_Iconify;
 			if (isStartShow) {
-				isFocusedOnShow = fpl__IsWindowFocusedOnFirstShow(&appState->currentSettings.window, pendingState);
+				isFocusedOnShow = fpl__IsWindowFocusedOnFirstShow(windowSettings, pendingState);
 			}
-			appState->window.isStartShowPending = false;
+			platformWindowState->isStartShowPending = false;
 			fpl__X11PrepareFocusOnMap(x11Api, windowState, isFocusedOnShow);
 			x11Api->XMapWindow(windowState->display, windowState->core.window);
 			x11Api->XFlush(windowState->display);
-			appState->window.isHidden = false;
+			platformWindowState->isHidden = false;
 			windowState->lastWindowStateInfo.visibility = fplWindowVisibilityState_Show;
-			fpl__PushWindowStateEvent(fplWindowEventType_Shown);
-			fpl__ApplyPendingWindowState(appState);
+			fpl__PushWindowStateEvent(window, fplWindowEventType_Shown);
+			fpl__ApplyPendingWindowState(window);
 			fpl__UpdateInputGrab(appState);
 		}
 		return(true);
@@ -33266,13 +34648,11 @@ fpl_internal bool fpl__X11FindDisplayAtPoint(const fpl__X11SubplatformState *sub
 	return(result);
 }
 
-fpl_platform_api bool fplGetWindowDisplay(fplDisplayInfo *outDisplay) {
-	FPL__CheckArgumentNull(outDisplay, false);
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_GetDisplay(fplWindowHandle *window, fplDisplayInfo *outDisplay) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	fpl__X11_XWindowAttributes attribs = fplZeroInit;
 	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
 	int rootX = 0;
@@ -33395,15 +34775,14 @@ fpl_platform_api size_t fplGetDisplayModes(const char *id, fplDisplayMode *modes
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetFullscreenSize(fplWindowHandle *window, const bool value, const uint32_t fullscreenWidth, const uint32_t fullscreenHeight, const uint32_t refreshRate) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
 	// https://stackoverflow.com/questions/10897503/opening-a-fullscreen-opengl-window
 	fpl__X11_XEvent xev = fplZeroInit;
@@ -33419,22 +34798,22 @@ fpl_platform_api bool fplSetWindowFullscreenSize(const bool value, const uint32_
 
 	bool result = x11Api->XSendEvent(windowState->display, windowState->core.root, 0, FPL__X11_SubstructureRedirectMask | FPL__X11_SubstructureNotifyMask, &xev) != 0;
 	if (result) {
-		appState->currentSettings.window.isFullscreen = value;
+		window->settings->isFullscreen = value;
 	}
 	return(result);
 }
 
-fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
-	FPL__CheckPlatform(false);
+fpl_internal bool fpl__X11Window_SetFullscreenRect(fplWindowHandle *window, const bool value, const int32_t x, const int32_t y, const int32_t width, const int32_t height) {
 	const fpl__PlatformAppState *appState = fpl__global__AppState;
-	if (!fpl__IsFullscreenChangeAllowed(appState)) {
+	if (!fpl__IsFullscreenChangeAllowed(window)) {
 		return(false);
 	}
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 	if (!value) {
-		return(fplSetWindowFullscreenSize(false, 0, 0, 0));
+		bool leaveResult = fpl__X11Window_SetFullscreenSize(window, false, 0, 0, 0);
+		return(leaveResult);
 	}
 	// X11 has no pixel-rect fullscreen, snap to monitor span via _NET_WM_FULLSCREEN_MONITORS (Xinerama indices).
 	if (subplatform->xinerama.libHandle != fpl_null && subplatform->xinerama.XineramaIsActive(windowState->display)) {
@@ -33487,48 +34866,91 @@ fpl_platform_api bool fplSetWindowFullscreenRect(const bool value, const int32_t
 			x11Api->XFlush(windowState->display);
 		}
 	}
-	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
+	bool result = fpl__X11Window_SetFullscreenSize(window, true, 0, 0, 0);
 	return(result);
 }
 
-fpl_platform_api bool fplEnableWindowFullscreen(void) {
-	bool result = fplSetWindowFullscreenSize(true, 0, 0, 0);
-	return(result);
+// A window that is not shown yet keeps the position the application gave it, most window managers place it themselves otherwise (like GLFW)
+fpl_internal void fpl__X11RequestProgramPosition(const fpl__X11Api *x11Api, const fplWindowHandle *window) {
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	if (!window->state->isHidden) {
+		return;
+	}
+	fpl__X11_XSizeHints *hints = x11Api->XAllocSizeHints();
+	if (hints == fpl_null) {
+		return;
+	}
+	long suppliedFlags = 0;
+	if (!x11Api->XGetWMNormalHints(windowState->display, windowState->core.window, hints, &suppliedFlags)) {
+		hints->flags = 0;
+	}
+	hints->flags |= FPL__X11_PPosition;
+	// The position fields of the hints are obsolete, the window position is what counts
+	hints->x = 0;
+	hints->y = 0;
+	x11Api->XSetWMNormalHints(windowState->display, windowState->core.window, hints);
+	x11Api->XFree(hints);
 }
 
-fpl_platform_api bool fplDisableWindowFullscreen(void) {
-	bool result = fplSetWindowFullscreenSize(false, 0, 0, 0);
-	return(result);
-}
-
-fpl_platform_api bool fplIsWindowFullscreen(void) {
-	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	bool result = appState->currentSettings.window.isFullscreen;
-	return(result);
-}
-
-fpl_platform_api bool fplGetWindowPosition(fplWindowPosition *outPos) {
-	FPL__CheckArgumentNull(outPos, false);
-	FPL__CheckPlatform(false);
+// The position of the frame like on Win32: the position of the client area without the frame of the window manager
+fpl_internal bool fpl__X11Window_GetPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
-	fpl__X11_XWindowAttributes attribs;
-	x11Api->XGetWindowAttributes(windowState->display, windowState->core.window, &attribs);
-	outPos->left = attribs.x;
-	outPos->top = attribs.y;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	int32_t clientLeft = 0;
+	int32_t clientTop = 0;
+	if (!fpl__X11GetClientRootPosition(x11Api, windowState, &clientLeft, &clientTop)) {
+		return(false);
+	}
+	int32_t frameLeft = 0;
+	int32_t frameTop = 0;
+	fpl__X11GetFrameExtents(x11Api, windowState, &frameLeft, &frameTop);
+	outPos->left = clientLeft - frameLeft;
+	outPos->top = clientTop - frameTop;
 	return(true);
 }
 
-fpl_platform_api void fplSetWindowPosition(const int32_t left, const int32_t top) {
-	FPL__CheckPlatformNoRet();
+// The window manager places the frame at the requested position (ICCCM, the window has NorthWestGravity)
+fpl_internal bool fpl__X11Window_SetPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	fpl__X11RequestProgramPosition(x11Api, window);
 	x11Api->XMoveWindow(windowState->display, windowState->core.window, left, top);
+	return(true);
+}
+
+fpl_internal bool fpl__X11Window_GetClientPosition(fplWindowHandle *window, fplWindowPosition *outPos) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	int32_t clientLeft = 0;
+	int32_t clientTop = 0;
+	if (!fpl__X11GetClientRootPosition(x11Api, windowState, &clientLeft, &clientTop)) {
+		return(false);
+	}
+	outPos->left = clientLeft;
+	outPos->top = clientTop;
+	return(true);
+}
+
+// The frame goes to the requested position, so the frame is moved by its extents to put the client area there. Before the window manager framed the window the extents are not known yet.
+fpl_internal bool fpl__X11Window_SetClientPosition(fplWindowHandle *window, const int32_t left, const int32_t top) {
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	const fpl__X11SubplatformState *subplatform = &appState->x11;
+	const fpl__X11Api *x11Api = &subplatform->api;
+	const fpl__X11WindowState *windowState = &window->state->x11;
+	int32_t frameLeft = 0;
+	int32_t frameTop = 0;
+	fpl__X11GetFrameExtents(x11Api, windowState, &frameLeft, &frameTop);
+	fpl__X11RequestProgramPosition(x11Api, window);
+	const int32_t windowLeft = left - frameLeft;
+	const int32_t windowTop = top - frameTop;
+	x11Api->XMoveWindow(windowState->display, windowState->core.window, windowLeft, windowTop);
+	return(true);
 }
 
 // Sets WM_NAME and WM_ICON_NAME as STRING or COMPOUND_TEXT (like GLFW), or as UTF8_STRING when Xlib cannot convert the title without loss (like SDL)
@@ -33552,18 +34974,17 @@ fpl_internal void fpl__X11SetICCCMWindowTitle(const fpl__X11Api *x11Api, const f
 	}
 }
 
-fpl_platform_api void fplSetWindowTitle(const char *title) {
+fpl_internal bool fpl__X11Window_SetTitle(fplWindowHandle *window, const char *title) {
 	// @NOTE(final/X11): The title is set as _NET_WM_NAME / _NET_WM_ICON_NAME (EWMH) and as WM_NAME / WM_ICON_NAME (ICCCM, e.g. xprop, "xdotool search --name").
 	// GNOME requires WM_CLASS (set in fpl__X11InitWindow) to associate the window with an application name.
 
-	FPL__CheckArgumentNullNoRet(title);
-	FPL__CheckPlatformNoRet();
 	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fplWindowSettings *windowSettings = window->settings;
 	const fpl__X11SubplatformState *subplatform = &appState->x11;
 	const fpl__X11Api *x11Api = &subplatform->api;
-	const fpl__X11WindowState *windowState = &appState->window.x11;
+	const fpl__X11WindowState *windowState = &window->state->x11;
 
-	fplCopyString(title, appState->currentSettings.window.title, fplArrayCount(appState->currentSettings.window.title));
+	fplCopyString(title, windowSettings->title, fplArrayCount(windowSettings->title));
 
 	x11Api->XChangeProperty(windowState->display, windowState->core.window,
 		windowState->netWM.netWMName, windowState->wm.utf8String, 8,
@@ -33578,6 +34999,7 @@ fpl_platform_api void fplSetWindowTitle(const char *title) {
 	fpl__X11SetICCCMWindowTitle(x11Api, windowState, title);
 
 	x11Api->XFlush(windowState->display);
+	return(true);
 }
 
 // Waits for one answer of the selection owner, while every event that is not part of this conversation
@@ -33604,7 +35026,7 @@ fpl_internal bool fpl__X11WaitForClipboardEvent(const fpl__X11SubplatformState *
 			*outEvent = ev;
 			return(true);
 		}
-		fpl__X11HandleEvent(subplatform, appState, &ev);
+		fpl__X11DispatchEvent(subplatform, appState, &ev);
 	}
 	return(false);
 }
@@ -33623,12 +35045,12 @@ fpl_internal void fpl__X11DiscardStaleClipboardEvents(const fpl__X11SubplatformS
 	fpl__X11_XEvent ev = fplZeroInit;
 	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_PropertyNotify, &ev)) {
 		if (ev.xproperty.atom != selectionProperty) {
-			fpl__X11HandleEvent(subplatform, appState, &ev);
+			fpl__X11DispatchEvent(subplatform, appState, &ev);
 		}
 	}
 	while (x11Api->XCheckTypedWindowEvent(windowState->display, windowState->core.window, FPL__X11_SelectionNotify, &ev)) {
 		if (ev.xselection.property != selectionProperty && ev.xselection.property != FPL__X11_None) {
-			fpl__X11HandleEvent(subplatform, appState, &ev);
+			fpl__X11DispatchEvent(subplatform, appState, &ev);
 		}
 	}
 }
@@ -35189,6 +36611,18 @@ typedef FPL__FUNC_VIDEO_BACKEND_GETPROCEDURE(fpl__func_VideoBackendGetProcedure)
 #define FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(name) bool name(fplVideoRequirements *requirements)
 typedef FPL__FUNC_VIDEO_BACKEND_GETREQUIREMENTS(fpl__func_VideoBackendGetRequirements);
 
+// Makes the rendering context current for the window, rendering goes into that window from now on
+#define FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, const struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__func_VideoBackendMakeCurrent);
+
+// An additional window was created with the pixel format or visual of the main window: sets it up for rendering and fills its surface, the rendering context may be current for it afterwards
+#define FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(name) bool name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend, fplVideoSurface *outSurface)
+typedef FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__func_VideoBackendSetupAdditionalWindow);
+
+// Releases what the setup created for an additional window, before the window is destroyed or its back buffer is resized
+#define FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(name) void name(const fpl__PlatformAppState *appState, const fpl__PlatformWindowState *windowState, struct fpl__VideoBackend *backend)
+typedef FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__func_VideoBackendReleaseAdditionalWindow);
+
 typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendLoad *loadFunc;
 	fpl__func_VideoBackendUnload *unloadFunc;
@@ -35200,6 +36634,12 @@ typedef struct fpl__VideoContext {
 	fpl__func_VideoBackendPresent *presentFunc;
 	fpl__func_VideoBackendGetProcedure *getProcedureFunc;
 	fpl__func_VideoBackendGetRequirements *getRequirementsFunc;
+	// Null when the backend has no rendering context to switch
+	fpl__func_VideoBackendMakeCurrent *makeCurrentFunc;
+	// Null when the backend draws into the main window only
+	fpl__func_VideoBackendSetupAdditionalWindow *setupAdditionalWindowFunc;
+	// Null when the setup of an additional window creates nothing to release
+	fpl__func_VideoBackendReleaseAdditionalWindow *releaseAdditionalWindowFunc;
 	fpl_b32 recreateOnResize;
 } fpl__VideoContext;
 
@@ -35517,6 +36957,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Win32OpenGL
 	const fpl__Win32Api *wapi = &nativeAppState->winApi;
 	fpl__Win32WindowState *nativeWindowState = &windowState->win32;
 
+	// An additional window takes the pixel format of the main window, so the rendering context of the main window draws into it too
+	if (!windowState->handle->isMain) {
+		const fpl__Win32WindowState *mainWindowState = &appState->window.win32;
+		nativeWindowState->pixelFormat = mainWindowState->pixelFormat;
+		return(true);
+	}
+
 	nativeWindowState->pixelFormat = 0;
 
 	if (videoSettings->graphics.opengl.compatibilityFlags != fplOpenGLCompatibilityFlags_Legacy) {
@@ -35635,6 +37082,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Win32OpenG
 			FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed setting RGBA Pixelformat '%d' for Color/Depth/Alpha (%d,%d,%d and DC '%x')", pixelFormat, pfd.cColorBits, pfd.cDepthBits, pfd.cAlphaBits, deviceContext);
 			return false;
 		}
+		// Additional windows take this pixel format
+		nativeWindowState->pixelFormat = pixelFormat;
 	}
 	return true;
 }
@@ -35814,11 +37263,44 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32OpenGL_Load) {
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32OpenGL_Present) {
+	FPL__UNUSED(backend);
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32WindowState *win32WindowState = &windowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
-	const fpl__VideoBackendWin32OpenGL *nativeBackend = (fpl__VideoBackendWin32OpenGL *)backend;
 	wapi->gdi.SwapBuffers(win32WindowState->deviceContext);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__VideoBackend_Win32OpenGL_MakeCurrent) {
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+	const fpl__VideoBackendWin32OpenGL *nativeBackend = (const fpl__VideoBackendWin32OpenGL *)backend;
+	const fpl__Win32OpenGLApi *glapi = &nativeBackend->api;
+	HDC deviceContext = nativeWindowState->deviceContext;
+	HGLRC renderingContext = nativeBackend->renderingContext;
+	if (!glapi->wglMakeCurrent(deviceContext, renderingContext)) {
+		FPL__ERROR(FPL__MODULE_VIDEO_OPENGL, "Failed activating rendering context '%p' for DC '%p'", (const void *)renderingContext, (const void *)deviceContext);
+		return(false);
+	}
+	// Some drivers keep the swap interval per context instead of per window, so the interval of the window is set again
+	if (glapi->wglSwapIntervalEXT != fpl_null) {
+		const bool isVSync = windowState->handle->isMain && appState->currentSettings.video.isVSync;
+		const int swapInterval = isVSync ? 1 : 0;
+		glapi->wglSwapIntervalEXT(swapInterval);
+	}
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Win32OpenGL_SetupAdditionalWindow) {
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+
+	// Making it current gives the window swap interval 0: only the main window waits for the vertical blank, otherwise every additional window would divide the frame rate
+	if (!fpl__VideoBackend_Win32OpenGL_MakeCurrent(appState, windowState, backend)) {
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.win32.deviceContext = nativeWindowState->deviceContext;
+	outSurface->window.win32.windowHandle = nativeWindowState->windowHandle;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
@@ -35831,6 +37313,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32OpenGL_Construct(void) {
 	result.prepareWindowFunc = fpl__VideoBackend_Win32OpenGL_PrepareWindow;
 	result.finalizeWindowFunc = fpl__VideoBackend_Win32OpenGL_FinalizeWindow;
 	result.presentFunc = fpl__VideoBackend_Win32OpenGL_Present;
+	result.makeCurrentFunc = fpl__VideoBackend_Win32OpenGL_MakeCurrent;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Win32OpenGL_SetupAdditionalWindow;
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_PLATFORM_WINDOWS
@@ -35900,6 +37384,8 @@ typedef FPL__FUNC_GLX_glXGetVisualFromFBConfig(fpl__func_glx_glXGetVisualFromFBC
 typedef FPL__FUNC_GLX_glXGetFBConfigAttrib(fpl__func_glx_glXGetFBConfigAttrib);
 #define FPL__FUNC_GLX_glXCreateWindow(name) GLXWindow name(fpl__X11_Display *dpy, GLXFBConfig config, fpl__X11_Window win,  const int *attrib_list)
 typedef FPL__FUNC_GLX_glXCreateWindow(fpl__func_glx_glXCreateWindow);
+#define FPL__FUNC_GLX_glXDestroyWindow(name) void name(fpl__X11_Display *dpy, GLXWindow win)
+typedef FPL__FUNC_GLX_glXDestroyWindow(fpl__func_glx_glXDestroyWindow);
 #define FPL__FUNC_GLX_glXQueryExtension(name) fpl__X11_Bool name(fpl__X11_Display *dpy, int *errorBase, int *eventBase)
 typedef FPL__FUNC_GLX_glXQueryExtension(fpl__func_glx_glXQueryExtension);
 #define FPL__FUNC_GLX_glXQueryExtensionsString(name) const char *name(fpl__X11_Display *dpy, int screen)
@@ -35936,6 +37422,7 @@ extern FPL__FUNC_GLX_glXCreateContext(glXCreateContext);
 extern FPL__FUNC_GLX_glXCreateContextAttribsARB(glXCreateContextAttribsARB);
 extern FPL__FUNC_GLX_glXCreateNewContext(glXCreateNewContext);
 extern FPL__FUNC_GLX_glXCreateWindow(glXCreateWindow);
+extern FPL__FUNC_GLX_glXDestroyWindow(glXDestroyWindow);
 extern FPL__FUNC_GLX_glXDestroyContext(glXDestroyContext);
 extern FPL__FUNC_GLX_glXGetFBConfigAttrib(glXGetFBConfigAttrib);
 extern FPL__FUNC_GLX_glXGetFBConfigs(glXGetFBConfigs);
@@ -35963,6 +37450,7 @@ typedef struct fpl__X11VideoOpenGLApi {
 	fpl__func_glx_glXGetVisualFromFBConfig *glXGetVisualFromFBConfig;
 	fpl__func_glx_glXGetFBConfigAttrib *glXGetFBConfigAttrib;
 	fpl__func_glx_glXCreateWindow *glXCreateWindow;
+	fpl__func_glx_glXDestroyWindow *glXDestroyWindow;
 	fpl__func_glx_glXQueryExtension *glXQueryExtension;
 	fpl__func_glx_glXQueryExtensionsString *glXQueryExtensionsString;
 	fpl__func_glx_glXCreateContextAttribsARB *glXCreateContextAttribsARB;
@@ -36010,6 +37498,7 @@ fpl_internal bool fpl__LoadX11OpenGLApi(fpl__X11VideoOpenGLApi *api, const char 
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetVisualFromFBConfig, glXGetVisualFromFBConfig);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXGetFBConfigAttrib, glXGetFBConfigAttrib);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXCreateWindow, glXCreateWindow);
+			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXDestroyWindow, glXDestroyWindow);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtension, glXQueryExtension);
 			FPL__POSIX_GET_FUNCTION_ADDRESS(FPL__MODULE_GLX, libHandle, libName, api, fpl__func_glx_glXQueryExtensionsString, glXQueryExtensionsString);
 			api->libHandle = libHandle;
@@ -36046,6 +37535,14 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_X11OpenGL_P
 	fpl__X11WindowState *nativeWindowState = &windowState->x11;
 	fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
 	fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+
+	// An additional window takes the visual of the main window, so the rendering context of the main window draws into it too
+	if (!windowState->handle->isMain) {
+		const fpl__X11WindowState *mainWindowState = &appState->window.x11;
+		nativeWindowState->core.visual = mainWindowState->core.visual;
+		nativeWindowState->colorDepth = mainWindowState->colorDepth;
+		return(true);
+	}
 
 	fpl__X11_Display *display = nativeWindowState->display;
 	fpl__X11_Window window = nativeWindowState->core.window;
@@ -36250,6 +37747,15 @@ fpl_internal void fpl__X11SetGLXSwapInterval(fpl__X11VideoOpenGLApi *glApi, fpl_
 	FPL_LOG_WARN(FPL__MODULE_GLX, "No swap control extension on display '%p' and screen '%d', the swap interval stays at the default of the driver", display, screen);
 }
 
+fpl_internal void fpl__X11DestroyGLXWindow(const fpl__X11VideoOpenGLApi *glApi, const fpl__PlatformWindowState *windowState) {
+	fplWindowHandle *handle = windowState->handle;
+	if (handle->glxWindow != 0) {
+		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy GLX window '%d' on display '%p'", (int)handle->glxWindow, windowState->x11.display);
+		glApi->glXDestroyWindow(windowState->x11.display, (GLXWindow)handle->glxWindow);
+		handle->glxWindow = 0;
+	}
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdown) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
 	const fpl__X11Api *x11Api = &nativeAppState->api;
@@ -36269,6 +37775,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_X11OpenGL_Shutdo
 		glApi->glXDestroyContext(nativeWindowState->display, nativeBackend->context);
 		nativeBackend->context = fpl_null;
 	}
+
+	fpl__X11DestroyGLXWindow(glApi, windowState);
 
 	if (nativeBackend->visualInfo != fpl_null) {
 		FPL_LOG_DEBUG(FPL__MODULE_GLX, "Destroy visual info '%p' (Fallback)", nativeBackend->visualInfo);
@@ -36309,6 +37817,45 @@ fpl_internal GLXContext fpl__X11CreateModernGLXContext(const fpl__X11Api *x11Api
 	return(result);
 }
 
+// Mesa releases the drawable of a plain X window together with its back buffer as soon as another window is current, a window drawn but not yet swapped loses its image then. A GLXWindow stays until it is destroyed.
+fpl_internal void fpl__X11CreateGLXWindow(const fpl__X11Api *x11Api, const fpl__X11VideoOpenGLApi *glApi, GLXFBConfig fbConfig, const fpl__PlatformWindowState *windowState) {
+	fplWindowHandle *handle = windowState->handle;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	handle->glxWindow = 0;
+	if (fbConfig == fpl_null) {
+		return;
+	}
+	// The same error handler as the context creation, a window the driver rejects keeps drawing into the plain X window
+	fpl__global__GLXContextCreationHadError = false;
+	fpl__X11_XErrorHandler previousErrorHandler = fpl_null;
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		previousErrorHandler = x11Api->XSetErrorHandler(fpl__GLXContextCreationErrorHandler);
+	}
+	GLXWindow glxWindow = glApi->glXCreateWindow(display, fbConfig, window, fpl_null);
+	x11Api->XSync(display, FPL__X11_False);
+	if (x11Api->XSetErrorHandler != fpl_null) {
+		x11Api->XSetErrorHandler(previousErrorHandler);
+	}
+	if (fpl__global__GLXContextCreationHadError || glxWindow == 0) {
+		if (glxWindow != 0) {
+			glApi->glXDestroyWindow(display, glxWindow);
+		}
+		FPL__WARNING(FPL__MODULE_GLX, "Failed creating a GLX window for window '%d' on display '%p', OpenGL draws into the X window", (int)window, display);
+		return;
+	}
+	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Created GLX window '%d' for window '%d' on display '%p'", (int)glxWindow, (int)window, display);
+	handle->glxWindow = (fpl__X11_XID)glxWindow;
+}
+
+// The drawable OpenGL draws into: the GLXWindow of the window, or the plain X window when there is none
+fpl_internal GLXDrawable fpl__X11GetGLXDrawable(const fpl__PlatformWindowState *windowState) {
+	const fplWindowHandle *handle = windowState->handle;
+	GLXDrawable result = (handle->glxWindow != 0) ? (GLXDrawable)handle->glxWindow : (GLXDrawable)windowState->x11.core.window;
+	return(result);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Initialize) {
 	const fpl__X11SubplatformState *nativeAppState = &appState->x11;
 	const fpl__X11Api *x11Api = &nativeAppState->api;
@@ -36319,6 +37866,10 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 
 	fpl__X11_Display *display = nativeWindowState->display;
 	fpl__X11_Window window = nativeWindowState->core.window;
+
+	// The window was created with the visual of the frame buffer config, so it can have a GLXWindow before the first context is made current on it
+	fpl__X11CreateGLXWindow(x11Api, glApi, nativeBackend->fbConfig, windowState);
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
 
 	// Declared before the first jump to the failure label, C++ forbids jumping over an initialization
 	const fplOpenGLSettings *glSettings = &videoSettings->graphics.opengl;
@@ -36354,7 +37905,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	// Activate legacy context
 	//
 	FPL_LOG_DEBUG(FPL__MODULE_GLX, "Activate GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
-	if (!glApi->glXMakeCurrent(display, window, legacyRenderingContext)) {
+	if (!glApi->glXMakeCurrent(display, drawable, legacyRenderingContext)) {
 		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX legacy rendering context '%p' on display '%p' and window '%d'", legacyRenderingContext, display, (int)window);
 		goto failed_x11_glx;
 	} else {
@@ -36404,7 +37955,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 				FPL__WARNING(FPL__MODULE_GLX, "Failed creating OpenGL %u.%u %s rendering context on display '%p'", version.majorVersion, version.minorVersion, profileName, display);
 				continue;
 			}
-			if (!glApi->glXMakeCurrent(display, window, modernRenderingContext)) {
+			if (!glApi->glXMakeCurrent(display, drawable, modernRenderingContext)) {
 				FPL__WARNING(FPL__MODULE_GLX, "Failed activating OpenGL %u.%u %s rendering context '%p' on display '%p' and window '%d'", version.majorVersion, version.minorVersion, profileName, modernRenderingContext, display, (int)window);
 				glApi->glXDestroyContext(display, modernRenderingContext);
 				continue;
@@ -36423,7 +37974,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 		legacyRenderingContext = fpl_null;
 	} else if (glSettings->compatibilityFlags == fplOpenGLCompatibilityFlags_Legacy) {
 		// Caller wants legacy context
-		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, drawable, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 	} else if (glSettings->isLegacyFallbackDisabled) {
 		FPL__ERROR(FPL__MODULE_GLX, "No modern OpenGL rendering context could be created on display '%p' and the legacy fallback is disabled", display);
@@ -36432,7 +37983,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 		FPL__ERROR(FPL__MODULE_GLX, "Warning: No modern OpenGL rendering context could be created on display '%p' -> Fallback to legacy context", display);
 
 		// Fallback to legacy rendering context
-		glApi->glXMakeCurrent(display, window, legacyRenderingContext);
+		glApi->glXMakeCurrent(display, drawable, legacyRenderingContext);
 		activeRenderingContext = legacyRenderingContext;
 		activeVersionIndex = FPL_OPENGL_VERSION_INDEX_LEGACY_FALLBACK;
 	}
@@ -36444,7 +37995,7 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_X11OpenGL_Init
 	nativeBackend->isActiveContext = true;
 
 	// Set vertical synchronisation if available
-	fpl__X11SetGLXSwapInterval(glApi, display, nativeWindowState->screen, (GLXDrawable)window, videoSettings->isVSync);
+	fpl__X11SetGLXSwapInterval(glApi, display, nativeWindowState->screen, drawable, videoSettings->isVSync);
 
 	backend->surface.window.x11.display = (fpl__X11_Display *)display;
 	backend->surface.window.x11.window = (fpl__X11_Window)window;
@@ -36497,10 +38048,70 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_X11OpenGL_Load) {
 }
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11OpenGL_Present) {
+	FPL__UNUSED(appState);
 	const fpl__VideoBackendX11OpenGL *nativeBackend = (fpl__VideoBackendX11OpenGL *)backend;
-	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11WindowState *x11WinState = &windowState->x11;
 	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
-	glApi->glXSwapBuffers(x11WinState->display, x11WinState->core.window);
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
+	glApi->glXSwapBuffers(x11WinState->display, drawable);
+}
+
+// Sets the swap interval of the current drawable again with the swap control fpl__X11SetGLXSwapInterval() picked, without logging
+fpl_internal void fpl__X11ReapplyGLXSwapInterval(const fpl__X11VideoOpenGLApi *glApi, fpl__X11_Display *display, GLXDrawable drawable, const int swapInterval) {
+	if (glApi->glXSwapIntervalEXT != fpl_null) {
+		glApi->glXSwapIntervalEXT(display, drawable, swapInterval);
+	} else if (glApi->glXSwapIntervalMESA != fpl_null) {
+		glApi->glXSwapIntervalMESA((unsigned int)swapInterval);
+	} else if (glApi->glXSwapIntervalSGI != fpl_null && swapInterval > 0) {
+		glApi->glXSwapIntervalSGI(swapInterval);
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_MAKECURRENT(fpl__VideoBackend_X11OpenGL_MakeCurrent) {
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	const fpl__X11VideoOpenGLApi *glApi = &nativeBackend->api;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	GLXDrawable drawable = fpl__X11GetGLXDrawable(windowState);
+	GLXContext context = nativeBackend->context;
+	if (!glApi->glXMakeCurrent(display, drawable, context)) {
+		FPL__ERROR(FPL__MODULE_GLX, "Failed activating GLX rendering context '%p' on display '%p' and window '%d'", (const void *)context, (const void *)display, (int)window);
+		return(false);
+	}
+	// Mesa releases the drawable of a plain X window that is no longer current and creates it anew with the default swap interval of the driver, so the interval of the window is set again (a GLXWindow keeps it, setting it again does no harm)
+	const bool isVSync = windowState->handle->isMain && appState->currentSettings.video.isVSync;
+	const int swapInterval = isVSync ? 1 : 0;
+	fpl__X11ReapplyGLXSwapInterval(glApi, display, drawable, swapInterval);
+	return(true);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow) {
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	const fpl__X11Api *x11Api = &appState->x11.api;
+
+	// Like the main window the window gets a GLXWindow before it is made current the first time
+	fpl__X11CreateGLXWindow(x11Api, &nativeBackend->api, nativeBackend->fbConfig, windowState);
+
+	// Making it current gives the window swap interval 0 with the swap control the main window picked: only the main window waits for the vertical blank, otherwise every additional window would divide the frame rate
+	if (!fpl__VideoBackend_X11OpenGL_MakeCurrent(appState, windowState, backend)) {
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.x11.display = nativeWindowState->display;
+	outSurface->window.x11.window = nativeWindowState->core.window;
+	outSurface->window.x11.visual = nativeWindowState->core.visual;
+	outSurface->window.x11.screen = nativeWindowState->screen;
+	return(true);
+}
+
+// The rendering went back to the main window before, so the GLXWindow is no longer current and goes right away
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_X11OpenGL_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__VideoBackendX11OpenGL *nativeBackend = (const fpl__VideoBackendX11OpenGL *)backend;
+	fpl__X11DestroyGLXWindow(&nativeBackend->api, windowState);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
@@ -36512,6 +38123,9 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11OpenGL_Construct(void) {
 	result.shutdownFunc = fpl__VideoBackend_X11OpenGL_Shutdown;
 	result.prepareWindowFunc = fpl__VideoBackend_X11OpenGL_PrepareWindow;
 	result.presentFunc = fpl__VideoBackend_X11OpenGL_Present;
+	result.makeCurrentFunc = fpl__VideoBackend_X11OpenGL_MakeCurrent;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_X11OpenGL_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_X11OpenGL_ReleaseAdditionalWindow;
 	return(result);
 }
 #endif // FPL__ENABLE_VIDEO_OPENGL && FPL_SUBPLATFORM_X11
@@ -36592,11 +38206,73 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_UNLOAD(fpl__VideoBackend_X11Software_Unload
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_X11Software_Present) {
 	const fpl__VideoBackendX11Software *nativeBackend = (fpl__VideoBackendX11Software *)backend;
-	const fpl__X11WindowState *x11WinState = &appState->window.x11;
+	const fpl__X11WindowState *x11WinState = &windowState->x11;
 	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fplWindowHandle *window = windowState->handle;
+	// The main window shows the back buffer of the video backend, an additional window its own
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, nativeBackend->graphicsContext, nativeBackend->buffer, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
+	fpl__X11_GC graphicsContext = nativeBackend->graphicsContext;
+	fpl__X11_XImage *image = nativeBackend->buffer;
+	if (!window->isMain) {
+		const fpl__VideoSoftwareWindow *softwareWindow = &window->videoSoftware;
+		backbuffer = &softwareWindow->backbuffer;
+		graphicsContext = softwareWindow->graphicsContext;
+		image = softwareWindow->image;
+	}
+	x11Api->XPutImage(x11WinState->display, x11WinState->core.window, graphicsContext, image, 0, 0, 0, 0, backbuffer->width, backbuffer->height);
 	x11Api->XSync(x11WinState->display, FPL__X11_False);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_X11Software_ReleaseAdditionalWindow) {
+	FPL__UNUSED(backend);
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	if (softwareWindow->image != fpl_null) {
+		// The pixels belong to the back buffer, XDestroyImage would release them too, XFree releases the image structure only
+		x11Api->XFree(softwareWindow->image);
+		softwareWindow->image = fpl_null;
+	}
+	if (softwareWindow->graphicsContext != fpl_null) {
+		x11Api->XFreeGC(nativeWindowState->display, softwareWindow->graphicsContext);
+		softwareWindow->graphicsContext = fpl_null;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_X11Software_SetupAdditionalWindow) {
+	const fpl__X11Api *x11Api = &appState->x11.api;
+	const fpl__X11WindowState *nativeWindowState = &windowState->x11;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	const fplVideoBackBuffer *backbuffer = &softwareWindow->backbuffer;
+	fpl__X11_Display *display = nativeWindowState->display;
+	fpl__X11_Window window = nativeWindowState->core.window;
+	fpl__X11_Visual *visual = nativeWindowState->core.visual;
+
+	const unsigned long noValueMask = 0;
+	softwareWindow->graphicsContext = x11Api->XCreateGC(display, window, noValueMask, fpl_null);
+	if (softwareWindow->graphicsContext == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed creating the graphics context of the X11 window '%d'", (int)window);
+		return(false);
+	}
+
+	// Same image layout as the main window: 24 bit depth in 32 bit pixels
+	const unsigned int imageDepth = 24;
+	const int imageOffset = 0;
+	const int imageBitmapPad = 32;
+	int bytesPerLine = (int)backbuffer->lineWidth;
+	softwareWindow->image = x11Api->XCreateImage(display, visual, imageDepth, FPL__X11_ZPixmap, imageOffset, (char *)backbuffer->pixels, backbuffer->width, backbuffer->height, imageBitmapPad, bytesPerLine);
+	if (softwareWindow->image == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed creating the image of %u x %u pixels for the X11 window '%d'", backbuffer->width, backbuffer->height, (int)window);
+		fpl__VideoBackend_X11Software_ReleaseAdditionalWindow(appState, windowState, backend);
+		return(false);
+	}
+
+	*outSurface = backend->surface;
+	outSurface->window.x11.display = display;
+	outSurface->window.x11.window = window;
+	outSurface->window.x11.visual = visual;
+	outSurface->window.x11.screen = nativeWindowState->screen;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct(void) {
@@ -36606,6 +38282,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_X11Software_Construct(void) {
 	result.initializeFunc = fpl__VideoBackend_X11Software_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_X11Software_Shutdown;
 	result.presentFunc = fpl__VideoBackend_X11Software_Present;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_X11Software_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_X11Software_ReleaseAdditionalWindow;
 	result.recreateOnResize = true;
 	return(result);
 }
@@ -36628,10 +38306,8 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Win32Software_Sh
 	fplClearStruct(bitmapInfo);
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_Initialize) {
-	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
-	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
-	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+// Describes the back buffer as a top-down bitmap with 32 bits per pixel
+fpl_internal void fpl__Win32SetupSoftwareBitmapInfo(const fplVideoBackBuffer *backbuffer, BITMAPINFO *bitmapInfo) {
 	fplClearStruct(bitmapInfo);
 	bitmapInfo->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 	bitmapInfo->bmiHeader.biWidth = (LONG)backbuffer->width;
@@ -36641,6 +38317,13 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_
 	bitmapInfo->bmiHeader.biCompression = BI_RGB;
 	bitmapInfo->bmiHeader.biPlanes = 1;
 	bitmapInfo->bmiHeader.biSizeImage = (DWORD)(backbuffer->height * backbuffer->lineWidth);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Win32Software_Initialize) {
+	fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	fpl__Win32SetupSoftwareBitmapInfo(backbuffer, bitmapInfo);
 	return true;
 }
 
@@ -36658,12 +38341,20 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_LOAD(fpl__VideoBackend_Win32Software_Load) 
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Present) {
 	const fpl__Win32AppState *win32AppState = &appState->win32;
-	const fpl__Win32WindowState *win32WindowState = &appState->window.win32;
+	const fpl__Win32WindowState *win32WindowState = &windowState->win32;
 	const fpl__Win32Api *wapi = &win32AppState->winApi;
 	const fpl__VideoBackendWin32Software *nativeBackend = (fpl__VideoBackendWin32Software *)backend;
+	fplWindowHandle *window = windowState->handle;
+	// The main window shows the back buffer of the video backend, an additional window its own
 	const fplVideoBackBuffer *backbuffer = &data->backbuffer;
+	const BITMAPINFO *bitmapInfo = &nativeBackend->bitmapInfo;
+	if (!window->isMain) {
+		const fpl__VideoSoftwareWindow *softwareWindow = &window->videoSoftware;
+		backbuffer = &softwareWindow->backbuffer;
+		bitmapInfo = &softwareWindow->bitmapInfo;
+	}
 	fplWindowSize area;
-	if (fplGetWindowSize(&area)) {
+	if (fplWindowGetSizeMulti(window, &area)) {
 		int32_t targetX = 0;
 		int32_t targetY = 0;
 		int32_t targetWidth = area.width;
@@ -36677,8 +38368,27 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_PRESENT(fpl__VideoBackend_Win32Software_Pre
 			targetHeight = backbuffer->outputRect.height;
 			wapi->gdi.StretchDIBits(win32WindowState->deviceContext, 0, 0, area.width, area.height, 0, 0, 0, 0, fpl_null, fpl_null, DIB_RGB_COLORS, BLACKNESS);
 		}
-		wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, &nativeBackend->bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+		wapi->gdi.StretchDIBits(win32WindowState->deviceContext, targetX, targetY, targetWidth, targetHeight, 0, 0, sourceWidth, sourceHeight, backbuffer->pixels, bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_Win32Software_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	FPL__UNUSED(backend);
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	BITMAPINFO *bitmapInfo = &softwareWindow->bitmapInfo;
+	fplClearStruct(bitmapInfo);
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Win32Software_SetupAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__Win32WindowState *nativeWindowState = &windowState->win32;
+	fpl__VideoSoftwareWindow *softwareWindow = &windowState->handle->videoSoftware;
+	fpl__Win32SetupSoftwareBitmapInfo(&softwareWindow->backbuffer, &softwareWindow->bitmapInfo);
+	*outSurface = backend->surface;
+	outSurface->window.win32.deviceContext = nativeWindowState->deviceContext;
+	outSurface->window.win32.windowHandle = nativeWindowState->windowHandle;
+	return(true);
 }
 
 fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
@@ -36688,6 +38398,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Win32Software_Construct(void) {
 	result.initializeFunc = fpl__VideoBackend_Win32Software_Initialize;
 	result.shutdownFunc = fpl__VideoBackend_Win32Software_Shutdown;
 	result.presentFunc = fpl__VideoBackend_Win32Software_Present;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Win32Software_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_Win32Software_ReleaseAdditionalWindow;
 	result.recreateOnResize = true;
 	return(result);
 }
@@ -37302,6 +39014,10 @@ fpl_internal bool fpl__VulkanCreateDebugMessenger(const fplVulkanSettings *setti
 
 fpl_internal FPL__FUNC_VIDEO_BACKEND_PREPAREWINDOW(fpl__VideoBackend_Vulkan_PrepareWindow) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	// An additional window uses the instance of the main window, it only gets its own surface
+	if (!windowState->handle->isMain) {
+		return(true);
+	}
 	if (videoSettings->graphics.vulkan.instanceHandle == fpl_null) {
 
 		const fpl__VulkanApi *api = &nativeBackend->api;
@@ -37437,26 +39153,27 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_FINALIZEWINDOW(fpl__VideoBackend_Vulkan_Fin
 	return(true);
 }
 
+fpl_internal void fpl__VulkanDestroySurface(fpl__VideoBackendVulkan *nativeBackend, const fpl__VkSurfaceKHR surfaceHandle) {
+	const fpl__VulkanApi *api = &nativeBackend->api;
+	fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
+	fplAssert(destroyProc != fpl_null);
+
+	void *surfaceAddress = (void *)(uintptr_t)surfaceHandle;
+	FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", surfaceAddress);
+	destroyProc(nativeBackend->instanceHandle, surfaceHandle, nativeBackend->allocator);
+}
+
 fpl_internal FPL__FUNC_VIDEO_BACKEND_SHUTDOWN(fpl__VideoBackend_Vulkan_Shutdown) {
 	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
 
-	const fpl__VulkanApi *api = &nativeBackend->api;
-
 	if (nativeBackend->surfaceHandle != FPL__VK_NULL_HANDLE) {
-		fpl__func_vkDestroySurfaceKHR destroyProc = (fpl__func_vkDestroySurfaceKHR)api->vkGetInstanceProcAddr(nativeBackend->instanceHandle, "vkDestroySurfaceKHR");
-		fplAssert(destroyProc != fpl_null);
-
-		void *surfaceAddress = (void *)(uintptr_t)nativeBackend->surfaceHandle;
-		FPL_LOG_INFO(FPL__MODULE_VIDEO_VULKAN, "Destroy Vulkan Surface '%p'", surfaceAddress);
-		destroyProc(nativeBackend->instanceHandle, nativeBackend->surfaceHandle, nativeBackend->allocator);
-
+		fpl__VulkanDestroySurface(nativeBackend, nativeBackend->surfaceHandle);
 		nativeBackend->surfaceHandle = FPL__VK_NULL_HANDLE;
 	}
 }
 
-fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
-	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
-
+// Creates a surface for the window with the instance of the backend
+fpl_internal bool fpl__VulkanCreateSurface(const fpl__VideoBackendVulkan *nativeBackend, const fpl__PlatformWindowState *windowState, fpl__VkSurfaceKHR *outSurfaceHandle) {
 	const fpl__VulkanApi *api = &nativeBackend->api;
 
 	if (nativeBackend->instanceHandle == FPL__VK_NULL_HANDLE) {
@@ -37510,21 +39227,73 @@ fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initial
 #endif
 
 	fplAssert(surfaceHandle != FPL__VK_NULL_HANDLE);
+	*outSurfaceHandle = surfaceHandle;
+	return(true);
+}
+
+// Fills the window fields of a video surface
+fpl_internal void fpl__VulkanFillSurfaceWindow(const fpl__PlatformWindowState *windowState, fplVideoSurface *surface) {
+#if defined(FPL_PLATFORM_WINDOWS)
+	surface->window.win32.windowHandle = windowState->win32.windowHandle;
+	surface->window.win32.deviceContext = windowState->win32.deviceContext;
+#elif defined(FPL_SUBPLATFORM_X11)
+	surface->window.x11.display = (fpl__X11_Display *)windowState->x11.display;
+	surface->window.x11.window = windowState->x11.core.window;
+	surface->window.x11.screen = windowState->x11.screen;
+	surface->window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
+#else
+	FPL__UNUSED(windowState);
+	FPL__UNUSED(surface);
+#endif
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_INITIALIZE(fpl__VideoBackend_Vulkan_Initialize) {
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+	if (!fpl__VulkanCreateSurface(nativeBackend, windowState, &surfaceHandle)) {
+		return(false);
+	}
 	nativeBackend->surfaceHandle = surfaceHandle;
 
 	backend->surface.vulkan.instance = nativeBackend->instanceHandle;
 	backend->surface.vulkan.surfaceKHR = (uint64_t)nativeBackend->surfaceHandle;
+	fpl__VulkanFillSurfaceWindow(windowState, &backend->surface);
 
-#if defined(FPL_PLATFORM_WINDOWS)
-	backend->surface.window.win32.windowHandle = windowState->win32.windowHandle;
-	backend->surface.window.win32.deviceContext = windowState->win32.deviceContext;
-#elif defined(FPL_SUBPLATFORM_X11)
-	backend->surface.window.x11.display = (fpl__X11_Display *)windowState->x11.display;
-	backend->surface.window.x11.window = windowState->x11.core.window;
-	backend->surface.window.x11.screen = windowState->x11.screen;
-	backend->surface.window.x11.visual = (fpl__X11_Visual *)windowState->x11.core.visual;
+	return(true);
+}
+
+// The surface of an additional window is kept as the 64-bit value of its video surface, the handle is a pointer on 64-bit platforms only
+fpl_internal fpl__VkSurfaceKHR fpl__VulkanSurfaceFromValue(const uint64_t value) {
+#if defined(FPL_CPU_64BIT)
+	fpl__VkSurfaceKHR result = (fpl__VkSurfaceKHR)(uintptr_t)value;
+#else
+	fpl__VkSurfaceKHR result = (fpl__VkSurfaceKHR)value;
 #endif
+	return(result);
+}
 
+fpl_internal FPL__FUNC_VIDEO_BACKEND_RELEASEADDITIONALWINDOW(fpl__VideoBackend_Vulkan_ReleaseAdditionalWindow) {
+	FPL__UNUSED(appState);
+	fpl__VideoBackendVulkan *nativeBackend = (fpl__VideoBackendVulkan *)backend;
+	fplVideoSurface *surface = &windowState->handle->videoSurface;
+	if (surface->vulkan.surfaceKHR != 0) {
+		fpl__VkSurfaceKHR surfaceHandle = fpl__VulkanSurfaceFromValue(surface->vulkan.surfaceKHR);
+		fpl__VulkanDestroySurface(nativeBackend, surfaceHandle);
+		surface->vulkan.surfaceKHR = 0;
+	}
+}
+
+fpl_internal FPL__FUNC_VIDEO_BACKEND_SETUPADDITIONALWINDOW(fpl__VideoBackend_Vulkan_SetupAdditionalWindow) {
+	FPL__UNUSED(appState);
+	const fpl__VideoBackendVulkan *nativeBackend = (const fpl__VideoBackendVulkan *)backend;
+	fpl__VkSurfaceKHR surfaceHandle = FPL__VK_NULL_HANDLE;
+	if (!fpl__VulkanCreateSurface(nativeBackend, windowState, &surfaceHandle)) {
+		return(false);
+	}
+	*outSurface = backend->surface;
+	outSurface->vulkan.surfaceKHR = (uint64_t)surfaceHandle;
+	fpl__VulkanFillSurfaceWindow(windowState, outSurface);
 	return(true);
 }
 
@@ -37587,6 +39356,8 @@ fpl_internal fpl__VideoContext fpl__VideoBackend_Vulkan_Construct(void) {
 	result.destroyedWindowFunc = fpl__VideoBackend_Vulkan_DestroyedWindow;
 	result.presentFunc = fpl__VideoBackend_Vulkan_Present;
 	result.getRequirementsFunc = fpl__VideoBackend_Vulkan_GetRequirements;
+	result.setupAdditionalWindowFunc = fpl__VideoBackend_Vulkan_SetupAdditionalWindow;
+	result.releaseAdditionalWindowFunc = fpl__VideoBackend_Vulkan_ReleaseAdditionalWindow;
 	return(result);
 }
 
@@ -45412,6 +47183,8 @@ typedef struct fpl__VideoState {
 	fpl__VideoData data;
 	fplVideoBackendType backendType;
 	fpl__ActiveVideoBackend activeBackend;
+	// The window fplVideoMakeCurrentMulti() made current, null for the main window
+	fplWindowHandle *currentWindow;
 } fpl__VideoState;
 
 fpl_internal fpl__VideoState *fpl__GetVideoState(fpl__PlatformAppState *appState) {
@@ -45443,6 +47216,42 @@ fpl_internal bool fpl__LoadVideoBackend(fpl__PlatformAppState *appState, fpl__Vi
 	return(result);
 }
 
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+fpl_internal void fpl__ReleaseVideoBackBuffer(fplVideoBackBuffer *backbuffer) {
+	if (backbuffer->pixels != fpl_null) {
+		fpl__ReleaseDynamicMemory(backbuffer->pixels);
+	}
+	fplClearStruct(backbuffer);
+}
+
+// Allocates the pixels of the back buffer and fills them with the background color of the window, black when the background is zero
+fpl_internal bool fpl__AllocateVideoBackBuffer(fplVideoBackBuffer *backbuffer, const uint32_t width, const uint32_t height, const fplColor32 background) {
+	const size_t pixelAlignment = 4;
+	const uint32_t defaultColor = 0xFF000000;
+	backbuffer->width = width;
+	backbuffer->height = height;
+	backbuffer->pixelStride = sizeof(uint32_t);
+	backbuffer->lineWidth = backbuffer->width * backbuffer->pixelStride;
+	size_t size = backbuffer->lineWidth * backbuffer->height;
+	backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, pixelAlignment);
+	if (backbuffer->pixels == fpl_null) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %zu bytes", size);
+		return false;
+	}
+
+	// Clear to black by default
+	// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
+	uint32_t *p = backbuffer->pixels;
+	uint32_t color = background.value == 0 ? defaultColor : background.value;
+	for (uint32_t y = 0; y < backbuffer->height; ++y) {
+		for (uint32_t x = 0; x < backbuffer->width; ++x) {
+			*p++ = color;
+		}
+	}
+	return true;
+}
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
+
 fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl__VideoState *videoState) {
 	fplAssert(appState != fpl_null);
 	if (videoState != fpl_null) {
@@ -45451,11 +47260,7 @@ fpl_internal void fpl__ShutdownVideoBackend(fpl__PlatformAppState *appState, fpl
 		ctx->shutdownFunc(appState, &appState->window, &videoState->activeBackend.base);
 
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
-		if (backbuffer->pixels != fpl_null) {
-			fpl__ReleaseDynamicMemory(backbuffer->pixels);
-		}
-		fplClearStruct(backbuffer);
+		fpl__ReleaseVideoBackBuffer(&videoState->data.backbuffer);
 #	endif
 	}
 }
@@ -45471,26 +47276,9 @@ fpl_internal bool fpl__InitializeVideoBackend(const fplVideoBackendType backendT
 #	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
 	if (backendType == fplVideoBackendType_Software) {
 		fplVideoBackBuffer *backbuffer = &videoState->data.backbuffer;
-		backbuffer->width = windowWidth;
-		backbuffer->height = windowHeight;
-		backbuffer->pixelStride = sizeof(uint32_t);
-		backbuffer->lineWidth = backbuffer->width * backbuffer->pixelStride;
-		size_t size = backbuffer->lineWidth * backbuffer->height;
-		backbuffer->pixels = (uint32_t *)fpl__AllocateDynamicMemory(size, 4);
-		if (backbuffer->pixels == fpl_null) {
-			FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "Failed allocating video software backbuffer of size %xu bytes", size);
+		if (!fpl__AllocateVideoBackBuffer(backbuffer, windowWidth, windowHeight, appState->initSettings.window.background)) {
 			fpl__ShutdownVideoBackend(appState, videoState);
 			return false;
-		}
-
-		// Clear to black by default
-		// @NOTE(final): Bitmap is top-down, 0xAABBGGRR
-		uint32_t *p = backbuffer->pixels;
-		uint32_t color = appState->initSettings.window.background.value == 0 ? 0xFF000000 : appState->initSettings.window.background.value;
-		for (uint32_t y = 0; y < backbuffer->height; ++y) {
-			for (uint32_t x = 0; x < backbuffer->width; ++x) {
-				*p++ = color;
-			}
 		}
 	}
 #	endif // FPL__ENABLE_VIDEO_SOFTWARE
@@ -45545,6 +47333,134 @@ fpl_internal fpl__VideoContext fpl__ConstructVideoContext(const fplVideoBackendT
 		} break;
 	}
 }
+
+// Whether the video backend draws into the window: into the main window always, into an additional window only when the backend supports additional windows
+fpl_internal bool fpl__CheckVideoWindow(const fpl__VideoState *videoState, const fplWindowHandle *window) {
+	if (window->isMain || window->hasVideo) {
+		return(true);
+	}
+	const char *backendName = fplGetVideoBackendName(videoState->backendType);
+	FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' does not draw into the additional window '%p'", backendName, (const void *)window);
+	return(false);
+}
+
+// The window the rendering goes into, the main window unless fplVideoMakeCurrentMulti() picked another one
+fpl_internal fplWindowHandle *fpl__GetCurrentVideoWindow(fpl__PlatformAppState *appState, const fpl__VideoState *videoState) {
+	fplWindowHandle *result = videoState->currentWindow != fpl_null ? videoState->currentWindow : &appState->mainWindow;
+	return(result);
+}
+
+#if defined(FPL__HAS_WINDOW_PLATFORM)
+fpl_internal bool fpl__SetupAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(true);
+	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	// A backend that draws into the main window only leaves the window without video
+	if (ctx->setupAdditionalWindowFunc == fpl_null) {
+		return(true);
+	}
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	// The software backend draws the own back buffer of the window, it starts in the size of the window
+	fplVideoBackBuffer *backbuffer = &window->videoSoftware.backbuffer;
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		const uint32_t minimumBackBufferSize = 1;
+		fplWindowSize windowSize = fplZeroInit;
+		fplWindowGetSizeMulti(window, &windowSize);
+		uint32_t width = fplMax(windowSize.width, minimumBackBufferSize);
+		uint32_t height = fplMax(windowSize.height, minimumBackBufferSize);
+		if (!fpl__AllocateVideoBackBuffer(backbuffer, width, height, window->settings->background)) {
+			return(false);
+		}
+	}
+#	endif
+	bool result = ctx->setupAdditionalWindowFunc(appState, window->state, backend, &window->videoSurface);
+	// The setup may have switched the rendering to the new window, it goes back to the window the app picked
+	if (ctx->makeCurrentFunc != fpl_null) {
+		fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
+		ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	}
+	if (!result) {
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+		fpl__ReleaseVideoBackBuffer(backbuffer);
+#	endif
+		const char *backendName = fplGetVideoBackendName(videoState->backendType);
+		FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' failed drawing into the additional window '%p'", backendName, (const void *)window);
+		return(false);
+	}
+	window->hasVideo = true;
+	return(true);
+}
+
+fpl_internal void fpl__ReleaseAdditionalWindowVideo(fpl__PlatformAppState *appState, fplWindowHandle *window) {
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || !window->hasVideo) {
+		return;
+	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	// The rendering must not stay with a destroyed window, it goes back to the main window
+	if (videoState->currentWindow == window) {
+		if (ctx->makeCurrentFunc != fpl_null) {
+			fplWindowHandle *mainWindow = &appState->mainWindow;
+			ctx->makeCurrentFunc(appState, mainWindow->state, backend);
+		}
+		videoState->currentWindow = fpl_null;
+	}
+	if (ctx->releaseAdditionalWindowFunc != fpl_null) {
+		ctx->releaseAdditionalWindowFunc(appState, window->state, backend);
+	}
+#	if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	fpl__ReleaseVideoBackBuffer(&window->videoSoftware.backbuffer);
+#	endif
+	window->hasVideo = false;
+}
+#endif // FPL__HAS_WINDOW_PLATFORM
+
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+// Builds the back buffer of an additional window anew, filled with the background color of the window. The old back buffer stays when the new one cannot be allocated.
+fpl_internal bool fpl__ResizeAdditionalWindowBackBuffer(fpl__PlatformAppState *appState, fpl__VideoState *videoState, fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	fplVideoBackBuffer *backbuffer = &window->videoSoftware.backbuffer;
+	if (width == 0 || height == 0) {
+		FPL__ERROR(FPL__MODULE_VIDEO_SOFTWARE, "The back buffer size %u x %u of the additional window '%p' is empty", width, height, (const void *)window);
+		return(false);
+	}
+	// Moving or restacking a window reports the same size again, the back buffer keeps its content then
+	if (backbuffer->width == width && backbuffer->height == height) {
+		return(true);
+	}
+	fplVideoBackBuffer resizedBackBuffer = fplZeroInit;
+	if (!fpl__AllocateVideoBackBuffer(&resizedBackBuffer, width, height, window->settings->background)) {
+		return(false);
+	}
+	// The output rectangle belongs to the app, it survives the resize
+	resizedBackBuffer.outputRect = backbuffer->outputRect;
+	resizedBackBuffer.useOutputRect = backbuffer->useOutputRect;
+
+	const fpl__VideoContext *ctx = &videoState->context;
+	fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	if (ctx->releaseAdditionalWindowFunc != fpl_null) {
+		ctx->releaseAdditionalWindowFunc(appState, window->state, backend);
+	}
+	fpl__ReleaseVideoBackBuffer(backbuffer);
+	*backbuffer = resizedBackBuffer;
+	bool isReady = ctx->setupAdditionalWindowFunc(appState, window->state, backend, &window->videoSurface);
+	if (!isReady) {
+		// Without its output the window gets no video anymore, the flip fails instead of drawing a released image
+		fpl__ReleaseVideoBackBuffer(backbuffer);
+		window->hasVideo = false;
+		if (videoState->currentWindow == window) {
+			videoState->currentWindow = fpl_null;
+		}
+		const char *backendName = fplGetVideoBackendName(videoState->backendType);
+		FPL__ERROR(FPL__MODULE_VIDEO, "The video backend '%s' failed resizing the back buffer of the additional window '%p'", backendName, (const void *)window);
+		return(false);
+	}
+	return(true);
+}
+#endif // FPL__ENABLE_VIDEO_SOFTWARE
 #endif // FPL__ENABLE_VIDEO
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -45563,11 +47479,15 @@ fpl_internal FPL__FUNC_PREPARE_VIDEO_WINDOW(fpl__PrepareVideoWindowDefault) {
 #	if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		if (videoState->context.prepareWindowFunc != fpl_null) {
-			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+		// An additional window gets video only from a backend that draws into additional windows
+		bool isVideoWindow = window->isMain || videoState->context.setupAdditionalWindowFunc != fpl_null;
+		if (isVideoWindow && videoState->context.prepareWindowFunc != fpl_null) {
+			bool result = videoState->context.prepareWindowFunc(appState, &initSettings->video, window->state, &videoState->activeBackend.base);
 			return(result);
 		}
 	}
+#	else
+	FPL__UNUSED(window);
 #	endif // FPL__ENABLE_VIDEO
 
 	return(true);
@@ -45579,11 +47499,14 @@ fpl_internal FPL__FUNC_FINALIZE_VIDEO_WINDOW(fpl__FinalizeVideoWindowDefault) {
 #if defined(FPL__ENABLE_VIDEO)
 	if (fplIsMaskSet(initFlags, fplInitFlags_Video)) {
 		fpl__VideoState *videoState = fpl__GetVideoState(appState);
-		if (videoState->context.finalizeWindowFunc != fpl_null) {
-			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, &appState->window, &videoState->activeBackend.base);
+		bool isVideoWindow = window->isMain || videoState->context.setupAdditionalWindowFunc != fpl_null;
+		if (isVideoWindow && videoState->context.finalizeWindowFunc != fpl_null) {
+			bool result = videoState->context.finalizeWindowFunc(appState, &initSettings->video, window->state, &videoState->activeBackend.base);
 			return(result);
 		}
 	}
+#else
+	FPL__UNUSED(window);
 #endif // FPL__ENABLE_VIDEO
 
 	return true;
@@ -45599,16 +47522,27 @@ fpl_internal void fpl__ReleaseWindow(const fpl__PlatformInitState *initState, fp
 #	elif defined(FPL_SUBPLATFORM_X11)
 		fpl__X11ReleaseWindow(&appState->x11, &appState->window.x11);
 #	endif
+		appState->firstWindow = fpl_null;
+		appState->window.handle = fpl_null;
+		fplClearStruct(&appState->mainWindow);
 	}
 }
 
 fpl_internal bool fpl__InitWindow(const fplSettings *initSettings, fplWindowSettings *currentWindowSettings, fpl__PlatformAppState *appState, const fpl__SetupWindowCallbacks *setupCallbacks) {
 	bool result = false;
 	if (appState != fpl_null) {
+		// The main window is in the window list before it is created, the platform uses the window functions to apply its start state
+		fplWindowHandle *mainWindow = &appState->mainWindow;
+		fplClearStruct(mainWindow);
+		mainWindow->state = &appState->window;
+		mainWindow->settings = currentWindowSettings;
+		mainWindow->isMain = true;
+		appState->window.handle = mainWindow;
+		appState->firstWindow = mainWindow;
 #	if defined(FPL_PLATFORM_WINDOWS)
-		result = fpl__Win32InitWindow(initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
+		result = fpl__Win32InitWindow(mainWindow, initSettings, currentWindowSettings, appState, &appState->win32, &appState->window.win32, setupCallbacks);
 #	elif defined(FPL_SUBPLATFORM_X11)
-		result = fpl__X11InitWindow(initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
+		result = fpl__X11InitWindow(mainWindow, initSettings, currentWindowSettings, appState, &appState->x11, &appState->window.x11, setupCallbacks);
 #	endif
 	}
 	return (result);
@@ -46210,44 +48144,127 @@ fpl_common_api fplVideoBackendType fplGetVideoBackendType(void) {
 	return(fplVideoBackendType_None);
 }
 
-fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api fplVideoBackBuffer *fplVideoGetBackBufferMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	fplVideoBackBuffer *result = fpl_null;
-	if (videoState != fpl_null) {
-#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
-		if (appState->currentSettings.video.backend == fplVideoBackendType_Software) {
-			result = &videoState->data.backbuffer;
-		}
-#endif
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(fpl_null);
 	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(fpl_null);
+	}
+	fplVideoBackBuffer *result = fpl_null;
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		result = window->isMain ? &videoState->data.backbuffer : &window->videoSoftware.backbuffer;
+	}
+#endif
+	return(result);
+}
+
+fpl_common_api fplVideoBackBuffer *fplGetVideoBackBuffer(void) {
+	FPL__CheckPlatform(fpl_null);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	fplVideoBackBuffer *result = fpl_null;
+	if (mainWindow != fpl_null) {
+		result = fplVideoGetBackBufferMulti(mainWindow);
+	}
+	return(result);
+}
+
+fpl_common_api bool fplVideoResizeBackBufferMulti(fplWindowHandle *window, const uint32_t width, const uint32_t height) {
+	FPL__CheckWindowHandle(window, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None || !videoState->context.recreateOnResize) {
+		return(false);
+	}
+	// The main window builds the video backend anew, as it always did
+	if (window->isMain) {
+		fpl__ShutdownVideoBackend(appState, videoState);
+		bool result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
+		return(result);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	bool result = false;
+#if defined(FPL__ENABLE_VIDEO_SOFTWARE)
+	if (videoState->backendType == fplVideoBackendType_Software) {
+		result = fpl__ResizeAdditionalWindowBackBuffer(appState, videoState, window, width, height);
+	}
+#endif
 	return(result);
 }
 
 fpl_common_api bool fplResizeVideoBackBuffer(const uint32_t width, const uint32_t height) {
 	FPL__CheckPlatform(false);
-	fpl__PlatformAppState *appState = fpl__global__AppState;
-	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
 	bool result = false;
-	if (videoState != fpl_null) {
-		fplVideoBackendType backendType = videoState->backendType;
-		if (backendType != fplVideoBackendType_None && videoState->context.recreateOnResize) {
-			fpl__ShutdownVideoBackend(appState, videoState);
-			result = fpl__InitializeVideoBackend(videoState->backendType, &appState->currentSettings.video, width, height, appState, videoState);
-		}
+	if (mainWindow != fpl_null) {
+		result = fplVideoResizeBackBufferMulti(mainWindow, width, height);
 	}
 	return (result);
 }
 
-fpl_common_api void fplVideoFlip(void) {
-	FPL__CheckPlatformNoRet();
+fpl_common_api bool fplVideoFlipMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
-	if (videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
-		fplAssert(videoState->context.presentFunc != fpl_null);
-		videoState->context.presentFunc(appState, &appState->window, &videoState->data, &videoState->activeBackend.base);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(false);
 	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	const fpl__VideoContext *ctx = &videoState->context;
+	const fpl__VideoBackend *backend = &videoState->activeBackend.base;
+	// Mesa releases the drawable of a window that is no longer current, its swap would go to the X server and fail there. So the window is current for its swap.
+	fplWindowHandle *currentWindow = fpl__GetCurrentVideoWindow(appState, videoState);
+	bool isSwitchNeeded = ctx->makeCurrentFunc != fpl_null && window != currentWindow;
+	if (isSwitchNeeded) {
+		bool isCurrent = ctx->makeCurrentFunc(appState, window->state, backend);
+		if (!isCurrent) {
+			return(false);
+		}
+	}
+	fplAssert(ctx->presentFunc != fpl_null);
+	ctx->presentFunc(appState, window->state, &videoState->data, backend);
+	if (isSwitchNeeded) {
+		ctx->makeCurrentFunc(appState, currentWindow->state, backend);
+	}
+	return(true);
+}
+
+fpl_common_api void fplVideoFlip(void) {
+	FPL__CheckPlatformNoRet();
+	fplWindowHandle *mainWindow = fplWindowGetMain();
+	if (mainWindow != fpl_null) {
+		fplVideoFlipMulti(mainWindow);
+	}
+}
+
+fpl_common_api bool fplVideoMakeCurrentMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, false);
+	fpl__PlatformAppState *appState = fpl__global__AppState;
+	fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(false);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(false);
+	}
+	// A backend without a rendering context to switch draws into the main window only, there is nothing to switch
+	const fpl__VideoContext *ctx = &videoState->context;
+	bool result = true;
+	if (ctx->makeCurrentFunc != fpl_null) {
+		result = ctx->makeCurrentFunc(appState, window->state, &videoState->activeBackend.base);
+	}
+	if (result) {
+		videoState->currentWindow = window->isMain ? fpl_null : window;
+	}
+	return(result);
 }
 
 fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
@@ -46262,13 +48279,26 @@ fpl_common_api const void *fplGetVideoProcedure(const char *procName) {
 	return(result);
 }
 
-fpl_common_api const fplVideoSurface *fplGetVideoSurface(void) {
-	FPL__CheckPlatform(fpl_null);
+fpl_common_api const fplVideoSurface *fplVideoGetSurfaceMulti(fplWindowHandle *window) {
+	FPL__CheckWindowHandle(window, fpl_null);
 	fpl__PlatformAppState *appState = fpl__global__AppState;
 	const fpl__VideoState *videoState = fpl__GetVideoState(appState);
+	if (videoState == fpl_null || videoState->backendType == fplVideoBackendType_None) {
+		return(fpl_null);
+	}
+	if (!fpl__CheckVideoWindow(videoState, window)) {
+		return(fpl_null);
+	}
+	const fplVideoSurface *result = window->isMain ? &videoState->activeBackend.base.surface : &window->videoSurface;
+	return(result);
+}
+
+fpl_common_api const fplVideoSurface *fplGetVideoSurface(void) {
+	FPL__CheckPlatform(fpl_null);
+	fplWindowHandle *mainWindow = fplWindowGetMain();
 	const fplVideoSurface *result = fpl_null;
-	if (videoState != fpl_null && videoState->backendType != fplVideoBackendType_None) {
-		result = &videoState->activeBackend.base.surface;
+	if (mainWindow != fpl_null) {
+		result = fplVideoGetSurfaceMulti(mainWindow);
 	}
 	return(result);
 }
@@ -46561,6 +48591,14 @@ fpl_internal size_t fpl__WaitForRunningThreads(const uint32_t timeoutMillisecond
 
 fpl_internal void fpl__ReleasePlatformStates(fpl__PlatformInitState *initState, fpl__PlatformAppState *appState) {
 	fplAssert(initState != fpl_null);
+
+	// Release the additional windows first, they use the input system and the video context of the main window
+#	if defined(FPL__HAS_WINDOW_PLATFORM)
+	if (appState != fpl_null) {
+		FPL_LOG_DEBUG(FPL__MODULE_CORE, "Release additional windows");
+		fpl__ReleaseAdditionalWindows(appState);
+	}
+#	endif
 
 	// Release input (reverse-order init: input released before audio)
 #	if defined(FPL__ENABLE_INPUT)
