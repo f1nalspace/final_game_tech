@@ -400,6 +400,7 @@ SOFTWARE.
 	- Fixed: XDisplayKeycodes was declared with the wrong return type
 	- Fixed: fplPollEvent(), fplPollEvents(), fplQueryCursorPosition() and the display functions crashed without fplInitFlags_Window
 	- Fixed: fplClipboardGetText() failed or reserved too much memory when the owner announced a huge INCR size
+	- Fixed: A drag source that was gone or made up ended the process
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -32761,33 +32762,53 @@ fpl_internal bool fpl__InputBackendX11Kbm_HandleNativeEvent(fpl__InputBackendX11
 	quits in the middle of a transfer is an ordinary thing rather than a mistake - the property write then
 	fails with a bad window. Xlib answers a protocol error by killing the whole process, so those few calls
 	get an error handler of their own that remembers the error and drops it.
+	The same goes for the answers to a drag source (Xdnd), the check window of the window manager and the focus request of a window.
 */
 fpl_globalvar fpl__X11_XErrorHandler fpl__global__X11PreviousErrorHandler = fpl_null;
-fpl_globalvar bool fpl__global__X11ClipboardHadError = false;
+fpl_globalvar bool fpl__global__X11ForeignWindowHadError = false;
 
-fpl_internal int fpl__X11ClipboardErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
+fpl_internal int fpl__X11ForeignWindowErrorHandler(fpl__X11_Display *display, fpl__X11_XErrorEvent *errorEvent) {
 	FPL__UNUSED(display);
 	FPL__UNUSED(errorEvent);
-	fpl__global__X11ClipboardHadError = true;
+	fpl__global__X11ForeignWindowHadError = true;
 	return(0);
 }
 
-fpl_internal void fpl__X11BeginClipboardErrorGuard(const fpl__X11Api *x11Api) {
-	fpl__global__X11ClipboardHadError = false;
+fpl_internal void fpl__X11BeginForeignWindowGuard(const fpl__X11Api *x11Api) {
+	fpl__global__X11ForeignWindowHadError = false;
 	if (x11Api->XSetErrorHandler != fpl_null) {
-		fpl__global__X11PreviousErrorHandler = x11Api->XSetErrorHandler(fpl__X11ClipboardErrorHandler);
+		fpl__global__X11PreviousErrorHandler = x11Api->XSetErrorHandler(fpl__X11ForeignWindowErrorHandler);
 	}
 }
 
 //! Ends the guard and answers whether everything inside it went through. The sync is what makes that
 //! answer possible at all: a protocol error comes back on its own time, not with the call that caused it
-fpl_internal bool fpl__X11EndClipboardErrorGuard(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
+fpl_internal bool fpl__X11EndForeignWindowGuard(const fpl__X11Api *x11Api, fpl__X11_Display *display) {
 	x11Api->XSync(display, FPL__X11_False);
 	if (x11Api->XSetErrorHandler != fpl_null) {
 		x11Api->XSetErrorHandler(fpl__global__X11PreviousErrorHandler);
 	}
-	bool result = !fpl__global__X11ClipboardHadError;
+	bool result = !fpl__global__X11ForeignWindowHadError;
 	return(result);
+}
+
+// Forgets the drag that entered the window, its source is gone or never existed
+fpl_internal void fpl__X11ForgetXdnd(fpl__X11WindowState *windowState) {
+	windowState->xdnd.source = FPL__X11_None;
+	windowState->xdnd.format = FPL__X11_None;
+	windowState->xdnd.version = 0;
+}
+
+// Sends a Xdnd message to the drag source. The source may have quit in the meantime, or any client made up the message with a window that does not exist,
+// so a failure only forgets the drag instead of ending the process.
+fpl_internal void fpl__X11SendXdndMessage(const fpl__X11Api *x11Api, fpl__X11WindowState *windowState, fpl__X11_XEvent *message) {
+	fpl__X11BeginForeignWindowGuard(x11Api);
+	x11Api->XSendEvent(windowState->display, windowState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, message);
+	bool didSend = fpl__X11EndForeignWindowGuard(x11Api, windowState->display);
+	if (!didSend) {
+		FPL__WARNING(FPL__MODULE_X11, "The drag source window '%lu' is gone, the drag is dropped", (unsigned long)windowState->xdnd.source);
+		fpl__X11ForgetXdnd(windowState);
+	}
 }
 
 // Number of bytes one XChangeProperty may carry, anything larger has to be split into chunks (INCR protocol)
@@ -32853,9 +32874,9 @@ fpl_internal void fpl__X11SendNextClipboardChunk(const fpl__X11Api *x11Api, fpl_
 	size_t chunkSize = (remaining > maxChunkSize) ? maxChunkSize : remaining;
 	const unsigned char *chunk = (const unsigned char *)(send->text + send->sentLength);
 
-	fpl__X11BeginClipboardErrorGuard(x11Api);
+	fpl__X11BeginForeignWindowGuard(x11Api);
 	x11Api->XChangeProperty(display, send->requestor, send->property, send->target, 8, FPL__X11_PropModeReplace, chunk, (int)chunkSize);
-	bool didWrite = fpl__X11EndClipboardErrorGuard(x11Api, display);
+	bool didWrite = fpl__X11EndForeignWindowGuard(x11Api, display);
 	if (!didWrite) {
 		// The window on the other end is gone, so there is nobody left to send the rest to.
 		fpl__X11ReleaseClipboardSend(send);
@@ -32904,9 +32925,9 @@ fpl_internal bool fpl__X11IsWindowActivationSupported(const fpl__X11Api *x11Api,
 	if (checkWindow == FPL__X11_None) {
 		return(false);
 	}
-	fpl__X11BeginClipboardErrorGuard(x11Api);
+	fpl__X11BeginForeignWindowGuard(x11Api);
 	fpl__X11_Window checkWindowOfCheckWindow = fpl__X11GetWindowPropertyWindow(x11Api, display, checkWindow, netWM->netSupportingWMCheck);
-	bool isCheckWindowAlive = fpl__X11EndClipboardErrorGuard(x11Api, display);
+	bool isCheckWindowAlive = fpl__X11EndForeignWindowGuard(x11Api, display);
 	if (!isCheckWindowAlive || checkWindowOfCheckWindow != checkWindow) {
 		return(false);
 	}
@@ -32962,9 +32983,9 @@ fpl_internal void fpl__X11HandleStartFocus(const fpl__X11Api *x11Api, fpl__X11Wi
 		x11Api->XFlush(display);
 	} else {
 		// Without a window manager nobody gives a new window the focus. A window that goes away in between makes it fail, and Xlib would end the process on that error.
-		fpl__X11BeginClipboardErrorGuard(x11Api);
+		fpl__X11BeginForeignWindowGuard(x11Api);
 		x11Api->XSetInputFocus(display, window, FPL__X11_RevertToParent, FPL__X11_CurrentTime);
-		bool isFocusSet = fpl__X11EndClipboardErrorGuard(x11Api, display);
+		bool isFocusSet = fpl__X11EndForeignWindowGuard(x11Api, display);
 		if (!isFocusSet) {
 			FPL_LOG_VERBOSE(FPL__MODULE_X11, "Setting the input focus failed");
 		}
@@ -33131,7 +33152,17 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					return;
 				}
 				if (list) {
+					// The source may already be gone, or the message names a window that does not exist
+					fpl__X11BeginForeignWindowGuard(x11Api);
 					count = fpl__X11GetWindowProperty(x11Api, x11WinState->display, x11WinState->xdnd.source, x11WinState->xdnd.xdndTypeList, FPL__X11_XA_ATOM, (unsigned char **)&formats);
+					bool didRead = fpl__X11EndForeignWindowGuard(x11Api, x11WinState->display);
+					if (!didRead) {
+						if (formats != fpl_null) {
+							x11Api->XFree(formats);
+							formats = fpl_null;
+						}
+						count = 0;
+					}
 				} else {
 					count = 3;
 					formats = (fpl__X11_Atom *)ev->xclient.data.l + 2;
@@ -33149,6 +33180,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				// The drag operation has finished by dropping on the window
 				fpl__X11_Time time = FPL__X11_CurrentTime;
 				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
+					return;
+				}
+				// A drop without a drag that entered before has nobody to answer to
+				if (x11WinState->xdnd.source == FPL__X11_None) {
 					return;
 				}
 				if (x11WinState->xdnd.format) {
@@ -33169,8 +33204,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					reply.xclient.data.l[1] = 0; // The drag was rejected
 					reply.xclient.data.l[2] = FPL__X11_None;
 
-					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-					x11Api->XFlush(x11WinState->display);
+					fpl__X11SendXdndMessage(x11Api, x11WinState, &reply);
 				}
 			} else if (ev->xclient.message_type == x11WinState->xdnd.xdndPosition) {
 				// The drag operation has moved over the window
@@ -33179,6 +33213,10 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				const int xabs = (ev->xclient.data.l[2] >> 16) & 0xffff;
 				const int yabs = (ev->xclient.data.l[2]) & 0xffff;
 				if (x11WinState->xdnd.version > FPL__XDND_VERSION) {
+					return;
+				}
+				// A position without a drag that entered before has nobody to answer to
+				if (x11WinState->xdnd.source == FPL__X11_None) {
 					return;
 				}
 				fpl__X11_XEvent reply;
@@ -33198,8 +33236,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					if (x11WinState->xdnd.version >= 2)
 						reply.xclient.data.l[4] = x11WinState->xdnd.xdndActionCopy;
 				}
-				x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-				x11Api->XFlush(x11WinState->display);
+				fpl__X11SendXdndMessage(x11Api, x11WinState, &reply);
 			}
 		} break;
 
@@ -33220,7 +33257,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 		case FPL__X11_SelectionRequest:
 		{
 			// Everything in here writes into the window of the asking application, which may be gone by now.
-			fpl__X11BeginClipboardErrorGuard(x11Api);
+			fpl__X11BeginForeignWindowGuard(x11Api);
 
 			fpl__X11_XSelectionRequestEvent *req = &ev->xselectionrequest;
 			fpl__X11_XEvent reply = fplZeroInit;
@@ -33283,7 +33320,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 				}
 			}
 			x11Api->XSendEvent(x11WinState->display, req->requestor, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-			bool didAnswer = fpl__X11EndClipboardErrorGuard(x11Api, x11WinState->display);
+			bool didAnswer = fpl__X11EndForeignWindowGuard(x11Api, x11WinState->display);
 			if (!didAnswer) {
 				// The asking window died somewhere in the middle of all this, so a transfer that was just
 				// started for it has nowhere to go anymore.
@@ -33330,8 +33367,7 @@ fpl_internal void fpl__X11HandleEvent(const fpl__X11SubplatformState *subplatfor
 					reply.xclient.data.l[1] = isDropAccepted ? dropAcceptedFlag : 0;
 					reply.xclient.data.l[2] = isDropAccepted ? x11WinState->xdnd.xdndActionCopy : FPL__X11_None;
 
-					x11Api->XSendEvent(x11WinState->display, x11WinState->xdnd.source, FPL__X11_False, FPL__X11_NoEventMask, &reply);
-					x11Api->XFlush(x11WinState->display);
+					fpl__X11SendXdndMessage(x11Api, x11WinState, &reply);
 				}
 			}
 		} break;
