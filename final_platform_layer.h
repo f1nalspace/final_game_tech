@@ -420,6 +420,7 @@ SOFTWARE.
 	- Fixed: The repeats of a held key bypassed the input method and the event callback, XKB detectable auto repeat is used when the server has it
 	- Fixed: The key map was not rebuilt when the keyboard layout changed
 	- Fixed: Key events differed from Win32: the text of a repeat came first, Delete had a character and a key released twice pushed two releases
+	- Fixed: An invalid percent escape in a dropped file path became the byte 0xFF where char is unsigned (ARM)
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
 	## v1.0.0
@@ -32465,8 +32466,8 @@ fpl_internal fpl__X11WindowStateInfo fpl__X11ReconcilWindowStateInfo(fpl__X11Win
 	return change;
 }
 
-// Gets the raw byte value from a hex character (0-9, a-f, A-F)
-static inline char fpl__X11FromHex(char c) {
+// Gets the value of a hex character (0-9, a-f, A-F), -1 for any other character. The result is an int, a char is unsigned on ARM.
+static inline int fpl__X11FromHex(char c) {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
