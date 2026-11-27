@@ -404,6 +404,7 @@ SOFTWARE.
 	- Fixed: A chunked clipboard transfer kept the property events of the receiving window selected
 	- Fixed: fplWindowShutdown() sent the close request to the root window instead of the own window
 	- Fixed: Changes of position, decoration and fullscreen were not flushed to the server
+	- Fixed: Undefined behavior in the background pixel of the window
 	- Changed: The keyboard mapping is read with one request instead of one per keycode
 	- Fixed: [GLX] isVSync sets the swap interval (GLX_EXT_swap_control, GLX_MESA_swap_control or GLX_SGI_swap_control)
 
@@ -31679,7 +31680,15 @@ fpl_internal bool fpl__X11CreateWindow(const fpl__X11Api *x11Api, const fplSetti
 		backgroundPixel = 0;
 	} else {
 		flags |= FPL__X11_CWBackPixel;
-		backgroundPixel = (unsigned long)((0xFF << 24) | (initWindowSettings->background.components.r << 16) | (initWindowSettings->background.components.g << 8) | initWindowSettings->background.components.b);
+		// A pixel is 0xAARRGGBB, computed unsigned: 0xFF << 24 overflows an int
+		const unsigned long opaqueAlpha = 0xFFul;
+		const int alphaShift = 24;
+		const int redShift = 16;
+		const int greenShift = 8;
+		const unsigned long red = (unsigned long)initWindowSettings->background.components.r;
+		const unsigned long green = (unsigned long)initWindowSettings->background.components.g;
+		const unsigned long blue = (unsigned long)initWindowSettings->background.components.b;
+		backgroundPixel = (opaqueAlpha << alphaShift) | (red << redShift) | (green << greenShift) | blue;
 	}
 
 	fpl__X11_XSetWindowAttributes swa = fplZeroInit;
